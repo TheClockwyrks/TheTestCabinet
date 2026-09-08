@@ -83,7 +83,13 @@ describe("a stage's sequence", () => {
     expect(h.snapshot().screen).toBe("inWave");
 
     const survivor = h.snapshot().drones[0];
-    h.pose((s, d) => d.setDroneShell(s, survivor?.id ?? 0, false));
+    // A SHELL BELONGS TO A PRISM, so the pose is made only where there is one to
+    // break: `setDroneShell` fails loudly on any other kind rather than passing
+    // quietly (`specs/instrumentation.md`). One round on the effective band is
+    // what this wants, and only a Prism needs its shell taken off first.
+    if (survivor?.kind === "prism") {
+      h.pose((s, d) => d.setDroneShell(s, survivor.id, false));
+    }
     h.pose((s, d) => d.setDronePosition(s, survivor?.id ?? 0, 400, 300));
     const band = h.snapshot().drones[0]?.effectiveBand ?? "cyan";
     const before = h.snapshot().score;

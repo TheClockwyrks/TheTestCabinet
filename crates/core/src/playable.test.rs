@@ -688,6 +688,34 @@ fn a_served_still_declares_no_framing() {
 }
 
 #[test]
+fn a_recordings_shared_image_store_is_served_from_the_same_flat_namespace() {
+    // The store is what a recording's image entries name instead of carrying base64
+    // of their pixels, and it is deliberately *not* a new kind of resource: the files
+    // sit in the validation media directory under flat single-segment names, so this
+    // route serves them with no change and the console resolves them through the very
+    // lookup it resolved the recording with.
+    let dir = run_dir_with_validation(
+        ValidationSummary::default(),
+        &[
+            (".vendor/validation/img.9f2c1ab4.png", b"\x89PNG-sprite"),
+            (".vendor/validation/img.7ee01d33.bin", b"\x01\x02\x03\x04"),
+        ],
+    );
+
+    let bitmap = serve_validation_file(dir.path(), "img.9f2c1ab4.png").expect("bitmap served");
+    assert_eq!(bitmap.content_type, "image/png");
+    assert_eq!(bitmap.content_encoding, None);
+
+    // A pixel buffer is four raw bytes per pixel with no header of its own — the
+    // entry that names it carries the dimensions — so it is served as the opaque
+    // stream it is, unframed, and the player reads its length against those.
+    let pixels = serve_validation_file(dir.path(), "img.7ee01d33.bin").expect("pixels served");
+    assert_eq!(pixels.content_type, "application/octet-stream");
+    assert_eq!(pixels.content_encoding, None);
+    assert_eq!(pixels.body, b"\x01\x02\x03\x04".to_vec());
+}
+
+#[test]
 fn validation_media_requests_cannot_escape_the_dir() {
     let dir = run_dir_with_validation(ValidationSummary::default(), &[]);
     // A traversal or nested path is refused; a missing file is a plain miss.

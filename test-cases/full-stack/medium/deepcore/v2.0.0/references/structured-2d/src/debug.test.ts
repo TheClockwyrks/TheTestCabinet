@@ -54,6 +54,64 @@ describe("the surface itself", () => {
   });
 });
 
+describe("reconciling derived state", () => {
+  it("carries every core operation", () => {
+    for (const op of ["reset", "reconcile", "snapshot"] as const) {
+      expect(typeof h.debug[op]).toBe("function");
+    }
+  });
+
+  it("re-derives a stored reading from a posed world", () => {
+    // The scanner's lock is the one reading this build keeps as a stored copy,
+    // written by the update alone, so a pose leaves it answering for the world
+    // as it was.
+    h.debug.setTier("scanner", 3);
+    h.debug.setMaterialTile(9, 199, "resonite");
+    standOn(h, 9, 200);
+    expect(h.debug.snapshot().scanner.locked).toBe(false);
+
+    h.debug.reconcile();
+    const locked = h.debug.snapshot();
+    expect(locked.scanner.locked).toBe(true);
+    expect(locked.scanner.target).toBe("resonite");
+  });
+
+  it("advances nothing, and twice is the same as once", () => {
+    h.debug.setTile(9, 200, "rock");
+    h.debug.setMinerPosition(9 * TILE, 12 * TILE);
+    h.debug.setMinerVelocity(0, 0);
+    h.debug.setFuel(40);
+    h.debug.setElapsed(7);
+
+    const before = h.debug.snapshot();
+    h.debug.reconcile();
+    const once = h.debug.snapshot();
+    h.debug.reconcile();
+    const twice = h.debug.snapshot();
+
+    expect(once.simTime).toBe(before.simTime);
+    expect(once.elapsedSeconds).toBe(before.elapsedSeconds);
+    expect(once.miner.x).toBe(before.miner.x);
+    expect(once.miner.y).toBe(before.miner.y);
+    expect(once.miner.vx).toBe(before.miner.vx);
+    expect(once.miner.vy).toBe(before.miner.vy);
+    expect(once.miner.fuel).toBe(before.miner.fuel);
+    expect(once).toEqual(before);
+    expect(twice).toEqual(once);
+  });
+
+  it("moves nothing to make a reading agree", () => {
+    // A miner posed inside a solid cell stays lodged there and reads as it is.
+    h.debug.setTile(9, 200, "rock");
+    h.debug.setMinerPosition(9 * TILE, 200 * TILE);
+    h.debug.reconcile();
+    const after = h.debug.snapshot();
+    expect(after.miner.x).toBe(9 * TILE);
+    expect(after.miner.y).toBe(200 * TILE);
+    expect(h.debug.tileAt(9, 200).kind).toBe("rock");
+  });
+});
+
 describe("readings", () => {
   it("reports every field an operation can set", () => {
     const snapshot = h.debug.snapshot();
@@ -367,7 +425,7 @@ describe("posing the miner", () => {
     expect(h.debug.tileAt(5, 200).kind).toBe("rock");
   });
 
-  it("sets the velocity, the facing, the fuel and the hull within their domains", () => {
+  it("sets the velocity, the facing, the fuel and the hull", () => {
     h.debug.setMinerVelocity(-30, 90);
     h.debug.setFacing("west");
     h.debug.setFuel(12);
@@ -378,8 +436,21 @@ describe("posing the miner", () => {
     expect(snapshot.miner.facing).toBe("west");
     expect(snapshot.miner.fuel).toBe(12);
     expect(snapshot.miner.hull).toBe(34);
-    expect(() => h.debug.setFuel(FUEL_TIERS[0] + 1)).toThrow(RangeError);
     expect(() => h.debug.setFacing("north" as "east")).toThrow(RangeError);
+  });
+
+  it("applies fuel and hull as given rather than clamping to the tier's maximum", () => {
+    // specs/instrumentation.md, The operations: a bound that reads a live game
+    // value is a rule rather than a domain, so the pose reaches what it names.
+    const over = FUEL_TIERS[0] + 100;
+    h.debug.setFuel(over);
+    expect(h.debug.snapshot().miner.fuel).toBe(over);
+    const overHull = HULL_TIERS[0] + 5;
+    h.debug.setHull(overHull);
+    expect(h.debug.snapshot().miner.hull).toBe(overHull);
+    expect(() => h.debug.setFuel("full" as unknown as number)).toThrow(
+      RangeError,
+    );
   });
 
   it("holds each faculty on its own", () => {
@@ -527,6 +598,25 @@ describe("the controls", () => {
     h.debug.buyUpgrade("drill");
     expect(h.debug.snapshot().tiers.drill).toBe(1);
     h.debug.buyItem("nanobots");
+    expect(h.debug.snapshot().items.nanobots).toBe(0);
+  });
+
+  it("acts from wherever the game stands rather than where a player would be", () => {
+    // specs/instrumentation.md, The controls: the screen, the open panel, and
+    // where the miner stands are a player's route and not the control's
+    // conditions. The miner is posed deep in the mine, nowhere near the camp.
+    standOn(h, 9, 200);
+    h.debug.setCargo("ferron", 2);
+    h.debug.sell();
+    expect(h.debug.snapshot().cargo.slotsUsed).toBe(0);
+    expect(h.debug.snapshot().credits).toBeGreaterThan(0);
+
+    h.debug.save();
+    expect(h.debug.snapshot().hasSave).toBe(true);
+
+    h.debug.setItemCount("nanobots", 1);
+    h.debug.setHull(1);
+    h.debug.useItem("nanobots");
     expect(h.debug.snapshot().items.nanobots).toBe(0);
   });
 

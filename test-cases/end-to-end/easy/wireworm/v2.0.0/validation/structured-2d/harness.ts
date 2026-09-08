@@ -7,6 +7,16 @@
 // wall-clock time passes: a check asks for a number of frames and gets exactly
 // that number, at exactly the deltas its clock supplied.
 //
+//
+// A HELPER THAT POSES ANYTHING A READING DERIVES FROM RECONCILES BEFORE IT
+// RETURNS. `specs/instrumentation.md` lets a build work a derived reading out at
+// the read or keep it as a stored copy, and `reconcile()` is what brings a
+// stored copy back into agreement — so `startPlaying`, which poses the level the
+// step interval and the worm length follow, ends with the call. A check that
+// poses only through the helpers therefore never calls `reconcile` itself; a
+// check that poses with `h.debug.set…` directly calls it once before its first
+// read or sweep.
+//
 // THE MACHINERY THAT DOES THAT IS NOT WIREWORM'S. The canvas and its
 // draw-command recorder, the debug surface and the stand-in for a missing one,
 // the driven frame and the `until` sweep, the key events, the cue stamping, the
@@ -1043,6 +1053,9 @@ export function startPlaying(h: Harness): void {
   h.debug.setCursor(BAND_CX, BAND_CY);
   h.debug.setCursorInvulnerable(0);
   h.debug.setFireCooldown(0);
+  // The level is posed above and the step interval and the worm length follow
+  // it, so the readings are brought into agreement before the caller reads them.
+  h.debug.reconcile();
 }
 
 /**

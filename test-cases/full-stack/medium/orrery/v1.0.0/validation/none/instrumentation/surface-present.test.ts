@@ -17,7 +17,7 @@
 // "the clock, the keyboard, the pointer, and the overlay belong to the ... engine
 // ... and the surface carries no operation for any of them". `REQUIRED_OPS` is each
 // project's transcription of what its own engine's specification requires, so the
-// reading below asks for the fifty-three under no engine and the fifty-one under
+// reading below asks for the fifty-five under no engine and the fifty-three under
 // either.
 //
 // THE VERDICT is in two halves. First the reflective one: the surface answers at

@@ -54,6 +54,68 @@ describe("the surface itself", () => {
   });
 });
 
+describe("reconciling derived state", () => {
+  it("carries every core operation", () => {
+    for (const op of ["reset", "reconcile", "snapshot"] as const) {
+      expect(typeof h.debug[op]).toBe("function");
+    }
+  });
+
+  it("re-derives a stored reading from a posed world", () => {
+    // The scanner's lock is the one reading this build keeps as a stored copy,
+    // written by the update alone, so a pose leaves it answering for the world
+    // as it was.
+    h.pose((debug, state) => debug.setTier(state, "scanner", 3));
+    h.pose((debug, state) => debug.setMaterialTile(state, 9, 199, "resonite"));
+    standOn(h, 9, 200);
+    expect(h.debug.snapshot(h.state).scanner.locked).toBe(false);
+
+    h.pose((debug, state) => debug.reconcile(state));
+    const locked = h.debug.snapshot(h.state);
+    expect(locked.scanner.locked).toBe(true);
+    expect(locked.scanner.target).toBe("resonite");
+  });
+
+  it("advances nothing, and twice is the same as once", () => {
+    h.pose((debug, state) => debug.setTile(state, 9, 200, "rock"));
+    h.pose((debug, state) =>
+      debug.setMinerPosition(state, 9 * TILE, 12 * TILE),
+    );
+    h.pose((debug, state) => debug.setMinerVelocity(state, 0, 0));
+    h.pose((debug, state) => debug.setFuel(state, 40));
+    h.pose((debug, state) => debug.setElapsed(state, 7));
+
+    const before = h.debug.snapshot(h.state);
+    h.pose((debug, state) => debug.reconcile(state));
+    const once = h.debug.snapshot(h.state);
+    h.pose((debug, state) => debug.reconcile(state));
+    const twice = h.debug.snapshot(h.state);
+
+    expect(once.simTime).toBe(before.simTime);
+    expect(once.elapsedSeconds).toBe(before.elapsedSeconds);
+    expect(once.miner.x).toBe(before.miner.x);
+    expect(once.miner.y).toBe(before.miner.y);
+    expect(once.miner.vx).toBe(before.miner.vx);
+    expect(once.miner.vy).toBe(before.miner.vy);
+    expect(once.miner.fuel).toBe(before.miner.fuel);
+    expect(once).toEqual(before);
+    expect(twice).toEqual(once);
+  });
+
+  it("moves nothing to make a reading agree", () => {
+    // A miner posed inside a solid cell stays lodged there and reads as it is.
+    h.pose((debug, state) => debug.setTile(state, 9, 200, "rock"));
+    h.pose((debug, state) =>
+      debug.setMinerPosition(state, 9 * TILE, 200 * TILE),
+    );
+    h.pose((debug, state) => debug.reconcile(state));
+    const after = h.debug.snapshot(h.state);
+    expect(after.miner.x).toBe(9 * TILE);
+    expect(after.miner.y).toBe(200 * TILE);
+    expect(h.debug.tileAt(h.state, 9, 200).kind).toBe("rock");
+  });
+});
+
 describe("readings", () => {
   it("reports every field an operation can set", () => {
     const snapshot = h.debug.snapshot(h.state);
@@ -389,7 +451,7 @@ describe("posing the miner", () => {
     expect(h.debug.tileAt(h.state, 5, 200).kind).toBe("rock");
   });
 
-  it("sets the velocity, the facing, the fuel and the hull within their domains", () => {
+  it("sets the velocity, the facing, the fuel and the hull", () => {
     h.pose((debug, state) => debug.setMinerVelocity(state, -30, 90));
     h.pose((debug, state) => debug.setFacing(state, "west"));
     h.pose((debug, state) => debug.setFuel(state, 12));
@@ -401,10 +463,23 @@ describe("posing the miner", () => {
     expect(snapshot.miner.fuel).toBe(12);
     expect(snapshot.miner.hull).toBe(34);
     expect(() =>
-      h.pose((debug, state) => debug.setFuel(state, FUEL_TIERS[0] + 1)),
-    ).toThrow(RangeError);
-    expect(() =>
       h.pose((debug, state) => debug.setFacing(state, "north" as "east")),
+    ).toThrow(RangeError);
+  });
+
+  it("applies fuel and hull as given rather than clamping to the tier's maximum", () => {
+    // specs/instrumentation.md, The operations: a bound that reads a live game
+    // value is a rule rather than a domain, so the pose reaches what it names.
+    const over = FUEL_TIERS[0] + 100;
+    h.pose((debug, state) => debug.setFuel(state, over));
+    expect(h.debug.snapshot(h.state).miner.fuel).toBe(over);
+    const overHull = HULL_TIERS[0] + 5;
+    h.pose((debug, state) => debug.setHull(state, overHull));
+    expect(h.debug.snapshot(h.state).miner.hull).toBe(overHull);
+    expect(() =>
+      h.pose((debug, state) =>
+        debug.setFuel(state, "full" as unknown as number),
+      ),
     ).toThrow(RangeError);
   });
 
@@ -564,6 +639,25 @@ describe("the controls", () => {
     h.pose((debug, state) => debug.buyUpgrade(state, "drill"));
     expect(h.debug.snapshot(h.state).tiers.drill).toBe(1);
     h.pose((debug, state) => debug.buyItem(state, "nanobots"));
+    expect(h.debug.snapshot(h.state).items.nanobots).toBe(0);
+  });
+
+  it("acts from wherever the game stands rather than where a player would be", () => {
+    // specs/instrumentation.md, The controls: the screen, the open panel, and
+    // where the miner stands are a player's route and not the control's
+    // conditions. The miner is posed deep in the mine, nowhere near the camp.
+    standOn(h, 9, 200);
+    h.pose((debug, state) => debug.setCargo(state, "ferron", 2));
+    h.pose((debug, state) => debug.sell(state));
+    expect(h.debug.snapshot(h.state).cargo.slotsUsed).toBe(0);
+    expect(h.debug.snapshot(h.state).credits).toBeGreaterThan(0);
+
+    h.pose((debug, state) => debug.save(state));
+    expect(h.debug.snapshot(h.state).hasSave).toBe(true);
+
+    h.pose((debug, state) => debug.setItemCount(state, "nanobots", 1));
+    h.pose((debug, state) => debug.setHull(state, 1));
+    h.pose((debug, state) => debug.useItem(state, "nanobots"));
     expect(h.debug.snapshot(h.state).items.nanobots).toBe(0);
   });
 

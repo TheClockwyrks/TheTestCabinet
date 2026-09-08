@@ -116,6 +116,30 @@ The surface carries `version` (`FACET_DEBUG_VERSION`, `1`), a plain number, and
 the operations below. Values are plain numbers, strings, and booleans. `x` and
 `y` are in the stage's logical units, `col` and `row` are cell coordinates as
 `specs/board.md` defines them, and every duration is game time in seconds.
+
+Each operation writes one element of the state and leaves the rest of the game
+as it stands, so a caller that wants several things arranged makes several
+calls, in the order it wants them. Nothing a caller does not ask for happens.
+
+A pose reaches the value it names whatever the game's own rules would have
+allowed a player to arrive at, and it never declines, clamps, or quietly settles
+for something nearer. Where the game stands is not a condition on it either: no
+operation asks which screen is up, which menu is drawn, what is selected, or
+whether what it writes could have been reached by playing, because a player's
+route to a thing is not this surface's route to it. `requestSwap` is the one
+that carries a transaction rather than a value, and the transaction is its
+effect: R1, R2 and R3 in `specs/rules.md` decide the swap exactly as they decide
+a player's, and a swap those rules come out against exchanges nothing and stands
+as a refusal. What it does not ask is how the caller got there.
+
+An argument outside the domain its operation states is invalid, and the call
+fails loudly rather than guessing what was meant: a cell off the board, a token
+the notation does not read, a level below `1`, an index below `0`. A domain here
+is one this specification FIXES — a constant, a named set, or the shape of the
+board — rather than a figure the running game happens to hold. A call the game
+has no defined state for is the one thing an operation does not carry out, and
+it says so by failing: no operation returns with the state as it was, and none
+settles for a value nearer than the one it was given.
 {{#if (eq engine.slug "none")}}
 {{else if (eq engine.slug "simple-2d")}}
 
@@ -177,6 +201,46 @@ reported as up and driven by `mouse`, and `simTime` at `0`.
 `muted` is untouched; the runtime owns muting.
 
 {{#if (eq engine.slug "none")}}
+### `reconcile()`
+{{else if (eq engine.slug "simple-2d")}}
+### `reconcile(state)`
+{{else}}
+### `reconcile()`
+{{/if}}
+
+Brings every value this surface reports into agreement with the game as it now
+stands, without advancing anything. Seven of the snapshot's fields follow from
+others rather than being reported independently — a cell's `x` and `y`,
+`levelTarget`, `multiplier`, `lastFall`, `stepHold`, `legalSwap` and `targets`,
+each named against what it follows from under Snapshot shape below — so after a
+board is posed or a screen is shown they answer for the board and the screen the
+game holds now rather than the ones it held before.
+
+A build that works those out at the read has nothing to do here and this call
+changes nothing. A build that keeps any of them as a stored copy rewrites that
+copy from what it is a copy of.
+
+It moves no clock and runs no system: `simTime` is untouched, `swapTimer` and
+`stepTimer` stand where they were, no chain step resolves, no refusal ages out,
+nothing is cleared, nothing falls, no cell is refilled, and no gem is dealt. It
+plays no cue, changes no screen, takes no menu item, and requests no swap. It
+moves nothing to make a reading agree: a board with no legal swap on it reads as
+a board with no legal swap and is not dealt again, and a selection posed on a
+cell the board no longer holds a gem at stays exactly where it was posed. The
+figures a settled chain leaves — `score`, `levelScore`, `bestMove`,
+`bestChain` and `lastCleared` — are the chain's own, so none of them moves
+here. Calling it twice leaves the same state as calling it once.
+
+It is never an error and may be called on any screen, with a board in play or
+none, whether or not the game is on the wall clock.
+{{#if (eq engine.slug "simple-2d")}}
+
+`reconcile(state)` returns the next `FacetState`, built from the one it was
+handed, which it leaves as it was, so a build that works every one of those
+readings out at the call returns a state equal to the one it was given.
+{{/if}}
+
+{{#if (eq engine.slug "none")}}
 ### `snapshot()`
 
 A pure read of the state, returned as the plain object under Snapshot shape
@@ -214,7 +278,10 @@ board on the screens `specs/ui.md` says it does.
 {{/if}}
 
 Highlights the menu item at `index`, counted from `0`, on whichever vertical
-menu the current screen shows. Nothing else changes, and no item is taken.
+menu the current screen shows. Nothing else changes, and no item is taken. The
+index is written as it is given: which screen is up is a player's route to a
+menu rather than a condition on this pose, and what a screen with no item at
+that index draws is the renderer's answer.
 
 {{#if (eq engine.slug "none")}}
 ### `loadBoard(rows)`
@@ -609,7 +676,15 @@ reported independently:
 | `legalSwap` | R1 and R3 in `specs/rules.md`, over the board as it stands |
 | `targets` | the current screen's targets in `specs/controls.md` |
 
-Three fields need the game to keep them honest every frame:
+A build is free to work any of these out at the read or to keep it as a stored
+copy, and `reconcile()` is what brings a stored copy back into agreement after a
+pose. `legalSwap` is the one to watch: it follows from the whole board, so a
+build that keeps it is answering for the board it last resolved rather than the
+one `loadBoard` or `setGem` just wrote.
+
+Three fields need the game to keep them honest every frame, and they are the
+update's rather than `reconcile`'s: what refreshes each of them is a frame, not
+a call.
 
 - `pointer` mirrors the position the pointer input reports, whether the pointer
   is currently pressed, and the device that drove it, refreshed in every update.

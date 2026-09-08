@@ -14,11 +14,12 @@
 // `CURSOR_SPEED`, and a build that honours the rate covers the inset in 0.28 s
 // and rests on the bound for the remaining 0.72 s.
 //
-// THE INSET IS THE HORIZONTAL PAIR'S ALONE. `setCursor` applies the real clamp
-// (`specs/instrumentation.md`), and `specs/board.md` makes the band 32 units
-// tall, so a pose 120 units inside a vertical bound would land on the opposite
-// bound instead; `cursor.clamped-top` and `cursor.clamped-bottom` therefore pose
-// AT the opposite bound rather than inset from their own.
+// THE INSET IS THE HORIZONTAL PAIR'S ALONE. `setCursor` takes a position inside
+// the band and fails loudly outside it (`specs/instrumentation.md`), and
+// `specs/board.md` makes the band 32 units tall, so a pose 120 units inside a
+// vertical bound falls outside the band altogether and could not be posed at
+// all; `cursor.clamped-top` and `cursor.clamped-bottom` therefore pose AT the
+// opposite bound rather than inset from their own.
 //
 // THE WORLD IS THE CURSOR ALONE. `startPlaying` empties the four rosters and
 // shuts the three world gates, so nothing on the board can move the cursor or

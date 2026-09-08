@@ -14,7 +14,7 @@ import { wantedLoops } from "./audio";
 import {
   NO_POINTER,
   applyPointer,
-  choose,
+  tryChoose,
   consumeTime,
   endRun,
   handleAction,
@@ -532,7 +532,7 @@ describe("the overlays", () => {
     w.state.run.pendingLevelUps = 1;
     pause(w.state);
     expect(openLevelUpOverlay(w.state, w.cues)).toBe(false);
-    expect(choose(w.state, 0, w.cues)).toBe(false);
+    expect(tryChoose(w.state, 0, w.cues)).toBe(false);
   });
 
   it("closes the chest overlay on confirm alone", () => {

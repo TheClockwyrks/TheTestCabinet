@@ -32,6 +32,7 @@ import {
 import { Drifter, Predator } from "./entities";
 import {
   buildRoster,
+  countPlankton,
   denPredators,
   poseMaze,
   poseScreen,
@@ -39,6 +40,7 @@ import {
   toTitle,
   type FathomState,
 } from "./game";
+import { predatorSpeed } from "./predators";
 import { itemRect, type Rect } from "./menu";
 import { menuItems } from "./readings";
 import { tileKey } from "./sensing";
@@ -80,6 +82,8 @@ export interface FathomDebugApi {
   advance(ticks: number): void;
   reset(): void;
   snapshot(): FathomSnapshot;
+  /** Bring every reported reading into agreement with the dive as it stands. */
+  reconcile(): void;
   menuItemRect(index: number): Rect | null;
   setScreen(s: Screen): void;
   setMenuIndex(index: number): void;
@@ -242,6 +246,45 @@ export function createDebugApi(
     /** A pure read. It changes nothing. */
     snapshot() {
       return snapshot(state, clock.autoStep());
+    },
+
+    /**
+     * Bring every reported reading into agreement with the dive as it stands,
+     * without advancing anything (`specs/instrumentation.md`).
+     *
+     * Most of what this build reports is worked out at the read and has nothing
+     * to rewrite: the bodies' `tx` and `ty` are getters over their centers,
+     * `visionRadius`, `sonar.range`, `detectRange` and `hearingRange` are
+     * computed in `snapshot`, and `sonar.ready` and `ink.ready` are read off the
+     * cooldowns there. Two readings are stored copies, and these are the two
+     * lines:
+     *
+     * - `planktonRemaining` is a running count of the plankton layer, so a maze
+     *   or a plankton posed under it leaves it answering for the layer as it
+     *   was. `countPlankton` is the count `pruneBuriedPlankton` itself finishes
+     *   with.
+     * - a predator's `speed` is the rate its `state` carries, and the mind is
+     *   what usually writes it, so a `setPredatorState` leaves it reporting the
+     *   speed of the state the predator was in. `predatorSpeed` is the rule
+     *   every update assigns through.
+     *
+     * WHAT IS NOT HERE, deliberately. `hearingLock` and `alert` are the
+     * predator's MIND — its sensing and its detection window — and
+     * `setPredatorMind(index, false)` has a predator with its mind off sense
+     * nothing and keep the fix it was posed with, so bringing them into
+     * agreement here would be sensing. `score`, `lives`, `depth` and `simTime`
+     * are figures the dive has accumulated rather than readings of the world as
+     * it stands, and `muted` is the runtime's bit, refreshed every frame.
+     *
+     * It advances nothing: no tick is run at any length, no body travels, no
+     * mind decides, no pulse front moves, no timer runs down, and the generator
+     * is not drawn from. It fires nothing and corrects nothing: a body standing
+     * on a tile closed to it holds that tile and reads as it is. Calling it
+     * twice leaves the same state as calling it once.
+     */
+    reconcile() {
+      state.planktonRemaining = countPlankton(state);
+      for (const p of state.predators) p.speed = predatorSpeed(p);
     },
 
     /**
@@ -446,6 +489,11 @@ export function createDebugApi(
       p.state = "wander";
       p.released = true;
       p.facing = "up";
+      // `speed` is the rate the predator's `state` carries (`specs/state.md`),
+      // and the mind is what usually writes it, so a predator posed straight
+      // into a state reports that state's rate from the call rather than from
+      // the first tick its mind runs.
+      p.speed = predatorSpeed(p);
       state.predators.push(p);
     },
 
@@ -500,6 +548,7 @@ export function createDebugApi(
         p.linger = LINGER_TIME;
         p.chaseSpeed = GLOAMFIN_CHASE_SPEED;
       }
+      p.speed = predatorSpeed(p);
     },
 
     /**

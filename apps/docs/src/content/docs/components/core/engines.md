@@ -179,6 +179,22 @@ declared as a `replay` output in the case's
 case's reference implementation produce the baseline recording, so the reviewer
 sees what the build drew beside what the reference drew, scrubbed together.
 
+### The images a recording draws
+
+A 2D recording carries the bitmaps and pixel buffers its operations draw as
+entries of a table the whole recording shares. An entry holds its pixels itself
+or names a file beside the recording that holds them. An engine's recorder writes
+the first form, since the recording it hands back is assembled in memory and
+travels alone.
+
+The writer that lands a recording in a run's
+[validation media](/components/core/validation/#the-shared-image-store) rewrites
+those entries into the second, so each unique image is written once per run under
+a name derived from its own bytes. A sprite drawn in forty of a run's recordings
+is then one file, it travels as PNG rather than as base64 inside a gzip that
+cannot compress it, and opening one replay costs the images that replay draws
+rather than the run's.
+
 ## The frame
 
 The engine owns the frame loop and decides what each frame's delta time is worth.

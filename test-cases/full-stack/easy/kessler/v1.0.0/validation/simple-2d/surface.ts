@@ -52,6 +52,7 @@ export type EffectKind = "widen" | "narrow" | "pierce";
  */
 export const REQUIRED_OPS = [
   "reset",
+  "reconcile",
   "snapshot",
   "menuItemRect",
   "setScreen",
@@ -183,13 +184,27 @@ export interface KesslerSnapshot {
  * Positions and velocities are in the stage's logical units and units per
  * second, angles in degrees under the polar mapping specs/field.md fixes, and
  * durations in whole ticks. An argument outside an operation's stated domain
- * fails loudly, except where the operation states that it normalizes
- * (`setPaddleAngle`, `setRingAngle`) or ignores the call (`launchBall`,
- * `spawnBall` at the cap, `parkBall` beside a parked ball).
+ * fails loudly, except where the operation states that it normalizes the call
+ * (`setPaddleAngle`, `setRingAngle`).
+ *
+ * No operation declines. The screen showing, the entry
+ * highlighted, and where the deflector and the balls sit are how a PLAYER
+ * reaches a thing and are not an operation's conditions, so an operation acts
+ * from wherever the game stands; a call the field has no state for — a launch
+ * with nothing parked, a second parked ball, a seventh ball where six is the
+ * whole capacity, a menu entry on a screen carrying no menu — fails loudly
+ * rather than passing quietly.
  */
 export interface KesslerDebugApi<S = unknown> {
   /** Restores the boot state, with no posed pod outcome. */
   reset(state: DeepReadonly<S>): S;
+  /**
+   * Brings every value the surface reports into agreement with the field as it
+   * stands, without advancing anything, and returns the next state. A build
+   * that works its derived readings out at the read returns a state equal to
+   * the one it was handed.
+   */
+  reconcile(state: DeepReadonly<S>): S;
   /** A pure reading of `state`. Poses nothing. */
   snapshot(state: DeepReadonly<S>): KesslerSnapshot;
   /**
@@ -207,7 +222,7 @@ export interface KesslerDebugApi<S = unknown> {
   /**
    * Sets the highlighted menu entry to `n`, a whole number from `0` to the
    * current screen's entry count minus `1`. No cue sounds; off a menu the
-   * call changes nothing.
+   * call fails loudly.
    */
   setMenuIndex(state: DeepReadonly<S>, n: number): S;
   /** Sets the interstitial timer to `ticks`, a whole number of at least `0`. */
@@ -217,11 +232,11 @@ export interface KesslerDebugApi<S = unknown> {
 
   /** Sets the deflector's center angle, normalized into [0, 360). */
   setPaddleAngle(state: DeepReadonly<S>, deg: number): S;
-  /** Acts exactly as `Space` does on a parked ball; no parked ball, no-op. */
+  /** Acts exactly as `Space` does on a parked ball; with none, fails loudly. */
   launchBall(state: DeepReadonly<S>): S;
   /** Removes every ball, parked included. No burn-up, cue, or particle. */
   clearBalls(state: DeepReadonly<S>): S;
-  /** Adds one unparked ball; a no-op at the 6-ball cap. */
+  /** Adds one unparked ball; at the 6-ball cap, fails loudly. */
   spawnBall(
     state: DeepReadonly<S>,
     x: number,
@@ -229,7 +244,7 @@ export interface KesslerDebugApi<S = unknown> {
     vx: number,
     vy: number,
   ): S;
-  /** Parks one ball on the deflector; a no-op beside a parked ball or at the cap. */
+  /** Parks one ball on the deflector; beside a parked ball or at the cap, fails loudly. */
   parkBall(state: DeepReadonly<S>): S;
 
   /** Removes every target. Not a destruction and not a clearing. */

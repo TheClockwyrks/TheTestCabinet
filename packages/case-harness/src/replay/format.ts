@@ -93,6 +93,24 @@ export interface Recording {
   width: number;
   height: number;
   background: string | null;
+  /**
+   * The bitmaps and pixel buffers the operations draw, by the index a `$img`
+   * names one at.
+   *
+   * OPAQUE HERE ON PURPOSE. The writer moves an entry from table to table and
+   * shares it on its payload; it never reads a field of one to decide anything,
+   * and the shape is DECLARED — with its members and their meanings — by the
+   * console's player in `packages/ui/src/app/pages/runs/replay/format.ts` and
+   * mirrored by the two 2D engines' contracts. Restating it here would be a fourth
+   * copy for this package to keep in agreement, for no reading it makes.
+   *
+   * An entry carries its pixels one of two ways, and both are members of the one
+   * format. INLINE — a `data:image/png;base64,…` URL for a bitmap, base64 RGBA for
+   * a pixel buffer — is what a recorder produces. STORED — the flat file name of
+   * the bytes sitting beside the recording in the same media directory — is what
+   * `./retable` writes instead when a run gives it somewhere to put them, out of
+   * the shared store `./store` opens.
+   */
   images: unknown[];
   resources: RecordedResource[];
   ops: RecordedOp[];

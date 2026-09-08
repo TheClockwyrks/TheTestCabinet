@@ -95,9 +95,11 @@ it("draws each drone into a box the size of its own footprint", async () => {
     poseDrone(h, kind, x, ROW_Y, {
       band: "cyan",
       // Mid-hold, so the Flux is the settled body `FLUX_SIZE` is stated for
-      // rather than a shimmer (specs/drones.md).
-      bandClock: FLUX_HOLD_L1 / 2,
-      shell: true,
+      // rather than a shimmer (specs/drones.md). A band clock belongs to a Flux
+      // and a shell to a Prism, and posing either on another kind fails loudly
+      // (specs/instrumentation.md), so each is posed on its own kind alone.
+      bandClock: kind === "flux" ? FLUX_HOLD_L1 / 2 : undefined,
+      shell: kind === "prism" ? true : undefined,
     }),
   );
 

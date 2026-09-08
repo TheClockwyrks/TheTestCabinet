@@ -10,7 +10,7 @@
 // THE ROWS ARE NOT RESTATED HERE. `driver.ts` carries one member per row of
 // `specs/instrumentation.md`, taking exactly the arguments that row names, and
 // the mapped type below is the mechanical translation of that into this engine's
-// spelling: the promise dropped and nothing else changed. Writing the fifty-one
+// spelling: the promise dropped and nothing else changed. Writing the fifty-three
 // rows out a second time is how the two would drift, and a drift between them is
 // a check calling an operation with the wrong arguments and nothing saying so.
 //

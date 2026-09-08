@@ -78,6 +78,8 @@ export interface CoilSnapshot {
 export interface CoilDebugApi {
   version: number;
   reset(state: View): CoilState;
+  /** Bring every reported reading into agreement with the game as it stands. */
+  reconcile(state: View): CoilState;
   snapshot(state: View): CoilSnapshot;
   menuItemRect(state: View, index: number): MenuRect | null;
   setScreen(state: View, screen: Screen): CoilState;
@@ -174,6 +176,27 @@ export function createDebugApi(): CoilDebugApi {
      */
     reset(state) {
       return resetSession(state);
+    },
+
+    /**
+     * Bring every reported reading into agreement with the game as it stands,
+     * advancing nothing.
+     *
+     * There is nothing to bring into agreement in this build, and that is the
+     * answer rather than an omission. Coil reports its board, its switches and
+     * its figures straight off the state, and the hit regions `menuItemRect`
+     * answers are worked out from the current screen at the read, so no reading
+     * is held as a copy of something a pose can leave behind. `muted` is the one
+     * value the state mirrors rather than owns, and it is the engine's: the
+     * frame carries the engine's mute bit into the state (`src/game.ts`'s
+     * `update`), which a pose has no reach into and no business doing.
+     *
+     * The operation is required of every build, including one that keeps a
+     * reading as a stored copy, and this is what it comes to in a build that
+     * does not: the state it was handed, returned unchanged.
+     */
+    reconcile(state) {
+      return { ...state };
     },
 
     /** A pure read of the state. It poses nothing, so it returns no state. */

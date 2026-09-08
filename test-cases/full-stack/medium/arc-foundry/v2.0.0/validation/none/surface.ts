@@ -59,6 +59,8 @@ export const REQUIRED_OPS = [
   "recipeEntries",
   "waveCount",
   "rollPress",
+  // Reconciling.
+  "reconcile",
   // The run.
   "reset",
   "setMap",
@@ -418,6 +420,16 @@ export interface FoundryDebugApi {
   /* The clock. */
   setAutoStep(enabled: boolean): void;
   advance(seconds: number, frames?: number): void;
+
+  /**
+   * Bring every reported reading into agreement with the yard as it stands,
+   * without advancing anything. `qualityOdds`, `mazeLength`, a structure's
+   * `range`, `damage`, `fireRate` and `auraBonus`, a unit's `speed` and
+   * `progress`, and `held.legal` all answer for the yard as posed after it. A
+   * build that works them out at the read has nothing to do and this changes
+   * nothing.
+   */
+  reconcile(): Promise<void>;
 
   /* Readings. */
   snapshot(): FoundrySnapshot;

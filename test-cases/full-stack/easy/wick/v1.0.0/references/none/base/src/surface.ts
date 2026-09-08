@@ -2,10 +2,14 @@
 // (specs/instrumentation.md).
 //
 // Every operation is a read of the game's state or a pose of one part of it.
-// An argument outside its domain throws; a call on a screen the operation
-// does not apply to leaves the state as it was; no pose sounds a cue, and no
-// pose decides an outcome. The clock operations belong here because nothing
-// outside this build owns the clock.
+// An operation is UNCONDITIONAL: it applies its effect every time it is called,
+// from wherever the game stands. Which screen is showing, which overlay is
+// open, and what a player would have had to do first are the player's route to
+// a thing and are not an operation's conditions, so nothing here returns early
+// with the state unchanged. An argument outside its domain throws, and so does
+// a call naming a subject the game does not hold; what never happens is a quiet
+// refusal. No pose sounds a cue, and no pose decides an outcome. The clock
+// operations belong here because nothing outside this build owns the clock.
 
 import {
   DAWN_TICK,
@@ -178,6 +182,8 @@ export interface WickDebugApi {
   advance(seconds: number): void;
   reset(): void;
   snapshot(): WickSnapshot;
+  /** Bring every reported reading into agreement with the world as it stands. */
+  reconcile(): void;
   menuRects(): WickRect[];
   tabRects(): WickRect[];
   setScreen(name: Screen): void;
@@ -295,8 +301,6 @@ function oneOf<T extends string>(
   return value as T;
 }
 
-const RUN_SCREENS: readonly Screen[] = ["playing", "paused"];
-
 /** A posed angle: a real number of at least `0` and below `360`. */
 function angle(value: unknown): number {
   const degrees = real(value, "degrees", 0);
@@ -315,11 +319,16 @@ export interface Clock {
 export function createApi(game: Game, clock: Clock): WickDebugApi {
   const state = (): Game["state"] => game.state;
   const run = (): RunState => game.state.run;
-  const onRunScreen = (): boolean => RUN_SCREENS.includes(game.state.screen);
 
-  /** Run `pose` on a run screen; a pose sounds nothing. */
+  /**
+   * Run `apply` on the game as it stands and swallow whatever it stirred up.
+   *
+   * There is no screen test here on purpose. The run is a field of the state on
+   * every screen, so every pose below has a defined state to reach whatever is
+   * showing, and a debug operation is the route a driver has instead of a
+   * player: it does not walk to `playing` first.
+   */
   const pose = (apply: () => void): void => {
-    if (!onRunScreen()) return;
     apply();
     game.discardCues();
   };
@@ -487,14 +496,37 @@ export function createApi(game: Game, clock: Clock): WickDebugApi {
       game.reset();
     },
     snapshot,
+
+    /**
+     * Bring every reported reading into agreement with the world as it stands.
+     *
+     * Every derived reading this build reports — `time`, `xpToNext`, `maxHp`,
+     * `armor`, `moveSpeed`, `pickupRadius`, `spawnWindow`, `aliveCommons`, and
+     * `pool` — is worked out at the read, in `snapshot` above, from the run
+     * clock, the level, the passives held, the enemies on the field, and the
+     * slots as they stand. Nothing is held that a pose can leave behind, so
+     * there is nothing here to rewrite. The operation is required of every
+     * build, including one that keeps those readings as stored copies, and this
+     * is what it comes to in a build that does not.
+     */
+    reconcile() {},
+
     menuRects: () => menuRects(state()).map((rect) => ({ ...rect })),
     tabRects: () => tabRects(state()).map((rect) => ({ ...rect })),
 
     setScreen,
+    /**
+     * Accept the offer at `index`. `levelup` showing is how a PLAYER reaches
+     * the choice, so it is no condition on this call; an index naming no offer
+     * has nothing to accept, so it throws rather than passing quietly.
+     */
     choose(index) {
-      whole(index, "index");
-      if (state().screen !== "levelup") return;
-      game.choose(index);
+      const at = whole(index, "index", 0);
+      const offers = run().offers;
+      if (at >= offers.length) {
+        invalid(`index ${at} names no offer; offers holds ${offers.length}`);
+      }
+      game.performChoose(at);
       game.discardCues();
     },
 
@@ -595,7 +627,6 @@ export function createApi(game: Game, clock: Clock): WickDebugApi {
     setHp(hp) {
       const value = real(hp, "hp");
       pose(() => {
-        if (value > maxHp(run().passives)) invalid("hp must be at most maxHp");
         run().player.hp = value;
       });
     },
@@ -635,7 +666,6 @@ export function createApi(game: Game, clock: Clock): WickDebugApi {
         if (list.includes(id)) invalid(`${id} is repeated`);
         list.push(id);
       }
-      if (!onRunScreen() && state().screen !== "levelup") return;
       run().nextOffers = list;
       game.discardCues();
     },
@@ -740,12 +770,9 @@ export function createApi(game: Game, clock: Clock): WickDebugApi {
     },
     setEnemyHp(id, hp) {
       const value = real(hp, "hp");
+      if (value <= 0) invalid("hp must be above 0");
       pose(() => {
-        const enemy = enemyById(id);
-        if (value <= 0 || value > enemy.maxHp) {
-          invalid("hp must be above 0 and at most the enemy's maxHp");
-        }
-        enemy.hp = value;
+        enemyById(id).hp = value;
       });
     },
     setEnemyHeading(id, hx, hy) {

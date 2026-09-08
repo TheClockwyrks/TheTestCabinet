@@ -360,6 +360,8 @@ export interface WickDebugApi {
   readonly version: number;
   reset(state: DeepReadonly<WickState>): WickState;
   snapshot(state: DeepReadonly<WickState>): WickSnapshot;
+  /** Bring every reported reading into agreement with the world as it stands. */
+  reconcile(state: DeepReadonly<WickState>): WickState;
   menuRects(state: DeepReadonly<WickState>): readonly WickRect[];
   tabRects(state: DeepReadonly<WickState>): readonly WickRect[];
   setScreen(state: DeepReadonly<WickState>, name: Screen): WickState;

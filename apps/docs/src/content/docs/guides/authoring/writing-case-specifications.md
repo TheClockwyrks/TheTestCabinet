@@ -56,6 +56,16 @@ Mentioning reviewers is acceptable. Work gets reviewed whether or not it is part
 of a benchmark, so "reviewers will check X" reads as ordinary engineering
 process.
 
+CI enforces the identity half of this rule: `scripts/ci/spec-vocabulary-check.sh`
+(also a pre-commit hook) reads every non-frozen version's `prompt.hbs` and
+`specs/**`, plus the shared preambles `crates/core/src/prompt.rs` prepends, and
+fails on the project's name, `tcab`, "benchmark", "test case", "evaluation", "run
+record", any review surface of ours, the case manifest, or a link to this
+repository or the gallery. Hits in a frozen version are reported rather than
+failed, because a frozen version cannot be edited; the fix there is a new version.
+"scoring" and "grading" are not on its list, since a game scores and a road is
+graded, so keeping those framings out remains a matter of judgment.
+
 ## Never help the model
 
 A spec states what must be built and how the built game behaves, in exact values

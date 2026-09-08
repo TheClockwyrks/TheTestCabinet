@@ -11,9 +11,9 @@
 //
 // WHY THE WORLD IS POSED AS IT IS. An isolated night with every faculty held,
 // nothing alive, and the loadout a run starts with, Taper alone. Four level-ups
-// are queued and each overlay's offer is fixed with `setNextOffers`, which
-// "Applies on a run screen and on `levelup`, where the next overlay is the
-// queued one" (specs/instrumentation.md), so the four acceptances are the two
+// are queued and each overlay's offer is fixed with `setNextOffers`, for which
+// "Called on `levelup`, the overlay the list is checked against is the queued
+// one" (specs/instrumentation.md), so the four acceptances are the two
 // acquisitions and then the two levels rather than whatever the draw produced.
 // Ember is the one leveled because it sits in the MIDDLE slot: a build that
 // re-appends an item on a level, or that keeps its slots sorted by level, moves

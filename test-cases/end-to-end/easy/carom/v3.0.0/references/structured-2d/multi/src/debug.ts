@@ -44,6 +44,7 @@ import {
   spawnBall as spawnBallOn,
   spawnObstacle as spawnObstacleOn,
 } from "./field";
+import type { Ball } from "./ball";
 import type { CaromGame } from "./game";
 import { menuItemRect as rectOfItem, type MenuRect } from "./menus";
 import type { Side } from "./sim";
@@ -137,6 +138,8 @@ export interface CaromDebug {
   spawnBall(index: number): void;
   spawnObstacle(index: number): void;
   reset(): void;
+  /** Bring every reported reading into agreement with the world as it stands. */
+  reconcile(): void;
 
   /* Screens and menus. */
   setScreen(screen: Screen): void;
@@ -179,6 +182,29 @@ export interface CaromDebug {
 export function createDebugSurface(game: CaromGame): CaromDebug {
   /** The world every operation acts on: the one open at the call. */
   const open = (): World => game.engine.world;
+  /**
+   * Ball `index` on the field, or a thrown error naming the operation that
+   * wanted it.
+   *
+   * An index this variant does not play with names nothing, and an index whose
+   * ball has been taken off the field is nothing to pose. Either way there is no
+   * state for the call to reach, and an operation that quietly did nothing would
+   * leave a caller reading its own pose back off a field that never took it — so
+   * this fails where the caller can see it (specs/instrumentation.md).
+   * `spawnBall` is how a ball is put back.
+   */
+  const requireBall = (op: string, index: number): Ball => {
+    if (!isBallIndex(index)) {
+      throw new RangeError(`Carom: ${op} — no ball ${index}`);
+    }
+    const ball = ballAt(open(), index);
+    if (ball === null) {
+      throw new Error(
+        `Carom: ${op} — ball ${index} is not on the field; spawnBall places it`,
+      );
+    }
+    return ball;
+  };
 
   return {
     version: CAROM_DEBUG_VERSION,
@@ -192,18 +218,27 @@ export function createDebugSurface(game: CaromGame): CaromDebug {
 
     /**
      * Ball `index` at its home point, held, with a full hold timer, zero
-     * velocity, zero spin, and an empty trail. A ball already there is
-     * returned to that arrangement; an index this variant does not have is
-     * left alone.
+     * velocity, zero spin, and an empty trail. A ball already there is returned
+     * to that arrangement; an index this variant does not play with names no
+     * ball, so the call fails where the caller can see it rather than passing
+     * quietly.
      */
     spawnBall(index) {
-      if (!isBallIndex(index)) return;
+      if (!isBallIndex(index)) {
+        throw new RangeError(`Carom: no ball ${index}`);
+      }
       spawnBallOn(open(), index);
     },
 
-    /** Obstacle `index` at `OBSTACLE_CENTERS[index]`. */
+    /**
+     * Obstacle `index` at `OBSTACLE_CENTERS[index]`. An index outside the two
+     * this field is built with names no obstacle, so the call fails where the
+     * caller can see it rather than passing quietly.
+     */
     spawnObstacle(index) {
-      if (!isObstacleIndex(index)) return;
+      if (!isObstacleIndex(index)) {
+        throw new RangeError(`Carom: no obstacle ${index}`);
+      }
       spawnObstacleOn(open(), index);
     },
 
@@ -216,6 +251,21 @@ export function createDebugSurface(game: CaromGame): CaromDebug {
       game.titleIndex = 0;
       game.goToTitle(0);
     },
+
+    /**
+     * Bring every reported reading into agreement with the world as it stands,
+     * without advancing anything.
+     *
+     * Every derived reading this build reports is worked out at the read: a
+     * ball's `speed` is `Math.hypot(ball.vx, ball.vy)` in the snapshot, and
+     * every other field is read off the actor or the state that owns it.
+     * Nothing is held that a pose can leave behind, so there is nothing here to
+     * rewrite. The operation is required of every build, including one that
+     * keeps those readings as stored copies, and an empty body is what it comes
+     * to in a build that keeps none — not an omission. Advancing the engine
+     * would be wrong: a frame moves the very thing a pose has just placed.
+     */
+    reconcile() {},
 
     // ---- Screens and menus -----------------------------------------------
 
@@ -275,29 +325,30 @@ export function createDebugSurface(game: CaromGame): CaromDebug {
     },
 
     // ---- Balls -----------------------------------------------------------
+    //
+    // Each sets its own field alone, and each reaches the value it is given
+    // whatever the game would make of it: the screen, the hold, and where the
+    // paddles are decide none of them. A ball that is not there is the one thing
+    // there is nothing to set, and that fails loudly through `requireBall`.
 
     setBallPosition(index, x, y) {
-      const ball = ballAt(open(), index);
-      if (ball === null) return;
+      const ball = requireBall("setBallPosition", index);
       ball.transform.x = x;
       ball.transform.y = y;
     },
 
     setBallVelocity(index, vx, vy) {
-      const ball = ballAt(open(), index);
-      if (ball === null) return;
+      const ball = requireBall("setBallVelocity", index);
       ball.vx = vx;
       ball.vy = vy;
     },
 
     setBallSpin(index, spin) {
-      const ball = ballAt(open(), index);
-      if (ball !== null) ball.spin = spin;
+      requireBall("setBallSpin", index).spin = spin;
     },
 
     setBallHeld(index, held) {
-      const ball = ballAt(open(), index);
-      if (ball !== null) ball.held = held;
+      requireBall("setBallHeld", index).held = held;
     },
 
     /**
@@ -305,20 +356,17 @@ export function createDebugSurface(game: CaromGame): CaromDebug {
      * rule launches the ball on the next advanced frame (specs/balls.md).
      */
     setBallHoldTimer(index, seconds) {
-      const ball = ballAt(open(), index);
-      if (ball !== null) ball.holdTimer = seconds;
+      requireBall("setBallHoldTimer", index).holdTimer = seconds;
     },
 
     /** The angle ball `index`'s next launch leaves along, in radians. */
     setBallLaunchAngle(index, angle) {
-      const ball = ballAt(open(), index);
-      if (ball !== null) ball.launchAngle = angle;
+      requireBall("setBallLaunchAngle", index).launchAngle = angle;
     },
 
     /** The one draw parking makes, made again on its own (specs/balls.md). */
     drawBallLaunchAngle(index) {
-      const ball = ballAt(open(), index);
-      if (ball !== null) ball.launchAngle = drawLaunchAngle();
+      requireBall("drawBallLaunchAngle", index).launchAngle = drawLaunchAngle();
     },
 
     // ---- The AI opponent -------------------------------------------------

@@ -155,16 +155,25 @@ export function arm(state: MeltdownState, type: TowerType | null): void {
   state.build = { type, col, row, rotation: 0 };
 }
 
-/** Move the held preview so its footprint's top-left sits at `(col, row)`. */
+/**
+ * Move the held preview so its footprint's top-left sits at `(col, row)`, there
+ * and nowhere else.
+ *
+ * NO CLAMP HERE, deliberately. A pointer's move runs through `movePreviewTo`,
+ * which clamps because `specs/building.md` says the FOLLOWING footprint stays on
+ * the grid; this is the surface's own pose, and `specs/instrumentation.md` says a
+ * pose reaches the tile it names. A footprint hanging off the grid is one
+ * `previewValid` answers `false` for, so the caller reads what it asked for.
+ * The surface guards the empty-hand case before calling in.
+ */
 export function movePreview(
   state: MeltdownState,
   col: number,
   row: number,
 ): void {
   if (state.build === null) return;
-  const size = TOWER_DEFS[state.build.type].size;
-  state.build.col = clamp(col, 0, COLS - size);
-  state.build.row = clamp(row, 0, ROWS - size);
+  state.build.col = col;
+  state.build.row = row;
 }
 
 /** Move the held preview so its footprint is the block nearest `(x, y)`. */

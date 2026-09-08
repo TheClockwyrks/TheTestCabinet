@@ -1402,13 +1402,74 @@ describe("armor and recycling", () => {
     expect(speed).toBeLessThanOrEqual(ROCK_SPEED_MAX.large + 1e-6);
   });
 
-  it("poses a rock's health inside its own range", () => {
+  // `1` to the size's full health is the argument's DOMAIN, which
+  // `specs/instrumentation.md` fixes as a constant per size. A figure outside it
+  // names no state to reach, so the call FAILS LOUDLY rather than being clamped
+  // to the nearer end: a clamp would leave the rock holding a health nobody asked
+  // for and would report a pose that never happened as one that did.
+  it("poses a rock's health across its own range, and fails loudly outside it", () => {
     startPlaying();
     const id = poseRock("medium", 300, 300);
     h.pose((s, d) => d.setRockHealth(s, id, 1));
     expect(h.snapshot().rocks[0]?.health).toBe(1);
-    h.pose((s, d) => d.setRockHealth(s, id, 9));
+    h.pose((s, d) => d.setRockHealth(s, id, ROCK_HEALTH.medium));
     expect(h.snapshot().rocks[0]?.health).toBe(ROCK_HEALTH.medium);
+
+    expect(() => h.pose((s, d) => d.setRockHealth(s, id, 9))).toThrow(
+      RangeError,
+    );
+    expect(() => h.pose((s, d) => d.setRockHealth(s, id, 0))).toThrow(
+      RangeError,
+    );
+    // The refused calls left the rock exactly where the last accepted one did.
+    expect(h.snapshot().rocks[0]?.health).toBe(ROCK_HEALTH.medium);
+  });
+});
+
+// `reconcile` brings every reported reading into agreement with the field without
+// advancing anything. This build works its three derived readings — the ship's
+// `speed`, each rock's `radius`, and `torpedoReady` — out at the READ, so the call
+// has nothing to rewrite; what these two cases pin is that it still ANSWERS for a
+// posed field and that it costs no simulation time, which is the whole difference
+// between it and stepping a frame.
+describe("reconcile", () => {
+  it("re-derives a reading from a posed velocity and charge", () => {
+    startPlaying();
+    h.pose((s, d) => d.setShipVelocity(s, 30, 40));
+    h.pose((s, d) => d.reconcile(s));
+    expect(h.snapshot().ship.speed).toBeCloseTo(50, 10);
+
+    h.pose((s, d) => d.setTorpedoCharge(s, 1));
+    h.pose((s, d) => d.reconcile(s));
+    expect(h.snapshot().torpedoReady).toBe(true);
+
+    h.pose((s, d) => d.setTorpedoCharge(s, 0.5));
+    h.pose((s, d) => d.reconcile(s));
+    expect(h.snapshot().torpedoReady).toBe(false);
+  });
+
+  it("advances nothing, and twice matches once", () => {
+    startPlaying();
+    h.pose((s, d) => d.setShipPosition(s, 400, 300));
+    h.pose((s, d) => d.setShipVelocity(s, 120, -90));
+    h.pose((s, d) => d.setShipInvuln(s, 2));
+    h.pose((s, d) => d.setFireCooldown(s, 7));
+    h.pose((s, d) => d.setWaveBanner(s, 1.5));
+    poseRock("large", 700, 200);
+    h.pose((s, d) => d.addBullet(s, 100, 100, 50, 0));
+    h.pose((s, d) => d.addTorpedo(s, 300, 400, 0));
+    h.pose((s, d) => d.addSaucer(s, 200, 500));
+
+    const before = JSON.stringify(h.snapshot());
+    h.pose((s, d) => d.reconcile(s));
+    const once = JSON.stringify(h.snapshot());
+    h.pose((s, d) => d.reconcile(s));
+    const twice = JSON.stringify(h.snapshot());
+
+    // The clock, the positions, the velocities and every timer are untouched, so
+    // the whole snapshot is byte-identical rather than merely close.
+    expect(once).toBe(before);
+    expect(twice).toBe(once);
   });
 });
 

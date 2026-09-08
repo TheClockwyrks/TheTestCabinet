@@ -43,7 +43,7 @@ import {
   turnStock as turnStockNow,
   wasteVisibleCount,
 } from "./board";
-import { resolvePointer } from "./controls";
+import { resolvePointer, updateDropTarget } from "./controls";
 import { menuItemRect } from "./menus";
 import {
   clearTable as clearWholeTable,
@@ -160,6 +160,8 @@ export interface CascadeDebugApi {
 
   reset(): void;
   snapshot(): CascadeSnapshot;
+  /** Bring every reported reading into agreement with the table as it stands. */
+  reconcile(): void;
   menuItemRect(index: number): Rect | null;
 
   setAutoStep(enabled: boolean): void;
@@ -256,6 +258,21 @@ function everyPile(state: CascadeState): Card[][] {
   return [state.stock, state.waste, ...state.foundations, ...state.tableau];
 }
 
+/**
+ * The flyer an id names.
+ *
+ * An id no flyer in flight carries names nothing the surface can act on, so the
+ * call fails loudly rather than passing quietly with the state unchanged
+ * (`specs/instrumentation.md`, The operations).
+ */
+function flyerById(state: CascadeState, id: number, where: string): Flyer {
+  const flyer = state.flyers.find((entry) => entry.id === id);
+  if (flyer === undefined) {
+    throw new RangeError(`Cascade: ${where}(${id}) names no flyer`);
+  }
+  return flyer;
+}
+
 /** Whether a pile name may be a move's source. */
 function asSourcePile(pile: PileName): SourcePile | null {
   return pile === "stock" ? null : pile;
@@ -343,6 +360,28 @@ export function createDebugApi(
 
         simTime: state.simTime,
       };
+    },
+
+    /**
+     * Bring every reported reading into agreement with the table as it stands,
+     * without advancing anything (`specs/instrumentation.md`, The core).
+     *
+     * Of this build's derived readings, `wasteVisibleCount` and a card's
+     * `color` are worked out at the read, so there is nothing to rewrite for
+     * either. `dropTarget` is the one it keeps: the pointer path writes it as a
+     * gesture moves, so a pose that changes what the pile beneath a held run
+     * holds leaves it answering for the table as it was. `updateDropTarget` is
+     * the rule the pointer path itself uses, so this is the same answer that
+     * path would have written rather than a restatement of the drop rule.
+     *
+     * It runs no system and moves no clock. `simTime` and `launchClock` stand
+     * where they were, no flyer moves or paints, no card turns, no win is
+     * detected, no cue is raised, and nothing is drawn from the generator. It
+     * corrects nothing either: a run held over a pile that no longer accepts it
+     * is left in hand and simply reports no drop target.
+     */
+    reconcile() {
+      updateDropTarget(state);
     },
 
     /**
@@ -435,6 +474,7 @@ export function createDebugApi(
         if (pile === state.waste) takeFromWasteSets(state);
         return;
       }
+      throw new RangeError(`Cascade: removeCard(${id}) names no card`);
     },
 
     /** Set one card's face. */
@@ -445,6 +485,7 @@ export function createDebugApi(
         card.faceUp = Boolean(faceUp);
         return;
       }
+      throw new RangeError(`Cascade: setCardFaceUp(${id}) names no card`);
     },
 
     /**
@@ -565,16 +606,14 @@ export function createDebugApi(
 
     /** Set one flyer's top-left. */
     setFlyerPosition(id, x, y) {
-      const flyer = state.flyers.find((entry) => entry.id === id);
-      if (flyer === undefined) return;
+      const flyer = flyerById(state, id, "setFlyerPosition");
       flyer.x = x;
       flyer.y = y;
     },
 
     /** Set one flyer's velocity, in logical units per second. */
     setFlyerVelocity(id, vx, vy) {
-      const flyer = state.flyers.find((entry) => entry.id === id);
-      if (flyer === undefined) return;
+      const flyer = flyerById(state, id, "setFlyerVelocity");
       flyer.vx = vx;
       flyer.vy = vy;
     },
@@ -582,7 +621,10 @@ export function createDebugApi(
     /** Remove one flyer from the flight. */
     removeFlyer(id) {
       const at = state.flyers.findIndex((entry) => entry.id === id);
-      if (at >= 0) state.flyers.splice(at, 1);
+      if (at < 0) {
+        throw new RangeError(`Cascade: removeFlyer(${id}) names no flyer`);
+      }
+      state.flyers.splice(at, 1);
     },
 
     /** Remove every flyer in flight. */

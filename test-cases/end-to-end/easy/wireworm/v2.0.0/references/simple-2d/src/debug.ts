@@ -18,6 +18,15 @@
 // game's own stepping, collision, charge, discharge and scoring rules are what
 // run from there when the engine advances a frame.
 //
+// EVERY OPERATION ACTS, AND NONE OF THEM DECLINES QUIETLY. A pose reaches the
+// value it names whatever the game's own rules would have allowed a player to
+// reach, so nothing below clamps a posed value onto a legal neighbour or hands
+// back the state it was given and calls that an answer. Where the game has no
+// defined state to reach — a tile off the board, a charge outside the scale, a
+// heading that is neither direction, a name outside its set, an id no live
+// entity carries — the call THROWS, so the caller sees it rather than reading
+// back a board it never posed (specs/instrumentation.md).
+//
 // Everything about DRIVING A BROWSER GAME rather than about Wireworm belongs to
 // the engine and is deliberately absent: there is no clock operation (the engine
 // owns the clock and runs exact frames), no key operation (the registered
@@ -27,6 +36,10 @@
 
 import {
   CHARGE_MAX,
+  CURSOR_X_MAX,
+  CURSOR_X_MIN,
+  CURSOR_Y_MAX,
+  CURSOR_Y_MIN,
   TOTAL_LEVELS,
   WIREWORM_DEBUG_VERSION,
   inBounds,
@@ -35,7 +48,7 @@ import {
 } from "./constants";
 import { addFoe as addFoeAt } from "./foes";
 import { dropNode, putNode } from "./field";
-import { placeCursor, resetToTitle } from "./flow";
+import { resetToTitle } from "./flow";
 import { itemRect, menuFor, type MenuRect } from "./menus";
 import { addWorm as addWormAt } from "./worm";
 import {
@@ -114,6 +127,7 @@ export interface WirewormDebugApi {
 
   reset(state: DeepReadonly<WirewormState>): WirewormState;
   snapshot(state: DeepReadonly<WirewormState>): WirewormSnapshot;
+  reconcile(state: DeepReadonly<WirewormState>): WirewormState;
 
   setScreen(state: DeepReadonly<WirewormState>, screen: Screen): WirewormState;
   setPhase(state: DeepReadonly<WirewormState>, phase: Phase): WirewormState;
@@ -273,17 +287,106 @@ function pose(change: (sim: Sim) => void): Pose {
   };
 }
 
-/** Apply `change` to the worm with that id, and leave the state alone otherwise. */
-function poseWorm(id: number, change: (worm: MutWorm) => void): Pose {
+/* -------------------------------------------------------------------------- */
+/* The loud half of the contract                                              */
+/* -------------------------------------------------------------------------- */
+//
+// An operation never returns the state it was handed unchanged. Where there is a
+// defined state the call reaches, it reaches it; where there is not, it throws,
+// and the helpers below are how it throws. They are the only guards on this
+// surface: nothing here asks which screen is up, where the cursor is standing,
+// or whether the game is live before doing what it is named for.
+
+/** The screens `setScreen` names. */
+const SCREENS: readonly Screen[] = [
+  "title",
+  "howto",
+  "playing",
+  "paused",
+  "victory",
+  "gameover",
+];
+
+/** The sub-phases `setPhase` names. */
+const PHASES: readonly Phase[] = ["banner", "active", "respawn"];
+
+/** The foes `addFoe` names. */
+const FOE_KINDS: readonly FoeKind[] = ["glitch", "dropper", "corruptor"];
+
+/** The edges `setNextWormEntry` names. */
+const EDGES: readonly Edge[] = ["left", "right"];
+
+/** The failure a call the game has no defined state for gets. */
+function reject(op: string, detail: string): never {
+  throw new RangeError(`${op}: ${detail}`);
+}
+
+/** A finite number, else a loud failure. */
+function requireNumber(op: string, name: string, value: number): number {
+  if (!Number.isFinite(value)) {
+    reject(op, `${name} must be a finite number, got ${String(value)}`);
+  }
+  return value;
+}
+
+/** A whole number inside a range the specs fix as a constant, else a failure. */
+function requireWhole(
+  op: string,
+  name: string,
+  value: number,
+  lo: number,
+  hi: number,
+): number {
+  if (!Number.isInteger(value) || value < lo || value > hi) {
+    reject(
+      op,
+      `${name} must be a whole number from ${lo} to ${hi}, got ${String(value)}`,
+    );
+  }
+  return value;
+}
+
+/** One of a fixed set of names, else a loud failure. */
+function requireOneOf<T extends string | number>(
+  op: string,
+  name: string,
+  value: T,
+  allowed: readonly T[],
+): T {
+  if (!allowed.includes(value)) {
+    reject(
+      op,
+      `${name} must be one of ${allowed.join(", ")}, got ${String(value)}`,
+    );
+  }
+  return value;
+}
+
+/** A tile of the board, else a loud failure. */
+function requireTile(op: string, c: number, r: number): void {
+  if (!Number.isInteger(c) || !Number.isInteger(r) || !inBounds(c, r)) {
+    reject(op, `(${String(c)}, ${String(r)}) is not a tile of the board`);
+  }
+}
+
+/** Apply `change` to the worm with that id; an id no worm carries fails loudly. */
+function poseWorm(
+  op: string,
+  id: number,
+  change: (worm: MutWorm) => void,
+): Pose {
   return pose((sim) => {
     const worm = wormById(sim, id);
-    if (worm !== undefined) change(worm);
+    if (worm === undefined) reject(op, `no worm carries id ${String(id)}`);
+    change(worm);
   });
 }
 
-/** A whole number held inside `[lo, hi]`. */
-function whole(value: number, lo: number, hi: number): number {
-  return Math.max(lo, Math.min(hi, Math.round(value)));
+/** The foe with that id; an id no foe carries fails loudly. */
+function requireFoe(op: string, sim: Sim, id: number) {
+  const foe = foeById(sim, id);
+  if (foe === undefined) reject(op, `no foe carries id ${String(id)}`);
+  return foe;
 }
 
 /** A posed tile as the snapshot reports it: a copy, or `null` for none posed. */
@@ -371,50 +474,75 @@ export function createDebugApi(): WirewormDebugApi {
       simTime: state.simTime,
     }),
 
+    /**
+     * Bring every reported reading into agreement with the world as it stands.
+     *
+     * Every derived reading this build reports — `wormStepInterval` and
+     * `wormLength` from the level, `arcs` from the live discharge, a foe's `vx`
+     * and `vy` from its own motion — is worked out at the read in `snapshot`, so
+     * nothing is held that a pose can leave behind and there is nothing here to
+     * rewrite. The operation is required of every build, including one that
+     * keeps those readings as stored copies, and this is what it comes to in a
+     * build that does not: the state handed back equals the state handed in.
+     *
+     * It advances nothing and fires nothing either way: no clock moves, no
+     * system runs, and a caller may make the call as often as it likes.
+     */
+    reconcile: (state) => pose(() => undefined)(state),
+
     // ---- The screen and the run ------------------------------------------
 
     setScreen: (state, screen) =>
       pose((sim) => {
-        sim.screen = screen;
+        sim.screen = requireOneOf("setScreen", "screen", screen, SCREENS);
       })(state),
 
     setPhase: (state, phase) =>
       pose((sim) => {
-        sim.phase = phase;
+        sim.phase = requireOneOf("setPhase", "phase", phase, PHASES);
       })(state),
 
     setPhaseTimer: (state, seconds) =>
       pose((sim) => {
-        sim.phaseTimer = seconds;
+        sim.phaseTimer = requireNumber("setPhaseTimer", "seconds", seconds);
       })(state),
 
     setMenuIndex: (state, n) =>
       pose((sim) => {
-        sim.menuIndex = Math.max(0, Math.round(n));
+        sim.menuIndex = requireNumber("setMenuIndex", "index", n);
       })(state),
 
     // A pose is a precondition, so no bonus life is granted here whatever
     // boundary the score is carried across.
     setScore: (state, n) =>
       pose((sim) => {
-        sim.score = n;
+        sim.score = requireNumber("setScore", "score", n);
       })(state),
 
     setLives: (state, n) =>
       pose((sim) => {
-        sim.lives = Math.max(0, Math.round(n));
+        sim.lives = requireNumber("setLives", "lives", n);
       })(state),
 
     // The level's step interval and worm length are derived from this, and
-    // nothing is spawned or cleared by setting it.
+    // nothing is spawned or cleared by setting it. `1` through `TOTAL_LEVELS`
+    // is a range the specs fix as a constant, so it is a domain rather than a
+    // rule: a level outside it names no level of this game and the call fails
+    // loudly instead of landing on the nearest one.
     setLevel: (state, n) =>
       pose((sim) => {
-        sim.level = whole(n, 1, TOTAL_LEVELS);
+        sim.level = requireWhole("setLevel", "level", n, 1, TOTAL_LEVELS);
       })(state),
 
     setReachedLevel: (state, n) =>
       pose((sim) => {
-        sim.reachedLevel = whole(n, 1, TOTAL_LEVELS);
+        sim.reachedLevel = requireWhole(
+          "setReachedLevel",
+          "level",
+          n,
+          1,
+          TOTAL_LEVELS,
+        );
       })(state),
 
     /**
@@ -453,16 +581,21 @@ export function createDebugApi(): WirewormDebugApi {
     // 0 is drawn afresh on the next update of active play.
     setSpawnTimer: (state, kind, seconds) =>
       pose((sim) => {
-        const value = Math.max(0, seconds);
+        requireOneOf("setSpawnTimer", "kind", kind, FOE_KINDS);
+        const value = requireNumber("setSpawnTimer", "seconds", seconds);
         if (kind === "glitch") sim.glitchTimer = value;
         else if (kind === "dropper") sim.dropperTimer = value;
         else sim.corruptorTimer = value;
       })(state),
 
     // The entry consumes the pose; every entry after it is drawn at random.
+    // The board's tiles are fixed by the specs, so a tile off the board names
+    // no entry and fails loudly rather than being rounded onto one.
     setNextFoeEntry: (state, kind, c, r) =>
       pose((sim) => {
-        const tile = { c: Math.round(c), r: Math.round(r) };
+        requireOneOf("setNextFoeEntry", "kind", kind, FOE_KINDS);
+        requireTile("setNextFoeEntry", c, r);
+        const tile = { c, r };
         if (kind === "glitch") sim.nextGlitchEntry = tile;
         else if (kind === "dropper") sim.nextDropperEntry = tile;
         else sim.nextCorruptorEntry = tile;
@@ -470,33 +603,67 @@ export function createDebugApi(): WirewormDebugApi {
 
     setNextWormEntry: (state, edge) =>
       pose((sim) => {
-        sim.nextWormEntry = edge === "left" ? "left" : "right";
+        sim.nextWormEntry = requireOneOf(
+          "setNextWormEntry",
+          "edge",
+          edge,
+          EDGES,
+        );
       })(state),
 
     // ---- The cursor and its bolts -----------------------------------------
 
+    // The band is the cursor's own fixed bound rather than a live figure, so it
+    // is this operation's domain: a position outside it fails loudly. What it
+    // does NOT do is land the cursor on the nearest edge and let the caller read
+    // a position it never posed — the clamp belongs to the movement path, which
+    // is what a held movement runs through.
     setCursor: (state, x, y) =>
       pose((sim) => {
-        placeCursor(sim, x, y);
+        requireNumber("setCursor", "x", x);
+        requireNumber("setCursor", "y", y);
+        if (x < CURSOR_X_MIN || x > CURSOR_X_MAX) {
+          reject(
+            "setCursor",
+            `x must be within the band, ${CURSOR_X_MIN} to ${CURSOR_X_MAX}, got ${String(x)}`,
+          );
+        }
+        if (y < CURSOR_Y_MIN || y > CURSOR_Y_MAX) {
+          reject(
+            "setCursor",
+            `y must be within the band, ${CURSOR_Y_MIN} to ${CURSOR_Y_MAX}, got ${String(y)}`,
+          );
+        }
+        sim.cursor.x = x;
+        sim.cursor.y = y;
       })(state),
 
     setCursorInvulnerable: (state, seconds) =>
       pose((sim) => {
-        sim.cursor.invulnerable = Math.max(0, seconds);
+        sim.cursor.invulnerable = requireNumber(
+          "setCursorInvulnerable",
+          "seconds",
+          seconds,
+        );
       })(state),
 
     setFireCooldown: (state, seconds) =>
       pose((sim) => {
-        sim.fireCooldown = Math.max(0, seconds);
+        sim.fireCooldown = requireNumber("setFireCooldown", "seconds", seconds);
       })(state),
 
     addBolt: (state, x, y) =>
       pose((sim) => {
+        requireNumber("addBolt", "x", x);
+        requireNumber("addBolt", "y", y);
         sim.bolts.push({ id: takeId(sim), x, y });
       })(state),
 
     removeBolt: (state, id) =>
       pose((sim) => {
+        if (!sim.bolts.some((bolt) => bolt.id === id)) {
+          reject("removeBolt", `no bolt carries id ${String(id)}`);
+        }
         sim.bolts = sim.bolts.filter((bolt) => bolt.id !== id);
       })(state),
 
@@ -507,14 +674,24 @@ export function createDebugApi(): WirewormDebugApi {
 
     // ---- The node field ---------------------------------------------------
 
+    // The board's tiles and the charge scale are both fixed by the specs, so
+    // both are domains: a tile off the board and a charge outside `0` to
+    // `CHARGE_MAX` each fail loudly rather than being dropped or squeezed into
+    // range.
     setNode: (state, c, r, charge) =>
       pose((sim) => {
-        if (!inBounds(c, r)) return;
-        putNode(sim, c, r, whole(charge, 0, CHARGE_MAX));
+        requireTile("setNode", c, r);
+        putNode(
+          sim,
+          c,
+          r,
+          requireWhole("setNode", "charge", charge, 0, CHARGE_MAX),
+        );
       })(state),
 
     clearNode: (state, c, r) =>
       pose((sim) => {
+        requireTile("clearNode", c, r);
         dropNode(sim, c, r);
       })(state),
 
@@ -531,37 +708,40 @@ export function createDebugApi(): WirewormDebugApi {
       })(state),
 
     appendSegment: (state, id, c, r) =>
-      poseWorm(id, (worm) => {
+      poseWorm("appendSegment", id, (worm) => {
         worm.segments.push({ c, r });
       })(state),
 
     setWormHeading: (state, id, dh) =>
-      poseWorm(id, (worm) => {
-        worm.dh = dh < 0 ? -1 : 1;
+      poseWorm("setWormHeading", id, (worm) => {
+        worm.dh = requireOneOf("setWormHeading", "dh", dh, [1, -1]);
       })(state),
 
     setWormDescent: (state, id, dv) =>
-      poseWorm(id, (worm) => {
-        worm.dv = dv < 0 ? -1 : 1;
+      poseWorm("setWormDescent", id, (worm) => {
+        worm.dv = requireOneOf("setWormDescent", "dv", dv, [1, -1]);
       })(state),
 
     setWormDiving: (state, id, diving) =>
-      poseWorm(id, (worm) => {
+      poseWorm("setWormDiving", id, (worm) => {
         worm.diving = diving;
       })(state),
 
     setWormStepping: (state, id, enabled) =>
-      poseWorm(id, (worm) => {
+      poseWorm("setWormStepping", id, (worm) => {
         worm.stepping = enabled;
       })(state),
 
     setWormBody: (state, id, enabled) =>
-      poseWorm(id, (worm) => {
+      poseWorm("setWormBody", id, (worm) => {
         worm.body = enabled;
       })(state),
 
     removeWorm: (state, id) =>
       pose((sim) => {
+        if (!sim.worms.some((worm) => worm.id === id)) {
+          reject("removeWorm", `no worm carries id ${String(id)}`);
+        }
         sim.worms = sim.worms.filter((worm) => worm.id !== id);
       })(state),
 
@@ -574,38 +754,39 @@ export function createDebugApi(): WirewormDebugApi {
 
     addFoe: (state, kind, x, y) =>
       pose((sim) => {
+        requireOneOf("addFoe", "kind", kind, FOE_KINDS);
+        requireNumber("addFoe", "x", x);
+        requireNumber("addFoe", "y", y);
         addFoeAt(sim, kind, x, y);
       })(state),
 
     setFoeVelocity: (state, id, vx, vy) =>
       pose((sim) => {
-        const foe = foeById(sim, id);
-        if (foe === undefined) return;
-        foe.vx = vx;
-        foe.vy = vy;
+        const foe = requireFoe("setFoeVelocity", sim, id);
+        foe.vx = requireNumber("setFoeVelocity", "vx", vx);
+        foe.vy = requireNumber("setFoeVelocity", "vy", vy);
       })(state),
 
     setFoeHit: (state, id, hit) =>
       pose((sim) => {
-        const foe = foeById(sim, id);
-        if (foe === undefined) return;
-        foe.hit = hit;
+        requireFoe("setFoeHit", sim, id).hit = hit;
       })(state),
 
     setFoeMind: (state, id, enabled) =>
       pose((sim) => {
-        const foe = foeById(sim, id);
-        if (foe !== undefined) foe.mind = enabled;
+        requireFoe("setFoeMind", sim, id).mind = enabled;
       })(state),
 
     setFoeTravel: (state, id, enabled) =>
       pose((sim) => {
-        const foe = foeById(sim, id);
-        if (foe !== undefined) foe.travel = enabled;
+        requireFoe("setFoeTravel", sim, id).travel = enabled;
       })(state),
 
     removeFoe: (state, id) =>
       pose((sim) => {
+        if (!sim.foes.some((foe) => foe.id === id)) {
+          reject("removeFoe", `no foe carries id ${String(id)}`);
+        }
         sim.foes = sim.foes.filter((foe) => foe.id !== id);
       })(state),
 

@@ -138,8 +138,20 @@ function pixelBuffer(
 /** The bytes behind a `pixels` entry, decoded the way a player decodes them. */
 function decodePixels(image: CapturedImage | undefined): number[] {
   expect(image?.kind).toBe("pixels");
-  const data = image?.kind === "pixels" ? image.data : "";
+  const data = image?.kind === "pixels" && "data" in image ? image.data : "";
   return [...Buffer.from(data, "base64")];
+}
+
+/**
+ * The data URL behind a `bitmap` entry.
+ *
+ * An entry may also name its pixels in a file beside the recording, which the
+ * writer that has a directory to put them in produces. This recorder writes its
+ * pixels inline, so an entry in any other form answers the empty string and
+ * fails the comparison the caller makes.
+ */
+function bitmapSrc(image: CapturedImage): string {
+  return image.kind === "bitmap" && "src" in image ? image.src : "";
 }
 
 /**
@@ -1327,11 +1339,10 @@ describe("captured images", () => {
     // An SVG image names its file through `href.baseVal` rather than `currentSrc`,
     // and reading only the second leaves a re-pointed one resolving to the bytes it
     // used to hold.
-    expect(
-      recording.images.map((image) =>
-        image.kind === "bitmap" ? image.src : "",
-      ),
-    ).toEqual(["data:image/png;base64,FIRST", "data:image/png;base64,SECOND"]);
+    expect(recording.images.map(bitmapSrc)).toEqual([
+      "data:image/png;base64,FIRST",
+      "data:image/png;base64,SECOND",
+    ]);
   });
 
   it("blanks the surface it captures through between two captures", () => {
@@ -1352,11 +1363,10 @@ describe("captured images", () => {
     const recording = closeOneRecording(recorder);
     // Drawing composites. A capture that did not prepare its surface would record
     // the second sprite with the first still showing through it.
-    expect(
-      recording.images.map((image) =>
-        image.kind === "bitmap" ? image.src : "",
-      ),
-    ).toEqual(["data:image/png;base64,A", "data:image/png;base64,B"]);
+    expect(recording.images.map(bitmapSrc)).toEqual([
+      "data:image/png;base64,A",
+      "data:image/png;base64,B",
+    ]);
   });
 
   it("keeps resolving a mutable source's bytes it already holds, past the budget", () => {
@@ -1413,11 +1423,9 @@ describe("captured images", () => {
 
     const recording = closeOneRecording(recorder);
     expect(trails.pixels).toBe("AFTER");
-    expect(
-      recording.images.map((image) =>
-        image.kind === "bitmap" ? image.src : "",
-      ),
-    ).toEqual(["data:image/png;base64,BEFORE"]);
+    expect(recording.images.map(bitmapSrc)).toEqual([
+      "data:image/png;base64,BEFORE",
+    ]);
   });
 
   it("reads a pixel buffer handed over from another realm", () => {

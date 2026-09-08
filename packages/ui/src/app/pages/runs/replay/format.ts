@@ -108,6 +108,31 @@ export interface Resource {
  * transparent pixel is quantised to eight bits twice and comes back a different
  * colour. `ImageData` is the one kind of image a check compares byte for byte, so
  * it travels byte for byte and is rebuilt with no decoder at all.
+ *
+ * An entry carries its pixels one of two ways, and the choice is the writer's
+ * rather than the format's. INLINE — `src` for a bitmap, a
+ * `data:image/png;base64,…` URL; `data` for a pixel buffer, base64 RGBA — is what
+ * a recorder produces, and what a document that travels alone carries. STORED —
+ * `store`, the flat file name of the bytes beside the recording — is what a writer
+ * with a directory to put them in produces instead: the bytes are written once per
+ * run under a name derived from the bytes themselves, so a sprite drawn in forty
+ * recordings is one file, it moves as PNG rather than as base64 inside a gzip that
+ * cannot compress it, and opening one replay costs the images that replay draws
+ * rather than the run's.
+ *
+ * A stored bitmap's file is the PNG itself and a stored buffer's is its RGBA bytes,
+ * raw — four per pixel in row order, unencoded, because a file has no reason to pay
+ * base64's third for what a `data:` URL only needed to be a URL.
+ *
+ * `store` is a FILE NAME, not a URL and not a bare id: it names the file in the
+ * same namespace every other piece of the run's validation media lives in, so the
+ * host resolves it with the same function it resolved the recording's own URL
+ * with. Deriving it from the recording's URL would not do — a published baseline is
+ * keyed by a content digest, so a relative name would point at a file that does not
+ * exist.
+ *
+ * A player that cannot resolve a stored entry reports it and skips the operations
+ * that name it, exactly as it does an `$opaque` value.
  */
 export type CapturedImage =
   | {
@@ -121,6 +146,16 @@ export type CapturedImage =
       readonly src: string;
     }
   | {
+      /** How the value is rebuilt: as an image a context can draw. */
+      readonly kind: "bitmap";
+      /** The captured width in pixels. */
+      readonly width: number;
+      /** The captured height in pixels. */
+      readonly height: number;
+      /** The flat name of the PNG file holding the pixels, beside the recording. */
+      readonly store: string;
+    }
+  | {
       /** How the value is rebuilt: as `ImageData`. */
       readonly kind: "pixels";
       /** The captured width in pixels. */
@@ -129,6 +164,16 @@ export type CapturedImage =
       readonly height: number;
       /** The RGBA bytes, base64 encoded, four bytes per pixel in row order. */
       readonly data: string;
+    }
+  | {
+      /** How the value is rebuilt: as `ImageData`. */
+      readonly kind: "pixels";
+      /** The captured width in pixels. */
+      readonly width: number;
+      /** The captured height in pixels. */
+      readonly height: number;
+      /** The flat name of the file holding the RGBA bytes, beside the recording. */
+      readonly store: string;
     };
 
 /**
@@ -431,14 +476,22 @@ function imageProblem(value: unknown): string | null {
   if (!isNumber(value.width) || !isNumber(value.height)) {
     return "does not say what size it is";
   }
-  // The two kinds carry their pixels in different fields, and which field is
-  // checked is the whole of what `kind` decides here: a `bitmap` is a PNG a browser
-  // decodes, a `pixels` entry is the RGBA bytes themselves.
-  if (value.kind === "bitmap" && typeof value.src !== "string") {
+  // The two kinds carry their pixels in different INLINE fields, and which field
+  // is checked is the whole of what `kind` decides here: a `bitmap` is a PNG a
+  // browser decodes, a `pixels` entry is the RGBA bytes themselves. Either kind may
+  // instead carry them BESIDE the recording, in which case `store` is the flat file
+  // name of the bytes and is resolved through the same lookup every other media
+  // file of the run goes through.
+  const inline = value.kind === "bitmap" ? value.src : value.data;
+  if (typeof inline !== "string" && typeof value.store !== "string") {
     return "carries no pixels";
   }
-  if (value.kind === "pixels" && typeof value.data !== "string") {
-    return "carries no pixels";
+  // An entry carrying BOTH is over-specified rather than damaged, and the decoder
+  // prefers the stored bytes, so it is accepted. An empty name is not: it resolves
+  // to the directory the media lives in, which is a fetch that either 404s or —
+  // worse — answers a listing, and neither is the picture the build drew.
+  if (typeof value.store === "string" && value.store === "") {
+    return "names an empty file beside the recording";
   }
   return null;
 }
@@ -673,6 +726,14 @@ export function parseRecording(data: unknown): RecordingParse {
  * The status is checked before the body is parsed for the same reason the
  * adversarial player checks it: a 404's error body is valid JSON, and handing it
  * on unchecked reports a missing file as a damaged replay.
+ *
+ * This fetches the recording and NOTHING ELSE. An entry that keeps its pixels
+ * beside the recording names them by file name, and deriving a URL for that file
+ * from this one's would be wrong: in the published gallery a case's baseline media
+ * is keyed by a content digest, so a name resolved relative to the recording's own
+ * URL points at a file that does not exist. A stored entry is resolved by the
+ * caller, through the same `(runId | subject, file) => url` function that produced
+ * the URL handed in here — see `StoredImageResolver` in `drawFrame.ts`.
  */
 export async function fetchRecording(url: string): Promise<Recording> {
   const response = await fetch(url);

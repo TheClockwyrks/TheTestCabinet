@@ -39,6 +39,14 @@
 // scenario helpers below only ARRANGE the hall through the surface, and the real
 // tick the build wrote is what runs from there.
 //
+// RECONCILING AFTER A POSE. `reconcile()` brings every reading the surface
+// reports into agreement with the hall a pose has just arranged, without
+// advancing anything, so a build that keeps a derived reading as a stored copy —
+// the SEGMENTS, most often — answers for the hall as posed rather than as it
+// was. {@link poseHall} and {@link startRun} reconcile before they return, so a
+// check that poses through the helpers never calls it itself. A check that poses
+// with `h.debug.set…` directly calls it once before its first read or sweep.
+//
 // THE CLOCK IS THE SURFACE'S. Nothing outside an engineless build owns its loop,
 // so `specs/instrumentation.md` puts the clock on the surface: `setAutoStep(false)`
 // takes the game off real time and `step(ticks)` runs whole simulation ticks.
@@ -211,6 +219,13 @@ export interface VoluteDebugApi {
   step(ticks?: number): Promise<void>;
   /** Restore every declared field to its title value. */
   reset(): Promise<void>;
+  /**
+   * Bring every value the surface reports into agreement with the hall as it
+   * stands, without advancing anything. A build that works its derived readings
+   * out at the read has nothing to do; one that keeps any of them — the
+   * segments, most often — rewrites that copy from its source.
+   */
+  reconcile(): Promise<void>;
   /** A pure read of the running game. */
   snapshot(): Promise<VoluteSnapshot>;
   /** Set the screen, and change nothing else. */
@@ -786,8 +801,10 @@ export const DEFAULT_QUEUED: ChargeId = "garnet";
  * injector, and at most one timed machinery.
  *
  * `clearTrain` runs before `poseTrain` so the channel holds the check's cores
- * alone. `setLevel` runs before `setQuotaRemaining`, which clamps to the level's
- * own quota.
+ * alone, and `setLevel` runs before `setQuotaRemaining` so the default quota is
+ * the level's own. The sequence ends in `reconcile()`, which brings every
+ * reading derived from what was just posed — the segments above all — into
+ * agreement with the hall the check asked for.
  *
  * Nothing here decides an outcome. Every extraction, score, chain step, grant,
  * cell and clear a check reads comes from the ticks it steps afterwards.
@@ -818,6 +835,7 @@ export async function poseHall(
   if (options.machinery !== undefined) {
     await h.debug.grantMachinery(options.machinery);
   }
+  await h.debug.reconcile();
 }
 
 /**
@@ -834,6 +852,7 @@ export async function startRun(h: Harness, level = 1): Promise<void> {
   await h.debug.setCells(CELLS);
   await h.debug.startLevel(1);
   if (level !== 1) await h.debug.startLevel(level);
+  await h.debug.reconcile();
 }
 
 /**

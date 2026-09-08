@@ -62,6 +62,7 @@ export function openNoticeScene(h: Harness): void {
   openScene(h);
   h.debug.setTier("hull", SCENE_HULL_TIER);
   h.debug.setHull(SCENE_HULL);
+  h.debug.reconcile();
   pinMiner(h);
 }
 
@@ -69,6 +70,7 @@ export function openNoticeScene(h: Harness): void {
 function standWhilePinned(h: Harness, col: number, row: number): void {
   h.debug.setMinerPosition(minerXOn(col), minerYOn(row));
   h.debug.setMinerVelocity(0, 0);
+  h.debug.reconcile();
 }
 
 /** What a driven hazard cut did to the miner. */

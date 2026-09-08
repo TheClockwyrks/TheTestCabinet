@@ -202,7 +202,7 @@ headroom the scheduler left, never with another tenant's unbounded growth.
 | ------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------- |
 | `backend`                       | `2Gi`    | around 2.4x the anonymous memory plus slab a snapshot refresh reaches, which materializes every run record at once               |
 | `lgtm`                          | `4Gi`    | a collector, three TSDBs and Grafana under bursty load, since validating a test case drives far more telemetry than a quiet week |
-| `artifacts`                     | `1536Mi` | its resident set plus one `tree.tar` or `archive.tar.gz` build, which is still assembled in memory                               |
+| `artifacts`                     | `1536Mi` | its resident set, since a whole-tree download is written to the response as it is built rather than assembled in memory          |
 | `ingest` sidecar                | `256Mi`  | around 3x its peak, and it runs a git checkout whose cost grows with the catalog                                                 |
 | `arena`                         | `512Mi`  | sized for concurrent wasm matches rather than for an idle week                                                                   |
 | `auth`, `dispatcher`, `web`     | `256Mi`  | around 32x their peaks, and the headroom costs a node almost nothing                                                             |

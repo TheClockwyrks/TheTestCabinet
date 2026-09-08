@@ -38,7 +38,13 @@
     }
   },
   "additionalProperties": false,
-  "required": ["version", "grid", "ticks", "snapshots", "entities"],
+  "required": [
+    "version",
+    "grid",
+    "ticks",
+    "snapshots",
+    "entities"
+  ],
   "$defs": {
     "Dir": {
       "description": "A cardinal direction. The grid is `x` rightward (E = +x) and `y` downward\n(S = +y); the canonical orientation in any reference material is flow-east.",
@@ -92,7 +98,13 @@
               "format": "int32"
             }
           },
-          "required": ["type", "x", "y", "dir", "tier"]
+          "required": [
+            "type",
+            "x",
+            "y",
+            "dir",
+            "tier"
+          ]
         },
         {
           "description": "A two-tile balancer. Anchored at `(x, y)`; its second tile is one step\nperpendicular-clockwise of `dir` (for E/W: `(x, y+1)`; for N/S:\n`(x+1, y)`).",
@@ -114,7 +126,12 @@
               "format": "int32"
             }
           },
-          "required": ["type", "x", "y", "dir"]
+          "required": [
+            "type",
+            "x",
+            "y",
+            "dir"
+          ]
         },
         {
           "description": "A two-tile **unzip** splitter. Same footprint as\n[`Splitter`](Entity::Splitter), but it takes a **single input** (the belt\nbehind its anchor tile) and routes each of that belt's lanes to an output belt\n**by lane**: the left lane to the top output belt's left (outer) lane, the\nright lane to the bottom output belt's right (outer) lane. Only the two outer\nlanes of the outputs carry items.",
@@ -136,7 +153,12 @@
               "format": "int32"
             }
           },
-          "required": ["type", "x", "y", "dir"]
+          "required": [
+            "type",
+            "x",
+            "y",
+            "dir"
+          ]
         },
         {
           "description": "A swing arm. Picks up from the tile *behind* it and drops onto the tile\n*in front*, set by `dir`.\nThere is one kind of inserter, so this carries no tier — every inserter\nswings at the single `SWING` constant from the prototype table.",
@@ -158,7 +180,12 @@
               "format": "int32"
             }
           },
-          "required": ["type", "x", "y", "dir"]
+          "required": [
+            "type",
+            "x",
+            "y",
+            "dir"
+          ]
         },
         {
           "description": "A 3×3 crafting machine anchored at `(x, y)`, covering `(x..x+3, y..y+3)`.\nRuns any **non-smelting** recipe (gears, cable, circuits, machines).",
@@ -181,7 +208,12 @@
               "format": "int32"
             }
           },
-          "required": ["type", "x", "y", "recipe"]
+          "required": [
+            "type",
+            "x",
+            "y",
+            "recipe"
+          ]
         },
         {
           "description": "A 2×2 coal-fired smelter anchored at `(x, y)`, covering `(x..x+2, y..y+2)`.\nA furnace is the only machine that runs a **smelting** recipe\n(`\"iron-plate\"` / `\"copper-plate\"`), turning raw ore into a plate by burning\ncoal; it has a smaller footprint than the assembler and never smelts without\ncoal in its buffer.",
@@ -204,7 +236,12 @@
               "format": "int32"
             }
           },
-          "required": ["type", "x", "y", "recipe"]
+          "required": [
+            "type",
+            "x",
+            "y",
+            "recipe"
+          ]
         },
         {
           "description": "A test fixture that emits `item` onto `lane` of the downstream belt once\nevery `period` ticks, respecting compaction (it stalls when the gap is too\nsmall). Infinite supply.",
@@ -240,7 +277,15 @@
               "format": "int32"
             }
           },
-          "required": ["type", "x", "y", "dir", "item", "lane", "period"]
+          "required": [
+            "type",
+            "x",
+            "y",
+            "dir",
+            "item",
+            "lane",
+            "period"
+          ]
         },
         {
           "description": "A test fixture that consumes and counts every item that reaches it.",
@@ -262,7 +307,12 @@
               "format": "int32"
             }
           },
-          "required": ["type", "x", "y", "dir"]
+          "required": [
+            "type",
+            "x",
+            "y",
+            "dir"
+          ]
         }
       ]
     },
@@ -282,7 +332,10 @@
         }
       },
       "additionalProperties": false,
-      "required": ["width", "height"]
+      "required": [
+        "width",
+        "height"
+      ]
     },
     "Lane": {
       "description": "Which lane(s) of a belt a fixture acts on. `left`/`right` are relative to the\ndirection of travel: for an E-facing belt the left lane is the `-y` (north)\nside and the right lane is the `+y` (south) side; the other facings rotate\nthat convention. `both` means act on left then right independently.",

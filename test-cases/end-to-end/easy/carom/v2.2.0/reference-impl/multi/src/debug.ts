@@ -25,6 +25,11 @@ export interface CaromDebugApi {
   step(ticks: number): void;
   setAutoStep(enabled: boolean): void;
   snapshot(): CaromSnapshot;
+  /**
+   * Bring every value `snapshot` reports into agreement with the game as it now
+   * stands, without advancing the simulation by any amount.
+   */
+  reconcile(): void;
   startMatch(mode: Mode): void;
   serve(): void;
   setScore(p1: number, p2: number): void;
@@ -88,6 +93,15 @@ export function installDebugApi(game: Game): void {
 
     snapshot() {
       return game.debugSnapshot();
+    },
+
+    // Bring every reported reading into agreement with the game as it stands,
+    // without advancing it by any amount. This is what a caller makes after
+    // posing a situation and before reading it back, and `step` is not a
+    // substitute: a step runs every system, which moves the very thing the pose
+    // just placed. See specs/instrumentation.md.
+    reconcile() {
+      game.debugReconcile();
     },
 
     startMatch(mode) {

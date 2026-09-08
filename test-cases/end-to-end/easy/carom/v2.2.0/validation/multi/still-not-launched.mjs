@@ -38,6 +38,7 @@ export default function item() {
       await api.call("setBall", 1, { x: 30, y: 30, vx: 0, vy: 0, spin: 0 });
       await api.call("setBall", 2, { x: 1250, y: 30, vx: 0, vy: 0, spin: 0 });
       await api.call("setBall", 0, { x: 640, y: 360, vx: 0, vy: 0, spin: 0 });
+      await api.call("reconcile");
       posed = (await api.snapshot()).balls[0];
     },
 

@@ -550,15 +550,21 @@ describe("the debug surface", () => {
     expect(h.snapshot().drag).toBeNull();
   });
 
-  it("removes one flyer, clears the flight, and ignores an unknown id", () => {
+  it("removes one flyer, clears the flight, and refuses an unknown id", () => {
     openTable();
     h.pose((s, d) => d.addFlyer(s, "spades", 1, 10, 20, 1, 2));
     const first = (h.snapshot().flyers[0] as { id: number }).id;
     h.pose((s, d) => d.addFlyer(s, "hearts", 2, 30, 40, 3, 4));
     expect(h.snapshot().flyers).toHaveLength(2);
 
-    h.pose((s, d) => d.setFlyerPosition(s, first + 999, 0, 0));
-    h.pose((s, d) => d.setFlyerVelocity(s, first + 999, 0, 0));
+    // An id no flyer in flight carries names nothing to act on, so the call
+    // fails loudly rather than passing quietly (specs/instrumentation.md).
+    expect(() =>
+      h.pose((s, d) => d.setFlyerPosition(s, first + 999, 0, 0)),
+    ).toThrow(RangeError);
+    expect(() =>
+      h.pose((s, d) => d.setFlyerVelocity(s, first + 999, 0, 0)),
+    ).toThrow(RangeError);
     expect(h.snapshot().flyers[0]).toMatchObject({
       x: 10,
       y: 20,
@@ -574,15 +580,26 @@ describe("the debug surface", () => {
     expect(h.snapshot().flyers).toHaveLength(0);
   });
 
-  it("leaves the board alone for an operation naming no pile or no card", () => {
+  it("fails loudly, and leaves the board alone, when a call names nothing", () => {
     openTable();
     addCard("tableau", 0, "spades", 5);
     const before = JSON.stringify(h.snapshot());
-    h.pose((s, d) => d.addCard(s, "foundation", 9, "hearts", 3, true));
-    h.pose((s, d) => d.clearPile(s, "tableau", 12));
-    h.pose((s, d) => d.removeCard(s, 9999));
-    h.pose((s, d) => d.setCardFaceUp(s, 9999, false));
+    // No pile, no card: nothing the surface can act on, so the call throws
+    // rather than passing quietly with the table unchanged
+    // (specs/instrumentation.md, The operations).
+    expect(() =>
+      h.pose((s, d) => d.addCard(s, "foundation", 9, "hearts", 3, true)),
+    ).toThrow(RangeError);
+    expect(() => h.pose((s, d) => d.clearPile(s, "tableau", 12))).toThrow(
+      RangeError,
+    );
+    expect(() => h.pose((s, d) => d.removeCard(s, 9999))).toThrow(RangeError);
+    expect(() => h.pose((s, d) => d.setCardFaceUp(s, 9999, false))).toThrow(
+      RangeError,
+    );
     expect(JSON.stringify(h.snapshot())).toBe(before);
+    // A move is a different thing: the rules deciding against it IS the
+    // transaction, and the verdict is what the operation is for.
     expect(h.decide((s, d) => d.move(s, "tableau", 0, 0, "waste", 0))).toBe(
       false,
     );
@@ -1081,5 +1098,83 @@ describe("the drawing", () => {
     expect(h.snapshot().launched).toBeGreaterThan(0);
     const onTable = h.pixel((FOUNDATION_X[2] as number) + 50, TOP_ROW_Y + 6);
     expect(distance(onTable, FELT)).toBeGreaterThan(90);
+  });
+});
+
+describe("reconcile", () => {
+  /** How far inside the card's top-left the grab below presses. */
+  const GRAB_DY = 8;
+
+  /**
+   * A black Queen taken into hand off column 0 and carried over column 1.
+   *
+   * The gesture is the real one: the press grabs through the pointer path and
+   * the move carries the run, so `dropTarget` is whatever that path decided for
+   * the table as it stood at the move.
+   */
+  function heldOverColumn(): void {
+    openTable();
+    addCard("tableau", 0, "spades", 12);
+    h.pose((s, d) =>
+      d.pointerDown(s, COLUMN_X[0] + CARD_W / 2, TABLEAU_Y + GRAB_DY),
+    );
+    h.pose((s, d) =>
+      d.pointerMove(s, COLUMN_X[1] + CARD_W / 2, TABLEAU_Y + GRAB_DY),
+    );
+  }
+
+  it("re-derives a stored reading from a posed table", () => {
+    heldOverColumn();
+    // An empty column takes a King alone, so the held black Queen has no target
+    // yet.
+    expect(h.snapshot().dropTarget).toBeNull();
+
+    // Posing a red King under it makes the column take the run. The pose writes
+    // the column, not the drop target, so until the readings are brought into
+    // agreement `dropTarget` is still answering for the table as it was.
+    addCard("tableau", 1, "hearts", 13);
+    h.pose((s, d) => d.reconcile(s));
+    expect(h.snapshot().dropTarget).toEqual({ pile: "tableau", index: 1 });
+
+    // And back the other way: a black King under a black Queen is refused.
+    h.pose((s, d) => d.clearPile(s, "tableau", 1));
+    addCard("tableau", 1, "clubs", 13);
+    h.pose((s, d) => d.reconcile(s));
+    expect(h.snapshot().dropTarget).toBeNull();
+
+    // The run is still in hand: nothing was moved to make the reading agree.
+    expect(h.snapshot().drag?.cards[0]?.rank).toBe(12);
+    expect(h.snapshot().tableau[0]).toEqual([]);
+  });
+
+  it("advances nothing", () => {
+    openTable();
+    addCard("tableau", 0, "spades", 5);
+    h.pose((s, d) => d.addFlyer(s, "hearts", 7, 100, 200, 40, -60));
+    h.pose((s, d) => d.setLaunchClock(s, 0.25));
+    h.pose((s, d) => d.pointerDown(s, 10, 10));
+
+    const before = h.snapshot();
+    h.pose((s, d) => d.reconcile(s));
+    const once = h.snapshot();
+    h.pose((s, d) => d.reconcile(s));
+    const twice = h.snapshot();
+
+    // The clock, the flight and every gate stand exactly where they were, and a
+    // second call is worth no more than the first.
+    expect(once).toEqual(before);
+    expect(twice).toEqual(once);
+    expect(once.simTime).toBe(before.simTime);
+    expect(once.launchClock).toBe(0.25);
+    expect(once.flyers).toEqual(before.flyers);
+    expect(once.trailStamps).toBe(before.trailStamps);
+  });
+
+  it("is legal on every screen", () => {
+    for (const screen of ["title", "howto", "playing", "won"] as const) {
+      h.pose((s, d) => d.setScreen(s, screen));
+      h.pose((s, d) => d.reconcile(s));
+      expect(h.snapshot().screen).toBe(screen);
+    }
   });
 });

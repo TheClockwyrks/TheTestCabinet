@@ -123,6 +123,24 @@ The surface carries `version` (`REFRACT_DEBUG_VERSION`, `2`), a plain number, an
 the operations below. Values are plain numbers, strings, and booleans. `x` and `y`
 are in the stage's logical units, and `col` and `row` are cell coordinates as
 `specs/board.md` defines them.
+
+Every operation applies its effect every time it is called. Which screen is up,
+what a player would have had to reach first, and where a board is in its run are
+not an operation's conditions: a pose reaches the value it names whatever the
+game's own rules would have allowed a player to reach, and `clear()` empties the
+beams from wherever the game stands. A pose is never clamped, never snapped to a
+nearer legal value, and never quietly dropped.
+
+The pointer operations are not an exception to that. They report a pointer
+rather than pose a field, so what the pointer meets — the hit radius, the targets
+the screen carries, the grab rules, the limits — is the effect they were declared
+to have, and it runs exactly as it runs for a player.
+
+A call the game has nothing to act on fails loudly rather than passing quietly:
+notation `specs/board.md` does not define, and a board wider than
+`GRID_MAX_COLS` or taller than `GRID_MAX_ROWS`, each make `loadBoard` throw where
+it stands. The one thing no operation does is refuse in silence, leaving the
+state as it was and the caller nothing to read.
 {{#if (eq engine.slug "none")}}
 {{else if (eq engine.slug "simple-2d")}}
 
@@ -188,20 +206,56 @@ No pointer target is armed afterwards.
 A pure read of the state, returned as the plain object under Snapshot shape below.
 It changes nothing.
 
-### `setMode(mode)`
+### `reconcile()`
 {{else if (eq engine.slug "simple-2d")}}
 ### `snapshot(state)`
 
 A pure reading of `state`, returned as the plain object under Snapshot shape
 below. It returns no state, because it poses nothing.
 
-### `setMode(state, mode)`
+### `reconcile(state)`
 {{else}}
 ### `snapshot()`
 
 A pure read of the state, returned as the plain object under Snapshot shape below.
 It changes nothing.
 
+### `reconcile()`
+{{/if}}
+
+Brings every value this surface reports into agreement with the board as it now
+stands, without advancing anything. A node's `x` and `y` follow the board's
+dimensions, a crystal's `spent` follows the crossings the drawn beams have begun
+on it, a beam's `complete` follows R6 and R7, `solved` follows R9, and `targets`
+follows the current screen — so after a pose all five answer for the board as it
+is now rather than as it was before it.
+
+A build that works those out at the read has nothing to do here and this call
+changes nothing. A build that keeps any of them as a stored copy rewrites that
+copy from what it is a copy of.
+
+It moves no clock and runs no system: `simTime` is untouched, no animation
+advances, no frame is counted, and no board is generated. It plays no sound,
+changes no screen, arms and disarms no target, begins and ends no trace, records
+no board solved, and unlocks nothing. It moves nothing to make a reading agree: a
+board posed onto a screen a player would never have reached it from reads as it
+was posed, and neither the board nor the screen is moved to make the other
+agreeable. Calling it twice leaves the same state as calling it once.
+
+It is never an error and may be called on any screen, whether or not the game is
+stepping itself.
+{{#if (eq engine.slug "simple-2d")}}
+
+`reconcile(state)` returns the next `RefractState`, built from the one it was
+handed, which it leaves as it was. A build that works every one of those readings
+out at the call returns a state equal to the one it was given.
+{{/if}}
+
+{{#if (eq engine.slug "none")}}
+### `setMode(mode)`
+{{else if (eq engine.slug "simple-2d")}}
+### `setMode(state, mode)`
+{{else}}
 ### `setMode(mode)`
 {{/if}}
 
@@ -349,8 +403,16 @@ nothing.
 ### `clear()`
 {{/if}}
 
-The same as the `clear` action in `specs/controls.md`: every beam on the board is
-emptied and any live trace ends. It applies on the `playing` screen alone.
+Carries out the `clear` action's own transaction as `specs/controls.md` states
+it: every beam on the board is emptied and any live trace ends.
+
+It never asks whether a player could have reached the action. Which screen is up
+is how a player reaches `clear` — the action itself "is read on the `playing`
+screen and does nothing on any other screen", as `specs/controls.md` fixes for
+the key — and that is not this operation's condition, so `clear()` empties the
+beams from wherever the game stands. A check about the action being unreachable
+presses the key on the screen it is asking about; this operation is how a check
+arrives at an emptied board.
 
 {{#if (eq engine.slug "none")}}
 ## Snapshot shape
@@ -429,7 +491,7 @@ game actually hit-tests against, so pressing at a listed target's center takes
 that target.
 
 Every field is read straight off the game's state, so what the snapshot reports is
-what the game holds. Four are derived rather than stored:
+what the game holds. Five are derived rather than stored:
 
 | Field | Derived from |
 | --- | --- |
@@ -437,6 +499,11 @@ what the game holds. Four are derived rather than stored:
 | a crystal's `spent` | the crossings the drawn beams have begun on it |
 | a beam's `complete` | R6 and R7 in `specs/beams.md` |
 | `solved` | R9 in `specs/beams.md` |
+| `targets` | the current screen, under `specs/controls.md` |
+
+A build is free to work any of these out at the read or to keep it as a stored
+copy, and `reconcile()` is what brings a stored copy back into agreement after a
+pose.
 
 A node's `channel` is `null` for a crystal, and its `charges` and `spent` are
 `null` for an emitter and for a lens. `beams` carries one entry per channel

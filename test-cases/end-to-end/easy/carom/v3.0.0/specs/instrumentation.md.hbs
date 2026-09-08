@@ -152,6 +152,15 @@ Each operation sets one field or one fixed pair of fields, places or removes one
 entity, or reads the state. `reset` is the exception: it restores every declared
 field at once.
 {{/if}}
+
+A pose reaches the value it names whatever the game's own rules would have
+allowed a player, and it acts from wherever the game stands: which screen is up,
+where a paddle is, and whether the field is in play are how a person reaches an
+effect and are none of a pose's conditions. What a pose never does is refuse
+quietly. A call the game has nothing to act on — an index naming no ball and no
+obstacle, a field of a ball that is not on the playfield — fails loudly instead,
+so a caller never reads a refusal as a pose. A caller reads what a pose left from
+`snapshot` rather than from a return value.
 {{#if (eq engine.slug "simple-2d")}}
 
 Each operation's first parameter is the current state, `DeepReadonly<CaromState>`,
@@ -208,6 +217,7 @@ The game has one ball, which every operation below acts on. Obstacle indices are
 | `spawnObstacle(index)` | Places obstacle `index` at `OBSTACLE_CENTERS[index]`. |
 {{/if}}
 | `reset()` | Returns the game to its title-screen state. |
+| `reconcile()` | Brings every reading this surface reports into agreement with the world as it stands, advancing nothing. |
 
 An absent ball takes no part in a frame: it is not advanced, it is not drawn, it
 collides with nothing, and it scores no point. An absent obstacle is not drawn and
@@ -225,6 +235,35 @@ from what a reset restores.
 {{else}}
 `reset` leaves the mute bit alone, so `muted` is unchanged. Every value the build
 keeps across frames is rebuilt from what a reset restores.
+{{/if}}
+
+`reconcile` brings every value this surface reports into agreement with the game
+as it now stands, without advancing anything.
+{{#if (eq variant.slug "gyre")}}A ball's `speed` follows from its velocity, and each obstacle's `cx`, `cy` and
+`theta` follow from the obstacle clock, so after a pose they answer for the world
+as it is now rather than as it was before. A build that works them out at the
+read has nothing to do here and this call changes nothing; a build that keeps any
+of them as a stored copy rewrites that copy from what it is a copy of.{{else}}A ball's `speed` follows from its velocity, so after a pose it answers for the
+ball as it is now rather than as it was before. A build that works it out at the
+read has nothing to do here and this call changes nothing; a build that keeps it
+as a stored copy rewrites that copy from what it is a copy of.{{/if}}
+
+It moves no clock and runs no system: `simTime` is untouched, nothing is
+integrated, no collision is resolved, no ball is served, no hold timer counts
+down, no trail sample is written, and no {{#if (eq variant.slug "multi")}}launch angle{{else}}serve sign{{/if}} is drawn. It plays
+no sound, changes no screen, and writes nothing a player would see. It moves
+nothing to make a reading agree, so a ball posed inside a paddle stays where it
+was put and reads as it is. A paddle's `vy` is the value the last frame
+integrated and stays the update's to change. Calling it twice leaves the same
+state as calling it once.
+
+It is never an error and may be called on any screen{{#if (eq engine.slug "none")}}, whether or not the clock
+is scripted{{/if}}.
+{{#if (eq engine.slug "simple-2d")}}
+
+`reconcile(state)` returns the next `CaromState`, built from the one it was
+handed, which it leaves as it was. A build that works every one of those readings
+out at the call returns a state equal to the one it was given.
 {{/if}}
 
 ### Screens and menus
@@ -295,11 +334,13 @@ Each sets its own field alone. Driving the paddles above states how `drivenVy` a
 {{/if}}
 
 {{#if (eq variant.slug "multi")}}
-Each sets its own field alone, and an operation naming an absent ball has no
-effect. Setting a hold timer to `0` ends that hold.
+Each sets its own field alone. An absent ball is no ball to set, so an operation
+naming one fails loudly, as does one naming an index outside the balls this
+variant plays with. Setting a hold timer to `0` ends that hold.
 {{else}}
-Each sets its own field alone, and every one of them has no effect while the ball
-is absent. Setting the hold timer to `0` ends the hold.
+Each sets its own field alone. An absent ball is no ball to set, so every one of
+them fails loudly while the field carries none. Setting the hold timer to `0`
+ends the hold.
 {{/if}}
 {{#if (eq variant.slug "multi")}}
 That ball launches on the next advanced frame through the game's own rule, as
@@ -345,7 +386,8 @@ the game exactly as the `mute` action does.{{/if}}
 Both obstacles take the poses `specs/playfield.md`'s formulas give at the clock's
 current value, on the frame the clock is set as on every other frame. While the
 clock is not running it keeps its value across frames and both obstacles hold
-their poses.
+their poses. The clock is the sole input to both poses, so a build that keeps
+those poses as stored values rewrites them from the clock in `reconcile`.
 {{/if}}
 
 ### Readings
@@ -442,6 +484,13 @@ is `hypot(vx, vy)`, a paddle's `vy` is the integrated value
 returns to `0` and no other operation writes.{{#if (eq engine.slug "none")}} `autoStep` is the clock's setting rather
 than a value the game holds, so it is reported here and `reset` leaves it as it
 is.{{/if}}
+
+{{#if (eq variant.slug "gyre")}}`speed` and each obstacle's pose are derived rather than held: `speed` is a
+function of the velocity, and a pose is a function of the obstacle clock. A build
+is free to work either out at the read or to keep it as a stored copy, and
+`reconcile()` is what brings a stored copy back into agreement after a pose.{{else}}`speed` is derived rather than held, being a function of the velocity. A build is
+free to work it out at the read or to keep it as a stored copy, and `reconcile()`
+is what brings a stored copy back into agreement after a pose.{{/if}}
 
 {{#if (eq variant.slug "multi")}}
 The `balls` and `obstacles` arrays carry only what is present, each entry under

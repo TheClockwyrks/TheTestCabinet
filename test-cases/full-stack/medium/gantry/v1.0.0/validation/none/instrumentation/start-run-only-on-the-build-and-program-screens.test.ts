@@ -1,30 +1,33 @@
 // instrumentation/start-run-only-on-the-build-and-program-screens — the run pose
-// applies where the `run` action does, and nowhere else.
+// starts from every screen, and the structure's readiness is what refuses it.
 //
-// `specs/instrumentation.md` § The run and the screens: "`startRun` applies on the
-// build and program screens, where the `run` action does", and the rule above the
-// tables: "Each pose applies on the screens its section names and does nothing on
-// any other, exactly as the control it stands for does." `specs/controls.md` binds
-// `run` to "start the run, from build or program", and `specs/program.md` opens
-// its last section with "A run starts from the build or program screen through the
-// `run` action".
+// `specs/instrumentation.md` § The run and the screens: "`startRun` still carries
+// the `run` action's own refusals, which are the structure's readiness and not a
+// screen: it is refused exactly as the action is, leaving the state as it was, and
+// `check` says why it would refuse." The rule above the tables is what removes
+// the screen: "No operation asks which screen is showing … Those are how a player
+// reaches a control and are not an operation's conditions." The readiness stays
+// because it is the act itself — `specs/program.md` refuses a start for a
+// readiness issue or an empty tape — and rule B keeps a transaction's own rules.
 //
-// EVERYTHING THAT WOULD OTHERWISE REFUSE A START IS REMOVED FIRST, so the only
-// thing left to refuse it on the five screens is the screen. The minimal crane has
-// no readiness issue and the tape is not empty, which is the whole of what
-// `specs/program.md` refuses a start for — so a build that took the call on the
-// title screen would begin a run there, and this check reads that it did not: the
-// run stays at its idle placeholder and the screen stays where it was.
+// EVERY SCREEN IS DRIVEN, because the screens are not alike: `run` with no run in
+// progress is a screen like any other, and the menu screens are where a build
+// that gated on "a yard screen" would differ from one that gated on the two the
+// `run` ACTION reaches. The minimal crane has no readiness issue and the tape is
+// not empty, so the only thing that could hold a start off is the screen, and
+// none of these may. Each run is put away with `abortRun`, which ends it "with no
+// verdict" and returns the build screen, so every start is made from the same
+// standing crane and tape.
 //
-// THE TWO SCREENS THE POSE DOES APPLY ON CLOSE THE CHECK, because the same call
-// must start the run on each: without them a build whose `startRun` did nothing
-// anywhere would satisfy all five refusals and pass. The run begun from the
-// program screen is put away with `abortRun`, which ends it "with no verdict" and
-// returns the build screen (`specs/instrumentation.md`), so the second start is
-// made from the same standing crane and tape as the first.
+// THE READINESS CLOSES THE CHECK, because without it a build whose `startRun`
+// began a run out of nothing would satisfy every assertion above: the tape is
+// emptied and the same call is made from the title screen, and it must begin no
+// run and `check` must name `empty-program`.
 //
-// `run` is among the five refused screens deliberately — with no run in progress
-// it is a screen like any other, and `startRun` is not what puts a caller on it.
+// THE ACTION'S OWN SCREEN GATE IS UNTOUCHED, and is decided by
+// `controls/run-key-does-nothing-on-the-run-screen` and
+// `controls/run-key-from-the-build-screen` next door: a KEY press is the player's
+// route and is still bound to the two screens `specs/controls.md` names.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
@@ -50,8 +53,8 @@ const TAPE: readonly TapeStepSpec[] = [
   },
 ];
 
-/** The five screens the `run` action does not reach. */
-const REFUSED: readonly Screen[] = [
+/** The five screens the `run` ACTION does not reach, and this pose does. */
+const ELSEWHERE: readonly Screen[] = [
   "title",
   "howto",
   "select",
@@ -69,18 +72,19 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("starts no run off the build and program screens, and starts one on each", async () => {
+it("starts a run from every screen, the readiness deciding rather than the screen", async () => {
   await openSite(h, 0);
   await emptyYard(h);
   await standMinimalCrane(h);
   await poseTape(h, TAPE);
 
-  const off: { screen: string; phase: string }[] = [];
-  for (const screen of REFUSED) {
+  const started: { screen: string; phase: string }[] = [];
+  for (const screen of ELSEWHERE) {
     await h.debug.setScreen(screen);
     await h.debug.startRun();
     const s = await h.snapshot();
-    off.push({ screen: s.screen, phase: s.run.phase });
+    started.push({ screen, phase: s.run.phase });
+    await h.debug.abortRun();
   }
 
   await h.debug.setScreen("program");
@@ -92,21 +96,25 @@ it("starts no run off the build and program screens, and starts one on each", as
   await h.debug.startRun();
   const onBuild = await h.snapshot();
 
+  // The readiness is what still refuses a start: the tape is emptied, and the
+  // same call from the title screen begins nothing.
+  await h.debug.abortRun();
+  await h.debug.clearProgram();
+  await h.debug.setScreen("title");
+  await h.debug.startRun();
+  const unready = await h.snapshot();
+  const issues = (await h.check()).issues;
+
   await h.advance(1);
   await h.capture("state", "The driven state this point decides");
 
-  for (const [index, screen] of REFUSED.entries()) {
+  for (const [index, screen] of ELSEWHERE.entries()) {
     assertEqual(
-      off[index]?.phase,
-      "idle",
-      `the run after startRun on the ${screen} screen, which the run action ` +
-        "does not reach (specs/instrumentation.md)",
-    );
-    assertEqual(
-      off[index]?.screen,
-      screen,
-      `the screen after startRun on the ${screen} screen, which the call ` +
-        "leaves as it stands (specs/instrumentation.md)",
+      started[index]?.phase,
+      "running",
+      `the run after startRun on the ${screen} screen: the screen is a ` +
+        "player's route to the run action and not the operation's condition " +
+        "(specs/instrumentation.md)",
     );
   }
   assertEqual(
@@ -120,5 +128,16 @@ it("starts no run off the build and program screens, and starts one on each", as
     "running",
     "the run after the same call on the build screen, the other of the two " +
       "(specs/instrumentation.md)",
+  );
+  assertEqual(
+    unready.run.phase,
+    "idle",
+    "the run after startRun with an empty tape: the readiness is the act's " +
+      "own rule and still refuses the start (specs/program.md)",
+  );
+  assertEqual(
+    issues.includes("empty-program"),
+    true,
+    "the issue check names for the refused start (specs/structure.md)",
   );
 });

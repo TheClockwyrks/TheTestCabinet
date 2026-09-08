@@ -3,8 +3,8 @@
 // that `choose` opens.
 //
 // WHAT THE SPECIFICATION FIXES, AND WHERE. `specs/instrumentation.md`,
-// `setNextOffers(ids)`: "Applies on a run screen and on `levelup`, where the
-// next overlay is the queued one." `choose(index)`: "either the next queued
+// `setNextOffers(ids)`: "Called on `levelup`, the overlay the list is checked
+// against is the queued one." `choose(index)`: "either the next queued
 // overlay opens with a fresh pool".
 //
 // THE DRIVE. An isolated run holding nothing with two level-ups queued, the

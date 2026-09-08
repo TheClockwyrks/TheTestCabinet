@@ -102,12 +102,13 @@ Over each particle's normalized life:
 
 ## How the tool behaves
 
-The `particle-2d` binary already on your `PATH` is the **only** channel for shaping
-this effect — you build the system by calling it **one operation at a time**, and
-the ordered list of operations you issue, recorded to `actions.json`, is the
-**authoritative output**. You are authoring a **system** (emitters, forces,
-per-particle curves), **not** placing individual particles: the review UI and a game
-**simulate it live** from the system you author.
+The `particle-2d` binary already on your `PATH` is the **only** channel for
+shaping this effect — you build the system by calling it **one operation at a
+time**, and the ordered list of operations you issue, recorded to
+`actions.json`, is the **authoritative output**. You are authoring a **system**
+(emitters, forces, per-particle curves), **not** placing individual particles: a
+game, or any viewer that plays it, **simulates it live** from the system you
+author.
 
 Run `particle-2d --help` to list every operation and `particle-2d <operation>
 --help` for one operation's exact flags — that help text is the authoritative

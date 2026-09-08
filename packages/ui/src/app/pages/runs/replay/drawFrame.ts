@@ -26,10 +26,12 @@
 //     against the context being drawn into and the result is memoised for the rest
 //     of this frame. A gradient created on frame 1 and left in force is therefore
 //     drawn on frame 900 under the stops it actually had.
-//   * A bitmap travels as a PNG data URL. Decoding one is asynchronous and drawing
-//     a frame is not, so the whole table is decoded once by `prepareRecording` and
-//     handed in here already decoded. A pixel buffer travels as its own RGBA bytes
-//     and is rebuilt from them, exactly, with no decoder in the way.
+//   * A bitmap travels as a PNG — inline as a data URL, or as the flat name of a
+//     file beside the recording. Decoding one is asynchronous, and fetching one is
+//     more so, while drawing a frame is neither: the whole table is resolved and
+//     decoded once by `prepareRecording` and handed in here already decoded. A
+//     pixel buffer travels as its own RGBA bytes, inline or stored the same two
+//     ways, and is rebuilt from them exactly, with no decoder in the way.
 //
 // What still cannot be reproduced — a value the recorder could not carry at all, a
 // method this context does not have, an image that would not decode — is skipped
@@ -98,13 +100,25 @@ export interface ReplayResources {
 export type ImageDecoder = (image: CapturedImage) => Promise<DecodedImage>;
 
 /**
+ * Where the bytes of a stored entry are, by the flat file name it carries.
+ *
+ * A recording that keeps its images beside itself names them the way every other
+ * media file of the run is named, so the caller resolves them with the function it
+ * already used to resolve the recording. `null` means this host cannot serve them,
+ * and the entries that name them degrade to a skip.
+ */
+export type StoredImageResolver = (file: string) => string | null;
+
+/**
  * What to say about an image the player has nothing to draw.
  *
  * Phrased as the cause rather than as the mechanism, because a reviewer reads it
- * under the canvas: the recording carried the sprite and this browser would not
- * turn it back into pixels.
+ * under the canvas. It covers both ways an entry can come to nothing — a PNG this
+ * browser would not decode, and bytes kept beside the recording that this host
+ * could not resolve or fetch — because they cost the reviewer the identical thing
+ * and the sentence sits under a canvas rather than in a log.
  */
-const UNDECODED_IMAGE = "an image that could not be decoded";
+const UNDECODED_IMAGE = "an image that could not be loaded";
 
 /**
  * How long one captured image is given to turn back into pixels.
@@ -284,10 +298,45 @@ interface Scope {
  * is not. A bitmap is a PNG, which only the platform can decode, so it is decoded
  * under a bound on how long that may take — everything under the bound can wait on
  * the platform, and nothing above it waits forever.
+ *
+ * An entry may keep its bytes BESIDE the recording rather than inline, in which
+ * case `resolveStored` turns the file name it carries into a URL and the bytes are
+ * fetched. That is one more thing that can be slow, so it is under the same bound;
+ * and one more thing that can be absent, so a host that supplies no resolver, or a
+ * resolver that answers `null`, throws here and the entry becomes the named skip
+ * every other unusable image becomes.
+ *
+ * Both stored paths go through exactly the same rebuild as their inline
+ * counterparts — `decodeElement` for a bitmap, {@link rebuildPixelsFrom} for a
+ * buffer — so the two forms of an entry cannot come back as different pictures.
+ * A stored bitmap is handed an ordinary URL, which is also why it gets the
+ * browser's HTTP cache for free across every replay a reviewer opens.
  */
 async function decodeCapturedImage(
   image: CapturedImage,
+  resolveStored?: StoredImageResolver,
 ): Promise<DecodedImage> {
+  if ("store" in image) {
+    const url = resolveStored ? resolveStored(image.store) : null;
+    if (url === null) {
+      throw new Error(
+        "this replay keeps its images beside it and this view cannot reach them",
+      );
+    }
+    if (image.kind === "pixels") {
+      const bytes = await withTimeout(
+        fetchBytes(url),
+        DECODE_TIMEOUT_MS,
+        "the pixel buffer did not arrive in time",
+      );
+      return rebuildPixelsFrom(bytes, image.width, image.height);
+    }
+    return withTimeout(
+      decodeElement(url),
+      DECODE_TIMEOUT_MS,
+      "the image did not decode in time",
+    );
+  }
   if (image.kind === "pixels") {
     return rebuildPixels(image.data, image.width, image.height);
   }
@@ -296,6 +345,23 @@ async function decodeCapturedImage(
     DECODE_TIMEOUT_MS,
     "the image did not decode in time",
   );
+}
+
+/**
+ * The bytes at `url`, or throw.
+ *
+ * The status is checked before the body is read for the reason every fetch in this
+ * player checks it: an error page is bytes too, and rebuilding an `ImageData` from
+ * one would put a wall of noise on screen and report the frame as clean.
+ */
+async function fetchBytes(url: string): Promise<Uint8Array> {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(
+      `the pixel buffer could not be fetched (HTTP ${response.status})`,
+    );
+  }
+  return new Uint8Array(await response.arrayBuffer());
 }
 
 /**
@@ -316,6 +382,22 @@ async function decodeCapturedImage(
 function rebuildPixels(data: string, width: number, height: number): ImageData {
   const bytes = base64Bytes(data);
   if (bytes === null) throw new Error("the pixel buffer is not base64");
+  return rebuildPixelsFrom(bytes, width, height);
+}
+
+/**
+ * Rebuild a `pixels` entry from the RGBA bytes themselves, however they arrived.
+ *
+ * The inline form base64-decodes to these bytes and the stored form fetches them,
+ * and from here the two are the same buffer built the same way. Splitting it out is
+ * what keeps them that way: the length check is the one thing this format is exact
+ * about, and two copies of it would be two things to drift.
+ */
+function rebuildPixelsFrom(
+  bytes: Uint8Array,
+  width: number,
+  height: number,
+): ImageData {
   if (bytes.length !== width * height * 4) {
     throw new Error(
       `the pixel buffer holds ${bytes.length} bytes, not the ${width * height * 4} a ${width}×${height} picture needs`,
@@ -341,7 +423,12 @@ function base64Bytes(encoded: string): Uint8Array | null {
 }
 
 /**
- * Load a data URL into an image element, or reject.
+ * Load a URL into an image element, or reject.
+ *
+ * `src` is a `data:` URL for an inline entry and an ordinary one for an entry whose
+ * bytes are stored beside the recording; an image element makes no distinction
+ * between the two, which is the whole reason the stored path needs no decoder of
+ * its own.
  *
  * `decode()` is preferred where the platform offers it because it reports a
  * failure as a rejection; the load events are the same answer where it does not.
@@ -385,15 +472,30 @@ function withTimeout<T>(
  * decode resolves to `null` rather than failing the recording: a replay missing
  * one sprite is worth watching, and the operations that name it are skipped and
  * reported like any other value the player cannot reproduce.
+ *
+ * `resolveStored` is where an entry that keeps its bytes beside the recording gets
+ * them from, by the file name it carries. Such an entry is one more FETCH inside
+ * this same barrier, not a lazy load during a draw: every entry is still awaited
+ * here before this function resolves, and the caller does not publish the recording
+ * until it does, because `drawFrame` is synchronous and a scrub has to keep up with
+ * a dragged thumb. The visible cost is that a recording whose images are stored can
+ * hold the loading state a little longer than one carrying them inline; the
+ * alternative is a frame that draws its sprites a moment after the rest of itself.
+ *
+ * It is ignored when `decode` is given, because an injected decoder is the whole of
+ * how an entry becomes a picture.
  */
 export async function prepareRecording(
   recording: Recording,
-  decode: ImageDecoder = decodeCapturedImage,
+  decode?: ImageDecoder,
+  resolveStored?: StoredImageResolver,
 ): Promise<ReplayResources> {
+  const decodeOne: ImageDecoder =
+    decode ?? ((image) => decodeCapturedImage(image, resolveStored));
   const images = await Promise.all(
     recording.images.map(async (image) => {
       try {
-        return await decode(image);
+        return await decodeOne(image);
       } catch {
         return null;
       }

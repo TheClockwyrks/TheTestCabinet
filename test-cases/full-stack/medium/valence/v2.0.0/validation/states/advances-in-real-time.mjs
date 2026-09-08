@@ -60,6 +60,10 @@ export default function item() {
       await api.call("selectMap", map.id);
       await api.call("startScenario");
       const id = await api.call("spawnUnit", {});
+      // Posed with the raw ops rather than through a helper, so the readings this item
+      // measures from — the unit's own position on its path — are brought into agreement
+      // with the board just posed before the first of them is read.
+      await api.call("reconcile");
 
       const before = await api.snapshot();
       const unit0 =

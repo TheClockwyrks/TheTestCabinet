@@ -1,11 +1,11 @@
 // instrumentation/invalid-argument-fails-loudly — an argument outside its
 // operation's stated domain throws, and leaves the game exactly as it stood.
 //
-// THE RULE. "An argument outside the domain its operation states is invalid, and
-// the call fails loudly rather than guessing what was meant, except where an
-// operation states that it normalizes or ignores the call"
-// (`specs/instrumentation.md`, The operations). None of the five rows below states
-// any such licence, and each states its domain:
+// THE RULE. "What no operation does is refuse quietly. An argument outside the
+// domain its operation states is invalid … each one fails loudly and changes
+// nothing, rather than passing with the state exactly as it was"
+// (`specs/instrumentation.md`, The operations). Each of the five rows below states
+// its domain:
 //
 //   `setSpeed(index)`                     "Sets `sim.speed` to `index`, `0` to `3`."
 //   `setPartRotation(part, rotation)`     "Sets that part's rest rotation, `0` to `5`."

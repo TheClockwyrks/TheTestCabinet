@@ -34,9 +34,10 @@ the block.
 
 A gas pocket is drawn as ordinary band rock. Its only tell is the produced gas
 seep, a faint wisp rising from the cell. Seeps are emitted over the gas pockets
-currently on screen in round-robin turn, so every visible pocket wisps within
-`GAS_SEEP_PERIOD` (`2`) seconds and a player watching a suspect cell sees it
-breathe.
+currently on screen so that every visible pocket wisps within `GAS_SEEP_PERIOD`
+(`2`) seconds: a player watching a suspect cell sees it breathe, and a player
+hurrying past does not. How the seeps are shared among the visible pockets is
+the build's own business.
 
 ## Lava
 

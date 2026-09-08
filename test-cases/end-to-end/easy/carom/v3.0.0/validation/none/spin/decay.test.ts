@@ -25,6 +25,7 @@ import { FIELD_CX, FIELD_CY, SPIN_HALFLIFE } from "../constants";
 import {
   arrangeLiveBall,
   ball0,
+  ballOps,
   captureReplay,
   createHarness,
   TICK_HZ,
@@ -60,9 +61,10 @@ afterEach(async () => {
  * alone, so only the elapsed time acts on the spin.
  */
 async function flyFor(h: Harness, ticks: number): Promise<void> {
+  const ops = await ballOps(h);
   for (let done = 0; done < ticks; done += RECENTER_CHUNK) {
     await h.advance(Math.min(RECENTER_CHUNK, ticks - done));
-    await h.debug.setBallPosition(FIELD_CX, FIELD_CY);
+    await ops.setPosition(FIELD_CX, FIELD_CY);
   }
 }
 

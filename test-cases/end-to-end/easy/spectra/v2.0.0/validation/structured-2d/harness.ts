@@ -7,6 +7,17 @@
 // wall-clock time passes: a check asks for a number of frames and gets exactly
 // that number, at exactly the deltas its clock supplied.
 //
+// RECONCILING AFTER A POSE. A helper here that poses anything a reading derives
+// from ends with `reconcile`, so a check that poses through these helpers never
+// calls it itself. Spectra's derived readings are `isChallenge`, the four
+// stage-scaled figures, `dischargeReady`, `inversionActive`, `ship.alive`, every
+// `effectiveBand`, a Flux's `shimmer` and a burst's `particles` — so `startPosed`
+// and the drone and bullet poses carry the call. A check that poses with
+// `h.debug.set...` DIRECTLY, outside these helpers, calls `reconcile` once itself
+// before its first read or sweep. It costs no simulation time, so it never moves
+// a measurement that begins at a posed rest state, which is exactly what stepping
+// a frame to refresh a reading would do.
+//
 // WHAT IS HERE AND WHAT IS NOT. The machinery of that paragraph — the engine
 // lifecycle, the debug surface and the stand-in for a missing one, the driven
 // frame, the sweep, the key and pointer events, the cue stamping, the transport
@@ -1196,6 +1207,11 @@ export function startPosed(h: Harness): void {
   h.debug.setExtraLifeAwarded(false);
   h.debug.setChallengeHits(0);
   h.debug.setDiveClock(0);
+
+  // The stage, the resonance, the inversion, the phase and the ship's band are
+  // all posed above, and the derived figures follow every one of them, so the
+  // readings are brought into agreement before anything reads them back.
+  h.debug.reconcile();
 }
 
 /**
@@ -1375,6 +1391,9 @@ export function poseDrone(
   h.debug.setDroneTravel(id, pose.travel ?? false);
   h.debug.setDroneOscillation(id, pose.oscillation ?? false);
   h.debug.setDroneFire(id, pose.fire ?? false);
+  // The band, the shell and the band clock posed above are what a drone's
+  // `effectiveBand` and its `shimmer` follow.
+  h.debug.reconcile();
   return id;
 }
 
@@ -1418,6 +1437,8 @@ export function posePlayerBullet(
   band: Band,
 ): number {
   h.debug.addPlayerBullet(x, y, band);
+  // A bullet's `effectiveBand` follows the band it was placed with.
+  h.debug.reconcile();
   return lastBulletId(
     h,
     `addPlayerBullet(${x}, ${y}, ${JSON.stringify(band)})`,
@@ -1432,6 +1453,8 @@ export function poseEnemyBullet(
   band: Band,
 ): number {
   h.debug.addEnemyBullet(x, y, band);
+  // A bullet's `effectiveBand` follows the band it was placed with.
+  h.debug.reconcile();
   return lastBulletId(h, `addEnemyBullet(${x}, ${y}, ${JSON.stringify(band)})`);
 }
 

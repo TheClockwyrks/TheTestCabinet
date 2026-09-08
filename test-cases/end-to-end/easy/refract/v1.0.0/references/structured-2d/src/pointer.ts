@@ -21,7 +21,7 @@ import { confirmItem, goBack } from "./flow";
 import type { PointerDevice, RefractState } from "./game";
 import { boardIndexOf, menuIndexOf, targetAt } from "./layout";
 import {
-  clearBeams,
+  tryClearBeams,
   noEvents,
   pointerDown as tracePress,
   pointerMove as traceMove,
@@ -51,7 +51,7 @@ function take(state: RefractState, id: string): TraceEvents {
     return events;
   }
   if (id === "clear") {
-    events.cleared = clearBeams(state);
+    events.cleared = tryClearBeams(state);
     return events;
   }
   const menu = menuIndexOf(id);

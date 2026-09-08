@@ -184,9 +184,14 @@ it("holds a stage-ten Flux's band for fluxHold(10) before the shimmer", async ()
   );
 
   // The boundary itself, posed either side of the stated hold and read back. No
-  // frame is driven between the pose and the reading: `shimmer` is derived at the
-  // call from the clock this sets.
+  // FRAME is driven between the pose and the reading — that would carry the clock
+  // past the boundary this is measuring — so `reconcile` is what brings `shimmer`
+  // into agreement with the clock just posed. A build that derives `shimmer` at
+  // the read has nothing to do there; one that keeps it as a stored flag rewrites
+  // it, and either way the reading answers for the clock this set
+  // (`specs/instrumentation.md`).
   await harness.debug.setDroneBandClock(flux, HOLD - PROBE_EPSILON);
+  await harness.debug.reconcile();
   assertEqual(
     requireDrone(await harness.snapshot(), flux).shimmer,
     false,
@@ -195,6 +200,7 @@ it("holds a stage-ten Flux's band for fluxHold(10) before the shimmer", async ()
       `= ${HOLD} s (specs/stages.md, specs/instrumentation.md)`,
   );
   await harness.debug.setDroneBandClock(flux, HOLD + PROBE_EPSILON);
+  await harness.debug.reconcile();
   assertTrue(
     requireDrone(await harness.snapshot(), flux).shimmer,
     `a stage-${STAGE} Flux shimmering with its band clock past ` +

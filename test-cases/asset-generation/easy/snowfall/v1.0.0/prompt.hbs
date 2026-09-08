@@ -10,13 +10,13 @@ screen-space** effect (width and height only, no depth).
 ## How the tool works
 
 You do **not** place individual particles. You **author a system** — emitters,
-forces, and per-particle curves — that the review UI and a game **simulate live**,
-the way a real particle editor (Niagara, VFX Graph) plays a system. The only way to
-shape the effect is the `particle-2d` binary already on your `PATH`. It is the sole
-channel: you build the system by calling it **one operation at a time**, and the
-ordered list of operations you issue — recorded to `actions.json` — is the
-**authoritative output that is scored**, together with the system it emits. Anything
-produced any other way is discarded.
+forces, and per-particle curves — that a game, or any viewer that plays it,
+**simulates live** the way a real particle editor (Niagara, VFX Graph) plays a
+system. The only way to shape the effect is the `particle-2d` binary already on
+your `PATH`. It is the sole channel: you build the system by calling it **one
+operation at a time**, and the ordered list of operations you issue — recorded
+to `actions.json` — is the **authoritative output that is scored**, together
+with the system it emits. Anything produced any other way is discarded.
 
 Each operation is an ordinary subcommand with flags. Run `particle-2d --help` to
 list every operation and `particle-2d <operation> --help` for one operation's exact

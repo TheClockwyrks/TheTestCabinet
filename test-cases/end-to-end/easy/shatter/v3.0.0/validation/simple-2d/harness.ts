@@ -7,6 +7,16 @@
 // wall-clock time passes: a check asks for a number of ticks and gets exactly
 // that number.
 //
+// RECONCILING AFTER A POSE. A helper here that poses anything a reading derives
+// from ends with `reconcile`, so a check that poses through these helpers never
+// calls it itself. Shatter's derived readings are the ship's `speed`, each rock's
+// `radius` and, on `warhead`, `torpedoReady` — so `startPlaying` and `poseRock`
+// carry the call and the helpers that only add a bullet, a saucer or a torpedo do
+// not. A check that poses with `h.debug.set...` DIRECTLY, outside these helpers,
+// calls `reconcile` once itself before its first read or sweep. It costs no
+// simulation time, so it never moves a measurement that begins at a posed rest
+// state, which is exactly what stepping a frame to refresh a reading would do.
+//
 // WHAT COMES FROM `@clockwyrks/case-harness`, which the runner stages beside
 // this project at `validation/case-harness/`: the key event, the surface metrics
 // an engine takes its measurements through, the READ of the debug surface and the
@@ -1636,6 +1646,9 @@ export function startPlaying(h: Harness): void {
   h.debug.setShipInvuln(0);
   h.debug.setFireCooldown(0);
   h.debug.setTorpedoCharge?.(1);
+  // The ship's `speed` follows the velocity this posed and `torpedoReady` follows
+  // the charge, so the readings are brought into agreement before anything reads.
+  h.debug.reconcile();
 }
 
 /**
@@ -1656,6 +1669,8 @@ export function poseRock(
   h.debug.addRock(size, x, y);
   const { id } = lastRock(h.snapshot());
   if (vx !== 0 || vy !== 0) h.debug.setRockVelocity(id, vx, vy);
+  // The rock's `radius` follows the size this just added.
+  h.debug.reconcile();
   return id;
 }
 

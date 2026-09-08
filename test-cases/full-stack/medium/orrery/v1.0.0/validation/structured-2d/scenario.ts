@@ -3,7 +3,7 @@
 //
 // COMPOUND OPERATIONS BELONG TO THE VALIDATORS, NOT TO THE DEBUG SURFACE
 // (`guides/authoring/writing-debug-apis-and-validators.md`). `specs/instrumentation.md`
-// carries fifty-one operations and every one of them sets ONE thing; arranging
+// carries fifty-three operations and every one of them sets ONE thing; arranging
 // several of them — opening a run on a posed challenge, clearing the field down to
 // one mote, dragging a part out of the tray — is a sequence, and a sequence lives
 // here where every check shares it.
@@ -15,6 +15,18 @@
 // that wants the completion switch left ON calls {@link openRun} instead, and one
 // that wants the challenge's own machine left standing calls
 // {@link openChallengeDocument} and starts the run itself.
+//
+// A HELPER THAT POSES ANYTHING A READING DERIVES FROM RECONCILES BEFORE IT
+// RETURNS. `specs/instrumentation.md` lets a build work the cost, the period, a
+// mote's drawn position, the banked area and each mode's counts out at the read
+// OR keep any of them as a stored copy, and `reconcile()` is what brings a stored
+// copy back into agreement with a world that has just been posed. So every helper
+// below that writes parts, tapes, motes, grips or live poses ends with the call,
+// and a check reaching its scenario through the helpers never makes it itself. A
+// check that poses with `h.debug.set…` directly calls `reconcile()` once before
+// its first read or sweep. A helper that writes only state nothing is derived from
+// — a pause, a speed step, the completion switch — does not, and neither do the
+// pointer and action helpers, which drive the build's own input path.
 //
 // EVERY HELPER IS WRITTEN AGAINST {@link Driven}, WHICH IS A SLICE OF A HARNESS
 // RATHER THAN A HARNESS. That is what lets one file serve all three projects: each
@@ -462,6 +474,7 @@ export async function openChallenge(
   index: number,
 ): Promise<void> {
   await h.debug.openChallenge(mode, index);
+  await h.debug.reconcile();
   await h.advance(1);
 }
 
@@ -477,6 +490,7 @@ export async function openChallengeDocument(
   document: Challenge,
 ): Promise<void> {
   await h.debug.loadChallenge(document);
+  await h.debug.reconcile();
   await h.advance(1);
 }
 
@@ -486,6 +500,7 @@ export async function loadMachine(
   document: Solution,
 ): Promise<void> {
   await h.debug.loadSolution(document);
+  await h.debug.reconcile();
 }
 
 /* -------------------------------------------------------------------------- */
@@ -542,6 +557,7 @@ export async function openBareRun(
   await h.debug.clearMotes();
   if (options.speed !== undefined) await h.debug.setSpeed(options.speed);
   if (options.paused === true) await h.debug.setPaused(true);
+  await h.debug.reconcile();
 }
 
 /**
@@ -562,6 +578,7 @@ export async function openRun(h: Driven, options: RunOptions): Promise<void> {
   await h.debug.startRun();
   if (options.speed !== undefined) await h.debug.setSpeed(options.speed);
   if (options.paused === true) await h.debug.setPaused(true);
+  await h.debug.reconcile();
 }
 
 /**
@@ -577,6 +594,7 @@ export async function clearWorld(h: Driven): Promise<void> {
   await h.debug.clearMachine();
   const snapshot = await h.snapshot();
   if (snapshot.sim !== null) await h.debug.clearMotes();
+  await h.debug.reconcile();
 }
 
 /* -------------------------------------------------------------------------- */
@@ -598,6 +616,7 @@ export async function placePart(
   rotation = 0,
 ): Promise<number> {
   await h.debug.placePart(kind, hex.q, hex.r, rotation);
+  await h.debug.reconcile();
   return newPartId(await h.snapshot(), `placePart(${kind})`);
 }
 
@@ -609,6 +628,7 @@ export async function placeRise(
   rotation = 0,
 ): Promise<number> {
   await h.debug.placeRise(index, hex.q, hex.r, rotation);
+  await h.debug.reconcile();
   return newPartId(await h.snapshot(), `placeRise(${index})`);
 }
 
@@ -620,6 +640,7 @@ export async function placeSet(
   rotation = 0,
 ): Promise<number> {
   await h.debug.placeSet(index, hex.q, hex.r, rotation);
+  await h.debug.reconcile();
   return newPartId(await h.snapshot(), `placeSet(${index})`);
 }
 
@@ -641,11 +662,13 @@ export async function placeTrack(
     throw new Error("Orrery: placeTrack needs at least one cell, got none");
   }
   await h.debug.placeTrack(first.q, first.r);
+  await h.debug.reconcile();
   const id = newPartId(await h.snapshot(), "placeTrack");
   for (const cell of cells.slice(1)) {
     await h.debug.extendTrack(id, cell.q, cell.r);
   }
   if (closed) await h.debug.closeTrack(id);
+  await h.debug.reconcile();
   return id;
 }
 
@@ -656,6 +679,7 @@ export async function spawnMote(
   type: MoteName,
 ): Promise<number> {
   await h.debug.spawnMote(hex.q, hex.r, type);
+  await h.debug.reconcile();
   return newMoteId(await h.snapshot(), `spawnMote(${type})`);
 }
 
@@ -684,6 +708,7 @@ export async function spawnConstellation(
     }
     await h.debug.linkMotes(a, b, edge.weight ?? 1);
   }
+  await h.debug.reconcile();
   return ids;
 }
 
@@ -696,6 +721,7 @@ export async function writeTape(
   for (const [col, cell] of cells.entries()) {
     await h.debug.setTapeCell(part, col, cell);
   }
+  await h.debug.reconcile();
 }
 
 /** The id of the part placed last, or a thrown error naming the call that failed. */
@@ -749,6 +775,7 @@ export async function holdMotion(h: Driven, part: number): Promise<void> {
   for (let col = 0; col < cells; col += 1) {
     await h.debug.setTapeCell(part, col, null);
   }
+  await h.debug.reconcile();
 }
 
 /**
@@ -758,13 +785,14 @@ export async function holdMotion(h: Driven, part: number): Promise<void> {
  * what a HELD constellation does under a motion poses the hold directly and never
  * runs the cycle that would have taken it.
  */
-export function takeGrip(
+export async function takeGrip(
   h: Driven,
   part: number,
   spoke: number,
   mote: number,
 ): Promise<void> {
-  return h.debug.setGrip(part, spoke, mote);
+  await h.debug.setGrip(part, spoke, mote);
+  await h.debug.reconcile();
 }
 
 /**
@@ -772,12 +800,13 @@ export function takeGrip(
  *
  * "`releaseGrip`, and leaving `grab` off the tape."
  */
-export function holdGrip(
+export async function holdGrip(
   h: Driven,
   part: number,
   spoke: number,
 ): Promise<void> {
-  return h.debug.releaseGrip(part, spoke);
+  await h.debug.releaseGrip(part, spoke);
+  await h.debug.reconcile();
 }
 
 /**
@@ -801,6 +830,7 @@ export async function posePart(
   if (pose.cell !== undefined) {
     await h.debug.setPoseCell(part, pose.cell.q, pose.cell.r);
   }
+  await h.debug.reconcile();
 }
 
 /**
@@ -815,6 +845,7 @@ export async function clearFixtures(h: Driven, wheel: number): Promise<void> {
   for (const mote of snapshot.sim?.motes ?? []) {
     if (mote.wheel === wheel) await h.debug.removeMote(mote.id);
   }
+  await h.debug.reconcile();
 }
 
 /** Hold the run's clock still: `setPaused(true)`. */

@@ -1,12 +1,11 @@
 // instrumentation/show-check-leaves-the-result-showing — the pose computes the
-// static check and leaves it showing.
+// static check and leaves it showing, from wherever it is called.
 //
-// `specs/instrumentation.md` § The run and the screens: "`showCheck` Poses the
-// `check` action: computes the static check and leaves it showing on the build
-// screen, exactly as the action does (`specs/structure.md`)." The snapshot's
-// own note says what "showing" means: "`checkResult` is the result the build
-// screen is currently showing, exactly as the `check` action or the `showCheck`
-// pose left it. The `check` reading never sets it."
+// `specs/instrumentation.md` § The run and the screens: "`showCheck` computes
+// the check and leaves it showing wherever it is called." The snapshot's own
+// note says what "showing" means: "`checkResult` is the check result currently
+// standing, exactly as the `check` action or the `showCheck` pose left it, and
+// it is what the build screen draws. The `check` reading never sets it."
 //
 // SO THE POSE IS CHECKED THE WAY EVERY OTHER ONE IS — set a value and read it
 // back. `checkResult` reads `null` on a site just opened, `showCheck` is
@@ -19,9 +18,13 @@
 // empty member lists would pass for a build that answered an empty result to
 // everything.
 //
-// The screen restriction is its own half: the pose "applies on the build
-// screen, where the `check` action does, and does nothing on any other", so it
-// is called once on `title` first and `checkResult` is read as still `null`.
+// THE SCREEN IS THE OTHER HALF, and it is asserted the other way round from
+// what a player sees. "No operation asks which screen is showing … so an
+// operation acts from wherever the game stands", so the pose is made once on
+// `title` and the result it left there is the same result. Whether a PLAYER can
+// run the check off the build screen is the key route's question, and
+// `controls/check-key` and `controls/check-does-nothing-on-the-run-screen`
+// decide it by pressing the key.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -52,7 +55,7 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("leaves the check the action would show on the build screen", async () => {
+it("leaves the check the action would show, from wherever it is called", async () => {
   await openSite(h, SITE);
   await emptyYard(h);
   await poseCrane(h, MINIMAL_CRANE);
@@ -63,14 +66,11 @@ it("leaves the check the action would show on the build screen", async () => {
       "(specs/state.md)",
   );
 
-  // Off the build screen the pose does nothing, whatever the structure.
+  // The screen is how a player reaches the `check` action and is not the
+  // operation's condition, so the pose is made off the build screen first.
   await h.debug.setScreen("title");
   await h.debug.showCheck();
-  assertNull(
-    (await h.snapshot()).checkResult,
-    "the check result after showCheck on the title screen, where the `check` " +
-      "action does not apply (specs/instrumentation.md)",
-  );
+  const offTheBuildScreen = (await h.snapshot()).checkResult;
 
   await h.debug.setScreen("build");
   await h.debug.showCheck();
@@ -96,5 +96,11 @@ it("leaves the check the action would show on the build screen", async () => {
     reading,
     "the shown result against what the `check` reading reports at the same " +
       "structure: showCheck poses the action exactly (specs/instrumentation.md)",
+  );
+  assertDeepEqual(
+    offTheBuildScreen,
+    reading,
+    "the result showCheck left when it was called on the title screen: the " +
+      "operation acts from wherever the game stands (specs/instrumentation.md)",
   );
 });

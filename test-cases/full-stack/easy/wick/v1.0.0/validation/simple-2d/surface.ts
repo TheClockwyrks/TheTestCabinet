@@ -76,6 +76,7 @@ export type ChestResult =
 export const REQUIRED_OPS = [
   "reset",
   "snapshot",
+  "reconcile",
   "setScreen",
   "choose",
   "menuRects",
@@ -387,6 +388,15 @@ export interface WickDebugApi<S = unknown> {
   reset(state: DeepReadonly<S>): S;
   /** A pure reading of `state`. Poses nothing. */
   snapshot(state: DeepReadonly<S>): WickSnapshot;
+  /**
+   * The next state, with every reported reading in agreement with the run it
+   * describes and nothing advanced. The build's derived readings — `time`,
+   * `xpToNext`, `maxHp`, `armor`, `moveSpeed`, `pickupRadius`, `spawnWindow`,
+   * `aliveCommons`, and `pool` — answer for the run as posed after it. A build
+   * that works them out at the call returns a state equal to the one it was
+   * given.
+   */
+  reconcile(state: DeepReadonly<S>): S;
   /**
    * The current screen's vertical menu, in menu order, and an empty list on
    * `howto`, `playing`, and `chest`. On `almanac` these are the visible entry

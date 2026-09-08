@@ -240,16 +240,31 @@ export function fillPlankton(state: FathomState): void {
  * taken again from what is left.
  */
 export function pruneBuriedPlankton(state: FathomState): void {
-  let remaining = 0;
   for (let row = 0; row < GRID_ROWS; row += 1) {
     for (let col = 0; col < GRID_COLS; col += 1) {
       const key = tileKey(col, row);
       if (!state.plankton[key]) continue;
-      if (state.maze.isCorridor(col, row)) remaining += 1;
-      else state.plankton[key] = false;
+      if (!state.maze.isCorridor(col, row)) state.plankton[key] = false;
     }
   }
-  state.planktonRemaining = remaining;
+  state.planktonRemaining = countPlankton(state);
+}
+
+/**
+ * How many plankton the layer carries (`specs/state.md`).
+ *
+ * The one place the count comes from: the prune above finishes with it, and the
+ * surface's `reconcile` brings the reported `planktonRemaining` back into
+ * agreement through the same call, so the two can never say different things.
+ */
+export function countPlankton(state: FathomState): number {
+  let remaining = 0;
+  for (let row = 0; row < GRID_ROWS; row += 1) {
+    for (let col = 0; col < GRID_COLS; col += 1) {
+      if (state.plankton[tileKey(col, row)]) remaining += 1;
+    }
+  }
+  return remaining;
 }
 
 /**

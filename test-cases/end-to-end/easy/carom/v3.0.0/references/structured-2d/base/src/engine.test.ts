@@ -1221,6 +1221,33 @@ describe("the debug surface", () => {
     expect(snapshot.ball?.y).toBe(300);
   });
 
+  // `reconcile` is required of every build. This one works every derived reading
+  // out at the read, so the call has nothing to rewrite — which is exactly what
+  // these two assert: the readings agree with the pose, and nothing moved.
+  it("re-derives a reading from a posed velocity", () => {
+    openCountdown(harness, "versus");
+    harness.debug.setBallVelocity(30, 40);
+    harness.debug.reconcile();
+    expect(harness.snapshot().ball?.speed).toBeCloseTo(50, 10);
+  });
+
+  it("advances nothing", () => {
+    openCountdown(harness, "versus");
+    harness.debug.setBallPosition(400, 300);
+    harness.debug.setBallVelocity(250, -120);
+    harness.debug.setPaddleCy("left", 240);
+    harness.debug.setBallHoldTimer(0.4);
+
+    const before = harness.snapshot();
+    harness.debug.reconcile();
+    const once = harness.snapshot();
+    harness.debug.reconcile();
+    const twice = harness.snapshot();
+
+    expect(once).toEqual(before);
+    expect(twice).toEqual(once);
+  });
+
   it("empties the field and spawns the entities back", async () => {
     openCountdown(harness, "versus");
 
@@ -1231,8 +1258,14 @@ describe("the debug surface", () => {
     // The paddles stay: no operation removes them.
     expect(snapshot.paddles.left.cy).toBe(FIELD_CY);
 
-    // An absent ball takes no part in a frame, and a pose on it does nothing.
-    harness.debug.setBallPosition(200, 200);
+    // An absent ball takes no part in a frame, and is no ball to pose: a surface
+    // that quietly did nothing would let a caller read its own pose back off a
+    // field that never took it, so the operation fails where it can be seen.
+    expect(() => harness.debug.setBallPosition(200, 200)).toThrow();
+    expect(() => harness.debug.setBallVelocity(1, 2)).toThrow();
+    expect(() => harness.debug.setBallSpin(3)).toThrow();
+    expect(() => harness.debug.setBallHeld(false)).toThrow();
+    expect(() => harness.debug.setBallHoldTimer(0)).toThrow();
     await harness.engine.advance(30);
     expect(harness.snapshot().ball).toBeNull();
     expect(harness.snapshot().screen).toBe("countdown");

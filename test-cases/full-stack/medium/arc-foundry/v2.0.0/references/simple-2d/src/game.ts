@@ -45,13 +45,13 @@ import {
   advance,
   cancelHeld,
   combineRecipeSelected,
-  combineSelected,
+  tryCombine,
   createWorld,
   cycleSpeed,
   cycleTargetingSelected,
   downgradeSelected,
   keepSelected,
-  placeStamp,
+  tryPlaceStamp,
   pullPress,
   removeSelected,
   select,
@@ -66,7 +66,7 @@ import {
   startRun,
   togglePause,
   upgradeComboSelected,
-  upgradeQuality,
+  tryUpgradeQuality,
 } from "./sim";
 import { COL } from "./theme";
 import { thaw, type FoundryView } from "./world";
@@ -172,7 +172,7 @@ function activate(
       downgradeSelected(w);
       break;
     case "combine":
-      combineSelected(w);
+      tryCombine(w);
       break;
     case "combine-special":
       if (payload) combineRecipeSelected(w, payload as ComboId);
@@ -180,7 +180,7 @@ function activate(
     case "refine":
       // The panel's refinement control is the press's own: it refines whatever is
       // selected and never touches a combination tower's level (specs/hud.md).
-      upgradeQuality(w);
+      tryUpgradeQuality(w);
       break;
     case "upgrade": {
       // The `upgrade` ACTION raises the selected combination tower's level, and refines
@@ -188,7 +188,7 @@ function activate(
       // is the keyboard's one binding for both; the panel's control is `refine`.
       const sel = selected(w);
       if (sel && sel.kind === "component" && sel.combo) upgradeComboSelected(w);
-      else upgradeQuality(w);
+      else tryUpgradeQuality(w);
       break;
     }
     case "targeting":
@@ -406,7 +406,7 @@ function handlePress(
   if (x >= YARD_RIGHT || y <= BOARD_Y || y > STAGE_H || x < BOARD_X) return;
   if (w.holding) {
     const at = boardOf(w.mapId).pixelToAnchor(x, y);
-    placeStamp(w, at.col, at.row);
+    tryPlaceStamp(w, at.col, at.row);
   } else {
     selectAt(w, x, y, modifyHeld(api));
   }

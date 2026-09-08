@@ -348,6 +348,23 @@ export interface ValidationMedia {
    * resolved from the catalog rather than the run tree. Null when the case ships no
    * baseline for this output, or the host cannot serve case-scoped media. */
   baselineUrl: string | null;
+  /**
+   * How to reach a file the *actual* output keeps beside itself, by file name.
+   *
+   * An engine replay may carry its images in flat files next to it rather than
+   * inline (see `CapturedImage` in the replay player's `format.ts`), and those files
+   * live in the same namespace as the recording — so this is built from the same
+   * run-scoped resolver `actualUrl` is, and a host that serves one serves the other.
+   * Null when the host cannot serve run-scoped validation media at all; entries
+   * naming a stored image then report and skip, rather than drawing something else.
+   *
+   * Meaningless for a still or a clip, which carry no table of anything.
+   */
+  actualStoreUrl: ((file: string) => string | null) | null;
+  /** How to reach a file the *baseline* recording keeps beside itself, by file
+   * name — the case-scoped counterpart of {@link actualStoreUrl}, built from the
+   * same resolver `baselineUrl` is. */
+  baselineStoreUrl: ((file: string) => string | null) | null;
 }
 
 // The value each host builds and provides. `findReview` is derived by the
@@ -1215,6 +1232,19 @@ export function GalleryDataProvider({
               // rather than gated on any per-run presence flag.
               baselineUrl: validationBaselineUrl
                 ? validationBaselineUrl(run.subject, file)
+                : null,
+              // An engine replay may keep its images in flat files beside it, named
+              // the way every other media file of this run (or this case version) is
+              // named. Each side resolves them through the SAME function that
+              // produced its own URL above — run-scoped for the actual, case-scoped
+              // for the baseline — which is why a stored image needs no new endpoint
+              // and works on the static gallery as well as the live console. Bound
+              // per side rather than per file so the pair cannot cross the two.
+              actualStoreUrl: validationMediaUrl
+                ? (stored: string) => validationMediaUrl(run.id, stored)
+                : null,
+              baselineStoreUrl: validationBaselineUrl
+                ? (stored: string) => validationBaselineUrl(run.subject, stored)
                 : null,
             });
           }

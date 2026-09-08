@@ -155,8 +155,28 @@ export function openLevelUpOverlay(draft: Draft, cues: Set<CueName>): boolean {
   return true;
 }
 
-/** On `levelup`, accept the offer at `index`. */
-export function choose(
+/**
+ * Accept the offer at `index`: the transaction the choice names, run on the
+ * state as it stands. The item is applied, the queue falls by one, and either
+ * the next overlay opens or the run resumes.
+ */
+export function performChoose(
+  draft: Draft,
+  index: number,
+  cues: Set<CueName>,
+): void {
+  acceptOffer(
+    makeTickContext(draft, rngOf(draft), { ...NOTHING_HELD }, cues),
+    index,
+  );
+}
+
+/**
+ * The PLAYER's route to a choice: only the level-up overlay shows one, and only
+ * its own offers can be highlighted. The debug surface calls `performChoose`
+ * instead, because a driver is not walking this route.
+ */
+export function tryChoose(
   draft: Draft,
   index: number,
   cues: Set<CueName>,
@@ -164,10 +184,7 @@ export function choose(
   if (draft.screen !== "levelup") return false;
   if (!Number.isInteger(index)) return false;
   if (index < 0 || index >= draft.run.offers.length) return false;
-  acceptOffer(
-    makeTickContext(draft, rngOf(draft), { ...NOTHING_HELD }, cues),
-    index,
-  );
+  performChoose(draft, index, cues);
   return true;
 }
 
@@ -244,7 +261,7 @@ export function takeMenuItem(draft: Draft, cues: Set<CueName>): void {
       else toHowto(draft);
       break;
     case "levelup":
-      choose(draft, draft.menuIndex, cues);
+      tryChoose(draft, draft.menuIndex, cues);
       break;
     case "paused":
       cues.add(CUES.menuConfirm);
@@ -300,7 +317,7 @@ export function handleAction(
     case "levelup":
       if (action === "up") moveHighlight(draft, -1, cues);
       else if (action === "down") moveHighlight(draft, 1, cues);
-      else if (action === "confirm") choose(draft, draft.menuIndex, cues);
+      else if (action === "confirm") tryChoose(draft, draft.menuIndex, cues);
       break;
     case "chest":
       if (action === "confirm") closeChest(draft);

@@ -129,12 +129,12 @@ A natural read: the **falling water** runs `#a9d8f5` → `#2f6ea6` as it drops; 
 
 The `particle-3d` binary on your `PATH` is the only way to shape the effect, and
 you **author a system**, not individual particles — emitters, forces, and
-per-particle size/opacity/color curves that the review UI and the game **simulate
-live**. Build it up in sensible layers: add the falling-sheet, base-spray, and
-drifting-mist emitters (as continuous rates); set the forces (gravity, the spray's
-outward push, drag, and the mist's drift); then set each emitter's color gradient,
-opacity curve, and size curve. Keep the timeline **looping** so the effect never
-starts or ends and the loop point is invisible.
+per-particle size/opacity/color curves that the game, or any viewer that plays
+it, **simulates live**. Build it up in sensible layers: add the falling-sheet,
+base-spray, and drifting-mist emitters (as continuous rates); set the forces
+(gravity, the spray's outward push, drag, and the mist's drift); then set each
+emitter's color gradient, opacity curve, and size curve. Keep the timeline
+**looping** so the effect never starts or ends and the loop point is invisible.
 
 Rendering is **on request**: run `particle-3d render` to simulate the whole system
 over its duration, write the preview `effect.gif`, and **emit the `system.json`

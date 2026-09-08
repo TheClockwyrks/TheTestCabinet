@@ -3,9 +3,11 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  COLS,
   DIFFICULTY_TABLE,
   MELTDOWN_DEBUG_VERSION,
   MAX_LEVEL,
+  ROWS,
   SURGE_DEFS,
   TOWER_DEFS,
   TOWER_TYPES,
@@ -350,19 +352,100 @@ describe("the tower atoms", () => {
     harness.dispose();
   });
 
-  it("clamps a posed heat into the scale and spends nothing on a level", async () => {
+  it("fails loudly off the heat scale and spends nothing on a level", async () => {
     const harness = await createHarness();
     startRun(harness);
     const id = poseTower(harness, "arc", 10, 10, 0);
     harness.debug.setMoney(5);
-    harness.debug.setTowerHeat(id, 500);
-    expect(towerOf(harness, id).heat).toBe(100);
-    harness.debug.setTowerHeat(id, -20);
+    // The scale is a constant the specs fix, so it is a domain rather than a
+    // rule: a heat off it names nothing and the call fails.
+    expect(() => harness.debug.setTowerHeat(id, 500)).toThrow(RangeError);
+    expect(() => harness.debug.setTowerHeat(id, -20)).toThrow(RangeError);
     expect(towerOf(harness, id).heat).toBe(0);
     harness.debug.setTowerLevel(id, 3);
     const snapshot = harness.debug.snapshot();
     expect(snapshot.money).toBe(5);
     expect(snapshot.towers[0].spent).toBe(TOWER_DEFS.arc.cost);
+    harness.dispose();
+  });
+
+  it("fails loudly where the game has no defined state to reach", async () => {
+    const harness = await createHarness();
+    startRun(harness);
+    const id = poseTower(harness, "arc", 10, 10, 0);
+    const before = harness.debug.snapshot();
+
+    // An id no tower or unit carries names nothing.
+    expect(() => harness.debug.setTowerHeat(999, 50)).toThrow(RangeError);
+    expect(() => harness.debug.removeTower(999)).toThrow(RangeError);
+    expect(() => harness.debug.upgradeTower(999)).toThrow(RangeError);
+    expect(() => harness.debug.sellTower(999)).toThrow(RangeError);
+    expect(() => harness.debug.setUnitHp(999, 1)).toThrow(RangeError);
+    // A level outside the range the specs fix names no level.
+    expect(() => harness.debug.setTowerLevel(id, 4)).toThrow(RangeError);
+    // Nothing armed means there is no preview to move or commit.
+    harness.debug.setArmed(null);
+    expect(() => harness.debug.setPreview(4, 4)).toThrow(RangeError);
+    expect(() => harness.debug.setPreviewRotation(1)).toThrow(RangeError);
+    expect(() => harness.debug.place()).toThrow(RangeError);
+
+    // Every one of those was loud rather than quiet: the floor never moved.
+    expect(harness.debug.snapshot()).toEqual(before);
+    harness.dispose();
+  });
+
+  it("moves the preview to the anchor named, and never nudges it", async () => {
+    const harness = await createHarness();
+    startRun(harness);
+    harness.debug.setArmed("lance");
+    harness.debug.setPreview(10, 12);
+    expect(harness.debug.snapshot().build).toMatchObject({ col: 10, row: 12 });
+    // A footprint hanging off the far edge lands where it was asked for and is
+    // reported invalid; it is not slid back onto the grid.
+    harness.debug.setPreview(COLS - 1, ROWS - 1);
+    expect(harness.debug.snapshot().build).toMatchObject({
+      col: COLS - 1,
+      row: ROWS - 1,
+      valid: false,
+    });
+    harness.dispose();
+  });
+
+  it("reconcile re-derives a reading from a posed position", async () => {
+    const harness = await createHarness();
+    startRun(harness);
+    harness.debug.addUnit("mote", "left");
+    const unitId = harness.debug.snapshot().surge[0].id;
+    harness.debug.setUnitPosition(unitId, tileCX(18), tileCY(9));
+    harness.debug.reconcile();
+    const unit = harness.debug.snapshot().surge[0];
+    expect({ col: unit.col, row: unit.row }).toEqual({ col: 18, row: 9 });
+    expect(unit.remaining).toBeGreaterThan(0);
+    harness.dispose();
+  });
+
+  it("reconcile advances nothing, and twice is once", async () => {
+    const harness = await createHarness();
+    startRun(harness);
+    const towerId = poseTower(harness, "arc", 10, 10, 0);
+    harness.debug.setTowerHeat(towerId, 40);
+    harness.debug.setTowerTripTimer(towerId, 2);
+    harness.debug.addUnit("mote", "left");
+    const unitId = harness.debug.snapshot().surge[0].id;
+    harness.debug.setUnitSlowTimer(unitId, 1.5);
+
+    const before = harness.debug.snapshot();
+    harness.debug.reconcile();
+    const once = harness.debug.snapshot();
+    harness.debug.reconcile();
+    const twice = harness.debug.snapshot();
+
+    expect(once.simTime).toBe(before.simTime);
+    expect(once.buildTimer).toBe(before.buildTimer);
+    expect(once.towers[0].tripTimer).toBe(before.towers[0].tripTimer);
+    expect(once.surge[0].slowTimer).toBe(before.surge[0].slowTimer);
+    expect(once).toEqual(before);
+    expect(twice).toEqual(once);
     harness.dispose();
   });
 

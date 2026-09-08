@@ -134,8 +134,10 @@ works in is the variant/engine pair. For each targeted pair it runs the case's
 produces every [scripted review
 item](/testing/end-to-end/manifests/#automated-validation)'s declared outputs
 from it, and writes them under the version folder's
-`validation-baseline/<engine>/<variant>/`. That directory is regenerated
-wholesale, so a renamed or removed output never lingers. The media is the
+`validation-baseline/<engine>/<variant>/`, together with the
+[shared image store](/components/core/validation/#the-shared-image-store) the
+recordings among them draw from. That directory is regenerated wholesale, so a
+renamed or removed output never lingers. The media is the
 expected-behavior half of the reviewer's side-by-side and is a fixed property of
 the case version.
 
@@ -200,11 +202,23 @@ of these is a fault the tree earned:
 - A declared check could not be reached. The similarity a reached check records
   is a signal rather than a threshold, so it never decides the exit code.
 - A declared proof-of-implementation artifact is missing.
-- A gating validator did not run against the build, or decided a verdict against
-  it. A validator recorded
-  [inconclusive](/components/core/validation/#validators) said nothing about the
-  build and leaves its point for a human, and a point an erratum excludes from
-  scoring costs nothing, so neither fails the command.
+- A gating validator decided a verdict against the build.
+- A gating validator did not run against the build, whether it failed the
+  debug-API contract or was recorded
+  [inconclusive](/components/core/validation/#validators) — a precondition that
+  went unmet, a suite that could not be run, a run the host stopped on time. This
+  is the one place the exit code deliberately parts from the run's score. Scoring
+  skips an inconclusive unit because it says nothing about the build, but
+  `validate` answers a different question: whether this tree satisfied
+  everything the case declares, and a unit that decided nothing has not been
+  satisfied. Passing it would be an all-clear from a broken host or an
+  uninstallable tree — every unit of a case once went undecided because the
+  produced tree had no `vitest` binary, and the command reported that as a pass.
+  The final line names the two apart so a host problem is not read as a build
+  problem: contract failures are listed by verdict id, and inconclusive units are
+  grouped by kind and reason, with the ids listed only when there are few and one
+  shared reason quoted once when every unit failed for it. Only a point an
+  erratum excludes from scoring costs nothing.
 - An [adversarial](/testing/adversarial/overview/) submission forfeited its
   match, which is a failure to present a playable controller. A loss or a draw is
   a result rather than a fault.

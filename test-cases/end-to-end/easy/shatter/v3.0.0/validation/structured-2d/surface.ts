@@ -239,6 +239,15 @@ export interface ShatterDebugApi {
   reset(): void;
   snapshot(): ShatterSnapshot;
   /**
+   * Brings every value the snapshot reports into agreement with the field as it
+   * stands, without advancing anything (`specs/instrumentation.md`).
+   *
+   * A build that works its derived readings out at the read has nothing to do
+   * here; a build that keeps one as a stored copy rewrites it from its source.
+   * It is what a driver calls after posing a field and before reading it back.
+   */
+  reconcile(): void;
+  /**
    * The hit region of the entry at `index` on the menu the current screen shows,
    * in logical units, with `(x, y)` its top-left corner.
    *
@@ -331,6 +340,7 @@ export const READINGS = ["snapshot", "menuItemRect"] as const;
 export const REQUIRED_OPS = [
   "reset",
   "snapshot",
+  "reconcile",
   "menuItemRect",
 
   "setScreen",

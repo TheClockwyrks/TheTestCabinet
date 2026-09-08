@@ -1523,6 +1523,17 @@ export function framesPast(seconds: number): number {
 // working the menu the way a player does and reading what the build did. Every
 // other check reaches its scenario through here instead, so a build with a
 // broken title menu fails those items rather than every item in the project.
+//
+// RECONCILING AFTER A POSE. specs/instrumentation.md's `reconcile()` brings
+// every reading the surface reports into agreement with the game as it stands,
+// without advancing anything — so a build that keeps one of the seven derived
+// fields as a stored copy (`legalSwap` above all, which follows from the whole
+// board) answers for the board and the screen the helper just posed rather than
+// for the ones before it. A helper here that writes a board, takes one out of
+// play, shows a screen, or plays a swap calls it before it returns, so a check
+// that poses through the helpers never calls it itself. A check that poses with
+// `h.debug.set…` directly and then reads calls it once, before its first read.
+//
 
 /**
  * Write a board onto the game and change NOTHING else.
@@ -1544,6 +1555,7 @@ export function framesPast(seconds: number): number {
 export function writeBoard(h: Harness, rows: BoardRows): FacetSnapshot {
   parseRows(rows);
   h.debug.loadBoard(rows);
+  h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -1571,6 +1583,7 @@ export function loadBoard(h: Harness, rows: BoardRows): FacetSnapshot {
   h.debug.loadBoard(rows);
   h.debug.setMenuIndex(0);
   h.debug.setScreen("playing");
+  h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -1614,6 +1627,7 @@ export function startRound(h: Harness): FacetSnapshot {
   h.debug.dealBoard();
   h.debug.setMenuIndex(0);
   h.debug.setScreen("playing");
+  h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -1641,6 +1655,7 @@ export function openNextLevel(h: Harness): FacetSnapshot {
   h.debug.dealBoard();
   h.debug.setMenuIndex(0);
   h.debug.setScreen("playing");
+  h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -1662,6 +1677,7 @@ export function quitToTitle(h: Harness): FacetSnapshot {
   h.debug.clearBoard();
   h.debug.setMenuIndex(0);
   h.debug.setScreen("title");
+  h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -1674,6 +1690,7 @@ export function quitToTitle(h: Harness): FacetSnapshot {
 export function openHowTo(h: Harness): FacetSnapshot {
   h.debug.setMenuIndex(0);
   h.debug.setScreen("howto");
+  h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -1686,6 +1703,7 @@ export function openHowTo(h: Harness): FacetSnapshot {
 export function pauseGame(h: Harness): FacetSnapshot {
   h.debug.setMenuIndex(0);
   h.debug.setScreen("paused");
+  h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -1698,6 +1716,7 @@ export function pauseGame(h: Harness): FacetSnapshot {
 export function resumeGame(h: Harness): FacetSnapshot {
   h.debug.setMenuIndex(0);
   h.debug.setScreen("playing");
+  h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -1725,6 +1744,7 @@ export function reachScreen(h: Harness, screen: Screen): FacetSnapshot {
     h.debug.setMenuIndex(0);
     h.debug.setScreen(screen);
   }
+  h.debug.reconcile();
   const reading = h.snapshot();
   if (reading.screen !== screen) {
     fail(`the ${screen} screen these poses ask for`, reading.screen);
@@ -1819,6 +1839,7 @@ export function poseBoardWithEscape(
  */
 export function requestSwap(h: Harness, a: CellRef, b: CellRef): FacetSnapshot {
   h.debug.requestSwap(a.col, a.row, b.col, b.row);
+  h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -2002,6 +2023,7 @@ export function releasePointer(
 ): FacetSnapshot {
   if (device === undefined) h.debug.pointerUp();
   else h.debug.pointerUp(device);
+  h.debug.reconcile();
   return h.snapshot();
 }
 

@@ -159,10 +159,10 @@ describe("spawnBall", () => {
     expect(respawned.balls[1]).toEqual(before.balls[1]);
   });
 
-  it("leaves the state alone for an index this variant does not have", () => {
+  it("fails loudly for an index this variant does not have", () => {
     const before = rally();
     for (const index of [-1, BALL_COUNT, 1.5, NaN]) {
-      expect(debug.spawnBall(before, index)).toBe(before);
+      expect(() => debug.spawnBall(before, index)).toThrow();
     }
   });
 });
@@ -181,10 +181,10 @@ describe("spawnObstacle", () => {
     expect(state.obstacles.map((o) => o.index)).toEqual([0, 1]);
   });
 
-  it("leaves the state alone for an index the field does not have", () => {
+  it("fails loudly for an index the field does not have", () => {
     const before = rally();
     for (const index of [-1, OBSTACLE_CENTERS.length, 0.5]) {
-      expect(debug.spawnObstacle(before, index)).toBe(before);
+      expect(() => debug.spawnObstacle(before, index)).toThrow();
     }
   });
 });
@@ -353,20 +353,56 @@ describe("the ball poses", () => {
     expect(debug.setBallHoldTimer(before, 2, 0).balls[2].held).toBe(true);
   });
 
-  it("does nothing at all when the ball named is absent", () => {
+  // A ball that is not there is no ball to pose. A surface that quietly handed
+  // the state back would let a caller read its own pose off a field that never
+  // took it, so every one of these fails where the caller can see it.
+  it("fails loudly when the ball named is absent", () => {
     const emptied = debug.clearWorld(rally());
-    expect(debug.setBallPosition(emptied, 0, 1, 2)).toBe(emptied);
-    expect(debug.setBallVelocity(emptied, 0, 1, 2)).toBe(emptied);
-    expect(debug.setBallSpin(emptied, 0, 1)).toBe(emptied);
-    expect(debug.setBallHeld(emptied, 0, true)).toBe(emptied);
-    expect(debug.setBallHoldTimer(emptied, 0, 1)).toBe(emptied);
+    expect(() => debug.setBallPosition(emptied, 0, 1, 2)).toThrow();
+    expect(() => debug.setBallVelocity(emptied, 0, 1, 2)).toThrow();
+    expect(() => debug.setBallSpin(emptied, 0, 1)).toThrow();
+    expect(() => debug.setBallHeld(emptied, 0, true)).toThrow();
+    expect(() => debug.setBallHoldTimer(emptied, 0, 1)).toThrow();
   });
 
-  it("does nothing for an index this variant does not have", () => {
+  it("fails loudly for an index this variant does not have", () => {
     const before = rally();
     for (const index of [-1, BALL_COUNT, 1.5, NaN]) {
-      expect(debug.setBallPosition(before, index, 1, 2)).toBe(before);
+      expect(() => debug.setBallPosition(before, index, 1, 2)).toThrow();
     }
+  });
+});
+
+// ---- Reconciling the readings -------------------------------------------
+//
+// `reconcile` is required of every build. This one works every derived reading
+// out at the read, so the call has nothing to rewrite — which is exactly what
+// these assert: the readings agree with the pose, and nothing moved.
+
+describe("reconcile", () => {
+  it("re-derives a reading from a posed velocity", () => {
+    const posed = debug.setBallVelocity(rally(), 0, 30, 40);
+    const seen = debug.snapshot(debug.reconcile(posed));
+    expect(seen.balls[0].speed).toBeCloseTo(50, 10);
+  });
+
+  it("advances nothing, and twice is once", () => {
+    const posed = debug.setBallHoldTimer(
+      debug.setPaddleCy(
+        debug.setBallVelocity(rally(), 0, 250, -120),
+        "left",
+        240,
+      ),
+      1,
+      0.4,
+    );
+
+    const before = debug.snapshot(posed);
+    const once = debug.reconcile(posed);
+    const twice = debug.reconcile(once);
+
+    expect(debug.snapshot(once)).toEqual(before);
+    expect(debug.snapshot(twice)).toEqual(before);
   });
 });
 

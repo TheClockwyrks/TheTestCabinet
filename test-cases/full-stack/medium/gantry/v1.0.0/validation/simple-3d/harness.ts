@@ -74,6 +74,16 @@
 // onto the stage. So `toLogical` is left at the identity, which is what a logical
 // stage point already is here.
 //
+// AND A POSED WORLD IS RECONCILED BEFORE IT IS READ. A build is free to work a
+// derived reading out at the read or to keep it as a stored copy, and a stored
+// copy answers for the world as it was until `reconcile` rewrites it. So a
+// helper below that poses anything a reading derives from — the structure, the
+// tape, the yard, the run — ends with `reconcile`, and a check that reaches its
+// scenario through the helpers never calls it itself. A check that poses with
+// `h.debug.*` directly calls it once before its first read. Where a helper
+// batches its calls into one crossing, `reconcile` is the batch's last entry, so
+// the crossing count does not grow.
+//
 // AND THIS FILE OWNS EVERY COMPOUND SEQUENCE. The surface is atomic by design:
 // one operation sets one field, and `specs/instrumentation.md` says so in as many
 // words ("a caller that wants several things arranged makes several calls"). So
@@ -197,6 +207,7 @@ export const REQUIRED_OPS = [
   "drawn",
   "menuItemRect",
   "reset",
+  "reconcile",
   "setScreen",
   "setMenuIndex",
   "openSite",
@@ -1817,6 +1828,7 @@ export async function offEveryMenuItem(
 export async function openSite(h: Harness, index: number): Promise<void> {
   await h.debug.openSite(index);
   await h.debug.setScreen("build");
+  await h.debug.reconcile();
 }
 
 /**
@@ -1836,6 +1848,7 @@ export async function emptyYard(h: Harness): Promise<void> {
     await h.debug.clearLoads();
     await h.debug.clearObstacles();
   });
+  await h.debug.reconcile();
 }
 
 /**
@@ -1852,6 +1865,7 @@ export async function clearAll(h: Harness): Promise<void> {
     await h.debug.clearStructure();
   });
   await onScreen(h, "program", () => h.debug.clearProgram());
+  await h.debug.reconcile();
 }
 
 /**
@@ -1895,6 +1909,7 @@ export async function poseCrane(
       await h.debug.addCounterweight(node[0], node[1], node[2]);
     }
   });
+  await h.debug.reconcile();
 
   const { structure } = await h.snapshot();
   const placed = new Set(structure.members.map((m) => edgeKey(m.a, m.b)));
@@ -1982,6 +1997,7 @@ export async function poseTape(
       }
     }
   });
+  await h.debug.reconcile();
 
   const program = (await h.snapshot()).program;
   if (program.length !== before + steps.length) {
@@ -2103,6 +2119,7 @@ export async function addOneLoad(
     await h.debug.addLoad(cls, mass, from.x, from.y, from.z, from.yaw);
     await h.debug.setLoadTarget(0, to.x, to.y, to.z, to.yaw);
   });
+  await h.debug.reconcile();
 }
 
 /** The yard holding exactly one obstacle: the box with that corner and size. */
@@ -2115,6 +2132,7 @@ export async function addOneObstacle(
     await h.debug.clearObstacles();
     await h.debug.addObstacle(min.x, min.y, min.z, size.x, size.y, size.z);
   });
+  await h.debug.reconcile();
 }
 
 /* -------------------------------------------------------------------------- */

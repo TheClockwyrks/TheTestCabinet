@@ -64,6 +64,7 @@ import { DEFAULT_FONT, DEFAULT_TEXT_ALIGN } from "./text";
 import { mediaDestination } from "./media";
 import { type Recording } from "./replay/format";
 import { thinReplay } from "./replay/retable";
+import { openImageStore } from "./replay/store";
 import {
   decodeRect,
   type EncodedRect,
@@ -2403,6 +2404,14 @@ export function watchCues<S, D>(h: Harness<S, D>): TimedCue[] {
  * the browser inflates it before the player sees it. The document inside is the
  * same one.
  *
+ * The images go BESIDE the file rather than inside it whenever the run gives them
+ * somewhere to go. `openImageStore` is asked here, once per recording, rather
+ * than once for the process: what it reads on opening is how much the run has
+ * already spent, and eight forked workers writing into one directory have no
+ * other way to see each other's bytes. Outside a run it answers `null` and every
+ * image is carried inline, which is what a recording written in a shell has
+ * always looked like.
+ *
  * Never throws. A file that cannot be written says something about the machine
  * the validators ran on, and failing the point over it would blame the build for
  * the host's problem.
@@ -2415,7 +2424,10 @@ function writeReplay(
   if (recording === null || recording.frames.length === 0) return;
   try {
     mkdirSync(dirname(destination), { recursive: true });
-    writeFileSync(destination, gzipSync(JSON.stringify(thinReplay(recording))));
+    writeFileSync(
+      destination,
+      gzipSync(JSON.stringify(thinReplay(recording, openImageStore()))),
+    );
   } catch (error) {
     console.warn(`${slug}: could not write ${destination}: ${String(error)}`);
   }

@@ -7,6 +7,16 @@
 // wall-clock time passes: a check asks for a number of frames and gets exactly
 // that number, at exactly the deltas its clock supplied.
 //
+// RECONCILING AFTER A POSE. A helper here that poses anything a reading derives
+// from ends with `reconcile`, so a check that poses through these helpers never
+// calls it itself. Shatter's derived readings are the ship's `speed`, each rock's
+// `radius` and, on `warhead`, `torpedoReady` — so `startPlaying` and `poseRock`
+// carry the call and the helpers that only add a bullet, a saucer or a torpedo do
+// not. A check that poses with `h.debug.set...` DIRECTLY, outside these helpers,
+// calls `reconcile` once itself before its first read or sweep. It costs no
+// simulation time, so it never moves a measurement that begins at a posed rest
+// state, which is exactly what stepping a frame to refresh a reading would do.
+//
 // WHAT COMES FROM `@clockwyrks/case-harness`, which the runner stages beside
 // this project at `validation/case-harness/`: the key event, the surface metrics
 // an engine takes its measurements through, the READ of the debug surface and the
@@ -1313,6 +1323,10 @@ export function startPlaying(h: Harness): void {
   // `warhead` only: a game begins with the charge full (specs/weapons.md), so a
   // scenario posed into live play begins there too.
   h.debug.setTorpedoCharge?.(1);
+
+  // The ship's `speed` follows the velocity this posed and `torpedoReady` follows
+  // the charge, so the readings are brought into agreement before anything reads.
+  h.debug.reconcile();
 }
 
 /** The ship, posed in one call. Anything omitted is left exactly as it stands. */
@@ -1343,6 +1357,8 @@ export function poseShip(h: Harness, pose: ShipPose): void {
     h.debug.setShipVelocity(pose.vx ?? ship.vx, pose.vy ?? ship.vy);
   }
   if (pose.angle !== undefined) h.debug.setShipAngle(pose.angle);
+  // The ship's `speed` follows the velocity this may have posed.
+  h.debug.reconcile();
 }
 
 /**
@@ -1371,6 +1387,8 @@ export function poseRock(
   }
   const id = rocks[rocks.length - 1].id;
   if (vx !== 0 || vy !== 0) h.debug.setRockVelocity(id, vx, vy);
+  // The rock's `radius` follows the size this just added.
+  h.debug.reconcile();
   return id;
 }
 

@@ -61,6 +61,18 @@
 // between. A frame is advanced when the check wants the game to RUN — a unit to
 // walk, a tower to fire, heat to resolve, a render to happen.
 //
+//
+// A HELPER THAT POSES ANYTHING A READING DERIVES FROM RECONCILES BEFORE IT
+// RETURNS. `specs/instrumentation.md` lets a build work a derived reading out at
+// the read or keep it as a stored copy, and `reconcile()` is what brings a
+// stored copy back into agreement — so `startRun`, `poseTower` and its three
+// variants, `poseTarget` and `poseWalker` each end with the call, because a
+// unit's `col`, `row` and `remaining`, a tower's `heatMult`, `damage` and
+// `slowFactor`, the mode's figures, both route lengths and `build.valid` all
+// follow from what those helpers write. A check that poses only through the
+// helpers therefore never calls `reconcile` itself; a check that poses with
+// `h.debug.set…` directly calls it once before its first read or sweep.
+//
 // THE HARNESS OWNS EVERY COMPOUND SEQUENCE. The surface is atomic by design:
 // each operation sets one field, so "a run open on an empty, quiet floor" is a
 // helper here rather than an operation there. A check that needs only part of a
@@ -727,6 +739,10 @@ export function startRun(
   debug.setHoverShop(null);
   debug.setArmed(null);
   debug.setSpeed(1);
+  // The mode, the difficulty, the wave and the empty floor are what the mode's
+  // figures, `nextWave`, `waveRemaining` and both route lengths follow from, so
+  // the readings are brought into agreement before the caller reads them.
+  debug.reconcile();
 }
 
 /**
@@ -752,7 +768,22 @@ export function poseTower(
       "the tower roster is empty",
     );
   }
+  // A tower blocks its footprint, so both route lengths, every unit's
+  // `remaining`, and `build.valid` all follow from it.
+  h.debug.reconcile();
   return towers[towers.length - 1].id;
+}
+
+/**
+ * Whether `type` is an emitter, which is the only kind that carries a heat of
+ * its own.
+ *
+ * `setTowerHeat` reaches an emitter's heat; a Forge and a Sink have none for it
+ * to reach, so the call fails loudly on one (specs/instrumentation.md). The
+ * scenario atoms below therefore pose a heat only where there is a heat.
+ */
+function carriesHeat(type: TowerType): boolean {
+  return TOWER_DEFS[type].kind === "emitter";
 }
 
 /**
@@ -773,7 +804,9 @@ export function poseIdleTower(
 ): number {
   const id = poseTower(h, type, col, row, rotation);
   h.debug.setTowerFiring(id, false);
-  h.debug.setTowerHeat(id, heat);
+  if (carriesHeat(type)) h.debug.setTowerHeat(id, heat);
+  // `heatMult`, `damage` and a Rime's `slowFactor` all follow from the heat.
+  h.debug.reconcile();
   return id;
 }
 
@@ -795,7 +828,9 @@ export function posePinnedTower(
 ): number {
   const id = poseTower(h, type, col, row, rotation);
   h.debug.setTowerThermal(id, false);
-  h.debug.setTowerHeat(id, heat);
+  if (carriesHeat(type)) h.debug.setTowerHeat(id, heat);
+  // `heatMult`, `damage` and a Rime's `slowFactor` all follow from the heat.
+  h.debug.reconcile();
   return id;
 }
 
@@ -824,7 +859,9 @@ export function poseTrippedTower(
   const id = poseTower(h, type, col, row, rotation);
   h.debug.setTowerTripped(id, true);
   h.debug.setTowerTripTimer(id, timer);
-  h.debug.setTowerHeat(id, heat);
+  if (carriesHeat(type)) h.debug.setTowerHeat(id, heat);
+  // `heatMult` and `damage` follow from the heat, and `firing` from the trip.
+  h.debug.reconcile();
   return id;
 }
 
@@ -861,6 +898,10 @@ export function poseTargetAt(
   h.debug.setUnitMotion(id, false);
   h.debug.setUnitMaxHp(id, hp);
   h.debug.setUnitHp(id, hp);
+  // The unit's `col`, `row` and `remaining` all follow from where it now is, so
+  // a build that keeps any of them as a stored copy rewrites it here rather than
+  // answering for the tile the unit entered at.
+  h.debug.reconcile();
   return id;
 }
 
@@ -902,6 +943,8 @@ function poseUnit(h: Harness, type: SurgeType, vent: VentName): number {
       "the surge roster is empty",
     );
   }
+  // The unit's `col`, `row` and `remaining` follow from where it entered.
+  h.debug.reconcile();
   return surge[surge.length - 1].id;
 }
 
@@ -961,6 +1004,9 @@ export function placeAt(
   h.debug.setPreview(col, row);
   const before = h.snapshot().towers.length;
   h.debug.place();
+  // A committed tower blocks its footprint, so both route lengths and every
+  // unit's `remaining` follow from it.
+  h.debug.reconcile();
   const towers = h.snapshot().towers;
   if (towers.length <= before) return null;
   return towers[towers.length - 1].id;

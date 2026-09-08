@@ -1,5 +1,6 @@
 // The state operations of specs/instrumentation.md: each pose posed and read
-// back, the domains that fail loudly, and the no-op cases the spec fixes.
+// back, and the calls that fail loudly — the domains an argument falls outside,
+// and the fields the game has no state for. No operation declines quietly.
 // Every operation is driven exactly as a caller drives it through the engine:
 // the pose is handed the current state and its return replaces it.
 
@@ -189,12 +190,12 @@ describe("the menu highlight and the interstitial timer", () => {
     expect(() => ops.setMenuIndex(TITLE_MENU.length)).toThrow();
   });
 
-  it("setMenuIndex changes nothing on a screen with no menu", () => {
+  it("setMenuIndex fails loudly on a screen with no menu", () => {
     const { ops, snapshot } = makeOps();
     for (const screen of MENU_FREE) {
       ops.setScreen(screen);
       const before = snapshot();
-      ops.setMenuIndex(1);
+      expect(() => ops.setMenuIndex(1)).toThrow();
       expect(snapshot()).toEqual(before);
     }
   });
@@ -310,14 +311,23 @@ describe("the deflector and balls", () => {
     expect(snap.balls[0].y).toBeCloseTo(at.y, 9);
   });
 
-  it("launchBall acts as Space and is a no-op without a parked ball", () => {
+  it("launchBall acts as Space, and fails loudly with nothing parked", () => {
     const { ops, snapshot } = makeOps();
     ops.setScreen("playing");
     ops.parkBall();
     ops.launchBall();
     expect(snapshot().balls[0].parked).toBe(false);
-    ops.launchBall();
+    expect(() => ops.launchBall()).toThrow();
     expect(snapshot().balls).toHaveLength(1);
+  });
+
+  it("launchBall serves from whatever screen is up", () => {
+    const { ops, snapshot } = makeOps();
+    ops.setScreen("title");
+    ops.parkBall();
+    ops.launchBall();
+    expect(snapshot().screen).toBe("title");
+    expect(snapshot().balls[0].parked).toBe(false);
   });
 
   it("clearBalls empties the field without a life loss", () => {
@@ -331,15 +341,17 @@ describe("the deflector and balls", () => {
     expect(snapshot().screen).toBe("playing");
   });
 
-  it("spawnBall appends in spawn order and stops at the cap", () => {
+  it("spawnBall appends in spawn order and fails loudly at the cap", () => {
     const { ops, snapshot } = makeOps();
     ops.setScreen("playing");
     ops.parkBall();
-    for (let i = 0; i < 7; i += 1) ops.spawnBall(600, 500, 10 * i, 0);
+    for (let i = 0; i < 5; i += 1) ops.spawnBall(600, 500, 10 * i, 0);
     const balls = snapshot().balls;
     expect(balls).toHaveLength(6);
     expect(balls[1].vx).toBe(0);
     expect(balls[5].vx).toBe(40);
+    expect(() => ops.spawnBall(600, 500, 0, 0)).toThrow();
+    expect(snapshot().balls).toHaveLength(6);
   });
 
   it("spawnBall marks the ball piercing exactly when pierce is in force", () => {
@@ -353,12 +365,12 @@ describe("the deflector and balls", () => {
     expect(snapshot().balls.map((b) => b.piercing)).toEqual([true, true]);
   });
 
-  it("parkBall parks one ball, and only one", () => {
+  it("parkBall parks one ball, and a second fails loudly", () => {
     const { ops, snapshot } = makeOps();
     ops.setScreen("playing");
     ops.clearBalls();
     ops.parkBall();
-    ops.parkBall();
+    expect(() => ops.parkBall()).toThrow();
     const balls = snapshot().balls;
     expect(balls).toHaveLength(1);
     expect(balls[0].parked).toBe(true);
@@ -499,5 +511,50 @@ describe("pods, effects, and switches", () => {
     ops.setScore(250);
     expect(() => ops.setScore(-1)).toThrow();
     expect(snapshot().score).toBe(250);
+  });
+});
+
+describe("reconcile", () => {
+  it("re-derives a stored reading from a posed field", () => {
+    const { ops, snapshot } = makeOps();
+    ops.setScreen("playing");
+    ops.clearBalls();
+    ops.setEffectTicks("pierce", 10);
+    ops.spawnBall(600, 500, 0, 0);
+    ops.reconcile();
+    expect(snapshot().balls[0].piercing).toBe(true);
+  });
+
+  it("advances nothing", () => {
+    const { ops, snapshot, tick } = makeOps();
+    ops.setScreen("playing");
+    ops.clearBalls();
+    ops.spawnBall(600, 500, 120, -40);
+    ops.setEffectTicks("widen", 30);
+    ops.setInterstitialTicks(12);
+    tick();
+
+    const before = snapshot();
+    ops.reconcile();
+    const once = snapshot();
+    ops.reconcile();
+    const twice = snapshot();
+
+    expect(once).toEqual(before);
+    expect(twice).toEqual(once);
+    expect(once.ticks).toBe(before.ticks);
+    expect(once.balls).toEqual(before.balls);
+    expect(once.rings).toEqual(before.rings);
+    expect(once.effects).toEqual(before.effects);
+    expect(once.interstitialTicks).toBe(before.interstitialTicks);
+  });
+
+  it("is legal on every screen, and sounds nothing", () => {
+    const { ops, cues } = makeOps();
+    for (const screen of SCREENS) {
+      ops.setScreen(screen);
+      expect(() => ops.reconcile()).not.toThrow();
+    }
+    expect(cues).toEqual([]);
   });
 });

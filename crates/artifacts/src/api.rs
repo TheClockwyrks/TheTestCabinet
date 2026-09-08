@@ -34,7 +34,7 @@
 //! worker's out_dir — so the per-run base-href rewrite and the path-traversal
 //! guard are identical.
 
-use std::io::Seek;
+use std::io::{Seek, Write};
 use std::sync::Arc;
 
 use axum::body::Body;
@@ -43,6 +43,7 @@ use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use bytes::{Bytes, BytesMut};
 use futures_util::StreamExt;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
@@ -73,6 +74,177 @@ use crate::store::{ArtifactStore, impl_dir};
 /// that layer only constrains extractors that buffer (`Bytes`, `String`, `Json`) and
 /// is inert against the raw `Body` this handler now takes.
 const MAX_UPLOAD_BYTES: usize = 2 * 1024 * 1024 * 1024;
+
+/// How much of a streamed archive is accumulated before a chunk is handed to the
+/// response body. Small enough that the whole pipeline stays far below the pod's
+/// ceiling, large enough that a tar of many tiny files does not send a frame per
+/// header block.
+const STREAM_CHUNK_BYTES: usize = 256 * 1024;
+
+/// How many chunks may sit between the blocking archive walk and the response.
+/// This is the back-pressure: once the buffer is full the walk blocks, so a client
+/// on a slow link slows the walk down rather than making the service hold the run
+/// tree for it.
+const STREAM_CHUNK_BUFFER: usize = 8;
+
+/// A [`std::io::Write`] that hands what is written to it to a response body, in
+/// [`STREAM_CHUNK_BYTES`] chunks, as it is written.
+///
+/// This is what lets the two whole-tree downloads — [`tree_tar`] and [`archive`] —
+/// stop building their archive in memory before answering. Both used to return a
+/// `Vec<u8>`, so the service's peak allocation was the size of the largest tree any
+/// caller asked for, and `archive` is **ungated**: one reviewer clicking Download on
+/// a heavy run was enough to take artifact serving down for every run. Prod hit that
+/// twice, as an exit 137 against the 1536Mi limit. With this the peak is
+/// `STREAM_CHUNK_BUFFER * STREAM_CHUNK_BYTES` (2 MiB) plus the gzip window,
+/// independent of tree size.
+///
+/// It is written from a `spawn_blocking` thread, so it sends with `blocking_send`.
+/// A receiver that has gone away — the client hung up mid-download — surfaces as an
+/// [`std::io::ErrorKind::BrokenPipe`] out of `write`, which aborts the tar walk
+/// instead of spending the rest of the walk building an archive nobody is reading.
+struct ChannelWriter {
+    /// The response body's end of the pipe.
+    tx: tokio::sync::mpsc::Sender<Result<Bytes, std::io::Error>>,
+    /// Bytes written but not yet large enough to be worth a frame.
+    buffer: BytesMut,
+    /// Every byte written, which for `archive` is the *compressed* total — i.e. what
+    /// actually went on the wire, which is what the served-bytes log line reports.
+    written: u64,
+    /// Whether the walk that fed this reached its end.
+    ///
+    /// Set only by [`Self::finish`] on a walk that succeeded. Anything else — an
+    /// error returned out of the walk, or a panic inside it — leaves it false, and
+    /// `Drop` then pushes an error into the body so the response is ABORTED rather
+    /// than ended. See the `Drop` impl for why nothing weaker will do.
+    complete: bool,
+}
+
+impl ChannelWriter {
+    fn new(tx: tokio::sync::mpsc::Sender<Result<Bytes, std::io::Error>>) -> Self {
+        Self {
+            tx,
+            buffer: BytesMut::with_capacity(STREAM_CHUNK_BYTES),
+            written: 0,
+            complete: false,
+        }
+    }
+
+    /// Hand one chunk to the response body, blocking while the buffer is full.
+    fn send(&self, chunk: Bytes) -> std::io::Result<()> {
+        self.tx.blocking_send(Ok(chunk)).map_err(|_| {
+            std::io::Error::new(
+                std::io::ErrorKind::BrokenPipe,
+                "the archive download was closed by the client",
+            )
+        })
+    }
+
+    /// Close the body, answering the total byte count.
+    ///
+    /// `walked` is whether the walk that fed this ran to its end. ON THE FAILURE PATH
+    /// THE TAIL IS DELIBERATELY NOT FLUSHED: by the time this is called the tar
+    /// builder has already been dropped, and `tar::Builder`'s `Drop` writes the two
+    /// zero blocks that TERMINATE an archive (a `GzEncoder`'s `Drop` likewise writes
+    /// a valid gzip trailer). Those bytes are sitting in the buffer, and sending them
+    /// would hand the client a well-formed archive that is silently missing every
+    /// file after the fault. Dropping them, and then letting `Drop` abort the body,
+    /// is what makes a partial archive read as a partial archive.
+    fn finish(mut self, walked: bool) -> u64 {
+        if walked {
+            // A flush failure here is a client that hung up; there is no one left to
+            // tell, and the aborted body below is the truthful ending anyway.
+            if Write::flush(&mut self).is_ok() {
+                self.complete = true;
+            }
+        }
+        self.written
+    }
+}
+
+impl Drop for ChannelWriter {
+    /// End an incomplete body with an ERROR rather than with a clean close.
+    ///
+    /// Simply dropping the sender ends the response body normally, and a normally
+    /// ended body is indistinguishable from a complete download: the publisher's
+    /// `tar::Archive::unpack` succeeds, `tar -tzf` exits 0, and a run gets released
+    /// with part of its tree missing and nothing said anywhere. The archive framing
+    /// cannot be relied on to carry that signal, because the tar builder and the gzip
+    /// encoder both write their terminators from `Drop` on the way out of the failing
+    /// walk. So the signal is put where nothing can complete it by accident: an error
+    /// item in the body's own stream, which makes hyper abort the chunked response
+    /// without its terminating zero-length chunk. A client sees a transport failure,
+    /// which is what a truncated download is.
+    ///
+    /// This also covers a PANIC inside the walk, which no `Result` could: unwinding
+    /// runs this the same way returning does.
+    fn drop(&mut self) {
+        if self.complete {
+            return;
+        }
+        // Best effort: a receiver that has already gone away is a client that hung
+        // up, and there is nobody left to tell.
+        let _ = self.tx.blocking_send(Err(std::io::Error::other(
+            "the archive ended before the tree had been walked",
+        )));
+    }
+}
+
+impl Write for ChannelWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.buffer.extend_from_slice(buf);
+        self.written = self.written.saturating_add(buf.len() as u64);
+        while self.buffer.len() >= STREAM_CHUNK_BYTES {
+            let chunk = self.buffer.split_to(STREAM_CHUNK_BYTES).freeze();
+            self.send(chunk)?;
+        }
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        if self.buffer.is_empty() {
+            return Ok(());
+        }
+        let chunk = self.buffer.split().freeze();
+        self.send(chunk)
+    }
+}
+
+/// Run `build` on a blocking thread, writing what it produces into a response body
+/// as it goes.
+///
+/// `what` names the download in the log line the walk emits when it ends; `id` is
+/// the run it is for. The caller must have established that the run exists *before*
+/// calling this (see [`ArtifactStore::ensure_run_tree`]): once the body is returned
+/// the status code is already committed, so a failure raised inside `build` can only
+/// be logged and the stream ended — the pre-check is what keeps the two real failure
+/// modes, an unknown run and an unsafe id, on the path that can still answer `404`
+/// or `400`.
+fn streamed_archive<F>(id: String, what: &'static str, build: F) -> Body
+where
+    F: FnOnce(&mut ChannelWriter) -> Result<(), crate::store::StoreError> + Send + 'static,
+{
+    let (tx, rx) = tokio::sync::mpsc::channel::<Result<Bytes, std::io::Error>>(STREAM_CHUNK_BUFFER);
+    tokio::task::spawn_blocking(move || {
+        let mut writer = ChannelWriter::new(tx);
+        let outcome = build(&mut writer);
+        let written = writer.finish(outcome.is_ok());
+        match outcome {
+            Ok(()) => tracing::info!(run.id = %id, bytes = written, "served {what}"),
+            // Mid-walk failures cannot change the status code any more — a file
+            // removed under the walk, or the client hanging up. Say so here, and let
+            // the ABORTED body be the client's signal: `finish` withholds the
+            // terminating blocks and the writer's `Drop` pushes an error into the
+            // stream, so a partial download cannot be mistaken for a whole one.
+            Err(err) => {
+                tracing::warn!(run.id = %id, bytes = written, error = %err, "{what} ended early")
+            }
+        }
+    });
+    Body::from_stream(futures_util::stream::unfold(rx, |mut rx| async move {
+        rx.recv().await.map(|chunk| (chunk, rx))
+    }))
+}
 
 /// The shared handler state: the backing store, the backend URL for upload auth,
 /// and the HTTP client the upload-auth call uses.
@@ -416,6 +588,15 @@ async fn list_runs(
 /// verify uses that. `200 OK` with the tar body on success; `401` for a
 /// missing/invalid token or absent publish-job-id header; `404` for a run with no
 /// stored tree.
+///
+/// The body is **streamed**: the tar is written into the response as the tree is
+/// walked, so the response is chunked and carries no `Content-Length`. That means
+/// the two failures above have to be decided before the first byte — see
+/// [`ArtifactStore::ensure_run_tree`] — and that a fault arising mid-walk cannot
+/// change the status code. Such a fault ABORTS the body instead of ending it, so the
+/// publisher sees a transport error rather than a well-formed archive with files
+/// missing from it; [`ChannelWriter`]'s `Drop` is where that is arranged and why it
+/// cannot be left to the archive's own framing.
 #[tracing::instrument(name = "artifacts.tree_tar", skip(state, headers), fields(run.id = %id), err(Debug))]
 async fn tree_tar(
     State(state): State<AppState>,
@@ -438,19 +619,30 @@ async fn tree_tar(
         })?;
     verify_publish_job_token(&state.http, &state.backend_url, publish_job_id, &token).await?;
 
-    // Building the tar is blocking (it reads many small files off the store); run it
-    // off the async runtime so a large source tree does not stall other connections.
-    // Keyed by the run id from the path, not the publish-job id the token was
-    // verified against.
+    // Ask whether the run exists *before* answering, because the answer streams: the
+    // moment the body starts the status code is spent, so a `404` for an unknown run
+    // has to be decided here. Keyed by the run id from the path, not the publish-job
+    // id the token was verified against.
     let store = state.store.clone();
-    let id_for_task = id.clone();
-    let tarball = tokio::task::spawn_blocking(move || store.read_run_tree(&id_for_task))
+    let id_for_check = id.clone();
+    tokio::task::spawn_blocking(move || store.ensure_run_tree(&id_for_check))
         .await
         .map_err(|err| ApiError::internal(format!("artifact tar task failed: {err}")))?
         .map_err(map_store_error)?;
 
-    tracing::info!(run.id = %id, bytes = tarball.len(), "served run source tree");
-    Ok(([(header::CONTENT_TYPE, "application/x-tar")], tarball).into_response())
+    // Building the tar is blocking (it reads many small files off the store); it runs
+    // off the async runtime so a large source tree does not stall other connections,
+    // and it writes into the response body as it walks rather than assembling the
+    // whole archive first — see `ChannelWriter`.
+    let store = state.store.clone();
+    let id_for_task = id.clone();
+    let body = streamed_archive(id, "run source tree", move |out| {
+        store.write_run_tree(&id_for_task, out)
+    });
+    // No `Content-Length`: the size is not known until the walk finishes, so the
+    // response is chunked. The publisher reads the body to the end, which is the only
+    // thing it needed the length for.
+    Ok(([(header::CONTENT_TYPE, "application/x-tar")], body).into_response())
 }
 
 /// `GET /runs/{id}/archive.tar.gz` — download run `{id}`'s entire stored tree as a
@@ -476,34 +668,56 @@ async fn tree_tar(
 /// an `<id>/` prefix, matching what the extract script produced. `Content-Disposition`
 /// carries the filename because the console's link is cross-origin, where the
 /// anchor's own `download` attribute is ignored by the browser.
+///
+/// The body is **streamed** — compressed into the response as the tree is walked —
+/// which is what keeps this route from setting the service's memory ceiling. It is
+/// ungated, so the size of what it is asked to build is a reviewer's choice; holding
+/// that whole is how a single Download click became an OOM kill for every run the
+/// service was serving. The cost is a chunked response with no `Content-Length`, so
+/// the browser shows an indeterminate download.
 #[tracing::instrument(name = "artifacts.archive", skip(state), fields(run.id = %id), err(Debug))]
 async fn archive(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Response, ApiError> {
-    // Building the archive is blocking (it reads and compresses the whole tree);
-    // run it off the async runtime so a large run does not stall other connections.
+    // Ask whether the run exists — and that its id is a single safe path segment —
+    // before answering, because the answer streams: once the body starts, the `404`
+    // for an unknown run and the `400` for an unsafe id can no longer be sent.
     let store = state.store.clone();
-    let id_for_task = id.clone();
-    let archive = tokio::task::spawn_blocking(move || store.read_run_archive(&id_for_task))
+    let id_for_check = id.clone();
+    tokio::task::spawn_blocking(move || store.ensure_run_tree(&id_for_check))
         .await
         .map_err(|err| ApiError::internal(format!("artifact archive task failed: {err}")))?
         .map_err(map_store_error)?;
 
-    // The id is a UUID (`read_run_archive` rejects anything that is not a single
-    // safe path segment before we get here), so it cannot break out of the quoted
-    // filename or inject a header.
+    // The id is a UUID (`ensure_run_tree` rejected anything that is not a single
+    // safe path segment just above), so it cannot break out of the quoted filename
+    // or inject a header.
     let disposition = format!("attachment; filename=\"run-{id}.tar.gz\"");
-    tracing::info!(run.id = %id, bytes = archive.len(), "served run archive");
+
+    // Building the archive is blocking (it reads and compresses the whole tree); it
+    // runs off the async runtime so a large run does not stall other connections, and
+    // it compresses into the response body as it walks rather than holding the
+    // finished archive. This route is ungated, so the size of what it is asked for is
+    // a reviewer's choice — see `ChannelWriter` for why that had to stop setting the
+    // service's peak allocation.
+    let store = state.store.clone();
+    let id_for_task = id.clone();
+    let body = streamed_archive(id, "run archive", move |out| {
+        store.write_run_archive(&id_for_task, out)
+    });
+
     // The gzip *is* the resource here, so the response carries no `Content-Encoding`:
     // declaring one would have the browser inflate the archive on the way to disk and
-    // leave a bare tar sitting under a `.tar.gz` name.
+    // leave a bare tar sitting under a `.tar.gz` name. There is no `Content-Length`
+    // either — the compressed size is not known until the walk ends — so the browser
+    // shows an indeterminate download rather than a percentage.
     Ok((
         [
             (header::CONTENT_TYPE, "application/gzip".to_string()),
             (header::CONTENT_DISPOSITION, disposition),
         ],
-        archive,
+        body,
     )
         .into_response())
 }
@@ -711,3 +925,7 @@ mod tests;
 #[cfg(test)]
 #[path = "api.spool.test.rs"]
 mod spool_tests;
+
+#[cfg(test)]
+#[path = "api.stream.test.rs"]
+mod stream_tests;

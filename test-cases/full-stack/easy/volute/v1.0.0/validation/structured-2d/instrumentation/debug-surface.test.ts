@@ -17,7 +17,7 @@
 //   "the game instance's `initialize` builds the finished surface and returns
 //    it. The engine hands that same object back from `engine.debug`"
 //   "The surface carries `version` (`VOLUTE_DEBUG_VERSION`, `1`)"
-//   the twenty-one operation headings under "The operations" — REQUIRED_OPS
+//   every operation heading under "The operations"          — REQUIRED_OPS
 //   "A pose that opens a level takes effect no later than the end of the next
 //    advanced frame"                                          — the frame after
 //   the `reset` heading's list of title-screen values
@@ -248,7 +248,7 @@ it("opens a level with startLevel, exactly as an interlude opens it", async () =
   await h.step(1);
   h.debug.setScore(500);
 
-  // "Opens `level`, a whole number clamped to `1` through `LEVEL_COUNT` (`5`)".
+  // "Opens `level`, a whole number `1` through `LEVEL_COUNT` (`5`)".
   // Level 3 rather than 1, so a build that ignores the argument fails.
   h.debug.startLevel(3);
   const opened = await h.step(1);
@@ -429,7 +429,7 @@ it("sets the pressure and the quota it is given", async () => {
   h.debug.startLevel(1);
   await h.step(1);
 
-  // "Sets the pressure to `value`, clamped to `0` through `100`." The clamp is
+  // "Sets the pressure to `value`, `0` through `100`." The game's own clamp is
   // `pressure/clamped-high` and `pressure/clamped-low`; this is the plain read
   // back, at the case's standing pressure tolerance.
   h.debug.setPressure(40);

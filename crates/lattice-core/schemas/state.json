@@ -31,7 +31,11 @@
           "type": "object"
         }
       },
-      "required": ["inputs", "output", "craft_left"],
+      "required": [
+        "inputs",
+        "output",
+        "craft_left"
+      ],
       "type": "object"
     },
     "BeltItem": {
@@ -48,7 +52,10 @@
           "type": "integer"
         }
       },
-      "required": ["pos", "item"],
+      "required": [
+        "pos",
+        "item"
+      ],
       "type": "object"
     },
     "BeltState": {
@@ -69,7 +76,10 @@
           "type": "array"
         }
       },
-      "required": ["left", "right"],
+      "required": [
+        "left",
+        "right"
+      ],
       "type": "object"
     },
     "EntityState": {
@@ -82,7 +92,9 @@
               "$ref": "#/$defs/BeltState"
             }
           },
-          "required": ["belt"],
+          "required": [
+            "belt"
+          ],
           "type": "object"
         },
         {
@@ -92,7 +104,9 @@
               "$ref": "#/$defs/SplitterState"
             }
           },
-          "required": ["splitter"],
+          "required": [
+            "splitter"
+          ],
           "type": "object"
         },
         {
@@ -102,7 +116,9 @@
               "$ref": "#/$defs/InserterState"
             }
           },
-          "required": ["inserter"],
+          "required": [
+            "inserter"
+          ],
           "type": "object"
         },
         {
@@ -112,7 +128,9 @@
               "$ref": "#/$defs/AssemblerState"
             }
           },
-          "required": ["assembler"],
+          "required": [
+            "assembler"
+          ],
           "type": "object"
         },
         {
@@ -127,11 +145,15 @@
                   "type": "integer"
                 }
               },
-              "required": ["emit_phase"],
+              "required": [
+                "emit_phase"
+              ],
               "type": "object"
             }
           },
-          "required": ["source"],
+          "required": [
+            "source"
+          ],
           "type": "object"
         },
         {
@@ -141,7 +163,9 @@
               "$ref": "#/$defs/SinkState"
             }
           },
-          "required": ["sink"],
+          "required": [
+            "sink"
+          ],
           "type": "object"
         },
         {
@@ -151,7 +175,9 @@
               "$ref": "#/$defs/FurnaceState"
             }
           },
-          "required": ["furnace"],
+          "required": [
+            "furnace"
+          ],
           "type": "object"
         },
         {
@@ -162,7 +188,9 @@
               "type": "object"
             }
           },
-          "required": ["lanesplitter"],
+          "required": [
+            "lanesplitter"
+          ],
           "type": "object"
         }
       ]
@@ -198,7 +226,11 @@
           "type": "object"
         }
       },
-      "required": ["inputs", "output", "craft_left"],
+      "required": [
+        "inputs",
+        "output",
+        "craft_left"
+      ],
       "type": "object"
     },
     "InserterPhase": {
@@ -226,7 +258,10 @@
       "properties": {
         "held": {
           "description": "The held item, present only while swinging out.",
-          "type": ["string", "null"]
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "phase": {
           "$ref": "#/$defs/InserterPhase",
@@ -240,7 +275,10 @@
           "type": "integer"
         }
       },
-      "required": ["phase", "swing_left"],
+      "required": [
+        "phase",
+        "swing_left"
+      ],
       "type": "object"
     },
     "SinkState": {
@@ -256,7 +294,9 @@
           "type": "object"
         }
       },
-      "required": ["consumed"],
+      "required": [
+        "consumed"
+      ],
       "type": "object"
     },
     "Snapshot": {
@@ -280,7 +320,11 @@
           "type": "integer"
         }
       },
-      "required": ["tick", "checksum", "entities"],
+      "required": [
+        "tick",
+        "checksum",
+        "entities"
+      ],
       "type": "object"
     },
     "SplitterState": {
@@ -301,7 +345,10 @@
           "type": "integer"
         }
       },
-      "required": ["out_pref", "in_first"],
+      "required": [
+        "out_pref",
+        "in_first"
+      ],
       "type": "object"
     }
   },

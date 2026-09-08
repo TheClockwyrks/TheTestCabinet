@@ -89,16 +89,17 @@ import {
   clearMine,
   regenerateMine,
   resizeMine,
+  performSave,
   startLaunch,
-  trySave,
 } from "./flow";
 import type { BuildingBox } from "./flow";
 import { createInitialState, emptyCargo, emptyItems } from "./game";
 import type { DeepcoreState, MaterialNode, ScanResult } from "./game";
-import { buyItem, coreGround, jettisonCoreSample, useItem } from "./items";
+import { buyItem, coreGround, performJettison, performUseItem } from "./items";
 import { menuItems } from "./menus";
 import { isGrounded, minerCol, minerRow } from "./physics";
 import { fabricate, nextComponent } from "./rocket";
+import { computeScan } from "./scanner";
 import { clearSave as clearSaveSlot, hasSave } from "./save";
 import { commit, draft, setDraftTile, tileAt as gridTileAt } from "./state";
 import type { Draft } from "./state";
@@ -345,6 +346,8 @@ export interface DeepcoreDebugApi {
 
   // Restoring the world
   reset(state: Read): DeepcoreState;
+  /** Bring every reported reading into agreement with the world as it stands. */
+  reconcile(state: Read): DeepcoreState;
   generateMine(state: Read): DeepcoreState;
   clearMine(state: Read): DeepcoreState;
   clearCargo(state: Read): DeepcoreState;
@@ -725,6 +728,25 @@ export function createDebugApi(): DeepcoreDebugApi {
       });
     },
 
+    /**
+     * Bring every reported reading into agreement with the world as it stands.
+     *
+     * Nearly every derived reading this build reports — the miner's `grounded`,
+     * `col` and `row`, `depthMeters`, `overloaded`, `maxFuel`, `maxHull`,
+     * `drilling.progress`, and the cargo's `slotsUsed`, `loadKg` and
+     * `liftLimitKg` — is worked out at the read, in `snapshot` above, so there is
+     * nothing to rewrite for those. The scanner is the one reading this build
+     * keeps as a stored copy: `state.scan` is written by the update alone, so a
+     * pose of the miner, the nodes, the satchel, or the tiers leaves it answering
+     * for the world as it was. It is rewritten here from the same `computeScan`
+     * the update calls, and nothing else is touched: no clock moves, no system
+     * runs, and nothing is moved to make a reading agree.
+     */
+    reconcile: (state) =>
+      pose(state, (d) => {
+        d.scan = { ...computeScan(d.miner, d.nodes, d.satchel, d.tiers) };
+      }),
+
     generateMine: (state) => pose(state, (d) => regenerateMine(d)),
 
     clearMine: (state) => pose(state, (d) => clearMine(d)),
@@ -872,27 +894,18 @@ export function createDebugApi(): DeepcoreDebugApi {
       });
     },
 
+    // The tier's maximum is a live game value rather than a domain, so the fuel
+    // and hull poses apply what they are given and leave the game's own systems
+    // to make of it what they will (`specs/instrumentation.md`, The operations).
     setFuel(state, value) {
-      const fuel = requireRange(
-        "setFuel",
-        "value",
-        value,
-        0,
-        maxFuel(state.tiers),
-      );
+      const fuel = requireNumber("setFuel", "value", value);
       return pose(state, (d) => {
         d.miner.fuel = fuel;
       });
     },
 
     setHull(state, value) {
-      const hull = requireRange(
-        "setHull",
-        "value",
-        value,
-        0,
-        maxHull(state.tiers),
-      );
+      const hull = requireNumber("setHull", "value", value);
       return pose(state, (d) => {
         d.miner.hull = hull;
       });
@@ -1206,13 +1219,13 @@ export function createDebugApi(): DeepcoreDebugApi {
     useItem(state, item) {
       const id = requireOneOf("useItem", "item", item, ITEM_IDS);
       return pose(state, (d) => {
-        useItem(d, id);
+        performUseItem(d, id);
       });
     },
 
     jettison: (state) =>
       pose(state, (d) => {
-        jettisonCoreSample(d);
+        performJettison(d);
       }),
 
     fabricate: (state) =>
@@ -1227,7 +1240,7 @@ export function createDebugApi(): DeepcoreDebugApi {
 
     save: (state) =>
       pose(state, (d) => {
-        trySave(d);
+        performSave(d);
       }),
 
     dismissNotice: (state) =>

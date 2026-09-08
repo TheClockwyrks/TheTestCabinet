@@ -678,6 +678,22 @@ export type ResourceOp = DrawOp;
  * partially transparent pixel is quantized to eight bits twice and comes back a
  * different colour. `ImageData` is the one kind of image a check compares byte for
  * byte, so it travels byte for byte and is rebuilt with no decoder at all.
+ *
+ * Either kind carries its pixels one of two ways. An inline entry holds them
+ * itself, in `src` for a bitmap and `data` for a pixel buffer, and is what a
+ * recorder produces and what a document travelling alone carries. A stored entry
+ * names them in `store`, the flat file name of the bytes sitting beside the
+ * recording, which a writer with a directory to put them in produces instead: the
+ * bytes are written once per run under a name derived from the bytes themselves,
+ * so a sprite drawn in forty recordings is one file, it moves as PNG rather than
+ * as base64 inside a gzip that cannot compress it, and opening one replay costs
+ * the images that replay draws rather than the run's.
+ *
+ * This engine's recorder writes inline entries, since a recording it hands back is
+ * assembled in memory and has no directory to write beside. The stored forms are
+ * named here because there is one captured-image type and one player that reads
+ * it, and a player that cannot resolve a stored entry reports it and skips the
+ * operations that name it, exactly as it does an `$opaque` value.
  */
 export type CapturedImage =
   | {
@@ -691,6 +707,16 @@ export type CapturedImage =
       readonly src: string;
     }
   | {
+      /** How the value is rebuilt: as an image a context can draw. */
+      readonly kind: "bitmap";
+      /** The captured width in pixels. */
+      readonly width: number;
+      /** The captured height in pixels. */
+      readonly height: number;
+      /** The flat name of the PNG file holding the pixels, beside the recording. */
+      readonly store: string;
+    }
+  | {
       /** How the value is rebuilt: as `ImageData`. */
       readonly kind: "pixels";
       /** The captured width in pixels. */
@@ -699,6 +725,16 @@ export type CapturedImage =
       readonly height: number;
       /** The RGBA bytes, base64 encoded, four bytes per pixel in row order. */
       readonly data: string;
+    }
+  | {
+      /** How the value is rebuilt: as `ImageData`. */
+      readonly kind: "pixels";
+      /** The captured width in pixels. */
+      readonly width: number;
+      /** The captured height in pixels. */
+      readonly height: number;
+      /** The flat name of the file holding the RGBA bytes, beside the recording. */
+      readonly store: string;
     };
 
 /**

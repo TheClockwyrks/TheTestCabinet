@@ -132,6 +132,8 @@ export interface ShatterDebugApi {
 
   reset(): void;
   snapshot(): ShatterSnapshot;
+  /** Bring every reported reading into agreement with the field as it stands. */
+  reconcile(): void;
   menuItemRect(index: number): Rect | null;
 
   setScreen(screen: Screen): void;
@@ -205,12 +207,104 @@ function readBullet(bullet: BulletState): SnapshotBullet {
 export function createDebugApi(world: () => World): ShatterDebugApi {
   const read = (): ShatterState => shatterState(world());
 
+  /**
+   * One entity of a roster by id, or a caller error naming the id.
+   *
+   * AN OPERATION IS UNCONDITIONAL, so an id no live entity carries names no
+   * state to reach and throws where the caller sees it, rather than leaving the
+   * pose to return with the roster exactly as it was. A surface that swallowed
+   * it would grade a check that never addressed the entity it meant to as one
+   * that did.
+   */
+  const byId = <T extends { id: number }>(
+    op: string,
+    roster: readonly T[],
+    id: number,
+  ): T => {
+    const found = roster.find((entry) => entry.id === id);
+    if (found === undefined) {
+      throw new RangeError(`Shatter: ${op} names no live entity with id ${id}`);
+    }
+    return found;
+  };
+
+  /** The saucer on the field, or a caller error. */
+  const theSaucer = (op: string): NonNullable<ShatterState["saucer"]> => {
+    const saucer = read().saucer;
+    if (saucer === null) {
+      throw new RangeError(`Shatter: ${op} needs a saucer on the field`);
+    }
+    return saucer;
+  };
+
+  /**
+   * The finite number the caller passed, at or above `floor`.
+   *
+   * The floor is a bound `specs/instrumentation.md` fixes as a constant, so it
+   * is the argument's DOMAIN rather than an edge to snap to: a call outside it
+   * fails loudly rather than being clamped into range, which would leave the
+   * state holding a value nobody asked for.
+   */
+  const atLeast = (op: string, value: number, floor: number): number => {
+    if (!Number.isFinite(value) || value < floor) {
+      throw new RangeError(
+        `Shatter: ${op} needs a finite number at or above ${floor}, got ${String(value)}`,
+      );
+    }
+    return value;
+  };
+
+  /** The finite number the caller passed, or a caller error naming the value. */
+  const finite = (op: string, value: number): number => {
+    if (!Number.isFinite(value)) {
+      throw new RangeError(
+        `Shatter: ${op} needs a finite number, got ${String(value)}`,
+      );
+    }
+    return value;
+  };
+
+  /**
+   * The name the caller passed, if it is one of the set its row lists.
+   *
+   * A name outside the set poses an outcome no draw could decide, so it fails
+   * loudly here rather than passing quietly and leaving the field as it was.
+   */
+  const oneOf = <T extends string>(
+    op: string,
+    value: T,
+    names: readonly T[],
+  ): T => {
+    if (!names.includes(value)) {
+      throw new RangeError(
+        `Shatter: ${op} needs one of ${names.map((name) => `"${name}"`).join(", ")}, got ${String(value)}`,
+      );
+    }
+    return value;
+  };
+
   return {
     version: SHATTER_DEBUG_VERSION,
 
     reset() {
       resetState(read());
     },
+
+    /**
+     * Bring every reported reading into agreement with the field as it stands.
+     *
+     * Every derived reading this build reports — the ship's `speed` and each
+     * rock's `radius` — is worked out at the READ, in `snapshot` below, from the
+     * velocity and the size beside it. Nothing is held that a pose can leave
+     * behind, so there is nothing here to rewrite and this body is the answer
+     * rather than an omission.
+     *
+     * The operation is required of EVERY build, including one that keeps those
+     * readings as stored copies and must rewrite them from their sources here.
+     * This is what it comes to in a build that does not. It advances no clock,
+     * runs no system, fires nothing, and corrects nothing.
+     */
+    reconcile() {},
 
     // Where the build laid the entry out, which `specs/ui.md` leaves to the
     // build and a pointer check has to be told (`specs/instrumentation.md`).
@@ -291,7 +385,7 @@ export function createDebugApi(world: () => World): ShatterDebugApi {
     },
 
     setMenuIndex(index) {
-      read().menuIndex = index;
+      read().menuIndex = atLeast("setMenuIndex(index)", index, 0);
     },
 
     /**
@@ -313,7 +407,7 @@ export function createDebugApi(world: () => World): ShatterDebugApi {
     },
 
     setWaveBanner(seconds) {
-      read().waveBanner = Math.max(0, seconds);
+      read().waveBanner = atLeast("setWaveBanner(seconds)", seconds, 0);
     },
 
     setWaveSpawning(enabled) {
@@ -346,11 +440,13 @@ export function createDebugApi(world: () => World): ShatterDebugApi {
      * is decided by the game's own collision rules.
      */
     setShipInvuln(seconds) {
-      read().ship.invuln = Math.max(0, seconds);
+      read().ship.invuln = atLeast("setShipInvuln(seconds)", seconds, 0);
     },
 
     setFireCooldown(ticks) {
-      read().ship.fireCooldown = Math.max(0, Math.round(ticks));
+      read().ship.fireCooldown = Math.round(
+        atLeast("setFireCooldown(ticks)", ticks, 0),
+      );
     },
 
     /**
@@ -367,6 +463,7 @@ export function createDebugApi(world: () => World): ShatterDebugApi {
 
     removeBullet(id) {
       const state = read();
+      byId("removeBullet", state.bullets, id);
       state.bullets = state.bullets.filter((bullet) => bullet.id !== id);
     },
 
@@ -380,6 +477,7 @@ export function createDebugApi(world: () => World): ShatterDebugApi {
 
     removeEnemyBullet(id) {
       const state = read();
+      byId("removeEnemyBullet", state.enemyBullets, id);
       state.enemyBullets = state.enemyBullets.filter(
         (bullet) => bullet.id !== id,
       );
@@ -395,14 +493,14 @@ export function createDebugApi(world: () => World): ShatterDebugApi {
     },
 
     setRockVelocity(id, vx, vy) {
-      const rock = read().rocks.find((entry) => entry.id === id);
-      if (rock === undefined) return;
+      const rock = byId("setRockVelocity", read().rocks, id);
       rock.vx = vx;
       rock.vy = vy;
     },
 
     removeRock(id) {
       const state = read();
+      byId("removeRock", state.rocks, id);
       state.rocks = state.rocks.filter((rock) => rock.id !== id);
     },
 
@@ -421,8 +519,7 @@ export function createDebugApi(world: () => World): ShatterDebugApi {
     },
 
     setSaucerVelocity(vx, vy) {
-      const saucer = read().saucer;
-      if (saucer === null) return;
+      const saucer = theSaucer("setSaucerVelocity");
       saucer.vx = vx;
       saucer.vy = vy;
     },
@@ -432,24 +529,21 @@ export function createDebugApi(world: () => World): ShatterDebugApi {
     },
 
     setSaucerMind(enabled) {
-      const saucer = read().saucer;
-      if (saucer !== null) saucer.mind = enabled;
+      theSaucer("setSaucerMind").mind = enabled;
     },
 
     setSaucerGun(enabled) {
-      const saucer = read().saucer;
-      if (saucer !== null) saucer.gun = enabled;
+      theSaucer("setSaucerGun").gun = enabled;
     },
 
     /** The direction its next reroll takes from rest. */
     setSaucerWeave(direction) {
-      const saucer = read().saucer;
-      if (saucer !== null) saucer.weave = direction < 0 ? -1 : 1;
+      theSaucer("setSaucerWeave").weave = direction < 0 ? -1 : 1;
     },
 
     /** The figure the gap draw decides; the clock itself stands where it is. */
     setSaucerDue(seconds) {
-      if (Number.isFinite(seconds)) read().saucerDue = Math.max(0, seconds);
+      read().saucerDue = atLeast("setSaucerDue(seconds)", seconds, 0);
     },
 
     // ---- The posed draws -------------------------------------------------
@@ -457,31 +551,40 @@ export function createDebugApi(world: () => World): ShatterDebugApi {
     // Each sets the outcome the game's next draw of one kind would decide, and
     // the draw that takes it returns the field to `null`
     // (`specs/instrumentation.md`). A value outside what the draw could decide
-    // is ignored, so a field only ever holds an outcome the rule accepts.
+    // — a name off the edge's list, a row or aim that is not a finite number, a
+    // speed below zero — THROWS where the caller sees it, so a field only ever
+    // holds an outcome the rule accepts and no pose passes quietly.
 
     setNextSaucerEdge(edge) {
-      if (SAUCER_EDGES.includes(edge)) read().nextSaucerEdge = edge;
+      read().nextSaucerEdge = oneOf(
+        "setNextSaucerEdge(edge)",
+        edge,
+        SAUCER_EDGES,
+      );
     },
 
     setNextSaucerRow(y) {
-      if (Number.isFinite(y)) read().nextSaucerRow = y;
+      read().nextSaucerRow = finite("setNextSaucerRow(y)", y);
     },
 
     setNextSaucerAim(radians) {
-      if (Number.isFinite(radians)) read().nextSaucerAim = radians;
+      read().nextSaucerAim = finite("setNextSaucerAim(radians)", radians);
     },
 
     setNextRockSpeed(speed) {
-      if (Number.isFinite(speed) && speed >= 0) read().nextRockSpeed = speed;
+      read().nextRockSpeed = atLeast("setNextRockSpeed(speed)", speed, 0);
     },
 
     setNextRecycleEdge(edge) {
-      if (FIELD_EDGES.includes(edge)) read().nextRecycleEdge = edge;
+      read().nextRecycleEdge = oneOf(
+        "setNextRecycleEdge(edge)",
+        edge,
+        FIELD_EDGES,
+      );
     },
 
     setSaucerTravel(enabled) {
-      const saucer = read().saucer;
-      if (saucer !== null) saucer.travel = enabled;
+      theSaucer("setSaucerTravel").travel = enabled;
     },
   };
 }

@@ -41,6 +41,18 @@
 // than `debug.setHp(state, 40)`. The scenarios, the tolerances, and the
 // assertions are the same ones, because they are the case's rather than the
 // runtime's.
+//
+// RECONCILING AFTER A POSE. `specs/instrumentation.md` says what a build
+// REPORTS, not how it holds it, so a derived reading — `time`, `xpToNext`,
+// `maxHp`, `armor`, `moveSpeed`, `pickupRadius`, `spawnWindow`, `aliveCommons`,
+// `pool` — may be worked out at the read in one build and kept as a stored copy
+// in another. Both are conformant, and they part company the moment a pose
+// writes what such a reading is derived from. `reconcile()` closes that gap: it
+// brings every reported reading into agreement with the run as it stands
+// without advancing anything. A helper here that poses something a reading
+// derives from calls it before it returns, so a check that poses through the
+// helpers never calls `reconcile` itself; a check that poses with `h.debug.set…`
+// directly calls it once before its first read or sweep.
 
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -356,6 +368,15 @@ export interface WickDebugApi {
   reset(): Promise<void>;
   /** A pure read of the running game. */
   snapshot(): Promise<WickSnapshot>;
+  /**
+   * Bring every reported reading into agreement with the game as it stands,
+   * without advancing anything. The build's derived readings — `time`,
+   * `xpToNext`, `maxHp`, `armor`, `moveSpeed`, `pickupRadius`, `spawnWindow`,
+   * `aliveCommons`, and `pool` — answer for the run as posed after it. A build
+   * that works them out at the read has nothing to do and this changes
+   * nothing.
+   */
+  reconcile(): Promise<void>;
   /** Set `screen`, with every menu index at `0`; nothing else changes. */
   setScreen(name: ScreenName): Promise<void>;
   /**
@@ -1487,6 +1508,7 @@ export async function isolate(
   if (options.taper === true) await h.debug.setWeapon(0, "taper", 1);
   if (options.level !== undefined) await h.debug.setLevel(options.level);
   if (options.on !== undefined) await enable(h, ...options.on);
+  await h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -1558,6 +1580,7 @@ export async function startRun(h: Harness): Promise<WickSnapshot> {
   await h.debug.reset();
   await h.debug.setScreen("playing");
   await h.debug.setWeapon(0, "taper", 1);
+  await h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -1587,6 +1610,7 @@ export async function poseScreen(
   screen: ScreenName,
 ): Promise<WickSnapshot> {
   await h.debug.setScreen(screen);
+  await h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -1605,6 +1629,7 @@ export async function holdWeapon(
 ): Promise<number> {
   const at = slot ?? ((await h.snapshot()).run.weapons ?? []).length;
   await h.debug.setWeapon(at, id, level);
+  await h.debug.reconcile();
   return at;
 }
 
@@ -1617,6 +1642,7 @@ export async function holdPassive(
 ): Promise<number> {
   const at = slot ?? ((await h.snapshot()).run.passives ?? []).length;
   await h.debug.setPassive(at, id, level);
+  await h.debug.reconcile();
   return at;
 }
 
@@ -1700,6 +1726,7 @@ export async function placeEnemy(
 ): Promise<EnemyView> {
   const before = await h.snapshot();
   await h.debug.spawnEnemy(type, x, y);
+  await h.debug.reconcile();
   const after = await h.snapshot();
   return created(
     `an enemy of type ${type}`,

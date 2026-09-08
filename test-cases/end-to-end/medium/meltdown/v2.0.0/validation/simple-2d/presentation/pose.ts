@@ -18,6 +18,7 @@
 // wants exactly the faculty this holds.
 
 import { TRIP_TIME } from "../constants";
+import { isEmitter } from "../geometry";
 import { poseTower, type Harness } from "../harness";
 import type { TowerType } from "../surface";
 
@@ -29,6 +30,11 @@ import type { TowerType } from "../surface";
  * would add; `setTowerThermal(id, false)` holds air cooling, conduction, the
  * movers' flow and the trip (specs/instrumentation.md). Together they leave the
  * tower's heat exactly where {@link poseStillTower} put it.
+ *
+ * The heat is posed only on an emitter. A Forge and a Sink carry no heat of
+ * their own, so `setTowerHeat` has no state on one to reach and fails loudly
+ * (specs/instrumentation.md); a mover is posed still, at the `0` it reports
+ * forever.
  */
 export function poseStillTower(
   h: Harness,
@@ -41,7 +47,7 @@ export function poseStillTower(
   const id = poseTower(h, type, col, row, rotation);
   h.debug.setTowerFiring(id, false);
   h.debug.setTowerThermal(id, false);
-  h.debug.setTowerHeat(id, heat);
+  if (isEmitter(type)) h.debug.setTowerHeat(id, heat);
   return id;
 }
 

@@ -49,6 +49,7 @@ import {
   placeObstacle,
   poseObstacles,
 } from "./field";
+import type { Ball } from "./ball";
 import type { CaromGame } from "./game";
 import { menuItemRect, type MenuRect } from "./menus";
 import type { Side } from "./sim";
@@ -151,6 +152,8 @@ export interface CaromDebug {
   spawnBall(): void;
   spawnObstacle(index: number): void;
   reset(): void;
+  /** Bring every reported reading into agreement with the world as it stands. */
+  reconcile(): void;
 
   /* Screens and menus. */
   setScreen(screen: Screen): void;
@@ -198,6 +201,24 @@ export interface CaromDebug {
 export function createDebugSurface(game: CaromGame): CaromDebug {
   const world = (): World => game.engine.world;
   const state = (): CaromState => caromState(world());
+  /**
+   * The ball on the field, or a thrown error naming the operation that wanted it.
+   *
+   * An absent ball is no ball to pose. An operation that quietly did nothing
+   * would leave a caller reading its own pose back off a field that never took
+   * it, and every check driving that operation would grade a world it did not
+   * arrange — so this fails where the caller can see it
+   * (specs/instrumentation.md). `spawnBall` is how a field of one is posed.
+   */
+  const requireBall = (op: string): Ball => {
+    const ball = ballOf(world());
+    if (ball === null) {
+      throw new Error(
+        `Carom: ${op} — no ball is on the field; spawnBall places one`,
+      );
+    }
+    return ball;
+  };
 
   return {
     version: CAROM_DEBUG_VERSION,
@@ -214,9 +235,17 @@ export function createDebugSurface(game: CaromGame): CaromDebug {
       placeBall(world());
     },
 
-    /** Obstacle `index`, in the pose the current obstacle clock gives it. */
+    /**
+     * Obstacle `index`, in the pose the current obstacle clock gives it.
+     *
+     * An index outside the two this field is built with names no obstacle, so
+     * there is no state for the call to reach and it fails where the caller can
+     * see it rather than passing quietly (specs/instrumentation.md).
+     */
     spawnObstacle(index) {
-      if (!isObstacleIndex(index)) return;
+      if (!isObstacleIndex(index)) {
+        throw new RangeError(`Carom: no obstacle ${index}`);
+      }
       placeObstacle(world(), index, state().obstacleClock);
     },
 
@@ -226,6 +255,24 @@ export function createDebugSurface(game: CaromGame): CaromDebug {
      */
     reset() {
       game.reset();
+    },
+
+    /**
+     * Bring every reported reading into agreement with the world as it stands,
+     * without advancing anything.
+     *
+     * One reading here is a stored copy of something else: an obstacle's `cx`,
+     * `cy` and `theta` live on the actor's own transform and are a function of
+     * the obstacle clock alone. `poseObstacles` is the same helper
+     * `setObstacleClock` and the update call, so this re-derives them exactly as
+     * a frame would — and, unlike a frame, moves the clock not at all.
+     *
+     * The ball's `speed` is worked out at the read, in the snapshot, so it
+     * already agrees and there is nothing here for it. What this never does is
+     * advance the engine: a frame moves the very thing a pose has just placed.
+     */
+    reconcile() {
+      poseObstacles(world(), state().obstacleClock);
     },
 
     // ---- Screens and menus ----------------------------------------------
@@ -290,32 +337,29 @@ export function createDebugSurface(game: CaromGame): CaromDebug {
 
     // ---- The ball -------------------------------------------------------
     //
-    // Each sets its own field alone, and each does nothing while the ball is
-    // absent — which is what makes an absent ball genuinely absent rather than
-    // a hidden one still holding figures.
+    // Each sets its own field alone, and each reaches the value it is given
+    // whatever the game would make of it: the screen, the hold, and where the
+    // paddles are decide none of them. An absent ball is the one thing there is
+    // nothing to set, and that fails loudly through `requireBall`.
 
     setBallPosition(x, y) {
-      const ball = ballOf(world());
-      if (ball === null) return;
+      const ball = requireBall("setBallPosition");
       ball.transform.x = x;
       ball.transform.y = y;
     },
 
     setBallVelocity(vx, vy) {
-      const ball = ballOf(world());
-      if (ball === null) return;
+      const ball = requireBall("setBallVelocity");
       ball.vx = vx;
       ball.vy = vy;
     },
 
     setBallSpin(spin) {
-      const ball = ballOf(world());
-      if (ball !== null) ball.spin = spin;
+      requireBall("setBallSpin").spin = spin;
     },
 
     setBallHeld(held) {
-      const ball = ballOf(world());
-      if (ball !== null) ball.held = held;
+      requireBall("setBallHeld").held = held;
     },
 
     /**
@@ -323,20 +367,17 @@ export function createDebugSurface(game: CaromGame): CaromDebug {
      * the ball on the next advanced frame (specs/balls.md).
      */
     setBallHoldTimer(seconds) {
-      const ball = ballOf(world());
-      if (ball !== null) ball.holdTimer = seconds;
+      requireBall("setBallHoldTimer").holdTimer = seconds;
     },
 
     /** The vertical sign the ball's serve takes, `1` or `-1`. */
     setBallServeSign(sign) {
-      const ball = ballOf(world());
-      if (ball !== null) ball.serveSign = sign < 0 ? -1 : 1;
+      requireBall("setBallServeSign").serveSign = sign < 0 ? -1 : 1;
     },
 
     /** The one draw parking makes, made again on its own (specs/balls.md). */
     drawBallServeSign() {
-      const ball = ballOf(world());
-      if (ball !== null) ball.serveSign = drawServeSign();
+      requireBall("drawBallServeSign").serveSign = drawServeSign();
     },
 
     // ---- The AI opponent -------------------------------------------------

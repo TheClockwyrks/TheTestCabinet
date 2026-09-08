@@ -6,9 +6,14 @@
 // engine at the moment of the call, so the surface follows the one world the
 // game runs in. Each pose sets one thing through the same systems play uses
 // and returns nothing; each reading returns plain data built at the call. An
-// argument outside the domain its operation states throws; a call on a
-// screen the operation does not apply to leaves the state as it was; no pose
-// sounds a cue, and no pose decides an outcome.
+// An operation is UNCONDITIONAL: it applies its effect every time it is
+// called, on the world as it stands. Which screen is showing, which overlay is
+// open, and what a player would have had to do first are the player's route to
+// a thing and are not an operation's conditions, so nothing here returns early
+// with the state unchanged. An argument outside the domain its operation
+// states throws, and so does a call naming a subject the world does not hold;
+// what never happens is a quiet refusal. No pose sounds a cue, and no pose
+// decides an outcome.
 
 import type { World } from "@clockwyrks/structured-2d";
 import { reconcileActors } from "./actors";
@@ -31,7 +36,7 @@ import {
   type PickupKind,
   type WeaponId,
 } from "./constants";
-import { RUN_SCREENS, SILENT, choose, rngOf, setSwitch } from "./flow";
+import { SILENT, performChoose, rngOf, setSwitch } from "./flow";
 import { menuRects, tabRects, type WickRect } from "./menus";
 import { drawDrop, forgetHits } from "./sim/effects";
 import {
@@ -178,6 +183,8 @@ export interface WickDebugApi {
   readonly version: number;
   reset(): void;
   snapshot(): WickSnapshot;
+  /** Bring every reported reading into agreement with the world as it stands. */
+  reconcile(): void;
   menuRects(): readonly WickRect[];
   tabRects(): readonly WickRect[];
   setScreen(name: Screen): void;
@@ -423,12 +430,18 @@ export function snapshotOf(state: WickState): WickSnapshot {
 export function createDebugApi(worldOf: () => World): WickDebugApi {
   const state = (): WickState => wickState(worldOf());
   const run = (): RunState => state().run;
-  const onRunScreen = (): boolean => RUN_SCREENS.includes(state().screen);
   const settle = (): void => reconcileActors(worldOf(), state());
 
-  /** Run `apply` on a run screen; a pose sounds nothing. */
+  /**
+   * Run `apply` on the world as it stands and bring the actors back into
+   * agreement with what it left; a pose sounds nothing.
+   *
+   * There is no screen test here on purpose. The run is a field of the state on
+   * every screen, so every pose below has a defined state to reach whatever is
+   * showing, and a debug operation is the route a driver has instead of a
+   * player: it does not walk to `playing` first.
+   */
   const pose = (apply: () => void): void => {
-    if (!onRunScreen()) return;
     apply();
     settle();
   };
@@ -475,6 +488,22 @@ export function createDebugApi(worldOf: () => World): WickDebugApi {
     snapshot() {
       return snapshotOf(state());
     },
+
+    /**
+     * Bring every reported reading into agreement with the world as it stands.
+     *
+     * Every derived reading this build reports — `time`, `xpToNext`, `maxHp`,
+     * `armor`, `moveSpeed`, `pickupRadius`, `spawnWindow`, `aliveCommons`, and
+     * `pool` — is worked out at the read, in `snapshotOf`, from the run clock,
+     * the level, the passives held, the enemies on the field, and the slots as
+     * they stand, so no snapshot field is a stored copy a pose could leave
+     * behind. What this build DOES keep beside the state is the actor
+     * population the engine draws and queries from, so that is what is brought
+     * back into agreement here. It advances no clock and runs no system.
+     */
+    reconcile() {
+      settle();
+    },
     menuRects() {
       return menuRects(state());
     },
@@ -483,10 +512,18 @@ export function createDebugApi(worldOf: () => World): WickDebugApi {
     },
 
     setScreen,
+    /**
+     * Accept the offer at `index`. `levelup` showing is how a PLAYER reaches
+     * the choice, so it is no condition on this call; an index naming no offer
+     * has nothing to accept, so it throws rather than passing quietly.
+     */
     choose(index) {
-      whole(index, "index");
-      if (state().screen !== "levelup") return;
-      choose(state(), index, SILENT);
+      const at = whole(index, "index", 0);
+      const offers = run().offers;
+      if (at >= offers.length) {
+        invalid(`index ${at} names no offer; offers holds ${offers.length}`);
+      }
+      performChoose(state(), at, SILENT);
       settle();
     },
 
@@ -587,7 +624,6 @@ export function createDebugApi(worldOf: () => World): WickDebugApi {
     setHp(hp) {
       const value = real(hp, "hp");
       pose(() => {
-        if (value > maxHp(run().passives)) invalid("hp must be at most maxHp");
         run().player.hp = value;
       });
     },
@@ -627,7 +663,6 @@ export function createDebugApi(worldOf: () => World): WickDebugApi {
         if (list.includes(id)) invalid(`${id} is repeated`);
         list.push(id);
       }
-      if (!onRunScreen() && state().screen !== "levelup") return;
       run().nextOffers = list;
     },
 
@@ -731,12 +766,9 @@ export function createDebugApi(worldOf: () => World): WickDebugApi {
     },
     setEnemyHp(id, hp) {
       const value = real(hp, "hp");
+      if (value <= 0) invalid("hp must be above 0");
       pose(() => {
-        const enemy = enemyById(id);
-        if (value <= 0 || value > enemy.maxHp) {
-          invalid("hp must be above 0 and at most the enemy's maxHp");
-        }
-        enemy.hp = value;
+        enemyById(id).hp = value;
       });
     },
     setEnemyHeading(id, hx, hy) {

@@ -110,14 +110,15 @@ it thins.
 
 ## Working the tool
 
-The `particle-3d` binary on your `PATH` is the only way to shape the effect, and you
-**author a system**, not individual particles — emitters, forces, and per-particle
-size/opacity/color curves that the review UI **simulates live**. Build it up in
-sensible layers: add the flame-tongue, ember, and smoke-wisp emitters (as
-continuous-rate emitters); set the forces (upward buoyancy, a light turbulence, and
-the optional inward gather at the base); then set each emitter's color gradient,
-opacity curve, and size curve. Keep the timeline **looping** so the fire burns in
-steady state — no ignition, no dying-out, no seam at the loop point.
+The `particle-3d` binary on your `PATH` is the only way to shape the effect, and
+you **author a system**, not individual particles — emitters, forces, and
+per-particle size/opacity/color curves that a game, or any viewer that plays it,
+**simulates live**. Build it up in sensible layers: add the flame-tongue, ember,
+and smoke-wisp emitters (as continuous-rate emitters); set the forces (upward
+buoyancy, a light turbulence, and the optional inward gather at the base); then
+set each emitter's color gradient, opacity curve, and size curve. Keep the
+timeline **looping** so the fire burns in steady state — no ignition, no
+dying-out, no seam at the loop point.
 
 Rendering is **on request**: run `particle-3d render` to simulate the whole system
 over its duration, write the preview `effect.gif`, and **emit the `system.json` your

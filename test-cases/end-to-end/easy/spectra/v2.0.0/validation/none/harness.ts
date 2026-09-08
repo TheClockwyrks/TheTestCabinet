@@ -9,6 +9,17 @@
 // reaches the game the way anything reaches it: over the surface
 // `specs/instrumentation.md` told the build to install.
 //
+// RECONCILING AFTER A POSE. A helper here that poses anything a reading derives
+// from ends with `reconcile`, so a check that poses through these helpers never
+// calls it itself. Spectra's derived readings are `isChallenge`, the four
+// stage-scaled figures, `dischargeReady`, `inversionActive`, `ship.alive`, every
+// `effectiveBand`, a Flux's `shimmer` and a burst's `particles` — so `startPosed`
+// and the drone and bullet poses carry the call. A check that poses with
+// `h.debug.set...` DIRECTLY, outside these helpers, calls `reconcile` once itself
+// before its first read or sweep. It costs no simulation time, so it never moves
+// a measurement that begins at a posed rest state, which is exactly what stepping
+// a frame to refresh a reading would do.
+//
 // THE MACHINERY THAT DOES THAT IS NOT SPECTRA'S. Serving the build, connecting to
 // the one browser, opening a page per harness, injecting the draw-command
 // recorder and the audio probe, bracketing each driven frame around one
@@ -199,6 +210,7 @@ export const REQUIRED_OPS = [
   // The core.
   "reset",
   "snapshot",
+  "reconcile",
   "menuItemRect",
   // The clock (this engine alone).
   "setAutoStep",
@@ -418,6 +430,15 @@ export interface MenuRect {
 export interface SpectraDebugApi {
   reset(): Promise<void>;
   snapshot(): Promise<SpectraSnapshot>;
+  /**
+   * Brings every value the snapshot reports into agreement with the game as it
+   * stands, without advancing anything (`specs/instrumentation.md`).
+   *
+   * A build that works its derived readings out at the read has nothing to do
+   * here; a build that keeps one as a stored copy rewrites it from its source.
+   * It is what a driver calls after posing a game and before reading it back.
+   */
+  reconcile(): Promise<void>;
   menuItemRect(index: number): Promise<MenuRect | null>;
 
   setAutoStep(enabled: boolean): Promise<void>;
@@ -1935,6 +1956,11 @@ export async function startPosed(
     ["setExtraLifeAwarded", false],
     ["setChallengeHits", 0],
     ["setDiveClock", 0],
+    // LAST IN THE BATCH, so the readings agree with the game this posed before
+    // anything reads it, and the crossing count does not grow by one for it.
+    // The stage, the resonance, the inversion, the phase and the ship's band are
+    // all posed above, and the derived figures follow every one of them.
+    ["reconcile"],
   ]);
 }
 
@@ -2159,6 +2185,11 @@ function arrangeDrone(added: DroneView, spec: DroneSpec): SurfaceCall[] {
   calls.push(["setDroneTravel", id, spec.travel ?? false]);
   calls.push(["setDroneOscillation", id, spec.oscillation ?? false]);
   calls.push(["setDroneFire", id, spec.fire ?? false]);
+  // The band, the shell and the band clock posed above are what a drone's
+  // `effectiveBand` and its `shimmer` follow, so the readings are brought into
+  // agreement before the caller reads any of them back. It is the LAST entry of
+  // the batch, so a formation of forty still costs the crossings it did.
+  calls.push(["reconcile"]);
   return calls;
 }
 

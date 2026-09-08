@@ -1226,11 +1226,60 @@ describe("the debug surface", () => {
     });
   });
 
-  it("leaves the state alone when a ball operation meets an empty field", () => {
+  // An absent ball is no ball to pose. A surface that quietly handed the state
+  // back would let a caller read its own pose off a field that never took it, so
+  // every ball operation fails where the caller can see it instead.
+  it("fails loudly when a ball operation meets an empty field", () => {
     harness.apply((s) => harness.debug.clearWorld(s));
-    harness.apply((s) => harness.debug.setBallPosition(s, 10, 20));
-    harness.apply((s) => harness.debug.setBallVelocity(s, 30, 40));
+    const s0 = harness.engine.state;
+    expect(() => harness.debug.setBallPosition(s0, 10, 20)).toThrow();
+    expect(() => harness.debug.setBallVelocity(s0, 30, 40)).toThrow();
+    expect(() => harness.debug.setBallSpin(s0, 5)).toThrow();
+    expect(() => harness.debug.setBallHeld(s0, false)).toThrow();
+    expect(() => harness.debug.setBallHoldTimer(s0, 0)).toThrow();
     expect(harness.snapshot().ball).toBeNull();
+  });
+
+  it("fails loudly on an index this field has no obstacle for", () => {
+    expect(() =>
+      harness.debug.spawnObstacle(harness.engine.state, 5),
+    ).toThrow();
+  });
+
+  // `reconcile` re-derives what this build stores: an obstacle's pose is a
+  // function of the obstacle clock alone. Posing the clock without the re-pose
+  // `setObstacleClock` does as it writes is what leaves a stale pose for the
+  // call to answer for.
+  it("re-derives a stored obstacle pose from the posed clock", () => {
+    harness.apply((s) => harness.debug.setObstacleClockRunning(s, false));
+    harness.apply((s) => harness.debug.setObstacleClock(s, 0));
+    const upright = harness.snapshot().obstacles.map((o) => o.theta);
+
+    harness.apply((s) => ({ ...s, obstacleClock: 1.7 }));
+    expect(harness.snapshot().obstacles.map((o) => o.theta)).toEqual(upright);
+
+    harness.apply((s) => harness.debug.reconcile(s));
+    const posed = harness.snapshot().obstacles.map((o) => o.theta);
+    expect(posed).not.toEqual(upright);
+  });
+
+  it("advances nothing", () => {
+    harness.apply((s) => harness.debug.setObstacleClockRunning(s, false));
+    harness.apply((s) => harness.debug.setObstacleClock(s, 0.9));
+    harness.apply((s) => harness.debug.setScreen(s, "playing"));
+    harness.apply((s) => harness.debug.spawnBall(s));
+    harness.apply((s) => harness.debug.setBallPosition(s, 400, 300));
+    harness.apply((s) => harness.debug.setBallVelocity(s, 250, -120));
+    harness.apply((s) => harness.debug.setBallHoldTimer(s, 0.4));
+
+    const before = harness.snapshot();
+    harness.apply((s) => harness.debug.reconcile(s));
+    const once = harness.snapshot();
+    harness.apply((s) => harness.debug.reconcile(s));
+    const twice = harness.snapshot();
+
+    expect(once).toEqual(before);
+    expect(twice).toEqual(once);
   });
 
   it("poses the obstacle clock and freezes it as its own gate", async () => {

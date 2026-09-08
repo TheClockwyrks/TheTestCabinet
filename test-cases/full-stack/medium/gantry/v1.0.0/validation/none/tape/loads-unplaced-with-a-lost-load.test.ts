@@ -11,7 +11,7 @@
 // THAT IS THE POINT THIS DECIDES, and it is why the lost load is the whole
 // scenario: a build that ended the run cleared unless a load was hanging passes
 // every check made with an attached load and fails here. `setLoadPhase` reaches
-// the phase directly — the poses "pose the run while one is in progress" and
+// the phase directly — the poses "pose the run the snapshot reports" and
 // "none of them reaches a verdict" — so no dropped `release` and no
 // `release-misplaced` verdict stands between the scenario and the reading.
 //

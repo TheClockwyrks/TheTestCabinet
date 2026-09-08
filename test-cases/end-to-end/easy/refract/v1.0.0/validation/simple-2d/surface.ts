@@ -164,6 +164,14 @@ export interface RefractDebugApi<S = unknown> {
   version: number;
   reset(state: DeepReadonly<S>): S;
   snapshot(state: DeepReadonly<S>): RefractSnapshot;
+  /**
+   * Bring every value the snapshot reports into agreement with the board as it
+   * stands, without advancing anything. A node's `x`/`y`, a crystal's `spent`, a
+   * beam's `complete`, `solved` and `targets` are all derived, and a build that
+   * keeps any of them as a stored copy rewrites that copy here. It moves no
+   * clock, runs no system, plays no cue, and corrects nothing.
+   */
+  reconcile(state: DeepReadonly<S>): S;
   /** The mode field alone: no screen moves and no board is generated. */
   setMode(state: DeepReadonly<S>, mode: Mode): S;
   /** The screen field alone: the board, the beams and the menus stay as they are. */
@@ -191,7 +199,11 @@ export interface RefractDebugApi<S = unknown> {
     device?: PointerDevice,
   ): S;
   pointerUp(state: DeepReadonly<S>, device?: PointerDevice): S;
-  /** The `clear` action: every beam emptied, on `playing` alone. */
+  /**
+   * The `clear` action's own transaction: every beam emptied and any live trace
+   * ended, from wherever the game stands. The screen the action is read on is
+   * the player's route to it, not this operation's condition.
+   */
   clear(state: DeepReadonly<S>): S;
 }
 
@@ -209,6 +221,7 @@ export const READINGS = ["snapshot"] as const;
 export const REQUIRED_OPS = [
   "reset",
   "snapshot",
+  "reconcile",
   "setMode",
   "setScreen",
   "setMenuIndex",

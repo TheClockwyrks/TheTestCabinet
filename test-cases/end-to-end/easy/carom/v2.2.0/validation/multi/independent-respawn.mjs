@@ -26,6 +26,7 @@ export default function item() {
       // Park balls 1 and 2 still, out of every lane, so only ball 0 leaves the field.
       await api.call("setBall", 1, { x: 30, y: 30, vx: 0, vy: 0, spin: 0 });
       await api.call("setBall", 2, { x: 1250, y: 30, vx: 0, vy: 0, spin: 0 });
+      await api.call("reconcile");
       // Drive ball 0 out the right goal.
       await api.call("setBall", 0, {
         x: 1100,
@@ -34,6 +35,7 @@ export default function item() {
         vy: 0,
         spin: 0,
       });
+      await api.call("reconcile");
     },
 
     async act(api) {

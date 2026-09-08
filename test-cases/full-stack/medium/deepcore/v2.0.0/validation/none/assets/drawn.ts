@@ -2,27 +2,25 @@
 //
 // The harness reads a frame's operations back as they were issued, and
 // `textDraws` already carries the transform in force so a run of text reports
-// where it actually landed. These points need the same for everything ELSE a frame
-// draws, and for two questions the text helper does not answer:
+// where it actually landed. These points need the same for the PICTURES a frame
+// draws, and for a question the text helper does not answer: WHICH PICTURE WAS
+// DRAWN. The frame's own operations name an image only as an opaque marker, so two
+// `drawImage` calls cannot be told apart there. The RECORDER, armed, captures the
+// images a frame drew into a table and names each by index — which is exactly what
+// "the drawn miner frame advances" and "the hurt cycle plays once rather than
+// looping" have to read, because a cycle is a run of pictures and the question is
+// which one is on screen. {@link recordImages} arms it, drives, and hands back the
+// image each frame drew where — a build draws the world under a camera translate,
+// so the coordinates an operation names are world units until that transform is
+// applied, and {@link framesOf} applies it and reports each picture's box in the
+// stage's own units, where `worldToStage` puts the event.
 //
-//   1. WHERE THE DRAWING HAPPENED. `specs/assets.md` requires each produced effect
-//      spawned "at the event's position — the debris at the bit, the exhaust under
-//      the jetpack, the sparkle at the pickup". A build draws the world under a
-//      camera translate, so the coordinates an operation names are world units
-//      until that transform is applied; {@link stageDraws} applies it and reports
-//      every drawing operation's position in the stage's own units, where
-//      `worldToStage` puts the event.
-//   2. WHICH PICTURE WAS DRAWN. The frame's own operations name an image only as
-//      an opaque marker, so two `drawImage` calls cannot be told apart there. The
-//      RECORDER, armed, captures the images a frame drew into a table and names
-//      each by index — which is exactly what "the drawn miner frame advances" and
-//      "the hurt cycle plays once rather than looping" have to read, because a
-//      cycle is a run of pictures and the question is which one is on screen.
-//      {@link recordImages} arms it, drives, and hands back the image each frame
-//      drew where.
+// WHERE THE DRAWING HAPPENED — how much a frame drew near an event's position,
+// which is what the effect points read — is `effects.ts`'s, counted inside the
+// page for the reason given there.
 //
-// Nothing here reads the build's own state: both work off the operations the build
-// issued against its 2D context, which is the drawing itself.
+// Nothing here reads the build's own state: everything works off the operations
+// the build issued against its 2D context, which is the drawing itself.
 
 import { STAGE_H, STAGE_W } from "../constants";
 import {
@@ -133,13 +131,6 @@ function apply(m: Matrix, x: number, y: number): { x: number; y: number } {
   return { x: m[0] * x + m[2] * y + m[4], y: m[1] * x + m[3] * y + m[5] };
 }
 
-/** One drawing operation, with its position in logical stage units. */
-export interface StageDraw {
-  method: string;
-  x: number;
-  y: number;
-}
-
 /** One `drawImage`, with the picture it drew and where it put it. */
 export interface ImageDraw {
   /**
@@ -224,76 +215,6 @@ function walk(
       visit(method, args, current);
     }
   }
-}
-
-/** The positions a drawing method names, before the transform. */
-function positions(
-  method: string,
-  args: readonly unknown[],
-): { x: number; y: number }[] {
-  const leading = (): { x: number; y: number }[] => {
-    const v = numbers(args, 2);
-    return v === null ? [] : [{ x: v[0], y: v[1] }];
-  };
-  switch (method) {
-    case "arc":
-    case "ellipse":
-    case "rect":
-    case "roundRect":
-    case "fillRect":
-    case "strokeRect":
-    case "moveTo":
-    case "lineTo":
-      return leading();
-    case "quadraticCurveTo": {
-      const v = numbers(args, 4);
-      return v === null
-        ? []
-        : [
-            { x: v[0], y: v[1] },
-            { x: v[2], y: v[3] },
-          ];
-    }
-    case "bezierCurveTo": {
-      const v = numbers(args, 6);
-      return v === null
-        ? []
-        : [
-            { x: v[0], y: v[1] },
-            { x: v[2], y: v[3] },
-            { x: v[4], y: v[5] },
-          ];
-    }
-    case "drawImage": {
-      const at = destination(args);
-      return at === null ? [] : [{ x: at.x + at.w / 2, y: at.y + at.h / 2 }];
-    }
-    default:
-      return [];
-  }
-}
-
-/** Every drawing operation a frame issued, positioned in logical stage units. */
-export function stageDraws(calls: readonly DrawCall[]): StageDraw[] {
-  const draws: StageDraw[] = [];
-  walk(calls, IDENTITY, [], (method, args, at) => {
-    for (const point of positions(method, args)) {
-      const mapped = apply(at, point.x, point.y);
-      draws.push({ method, x: mapped.x, y: mapped.y });
-    }
-  });
-  return draws;
-}
-
-/** How many of a frame's drawing operations landed within `radius` of a stage point. */
-export function drawsNear(
-  draws: readonly StageDraw[],
-  at: { x: number; y: number },
-  radius: number,
-): number {
-  return draws.filter(
-    (draw) => Math.hypot(draw.x - at.x, draw.y - at.y) <= radius,
-  ).length;
 }
 
 /** What one recorded frame drew, as pictures placed on the stage. */

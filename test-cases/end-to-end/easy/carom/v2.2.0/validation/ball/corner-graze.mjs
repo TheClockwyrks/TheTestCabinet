@@ -124,6 +124,7 @@ async function arrangeGraze(api, graze) {
     vy: shot.vy,
     spin: 0,
   });
+  await api.call("reconcile");
 }
 
 // Pose the next graze's ball at rest where its run-up begins, hold there for a beat,
@@ -138,8 +139,10 @@ async function poseThenLaunch(api, graze) {
   await neutralizeExtraBalls(api);
   await pinObstaclesUpright(api);
   await api.call("setBall", 0, { ...at, vx: 0, vy: 0 });
+  await api.call("reconcile");
   await api.advance(GAP);
   await api.call("setBall", 0, { ...at, vx: shot.vx, vy: shot.vy });
+  await api.call("reconcile");
 }
 
 // ACT half of one graze: run the real collision code until the ball's horizontal

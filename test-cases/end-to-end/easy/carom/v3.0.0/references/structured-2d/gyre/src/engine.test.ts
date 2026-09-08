@@ -57,7 +57,7 @@ import type { CaromDebug, CaromSnapshot } from "./debug";
 import { BACKGROUND, game } from "./game";
 import { HOWTO_ITEMS } from "./menus";
 import { obstaclePose } from "./obstacles";
-import { CaromState, type Screen } from "./state";
+import { caromState, CaromState, type Screen } from "./state";
 import { COLOR } from "./theme";
 
 // ---- The harness --------------------------------------------------------
@@ -996,15 +996,57 @@ describe("the debug surface", () => {
     expect(ball(s).trail).toEqual([]);
   });
 
-  it("does nothing to a ball that is not there", async () => {
+  // An absent ball is no ball to pose. A surface that quietly did nothing would
+  // let a caller read its own pose back off a field that never took it, so every
+  // ball operation fails where the caller can see it instead.
+  it("fails loudly on a ball that is not there", async () => {
     await countdown(harness, "versus");
     harness.debug.clearWorld();
-    harness.debug.setBallPosition(10, 10);
-    harness.debug.setBallVelocity(1, 1);
-    harness.debug.setBallSpin(1);
-    harness.debug.setBallHeld(false);
-    harness.debug.setBallHoldTimer(0);
+    expect(() => harness.debug.setBallPosition(10, 10)).toThrow();
+    expect(() => harness.debug.setBallVelocity(1, 1)).toThrow();
+    expect(() => harness.debug.setBallSpin(1)).toThrow();
+    expect(() => harness.debug.setBallHeld(false)).toThrow();
+    expect(() => harness.debug.setBallHoldTimer(0)).toThrow();
+    expect(() => harness.debug.spawnObstacle(5)).toThrow();
     expect(harness.snapshot().ball).toBeNull();
+  });
+
+  // `reconcile` re-derives what this build stores: an obstacle's pose lives on
+  // its own transform and is a function of the obstacle clock alone. Posing the
+  // clock through the state directly — rather than through `setObstacleClock`,
+  // which re-poses as it writes — leaves a stale pose for the call to answer for.
+  it("re-derives a stored obstacle pose from the posed clock", async () => {
+    await countdown(harness, "versus");
+    harness.debug.setObstacleClockRunning(false);
+    harness.debug.setObstacleClock(0);
+    const upright = harness.snapshot().obstacles.map((o) => o.theta);
+
+    caromState(harness.engine.world).obstacleClock = 1.7;
+    expect(harness.snapshot().obstacles.map((o) => o.theta)).toEqual(upright);
+
+    harness.debug.reconcile();
+    expect(harness.snapshot().obstacles.map((o) => o.theta)).not.toEqual(
+      upright,
+    );
+  });
+
+  it("advances nothing", async () => {
+    await countdown(harness, "versus");
+    harness.debug.setObstacleClockRunning(false);
+    harness.debug.setObstacleClock(0.9);
+    harness.debug.setBallPosition(400, 300);
+    harness.debug.setBallVelocity(250, -120);
+    harness.debug.setPaddleCy("left", 240);
+    harness.debug.setBallHoldTimer(0.4);
+
+    const before = harness.snapshot();
+    harness.debug.reconcile();
+    const once = harness.snapshot();
+    harness.debug.reconcile();
+    const twice = harness.snapshot();
+
+    expect(once).toEqual(before);
+    expect(twice).toEqual(once);
   });
 
   it("changes the screen and nothing else, across the level split", async () => {

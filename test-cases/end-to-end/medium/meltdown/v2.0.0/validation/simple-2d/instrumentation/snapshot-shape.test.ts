@@ -19,7 +19,9 @@
 //   - one of them tripped, so `tripped` and `tripTimer` are read on a tower that
 //     is actually offline;
 //   - a Forge and a Sink, the two movers, so `output` and the empty
-//     `radiatorFaces` are read on the towers that carry them;
+//     `radiatorFaces` are read on the towers that carry them — and no heat is
+//     posed on either, because a mover carries none for `setTowerHeat` to reach
+//     and the call fails loudly on one (specs/instrumentation.md);
 //   - a unit of every one of the six surge types, so `flying`, `vent` and
 //     `exhaust` are read across both a walker and the flyer;
 //   - an ARMED PREVIEW, which is what makes `build` an object rather than `null`
@@ -51,7 +53,7 @@ import {
   assertTrue,
 } from "../assert";
 import { SURGE_TYPES, TOWER_TYPES } from "../constants";
-import { sizeOf, tileCentre } from "../geometry";
+import { isEmitter, sizeOf, tileCentre } from "../geometry";
 import {
   captureStill,
   createHarness,
@@ -112,7 +114,7 @@ function poseShape(): MeltdownSnapshot {
   const ids = FLOOR.map((entry) => {
     const id = poseTower(h, entry.type, entry.col, entry.row);
     h.debug.setTowerLevel(id, entry.level);
-    h.debug.setTowerHeat(id, entry.heat);
+    if (isEmitter(entry.type)) h.debug.setTowerHeat(id, entry.heat);
     return id;
   });
   // One of them offline on a trip, so `tripped` and `tripTimer` are read on a

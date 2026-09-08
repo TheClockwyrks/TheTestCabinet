@@ -78,6 +78,8 @@ export interface CoilDebugApi {
   setAutoStep(enabled: boolean): void;
   advance(seconds: number, frames?: number): void;
   reset(): void;
+  /** Bring every reported reading into agreement with the game as it stands. */
+  reconcile(): void;
   snapshot(): CoilSnapshot;
   menuItemRect(index: number): MenuRect | null;
   setScreen(screen: Screen): void;
@@ -202,6 +204,25 @@ export function createDebugApi(game: Game, clock: DebugClock): CoilDebugApi {
     reset() {
       game.reset();
       clock.autoStep = false;
+    },
+
+    /**
+     * Bring every reported reading into agreement with the game as it stands,
+     * advancing nothing.
+     *
+     * Coil reports its board, its switches and its figures straight off the
+     * state, so the only reading here that follows from something else is
+     * `muted` — the game's copy of the runtime's mute bit — and the hit regions
+     * `menuItemRect` answers, which are worked out from the current screen at
+     * the read and so have nothing to bring into agreement.
+     *
+     * `Game.reconcile` is the same call the update ends with, so the copy is
+     * rewritten by exactly the code that owns it rather than by a restatement of
+     * the rule. Nothing else moves: no tick resolves, no accumulator advances,
+     * no cue plays, and the generator is not drawn from.
+     */
+    reconcile() {
+      game.reconcile();
     },
 
     /** A pure read of the state. It changes nothing. */

@@ -197,9 +197,17 @@ The headings below name the parameters that follow the state.
 
 An argument outside the domain its operation states is invalid, and the call
 throws rather than guessing what was meant; no operation rounds, clamps, or
-otherwise normalizes an argument. A call on a screen the operation does not
-apply to leaves the state exactly as it was, and each operation names the
-screens it applies to. "A run screen" below means `playing` or `paused`.
+otherwise normalizes an argument. A pose reaches the value it names whatever
+the game's own rules would have allowed, and a value the game has no defined
+state for makes the call fail loudly.
+
+No operation asks how the caller got to it. The screen showing, the overlay
+open, and what a player would have had to do first are the route a player takes
+and are not an operation's conditions, so every operation below acts on the
+game from wherever it stands: `setHp` sets the health on `title` as readily as
+on `playing`, and `spawnEnemy` puts an enemy on the field whatever screen is
+up. What no operation does is refuse quietly, returning with the state as it
+was.
 
 A pose changes the state alone and sounds nothing. A pose that creates an
 entity gives it the next id from `nextId`, and a posed enemy, projectile,
@@ -291,6 +299,48 @@ A pure read of the state, returned as the plain object under Snapshot shape
 below. It changes nothing.
 {{/if}}
 
+{{#if (eq engine.slug "simple-2d")}}
+#### `reconcile(state)`
+{{else}}
+#### `reconcile()`
+{{/if}}
+
+Brings every value this surface reports into agreement with the game as it now
+stands, without advancing anything. `time`, `xpToNext`, `maxHp`, `armor`,
+`moveSpeed`, `pickupRadius`, `spawnWindow`, `aliveCommons`, and `pool` all
+follow from the run clock, the level, the passives held, the enemies on the
+field, and the slots as they stand, so after a pose they answer for the run as
+it is now rather than as it was before it.
+
+A build that works those out at the read has nothing to do here and this call
+changes nothing. A build that keeps any of them as a stored copy rewrites that
+copy from what it is a copy of.
+
+It moves no clock and runs no system: `run.tick`, `accumulator`, and `simTime`
+are untouched, no enemy moves, no projectile integrates, no hit or kill
+resolves, nothing is collected, no cooldown timer, `ttl`, `age`,
+`contactCooldown`, `hurtFlash`, or `spawnTimer` counts down, no held key is
+read, no random draw is made, and every posed outcome stands. It sounds no cue,
+opens and closes no overlay, changes no screen, and queues no level-up. It
+moves nothing to make a reading agree: an enemy posed on top of the lamplighter
+stays where it was posed and reads as it is, and a health posed above `maxHp`
+is not brought back under it. What the specification gives a later moment stays
+there: the camera follows on the next render, the aura and the lanterns follow
+on the next tick, and `nextOffers` is checked against the pool when the next
+overlay opens.
+`kills`, `xp`, and `firedEvents` are what the run has accumulated rather than
+readings of the run as it stands, so they are the ticks' and this call leaves
+them where they are. Calling it twice leaves the same state as calling it once.
+
+It is never an error, whatever screen is showing and whether or not the
+simulation is held.
+{{#if (eq engine.slug "simple-2d")}}
+
+`reconcile(state)` returns the next `WickState`, built from the one it was
+handed, which it leaves as it was. A build that works every one of those
+readings out at the call returns a state equal to the one it was given.
+{{/if}}
+
 ### Screens
 
 {{#if (eq engine.slug "simple-2d")}}
@@ -305,7 +355,7 @@ loadout, `offers`, `nextOffers`, `chestResult`, `pendingLevelUps`, every posed
 outcome, `simTime`, and the driver switches all stand exactly as they were, and
 no cue
 sounds at the call. A call that leaves `playing` discards the accumulator, as
-every frame and pose that leaves `playing` does. Applies on every screen.
+every frame and pose that leaves `playing` does.
 
 The pose sets the screen and nothing else, so a run is never begun, discarded,
 ended, or grown by it. What a screen shows is arranged before the pose or
@@ -323,12 +373,15 @@ at `0` and one tick; and the dawn ending is `setTick` at
 #### `choose(index)`
 {{/if}}
 
-On `levelup`, accepts the offer at `index`, counted from `0` down the list,
-exactly as moving the highlight there and pressing `confirm` would: the item is
-applied, `pendingLevelUps` falls by one, and either the next queued overlay
-opens with a fresh pool or `screen` returns to `playing`. `index` is a whole
-number, and an `index` outside `offers`, a negative one included, leaves the
-state as it was rather than throwing. Sounds nothing.
+Accepts the offer at `index`, counted from `0` down the list, exactly as moving
+the highlight there and pressing `confirm` would: the item is applied,
+`pendingLevelUps` falls by one, and either the next queued overlay opens with a
+fresh pool or `screen` returns to `playing`. It carries out that acceptance
+from wherever the game stands, `levelup` showing being how a player reaches the
+choice rather than a condition on the call. `index` is a whole number naming an
+offer of `offers`; an `index` outside that list, a negative one included, names
+no offer, so the call fails loudly, as it does whenever `offers` is empty.
+Sounds nothing.
 
 ### Menus
 
@@ -405,7 +458,7 @@ Sets `tick` to `tick`, a whole number from `0` to `DAWN_TIME × TICK_HZ − 1`
 entity stay as they stand, and everything derived from the clock, `time`,
 `spawnWindow`, the health scaling of later spawns, and which event is due,
 follows from the next tick on. A scripted event fires only on its exact tick,
-so a clock posed past an event never fires it. Applies on a run screen.
+so a clock posed past an event never fires it.
 
 {{#if (eq engine.slug "simple-2d")}}
 #### `setSpawnTimer(state, seconds)`
@@ -413,7 +466,7 @@ so a clock posed past an event never fires it. Applies on a run screen.
 #### `setSpawnTimer(seconds)`
 {{/if}}
 
-Sets `spawnTimer` to `seconds`, at least `0`. Applies on a run screen.
+Sets `spawnTimer` to `seconds`, at least `0`.
 
 ### Drawn outcomes
 
@@ -422,8 +475,8 @@ decides. Each value is held in the run under the name its snapshot field
 carries, is `null` on the idle run and after the draw that consumed it, is left
 standing by `setScreen`, and is consumed by one draw alone. A value that is not
 valid at the moment its draw is made is discarded and the draw is made at
-random. Each pose applies on a run screen. `rollDrop`, the one reading here,
-makes a drop roll on its own and returns it.
+random. `rollDrop`, the one reading here, makes a drop roll on its own and
+returns it.
 
 {{#if (eq engine.slug "simple-2d")}}
 #### `setNextSpawnAngle(state, degrees)`
@@ -516,7 +569,7 @@ Makes one drop roll exactly as `specs/world.md` states under The drop roll and
 returns what it decided: `bread`, `draft`, or `none`. It is a reading of the
 roll alone: nothing drops, nothing dies, no cue sounds, and every field of the
 state stands as it was, `nextDrop` included, since a posed drop has no part in
-it. Applies on every screen.
+it.
 
 ### The lamplighter
 
@@ -528,7 +581,6 @@ it. Applies on every screen.
 
 Sets the lamplighter's center to `(x, y)`. Nothing else moves: the camera
 follows on the next render, and the aura and lanterns follow on the next tick.
-Applies on a run screen.
 
 {{#if (eq engine.slug "simple-2d")}}
 #### `setFacing(state, facing)`
@@ -536,7 +588,7 @@ Applies on a run screen.
 #### `setFacing(facing)`
 {{/if}}
 
-Sets `facing` to `facing`, `"left"` or `"right"`. Applies on a run screen.
+Sets `facing` to `facing`, `"left"` or `"right"`.
 
 {{#if (eq engine.slug "simple-2d")}}
 #### `setHp(state, hp)`
@@ -544,10 +596,13 @@ Sets `facing` to `facing`, `"left"` or `"right"`. Applies on a run screen.
 #### `setHp(hp)`
 {{/if}}
 
-Sets `hp` to `hp`, a real number at most `maxHp`; a value above `maxHp` is
-invalid, and there is no lower bound. A value at or below `0` ends the run
-fallen at the end of the next `playing` tick, through the ending rule of
-`specs/world.md`. Applies on a run screen.
+Sets `hp` to `hp`, a real number, and there is no bound either way. `maxHp` is
+worked out from the passives held and moves as they change, so it is what
+ordinary play holds the health under rather than a limit on this pose: a value
+above it is applied as it was given, and what the game's own recovery step then
+makes of it is that step's answer. A value at or below `0` ends the run fallen
+at the end of the next `playing` tick, through the ending rule of
+`specs/world.md`.
 
 ### Progression
 
@@ -558,7 +613,6 @@ fallen at the end of the next `playing` tick, through the ending rule of
 {{/if}}
 
 Sets `level` to `level`, a whole number of at least `1`. `xp` is untouched.
-Applies on a run screen.
 
 {{#if (eq engine.slug "simple-2d")}}
 #### `setXp(state, xp)`
@@ -567,7 +621,7 @@ Applies on a run screen.
 {{/if}}
 
 Sets `xp` to `xp`, a real number of at least `0`. No level-up is derived from
-it: a level-up comes from the next gain. Applies on a run screen.
+it: a level-up comes from the next gain.
 
 {{#if (eq engine.slug "simple-2d")}}
 #### `setKills(state, kills)`
@@ -575,8 +629,7 @@ it: a level-up comes from the next gain. Applies on a run screen.
 #### `setKills(kills)`
 {{/if}}
 
-Sets `kills` to `kills`, a whole number of at least `0`. Applies on a run
-screen.
+Sets `kills` to `kills`, a whole number of at least `0`.
 
 {{#if (eq engine.slug "simple-2d")}}
 #### `setPendingLevelUps(state, count)`
@@ -586,7 +639,6 @@ screen.
 
 Sets `pendingLevelUps` to `count`, a whole number of at least `0`. A `playing`
 tick that ends with it above `0` opens the overlay exactly as a gain does.
-Applies on a run screen.
 
 {{#if (eq engine.slug "simple-2d")}}
 #### `setNextOffers(state, ids)`
@@ -603,8 +655,8 @@ or when it holds `LAMP_OIL_ID` alone while the pool is empty, and the overlay
 then presents exactly that list in that order. Otherwise it is discarded whole
 and the overlay draws at random; an evolved weapon's id is never in a pool, so
 a list naming one is always discarded. One overlay consumes it, and a later
-overlay draws at random again. Applies on a run screen and on `levelup`, where
-the next overlay is the queued one.
+overlay draws at random again. Called on `levelup`, the overlay the list is
+checked against is the queued one.
 
 ### The loadout
 
@@ -626,7 +678,7 @@ another slot; an evolved weapon whose base is held in another slot. When the
 slot's `id` changes its cooldown timer becomes `0`; when only the level changes
 the timer keeps counting. Nothing else changes: the aura of Halo or Corona and
 the lanterns of Chandelier appear on the next `playing` tick under the
-placement rule. Applies on a run screen.
+placement rule.
 
 {{#if (eq engine.slug "simple-2d")}}
 #### `setWeaponCooldown(state, slot, seconds)`
@@ -635,7 +687,7 @@ placement rule. Applies on a run screen.
 {{/if}}
 
 Sets the cooldown timer of the weapon in `slot`, a held slot, to `seconds`, at
-least `0`. Applies on a run screen.
+least `0`.
 
 {{#if (eq engine.slug "simple-2d")}}
 #### `removeWeapon(state, slot)`
@@ -645,7 +697,7 @@ least `0`. Applies on a run screen.
 
 Removes the weapon in `slot`, a held slot. Its aura or lantern set is removed
 on the next `playing` tick under the placement rule; the projectiles and other
-zones it produced stay. Applies on a run screen.
+zones it produced stay.
 
 {{#if (eq engine.slug "simple-2d")}}
 #### `setPassive(state, slot, id, level)`
@@ -655,9 +707,9 @@ zones it produced stay. Applies on a run screen.
 
 Puts passive `id`, a `PassiveId`, at `level` in `slot`. `slot` is `0` to
 `passives.length`, at most `PASSIVE_SLOTS − 1`; `level` is `1` to the
-passive's `maxLevel` in `PASSIVES`. An `id` held in another slot is invalid. `hp` is
-untouched; `maxHp`, `armor`, `moveSpeed`, `pickupRadius`, and every multiplier
-follow from the next read. Applies on a run screen.
+passive's `maxLevel` in `PASSIVES`. An `id` held in another slot is invalid.
+`hp` is untouched; `maxHp`, `armor`, `moveSpeed`, `pickupRadius`, and every
+multiplier follow from the next read.
 
 {{#if (eq engine.slug "simple-2d")}}
 #### `removePassive(state, slot)`
@@ -666,7 +718,7 @@ follow from the next read. Applies on a run screen.
 {{/if}}
 
 Removes the passive in `slot`, a held slot. `hp` is capped at the new `maxHp`
-on the next tick's recovery step. Applies on a run screen.
+on the next tick's recovery step.
 
 ### Enemies
 
@@ -684,7 +736,7 @@ spawn path: its `maxHp` is scaled by the run clock exactly as a director spawn
 is, its `age` and `contactCooldown` are `0`, it takes the next id, and its
 heading is the one `specs/enemies.md` gives a spawn at that point, the unit
 vector toward the lamplighter's center, or the facing direction when the two
-coincide. Applies on `playing` and `paused`.
+coincide.
 
 {{#if (eq engine.slug "simple-2d")}}
 #### `setEnemyPosition(state, id, x, y)`
@@ -693,7 +745,7 @@ coincide. Applies on `playing` and `paused`.
 {{/if}}
 
 Moves enemy `id` to `(x, y)`; its heading, age, and health are untouched. A
-weaver's anchor follows from the new position. Applies on a run screen.
+weaver's anchor follows from the new position.
 
 {{#if (eq engine.slug "simple-2d")}}
 #### `setEnemyHp(state, id, hp)`
@@ -701,9 +753,11 @@ weaver's anchor follows from the new position. Applies on a run screen.
 #### `setEnemyHp(id, hp)`
 {{/if}}
 
-Sets enemy `id`'s `hp` to `hp`, a real number above `0` and at most its
-`maxHp`; anything else is invalid, since death is decided by the tick. Applies
-on a run screen.
+Sets enemy `id`'s `hp` to `hp`, a real number above `0`; `0` and below are
+invalid, since death is decided by the tick. There is no upper bound: an
+enemy's `maxHp` is scaled by the run clock at its spawn, so it is what ordinary
+play holds the enemy under rather than a limit on this pose, and a value above
+it is applied as it was given.
 
 {{#if (eq engine.slug "simple-2d")}}
 #### `setEnemyHeading(state, id, hx, hy)`
@@ -713,7 +767,7 @@ on a run screen.
 
 Sets enemy `id`'s heading to the unit vector of `(hx, hy)`; a zero vector is
 invalid. A chaser or weaver recomputes its heading on its next move, so this
-poses a drifter. Applies on a run screen.
+poses a drifter.
 
 {{#if (eq engine.slug "simple-2d")}}
 #### `setEnemyAge(state, id, seconds)`
@@ -721,7 +775,7 @@ poses a drifter. Applies on a run screen.
 #### `setEnemyAge(id, seconds)`
 {{/if}}
 
-Sets enemy `id`'s `age` to `seconds`, at least `0`. Applies on a run screen.
+Sets enemy `id`'s `age` to `seconds`, at least `0`.
 
 {{#if (eq engine.slug "simple-2d")}}
 #### `setEnemyContactCooldown(state, id, seconds)`
@@ -729,8 +783,7 @@ Sets enemy `id`'s `age` to `seconds`, at least `0`. Applies on a run screen.
 #### `setEnemyContactCooldown(id, seconds)`
 {{/if}}
 
-Sets enemy `id`'s `contactCooldown` to `seconds`, at least `0`. Applies on a
-run screen.
+Sets enemy `id`'s `contactCooldown` to `seconds`, at least `0`.
 
 {{#if (eq engine.slug "simple-2d")}}
 #### `removeEnemy(state, id)`
@@ -739,7 +792,6 @@ run screen.
 {{/if}}
 
 Removes enemy `id`. Nothing drops, nothing counts as a kill, and no cue plays.
-Applies on a run screen.
 
 {{#if (eq engine.slug "simple-2d")}}
 #### `clearEnemies(state)`
@@ -747,8 +799,7 @@ Applies on a run screen.
 #### `clearEnemies()`
 {{/if}}
 
-Removes every enemy, elites and the Dark included, the same way. Applies on a
-run screen.
+Removes every enemy, elites and the Dark included, the same way.
 
 ### Projectiles and zones
 
@@ -769,7 +820,7 @@ this tick: `radius` is the weapon's table radius at the level held, or at level
 empty. A `sconce` takes acceleration `−SCONCE_DECEL` along the unit vector of
 `(vx, vy)`, so a zero velocity is invalid for `sconce`; every other weapon
 takes `(0, 0)`. Its `weapon` decides its re-hit interval and the effect drawn
-over it. Applies on a run screen.
+over it.
 
 {{#if (eq engine.slug "simple-2d")}}
 #### `clearProjectiles(state)`
@@ -777,7 +828,7 @@ over it. Applies on a run screen.
 #### `clearProjectiles()`
 {{/if}}
 
-Removes every projectile. Applies on a run screen.
+Removes every projectile.
 
 {{#if (eq engine.slug "simple-2d")}}
 #### `spawnPuddle(state, weapon, x, y)`
@@ -791,7 +842,7 @@ or at level `1` (Blaze's fixed row) when the weapon is not held, times the
 `areaMul` in force at the call; `damage` is that row's damage times the
 `damageMul` in force at the call; `ttl` is that row's duration; `hits` is
 empty. It pulses first on the next tick and every `OIL_PULSE` or `BLAZE_PULSE`
-after. Applies on a run screen.
+after.
 
 {{#if (eq engine.slug "simple-2d")}}
 #### `clearZones(state)`
@@ -801,7 +852,7 @@ after. Applies on a run screen.
 
 Removes every zone, the aura and the lanterns included. An aura or a Chandelier
 lantern set whose weapon is still held is created again on the next `playing`
-tick under the placement rule. Applies on a run screen.
+tick under the placement rule.
 
 Slashes, strikes, bursts, lanterns, and auras are never posed directly: each is
 created by holding its weapon through `setWeapon` and running the tick it fires
@@ -816,7 +867,7 @@ on, and `setWeaponCooldown(slot, 0)` makes that the next tick.
 {{/if}}
 
 Places one unattracted gem of `tier`, a `GemTier`, at `(x, y)` with the next
-id. Applies on a run screen.
+id.
 
 {{#if (eq engine.slug "simple-2d")}}
 #### `setGemAttracted(state, id, attracted)`
@@ -825,7 +876,7 @@ id. Applies on a run screen.
 {{/if}}
 
 Sets gem `id`'s `attracted` to `attracted`, a boolean; an `id` that names no
-gem is invalid. Applies on a run screen.
+gem is invalid.
 
 {{#if (eq engine.slug "simple-2d")}}
 #### `clearGems(state)`
@@ -833,7 +884,7 @@ gem is invalid. Applies on a run screen.
 #### `clearGems()`
 {{/if}}
 
-Removes every gem; no experience is gained. Applies on a run screen.
+Removes every gem; no experience is gained.
 
 {{#if (eq engine.slug "simple-2d")}}
 #### `spawnPickup(state, kind, x, y)`
@@ -842,7 +893,6 @@ Removes every gem; no experience is gained. Applies on a run screen.
 {{/if}}
 
 Places one pickup of `kind`, a `PickupKind`, at `(x, y)` with the next id.
-Applies on a run screen.
 
 {{#if (eq engine.slug "simple-2d")}}
 #### `clearPickups(state)`
@@ -850,7 +900,7 @@ Applies on a run screen.
 #### `clearPickups()`
 {{/if}}
 
-Removes every pickup; nothing is collected. Applies on a run screen.
+Removes every pickup; nothing is collected.
 {{#if (eq engine.slug "simple-2d")}}
 
 ## `WickDebugApi`
@@ -874,6 +924,7 @@ export interface WickDebugApi {
   readonly version: number;
   reset(state: DeepReadonly<WickState>): WickState;
   snapshot(state: DeepReadonly<WickState>): WickSnapshot;
+  reconcile(state: DeepReadonly<WickState>): WickState;
   menuRects(state: DeepReadonly<WickState>): readonly WickRect[];
   tabRects(state: DeepReadonly<WickState>): readonly WickRect[];
   setScreen(state: DeepReadonly<WickState>, name: Screen): WickState;
@@ -1030,6 +1081,7 @@ export interface WickDebugApi {
   readonly version: number;
   reset(): void;
   snapshot(): WickSnapshot;
+  reconcile(): void;
   menuRects(): readonly WickRect[];
   tabRects(): readonly WickRect[];
   setScreen(name: Screen): void;
@@ -1208,6 +1260,10 @@ rather than stored:
 | `spawnWindow` | `min(19, floor(time / SPAWN_WINDOW))`, with `SPAWN_WINDOW` (`30`) |
 | `aliveCommons` | how many of `enemies` have `rank` `common` in `ENEMIES` and are not `gnat`, the count `specs/enemies.md` holds against the cap |
 | `pool` | on `levelup`, the candidate pool of `specs/progression.md` computed from the slots as they stand, each id once, in `BASE_WEAPON_IDS` order then `PASSIVE_IDS` order, so `offers` is a subset of it except for the lamp-oil offer over an empty pool; on every other screen an empty list |
+
+A build is free to work any of these out at the read or to keep it as a stored
+copy, and `reconcile()` is what brings a stored copy back into agreement after
+a pose.
 
 A passive not held counts as level `0` in every formula above. `damage` on a
 projectile or zone is the damage per hit the shape carries: fixed when the

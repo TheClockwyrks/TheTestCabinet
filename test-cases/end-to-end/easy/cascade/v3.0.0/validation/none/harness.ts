@@ -50,6 +50,17 @@
 // below does anything a caller did not ask for, and a check that needs half a
 // sequence calls the operations it needs.
 //
+//
+// A HELPER THAT POSES ANYTHING A READING DERIVES FROM RECONCILES BEFORE IT
+// RETURNS. `wasteVisibleCount`, a card's `color` and `dropTarget` are derived
+// rather than stored (`specs/instrumentation.md`, Snapshot shape), and a build
+// is free to keep any of them as a stored copy — so a pose that writes the piles
+// or the set memory can leave one of them answering for the table as it was.
+// `reconcile()` is what brings them back into agreement, and it costs no
+// simulation time, so every pose helper below ends with it and a check posed
+// through the helpers never calls it itself. A check that poses with
+// `h.debug.addCard` and friends directly calls it once before its first read.
+//
 // AND THE HELPERS FIX GEOMETRY, NEVER THRESHOLDS. A helper poses a table, drives
 // a gesture, or reads a value out of a snapshot. Every tolerance a check
 // asserts — a percentage, a colour distance, a number of units — is stated in
@@ -164,6 +175,7 @@ export const REQUIRED_OPS = [
   // The core.
   "reset",
   "snapshot",
+  "reconcile",
   "menuItemRect",
   // The screen and the menus.
   "setScreen",
@@ -339,6 +351,15 @@ export interface CascadeSnapshot {
 export interface CascadeDebugApi {
   reset(): Promise<void>;
   snapshot(): Promise<CascadeSnapshot>;
+  /**
+   * Brings every value the surface reports into agreement with the table as it
+   * stands, advancing nothing (specs/instrumentation.md, The core).
+   *
+   * `wasteVisibleCount`, a card's `color` and `dropTarget` are derived rather
+   * than stored, and a build is free to keep any of them as a copy — this is
+   * what rewrites such a copy from what it is a copy of after a pose.
+   */
+  reconcile(): Promise<void>;
   /** The region of item `index` on the current screen's menu, or `null`. */
   menuItemRect(index: number): Promise<MenuRect | null>;
 
@@ -1826,6 +1847,7 @@ export async function openTable(h: Harness): Promise<void> {
   await h.debug.reset();
   await h.debug.setScreen("playing");
   await h.debug.clearTable();
+  await h.debug.reconcile();
 
   const opened = await h.snapshot();
   if (opened.screen !== "playing") {
@@ -1863,6 +1885,7 @@ export async function openTitle(h: Harness): Promise<void> {
   await h.debug.reset();
   await h.debug.setScreen("title");
   await h.debug.clearTable();
+  await h.debug.reconcile();
 }
 
 /** The how-to screen, over an empty table. */
@@ -1870,6 +1893,7 @@ export async function openHowto(h: Harness): Promise<void> {
   await h.debug.reset();
   await h.debug.setScreen("howto");
   await h.debug.clearTable();
+  await h.debug.reconcile();
 }
 
 /**
@@ -1887,6 +1911,7 @@ export async function openWon(h: Harness): Promise<void> {
   await h.debug.reset();
   await h.debug.setScreen("won");
   await h.debug.clearTable();
+  await h.debug.reconcile();
 }
 
 /**
@@ -1906,12 +1931,15 @@ async function addCards(
   index: number,
   specs: readonly CardSpec[],
 ): Promise<number[]> {
-  await h.pose(
-    specs.map((spec) => ({
+  await h.pose([
+    ...specs.map((spec) => ({
       op: "addCard",
       args: [pile, index, spec.suit, spec.rank, spec.faceUp ?? true],
     })),
-  );
+    // Last in the same crossing, so bringing the readings into agreement costs
+    // no extra round trip.
+    { op: "reconcile", args: [] },
+  ]);
   if (specs.length === 0) return [];
   const placed = pileOf(await h.snapshot(), pile, index);
   if (placed.length < specs.length) {
@@ -1993,6 +2021,9 @@ export async function poseWaste(
   }
   const ids = await addCards(h, "waste", 0, specs);
   for (const count of sets) await h.debug.addWasteSet(count);
+  // `wasteVisibleCount` follows the newest set, so the sets are posed before the
+  // readings are brought into agreement.
+  await h.debug.reconcile();
   return ids;
 }
 

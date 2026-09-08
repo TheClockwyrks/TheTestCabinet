@@ -1404,3 +1404,73 @@ describe("the rest of the surface", () => {
     expect(luminance(h.pixel(20, 20))).toBeGreaterThan(0);
   });
 });
+
+describe("reconcile", () => {
+  it("re-derives a stored reading from a posed state", () => {
+    const rows = board([HALL], HALL_ROW);
+    poseBoard(rows, 5, HALL_ROW);
+    stockPlankton(rows);
+    const planted = h.snapshot().planktonRemaining;
+    expect(planted).toBeGreaterThan(0);
+
+    // `planktonRemaining` is a count of the layer, and this build keeps it in
+    // step with every pose that writes one. What `reconcile` owes is the state
+    // a build that let it drift would be in, so it is knocked out of agreement
+    // here and read back after the call.
+    h.engine.apply((s) => ({ ...s, planktonRemaining: planted + 7 }));
+    expect(h.snapshot().planktonRemaining).toBe(planted + 7);
+
+    h.pose((s) => h.debug.reconcile(s));
+    expect(h.snapshot().planktonRemaining).toBe(planted);
+    // The forager is where it was posed: nothing was moved to make the reading
+    // agree.
+    expect(h.snapshot().forager.tx).toBe(5);
+    expect(h.snapshot().forager.ty).toBe(HALL_ROW);
+  });
+
+  it("advances nothing", () => {
+    const rows = board([HALL], HALL_ROW);
+    poseBoard(rows, 5, HALL_ROW);
+    stockPlankton(rows);
+    h.pose((s) => h.debug.addPredator(s, "lanternjaw", 8, HALL_ROW));
+    h.pose((s) => h.debug.setBrightness(s, 0.5));
+    h.pose((s) => h.debug.setBrightHold(s, BRIGHT_HOLD));
+    h.pose((s) => h.debug.setSonarCooldown(s, 1.5));
+    h.pose((s) => h.debug.setInkCooldown(s, 2.5));
+    h.pose((s) => h.debug.setDrifterIn(s, 9));
+
+    const before = h.snapshot();
+    h.pose((s) => h.debug.reconcile(s));
+    const once = h.snapshot();
+    h.pose((s) => h.debug.reconcile(s));
+    const twice = h.snapshot();
+
+    // The clock, every timer and every body stand exactly where they were, and
+    // a second call is worth no more than the first.
+    expect(once).toEqual(before);
+    expect(twice).toEqual(once);
+    expect(once.simTime).toBe(before.simTime);
+    expect(once.brightHold).toBe(before.brightHold);
+    expect(once.drifterIn).toBe(before.drifterIn);
+    expect(once.sonar.cooldown).toBe(before.sonar.cooldown);
+    expect(once.ink.cooldown).toBe(before.ink.cooldown);
+    expect(once.forager).toEqual(before.forager);
+    expect(once.predators).toEqual(before.predators);
+  });
+
+  it("is legal on every screen", () => {
+    for (const screen of [
+      "title",
+      "howto",
+      "countdown",
+      "playing",
+      "paused",
+      "cleared",
+      "gameover",
+    ] as const) {
+      h.pose((s) => h.debug.setScreen(s, screen));
+      h.pose((s) => h.debug.reconcile(s));
+      expect(h.snapshot().screen).toBe(screen);
+    }
+  });
+});

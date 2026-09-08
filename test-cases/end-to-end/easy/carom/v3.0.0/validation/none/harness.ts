@@ -75,6 +75,20 @@
 // `h.debug.setBallPosition(...)`. The scenarios, the tolerances, and the
 // assertions are the same ones, because they are the case's rather than the
 // runtime's.
+//
+// RECONCILING AFTER A POSE. A specification says what a build REPORTS, not how
+// it HOLDS it, so a reading this case calls derived — a ball's `speed`, and
+// under `gyre` an obstacle's pose beneath the obstacle clock — may be worked out
+// at the read in one build and kept as a stored copy in another. Both are
+// conformant, and they part company the moment a pose writes what that reading
+// depends on: the computing build answers for the world as posed, the storing
+// build for the world before it. So a helper below that poses anything a reading
+// derives from calls `reconcile` before it returns, and a check that reaches its
+// scenario through the helpers never calls it itself. A check that poses with
+// `h.debug.set…` directly calls it once, before its first read or sweep.
+// `advance` is no substitute: a frame moves the very thing the pose just
+// placed, so a measurement taken from a posed rest state comes out wrong by the
+// frame that was meant to refresh the reading.
 
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -143,6 +157,7 @@ export const REQUIRED_OPS = [
   "spawnBall",
   "spawnObstacle",
   "reset",
+  "reconcile",
   "setScreen",
   "setMode",
   "setMenuIndex",
@@ -472,6 +487,19 @@ export interface CaromDebugApi<B extends BallOps = SingleBallOps> {
   spawnObstacle(index: number): Promise<void>;
   /** Returns the game to its title-screen state. Leaves `muted` and `autoStep`. */
   reset(): Promise<void>;
+  /**
+   * Brings every reading the surface reports into agreement with the world as it
+   * stands, advancing nothing.
+   *
+   * A specification says what a build REPORTS, not how it HOLDS it, so a value
+   * this case calls derived — a ball's `speed`, an obstacle's pose under the
+   * obstacle clock — may be worked out at the read in one build and kept as a
+   * stored copy in another. Both are conformant, and they part company the
+   * moment a pose writes what the derived value depends on. This is the call
+   * that closes the gap, and it costs no simulation time, so a measurement taken
+   * from a posed rest state starts exactly where it was posed.
+   */
+  reconcile(): Promise<void>;
 
   /* Screens and menus. */
 
@@ -929,6 +957,10 @@ export async function placeBall(
   await ball.setPosition(pose.x, pose.y);
   await ball.setVelocity(pose.vx ?? 0, pose.vy ?? 0);
   await ball.setSpin(pose.spin ?? 0);
+  // The velocity just posed is what `speed` is a function of, so a build that
+  // keeps `speed` as a stored copy answers for the aim it had BEFORE this pose
+  // until it is reconciled.
+  await h.debug.reconcile();
 }
 
 /* -------------------------------------------------------------------------- */
@@ -961,6 +993,7 @@ export async function spawnObstacles(
   indices: readonly number[],
 ): Promise<void> {
   for (const index of indices) await h.debug.spawnObstacle(index);
+  await h.debug.reconcile();
 }
 
 /**
@@ -986,6 +1019,7 @@ export async function isolateBall(
   if (obstacles.length > 0) await pinObstaclesUpright(h);
   await spawnObstacles(h, obstacles);
   await ball.spawn();
+  await h.debug.reconcile();
   return ball;
 }
 
@@ -1012,6 +1046,10 @@ export async function pinObstaclesUpright(h: AnyHarness): Promise<void> {
   if (!(await hasOperation(h, "setObstacleClockRunning"))) return;
   await h.debug.setObstacleClockRunning?.(false);
   await h.debug.setObstacleClock?.(0);
+  // The clock just posed is what each obstacle's pose is a function of, so a
+  // build that keeps those poses as stored values answers for the clock it had
+  // BEFORE this call until it is reconciled.
+  await h.debug.reconcile();
 }
 
 /**
@@ -1027,6 +1065,7 @@ export async function isolateObstacles(
   await clearField(h);
   await pinObstaclesUpright(h);
   await spawnObstacles(h, indices);
+  await h.debug.reconcile();
 }
 
 /* -------------------------------------------------------------------------- */

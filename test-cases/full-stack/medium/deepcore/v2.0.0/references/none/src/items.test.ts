@@ -172,7 +172,7 @@ describe("jettisoning the Core Sample", () => {
     game.miner.y = 200 * TILE - MINER_H;
     game.satchel.coreSample = true;
     game.coreTimer = 40;
-    game.jettisonCoreSample();
+    game.tryJettison();
     expect(game.satchel.coreSample).toBe(false);
     expect(game.coreGround()).toEqual({
       kind: "core-sample",
@@ -191,7 +191,7 @@ describe("jettisoning the Core Sample", () => {
     standOn(game, 9, 200);
     game.satchel.coreSample = true;
     game.coreTimer = 40;
-    game.jettisonCoreSample();
+    game.tryJettison();
     hold(game, {});
     run(game, 1, 30);
     expect(game.satchel.coreSample).toBe(false);
@@ -200,7 +200,7 @@ describe("jettisoning the Core Sample", () => {
 
   it("does nothing while no Sample is carried", () => {
     const game = emptyGame();
-    game.jettisonCoreSample();
+    game.tryJettison();
     expect(game.coreGround()).toBeNull();
   });
 });

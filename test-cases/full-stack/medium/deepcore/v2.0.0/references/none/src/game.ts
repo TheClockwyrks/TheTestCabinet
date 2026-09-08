@@ -946,10 +946,16 @@ export class Game {
     return this.groundItems.find((g) => g.kind === "core-sample") ?? null;
   }
 
-  /** Drop the carried Core Sample onto the miner's cell. It cannot be picked back up. */
-  jettisonCoreSample(): void {
-    if (this.screen !== "in-mine" || this.dying || this.launchAnim !== null)
-      return;
+  /**
+   * Drop the carried Core Sample onto the miner's cell. It cannot be picked back up.
+   *
+   * This is the transaction the jettison control names, and it runs from wherever
+   * the game stands. `tryJettison` is the player's route to it and carries the
+   * conditions a player has to satisfy to reach the control at all; the debug
+   * surface calls this one, because a debug operation is not a player and does
+   * not walk there (`specs/instrumentation.md`, The controls).
+   */
+  performJettison(): void {
     if (!this.satchel.coreSample) {
       this.note("NO CORE SAMPLE CARRIED");
       return;
@@ -969,26 +975,38 @@ export class Game {
     this.note("CORE SAMPLE JETTISONED — CLEAR THE BLAST");
   }
 
+  /** The player's route to the jettison control: live play, then the transaction. */
+  tryJettison(): void {
+    if (this.screen !== "in-mine" || this.dying || this.launchAnim !== null)
+      return;
+    this.performJettison();
+  }
+
   // -------------------------------------------------------------------------
   // Saving and continuing
   // -------------------------------------------------------------------------
 
-  /** Whether the expedition may be saved right now. */
-  canSave(): boolean {
-    return (
-      this.atSurface() && this.coreTimer === null && this.coreGround() === null
-    );
+  /** Whether a live Core Sample is holding the save open. */
+  coreSampleBlocksSave(): boolean {
+    return this.coreTimer !== null || this.coreGround() !== null;
   }
 
-  /** Save from the Save Pad, with a note either way. */
-  trySave(): boolean {
-    if (this.screen !== "in-mine" || this.dying || this.launchAnim !== null)
-      return false;
-    if (!this.atSurface()) {
-      this.note("NO SAVE PAD HERE");
-      return false;
-    }
-    if (!this.canSave()) {
+  /** Whether the Save Pad would take a save right now, for a player standing at it. */
+  canSave(): boolean {
+    return this.atSurface() && !this.coreSampleBlocksSave();
+  }
+
+  /**
+   * Write the save, with a note either way.
+   *
+   * This is the transaction the Save Pad's control names, and it runs from
+   * wherever the miner stands. The unstable Core Sample is the Pad's own rule and
+   * stays here; the screen, live play, and standing at the Pad are the player's
+   * route and live in `trySave`. The debug surface calls this one
+   * (`specs/instrumentation.md`, The controls).
+   */
+  performSave(): boolean {
+    if (this.coreSampleBlocksSave()) {
       this.note("CAN'T SAVE — UNSTABLE CORE SAMPLE ACTIVE");
       return false;
     }
@@ -1020,6 +1038,17 @@ export class Game {
       this.note("SAVE FAILED");
     }
     return ok;
+  }
+
+  /** The player's route to the Save Pad: live play and the Pad itself, then the save. */
+  trySave(): boolean {
+    if (this.screen !== "in-mine" || this.dying || this.launchAnim !== null)
+      return false;
+    if (!this.atSurface()) {
+      this.note("NO SAVE PAD HERE");
+      return false;
+    }
+    return this.performSave();
   }
 
   /** Restore the save, placing the miner back on the surface. */

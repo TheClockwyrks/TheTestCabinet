@@ -25,6 +25,14 @@
 // scenario helpers below only ARRANGE the hall through the surface, and the real
 // frames the build wrote are what run from there.
 //
+// RECONCILING AFTER A POSE. `reconcile()` brings every reading the surface
+// reports into agreement with the hall a pose has just arranged, without
+// advancing anything, so a build that keeps a derived reading as a stored copy —
+// the SEGMENTS, most often — answers for the hall as posed rather than as it
+// was. {@link poseHall} and {@link startRun} reconcile before they return, so a
+// check that poses through the helpers never calls it itself. A check that poses
+// with `h.debug.set…` directly calls it once before its first read or sweep.
+//
 // WHERE THE SURFACE COMES FROM. Off `engine.debug`, never built here. The game
 // instance's `initialize` returns it (`specs/instrumentation.md`), the engine
 // holds that same object, and reading it back off the engine is the only way a
@@ -279,6 +287,13 @@ export interface VoluteDebugApi {
   version: number;
   /** Restore every declared field to its title value. */
   reset(): void;
+  /**
+   * Bring every value the surface reports into agreement with the hall as it
+   * stands, without advancing anything. A build that works its derived readings
+   * out at the read has nothing to do; one that keeps any of them — the
+   * segments, most often — rewrites that copy from its source.
+   */
+  reconcile(): void;
   /** A pure reading of the running game. */
   snapshot(): VoluteSnapshot;
   /** Set the screen, and do nothing else. */
@@ -1647,6 +1662,7 @@ export async function poseHall(
   if (options.machinery !== undefined) {
     h.debug.grantMachinery(options.machinery);
   }
+  h.debug.reconcile();
 }
 
 /**
@@ -1669,6 +1685,7 @@ export async function startRun(h: Harness, level = 1): Promise<void> {
     h.debug.startLevel(level);
     await h.step(1);
   }
+  h.debug.reconcile();
 }
 
 /**

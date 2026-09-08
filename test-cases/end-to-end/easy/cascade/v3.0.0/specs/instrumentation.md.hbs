@@ -138,6 +138,25 @@ The surface carries `version` (`CASCADE_DEBUG_VERSION`, `1`), a plain number, an
 the operations below. Values are plain numbers, strings, and booleans, and every
 `x` and `y` the surface takes or reports is a card's top-left in the stage's
 logical units, matching the anchors `specs/table.md` fixes.
+
+An operation applies its effect every time it is called. It is the route a
+driver has instead of a player, so what a player would have had to do first is
+not its condition: which screen is showing, where the pointer has been, and
+whether a control is drawn are how a hand reaches an effect, and this surface
+reaches it from wherever the game stands. A pose reaches the value it names
+whatever the game's own rules would have allowed, so a card is added to a pile
+the deal would never have put it on and a flyer is put in flight on a table
+nobody has won. A card operation carries out its own transaction from wherever
+the game stands, and that transaction's own rules are the effect rather than a
+gate on it: `deal()` deals from the title screen, `turnStock()` turns whatever
+is on screen, and `move` and `autoMove` still report what the move rules
+decided, because deciding that is what they are for.
+
+What an operation never does is refuse quietly. A call the game has nothing to
+act on — a `pile` and `index` naming no pile, a `count` that is not a whole
+number, an `id` no card or flyer on the table carries — fails loudly rather
+than returning with the state unchanged. A caller reads what changed from
+`snapshot()`.
 {{#if (eq engine.slug "simple-2d")}}
 
 Each operation takes the current state, `DeepReadonly<CascadeState>`, as its
@@ -161,6 +180,7 @@ the live game and returns the verdict its row states.
 | --- | --- |
 | `reset()` | Restores every declared field of the state to its title-screen value, listed below. |
 | `snapshot()` | A pure read of the state, returned as the object under Snapshot shape below. It changes nothing. |
+| `reconcile()` | Brings every value the surface reports into agreement with the table as it stands, advancing nothing. |
 | `menuItemRect(index)` | The hit region of item `index` on the menu the current screen shows. It changes nothing. |
 
 `reset` restores `screen` to `"title"`; sets `menuIndex` and `titleIndex` to `0`;
@@ -179,6 +199,35 @@ shows.
 
 `reset` takes no parameters. `muted` is left exactly as it stands, because
 muting is a player preference the runtime owns.
+
+`reconcile()` brings every value this surface reports into agreement with the
+table as it now stands, without advancing anything. `wasteVisibleCount` follows
+from the waste's set memory, a card's `color` from its suit, and `dropTarget`
+from the run in hand and the pile it is held over, so after a pose they answer
+for the table as it is now rather than as it was before.
+
+A build that works those out at the read has nothing to do here and this call
+changes nothing. A build that keeps any of them as a stored copy rewrites that
+copy from what it is a copy of, through the same rule the game's own path uses.
+
+It moves no clock and runs no system: `simTime` and `launchClock` are untouched,
+no flyer moves, bounces, paints or retires, no card turns, no win is detected,
+no cue is raised, and no draw is taken. It changes no screen, deals nothing, and
+turns nothing. It moves nothing to make a reading agree: a flyer posed off the
+stage stays where it was posed and reads as it is, and a run in hand is left in
+hand whatever the pile beneath it now holds. `launched` and `trailStamps` are
+figures the game has counted up rather than readings of the table as it stands,
+so they are the cascade's and this call leaves them where it found them. Calling
+it twice leaves the same state as calling it once.
+
+It is never an error. It may be called on any screen, whether or not the game is
+stepping itself, and before or after a `reset`.
+{{#if (eq engine.slug "simple-2d")}}
+
+`reconcile(state)` returns the next `CascadeState`, built from the one it was
+handed, which it leaves as it was. A build that works every one of those readings
+out at the call returns a state equal to the one it was given.
+{{/if}}
 
 {{#if (eq engine.slug "none")}}
 ### The clock
@@ -412,14 +461,19 @@ present, so every operation is verifiable by setting a value and reading it back
 ```
 
 Every field is read straight off the game's state, so what the snapshot reports
-is what the game holds. Five entries are built at the call rather than read off a
-field of their own:
+is what the game holds. Six entries are derived rather than read off a field of
+their own:
 
-| Field | Built from |
+| Field | Derived from |
 | --- | --- |
 | `dealMode`, `turnCount`, `dealModeLabel` | The deal-mode figures `specs/stock.md` fixes |
 | A card's `color` | Its suit, as `specs/deal.md` states |
 | `wasteVisibleCount` | The newest entry of `wasteSets`, and `0` when `wasteSets` is empty |
+| `dropTarget` | The run in hand, where it is held, and whether that pile accepts it |
+
+A build is free to work any of these out at the read or to keep it as a stored
+copy, and `reconcile()` is what brings a stored copy back into agreement after a
+pose.
 
 Five more need a note:
 

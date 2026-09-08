@@ -111,6 +111,16 @@
 // established in. A check that is ABOUT the step size builds harnesses with the
 // engine's other clocks, which are re-exported below.
 //
+// AND A POSED WORLD IS RECONCILED BEFORE IT IS READ. A build is free to work a
+// derived reading out at the read or to keep it as a stored copy, and a stored
+// copy answers for the world as it was until `reconcile()` rewrites it. So a
+// helper below that poses anything a reading derives from — a position, the
+// grid, the cargo, the tiers — ends with `reconcile()`, and a check that reaches
+// its scenario through the helpers never calls it itself. A check that poses
+// with `h.debug.set...` directly calls it once before its first read or sweep.
+// A helper that writes only state nothing derives from — a faculty gate, a held
+// count — does not.
+//
 // AND EVERY COMPOUND SEQUENCE LIVES HERE. The surface is atomic by design: one
 // field or one reading. Opening a scene, holding a faculty, laying a seam,
 // standing the miner on a cell, sinking a shaft, reaching a building — none of
@@ -1021,6 +1031,7 @@ export function openScene(h: Harness, options: SceneOptions = {}): void {
   h.debug.setScreen(options.screen ?? "in-mine");
   if (options.travel !== undefined) h.debug.setMinerTravel(options.travel);
   if (options.drill !== undefined) h.debug.setMinerDrill(options.drill);
+  h.debug.reconcile();
 }
 
 /**
@@ -1065,6 +1076,7 @@ export function fillColumn(
   for (let row = fromRow; row <= toRow; row += 1) {
     h.debug.setTile(col, row, kind);
   }
+  h.debug.reconcile();
 }
 
 /** Fill a run of cells across one row with one kind. */
@@ -1078,6 +1090,7 @@ export function fillRow(
   for (let col = fromCol; col <= toCol; col += 1) {
     h.debug.setTile(col, row, kind);
   }
+  h.debug.reconcile();
 }
 
 /** Fill a rectangular block of cells with one kind. */
@@ -1089,6 +1102,7 @@ export function fillBlock(
   for (let row = block.fromRow; row <= block.toRow; row += 1) {
     fillRow(h, row, block.fromCol, block.toCol, kind);
   }
+  h.debug.reconcile();
 }
 
 /**
@@ -1120,6 +1134,7 @@ export function layFloor(
 export function layCamp(h: Harness, kind: TileKind = "rock"): void {
   layFloor(h, 1, kind);
   h.debug.setTile(CAVE_MOUTH_COL, 1, "tunnel");
+  h.debug.reconcile();
 }
 
 /**
@@ -1155,12 +1170,14 @@ export function standOn(
   h.debug.setMinerPosition(minerXOn(col), minerYOn(row));
   h.debug.setMinerVelocity(0, 0);
   if (facing !== undefined) h.debug.setFacing(facing);
+  h.debug.reconcile();
 }
 
 /** Put the miner's box at a world position, at rest. */
 export function placeAt(h: Harness, x: number, y: number): void {
   h.debug.setMinerPosition(x, y);
   h.debug.setMinerVelocity(0, 0);
+  h.debug.reconcile();
 }
 
 /** Stand the miner on the camp ground at `col`, where it spawns by default. */
@@ -1191,11 +1208,13 @@ export function digShaft(
   fillColumn(h, col - 1, fromRow, toRow, wall);
   fillColumn(h, col + 1, fromRow, toRow, wall);
   h.debug.setTile(col, toRow + 1, wall);
+  h.debug.reconcile();
 }
 
 /** Put an ore vein at a cell, at its band's full health. */
 export function layOre(h: Harness, col: number, row: number, ore: Ore): void {
   h.debug.setOreTile(col, row, ore);
+  h.debug.reconcile();
 }
 
 /** Put a material node at a cell, at its band's full health. */
@@ -1206,6 +1225,7 @@ export function layMaterial(
   material: Material,
 ): void {
   h.debug.setMaterialTile(col, row, material);
+  h.debug.reconcile();
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1227,6 +1247,7 @@ export function stageCargo(
   for (const [id, count] of Object.entries(ore)) {
     h.debug.setCargo(id as Ore, count as number);
   }
+  h.debug.reconcile();
 }
 
 /**
@@ -1250,6 +1271,7 @@ export function loadToFraction(
     (fraction * cargo.liftLimitKg) / mineralOf(ore).weightKg,
   );
   h.debug.setCargo(ore, count);
+  h.debug.reconcile();
   return { count, fraction: loadFraction(h.snapshot()) };
 }
 
@@ -1272,6 +1294,7 @@ export function stageTiers(
   for (const [track, tier] of Object.entries(tiers)) {
     h.debug.setTier(track as UpgradeTrack, tier as number);
   }
+  h.debug.reconcile();
 }
 
 /* -------------------------------------------------------------------------- */

@@ -27,7 +27,7 @@
 // frame loop. Under an engine "the clock, the keyboard, the pointer, and the
 // overlay belong to the Structured 2D engine ... and the surface carries no
 // operation for any of them", so the suite drives frames with `engine.advance`
-// and the surface carries twenty-six operations rather than twenty-eight.
+// and the surface carries twenty-seven operations rather than twenty-nine.
 
 import {
   FACET_DEBUG_VERSION,
@@ -173,6 +173,12 @@ export interface FacetDebugApi {
 
   /** Restores every declared field to its title-screen value. */
   reset(): void;
+  /**
+   * Every reading the surface reports brought into agreement with the game as it
+   * stands, without advancing anything. A build that works its readings out at
+   * the read has nothing to do and this changes nothing.
+   */
+  reconcile(): void;
   /** A pure read of the state. */
   snapshot(): FacetSnapshot;
 
@@ -240,16 +246,18 @@ export const READINGS = ["snapshot"] as const;
 /**
  * Every operation the surface must carry under this engine.
  *
- * Twenty-six, not twenty-eight: `setAutoStep` and `advance` exist under `none`
+ * Twenty-seven, not twenty-nine: `setAutoStep` and `advance` exist under `none`
  * alone, because here the clock is the engine's.
  *
- * EVERY ONE OF THEM WRITES ONE ELEMENT OF THE STATE or reads it. Reaching a
+ * EVERY ONE OF THEM WRITES ONE ELEMENT OF THE STATE, reads it, or brings the
+ * readings into agreement with it. Reaching a
  * screen, opening a round, and quitting to the title are sequences of these, and
  * those sequences live in `harness.ts` where all three projects' suites share
  * them.
  */
 export const REQUIRED_OPS = [
   "reset",
+  "reconcile",
   "snapshot",
   "setScreen",
   "setMenuIndex",

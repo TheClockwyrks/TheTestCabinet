@@ -1,19 +1,22 @@
 // building/preview-invalid-off-the-grid — a footprint that would run past the
 // floor's edge is never committed clipped.
 //
-// specs/building.md fixes two rules that meet here. The preview is "clamped so
-// that the whole footprint stays on the grid", and a footprint is valid only when
-// "every tile of the footprint is on the grid" (condition 1); specs/floor.md adds
-// that the casing "is not part of the tile grid" and "no tower footprint ever
-// covers any part of it".
+// specs/building.md fixes two rules that meet here. The preview a POINTER carries
+// is "clamped so that the whole footprint stays on the grid", and a footprint is
+// valid only when "every tile of the footprint is on the grid" (condition 1);
+// specs/floor.md adds that the casing "is not part of the tile grid" and "no
+// tower footprint ever covers any part of it". specs/instrumentation.md separates
+// the two: `setPreview` is a POSE and moves the footprint's top-left exactly
+// where the call names it, and a footprint hanging off the grid is one the
+// placement check answers `false` for.
 //
-// So a build handed a top-left whose block would run past the far edge has
-// exactly two conformant answers, and this check accepts either: clamp the
-// footprint back onto the grid, which is what the specification's preview rule
-// says, or hold the footprint as asked and report it INVALID, which is what
-// condition 1 says. What no build may do is commit it — a tower standing partly
-// off the grid, over the casing, is the defect this item exists to catch, and it
-// is asserted directly against the roster after the placement is attempted.
+// So a build handed a top-left whose block would run past the far edge holds the
+// footprint as asked and reports it INVALID. This check still accepts a clamp as
+// well, because a build that clamped would be wrong about `setPreview` rather
+// than about this requirement. What no build may do is commit it — a tower
+// standing partly off the grid, over the casing, is the defect this item exists
+// to catch, and it is asserted directly against the roster after the placement is
+// attempted.
 //
 // A 4x4 Lance is used because it is the largest footprint, so the anchor asked
 // for below would run three columns and three rows past the last tile.

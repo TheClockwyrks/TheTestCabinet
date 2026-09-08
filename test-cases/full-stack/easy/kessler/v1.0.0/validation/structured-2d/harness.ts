@@ -29,6 +29,15 @@
 // so no engine collision event is read anywhere: everything comes off the
 // debug surface and the world.
 //
+// RECONCILING AFTER A POSE. `reconcile()` brings every reading the surface
+// reports into agreement with the field a pose has just arranged, without
+// advancing anything, so a build that keeps a derived reading as a stored copy
+// answers for the field as posed rather than as it was. A helper below that
+// poses anything a reading derives from — a ball, a pod, a target, an effect
+// timer — reconciles before it returns, so a check posing through the helpers
+// never calls it itself. A check that poses with `h.debug.set…` directly calls
+// it once before its first read or sweep.
+//
 // WHY THE DEBUG SURFACE RATHER THAN RAW ASSIGNMENT. `specs/instrumentation.md`
 // fixes its operations, so they mean the same thing in every build: a pose
 // arranges the running game through the same systems play uses, the two driver
@@ -998,6 +1007,7 @@ export function isolate(h: Harness): KesslerSnapshot {
   h.debug.clearPods();
   h.debug.setWaveAdvance(false);
   h.debug.setPodSpawn(false);
+  h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -1053,6 +1063,7 @@ export function spawnBallPolar(
   const { x, y } = polarToXy(r, thetaDeg);
   const { vx, vy } = polarVelocity(thetaDeg, vr, vt);
   h.debug.spawnBall(x, y, vx, vy);
+  h.debug.reconcile();
 }
 
 /** Spawn one pod by its polar position. It falls radially inward on its own. */
@@ -1064,6 +1075,7 @@ export function spawnPodPolar(
 ): void {
   const { x, y } = polarToXy(r, thetaDeg);
   h.debug.spawnPod(kind, x, y);
+  h.debug.reconcile();
 }
 
 /**
@@ -1107,6 +1119,7 @@ export function startFreshSession(h: Harness): KesslerSnapshot {
   h.reset();
   h.debug.setScreen("playing");
   h.debug.parkBall();
+  h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -1131,6 +1144,7 @@ export function poseInterstitial(
   h.debug.setShield(false);
   h.debug.setInterstitialTicks(ticks);
   h.debug.setScreen("waveclear");
+  h.debug.reconcile();
   return h.snapshot();
 }
 

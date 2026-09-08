@@ -110,6 +110,13 @@ it("moves the derived figures and leaves the rosters untouched", async () => {
   );
 
   h.debug.setStage(STAGE);
+  // `reconcile` between the pose and the read, because this check is about
+  // exactly the gap it closes: the five figures follow the stage, and a build
+  // that keeps any of them as a stored copy rewrites it here rather than
+  // answering for the stage it held before. A build that derives them at the read
+  // has nothing to do and the reading is the same either way. No FRAME is driven
+  // first — that would move the field this also asserts was left alone.
+  h.debug.reconcile();
   const after = h.snapshot();
 
   await h.advance(1);

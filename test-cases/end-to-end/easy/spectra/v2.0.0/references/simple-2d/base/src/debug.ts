@@ -20,6 +20,19 @@
 // real action and reads the result — and no `addBurst`, because a burst is what
 // a destroyed drone leaves behind.
 //
+// AN OPERATION IS UNCONDITIONAL. Every pose below applies its effect, reaching
+// the value it was given rather than one the game's own rules would have
+// preferred: nothing is clamped into range and nothing is declined. Where the
+// specification fixes a domain — the lane's own bounds, `0` to `RESONANCE_MAX`, a
+// floor of zero on a timer, an id a live drone, bullet or burst carries, a field
+// only one KIND of drone has — that domain is checked and a call outside it
+// THROWS, where the caller sees it. A bound that reads a LIVE game figure is not a
+// domain at all: `fluxWindow(stage)` moves with the stage, so `setDroneBandClock`
+// takes the seconds it was handed and leaves the carry-over to the oscillation.
+// What nothing below does is refuse quietly: no pose returns a state equal to the
+// one it was handed, because a surface that did that would hide the very systems a
+// check drove it to reach.
+//
 // Everything about DRIVING A BROWSER GAME rather than about Spectra belongs to
 // the engine and is deliberately absent: no clock operation (the engine owns the
 // clock and runs exact frames), no key operation (the registered actions are
@@ -31,27 +44,20 @@ import {
   ENEMY_BULLET_SPEED,
   PLAYER_BULLET_SPEED,
   RESONANCE_MAX,
+  SHIP_X_MAX,
+  SHIP_X_MIN,
   SPECTRA_DEBUG_VERSION,
   bulletSpeedScale,
   diveGapScale,
   droneSpeedScale,
   fluxHold,
-  fluxWindow,
   isChallengeStage,
 } from "./constants";
 import { bulletBand, droneBand, inverted, isShimmering } from "./bands";
-import { clampLane } from "./ship";
 import { dischargeReady } from "./discharge";
 import { resetToTitle } from "./flow";
 import { menuItemRect, type MenuRect } from "./menus";
-import {
-  droneById,
-  bulletById,
-  takeId,
-  toSim,
-  type MutDrone,
-  type Sim,
-} from "./sim";
+import { droneById, takeId, toSim, type MutDrone, type Sim } from "./sim";
 import type {
   Band,
   DronePhase,
@@ -146,6 +152,8 @@ export interface SpectraDebugApi {
 
   reset(state: DeepReadonly<SpectraState>): SpectraState;
   snapshot(state: DeepReadonly<SpectraState>): SpectraSnapshot;
+  /** Bring every reported reading into agreement with the game as it stands. */
+  reconcile(state: DeepReadonly<SpectraState>): SpectraState;
   menuItemRect(
     state: DeepReadonly<SpectraState>,
     index: number,
@@ -303,20 +311,93 @@ function pose(change: (sim: Sim) => void): Pose {
   };
 }
 
-/** Apply `change` to the drone with that id, and leave the state alone otherwise. */
+/**
+ * Apply `change` to the drone with that id, or fail loudly naming the id.
+ *
+ * An id no live drone carries names no state to reach, so it THROWS where the
+ * caller sees it rather than handing back the state it was given: a pose that
+ * vanished would grade a check that never addressed the drone it meant to as one
+ * that did.
+ */
 function poseDrone(
+  op: string,
   id: number,
   change: (drone: MutDrone, sim: Sim) => void,
 ): Pose {
   return pose((sim) => {
     const drone = droneById(sim, id);
-    if (drone !== undefined) change(drone, sim);
+    if (drone === undefined) {
+      throw new RangeError(`Spectra: ${op} names no live drone with id ${id}`);
+    }
+    change(drone, sim);
   });
 }
 
-/** Seconds, never negative. */
-function seconds(value: number): number {
-  return Math.max(0, value);
+/**
+ * Apply `change` to the drone with that id, of that kind, or fail loudly.
+ *
+ * A band window belongs to a Flux and a shell to a Prism, so posing either on a
+ * drone that has none names no state to reach.
+ */
+function poseDroneOfKind(
+  op: string,
+  id: number,
+  kind: DroneKind,
+  change: (drone: MutDrone, sim: Sim) => void,
+): Pose {
+  return poseDrone(op, id, (drone, sim) => {
+    if (drone.kind !== kind) {
+      throw new RangeError(
+        `Spectra: ${op} needs a ${kind}, and drone ${id} is a ${drone.kind}`,
+      );
+    }
+    change(drone, sim);
+  });
+}
+
+/** One entry of a roster by id, or a caller error naming the id. */
+function requireId<T extends { id: number }>(
+  op: string,
+  roster: readonly T[],
+  id: number,
+): T {
+  const found = roster.find((entry) => entry.id === id);
+  if (found === undefined) {
+    throw new RangeError(`Spectra: ${op} names no live entry with id ${id}`);
+  }
+  return found;
+}
+
+/**
+ * The finite number the caller passed, at or above `floor`.
+ *
+ * The floor is a bound `specs/instrumentation.md` fixes as a constant, so it is
+ * the argument's DOMAIN rather than an edge to snap to: a call outside it fails
+ * loudly rather than being clamped into range, which would leave the state
+ * holding a value nobody asked for.
+ */
+function atLeast(op: string, value: number, floor: number): number {
+  if (!Number.isFinite(value) || value < floor) {
+    throw new RangeError(
+      `Spectra: ${op} needs a finite number at or above ${floor}, got ${String(value)}`,
+    );
+  }
+  return value;
+}
+
+/** The finite number the caller passed, inside the closed range the specs fix. */
+function inRange(op: string, value: number, lo: number, hi: number): number {
+  if (!Number.isFinite(value) || value < lo || value > hi) {
+    throw new RangeError(
+      `Spectra: ${op} needs a finite number in [${lo}, ${hi}], got ${String(value)}`,
+    );
+  }
+  return value;
+}
+
+/** A finite, non-negative number of seconds; below zero is a caller error. */
+function seconds(op: string, value: number): number {
+  return atLeast(op, value, 0);
 }
 
 /** The surface. Every member is one pose or one reading. */
@@ -328,6 +409,25 @@ export function createDebugApi(): SpectraDebugApi {
       pose((sim) => {
         resetToTitle(sim);
       })(state),
+
+    /**
+     * Bring every reported reading into agreement with the game as it stands.
+     *
+     * Every derived reading this build reports — `isChallenge`, the four
+     * stage-scaled figures, `dischargeReady`, `inversionActive`, `ship.alive`,
+     * every `effectiveBand`, a Flux's `shimmer` and a burst's `particles` — is
+     * worked out at the READ, in `snapshot` below, from the stage, the resonance,
+     * the inversion, the phase and the bands beside it. Nothing is held that a
+     * pose can leave behind, so there is nothing here to rewrite and the state
+     * that comes back equals the one that went in.
+     *
+     * The operation is required of EVERY build, including one that keeps those
+     * readings as stored copies and must rewrite them from their sources here.
+     * This is what it comes to in a build that does not: it advances no frame,
+     * runs no system, fires nothing, and corrects nothing. The empty `pose` is
+     * what keeps the return type right without a cast.
+     */
+    reconcile: (state) => pose(() => {})(state),
 
     snapshot: (state) => {
       const swapped = inverted(state.inversion);
@@ -437,12 +537,12 @@ export function createDebugApi(): SpectraDebugApi {
 
     setPhaseTimer: (state, value) =>
       pose((sim) => {
-        sim.phaseTimer = seconds(value);
+        sim.phaseTimer = seconds("setPhaseTimer(seconds)", value);
       })(state),
 
     setMenuIndex: (state, n) =>
       pose((sim) => {
-        sim.menuIndex = Math.max(0, Math.round(n));
+        sim.menuIndex = Math.round(atLeast("setMenuIndex(n)", n, 0));
       })(state),
 
     // A pose is a precondition, so no extra life is granted here whatever
@@ -454,14 +554,14 @@ export function createDebugApi(): SpectraDebugApi {
 
     setLives: (state, n) =>
       pose((sim) => {
-        sim.lives = Math.max(0, Math.round(n));
+        sim.lives = Math.round(atLeast("setLives(n)", n, 0));
       })(state),
 
     // The stage's four derived figures and `isChallenge` all follow this, and
     // nothing is spawned or cleared by setting it.
     setStage: (state, n) =>
       pose((sim) => {
-        sim.stage = Math.max(1, Math.round(n));
+        sim.stage = Math.round(atLeast("setStage(n)", n, 1));
       })(state),
 
     setExtraLifeAwarded: (state, awarded) =>
@@ -471,7 +571,7 @@ export function createDebugApi(): SpectraDebugApi {
 
     setChallengeHits: (state, n) =>
       pose((sim) => {
-        sim.challengeHits = Math.max(0, Math.round(n));
+        sim.challengeHits = Math.round(atLeast("setChallengeHits(n)", n, 0));
       })(state),
 
     // ---- The world gates and the dive clock -------------------------------
@@ -498,19 +598,22 @@ export function createDebugApi(): SpectraDebugApi {
 
     setDiveClock: (state, value) =>
       pose((sim) => {
-        sim.diveClock = seconds(value);
+        sim.diveClock = seconds("setDiveClock(seconds)", value);
       })(state),
 
     setDiveGap: (state, value) =>
       pose((sim) => {
-        sim.diveTarget = seconds(value);
+        sim.diveTarget = seconds("setDiveGap(seconds)", value);
       })(state),
 
     // ---- The ship and its cannon ------------------------------------------
 
+    // The `x` it was GIVEN. The lane's bounds are the argument's domain rather
+    // than an edge to snap to, so a value outside them fails loudly instead of
+    // landing the ship somewhere nobody asked for.
     setShipX: (state, x) =>
       pose((sim) => {
-        sim.ship.x = clampLane(x);
+        sim.ship.x = inRange("setShipX(x)", x, SHIP_X_MIN, SHIP_X_MAX);
       })(state),
 
     // The band the ship holds, and nothing else: no fire lockout is started,
@@ -522,24 +625,24 @@ export function createDebugApi(): SpectraDebugApi {
 
     setFireLockout: (state, value) =>
       pose((sim) => {
-        sim.ship.lockout = seconds(value);
+        sim.ship.lockout = seconds("setFireLockout(seconds)", value);
       })(state),
 
     setFireCooldown: (state, value) =>
       pose((sim) => {
-        sim.ship.cooldown = seconds(value);
+        sim.ship.cooldown = seconds("setFireCooldown(seconds)", value);
       })(state),
 
     // ---- Resonance and the inversion --------------------------------------
 
     setResonance: (state, value) =>
       pose((sim) => {
-        sim.resonance = Math.max(0, Math.min(RESONANCE_MAX, value));
+        sim.resonance = inRange("setResonance(value)", value, 0, RESONANCE_MAX);
       })(state),
 
     setInversion: (state, value) =>
       pose((sim) => {
-        sim.inversion = seconds(value);
+        sim.inversion = seconds("setInversion(seconds)", value);
       })(state),
 
     // ---- The drones -------------------------------------------------------
@@ -567,7 +670,7 @@ export function createDebugApi(): SpectraDebugApi {
       })(state),
 
     setDronePosition: (state, id, x, y) =>
-      poseDrone(id, (drone) => {
+      poseDrone("setDronePosition", id, (drone) => {
         drone.x = x;
         drone.y = y;
       })(state),
@@ -575,54 +678,59 @@ export function createDebugApi(): SpectraDebugApi {
     // The stored band, on every kind, and nothing else: the band clock stays
     // exactly where it stands.
     setDroneBand: (state, id, band) =>
-      poseDrone(id, (drone) => {
+      poseDrone("setDroneBand", id, (drone) => {
         drone.band = band;
       })(state),
 
     // A phase change starts that phase's own path from its beginning, however
     // the change came about (`specs/state.md`).
     setDronePhase: (state, id, phase) =>
-      poseDrone(id, (drone) => {
+      poseDrone("setDronePhase", id, (drone) => {
         drone.phase = phase;
         drone.phaseClock = 0;
         drone.shotsFired = 0;
       })(state),
 
     setDroneSlot: (state, id, x, y) =>
-      poseDrone(id, (drone) => {
+      poseDrone("setDroneSlot", id, (drone) => {
         drone.slotX = x;
         drone.slotY = y;
       })(state),
 
     // How far into the CURRENT band window the Flux is, and nothing else:
     // `shimmer` follows it and the stored band does not change.
+    // The seconds it was HANDED, whatever `fluxWindow(stage)` is at the time: the
+    // window is a live figure the stage moves, so it is a game rule rather than
+    // this argument's domain, and a clock posed past the end of the window stays
+    // where it was put until the oscillation reaches it.
     setDroneBandClock: (state, id, value) =>
-      poseDrone(id, (drone, sim) => {
-        drone.bandClock = Math.max(0, Math.min(fluxWindow(sim.stage), value));
+      poseDroneOfKind("setDroneBandClock", id, "flux", (drone) => {
+        drone.bandClock = seconds("setDroneBandClock(seconds)", value);
       })(state),
 
     setDroneShell: (state, id, intact) =>
-      poseDrone(id, (drone) => {
+      poseDroneOfKind("setDroneShell", id, "prism", (drone) => {
         drone.shellAlive = intact;
       })(state),
 
     setDroneTravel: (state, id, enabled) =>
-      poseDrone(id, (drone) => {
+      poseDrone("setDroneTravel", id, (drone) => {
         drone.travel = enabled;
       })(state),
 
     setDroneOscillation: (state, id, enabled) =>
-      poseDrone(id, (drone) => {
+      poseDrone("setDroneOscillation", id, (drone) => {
         drone.oscillation = enabled;
       })(state),
 
     setDroneFire: (state, id, enabled) =>
-      poseDrone(id, (drone) => {
+      poseDrone("setDroneFire", id, (drone) => {
         drone.fire = enabled;
       })(state),
 
     removeDrone: (state, id) =>
       pose((sim) => {
+        requireId("removeDrone", sim.drones, id);
         sim.drones = sim.drones.filter((drone) => drone.id !== id);
       })(state),
 
@@ -661,14 +769,14 @@ export function createDebugApi(): SpectraDebugApi {
 
     setBulletVelocity: (state, id, vx, vy) =>
       pose((sim) => {
-        const bullet = bulletById(sim, id);
-        if (bullet === undefined) return;
+        const bullet = requireId("setBulletVelocity", sim.bullets, id);
         bullet.vx = vx;
         bullet.vy = vy;
       })(state),
 
     removeBullet: (state, id) =>
       pose((sim) => {
+        requireId("removeBullet", sim.bullets, id);
         sim.bullets = sim.bullets.filter((bullet) => bullet.id !== id);
       })(state),
 
@@ -686,6 +794,7 @@ export function createDebugApi(): SpectraDebugApi {
 
     removeBurst: (state, id) =>
       pose((sim) => {
+        requireId("removeBurst", sim.bursts, id);
         sim.bursts = sim.bursts.filter((burst) => burst.id !== id);
       })(state),
 

@@ -147,6 +147,7 @@ import {
 } from "./constants";
 import {
   footprintCentreOf,
+  isEmitter,
   sizeOf,
   tileCentre,
   type Point,
@@ -748,6 +749,18 @@ export function tileDistance(from: Point, to: Point): number {
 // because a helper that carried the tolerance would hide what the check is really
 // asserting.
 //
+//
+// A HELPER THAT POSES ANYTHING A READING DERIVES FROM RECONCILES BEFORE IT
+// RETURNS. `specs/instrumentation.md` lets a build work a derived reading out at
+// the read or keep it as a stored copy, and `reconcile()` is what brings a
+// stored copy back into agreement — so `startRun`, `poseTower` and its three
+// variants, `poseTarget` and `poseWalker` each end with the call, because a
+// unit's `col`, `row` and `remaining`, a tower's `heatMult`, `damage` and
+// `slowFactor`, the mode's figures, both route lengths and `build.valid` all
+// follow from what those helpers write. A check that poses only through the
+// helpers therefore never calls `reconcile` itself; a check that poses with
+// `h.debug.set…` directly calls it once before its first read or sweep.
+//
 // The debug surface is atomic by design (specs/instrumentation.md), so every
 // compound sequence lives here. A check that needs all of a sequence calls the
 // helper; a check that needs only part of it calls the operations it needs.
@@ -834,6 +847,11 @@ export function startRun(
   h.debug.setHoverShop(null);
   h.debug.setArmed(null);
   h.debug.setSpeed(1);
+
+  // The mode, the difficulty, the wave and the empty floor are what the mode's
+  // figures, `nextWave`, `waveRemaining` and both route lengths follow from, so
+  // the readings are brought into agreement before the caller reads them.
+  h.debug.reconcile();
 }
 
 /**
@@ -853,7 +871,11 @@ export function poseTower(
   rotation = 0,
 ): number {
   h.debug.addTower(type, col, row, rotation);
-  return lastTower(h.snapshot()).id;
+  const id = lastTower(h.snapshot()).id;
+  // A tower blocks its footprint, so both route lengths, every unit's
+  // `remaining`, and `build.valid` all follow from it.
+  h.debug.reconcile();
+  return id;
 }
 
 /**
@@ -875,7 +897,9 @@ export function poseIdleTower(
 ): number {
   const id = poseTower(h, type, col, row, rotation);
   h.debug.setTowerFiring(id, false);
-  h.debug.setTowerHeat(id, heat);
+  if (isEmitter(type)) h.debug.setTowerHeat(id, heat);
+  // `heatMult`, `damage` and a Rime's `slowFactor` all follow from the heat.
+  h.debug.reconcile();
   return id;
 }
 
@@ -898,7 +922,9 @@ export function posePinnedTower(
 ): number {
   const id = poseTower(h, type, col, row, rotation);
   h.debug.setTowerThermal(id, false);
-  h.debug.setTowerHeat(id, heat);
+  if (isEmitter(type)) h.debug.setTowerHeat(id, heat);
+  // `heatMult`, `damage` and a Rime's `slowFactor` all follow from the heat.
+  h.debug.reconcile();
   return id;
 }
 
@@ -922,7 +948,9 @@ export function poseTrippedTower(
   const id = poseTower(h, type, col, row, rotation);
   h.debug.setTowerTripped(id, true);
   h.debug.setTowerTripTimer(id, timer);
-  h.debug.setTowerHeat(id, heat);
+  if (isEmitter(type)) h.debug.setTowerHeat(id, heat);
+  // `heatMult` and `damage` follow from the heat, and `firing` from the trip.
+  h.debug.reconcile();
   return id;
 }
 
@@ -954,6 +982,10 @@ export function poseTarget(
   h.debug.setUnitMotion(id, false);
   h.debug.setUnitMaxHp(id, hp);
   h.debug.setUnitHp(id, hp);
+  // The unit's `col`, `row` and `remaining` all follow from where it now is, so
+  // a build that keeps any of them as a stored copy rewrites it here rather than
+  // answering for the tile the unit entered at.
+  h.debug.reconcile();
   return id;
 }
 
@@ -970,7 +1002,10 @@ export function poseWalker(
   vent: VentName = "left",
 ): number {
   h.debug.addUnit(type, vent);
-  return lastUnit(h.snapshot()).id;
+  const id = lastUnit(h.snapshot()).id;
+  // The unit's `col`, `row` and `remaining` follow from where it entered.
+  h.debug.reconcile();
+  return id;
 }
 
 /**

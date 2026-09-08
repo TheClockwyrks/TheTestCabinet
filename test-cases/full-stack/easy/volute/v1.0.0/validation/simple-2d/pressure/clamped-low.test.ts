@@ -5,7 +5,9 @@
 // clamped at both ends", and the per-tick rule ends in
 // `clamp(pressure + (rise - bleed) x dt, 0, 100)`. The same clamp is named again
 // for the drop a removal pays, "clamped the same way", and `setPressure` is held
-// to it too (`specs/instrumentation.md`: "clamped to `0` through `100`").
+// to it too, and `setPressure` takes the same range as its domain
+// (`specs/instrumentation.md`: "Sets the pressure to `value`, `0` through
+// `100`").
 //
 // THE DRIVE. An isolated hall with the inlet held, the pressure posed
 // just above the floor at 0.5, and 10 cores on the channel in one segment. Ten is

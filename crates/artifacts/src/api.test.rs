@@ -10,7 +10,10 @@
 //! - the `tree.tar` source-tree download (round-trip, publish-job-token auth, and
 //!   a `404` for an unknown run);
 //! - the ungated `archive.tar.gz` run download (gzip framing, the `<run-id>/`
-//!   prefix, the `Content-Disposition` filename, and a `404` for an unknown run).
+//!   prefix, the `Content-Disposition` filename, and a `404` for an unknown run);
+//! - that both whole-tree downloads **stream** — no `Content-Length`, several body
+//!   frames — because a buffered one made this pod's peak allocation a function of
+//!   the largest tree any caller happened to ask for.
 //!
 //! The two token checks talk to an upstream (the backend, the token authority), so
 //! a tiny **stub** server stands in for it: it accepts a fixed "good" job token at
@@ -184,6 +187,158 @@ fn untar_to_map(archive: &[u8]) -> std::collections::BTreeMap<String, Vec<u8>> {
         out.insert(path, contents);
     }
     out
+}
+
+/// `len` bytes that gzip cannot shrink, from a small deterministic PRNG.
+///
+/// The streaming assertions need a body that is still several chunks long *after*
+/// compression, which text or a repeated byte is not — a megabyte of zeros gzips to
+/// about a kilobyte and would arrive in one frame whether the response streamed or
+/// not, quietly passing the test it was meant to fail.
+fn incompressible(len: usize) -> Vec<u8> {
+    let mut state: u64 = 0x2545_f491_4f6c_dd1d;
+    (0..len)
+        .map(|_| {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            (state >> 24) as u8
+        })
+        .collect()
+}
+
+/// Read a response body as an ordered list of its data frames.
+///
+/// The frame *count* is the observable that separates a streamed response from a
+/// buffered one: a handler that builds its archive first hands the body over as a
+/// single `Bytes`, however large.
+async fn body_frames(body: Body) -> Vec<bytes::Bytes> {
+    use futures_util::StreamExt;
+    let mut stream = body.into_data_stream();
+    let mut frames = Vec::new();
+    while let Some(frame) = stream.next().await {
+        frames.push(frame.expect("a body frame"));
+    }
+    frames
+}
+
+/// Concatenate `frames` into the whole body.
+fn joined(frames: &[bytes::Bytes]) -> Vec<u8> {
+    frames.iter().flat_map(|frame| frame.to_vec()).collect()
+}
+
+/// Upload a run tree carrying `payload` as a produced media file, so a download of
+/// it is large enough to observe as more than one frame.
+async fn seed_heavy_run(app: &Router, run_id: &str, payload: &[u8]) {
+    let upload = Request::builder()
+        .method("POST")
+        .uri(format!("/runs/{run_id}/artifacts"))
+        .header("authorization", format!("Bearer {GOOD_JOB_TOKEN}"))
+        .header("x-tcab-job-id", GOOD_JOB_ID)
+        .body(Body::from(tarball(&[
+            ("run-record.json", b"{\"id\":\"heavy\"}"),
+            ("implementation/dist/big.bin", payload),
+        ])))
+        .unwrap();
+    assert_eq!(
+        app.clone().oneshot(upload).await.unwrap().status(),
+        StatusCode::CREATED
+    );
+}
+
+#[tokio::test]
+async fn archive_streams_the_tree_instead_of_buffering_it() {
+    // The regression this guards is an exit 137. `archive` is ungated — the console
+    // links it as a plain download — so any reviewer could ask this long-lived pod to
+    // hold a whole run tree in memory, and prod's largest trees are far past the
+    // 1536Mi limit. The body arriving in several frames, with no `Content-Length`, is
+    // what says the archive is being compressed into the response as the walk goes
+    // rather than assembled first.
+    let stub = spawn_stub().await;
+    let (app, _store, _dir) = app(&stub).await;
+    let payload = incompressible(2 * 1024 * 1024);
+    seed_heavy_run(&app, "run-big", &payload).await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/runs/run-big/archive.tar.gz")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(
+        response.headers().get("content-length").is_none(),
+        "a streamed archive has no length to declare until it is finished"
+    );
+    // The headers that matter to the reviewer are unchanged by the streaming: the
+    // body is the gzip itself, named after the run.
+    assert_eq!(
+        response.headers().get("content-type").unwrap(),
+        "application/gzip"
+    );
+    assert_eq!(
+        response.headers().get("content-disposition").unwrap(),
+        "attachment; filename=\"run-run-big.tar.gz\""
+    );
+
+    let frames = body_frames(response.into_body()).await;
+    assert!(
+        frames.len() > 1,
+        "the archive arrived as one frame, so it was built whole before answering"
+    );
+    let bytes = joined(&frames);
+    let mut decoded = Vec::new();
+    let mut decoder = flate2::read::GzDecoder::new(Cursor::new(&bytes[..]));
+    std::io::copy(&mut decoder, &mut decoded).expect("the body is a complete gzip member");
+    let entries = untar_to_map(&decoded);
+    assert_eq!(
+        entries
+            .get("run-big/implementation/dist/big.bin")
+            .map(Vec::as_slice),
+        Some(&payload[..]),
+        "streaming it out must produce the same archive, byte for byte"
+    );
+}
+
+#[tokio::test]
+async fn tree_tar_streams_the_tree_instead_of_buffering_it() {
+    // Same property for the publisher's pull. It is token-gated and so cannot be
+    // triggered by a reviewer, but it reads the same trees off the same pod.
+    let stub = spawn_stub().await;
+    let (app, _store, _dir) = app(&stub).await;
+    let payload = incompressible(2 * 1024 * 1024);
+    seed_heavy_run(&app, "run-big-src", &payload).await;
+
+    let response = app
+        .clone()
+        .oneshot(tree_tar_request(
+            "run-big-src",
+            Some(GOOD_PUBLISH_TOKEN),
+            Some(GOOD_PUBLISH_JOB_ID),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(response.headers().get("content-length").is_none());
+    assert_eq!(
+        response.headers().get("content-type").unwrap(),
+        "application/x-tar"
+    );
+
+    let frames = body_frames(response.into_body()).await;
+    assert!(frames.len() > 1, "the source tar was built whole");
+    let entries = untar_to_map(&joined(&frames));
+    assert_eq!(
+        entries
+            .get("implementation/dist/big.bin")
+            .map(Vec::as_slice),
+        Some(&payload[..]),
+        "the publisher's tar round-trips unchanged"
+    );
 }
 
 /// Build a `GET /runs/{run_id}/tree.tar` request with optional bearer token and

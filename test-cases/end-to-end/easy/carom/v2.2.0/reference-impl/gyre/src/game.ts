@@ -454,12 +454,16 @@ export class Game {
 
   // Launch the ball now, ending the pre-serve countdown immediately (or
   // re-serving a live rally). Routes through the real serve().
+  //
+  // It serves from wherever the game stands. The screen a player would have had
+  // to reach first is how a PLAYER gets to a serve and is not a condition of
+  // this call: a debug operation that quietly did nothing on the title would
+  // leave every check that drives it grading a game it never started
+  // (specs/instrumentation.md).
   debugServe(): void {
     this.enterDriven();
-    if (this.state === "countdown" || this.state === "playing") {
-      this.holdTimer = 0;
-      this.serve();
-    }
+    this.holdTimer = 0;
+    this.serve();
   }
 
   debugSetScore(p1: number, p2: number): void {
@@ -490,18 +494,47 @@ export class Game {
     return 1;
   }
 
+  // Place and aim the ball. This variant plays with one, so `0` is the only
+  // index there is: any other names no ball, and a call the game has nothing to
+  // act on fails loudly rather than passing quietly
+  // (specs/instrumentation.md).
   debugSetBall(
     index: number,
     state: { x?: number; y?: number; vx?: number; vy?: number; spin?: number },
   ): void {
     this.enterDriven();
-    if (index !== 0) return;
+    if (index !== 0) {
+      throw new Error(
+        `__carom.setBall(index, state): no ball ${String(index)} — this build plays with one, at index 0`,
+      );
+    }
     const b = this.ball;
     if (state.x !== undefined) b.x = state.x;
     if (state.y !== undefined) b.y = state.y;
     if (state.vx !== undefined) b.vx = state.vx;
     if (state.vy !== undefined) b.vy = state.vy;
     if (state.spin !== undefined) b.spin = state.spin;
+    this.syncView();
+  }
+
+  // Bring every value debugSnapshot() reports into agreement with the game as it
+  // now stands, WITHOUT advancing it by any amount.
+  //
+  // Every derived reading this build reports is worked out at the read: `speed`
+  // is a getter over the velocity, `held` follows from the current screen, each
+  // obstacle's pose is `obstaclePose(i, this.obsTime)` computed in the snapshot,
+  // and every other field is the state's own. So nothing the snapshot reports is
+  // a stored copy a pose can leave behind, and there is nothing here to rewrite.
+  // The operation is required all the same, because a build is free to KEEP a
+  // derived reading rather than compute it — a build that stored the obstacle
+  // poses would re-derive them here from `obsTime` — and this is what it comes
+  // to in one that does not.
+  //
+  // The one stored copy a pose can leave stale is the renderer's interpolation
+  // window — the previous positions the frame draws from — so this collapses it,
+  // exactly as the poses themselves do. That moves no clock, runs no system,
+  // spends nothing, fires nothing, and is idempotent.
+  debugReconcile(): void {
     this.syncView();
   }
 

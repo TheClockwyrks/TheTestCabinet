@@ -12,7 +12,12 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { LoadingState } from "../../../components/LoadingState";
-import { drawFrame, prepareRecording, type ReplayResources } from "./drawFrame";
+import {
+  drawFrame,
+  prepareRecording,
+  type ReplayResources,
+  type StoredImageResolver,
+} from "./drawFrame";
 import { fetchRecording, type Recording } from "./format";
 import {
   REPLAY_SPEEDS,
@@ -47,20 +52,49 @@ export interface LoadedRecording {
  *
  * A recording whose images do not decode still plays: `prepareRecording` reports a
  * failed entry as `null` and the operations naming it are skipped and counted, so
- * a missing sprite costs the sprite rather than the replay. Only a bitmap can fail
- * that way; a pixel buffer carries its own bytes and is rebuilt from them.
+ * a missing sprite costs the sprite rather than the replay.
+ *
+ * `resolveStored` is how an entry that keeps its pixels beside the recording is
+ * reached: it turns the flat file name the entry carries into a URL, and it is the
+ * caller's business because it is the caller that knew where the recording itself
+ * came from — the same `(runId | subject, file) => url` function resolved both. A
+ * caller that supplies none, or one that answers `null`, does not break the replay:
+ * those entries resolve to `null` like an undecodable PNG and the operations naming
+ * them are skipped and named under the canvas.
+ *
+ * THE URL ALONE DRIVES THE FETCH. `resolveStored` is deliberately kept OUT of the
+ * effect's dependencies and read through a ref, because the resolver is a property
+ * of the recording's own namespace and cannot meaningfully change without the URL
+ * changing — while its identity changes constantly. The console's gallery context
+ * is rebuilt on every render of the app shell, so every entry it hands out carries
+ * a freshly minted closure; listing that closure would restart this effect on each
+ * of them, and the effect's first act is to blank the player to its loading state.
+ * A reviewer scrubbing a validation pair would watch both panes reset to a spinner
+ * and re-download their recordings — and every stored image beside them — each time
+ * a run finished anywhere in the console. A caller therefore does NOT have to
+ * memoize the resolver.
  *
  * A `null` url is not an error — it is the caller saying there is nothing on this
  * side, which is how the review pair renders a case that ships no reference
  * recording beside a run that produced one.
  */
-export function useRecording(url: string | null): LoadedRecording {
+export function useRecording(
+  url: string | null,
+  resolveStored?: StoredImageResolver | null,
+): LoadedRecording {
   const [state, setState] = useState<LoadedRecording>({
     recording: null,
     resources: null,
     error: null,
     loading: url !== null,
   });
+
+  // Held rather than depended on, so a caller free to mint a new closure every
+  // render cannot restart the fetch. Written during render because the effect
+  // below runs after it, and because a resolver that arrives late is still the
+  // right one for a fetch that has not resolved yet.
+  const latestResolver = useRef(resolveStored);
+  latestResolver.current = resolveStored;
 
   useEffect(() => {
     if (url === null) {
@@ -77,7 +111,14 @@ export function useRecording(url: string | null): LoadedRecording {
     fetchRecording(url)
       .then(async (recording) => ({
         recording,
-        resources: await prepareRecording(recording),
+        // Nothing is published to state until every image is resolved — a stored
+        // entry's fetch included — because `drawFrame` is synchronous and a scrub
+        // has to keep up with a dragged thumb.
+        resources: await prepareRecording(
+          recording,
+          undefined,
+          latestResolver.current ?? undefined,
+        ),
       }))
       .then(
         ({ recording, resources }) => {
@@ -98,6 +139,10 @@ export function useRecording(url: string | null): LoadedRecording {
     return () => {
       cancelled = true;
     };
+    // `resolveStored` is read from the ref above rather than listed here — see the
+    // doc comment. Only the URL identifies a recording, and only a new URL is a
+    // reason to throw away a loaded one.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url]);
 
   return state;
@@ -290,13 +335,23 @@ export function ReplayPlayer({
   url,
   label,
   presentation = "transport",
+  storeUrl,
 }: {
   url: string;
   label: string;
   presentation?: ReplayPresentation;
+  /**
+   * Where to find an image this recording keeps beside itself, by file name.
+   *
+   * Optional, and absent for every showcase replay: those are authored by hand and
+   * carry their pixels inline, so there is nothing beside them to reach. An entry
+   * that somehow arrived stored without one degrades to a named skip rather than to
+   * a wrong picture. Memoize it — it drives the fetch effect.
+   */
+  storeUrl?: StoredImageResolver | null;
 }) {
   const showcase = presentation === "showcase";
-  const { recording, resources, error, loading } = useRecording(url);
+  const { recording, resources, error, loading } = useRecording(url, storeUrl);
   const timeline = useMemo(() => timelineFor([recording]), [recording]);
   const clock = useReplayClock(timeline, {
     autoPlay: showcase,

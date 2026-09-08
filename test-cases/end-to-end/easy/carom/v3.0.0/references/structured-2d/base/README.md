@@ -153,7 +153,7 @@ const { ball } = engine.debug.snapshot();
 
 | Group             | Operations                                                                                                                                                                 |
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| The world         | `clearWorld()`, `spawnBall()`, `spawnObstacle(index)`, `reset()`                                                                                                           |
+| The world         | `clearWorld()`, `spawnBall()`, `spawnObstacle(index)`, `reset()`, `reconcile()`                                                                                            |
 | Screens and menus | `setScreen(screen)`, `setMode(mode)`, `setMenuIndex(index)`, `setTitleIndex(index)`, `setResumeScreen(screen)`                                                             |
 | Match state       | `setScore(p1, p2)`, `setWinner(side)`, `setReceiver(side)`                                                                                                                 |
 | Paddles           | `setPaddleCy(side, cy)`, `setPaddleVy(side, vy)`, `setPaddleDriven(side, driven)`                                                                                          |

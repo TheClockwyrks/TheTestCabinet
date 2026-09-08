@@ -42,6 +42,7 @@ import type { PredatorState } from "./creatures";
 import {
   CLEARED_TIME,
   beginPlay,
+  countPlankton,
   denPredators,
   loadLayout,
   openMenu,
@@ -53,7 +54,7 @@ import type { Cell, Dir } from "./grid";
 import { cellIndex, inGrid } from "./grid";
 import { itemRect, menuItems, type Rect } from "./menu";
 import { bodyCell, restAt } from "./movement";
-import { acquireFix, lightDetectRange } from "./predators";
+import { acquireFix, lightDetectRange, predatorSpeed } from "./predators";
 import { drifterDrawn, predatorDrawn, refreshLight, trenchFor } from "./sim";
 import type { PulseSource, PulseTint } from "./sonar";
 import { fathomState, type FathomState, type Screen } from "./game";
@@ -166,6 +167,8 @@ export interface FathomDebugApi {
   version: number;
   reset(): void;
   snapshot(): FathomSnapshot;
+  /** Bring every reported reading into agreement with the dive as it stands. */
+  reconcile(): void;
   menuItemRect(index: number): Rect | null;
   setScreen(s: Screen): void;
   setMenuIndex(index: number): void;
@@ -358,6 +361,49 @@ export function createDebugApi(world: () => World): FathomDebugApi {
     /** A pure read. It never changes anything. */
     snapshot() {
       return snapshotOf(read());
+    },
+
+    /**
+     * Bring every reported reading into agreement with the dive as it stands,
+     * without advancing anything (`specs/instrumentation.md`).
+     *
+     * Most of what this build reports is worked out inside `snapshot` and has
+     * nothing to rewrite: a body's `tx` and `ty` come from its center and the
+     * tile grid, `visionRadius`, `sonar.range`, `detectRange` and
+     * `hearingRange` are computed there, and `sonar.ready` and `ink.ready` are
+     * read off the cooldowns. Two readings the state keeps as copies are the
+     * two lines here:
+     *
+     * - `planktonRemaining` is a count of the plankton layer, so a layer posed
+     *   under it leaves it answering for the layer as it was. `countPlankton`
+     *   is the count `seedPlankton` and `loadLayout` both finish with.
+     * - a predator's `speed` is the rate its `state` carries, and the mind is
+     *   what usually writes it, so a `setPredatorState` would leave it
+     *   reporting the speed of the state the predator was in. `predatorSpeed`
+     *   is the rule every update assigns through.
+     *
+     * WHAT IS NOT HERE, deliberately. The fog is the update's: `visibility`
+     * carries what light HAS reached as well as what it reaches now, and
+     * `clearFog` puts every tile back to unrevealed "until light, sonar or a
+     * flare reaches a tile again" (`specs/instrumentation.md`), so recasting
+     * the light here would undo the pose the caller just made. `hearingLock`
+     * and `alert` are the predator's MIND, and a predator whose mind is off
+     * senses nothing and keeps the fix it was posed with, so bringing them into
+     * agreement here would be sensing. `score`, `lives`, `depth` and `simTime`
+     * are figures the dive has accumulated, and `muted` is the runtime's bit.
+     *
+     * It advances nothing and fires nothing: no tick is run, no body travels,
+     * no mind decides, no pulse front moves, no timer runs down, no cue is
+     * raised, and the generator is not drawn from. It corrects nothing: a body
+     * standing on a tile closed to it holds that tile and reads as it is.
+     * Calling it twice leaves the same state as calling it once.
+     */
+    reconcile() {
+      const state = read();
+      state.planktonRemaining = countPlankton(state);
+      for (const predator of state.predators) {
+        predator.speed = predatorSpeed(predator);
+      }
     },
 
     /**
@@ -567,6 +613,11 @@ export function createDebugApi(world: () => World): FathomDebugApi {
       predator.facing = "up";
       predator.state = "wander";
       predator.released = true;
+      // `speed` is the rate the predator's `state` carries (`specs/state.md`),
+      // and the mind is what usually writes it, so a predator posed straight
+      // into a state reports that state's rate from the call rather than from
+      // the first tick its mind runs.
+      predator.speed = predatorSpeed(predator);
       state.predators.push(predator);
     },
 
@@ -644,6 +695,7 @@ export function createDebugApi(world: () => World): FathomDebugApi {
         );
         predator.alert = 0;
       }
+      predator.speed = predatorSpeed(predator);
     },
 
     /** Whether one predator's turn in the staggered schedule has come. */

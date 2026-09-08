@@ -389,6 +389,16 @@ export interface FoundrySnapshot {
 export interface FoundryDebugApi {
   version: number;
 
+  /**
+   * Bring every reported reading into agreement with the yard as it stands,
+   * without advancing anything. `qualityOdds`, `mazeLength`, a structure's
+   * `range`, `damage`, `fireRate` and `auraBonus`, a unit's `speed` and
+   * `progress`, and `held.legal` all answer for the yard as posed after it. A
+   * build that works them out at the read has nothing to do and this changes
+   * nothing.
+   */
+  reconcile(): void;
+
   /* Readings. */
   snapshot(): FoundrySnapshot;
   panelButtons(): PanelButton[];
@@ -519,6 +529,8 @@ export const REQUIRED_OPS = [
   "recipeEntries",
   "waveCount",
   "rollPress",
+  // Reconciling.
+  "reconcile",
   // The run.
   "reset",
   "setMap",

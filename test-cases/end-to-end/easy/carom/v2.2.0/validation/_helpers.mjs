@@ -25,6 +25,15 @@
 // scenario, and the two halves must be used together — the act half assumes its
 // arrange half posed the world.
 //
+// RECONCILING AFTER A POSE. A reading this case calls derived — a ball's `speed`,
+// and under gyre an obstacle's pose beneath the obstacle clock — may be worked out
+// at the read in one build and kept as a stored copy in another, and both are
+// conformant. So a helper here that poses anything a reading derives from calls
+// `reconcile` before it returns (see `poseBall`), and an item that reaches its
+// scenario through these helpers never calls it itself. An item that poses a ball
+// or the obstacle clock directly calls it once, before its first read or sweep.
+// `step` is not a substitute: a step moves the very thing the pose just placed.
+//
 // UNITS ARE TICKS. Carom is a 120 Hz fixed timestep and the debug API's `step`
 // takes whole ticks, so every duration below is a tick count (the runtime converts
 // to wall-clock for the record pass). The seconds these replace are noted inline.
@@ -98,7 +107,41 @@ export async function pinObstaclesUpright(api) {
   const { ops } = await api.probe(["setObstacleClock"]);
   if (ops?.setObstacleClock === "function") {
     await api.call("setObstacleClock", 0);
+    // Each obstacle's pose is a function of that clock, so a build that keeps
+    // the poses as stored values answers for the clock it had BEFORE this call
+    // until it is reconciled. `poseBall` below states the whole convention.
+    await api.call("reconcile");
   }
+}
+
+/**
+ * Place and aim a ball, then bring the build's readings into agreement with it.
+ *
+ * THE CONVENTION, stated once. A specification says what a build REPORTS, not
+ * how it HOLDS it, so a reading this case calls derived — a ball's `speed`, and
+ * under gyre an obstacle's pose beneath the obstacle clock — may be worked out
+ * at the read in one build and kept as a stored copy in another. Both are
+ * conformant, and they part company the moment a control op writes what that
+ * reading depends on: the computing build answers for the world as posed, the
+ * storing build for the world before it. `reconcile` closes that gap without
+ * moving the clock (specs/instrumentation.md), so every helper here that poses
+ * something a reading derives from calls it before returning, and an item that
+ * reaches its scenario through these helpers never calls it itself. An item that
+ * poses a ball directly, rather than through this helper, calls it once before
+ * its first read or sweep.
+ *
+ * `step` is NOT a substitute. A step advances the clock and runs every system,
+ * which moves the very thing the pose just placed, so a measurement taken from a
+ * posed rest state — a serve's speed, a bounce's angle, the tick a behavior
+ * begins on — would come out wrong by the step that was meant to refresh the
+ * reading.
+ *
+ * Control op only, and `reconcile` consumes no simulation time, so this stays
+ * arrange-callable.
+ */
+export async function poseBall(api, index, state) {
+  await api.call("setBall", index, state);
+  await api.call("reconcile");
 }
 
 // Off-lane resting spots for the extra balls of a multi-ball build: still corners
@@ -123,7 +166,7 @@ export async function neutralizeExtraBalls(api) {
   const balls = (await api.snapshot()).balls ?? [];
   for (let i = 1; i < balls.length; i += 1) {
     const c = PARK_CORNERS[(i - 1) % PARK_CORNERS.length];
-    await api.call("setBall", i, { x: c.x, y: c.y, vx: 0, vy: 0, spin: 0 });
+    await poseBall(api, i, { x: c.x, y: c.y, vx: 0, vy: 0, spin: 0 });
   }
 }
 
@@ -162,7 +205,7 @@ export async function arrangeGoal(api, edge) {
   // single-ball build has nothing to park, so this is a no-op there.
   await neutralizeExtraBalls(api);
   const vx = edge === "right" ? 600 : -600;
-  await api.call("setBall", 0, { x: 640, y: 360, vx, vy: 0, spin: 0 });
+  await poseBall(api, 0, { x: 640, y: 360, vx, vy: 0, spin: 0 });
 }
 
 /**
@@ -240,7 +283,7 @@ export async function arrangePaddleHit(
   const runUp = approachSpeed * lead;
   const x = startX ?? (side === "left" ? near + runUp : near - runUp);
   const vx = side === "left" ? -approachSpeed : approachSpeed;
-  await api.call("setBall", 0, { x, y: ballY, vx, vy: 0, spin: 0 });
+  await poseBall(api, 0, { x, y: ballY, vx, vy: 0, spin: 0 });
 }
 
 /**
@@ -431,7 +474,7 @@ export async function arrangeRally(api) {
   await pinObstaclesUpright(api);
   await api.call("setPaddle", "left", { cy: 360, vy: 0 });
   await api.call("setPaddle", "right", { cy: 360, vy: 0 });
-  await api.call("setBall", 0, { x: 640, y: 360, vx: -500, vy: 0, spin: 0 });
+  await poseBall(api, 0, { x: 640, y: 360, vx: -500, vy: 0, spin: 0 });
 }
 
 /**
@@ -785,7 +828,7 @@ export async function arrangeAiScenario(api, { paddleCy, ball }) {
   // AI's own result is read.
   await api.call("setPaddle", "left", { cy: 150, vy: 0 });
   await api.call("setPaddle", "right", { cy: paddleCy, vy: 0 });
-  await api.call("setBall", 0, { vy: 0, spin: 0, ...ball });
+  await poseBall(api, 0, { vy: 0, spin: 0, ...ball });
   await api.call("setAiControl", true);
 }
 
@@ -915,7 +958,7 @@ export async function arrangeColorScene(api) {
     // extra balls (multi) go in the corners, clear of every sample point.
     const spot =
       i === 0 ? COLOR_POINTS.ball : corners[(i - 1) % corners.length];
-    await api.call("setBall", i, {
+    await poseBall(api, i, {
       x: spot.x,
       y: spot.y,
       vx: 0,
@@ -1046,7 +1089,7 @@ export async function arrangeAiChase(
   await neutralizeExtraBalls(api);
   await api.call("setPaddle", "left", { cy: 150, vy: 0 }); // park the human paddle
   await api.call("setPaddle", "right", { cy: paddleCy, vy: 0 });
-  await api.call("setBall", 0, { x: 640, y: ballY, vx: 200, vy: 0, spin: 0 });
+  await poseBall(api, 0, { x: 640, y: ballY, vx: 200, vy: 0, spin: 0 });
   await api.call("setAiControl", true);
 }
 
@@ -1117,7 +1160,7 @@ export async function arrangeAiMovingHit(api) {
   await neutralizeExtraBalls(api);
   await api.call("setPaddle", "left", { cy: 150, vy: 0 }); // park the human paddle
   await api.call("setPaddle", "right", { cy: 180, vy: 0 }); // AI starts above the lane
-  await api.call("setBall", 0, { x: 1072, y: 360, vx: 500, vy: 0, spin: 0 });
+  await poseBall(api, 0, { x: 1072, y: 360, vx: 500, vy: 0, spin: 0 });
   await api.call("setAiControl", true);
 }
 
@@ -1208,7 +1251,7 @@ export async function arrangeAiPaused(api) {
   await neutralizeExtraBalls(api);
   await api.call("setPaddle", "left", { cy: 150, vy: 0 });
   await api.call("setPaddle", "right", { cy: 200, vy: 0 });
-  await api.call("setBall", 0, { x: 900, y: 620, vx: 500, vy: 0, spin: 0 });
+  await poseBall(api, 0, { x: 900, y: 620, vx: 500, vy: 0, spin: 0 });
   await api.call("setAiControl", true);
 }
 
@@ -1247,7 +1290,7 @@ export async function arrangeLiveBall(api, ball, mode = "versus") {
   // base right face). Pin upright so the path stays clear (a no-op in base/multi and
   // for an already-upright build).
   await pinObstaclesUpright(api);
-  await api.call("setBall", 0, { spin: 0, vy: 0, ...ball });
+  await poseBall(api, 0, { spin: 0, vy: 0, ...ball });
 }
 
 // ---- Obstacle bank shots (per face) ----------------------------------------
@@ -1280,7 +1323,7 @@ export async function arrangeObstacleBounce(api, { faceX, y, from }) {
   await pinObstaclesUpright(api);
   const x = from === "left" ? faceX - 180 : faceX + 180;
   const vx = from === "left" ? OBSTACLE_SPEED : -OBSTACLE_SPEED;
-  await api.call("setBall", 0, { x, y, vx, vy: 0, spin: 0 });
+  await poseBall(api, 0, { x, y, vx, vy: 0, spin: 0 });
 }
 
 /**
@@ -1314,6 +1357,7 @@ export const REQUIRED_DEBUG_OPS = [
   "step",
   "setAutoStep",
   "snapshot",
+  "reconcile",
   "startMatch",
   "serve",
   "setScore",

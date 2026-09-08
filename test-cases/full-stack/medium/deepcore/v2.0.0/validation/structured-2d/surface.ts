@@ -377,6 +377,19 @@ export interface DeepcoreDebugApi {
    * Restore the whole observable state to its title-screen value. The save slot is untouched, and so is the engine's mute bit.
    */
   reset(): void;
+  /**
+   * Bring every reading this surface reports into agreement with the world as it
+   * stands, without advancing anything.
+   *
+   * A build is free to work a derived reading out at the read or to keep it as a
+   * stored copy, and this is what brings a stored copy back into agreement after
+   * a pose: the miner's `grounded`, its `col` and `row`, `depthMeters`,
+   * `overloaded`, the cargo's `slotsUsed`, and the scanner's lock all follow from
+   * the miner, the grid, the cargo and the tiers. It moves no clock, runs no
+   * system, fires nothing, and moves nothing to make a reading agree. Calling it
+   * twice leaves the same state as calling it once.
+   */
+  reconcile(): void;
   /** Regenerate the grid at the current world size, leaving everything else. */
   generateMine(): void;
   /** Open every playable cell below `row 0` and above the Core chamber. */
@@ -524,6 +537,7 @@ export const REQUIRED_OPS = [
   "controlRect",
   // Restoring the world
   "reset",
+  "reconcile",
   "generateMine",
   "clearMine",
   "clearCargo",

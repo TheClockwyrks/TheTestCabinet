@@ -13,6 +13,15 @@
 // takes the current state and returns what it read, as
 // `debug.snapshot(engine.state)`.
 //
+// AN OPERATION IS UNCONDITIONAL. Every pose below applies its effect, reaching
+// the value it was given rather than one the game's own rules would have
+// preferred: nothing is clamped into range and nothing is declined. Where the
+// specification fixes a domain — `1` to a size's full health, a charge of `0` to
+// `1`, an id a live entity carries — that domain is checked and a call outside it
+// THROWS, where the caller sees it. What nothing below does is refuse quietly: no
+// pose returns a state equal to the one it was handed, because a surface that did
+// that would hide the very systems a check drove it to reach.
+//
 // Each pose SETS ONE FIELD and takes scalars. There is no operation that takes a
 // patch, none that arranges several things at once, and none that fabricates an
 // outcome: a pose puts the game into a situation, and the game's own stepping,
@@ -40,14 +49,7 @@ import { addRock as addRockAt } from "./rocks";
 import { addSaucerAt } from "./saucer";
 import { titleState } from "./flow";
 import { addTorpedoAt } from "./weapons";
-import {
-  rockById,
-  takeId,
-  toSim,
-  torpedoById,
-  type MutBullet,
-  type Sim,
-} from "./sim";
+import { takeId, toSim, type MutBullet, type Sim } from "./sim";
 import type { FieldEdge, SaucerEdge, Screen, ShatterState } from "./game";
 import type { DeepReadonly } from "ts-essentials";
 
@@ -143,6 +145,8 @@ export interface ShatterDebugApi {
 
   reset(state: DeepReadonly<ShatterState>): ShatterState;
   snapshot(state: DeepReadonly<ShatterState>): ShatterSnapshot;
+  /** Bring every reported reading into agreement with the field as it stands. */
+  reconcile(state: DeepReadonly<ShatterState>): ShatterState;
   menuItemRect(state: DeepReadonly<ShatterState>, index: number): Rect | null;
 
   setScreen(state: DeepReadonly<ShatterState>, screen: Screen): ShatterState;
@@ -313,6 +317,52 @@ const SAUCER_EDGES: readonly SaucerEdge[] = ["left", "right"];
 /** The four edges a recycled rock re-enters at. */
 const FIELD_EDGES: readonly FieldEdge[] = ["top", "bottom", "left", "right"];
 
+/**
+ * The finite number the caller passed, or a caller error.
+ *
+ * `NaN` and the infinities name no position, angle or speed a draw could decide,
+ * so a pose handed one fails loudly here instead of passing quietly with a value
+ * the caller never asked for.
+ */
+function finite(value: number): number {
+  if (!Number.isFinite(value)) {
+    throw new RangeError(`Shatter: ${String(value)} is not a finite number`);
+  }
+  return value;
+}
+
+/**
+ * The finite number the caller passed, at or above `floor`.
+ *
+ * The floor is a bound `specs/instrumentation.md` fixes as a constant, so it is
+ * the argument's DOMAIN rather than an edge to snap to: a call outside it fails
+ * loudly rather than being clamped into range, which would leave the state
+ * holding a value nobody asked for.
+ */
+function atLeast(op: string, value: number, floor: number): number {
+  if (!Number.isFinite(value) || value < floor) {
+    throw new RangeError(
+      `Shatter: ${op} needs a finite number at or above ${floor}, got ${String(value)}`,
+    );
+  }
+  return value;
+}
+
+/**
+ * The name the caller passed, if it is one of the set its row lists.
+ *
+ * A name outside the set poses an outcome no draw could decide, so it fails
+ * loudly here rather than passing quietly and leaving the field as it was.
+ */
+function oneOf<T extends string>(op: string, value: T, names: readonly T[]): T {
+  if (!names.includes(value)) {
+    throw new RangeError(
+      `Shatter: ${op} needs one of ${names.map((name) => `"${name}"`).join(", ")}, got ${String(value)}`,
+    );
+  }
+  return value;
+}
+
 /** Run `pose` over a writable copy of the state, and return the copy. */
 function pose(
   state: DeepReadonly<ShatterState>,
@@ -321,6 +371,49 @@ function pose(
   const sim = toSim(state);
   change(sim);
   return sim;
+}
+
+/**
+ * One entity of a roster by id, or a caller error naming the id.
+ *
+ * An id no live entity carries names no state to reach, so it throws where the
+ * caller sees it rather than leaving the pose to return the state it was handed.
+ */
+function byId<T extends { id: number }>(
+  op: string,
+  roster: readonly T[],
+  id: number,
+): T {
+  const found = roster.find((entry) => entry.id === id);
+  if (found === undefined) {
+    throw new RangeError(`Shatter: ${op} names no live entity with id ${id}`);
+  }
+  return found;
+}
+
+/** The saucer on the field, or a caller error. */
+function theSaucer(op: string, sim: Sim): NonNullable<Sim["saucer"]> {
+  if (sim.saucer === null) {
+    throw new RangeError(`Shatter: ${op} needs a saucer on the field`);
+  }
+  return sim.saucer;
+}
+
+/**
+ * The finite number the caller passed, inside the closed range the specs fix.
+ *
+ * The bound is a constant `specs/instrumentation.md` states, so it is the
+ * argument's DOMAIN rather than an edge to snap to: a call outside it fails
+ * loudly rather than being clamped into range, which would leave the state
+ * holding a value nobody asked for.
+ */
+function inRange(op: string, value: number, lo: number, hi: number): number {
+  if (!Number.isFinite(value) || value < lo || value > hi) {
+    throw new RangeError(
+      `Shatter: ${op} needs a finite number in [${lo}, ${hi}], got ${String(value)}`,
+    );
+  }
+  return value;
 }
 
 /** One round in flight, of either side's, at full life. */
@@ -341,6 +434,23 @@ export function createDebugApi(): ShatterDebugApi {
     version: SHATTER_DEBUG_VERSION,
 
     reset: (state) => titleState(state.muted),
+
+    /**
+     * Bring every reported reading into agreement with the field as it stands.
+     *
+     * Every derived reading this build reports — the ship's `speed`, each rock's
+     * `radius`, and `torpedoReady` — is worked out at the READ, in `snapshot`
+     * below, from the velocity, the size and the charge beside it. Nothing is
+     * held that a pose can leave behind, so there is nothing here to rewrite and
+     * the state that comes back equals the one that went in.
+     *
+     * The operation is required of EVERY build, including one that keeps those
+     * readings as stored copies and must rewrite them from their sources here.
+     * This is what it comes to in a build that does not: it advances no frame,
+     * runs no system, fires nothing, and corrects nothing. The empty `pose` is
+     * what keeps the return type right without a cast.
+     */
+    reconcile: (state) => pose(state, () => {}),
 
     // Where the build laid the entry out, which `specs/ui.md` leaves to the
     // build and a pointer check has to be told (`specs/instrumentation.md`).
@@ -511,6 +621,7 @@ export function createDebugApi(): ShatterDebugApi {
       }),
     removeBullet: (state, id) =>
       pose(state, (sim) => {
+        byId("removeBullet", sim.bullets, id);
         sim.bullets = sim.bullets.filter((b) => b.id !== id);
       }),
     clearBullets: (state) =>
@@ -523,6 +634,7 @@ export function createDebugApi(): ShatterDebugApi {
       }),
     removeEnemyBullet: (state, id) =>
       pose(state, (sim) => {
+        byId("removeEnemyBullet", sim.enemyBullets, id);
         sim.enemyBullets = sim.enemyBullets.filter((b) => b.id !== id);
       }),
     clearEnemyBullets: (state) =>
@@ -538,19 +650,23 @@ export function createDebugApi(): ShatterDebugApi {
       }),
     setRockVelocity: (state, id, vx, vy) =>
       pose(state, (sim) => {
-        const rock = rockById(sim, id);
-        if (rock === undefined) return;
+        const rock = byId("setRockVelocity", sim.rocks, id);
         rock.vx = vx;
         rock.vy = vy;
       }),
     setRockHealth: (state, id, hp) =>
       pose(state, (sim) => {
-        const rock = rockById(sim, id);
-        if (rock === undefined) return;
-        rock.health = Math.max(1, Math.min(ROCK_HEALTH[rock.size], hp));
+        const rock = byId("setRockHealth", sim.rocks, id);
+        rock.health = inRange(
+          "setRockHealth(hp)",
+          hp,
+          1,
+          ROCK_HEALTH[rock.size],
+        );
       }),
     removeRock: (state, id) =>
       pose(state, (sim) => {
+        byId("removeRock", sim.rocks, id);
         sim.rocks = sim.rocks.filter((rock) => rock.id !== id);
       }),
     clearRocks: (state) =>
@@ -568,9 +684,9 @@ export function createDebugApi(): ShatterDebugApi {
       }),
     setSaucerVelocity: (state, vx, vy) =>
       pose(state, (sim) => {
-        if (sim.saucer === null) return;
-        sim.saucer.vx = vx;
-        sim.saucer.vy = vy;
+        const saucer = theSaucer("setSaucerVelocity", sim);
+        saucer.vx = vx;
+        saucer.vy = vy;
       }),
     removeSaucer: (state) =>
       pose(state, (sim) => {
@@ -578,28 +694,24 @@ export function createDebugApi(): ShatterDebugApi {
       }),
     setSaucerMind: (state, enabled) =>
       pose(state, (sim) => {
-        if (sim.saucer === null) return;
-        sim.saucer.mind = enabled;
+        theSaucer("setSaucerMind", sim).mind = enabled;
       }),
     setSaucerGun: (state, enabled) =>
       pose(state, (sim) => {
-        if (sim.saucer === null) return;
-        sim.saucer.gun = enabled;
+        theSaucer("setSaucerGun", sim).gun = enabled;
       }),
     setSaucerTravel: (state, enabled) =>
       pose(state, (sim) => {
-        if (sim.saucer === null) return;
-        sim.saucer.travel = enabled;
+        theSaucer("setSaucerTravel", sim).travel = enabled;
       }),
     setSaucerWeave: (state, direction) =>
       pose(state, (sim) => {
-        if (sim.saucer === null) return;
-        sim.saucer.weave = direction < 0 ? -1 : 1;
+        theSaucer("setSaucerWeave", sim).weave = direction < 0 ? -1 : 1;
       }),
     // The figure the gap draw decides; the clock itself stands where it is.
     setSaucerDue: (state, seconds) =>
       pose(state, (sim) => {
-        if (Number.isFinite(seconds)) sim.saucerDue = Math.max(0, seconds);
+        sim.saucerDue = seconds;
       }),
 
     // ---- The posed draws -------------------------------------------------
@@ -607,34 +719,41 @@ export function createDebugApi(): ShatterDebugApi {
     // Each sets the outcome the game's next draw of one kind would decide, and
     // the draw that takes it returns the field to `null`
     // (`specs/instrumentation.md`). A value outside what the draw could decide
-    // is ignored, so a field only ever holds an outcome the rule accepts.
+    // — a name off the edge's list, a row or aim that is not a finite number, a
+    // speed below zero — THROWS where the caller sees it, so a field only ever
+    // holds an outcome the rule accepts and no pose passes quietly.
 
     setNextSaucerEdge: (state, edge) =>
       pose(state, (sim) => {
-        if (SAUCER_EDGES.includes(edge)) sim.nextSaucerEdge = edge;
+        sim.nextSaucerEdge = oneOf("setNextSaucerEdge", edge, SAUCER_EDGES);
       }),
     setNextSaucerRow: (state, y) =>
       pose(state, (sim) => {
-        if (Number.isFinite(y)) sim.nextSaucerRow = y;
+        sim.nextSaucerRow = finite(y);
       }),
     setNextSaucerAim: (state, radians) =>
       pose(state, (sim) => {
-        if (Number.isFinite(radians)) sim.nextSaucerAim = radians;
+        sim.nextSaucerAim = finite(radians);
       }),
     setNextRockSpeed: (state, speed) =>
       pose(state, (sim) => {
-        if (Number.isFinite(speed) && speed >= 0) sim.nextRockSpeed = speed;
+        sim.nextRockSpeed = atLeast("setNextRockSpeed", speed, 0);
       }),
     setNextRecycleEdge: (state, edge) =>
       pose(state, (sim) => {
-        if (FIELD_EDGES.includes(edge)) sim.nextRecycleEdge = edge;
+        sim.nextRecycleEdge = oneOf("setNextRecycleEdge", edge, FIELD_EDGES);
       }),
 
     // ---- The torpedoes ---------------------------------------------------
 
     setTorpedoCharge: (state, fraction) =>
       pose(state, (sim) => {
-        sim.torpedoCharge = Math.max(0, Math.min(1, fraction));
+        sim.torpedoCharge = inRange(
+          "setTorpedoCharge(fraction)",
+          fraction,
+          0,
+          1,
+        );
       }),
     addTorpedo: (state, x, y, heading) =>
       pose(state, (sim) => {
@@ -642,8 +761,7 @@ export function createDebugApi(): ShatterDebugApi {
       }),
     setTorpedoHeading: (state, id, radians) =>
       pose(state, (sim) => {
-        const torpedo = torpedoById(sim, id);
-        if (torpedo === undefined) return;
+        const torpedo = byId("setTorpedoHeading", sim.torpedoes, id);
         const speed = Math.hypot(torpedo.vx, torpedo.vy);
         torpedo.heading = radians;
         torpedo.vx = Math.cos(radians) * speed;
@@ -651,12 +769,11 @@ export function createDebugApi(): ShatterDebugApi {
       }),
     setTorpedoHoming: (state, id, enabled) =>
       pose(state, (sim) => {
-        const torpedo = torpedoById(sim, id);
-        if (torpedo === undefined) return;
-        torpedo.homing = enabled;
+        byId("setTorpedoHoming", sim.torpedoes, id).homing = enabled;
       }),
     removeTorpedo: (state, id) =>
       pose(state, (sim) => {
+        byId("removeTorpedo", sim.torpedoes, id);
         sim.torpedoes = sim.torpedoes.filter((torpedo) => torpedo.id !== id);
       }),
     clearTorpedoes: (state) =>

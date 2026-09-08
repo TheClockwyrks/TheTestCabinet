@@ -25,6 +25,14 @@
 // scenario helpers below only ARRANGE the hall through the surface, and the real
 // `update` the build wrote is what runs from there.
 //
+// RECONCILING AFTER A POSE. `reconcile()` brings every reading the surface
+// reports into agreement with the hall a pose has just arranged, without
+// advancing anything, so a build that keeps a derived reading as a stored copy —
+// the SEGMENTS, most often — answers for the hall as posed rather than as it
+// was. {@link poseHall} and {@link startRun} reconcile before they return, so a
+// check that poses through the helpers never calls it itself. A check that poses
+// with `h.debug.set…` directly calls it once before its first read or sweep.
+//
 // WHERE THE SURFACE COMES FROM. Off `engine.debug`, never built here.
 // `specs/instrumentation.md`: "the build's `initialize` returns the finished
 // surface beside the state it built, as the pair `[state, debug]`. The engine
@@ -288,6 +296,13 @@ export interface VoluteSurface<S = unknown> {
   version: number;
   /** Restore every declared field to its title value. */
   reset(state: DeepReadonly<S>): S;
+  /**
+   * Bring every value the surface reports into agreement with the hall as it
+   * stands, without advancing anything. A build that works its derived readings
+   * out at the read has nothing to do; one that keeps any of them — the
+   * segments, most often — rewrites that copy from its source.
+   */
+  reconcile(state: DeepReadonly<S>): S;
   /** A pure reading of the running game. */
   snapshot(state: DeepReadonly<S>): VoluteSnapshot;
   /** Set the screen, and nothing else. */
@@ -365,6 +380,13 @@ export type VoluteSyncDriver = PureDriver<
 export interface VoluteDebugApi {
   /** Restore every declared field to its title value. */
   reset(): Promise<void>;
+  /**
+   * Bring every value the surface reports into agreement with the hall as it
+   * stands, without advancing anything. A build that works its derived readings
+   * out at the read has nothing to do; one that keeps any of them — the
+   * segments, most often — rewrites that copy from its source.
+   */
+  reconcile(): Promise<void>;
   /** A pure read of the running game. */
   snapshot(): Promise<VoluteSnapshot>;
   /** Set the screen, and nothing else. */
@@ -1804,6 +1826,7 @@ export async function poseHall(
   if (options.machinery !== undefined) {
     await h.debug.grantMachinery(options.machinery);
   }
+  await h.debug.reconcile();
 }
 
 /**
@@ -1819,6 +1842,7 @@ export async function startRun(h: Harness, level = 1): Promise<void> {
   await h.debug.setScore(0);
   await h.debug.setCells(CELLS);
   await h.debug.startLevel(level);
+  await h.debug.reconcile();
 }
 
 /**

@@ -41,6 +41,50 @@ function surface(): {
   };
 }
 
+// `reconcile` brings every reported reading into agreement with the field without
+// advancing anything. This build works its two derived readings — the ship's
+// `speed` and each rock's `radius` — out at the READ, so the call has nothing to
+// rewrite; what these two cases pin is that it still ANSWERS for a posed field and
+// that it costs no simulation time, which is the whole difference between it and
+// `advance(1)`.
+describe("reconcile", () => {
+  it("re-derives a reading from a posed velocity", () => {
+    const { api } = surface();
+    api.setShipVelocity(30, 40);
+    api.reconcile();
+    expect(api.snapshot().ship.speed).toBeCloseTo(50, 10);
+
+    api.addRock("medium", 300, 300);
+    api.reconcile();
+    const [rock] = api.snapshot().rocks;
+    expect(rock?.radius).toBe(ROCK_RADIUS.medium);
+  });
+
+  it("advances nothing, and twice matches once", () => {
+    const { api } = surface();
+    api.setScreen("playing");
+    api.setShipPosition(400, 300);
+    api.setShipVelocity(120, -90);
+    api.setShipInvuln(2);
+    api.setFireCooldown(7);
+    api.setWaveBanner(1.5);
+    api.addRock("large", 700, 200);
+    api.addBullet(100, 100, 50, 0);
+    api.addSaucer(200, 500);
+
+    const before = JSON.stringify(api.snapshot());
+    api.reconcile();
+    const once = JSON.stringify(api.snapshot());
+    api.reconcile();
+    const twice = JSON.stringify(api.snapshot());
+
+    // The clock, the positions, the velocities and every timer are untouched, so
+    // the whole snapshot is byte-identical rather than merely close.
+    expect(once).toBe(before);
+    expect(twice).toBe(once);
+  });
+});
+
 describe("the surface itself", () => {
   it("reports its version, on the object and in the snapshot", () => {
     const { api } = surface();
@@ -229,14 +273,17 @@ describe("the rosters", () => {
     expect(state.score).toBe(0);
   });
 
-  it("ignores an id nothing holds", () => {
+  // AN ID NOTHING HOLDS NAMES NO STATE TO REACH, so the call fails loudly where
+  // the caller sees it. It does NOT return quietly with the roster as it was:
+  // `specs/instrumentation.md` states that a call the game has no defined state
+  // for throws, and a surface that swallowed it would grade a check that never
+  // addressed the entity it meant to as one that did.
+  it("fails loudly on an id nothing holds", () => {
     const { api } = surface();
-    expect(() => {
-      api.setRockVelocity(9999, 1, 1);
-      api.removeRock(9999);
-      api.removeBullet(9999);
-      api.removeEnemyBullet(9999);
-    }).not.toThrow();
+    expect(() => api.setRockVelocity(9999, 1, 1)).toThrow(RangeError);
+    expect(() => api.removeRock(9999)).toThrow(RangeError);
+    expect(() => api.removeBullet(9999)).toThrow(RangeError);
+    expect(() => api.removeEnemyBullet(9999)).toThrow(RangeError);
   });
 });
 
@@ -284,15 +331,17 @@ describe("the saucer", () => {
     expect(api.snapshot().saucer).toBeNull();
   });
 
-  it("does nothing to a saucer that is not up", () => {
+  // THE FOUR POSES NEED A SAUCER TO POSE, so with the slot empty each of them
+  // fails loudly rather than passing quietly with nothing done. `removeSaucer` is
+  // the exception and stays silent: it is a CLEAR, and an empty slot is the state
+  // it was asked to reach rather than a subject it could not find.
+  it("fails loudly posing a saucer that is not up, and still clears", () => {
     const { api } = surface();
-    expect(() => {
-      api.setSaucerVelocity(1, 1);
-      api.setSaucerMind(false);
-      api.setSaucerGun(false);
-      api.setSaucerTravel(false);
-      api.removeSaucer();
-    }).not.toThrow();
+    expect(() => api.setSaucerVelocity(1, 1)).toThrow(RangeError);
+    expect(() => api.setSaucerMind(false)).toThrow(RangeError);
+    expect(() => api.setSaucerGun(false)).toThrow(RangeError);
+    expect(() => api.setSaucerTravel(false)).toThrow(RangeError);
+    expect(() => api.removeSaucer()).not.toThrow();
     expect(api.snapshot().saucer).toBeNull();
   });
 });
@@ -396,17 +445,25 @@ describe("the posed draws", () => {
     expect(state.nextSaucerEdge).toBe("right");
   });
 
-  it("ignores a value the draw could not decide", () => {
+  it("throws on a value the draw could not decide, leaving no pose behind", () => {
     const { api } = surface();
-    api.setNextSaucerEdge("top" as unknown as "left");
-    api.setNextRecycleEdge("sideways" as unknown as "top");
-    api.setNextRockSpeed(-5);
-    api.setNextSaucerRow(Number.NaN);
+    expect(() => api.setNextSaucerEdge("top" as unknown as "left")).toThrow(
+      RangeError,
+    );
+    expect(() =>
+      api.setNextRecycleEdge("sideways" as unknown as "top"),
+    ).toThrow(RangeError);
+    expect(() => api.setNextRockSpeed(-5)).toThrow(RangeError);
+    expect(() => api.setNextSaucerRow(Number.NaN)).toThrow(RangeError);
+    expect(() => api.setNextSaucerAim(Number.POSITIVE_INFINITY)).toThrow(
+      RangeError,
+    );
     const s = api.snapshot();
     expect(s.nextSaucerEdge).toBeNull();
     expect(s.nextRecycleEdge).toBeNull();
     expect(s.nextRockSpeed).toBeNull();
     expect(s.nextSaucerRow).toBeNull();
+    expect(s.nextSaucerAim).toBeNull();
   });
 
   it("brings the next arrival in at the posed edge and row", () => {

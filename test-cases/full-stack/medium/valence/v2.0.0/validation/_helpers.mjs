@@ -53,6 +53,19 @@
 // in the opening build phase and are also what a check that reads static state (a map's
 // geometry, placement legality, the full opening-phase refund) wants.
 //
+// A HELPER THAT POSES ANYTHING A READING DERIVES FROM RECONCILES BEFORE IT RETURNS.
+// `specs/instrumentation.md` lets a build work a derived reading out at the read OR keep
+// it as a stored copy refreshed once per tick — a unit's position, the detectors and auras
+// reaching it, a tower's stats and what it is aiming at are all derived — and both designs
+// are conformant. `reconcile()` is what brings a stored copy back into agreement with a
+// board that has just been posed, and it costs NO SIMULATION TIME, so it is callable from
+// `arrange` as well as from `act`. Every helper below that places a tower, poses a unit or
+// sets a targeting priority ends with the call, so an item reaching its scene through the
+// helpers never makes it itself; an item that poses with raw `api.call` and then reads
+// makes it once before its first read or sweep. A helper that writes only state nothing is
+// derived from — the energy, the round number, a pause — does not need it, and neither do
+// the keyboard helpers, which drive the build's own input path.
+//
 // UNITS ARE TICKS. Valence is a 60 Hz fixed timestep (specs/controls.md) and the
 // debug API's `step` takes whole ticks, so every duration below is a tick count
 // (the runtime converts to wall-clock for the record pass). The seconds these
@@ -445,6 +458,9 @@ async function applyRunPreconditions(
   if (round != null) await api.call("setRound", round);
   if (energy != null) await api.call("setEnergy", energy);
   if (integrity != null) await api.call("setIntegrity", integrity);
+  // The map decides the paths, and every unit position is read off them, so the readings
+  // are brought into agreement with the run this just opened before anything reads them.
+  await api.call("reconcile");
   return api.snapshot();
 }
 
@@ -574,7 +590,12 @@ export async function placeCovering(
         const x = p.x + nx * off * side;
         const y = p.y + ny * off * side;
         const r = await api.call("placeTower", kind, x, y);
-        if (r && r.ok) return { id: r.id, x, y, p, s: at };
+        if (r && r.ok) {
+          // A new tower changes what the board derives: an aura reaches the units under
+          // it, and every damage tower re-picks what it is aiming at.
+          await api.call("reconcile");
+          return { id: r.id, x, y, p, s: at };
+        }
       }
     }
   }
@@ -663,6 +684,8 @@ export async function focusOnParent(api) {
   for (const t of (await api.snapshot()).towers) {
     if (t.targeting != null) await api.call("setTargeting", t.id, "last");
   }
+  // `targetId` and the head's `angle` are derived from the priority just set.
+  await api.call("reconcile");
 }
 
 /**
@@ -683,7 +706,11 @@ export async function spawnAt(
   const spec = { type, pathId, progress: s };
   if (electrons != null) spec.electrons = electrons;
   if (inert != null) spec.inert = inert;
-  return api.call("spawnUnit", spec);
+  const id = await api.call("spawnUnit", spec);
+  // The unit's own position, the auras and detectors reaching it where it was posed, and
+  // every tower's choice of target all derive from a board this call just changed.
+  await api.call("reconcile");
+  return id;
 }
 
 // ---- Composite set-ups --------------------------------------------------------
@@ -1149,6 +1176,7 @@ export async function poseTargetingScene(api, begin, priority) {
   });
 
   if (priority != null) await api.call("setTargeting", t.id, priority);
+  await api.call("reconcile");
 
   const posed = await api.snapshot();
   const tower = towerById(posed, t.id);

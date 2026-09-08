@@ -119,6 +119,7 @@ export type SwitchName = (typeof SWITCH_NAMES)[number];
 export const REQUIRED_OPS = [
   "reset",
   "snapshot",
+  "reconcile",
   "menuRects",
   "tabRects",
   "setScreen",
@@ -390,6 +391,15 @@ export interface WickDebugApi {
   reset(): void;
   /** A pure read of the state; changes nothing. */
   snapshot(): WickSnapshot;
+  /**
+   * Bring every reported reading into agreement with the world as it stands,
+   * without advancing anything. The build's derived readings — `time`,
+   * `xpToNext`, `maxHp`, `armor`, `moveSpeed`, `pickupRadius`, `spawnWindow`,
+   * `aliveCommons`, and `pool` — answer for the run as posed after it. A build
+   * that works them out at the read has nothing to do and this changes
+   * nothing.
+   */
+  reconcile(): void;
   /**
    * The rectangles of the current screen's vertical menu, in menu order, in
    * stage coordinates. `title`, `levelup`, `paused`, `fallen`, and `dawn`

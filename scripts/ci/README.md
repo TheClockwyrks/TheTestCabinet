@@ -44,12 +44,26 @@ and can be run from anywhere, including locally:
 | `format-check.sh`                | `prettier --check` over the whole checkout, frozen versions and `.prettierignore` aside                                                                                                                                                                           | no       |
 | `contract-drift.sh`              | regenerate TS bindings, JSON Schemas and gg's prompt templates, fail on diff                                                                                                                                                                                      | yes      |
 | `frozen-check.sh`                | `.frozen` test-case versions match their recorded digests                                                                                                                                                                                                         | yes      |
+| `spec-vocabulary-check.sh`       | every non-frozen version's `prompt.hbs` and `specs/**`, plus the shared preambles in `crates/core/src/prompt.rs`, name nothing about evaluation or this project; frozen hits are reported, not failed                                                             | yes      |
 | `validators-typecheck.sh`        | `npm ci`, `tsc --noEmit` over every case's `validation/<engine>/` project                                                                                                                                                                                         | yes      |
 | `build-context.sh`               | every Dockerfile `COPY` source — and every gg guest package, every tree the workspace bakes in with `include_str!`, and every package `stage-tcab-packages.mjs` bakes into the host package store — survives every `.dockerignore` allowlist that can apply to it | yes      |
 
 "Critical" scripts are the ones that catch a genuinely broken change (a crate or
 front end failing to build or test), so they run on both CI systems. The lint
 scripts run on Azure DevOps only.
+
+`spec-vocabulary-check.sh` is the spec counterpart of the seeded-contract check
+that runs after `contract-drift.sh`: that one covers the packages a run vendors,
+this one covers what a model is guaranteed to read. It walks every
+`test-cases/**/vX.Y.Z/` and `game-jams/**/vX.Y.Z/`, reads `prompt.hbs` and
+everything under `specs/`, adds the shared preambles `crates/core/src/prompt.rs`
+prepends, and fails on any word that has no reading except this project — its
+name, `tcab`, "benchmark", "test case", "evaluation", "run record", a review
+surface, the case manifest, a link to the repository or the gallery. A game's own
+"score", "evaluate" and "harness" are left alone, and `tcab-blend` (a runner on the
+model's PATH) is exempt. Frozen versions cannot be edited, so their hits are
+counted on one summary line rather than failed. It is dependency-free node and
+finishes in a fraction of a second, which is why it also runs on the commit hook.
 
 `build-context.sh` is the only gate that can see a broken container build without
 building one. `.dockerignore` is an **allowlist** (`*`, then explicit `!`

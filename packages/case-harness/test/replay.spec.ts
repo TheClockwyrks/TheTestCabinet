@@ -167,3 +167,61 @@ it("rewrites a field named __proto__ as a field", () => {
   expect(Object.prototype.hasOwnProperty.call(arg, "__proto__")).toBe(true);
   expect(Object.getOwnPropertyDescriptor(arg, "__proto__")?.value).toBe("kept");
 });
+
+it("writes one entry for an image drawn under two different table indices", () => {
+  // The page-side pool shares an image within ONE recording, but a mutable source
+  // — a canvas the build repaints — is re-captured at every use, so the same
+  // picture can arrive at several indices. Keying the rebuilt table on the SOURCE
+  // INDEX, as this used to, writes that picture once per index; keying it on the
+  // payload writes it once, which is what `ops` and `states` beside it already do.
+  const sprite = {
+    kind: "bitmap",
+    width: 4,
+    height: 4,
+    src: "data:image/png;base64,AAECAw==",
+  };
+  const other = { ...sprite, src: "data:image/png;base64,BAUGBw==" };
+  const recording = synthetic(3);
+  recording.images = [sprite, { ...sprite }, other];
+  recording.ops = [0, 1, 2].map((i) => ({
+    op: "call" as const,
+    method: "drawImage",
+    args: [{ $img: i }, 0, 0],
+  }));
+
+  const rewritten = retable(recording, recording.frames);
+
+  expect(rewritten.images).toEqual([sprite, other]);
+  expect(
+    rewritten.frames.map((frame) =>
+      frame.ops.map((op) => {
+        const entry = rewritten.ops[op]!;
+        return entry.op === "call" ? entry.args[0] : null;
+      }),
+    ),
+  ).toEqual([[{ $img: 0 }], [{ $img: 0 }], [{ $img: 1 }]]);
+});
+
+it("degrades an image the recording does not carry to a marker, rather than a hole", () => {
+  // Every other table raises on a missing index — a recording naming what it does
+  // not carry is inconsistent, and the writer's `try` reports that as an output
+  // that could not be written. The images table deliberately does not: a `$img`
+  // with nothing behind it becomes the same opaque marker the player already
+  // reports and skips, so what a reviewer loses is one draw rather than the whole
+  // replay. Pushing `undefined` into the table, which is what an unguarded lookup
+  // did, writes `null` into the JSON and leaves the player to draw nothing with no
+  // explanation.
+  const recording = synthetic(1);
+  recording.images = [];
+  recording.ops = [
+    { op: "call", method: "drawImage", args: [{ $img: 3 }, 0, 0] },
+  ];
+
+  const rewritten = retable(recording, recording.frames);
+
+  expect(rewritten.images).toEqual([]);
+  const op = rewritten.ops[0]!;
+  expect(op.op === "call" ? op.args[0] : null).toEqual({
+    $opaque: "an image this replay could not carry",
+  });
+});
