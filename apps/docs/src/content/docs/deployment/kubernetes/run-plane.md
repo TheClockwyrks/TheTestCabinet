@@ -236,12 +236,14 @@ value to cap how long a run may queue, for example to surface a pod whose
 resource requests no node can satisfy. Size `TCAB_K8S_RUN_CPU_*` and
 `TCAB_K8S_RUN_MEMORY_*` so a run's requests fit on a node.
 
-### Live asset previews
+### Sandbox-to-driver channel
 
-For an asset-generation run with a viewer attached, the sandbox pod streams
-preview frames back to the driver pod (see
-[live previews](/components/core/execution/)). The sandbox reaches the driver by
-IP, so the driver's own pod IP is wired in through the downward API on the `Job`:
+The sandbox pod reaches the driver pod by IP over two flows: an asset-generation
+run with a viewer attached streams preview frames back to the driver (see
+[live previews](/components/core/execution/)), and every run's produced tree is
+collected over a listener the driver opens for the transfer (see the
+[driver](/components/driver/overview/#artifacts)). The driver's own pod IP is
+wired in through the downward API on the `Job`:
 
 ```yaml
 env:
@@ -251,7 +253,11 @@ env:
         fieldPath: status.podIP
 ```
 
-Preview streaming is best-effort, and a missed frame is skipped.
+Preview streaming is best-effort, and a missed frame is skipped. Collection is
+not: it fails the run if the tree cannot be transferred whole, and it requires
+the pod IP, so a driver `Job` without it cannot collect a run. The
+`tcab-allow-driver-from-sandbox` NetworkPolicy admits both flows on clusters
+that enforce policies.
 
 ## Publish Jobs
 

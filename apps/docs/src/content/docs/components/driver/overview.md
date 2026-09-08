@@ -12,8 +12,9 @@ service](/components/artifacts/overview/), and reports its terminal status
 carrying the produced [run record](/components/core/run-records/).
 
 Everything the driver needs arrives in its environment when the dispatcher
-creates the `Job`. It binds no socket, takes no flags, and keeps no state beyond
-the run.
+creates the `Job`. It serves nothing, takes no flags, and keeps no state beyond
+the run; the only sockets it opens are the per-run listeners its sandbox
+connects back to.
 
 ## Relationship to the core
 
@@ -208,17 +209,35 @@ Two mechanisms outside the driver close that gap:
 ## Artifacts
 
 Under the Kubernetes runtime the driver collects the produced tree out of the
-sandbox pod over an exec: a `tar` of `/work` streamed to stdout, with the
-regenerable dependency directories excluded at pack time. The exec's exit status
-is not proof that its stdout arrived, because the transport can deliver the
-status before the tail of the stream and drop the rest without an error. The
-pipeline therefore prints a fixed completion mark after the archive, only once
-`tar` has exited successfully, and the driver accepts a collected stream only
-when it ends with that mark. A stream without the mark, a `tar` that reported a
-failure, a lost exec stream and an archive that fails to unpack are each
-retried with a fresh stream and a fresh destination, up to a fixed number of
-attempts; `tar -c` is read-only, so repeating it is safe. A collection failure
-report names the innermost cause of the failure.
+sandbox pod over a network channel of its own, following the pattern in
+[Live Streaming](/components/live-streaming/): a pod exec carries only the
+command that starts the transfer, and the bytes travel over a direct connection
+the driver owns. A collected tree is the result of every API call the run paid
+for, so the transfer is verified by the receiver rather than trusted from the
+sender's exit status. Exec stdout gives no such guarantee; it can be cut short
+while the exit status still reports success.
+
+The driver binds a TCP listener on an ephemeral port for the collection, with a
+per-run token, and execs an uploader into the sandbox with the driver's pod IP,
+the port and the token as arguments. The uploader is a Test Cabinet script the
+driver ships in its own binary and runs with the sandbox image's Node runtime,
+so the two ends of the channel always come from the same driver build. It
+streams a `tar` of `/work`, with the regenerable dependency directories excluded
+at pack time, as length-framed chunks, and ends the stream with the total byte
+count and a SHA-256 digest of the archive; a `tar` failure is sent as a failure
+frame carrying `tar`'s message. The driver accepts the tree only when the
+stream's terminator arrives and both the count and the digest match what it
+received, then acknowledges the upload. The listener's verdict is the only one
+that counts: the exec that started the uploader is consulted only when no
+verified upload has arrived, and an exec whose stream is lost while the
+uploader is still streaming leaves the listener to decide. A connection that
+ends without its terminator, a count or digest mismatch, a stalled stream, an
+uploader that never connects, a failed `tar` and an uploader that exits without
+completing are each retried with a fresh upload, up to a fixed number of
+attempts; `tar -c` is read-only, so repeating it is safe. A verified archive
+that fails to unpack fails the collection outright, since another transfer
+cannot change a host-side fault. A collection failure report names the
+innermost cause of the failure.
 
 The sandbox pod is ephemeral and its disk is lost on exit, so the driver uploads
 the produced run tree to the [artifact service](/components/artifacts/overview/)
