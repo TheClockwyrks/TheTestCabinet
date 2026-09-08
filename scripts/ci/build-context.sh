@@ -65,10 +65,13 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
 # --- the .dockerignore matcher ----------------------------------------------
 
-# Ordered pattern tables, filled by load_dockerignore: one anchored ERE per pattern
-# and a parallel flag saying whether the pattern was negated (`!`, i.e. re-includes).
+# Ordered pattern tables, filled by load_dockerignore: one anchored ERE per pattern,
+# a parallel flag saying whether the pattern was negated (`!`, i.e. re-includes), and
+# the pattern's own text (without the `!`), which the shape check at the foot of this
+# file reads because a wildcard is a property of the pattern and not of its regex.
 DI_REGEX=()
 DI_NEGATED=()
+DI_RAW=()
 
 # Translate one .dockerignore pattern into an anchored ERE with Docker's glob
 # semantics: `*` and `?` stop at a path separator, `**` spans them, and a leading
@@ -106,6 +109,7 @@ load_dockerignore() {
 	local file="$1" line
 	DI_REGEX=()
 	DI_NEGATED=()
+	DI_RAW=()
 	while IFS= read -r line || [[ -n "$line" ]]; do
 		line="${line%$'\r'}"
 		# Trim surrounding whitespace; a pattern never has meaningful edges.
@@ -114,9 +118,11 @@ load_dockerignore() {
 		[[ -z "$line" || "$line" == '#'* ]] && continue
 		if [[ "$line" == '!'* ]]; then
 			DI_NEGATED+=(1)
+			DI_RAW+=("${line#!}")
 			DI_REGEX+=("$(pattern_to_regex "${line#!}")")
 		else
 			DI_NEGATED+=(0)
+			DI_RAW+=("$line")
 			DI_REGEX+=("$(pattern_to_regex "$line")")
 		fi
 	done <"$file"
@@ -169,11 +175,11 @@ context_includes_dir() {
 # both answers, including the two shapes that have actually broken a build here: a
 # file re-included by name, and a file under a re-included directory. The third
 # shape — a re-inclusion that is a GLOB spanning one path segment
-# (`!/packages/gg-sandbox-*/*-version.sh`, how the devcontainer's allowlist admits
-# every arm's version file without naming the arms) — is asserted here because it is
-# new to this repository and its correctness rests entirely on `*` stopping at a
-# `/`: a matcher that let it span separators would quietly admit every arm's whole
-# source tree and scratch directories with it.
+# (`!/packages/gg-sandbox-*/*-version.sh`, how the devcontainer's allowlist once
+# admitted every arm's version file without naming the arms) — is still asserted
+# even though no allowlist in the repository may use it any more (the shape check at
+# the foot of this file says why): the matcher has to read what a rejected pattern
+# WOULD have admitted, and its correctness rests entirely on `*` stopping at a `/`.
 self_test() {
 	local fixture failures=0 case_line path expected
 	fixture="$(mktemp)"
@@ -731,9 +737,81 @@ for ignore_file in "${ignore_files[@]}"; do
 	done
 done
 
+# --- what an allowlist's SHAPE costs, before a byte is transferred ------------
+
+# Every check above is about WHICH paths an allowlist admits. This one is about how the
+# allowlist is written, because one shape of pattern changes what the builder does with the
+# paths it does NOT admit. BuildKit's context sender skips an ignored directory without
+# entering it only while it can prove no negated pattern is rooted beneath it, and its
+# proof is a string-prefix test over the negations. A negation that contains a wildcard
+# (`*`, `?` or `[`) cannot be prefix-tested, so ONE such line anywhere in the file turns
+# the optimisation off for EVERY directory: the sender then walks the whole working tree —
+# node_modules, target/, tmp/, ~650,000 entries on a developer machine — to ship the few
+# hundred kB it keeps. That is the difference between a two-second and a twenty-second
+# context transfer on every image build, and it is the difference between a build that
+# never touches tmp/ and one that dies because a single entry under it could not be
+# lstat'ed. It did: `make local-rebuild` failed on `bad file descriptor` for a file inside
+# a scratch directory's node_modules, which no image reads and which the allowlist had
+# excluded on its first line. The one glob re-inclusion in the root allowlist
+# (`!/scripts/gg-*.sh`) was the reason the sender was there at all.
+#
+# THE RULE: a re-inclusion names a path, never a family. Excludes may still be globs —
+# `**/node_modules/` is an exclude, and the sender handles those without walking.
+#
+# THE OTHER HALF OF THE RULE is what the globs used to buy: a new arm's installer, version
+# file or gg helper was admitted without an edit. An enumeration that falls behind fails
+# the build minutes in rather than at the COPY, so for every family an allowlist admits by
+# enumeration, every tracked file in that family must survive it. The families are the
+# former globs, verbatim, so the check preserves exactly what each allowlist admitted.
+shape_checked=0
+for ignore_file in "${ignore_files[@]}"; do
+	load_dockerignore "$REPO_ROOT/$ignore_file"
+	for index in "${!DI_RAW[@]}"; do
+		((DI_NEGATED[index] == 1)) || continue
+		shape_checked=$((shape_checked + 1))
+		[[ "${DI_RAW[$index]}" == *[\*\?\[]* ]] || continue
+		echo "error: $ignore_file re-includes '!${DI_RAW[$index]}' with a wildcard, and a re-inclusion must name a path." >&2
+		echo "       BuildKit skips an ignored directory only while every negation can be prefix-tested against it;" >&2
+		echo "       one wildcard negation makes the context sender walk the whole working tree on every build." >&2
+		echo "       Fix: replace the glob with one '!' line per file, and list the family below so the gate keeps it complete." >&2
+		problems=$((problems + 1))
+	done
+done
+
+# allowlist → the git pathspecs whose every tracked file it must admit.
+enumerated_families_root=('scripts/gg-*.sh')
+enumerated_families_devcontainer=('scripts/ci/install-*.sh' 'scripts/gg-*.sh' 'packages/gg-sandbox-*/*-version.sh')
+family_checked=0
+check_family() {
+	local ignore_file="$1" pathspec="$2" path count=0
+	load_dockerignore "$REPO_ROOT/$ignore_file"
+	while IFS= read -r path; do
+		[[ -n "$path" ]] || continue
+		count=$((count + 1))
+		family_checked=$((family_checked + 1))
+		context_includes "$path" && continue
+		echo "error: $ignore_file keeps '$path' OUT of the build context, and it admits '$pathspec' by enumeration." >&2
+		echo "       That family used to be one glob line; it is a list now (a re-inclusion must not carry a" >&2
+		echo "       wildcard), and this file is new to the list. Fix: add '!/$path' beside its siblings in $ignore_file." >&2
+		problems=$((problems + 1))
+	done < <(git -C "$REPO_ROOT" ls-files -- "$pathspec")
+	((count > 0)) || {
+		echo "error: no tracked file matches '$pathspec'; the $ignore_file family check would pass vacuously." >&2
+		problems=$((problems + 1))
+	}
+}
+for pathspec in "${enumerated_families_root[@]}"; do
+	check_family ".dockerignore" "$pathspec"
+done
+if [[ -f "$REPO_ROOT/.devcontainer/ubuntu.dockerfile.dockerignore" ]]; then
+	for pathspec in "${enumerated_families_devcontainer[@]}"; do
+		check_family ".devcontainer/ubuntu.dockerfile.dockerignore" "$pathspec"
+	done
+fi
+
 ((problems == 0)) || {
 	echo >&2
-	echo "$problems build-context problem(s) found across ${#dockerfiles[@]} Dockerfiles, ${#guest_packages[@]} gg guest packages, $baked_checked baked-in includes, $staged_checked staged packages and ${#ignored_paths[@]} git-ignored paths." >&2
+	echo "$problems build-context problem(s) found across ${#dockerfiles[@]} Dockerfiles, ${#guest_packages[@]} gg guest packages, $baked_checked baked-in includes, $staged_checked staged packages, ${#ignored_paths[@]} git-ignored paths, $shape_checked re-inclusions and $family_checked enumerated-family files." >&2
 	exit 1
 }
 
@@ -741,3 +819,4 @@ done
 # allowlist has its sources checked against both, which is the point.
 echo "$checked context-source check(s) — every COPY across ${#dockerfiles[@]} Dockerfiles, against each allowlist that can apply to it, plus the ${#guest_packages[@]} packages/gg-sandbox* trees the driver image's gg stage compiles, the $baked_checked path(s) the workspace bakes in with include_str! and the $staged_checked package(s) $STAGING_SCRIPT bakes into the host package store — all survive."
 echo "$ignored_checked exclusion check(s) — ${#ignored_paths[@]} git-ignored path(s) against each allowlist — none reach the build context."
+echo "$shape_checked re-inclusion(s) across ${#ignore_files[@]} allowlist(s) name a path rather than a wildcard family, and $family_checked file(s) of the families those allowlists enumerate all survive."

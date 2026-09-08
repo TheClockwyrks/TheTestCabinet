@@ -123,18 +123,22 @@ RUN mkdir -p "$HOME/.local/bin" "/tmp/$USERNAME" && \
 # path, which is what lets that partial tree stand in for a checkout, and
 # `.devcontainer/languages/gg/install.sh` explains the convention.
 #
-# THE INSTALLER HALF OF THE SLICE IS A GLOB, so a twelfth arm is admitted with no edit
-# here. `install-*.sh` plus two named files is the installers' whole closure: the one
+# THE INSTALLER HALF OF THE SLICE IS A GLOB IN THIS COPY, AND AN ENUMERATION IN THE
+# ALLOWLIST. `install-*.sh` plus two named files is the installers' whole closure: the one
 # composing script runs eight per-arm installers by that name, they all source `lib.sh`
 # beside them, and six of them source `fetch.sh` — the resuming, retrying `curl` a
 # toolchain archive is fetched with, which is one file rather than a family and so is
-# named rather than matched. Copying `./scripts/ci` whole instead would put
+# named rather than matched. A COPY glob is matched by the builder over a context it
+# already has, so it costs nothing; a `!` glob in the allowlist makes the context sender
+# walk the whole working tree before a byte moves, which is why
+# `.devcontainer/ubuntu.dockerfile.dockerignore` lists the installers, gg's shared
+# shell and every arm's version file one line each, and why scripts/ci/build-context.sh
+# asserts those lists are complete. Copying `./scripts/ci` whole instead would put
 # `web-build.sh`, `specs-lint.sh` and twelve other unrelated scripts into the cache key
 # of a 1.9 GB layer, so editing the web build would cost the next image build every
-# toolchain in it. `./packages` is narrowed the same way by
-# `.devcontainer/ubuntu.dockerfile.dockerignore`
-# (`!/packages/gg-sandbox-*/*-version.sh`), which is why it can still be written as a
-# directory here.
+# toolchain in it. `./packages` is narrowed the same way by that allowlist (one
+# `!/packages/gg-sandbox-<arm>/<arm>-version.sh` line per arm), which is why it can
+# still be written as a directory here.
 #
 # The slice is deleted in the install RUN so that nothing SHIPS a stale half-repository
 # for someone to read a pin out of by mistake. That is hygiene and not a saving: each of

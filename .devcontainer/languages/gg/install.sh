@@ -34,14 +34,16 @@
 # set. `.devcontainer/ubuntu.dockerfile` COPYs that slice in and deletes it again in
 # the RUN below — which keeps a stale half-repository out of the final filesystem but
 # saves nothing, because each COPY is its own layer and a later delete can only write a
-# whiteout over it. THREE of the four parts of the slice are GLOBS
-# (`scripts/ci/install-*.sh` + `lib.sh` in the Dockerfile, and
-# `!/packages/gg-sandbox-*/*-version.sh` + `!/scripts/gg-*.sh` in
-# `.devcontainer/ubuntu.dockerfile.dockerignore`) rather than enumerations, so a new arm
-# needs no edit in either place — and so the ~3.4 GB layer's cache key contains the pins,
-# the installers and gg's shared build shell, and nothing else.
+# whiteout over it. THREE of the four parts of the slice are GLOBS in the Dockerfile's
+# COPYs (`scripts/ci/install-*.sh` + `lib.sh`, `scripts/gg-*.sh`, `./packages`), so a
+# new arm needs no edit there — and so the ~3.4 GB layer's cache key contains the pins,
+# the installers and gg's shared build shell, and nothing else. In
+# `.devcontainer/ubuntu.dockerfile.dockerignore` the same three families are
+# ENUMERATED, one line per file, because a `!` pattern with a wildcard makes BuildKit's
+# context sender walk the entire working tree; scripts/ci/build-context.sh fails when a
+# tracked file in one of those families is missing from the list.
 #
-# The fourth part IS an enumeration, of seven files, and deliberately: the two arms whose
+# The fourth part is also an enumeration, of seven files, and deliberately: the two arms whose
 # `componentize-*` pin lives in a `build.sh`, the Python arm's `requirements.txt`, the Rust
 # arm's separate `Cargo.toml`/`Cargo.lock`, and the PureScript arm's `spago.yaml`/`spago.lock`
 # — the inputs `install-gg-build-tools.sh` warms the package-manager-delivered half of the

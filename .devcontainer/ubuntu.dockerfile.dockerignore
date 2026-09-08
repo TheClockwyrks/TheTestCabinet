@@ -106,38 +106,77 @@
 # would be a second list to keep in step with the Dockerfile's COPYs.
 !/.devcontainer
 
-# The toolchain installers, and only them, as a GLOB. `install-gg-toolchains.sh`
-# runs eight per-arm installers by that name and sources `scripts/ci/lib.sh` beside
-# them, so those two patterns are the whole closure — and being a glob rather than a
-# list, the half that grows every time an arm is added is covered without an edit.
+# The toolchain installers, and only them, ENUMERATED. `install-gg-toolchains.sh` runs
+# eight per-arm installers by that name and sources `scripts/ci/lib.sh` beside them, so
+# the installers and the two named files below are the whole closure.
+#
+# This used to be the glob `!/scripts/ci/install-*.sh`, and the two blocks after it were
+# globs too; none of the three can be. A RE-INCLUSION MUST NEVER CARRY A WILDCARD: BuildKit's
+# context sender skips an ignored directory outright only while it can prove, by string
+# prefix, that no negated pattern is rooted beneath it — and one `*`, `?` or `[` in any `!`
+# pattern in this file turns that proof off for every directory, so the sender walks the
+# whole working tree (node_modules, target/, tmp/; ~650,000 entries on a developer machine)
+# to ship the few hundred kB it keeps, and one unreadable entry anywhere in that walk fails
+# the build. The root allowlist records the same rule for the same reason. What the glob
+# bought — a new arm's installer admitted without an edit — scripts/ci/build-context.sh now
+# buys the other way round: every tracked file the three former globs matched must still
+# survive this file, so a forgotten line fails CI instead of failing the devcontainer build.
 #
 # It is deliberately NOT the whole `scripts/ci` directory, though the root allowlist
 # admits it that way for the driver image. The Dockerfile's COPY is written to match
-# these same two patterns, and the reason is the 1.9 GB layer it feeds: Docker hashes
+# these same families, and the reason is the 1.9 GB layer it feeds: Docker hashes
 # everything a COPY matches into that layer's cache key, so admitting the other twelve
 # scripts here would mean an edit to `web-build.sh` or `specs-lint.sh` cost the next
 # image build every toolchain in it.
-!/scripts/ci/install-*.sh
+!/scripts/ci/install-adapter.sh
+!/scripts/ci/install-dotnet.sh
+!/scripts/ci/install-gg-build-toolchains.sh
+!/scripts/ci/install-gg-build-tools.sh
+!/scripts/ci/install-gg-toolchains.sh
+!/scripts/ci/install-java.sh
+!/scripts/ci/install-kotlin.sh
+!/scripts/ci/install-nextest.sh
+!/scripts/ci/install-purescript.sh
+!/scripts/ci/install-rust-wasm.sh
+!/scripts/ci/install-swift.sh
+!/scripts/ci/install-uv.sh
+!/scripts/ci/install-wasi-sdk.sh
+!/scripts/ci/install-wit-bindgen.sh
 !/scripts/ci/lib.sh
-# The third file in that closure, and not a glob because it is one file: the resuming,
-# retrying `curl` six of those installers fetch their toolchain archive with. Without it
-# they die on their own `source` line, having copied cleanly.
+# The third file in that closure: the resuming, retrying `curl` six of those installers
+# fetch their toolchain archive with. Without it they die on their own `source` line,
+# having copied cleanly.
 !/scripts/ci/fetch.sh
 
 # The gg build's own shared shell, which those installers source: `gg-downloads.sh` resolves the
 # pinned `wit-bindgen` and wasmtime adapter, `gg-npm-tools.sh` resolves the pinned npm-delivered
-# build tools, and `gg-arms.sh` is the one list of the arms. A glob for the same reason the two
-# patterns above are globs. Six small files; the layer-cache argument above is unaffected, because
-# these change about as often as an arm is added.
-!/scripts/gg-*.sh
+# build tools, and `gg-arms.sh` is the one list of the arms. Enumerated, for the reason above.
+# Small files; the layer-cache argument above is unaffected, because these change about as
+# often as an arm is added.
+!/scripts/gg-arms.sh
+!/scripts/gg-artifacts-out-dir.sh
+!/scripts/gg-artifacts.sh
+!/scripts/gg-downloads.sh
+!/scripts/gg-npm-tools.sh
+!/scripts/gg-probe-fixtures.sh
+!/scripts/gg-reference.sh
+!/scripts/gg-scratch-lock.sh
+!/scripts/gg-signatures.sh
 
-# The version files those installers source, one per arm, as a GLOB — so adding an
-# arm needs no edit here, exactly as it needs no edit in the Dockerfile. The
-# pattern admits `packages/gg-sandbox-*/*-version.sh` and nothing else under
-# `packages/`: `*` does not cross a `/`, so the arms' sources, their `.build/`
-# scratch and the unrelated npm workspaces beside them all stay out. Measured
-# whole slice: ~230 kB.
-!/packages/gg-sandbox-*/*-version.sh
+# The version files those installers source, one per arm — and nothing else under
+# `packages/`: the arms' sources, their `.build/` scratch and the unrelated npm
+# workspaces beside them all stay out, which is why the Dockerfile can still COPY
+# `./packages` as a directory. Measured whole slice: ~230 kB. Enumerated, for the
+# reason above; the gate asserts every tracked `packages/gg-sandbox-*/*-version.sh` is here.
+!/packages/gg-sandbox-cpp/cpp-version.sh
+!/packages/gg-sandbox-csharp/csharp-version.sh
+!/packages/gg-sandbox-java/java-version.sh
+!/packages/gg-sandbox-kotlin/kotlin-version.sh
+!/packages/gg-sandbox-purescript/purescript-version.sh
+!/packages/gg-sandbox-ruby/opal-version.sh
+!/packages/gg-sandbox-ruby/yard-version.sh
+!/packages/gg-sandbox-rust/rust-version.sh
+!/packages/gg-sandbox-swift/swift-version.sh
 
 # Seven files that are NOT version files and are read by `scripts/ci/install-gg-build-tools.sh`,
 # which warms the package-manager-delivered half of gg's build toolchain. They are named

@@ -324,14 +324,30 @@
 # tooling, the desktop build helpers) are not, and admitting them would mean editing any
 # one of them recompiled the asset tooling from scratch.
 !/scripts/build-gg-static.sh
-# The gg build's own shared shell, as a GLOB rather than as `gg-signatures.sh` alone. That one file
-# was enough while reflecting the eleven catalogues was all the build did; it is not any more.
-# `gg-signatures.sh` and `gg-artifacts.sh` both source `gg-arms.sh` (the one list of the arms), every
-# arm's `build.sh` sources `gg-artifacts-out-dir.sh`, and the pinned-download and npm-tool resolvers
-# are sourced by the arms' `bindings.sh` and by two installers. A glob rather than five lines for the
-# reason the installer patterns above are globs: the set grows, and a list that has to be edited when
-# it does is a list that will not be.
-!/scripts/gg-*.sh
+# The gg build's own shared shell, ENUMERATED, and the enumeration is load-bearing.
+# `gg-signatures.sh` and `gg-artifacts.sh` both source `gg-arms.sh` (the one list of the arms),
+# every arm's `build.sh` sources `gg-artifacts-out-dir.sh`, and the pinned-download and npm-tool
+# resolvers are sourced by the arms' `bindings.sh` and by two installers. This used to be one
+# line, `!/scripts/gg-*.sh`, and it cannot be: A RE-INCLUSION MUST NEVER CARRY A WILDCARD.
+# BuildKit's context sender skips an ignored directory outright only while it can prove no
+# negated pattern is rooted beneath it, and it proves that by string prefix — so the moment ANY
+# `!` pattern in this file contains a `*`, `?` or `[`, the proof is off for every directory and
+# the sender walks the ENTIRE working tree (node_modules, target/, tmp/ — ~650,000 entries on a
+# developer machine) to ship the ~200 kB it keeps. That cost twenty seconds per build, and it
+# meant one unreadable entry anywhere in the tree — a transient `bad file descriptor` on a
+# shared mount, under tmp/, in a directory no image reads — failed `make local-rebuild`. A
+# literal list keeps the walk to the paths named here. scripts/ci/build-context.sh enforces
+# both halves: no negation anywhere in an allowlist may contain a wildcard, and every tracked
+# `scripts/gg-*.sh` must still survive this file, so the list below cannot silently fall behind.
+!/scripts/gg-arms.sh
+!/scripts/gg-artifacts-out-dir.sh
+!/scripts/gg-artifacts.sh
+!/scripts/gg-downloads.sh
+!/scripts/gg-npm-tools.sh
+!/scripts/gg-probe-fixtures.sh
+!/scripts/gg-reference.sh
+!/scripts/gg-scratch-lock.sh
+!/scripts/gg-signatures.sh
 !/scripts/ci
 # This image is also the one service Dockerfile that COPYs sibling files from its
 # own deployments/images/ directory (the nginx server block, the config.js
