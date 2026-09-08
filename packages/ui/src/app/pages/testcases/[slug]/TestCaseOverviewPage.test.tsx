@@ -120,6 +120,7 @@ function testCase(extra: Partial<TestCaseDetail> = {}): TestCaseDetail {
     tags: [],
     summary: null,
     description: "A game of **banked** shots.",
+    descriptionsByVersion: { "v1.0.0": "A game of **banked** shots." },
     versions: ["v1.0.0"],
     latestVersion: "v1.0.0",
     variants: [variant()],
@@ -257,6 +258,42 @@ describe("TestCaseOverviewPage", () => {
     // The tab still advertises the showcase — the media exists, this host just
     // cannot serve the bytes.
     expect(screen.getByRole("link", { name: "Play" })).toBeTruthy();
+  });
+
+  // A description ships with the version it describes, so an older version
+  // shows its own text — never the latest one's, and never a line claiming the
+  // text belongs to some other version.
+  it("shows the anchored version's own description", async () => {
+    catalog.mockReturnValue({
+      testCases: [
+        testCase({
+          description: "A game of **banked** shots.",
+          descriptionsByVersion: {
+            "v2.0.0": "A game of **banked** shots.",
+            "v1.0.0": "A game of **straight** shots.",
+          },
+          versions: ["v2.0.0", "v1.0.0"],
+          latestVersion: "v2.0.0",
+          variantsByVersion: {
+            "v2.0.0": [{ slug: "base", name: "Base" }],
+            "v1.0.0": [{ slug: "base", name: "Base" }],
+          },
+          enginesByVersion: { "v2.0.0": ["none"], "v1.0.0": ["none"] },
+        }),
+      ],
+      status: "ready",
+    });
+    seedGalleryData(variant());
+    renderOverview("?version=v1.0.0");
+
+    expect(await screen.findByText("straight")).toBeTruthy();
+    expect(screen.queryByText("banked")).toBeNull();
+    expect(screen.queryByText(/accompanies the latest/)).toBeNull();
+    // The layout's notice, not the description, is what says an older version
+    // is being viewed.
+    expect(screen.getByText(/Viewing v1\.0\.0; latest is/)).toHaveTextContent(
+      "Viewing v1.0.0; latest is v2.0.0",
+    );
   });
 
   it("falls back to the description when the host cannot resolve the coordinate", async () => {

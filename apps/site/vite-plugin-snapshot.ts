@@ -809,6 +809,11 @@ interface AssembledTestCase {
   // version — the engineless rendering plus every engine the snapshot carries a
   // rendering for. `collapseCases` merges one entry per version into this map.
   enginesByVersion: Record<string, string[]>;
+  // Every version's own site-facing description, latest included, keyed by
+  // version — a description ships with the version it describes, so the detail
+  // page anchored to an older version shows that version's text. `collapseCases`
+  // merges one entry per version into this map.
+  descriptionsByVersion: Record<string, string | null>;
   domains: AssembledDomain[];
   // The case's sprite-sheet declaration (frame size + named sequences), carried
   // through when the snapshot publishes it. Null for a non-sheet case (and for a
@@ -1258,6 +1263,9 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
     // than from the case's declared `engines` (which it does not publish), so the
     // Inputs tab offers exactly the renderings the site can show.
     enginesByVersion: { [file.version]: renderableEngines(variants) },
+    // This version's own entry; `collapseCases` merges the slug's versions into
+    // one map.
+    descriptionsByVersion: { [file.version]: file.description },
     // The sprite-sheet declaration, so the asset Reference tab can play each named
     // sequence from the published reference frames. Null when the snapshot carries
     // none.
@@ -1308,15 +1316,18 @@ function collapseCases(
     const enginesByVersion: Record<string, string[]> = {};
     const variantsByVersion: Record<string, { slug: string; name: string }[]> =
       {};
+    const descriptionsByVersion: Record<string, string | null> = {};
     for (const version of versions) {
       Object.assign(enginesByVersion, version.enginesByVersion);
       Object.assign(variantsByVersion, version.variantsByVersion);
+      Object.assign(descriptionsByVersion, version.descriptionsByVersion);
     }
     result.push({
       ...newest,
       priorVariantsByVersion,
       variantsByVersion,
       enginesByVersion,
+      descriptionsByVersion,
       versions: versions.map((v) => v.latestVersion),
       // Each version contributes 0 or 1 entry; `versions` is newest-first, so the
       // concatenation is already ordered newest changelog entry first.

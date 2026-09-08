@@ -367,8 +367,16 @@ export interface TestCaseGroupSummary {
  * costs one request per version plus one per variant's seeded specs.
  */
 export interface TestCaseDetail extends TestCaseSummary {
-  /** Inlined site-facing Markdown from the case's `description.md`, or null. */
+  /** Inlined site-facing Markdown from the latest version's `description.md`,
+   * or null. The same text is `descriptionsByVersion[latestVersion]`. */
   description: string | null;
+  /** Each published version's own site-facing description (its
+   * `description.md`, inlined), keyed by version and covering every version
+   * including the latest; null for a version that declares none. A description
+   * is authored per version — a rewrite ships with the version it describes —
+   * so a detail page anchored to an older version shows that version's text,
+   * never the latest one's. */
+  descriptionsByVersion: Record<string, string | null>;
   /** The case's changelog, one entry per version that declares a `changelog.md`,
    * ordered newest version first. Empty when no version carries one. */
   changelog: ChangelogEntry[];

@@ -127,6 +127,35 @@ describe("useSelectedCoordinate", () => {
     expect(result.current.coordinate.engine).toBe("none");
   });
 
+  // A link to a version carries exactly the query string the selector would
+  // write — the latest version elided, and a stale variant or engine scrubbed —
+  // so the two land on the same coordinate.
+  it("derives a version link's query string the way setVersion writes it", () => {
+    const { result } = renderCoordinate(
+      detail(),
+      "/?version=v1.0.0&variant=gyre",
+    );
+    // The stale variant is scrubbed to v1.0.0's default by canonicalization,
+    // but still sits in the URL until something rewrites it.
+    expect(result.current.coordinate.searchForVersion("v2.0.0")).toBe(
+      "?variant=gyre",
+    );
+    expect(result.current.coordinate.searchForVersion("v1.0.0")).toBe(
+      "?version=v1.0.0",
+    );
+
+    const { result: fromLatest } = renderCoordinate(
+      detail(),
+      "/?variant=gyre&engine=simple-2d",
+    );
+    expect(fromLatest.current.coordinate.searchForVersion("v1.0.0")).toBe(
+      "?version=v1.0.0",
+    );
+    expect(fromLatest.current.coordinate.searchForVersion("v2.0.0")).toBe(
+      "?variant=gyre&engine=simple-2d",
+    );
+  });
+
   // The scrub is a drop of what the new version lacks, not a reset: a selection
   // the new version does declare rides along.
   it("keeps a selection the new version still declares", () => {

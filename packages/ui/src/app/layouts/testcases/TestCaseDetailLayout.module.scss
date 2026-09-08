@@ -11,10 +11,10 @@
   margin-bottom: t.$space-lg;
 }
 
-// First row: the title with its difficulty rating, then the coordinate
-// selectors pushed to the right edge. Second row: the tag badges on the left,
-// the Run action on the right. Both span the full content width so the header
-// uses the available space.
+// First row: the title with its difficulty rating, then the version selector
+// and the Run action pushed to the right edge. Second row: the tag badges on
+// the left, the engine and variant selectors on the right. Both span the full
+// content width so the header uses the available space.
 .titleRow {
   display: flex;
   align-items: center;
@@ -166,10 +166,11 @@
   border-bottom-color: t.$color-accent;
 }
 
-// The coordinate selectors (version, variant, engine) in the header's title
-// row, right-aligned and centered on the title's line, so they read as one
-// labelled family and never crowd the tab strip. Wraps to a second line only if
-// a name is extreme.
+// The right-hand group of each header row — the version selector with the Run
+// action on the title row, the engine and variant selectors on the tags row —
+// right-aligned and centered on its row's line, so the selectors read as one
+// labelled family and never crowd the tab strip. Wraps only if a name is
+// extreme.
 .coordinateRow {
   display: flex;
   align-items: center;
@@ -262,15 +263,21 @@
 }
 
 // The version selector on top of the shared selector styling: tabular numerals
-// (it lists versions), and a superseded selection reads in the warning accent
-// so an old deliverable never masquerades as the current one.
+// (it lists versions).
 .versionSelect {
   font-variant-numeric: tabular-nums;
+}
 
-  &[data-superseded] {
-    color: t.$color-accent-2;
-    border-color: t.$color-accent-2;
-  }
+// The line under the tab strip while a superseded version is anchored:
+// "Viewing vX; latest is vY", muted, with the latest version a link. It pulls
+// up into the strip's bottom margin so it sits close under the strip's
+// baseline and keeps the strip's usual gap to the content below it.
+.versionNotice {
+  margin: calc(t.$space-md - t.$space-xl) 0 t.$space-xl;
+  font-size: t.$font-sm;
+  font-variant-numeric: tabular-nums;
+  color: t.$color-text-muted;
+  @include h.halo;
 }
 
 // The retry action beneath a failed coordinate resolution. Reads like the
@@ -298,13 +305,4 @@
     outline: t.$border-hairline solid t.$color-accent;
     outline-offset: 2px;
   }
-}
-
-// The marker beside a superseded version selection.
-.superseded {
-  font-size: t.$font-sm;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: t.$color-accent-2;
-  @include h.halo;
 }

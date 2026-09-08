@@ -12,6 +12,7 @@ import { routes } from "../../routes";
 import { useSelectedCoordinate } from "../../pages/testcases/[slug]/useSelectedCoordinate";
 import {
   VersionControl,
+  VersionNotice,
   type CoordinateFreeTabContext,
   type DetailTabContext,
 } from "../testcases/TestCaseDetailLayout";
@@ -115,10 +116,10 @@ export function JamDetailLayout({
 
   return (
     <PageLayout>
-      {/* Two rows spanning the content width: the title against the coordinate
-          selectors (version, variant), then the tags against the Run action. A
-          jam isn't tiered, so — unlike the test-case header — there is no
-          difficulty badge; the theme reads through the tags. */}
+      {/* Two rows spanning the content width: the title against the version
+          selector and the Run action, then the tags against the variant
+          selector. A jam isn't tiered, so — unlike the test-case header — there
+          is no difficulty badge; the theme reads through the tags. */}
       <header className={styles.header}>
         <div className={styles.titleRow}>
           <div className={styles.titleGroup}>
@@ -134,6 +135,32 @@ export function JamDetailLayout({
           </div>
           <div className={styles.coordinateRow}>
             <VersionControl coordinate={coordinate} />
+            {/* Only the consoles can launch runs; the anchored coordinate
+                carries through so the run form opens on exactly what is being
+                viewed. */}
+            {canExecute && (
+              <Link
+                className={styles.run}
+                to={routes.runNew({
+                  slug: testCase.slug,
+                  version: coordinate.version,
+                  variant: coordinate.variant.slug,
+                })}
+              >
+                Run ▸
+              </Link>
+            )}
+          </div>
+        </div>
+        <div className={styles.metaRow}>
+          <div className={styles.tags}>
+            {testCase.tags.map((entry) => (
+              <span key={entry} className={styles.tag}>
+                {entry}
+              </span>
+            ))}
+          </div>
+          <div className={styles.coordinateRow}>
             <label className={styles.variant}>
               <span className={styles.variantLabel}>Variant</span>
               <select
@@ -149,30 +176,6 @@ export function JamDetailLayout({
               </select>
             </label>
           </div>
-        </div>
-        <div className={styles.metaRow}>
-          <div className={styles.tags}>
-            {testCase.tags.map((entry) => (
-              <span key={entry} className={styles.tag}>
-                {entry}
-              </span>
-            ))}
-          </div>
-          {/* Only the consoles can launch runs; the anchored coordinate
-              carries through so the run form opens on exactly what is being
-              viewed. */}
-          {canExecute && (
-            <Link
-              className={styles.run}
-              to={routes.runNew({
-                slug: testCase.slug,
-                version: coordinate.version,
-                variant: coordinate.variant.slug,
-              })}
-            >
-              Run ▸
-            </Link>
-          )}
         </div>
       </header>
 
@@ -197,6 +200,7 @@ export function JamDetailLayout({
               ))}
             </nav>
           </div>
+          <VersionNotice coordinate={coordinate} />
           {resolved.variant ? (
             children({
               testCase,

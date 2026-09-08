@@ -254,6 +254,8 @@ async function toTestCaseDetail(
   enginesByVersion: Record<string, string[]>,
   /** Each version's variant identities, keyed by version. */
   variantsByVersion: Record<string, VariantRef[]>,
+  /** Each version's own site-facing description, keyed by version. */
+  descriptionsByVersion: Record<string, string | null>,
 ): Promise<TestCaseDetail> {
   const variants = await Promise.all(
     info.variants.map((v) =>
@@ -285,6 +287,10 @@ async function toTestCaseDetail(
     // resolutions, so the header's variant selector offers exactly the selected
     // version's variants.
     variantsByVersion,
+    // Each version's own description, from the same per-version resolutions: a
+    // description ships with the version it describes, so the detail page
+    // anchored to an older version shows that version's text.
+    descriptionsByVersion,
     domains: info.domains.map((d) => ({
       id: d.id,
       name: d.name,
@@ -388,6 +394,9 @@ async function fetchTestCase(
       info.variants.map((v) => ({ slug: v.slug, name: v.name })),
     ]),
   );
+  const descriptionsByVersion = Object.fromEntries(
+    infos.map((info) => [info.version, info.description ?? null]),
+  );
   return toTestCaseDetail(
     backend,
     versions,
@@ -396,6 +405,7 @@ async function fetchTestCase(
     errata,
     enginesByVersion,
     variantsByVersion,
+    descriptionsByVersion,
   );
 }
 

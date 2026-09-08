@@ -25,6 +25,8 @@ export interface SelectedCoordinate {
   version: string;
   /** Every published version of the case, newest first. */
   versions: readonly string[];
+  /** The case's latest version — what {@link isLatest} compares against. */
+  latestVersion: string;
   /** Whether the selected version is the case's latest. A superseded selection
    * is legitimate — its runs were judged against it — but surfaces mark it. */
   isLatest: boolean;
@@ -42,6 +44,10 @@ export interface SelectedCoordinate {
   setVersion: (version: string) => void;
   setVariant: (slug: string) => void;
   setEngine: (engine: string) => void;
+  /** The query string (`?…`, or empty) a link anchoring the page to `version`
+   * carries — exactly what {@link setVersion} would write, so a link and the
+   * selector land on the same coordinate. */
+  searchForVersion: (version: string) => string;
 }
 
 /**
@@ -94,39 +100,20 @@ export function useSelectedCoordinate(
   const setVersion = useCallback(
     (next: string) => {
       if (!testCase) return;
-      setParams(
-        (prev) => {
-          const search = new URLSearchParams(prev);
-          if (next === testCase.latestVersion) {
-            search.delete(VERSION_PARAM);
-          } else {
-            search.set(VERSION_PARAM, next);
-          }
-          // A version declares its own variants and supports its own engines.
-          // Carrying a selection the new version has no rendering for would
-          // leave the URL naming a deliverable the page is not showing, so drop
-          // it and let the new version's default stand.
-          const nextVariants = testCase.variantsByVersion[next] ?? [];
-          const selectedVariant = search.get(VARIANT_PARAM);
-          if (
-            selectedVariant &&
-            !nextVariants.some((v) => v.slug === selectedVariant)
-          ) {
-            search.delete(VARIANT_PARAM);
-          }
-          const nextEngines = testCase.enginesByVersion[next] ?? [
-            DEFAULT_ENGINE_SLUG,
-          ];
-          const selectedEngine = search.get(ENGINE_PARAM);
-          if (selectedEngine && !nextEngines.includes(selectedEngine)) {
-            search.delete(ENGINE_PARAM);
-          }
-          return search;
-        },
-        { replace: true },
-      );
+      setParams((prev) => withVersion(testCase, prev, next), {
+        replace: true,
+      });
     },
     [setParams, testCase],
+  );
+
+  const searchForVersion = useCallback(
+    (next: string) => {
+      if (!testCase) return "";
+      const search = withVersion(testCase, params, next).toString();
+      return search ? `?${search}` : "";
+    },
+    [params, testCase],
   );
 
   const setVariant = useCallback(
@@ -168,6 +155,7 @@ export function useSelectedCoordinate(
   return {
     version,
     versions,
+    latestVersion,
     isLatest: version === latestVersion,
     variant,
     variants,
@@ -176,7 +164,40 @@ export function useSelectedCoordinate(
     setVersion,
     setVariant,
     setEngine,
+    searchForVersion,
   };
+}
+
+// The query string anchoring the page to `next`, derived from the current one.
+// A version declares its own variants and supports its own engines. Carrying a
+// selection the new version has no rendering for would leave the URL naming a
+// deliverable the page is not showing, so it is dropped and the new version's
+// default stands.
+function withVersion(
+  testCase: TestCaseDetail,
+  prev: URLSearchParams,
+  next: string,
+): URLSearchParams {
+  const search = new URLSearchParams(prev);
+  if (next === testCase.latestVersion) {
+    search.delete(VERSION_PARAM);
+  } else {
+    search.set(VERSION_PARAM, next);
+  }
+  const nextVariants = testCase.variantsByVersion[next] ?? [];
+  const selectedVariant = search.get(VARIANT_PARAM);
+  if (
+    selectedVariant &&
+    !nextVariants.some((v) => v.slug === selectedVariant)
+  ) {
+    search.delete(VARIANT_PARAM);
+  }
+  const nextEngines = testCase.enginesByVersion[next] ?? [DEFAULT_ENGINE_SLUG];
+  const selectedEngine = search.get(ENGINE_PARAM);
+  if (selectedEngine && !nextEngines.includes(selectedEngine)) {
+    search.delete(ENGINE_PARAM);
+  }
+  return search;
 }
 
 // The engine a version is read under when nothing is selected: the engineless

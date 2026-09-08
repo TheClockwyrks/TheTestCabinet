@@ -87,8 +87,9 @@ listing, leaderboard, and metric.
 person reads its description and [showcase](/components/core/showcase/) media,
 launches the deployed [reference
 build](/components/core/results/#reference-implementations) for the anchored
-variant and engine, reads the case's changelog, and reads how runs of the case
-are scored.
+variant and engine, reads the anchored version's own description, reads the
+case's changelog, and reads how runs of the case are scored. While an older
+version is anchored, the page names the latest version and links to it.
 
 A case, a run, and a game jam each show everything a run of that coordinate is
 seeded with, a jam's prior-entry READMEs included. A workspace file's body is

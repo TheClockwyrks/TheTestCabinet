@@ -27,8 +27,9 @@ import styles from "./TestCaseOverviewPage.module.scss";
 //   • The reference-implementation launch panel — the deployed build for the
 //     anchored engine, embedded inline (this is where the old Reference tab's
 //     build embed folded to; the tab remains only for asset cases' frames).
-//   • The description panel — always. The case's site-facing description plus,
-//     when the variant declares a showcase, its authored `showcase.md`.
+//   • The description panel — always. The anchored version's site-facing
+//     description plus, when the variant declares a showcase, its authored
+//     `showcase.md`.
 //
 // A coordinate with neither showcase nor builds renders the description alone,
 // which is exactly the page's old Overview shape (and the layout labels the tab
@@ -40,12 +41,8 @@ export function TestCaseOverviewPage() {
       // The description reads nothing off the resolved coordinate, so it doubles
       // as the layout's fallback: it stays readable even on a host that cannot
       // resolve the selected rendering.
-      fallback={({ testCase, version, isLatest }) => (
-        <DescriptionPanel
-          testCase={testCase}
-          version={version}
-          isLatest={isLatest}
-        />
+      fallback={({ testCase, version }) => (
+        <DescriptionPanel testCase={testCase} version={version} />
       )}
     >
       {(ctx) => <PlayBody ctx={ctx} />}
@@ -56,7 +53,7 @@ export function TestCaseOverviewPage() {
 // The tab body for a resolved coordinate. A component (not inlined in the render
 // prop) because it reads the gallery's media resolver with a hook.
 function PlayBody({ ctx }: { ctx: DetailTabContext }) {
-  const { testCase, version, isLatest, engine, variant } = ctx;
+  const { testCase, version, engine, variant } = ctx;
   const { caseShowcaseMediaUrl } = useGalleryData();
   // The case-side counterpart of the run showcase's run-scoped resolver: the
   // showcase is authored material of the anchored (version, variant), so the
@@ -93,7 +90,6 @@ function PlayBody({ ctx }: { ctx: DetailTabContext }) {
       <DescriptionPanel
         testCase={testCase}
         version={version}
-        isLatest={isLatest}
         showcaseDescription={variant.showcase?.description || null}
         resolve={resolve}
       />
@@ -101,14 +97,14 @@ function PlayBody({ ctx }: { ctx: DetailTabContext }) {
   );
 }
 
-// The case's site-facing description, written for readers browsing the gallery
-// rather than seeded into a run.
+// The anchored version's site-facing description, written for readers browsing
+// the gallery rather than seeded into a run.
 //
-// The description is a property of the CASE, not of a version — there is one
-// `description.md`, kept current with the latest version — so anchoring the page
-// to an older version does not swap it out. Instead the panel says plainly which
-// version the prose accompanies, so a reader looking at a superseded deliverable
-// is never left assuming the description describes it.
+// A description is authored per version — each version's `description.md`
+// ships with it — so anchoring the page to an older version shows that
+// version's own text, exactly as it read when the version was current. The
+// layout's notice under the tab strip is what says a superseded version is
+// being viewed; the description itself carries no such line.
 //
 // When the anchored variant declares a showcase, its authored `showcase.md`
 // renders below the case description, with its bare relative image references
@@ -117,26 +113,19 @@ function PlayBody({ ctx }: { ctx: DetailTabContext }) {
 function DescriptionPanel({
   testCase,
   version,
-  isLatest,
   showcaseDescription = null,
   resolve,
 }: {
   testCase: TestCaseDetail;
   version: string;
-  isLatest: boolean;
   showcaseDescription?: string | null;
   resolve?: (file: string) => string | null;
 }) {
+  const description = testCase.descriptionsByVersion[version] ?? null;
   return (
     <Panel>
-      {!isLatest && (
-        <p className={shared.anchorNote}>
-          This description accompanies the latest version (
-          {testCase.latestVersion}); you are viewing {version}.
-        </p>
-      )}
-      {testCase.description ? (
-        <Markdown>{testCase.description}</Markdown>
+      {description ? (
+        <Markdown>{description}</Markdown>
       ) : (
         <p className={shared.empty}>
           No description has been written for {testCase.name} yet.

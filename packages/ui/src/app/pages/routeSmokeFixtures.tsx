@@ -152,6 +152,10 @@ function testCaseDetail(slug: string): TestCaseDetail {
       "v2.0.0": [{ slug: "base", name: "Base" }],
       "v1.0.0": [{ slug: "base", name: "Base" }],
     },
+    descriptionsByVersion: {
+      "v2.0.0": "A case the smoke test renders.",
+      "v1.0.0": "The case as it first shipped.",
+    },
     domains: [{ id: "approach", name: "Approach", description: null }],
     variants: [
       {

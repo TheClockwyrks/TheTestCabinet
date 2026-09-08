@@ -152,22 +152,61 @@ describe("TestCaseDetailLayout", () => {
   });
 
   // A superseded selection is legitimate — its runs were judged against it —
-  // but reading an old deliverable must never masquerade as the current one.
-  it("marks a superseded version selection", async () => {
+  // but reading an old deliverable must never masquerade as the current one:
+  // a line under the tab strip names the viewed version and links to the
+  // latest. The selector itself carries no marker.
+  it("notes a superseded version selection under the tab strip", async () => {
     renderLayout();
     await screen.findByText("body v2.0.0/base/none");
-    expect(screen.queryByText("superseded")).toBeNull();
+    expect(screen.queryByText(/Viewing v/)).toBeNull();
 
     fireEvent.change(screen.getByLabelText("Version"), {
       target: { value: "v1.0.0" },
     });
 
-    expect(await screen.findByText("superseded")).toBeInTheDocument();
-    expect(screen.getByLabelText("Version")).toHaveAttribute(
-      "data-superseded",
-      "true",
-    );
     await screen.findByText("body v1.0.0/base/none");
+    const notice = screen.getByText(/Viewing v1\.0\.0; latest is/);
+    expect(notice).toHaveTextContent("Viewing v1.0.0; latest is v2.0.0");
+    expect(screen.getByLabelText("Version")).not.toHaveAttribute(
+      "data-superseded",
+    );
+    expect(screen.queryByText("superseded")).toBeNull();
+
+    // The latest version is a link that re-anchors the page to it, and the
+    // notice then goes away.
+    const latest = screen.getByRole("link", { name: "v2.0.0" });
+    expect(latest.getAttribute("href")).toBe("/test-cases/carom");
+    fireEvent.click(latest);
+    await screen.findByText("body v2.0.0/base/none");
+    expect(screen.queryByText(/Viewing v/)).toBeNull();
+    expect(screen.getByLabelText("Version")).toHaveValue("v2.0.0");
+  });
+
+  // The header reads version and Run on the title row, engine then variant on
+  // the tags row.
+  it("lays the header out as version + Run, then engine + variant", async () => {
+    renderLayout();
+    await screen.findByText("body v2.0.0/base/none");
+
+    const version = screen.getByLabelText("Version");
+    const run = screen.getByRole("link", { name: "Run ▸" });
+    const engine = screen.getByLabelText("Engine");
+    const variant = screen.getByLabelText("Variant");
+    const rowOf = (el: HTMLElement) => el.closest("header > div");
+    expect(rowOf(version)).not.toBeNull();
+    expect(rowOf(version)).toBe(rowOf(run));
+    expect(rowOf(engine)).toBe(rowOf(variant));
+    expect(rowOf(engine)).not.toBe(rowOf(version));
+    // The title row precedes the tags row.
+    expect(
+      rowOf(version)!.compareDocumentPosition(rowOf(engine)!) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    // Engine precedes variant within the row.
+    expect(
+      engine.compareDocumentPosition(variant) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   // The landing tab's label follows what the resolved coordinate can offer:

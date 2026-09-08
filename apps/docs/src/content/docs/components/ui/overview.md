@@ -75,6 +75,11 @@ open. Selection is canonical: an unknown version resolves to the latest, and a
 variant or engine the selected version does not declare resolves to that
 version's default. A run is launched against the resolved coordinate.
 
+A description ships with the version it describes, so the page shows the
+anchored version's own description. While an older version is anchored, the
+page names the latest version and links to it, and the link re-anchors the page
+to that version.
+
 The page's run aggregations scope relative to the anchored coordinate rather
 than selecting one of their own, and that scope lives in the URL alongside it. A
 view widened across engines lists each engine separately rather than folding
