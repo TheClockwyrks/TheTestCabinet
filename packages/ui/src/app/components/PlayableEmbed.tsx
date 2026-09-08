@@ -153,13 +153,11 @@ export function PlayableEmbed({ src, title, mode }: PlayableEmbedProps) {
 
   // Gated: the build is unedited model code, so gate the launch behind a generic
   // caveat. Nothing loads until the visitor clicks; the launch opens the overlay.
+  // The action leads and the caveat follows it, so the thing the visitor came
+  // to do is the first thing they meet.
   if (mode === "gated") {
     return (
       <div className={styles.gate}>
-        <p className={styles.notice}>
-          This is the model&rsquo;s code exactly as it was written. It has not
-          been edited or fixed and may be incomplete or broken.
-        </p>
         <button
           type="button"
           className={styles.launch}
@@ -167,6 +165,10 @@ export function PlayableEmbed({ src, title, mode }: PlayableEmbedProps) {
         >
           Launch implementation
         </button>
+        <p className={styles.notice}>
+          This is the model&rsquo;s code exactly as it was written. It has not
+          been edited or fixed and may be incomplete or broken.
+        </p>
       </div>
     );
   }
