@@ -39,6 +39,11 @@ import { routes } from "../../routes";
 import { launchBatch, type LaunchItem } from "../runs/launchBatch";
 import { axisLabel } from "./coveragePickers";
 import {
+  bufferIsFull,
+  bufferedStatTitle,
+  formatBufferTarget,
+} from "./bufferTarget";
+import {
   comboLabel,
   ggConfigKey,
   isGgCombo,
@@ -442,10 +447,10 @@ export function describeTopUp(result: TopUpResult): string {
     return `Enqueued ${runs} across ${cells}, in the order this plan runs them.${blocked}`;
   }
   const outstanding = result.outstanding ?? 0;
-  if (outstanding >= result.bufferTarget) {
+  if (bufferIsFull(result.bufferTarget, outstanding)) {
     return (
       `Nothing enqueued: your review buffer is full (${outstanding} of ` +
-      `${result.bufferTarget} outstanding). Review some runs and top up again.${blocked}`
+      `${formatBufferTarget(result.bufferTarget)} outstanding). Review some runs and top up again.${blocked}`
     );
   }
   if (blocked) {
@@ -562,9 +567,9 @@ export function planStatusNote(
       `run${coverage.runsUnreviewed === 1 ? "" : "s"} you have not reviewed yet.${held}${blocked}`
     );
   }
-  if (coverage.runsOutstanding >= coverage.bufferTarget) {
+  if (bufferIsFull(coverage.bufferTarget, coverage.runsOutstanding)) {
     return (
-      `Waiting on you: ${coverage.runsOutstanding} of ${coverage.bufferTarget} ` +
+      `Waiting on you: ${coverage.runsOutstanding} of ${formatBufferTarget(coverage.bufferTarget)} ` +
       "buffered runs are outstanding (in flight, or finished and unreviewed), so a " +
       `top-up deliberately enqueues nothing until you review some.${held}${blocked}`
     );
@@ -1230,10 +1235,11 @@ export function CoveragePlanPage() {
             </span>
             <span
               className={styles.summaryStat}
-              title="Runs waiting on you or on the queue: in flight (queued, pending, or executing) plus finished but unreviewed by you. A top-up stops once this reaches the buffer target."
+              title={bufferedStatTitle(coverage.bufferTarget)}
             >
               <strong>
-                {coverage.runsOutstanding}/{coverage.bufferTarget}
+                {coverage.runsOutstanding}/
+                {formatBufferTarget(coverage.bufferTarget)}
               </strong>{" "}
               buffered
             </span>

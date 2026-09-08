@@ -250,6 +250,23 @@
   width: 6rem;
 }
 
+// The buffer field's number beside its no-limit switch, wrapping on narrow viewports.
+.settingBuffer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: t.$space-md;
+}
+
+.settingToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-sm;
+  font-size: t.$font-sm;
+  color: t.$color-text;
+  cursor: pointer;
+}
+
 .settingSelect {
   flex: none;
   width: 16rem;

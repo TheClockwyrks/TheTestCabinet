@@ -283,7 +283,8 @@ setting overridable per plan or ladder, rather than of any one plan, because it
 describes how much work you want to come back to. It exists so the first few
 reviews can still steer a plan, where firing an entire matrix at once spends the
 whole budget before anyone has looked at a single run. Refilling it is called a
-top-up.
+top-up. The setting is either a bound on outstanding runs or no limit, which
+makes a top-up enqueue every missing run at once.
 
 ## Reviewer checklist
 

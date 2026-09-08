@@ -173,8 +173,8 @@ per-account: a run someone else produced satisfies a plan's target and is never
 re-requested, but "unreviewed" means unreviewed by the requesting account, and a
 ladder's gate reads only that account's own review, so two reviewers share the
 cabinet's runs without sharing each other's worklists. And enqueueing is bounded
-and serialized: a plan holds a bounded review buffer rather than firing its
-whole matrix, refilling it is an endpoint the console calls rather than a
+and serialized: a plan holds a review buffer rather than firing its whole
+matrix unless it is told to, refilling it is an endpoint the console calls rather than a
 background daemon, and each plan's or ladder's top-up claims its row first, so
 two console tabs cannot both observe the same shortfall and both enqueue for it.
 

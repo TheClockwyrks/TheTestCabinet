@@ -89,7 +89,9 @@ pub struct Model {
     pub auto_top_up: bool,
     /// This ladder's override of the account's buffer target, or `NULL` to inherit
     /// `coverage_settings.buffer_target`. Nullable rather than defaulted because "no
-    /// opinion" and "explicitly zero" are different instructions.
+    /// opinion" and "explicitly zero" are different instructions. Encoded exactly as
+    /// `coverage_plan.buffer_target` is: a non-negative bound, or a negative value for
+    /// "no bound — top up everything".
     #[sea_orm(nullable)]
     pub buffer_target: Option<i32>,
     /// RFC 3339 of when a top-up claimed this ladder, or `NULL` when none is running.

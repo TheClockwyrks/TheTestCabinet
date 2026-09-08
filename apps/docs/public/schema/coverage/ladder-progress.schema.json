@@ -1,5 +1,38 @@
 {
   "$defs": {
+    "BufferTarget": {
+      "description": "How deep a plan's or ladder's review buffer may go: the most runs the requesting\naccount may have outstanding (in flight, or finished and unreviewed by them)\nbefore a top-up stops emitting — or no bound at all.\n\nThe unbounded shape is its own variant rather than a large bound so that it is\nstored, reported, and shown as the instruction it is, and so that no bound the\nreviewer types can be mistaken for it.",
+      "oneOf": [
+        {
+          "description": "Keep at most `runs` runs outstanding. `0` is a legitimate bound — \"never top\nthis up automatically\" — and is not the same instruction as no bound.",
+          "properties": {
+            "kind": {
+              "const": "bounded",
+              "type": "string"
+            },
+            "runs": {
+              "description": "The most runs the requester may have outstanding before a top-up stops.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": ["kind", "runs"],
+          "type": "object"
+        },
+        {
+          "description": "No bound: a top-up emits every missing cell it can, however many runs are\nalready waiting on the reviewer. The per-cell target and the harness\nparallelism cap still apply; only the reviewer-backlog check is gone.",
+          "properties": {
+            "kind": {
+              "const": "unbounded",
+              "type": "string"
+            }
+          },
+          "required": ["kind"],
+          "type": "object"
+        }
+      ]
+    },
     "ClimberStatus": {
       "description": "Where one climber stands. Five states, because \"stopped\" has three genuinely\ndifferent causes and conflating them makes a ladder impossible to act on.",
       "oneOf": [
@@ -470,10 +503,8 @@
   "description": "The ladder's board: the climb, every climber's standing, and the roll-ups the\ndashboard header shows.",
   "properties": {
     "bufferTarget": {
-      "description": "The buffer target in force (the ladder's override, else the account's setting,\nelse the backend default).",
-      "format": "uint32",
-      "minimum": 0,
-      "type": "integer"
+      "$ref": "#/$defs/BufferTarget",
+      "description": "The buffer target in force (the ladder's override, else the account's setting,\nelse the backend default). When it is `unbounded`, `runsOutstanding` never\nstops a top-up."
     },
     "climbers": {
       "description": "Every climber, in the order the ladder would feed them.",

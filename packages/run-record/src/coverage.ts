@@ -159,6 +159,25 @@ export type CoverageGroupInput = {
 };
 
 /**
+ * How deep a plan's or ladder's review buffer may go: the most runs the requesting
+ * account may have outstanding (in flight, or finished and unreviewed by them)
+ * before a top-up stops emitting — or no bound at all.
+ *
+ * The unbounded shape is its own variant rather than a large bound so that it is
+ * stored, reported, and shown as the instruction it is, and so that no bound the
+ * reviewer types can be mistaken for it.
+ */
+export type BufferTarget =
+  | {
+      kind: "bounded";
+      /**
+       * The most runs the requester may have outstanding before a top-up stops.
+       */
+      runs: number;
+    }
+  | { kind: "unbounded" };
+
+/**
  * Which axis a coverage plan's cell loop nests on — and therefore the order its
  * runs execute in, since a top-up emits cells in this order, `job.queue_seq` is
  * monotonic, and the dispatcher claims in ascending order.
@@ -195,10 +214,11 @@ export type CoverageSchedule = {
   autoTopUp: boolean;
   /**
    * This plan's override of the account's review-buffer target, or null to inherit
-   * it. Null and `0` are different instructions — "no opinion" versus "never top
-   * up" — which is why this is nullable rather than defaulted to zero.
+   * it. Null, a bound of `0`, and `unbounded` are three different instructions —
+   * "no opinion", "never top up", and "top up everything" — which is why this is
+   * nullable rather than defaulted, and a shape rather than a number.
    */
-  bufferTarget?: number;
+  bufferTarget?: BufferTarget;
 };
 
 /**
@@ -300,10 +320,11 @@ export type CoveragePlanOut = {
   autoTopUp: boolean;
   /**
    * This plan's override of the account's review-buffer target, or null to inherit
-   * it. Null and `0` are different instructions — "no opinion" versus "never top
-   * up" — which is why this is nullable rather than defaulted to zero.
+   * it. Null, a bound of `0`, and `unbounded` are three different instructions —
+   * "no opinion", "never top up", and "top up everything" — which is why this is
+   * nullable rather than defaulted, and a shape rather than a number.
    */
-  bufferTarget?: number;
+  bufferTarget?: BufferTarget;
 };
 
 /**
@@ -541,9 +562,10 @@ export type CoverageMatrix = {
   runsOutstanding: number;
   /**
    * The buffer target in force for this plan (its own override, else the
-   * account's setting, else the backend default).
+   * account's setting, else the backend default). When it is `unbounded`,
+   * `runsOutstanding` never stops a top-up.
    */
-  bufferTarget: number;
+  bufferTarget: BufferTarget;
 };
 
 /**
@@ -555,9 +577,11 @@ export type CoverageMatrix = {
 export type CoverageSettings = {
   /**
    * The account's default review-buffer target: how many runs a top-up may leave
-   * outstanding (in flight, or finished and unreviewed) before it stops.
+   * outstanding (in flight, or finished and unreviewed) before it stops, or
+   * `unbounded` for a reviewer who wants every plan to run through everything
+   * unless it says otherwise.
    */
-  bufferTarget: number;
+  bufferTarget: BufferTarget;
   /**
    * Whether [`Self::buffer_target`] is the account's own choice or the backend's
    * compiled-in default because they have never chosen one. A `PUT` always makes
@@ -571,10 +595,11 @@ export type CoverageSettings = {
  */
 export type CoverageSettingsInput = {
   /**
-   * The review-buffer target to store, clamped to `MAX_BUFFER_TARGET`. `0` is a
-   * legitimate value — "never top me up automatically" — and is stored as such.
+   * The review-buffer target to store. A bound is clamped to `MAX_BUFFER_TARGET`;
+   * a bound of `0` is a legitimate value — "never top me up automatically" — and
+   * is stored as such, and `unbounded` is stored as itself.
    */
-  bufferTarget: number;
+  bufferTarget: BufferTarget;
 };
 
 /**
@@ -730,7 +755,7 @@ export type TopUpResult = {
    * The buffer target in force (the plan's override, else the account's setting,
    * else the backend default).
    */
-  bufferTarget: number;
+  bufferTarget: BufferTarget;
   /**
    * The requester's buffer occupancy as the scheduler saw it, or null when it
    * never ran.

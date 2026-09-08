@@ -901,7 +901,7 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       input: CoverageSettingsInput,
       token: string,
     ): Promise<CoverageSettings> {
-      // The backend clamps the target, so it echoes back what it actually stored
+      // The backend clamps a bound, so it echoes back what it actually stored
       // rather than what was asked for — display that, not the submitted value.
       return putJson<CoverageSettings>(
         baseUrl,

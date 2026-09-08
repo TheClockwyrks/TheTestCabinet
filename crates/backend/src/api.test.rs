@@ -327,3 +327,113 @@ async fn the_active_run_list_reports_when_a_started_run_started() {
     assert_eq!(body[0]["state"], "starting");
     assert_eq!(body[0]["startedAt"], "2026-09-06T00:02:00Z", "{body}");
 }
+
+/// An authenticated request against the router with a JSON body.
+fn user_request(method: &str, uri: &str, body: serde_json::Value) -> Request<Body> {
+    Request::builder()
+        .method(method)
+        .uri(uri)
+        .header(
+            axum::http::header::AUTHORIZATION,
+            format!("Bearer {USER_TOKEN}"),
+        )
+        .header(axum::http::header::CONTENT_TYPE, "application/json")
+        .body(Body::from(body.to_string()))
+        .unwrap()
+}
+
+#[tokio::test]
+async fn an_unbounded_account_buffer_is_stored_as_itself_and_inherited_by_a_plan() {
+    // The whole chain a reviewer exercises when they switch "No limit" on in their
+    // settings: the PUT stores the shape, the GET reads it back as a choice, and a
+    // plan with no override of its own reports it as the target in force.
+    let harness = harness().await;
+    let unbounded = serde_json::json!({ "kind": "unbounded" });
+
+    let (status, body) = call(
+        &harness.router,
+        user_request(
+            "PUT",
+            "/coverage-settings",
+            serde_json::json!({ "bufferTarget": unbounded }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["bufferTarget"], unbounded);
+    assert_eq!(body["isDefault"], serde_json::Value::Bool(false));
+
+    let (status, body) = call(
+        &harness.router,
+        user_request("GET", "/coverage-settings", serde_json::Value::Null),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["bufferTarget"], unbounded);
+    assert_eq!(body["isDefault"], serde_json::Value::Bool(false));
+
+    let (status, body) = call(
+        &harness.router,
+        user_request(
+            "POST",
+            "/coverage-plans",
+            serde_json::json!({
+                "name": "everything",
+                "runsPerCell": 2,
+                "comboGroupIds": [],
+                "caseGroupIds": [],
+                "combos": [{ "harness": "claude", "model": "anthropic/claude-opus-4.8" }],
+                "cases": [{ "slug": "pong", "version": "v1.0.0", "variant": "base" }],
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let plan_id = body["id"]
+        .as_str()
+        .expect("the created plan's id")
+        .to_string();
+
+    let (status, body) = call(
+        &harness.router,
+        user_request(
+            "GET",
+            &format!("/coverage-plans/{plan_id}/coverage"),
+            serde_json::Value::Null,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["bufferTarget"], unbounded);
+
+    // A bound written afterwards replaces it, clamped to the ceiling, and a bound of
+    // zero is kept as the bound it is.
+    let (status, body) = call(
+        &harness.router,
+        user_request(
+            "PUT",
+            "/coverage-settings",
+            serde_json::json!({ "bufferTarget": { "kind": "bounded", "runs": 9999 } }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body["bufferTarget"],
+        serde_json::json!({ "kind": "bounded", "runs": 500 })
+    );
+    let (status, body) = call(
+        &harness.router,
+        user_request(
+            "PUT",
+            "/coverage-settings",
+            serde_json::json!({ "bufferTarget": { "kind": "bounded", "runs": 0 } }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body["bufferTarget"],
+        serde_json::json!({ "kind": "bounded", "runs": 0 })
+    );
+}

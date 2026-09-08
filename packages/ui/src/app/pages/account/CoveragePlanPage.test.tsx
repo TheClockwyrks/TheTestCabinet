@@ -127,7 +127,7 @@ function matrix(
     runsPending: cells.reduce((n, c) => n + c.pending, 0),
     runsUnreviewed: cells.reduce((n, c) => n + c.unreviewed, 0),
     runsOutstanding: cells.reduce((n, c) => n + c.inFlight + c.unreviewed, 0),
-    bufferTarget: 10,
+    bufferTarget: { kind: "bounded", runs: 10 },
     ...over,
   };
 }
@@ -691,7 +691,7 @@ describe("launchGgCells", () => {
 describe("describeTopUp", () => {
   function result(over: Partial<TopUpResult> = {}): TopUpResult {
     return {
-      bufferTarget: 5,
+      bufferTarget: { kind: "bounded", runs: 5 },
       enqueued: 0,
       cells: [],
       unlaunchable: [],
@@ -741,7 +741,7 @@ describe("describeTopUp", () => {
     const message = describeTopUp(
       result({
         outstanding: 1,
-        bufferTarget: 5,
+        bufferTarget: { kind: "bounded", runs: 5 },
         unlaunchable: [
           { reason: "launch slot `critic` is unbound" },
         ] as TopUpBlocked[],
@@ -752,12 +752,24 @@ describe("describeTopUp", () => {
   });
 
   it("tells a full buffer apart from a satisfied plan", () => {
-    expect(describeTopUp(result({ outstanding: 5, bufferTarget: 5 }))).toMatch(
-      /buffer is full/i,
+    expect(
+      describeTopUp(
+        result({ outstanding: 5, bufferTarget: { kind: "bounded", runs: 5 } }),
+      ),
+    ).toMatch(/buffer is full/i);
+    expect(
+      describeTopUp(
+        result({ outstanding: 1, bufferTarget: { kind: "bounded", runs: 5 } }),
+      ),
+    ).toMatch(/every cell is at its target/i);
+  });
+
+  it("never calls an unbounded buffer full, however much is outstanding", () => {
+    const message = describeTopUp(
+      result({ outstanding: 900, bufferTarget: { kind: "unbounded" } }),
     );
-    expect(describeTopUp(result({ outstanding: 1, bufferTarget: 5 }))).toMatch(
-      /every cell is at its target/i,
-    );
+    expect(message).not.toMatch(/buffer is full/i);
+    expect(message).toMatch(/every cell is at its target/i);
   });
 });
 
@@ -791,11 +803,23 @@ describe("planStatusNote", () => {
 
   it("explains a full review buffer as waiting on you", () => {
     const note = planStatusNote(
-      matrix([cell({ inFlight: 1, unreviewed: 4 })], { bufferTarget: 5 }),
+      matrix([cell({ inFlight: 1, unreviewed: 4 })], {
+        bufferTarget: { kind: "bounded", runs: 5 },
+      }),
       false,
     );
     expect(note).toMatch(/5 of 5/);
     expect(note).toMatch(/review some/i);
+  });
+
+  it("never says an unbounded plan is waiting on you", () => {
+    const note = planStatusNote(
+      matrix([cell({ inFlight: 1, unreviewed: 40 })], {
+        bufferTarget: { kind: "unbounded" },
+      }),
+      false,
+    );
+    expect(note ?? "").not.toMatch(/waiting on you/i);
   });
 
   it("says a satisfied plan was satisfied partly by runs you have not reviewed", () => {
@@ -1003,7 +1027,7 @@ describe("topUpAfterReview", () => {
       topUpCoveragePlan: async (id: string) => {
         topUp(id);
         return {
-          bufferTarget: 5,
+          bufferTarget: { kind: "bounded", runs: 5 },
           enqueued: 2,
           cells: [],
           unlaunchable: [],
@@ -1126,7 +1150,7 @@ function backendValue(cells: CoverageCell[]): BackendContextValue {
       ],
       topUpCoveragePlan: async () =>
         ({
-          bufferTarget: 10,
+          bufferTarget: { kind: "bounded", runs: 10 },
           enqueued: 0,
           cells: [],
           unlaunchable: [],

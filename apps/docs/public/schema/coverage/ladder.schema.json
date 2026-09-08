@@ -1,5 +1,38 @@
 {
   "$defs": {
+    "BufferTarget": {
+      "description": "How deep a plan's or ladder's review buffer may go: the most runs the requesting\naccount may have outstanding (in flight, or finished and unreviewed by them)\nbefore a top-up stops emitting — or no bound at all.\n\nThe unbounded shape is its own variant rather than a large bound so that it is\nstored, reported, and shown as the instruction it is, and so that no bound the\nreviewer types can be mistaken for it.",
+      "oneOf": [
+        {
+          "description": "Keep at most `runs` runs outstanding. `0` is a legitimate bound — \"never top\nthis up automatically\" — and is not the same instruction as no bound.",
+          "properties": {
+            "kind": {
+              "const": "bounded",
+              "type": "string"
+            },
+            "runs": {
+              "description": "The most runs the requester may have outstanding before a top-up stops.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": ["kind", "runs"],
+          "type": "object"
+        },
+        {
+          "description": "No bound: a top-up emits every missing cell it can, however many runs are\nalready waiting on the reviewer. The per-cell target and the harness\nparallelism cap still apply; only the reviewer-backlog check is gone.",
+          "properties": {
+            "kind": {
+              "const": "unbounded",
+              "type": "string"
+            }
+          },
+          "required": ["kind"],
+          "type": "object"
+        }
+      ]
+    },
     "Gate": {
       "description": "The rule one ladder applies at every rung.\n\nStored per ladder (not per rung): a ladder is a single question asked of an\nordered series of cases, so the bar it sets is the ladder's, and a rung only\nvaries how many runs it takes to answer.",
       "properties": {
@@ -157,10 +190,15 @@
       "type": "boolean"
     },
     "bufferTarget": {
-      "description": "This ladder's override of the account's review-buffer target, or null to\ninherit it. Null and `0` are different instructions — \"no opinion\" versus\n\"never top up\".",
-      "format": "uint32",
-      "minimum": 0,
-      "type": ["integer", "null"]
+      "anyOf": [
+        {
+          "$ref": "#/$defs/BufferTarget"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "This ladder's override of the account's review-buffer target, or null to\ninherit it. Null, a bound of `0`, and `unbounded` are three different\ninstructions — \"no opinion\", \"never top up\", and \"top up everything\". On a\nladder the last is the natural choice more often than on a plan: the gate is\nalready what stops a hopeless climb, so the buffer is only ever holding a\nclimber back from a rung it has earned."
     },
     "comboGroupIds": {
       "description": "The referenced combination groups' ids — the same `kind = \"combo\"` coverage\ngroups a plan uses, so one saved set of models drives both and editing it\nreshapes both.",

@@ -484,8 +484,9 @@ export interface BackendClient {
   /**
    * Refill a plan's review buffer (`POST /coverage-plans/{id}/topup`, Bearer): the
    * server walks the plan's cells in its configured order, skips the ones already at
-   * their (globally counted) target, and enqueues whole cells until this account has
-   * `bufferTarget` runs outstanding — in flight, or finished and unreviewed by them.
+   * their (globally counted) target, and enqueues whole cells until this account's
+   * `bufferTarget` is full — in flight, or finished and unreviewed by them — or every
+   * missing cell when that target is unbounded.
    *
    * There is no background scheduler, so this call **is** the scheduler: the console
    * makes it when a plan is opened and after a review lands. It is idempotent (each

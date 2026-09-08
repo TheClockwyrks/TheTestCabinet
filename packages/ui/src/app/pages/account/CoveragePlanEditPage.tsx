@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { LoadingState } from "../../components/LoadingState";
 import type {
+  BufferTarget,
   CoverageAxis,
   CoverageGroup,
   CoveragePlanInput,
@@ -24,15 +25,10 @@ import {
   CasePicker,
   DEFAULT_COVERAGE_AXIS,
 } from "./coveragePickers";
+import { DEFAULT_BUFFER_TARGET } from "./bufferTarget";
 import { SubmitNotice } from "../../components/SubmitNotice";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Coverage.module.scss";
-
-// The backend's compiled-in review-buffer default, shown as the placeholder until
-// the account's own setting resolves. Only ever a display fallback: the number that
-// actually applies is whatever `GET /coverage-settings` reports, and an empty
-// override field defers to it rather than to this.
-const FALLBACK_BUFFER_TARGET = 10;
 
 /** The run target a new plan starts with, and the one its control resets to. */
 const DEFAULT_RUNS_PER_CELL = 3;
@@ -77,10 +73,12 @@ export function CoveragePlanEditPage() {
     DEFAULT_COVERAGE_AXIS,
   );
   const [autoTopUp, setAutoTopUp] = useState(DEFAULT_AUTO_TOP_UP);
-  const [bufferTarget, setBufferTarget] = useState<number | null>(null);
+  const [bufferTarget, setBufferTarget] = useState<BufferTarget | null>(null);
   // Carried, never edited here — see the note on this page's purpose above.
   const [paused, setPaused] = useState(false);
-  const [accountBuffer, setAccountBuffer] = useState(FALLBACK_BUFFER_TARGET);
+  const [accountBuffer, setAccountBuffer] = useState<BufferTarget>(
+    DEFAULT_BUFFER_TARGET,
+  );
 
   useEffect(() => {
     if (!backend || !token) {
@@ -181,8 +179,9 @@ export function CoveragePlanEditPage() {
         // this control, and a member edit is not a decision to resume.
         paused,
         autoTopUp,
-        // Omitted rather than sent as 0 when there is no override — null means
-        // "inherit my account default", 0 means "never top this plan up".
+        // Omitted when there is no override — null means "inherit my account
+        // default", a bound of 0 means "never top this plan up", and no limit means
+        // "everything".
         ...(bufferTarget === null ? {} : { bufferTarget }),
       },
     };

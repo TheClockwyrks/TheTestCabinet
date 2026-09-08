@@ -50,7 +50,7 @@ function progress(climbers: LadderClimber[]): LadderProgress {
     runsMissing: 0,
     runsUnreviewed: 2,
     runsOutstanding: 0,
-    bufferTarget: 10,
+    bufferTarget: { kind: "bounded", runs: 10 },
   };
 }
 

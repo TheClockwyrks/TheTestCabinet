@@ -3,6 +3,7 @@ import { MemoryRouter } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { GgCapabilitySet } from "@clockwyrks/run-record/gg";
 import type {
+  BufferTarget,
   ReviewPlanCase,
   ReviewPlanCombo,
 } from "@clockwyrks/run-record/coverage";
@@ -128,17 +129,27 @@ describe("AxisPicker", () => {
 // Empty and `0` are different instructions — "use my account default" versus "never
 // top this plan up" — so the field must never collapse one into the other.
 describe("BufferTargetField", () => {
-  function renderField(value: number | null, onChange = vi.fn()) {
+  const bounded = (runs: number): BufferTarget => ({ kind: "bounded", runs });
+  const unbounded: BufferTarget = { kind: "unbounded" };
+
+  function renderField(
+    value: BufferTarget | null,
+    onChange = vi.fn(),
+    accountDefault: BufferTarget = bounded(7),
+  ) {
     render(
       <BufferTargetField
         value={value}
-        accountDefault={7}
+        accountDefault={accountDefault}
         onChange={onChange}
       />,
     );
     return {
       onChange,
       input: screen.getByRole("spinbutton") as HTMLInputElement,
+      toggle: screen.getByRole("switch", {
+        name: "No limit",
+      }) as HTMLInputElement,
     };
   }
 
@@ -146,33 +157,94 @@ describe("BufferTargetField", () => {
     const { input } = renderField(null);
     expect(input.value).toBe("");
     expect(input.getAttribute("placeholder")).toBe("7");
-    expect(screen.getByText(/inherits your account default of 7/)).toBeTruthy();
+    expect(
+      screen.getByText(/inherits your account default of 7 outstanding runs/),
+    ).toBeTruthy();
+  });
+
+  it("says when the inherited default is no limit", () => {
+    const { input } = renderField(null, vi.fn(), unbounded);
+    expect(input.getAttribute("placeholder")).toBe("");
+    expect(
+      screen.getByText(/inherits your account default of no limit/),
+    ).toBeTruthy();
   });
 
   it("reports an emptied field as null, not as zero", () => {
-    const { onChange, input } = renderField(3);
+    const { onChange, input } = renderField(bounded(3));
     fireEvent.change(input, { target: { value: "" } });
     expect(onChange).toHaveBeenCalledWith(null);
   });
 
   it("keeps zero as a real instruction rather than as 'unset'", () => {
-    const { onChange, input } = renderField(3);
+    const { onChange, input } = renderField(bounded(3));
     fireEvent.change(input, { target: { value: "0" } });
-    expect(onChange).toHaveBeenCalledWith(0);
+    expect(onChange).toHaveBeenCalledWith(bounded(0));
   });
 
   it("spells out what zero means, since it looks like an empty field", () => {
-    renderField(0);
+    renderField(bounded(0));
     expect(screen.getByText(/stops this plan topping itself up/i)).toBeTruthy();
     expect(screen.getByText(/different from empty/i)).toBeTruthy();
   });
 
   it("offers dropping the override without deleting digits", () => {
-    const { onChange } = renderField(4);
+    const { onChange } = renderField(bounded(4));
     fireEvent.click(
       screen.getByRole("button", { name: "Reset Review buffer" }),
     );
     expect(onChange).toHaveBeenCalledWith(null);
+  });
+
+  it("offers no limit as its own switch rather than as a large number", () => {
+    const { onChange, toggle } = renderField(bounded(4));
+    expect(toggle.checked).toBe(false);
+    fireEvent.click(toggle);
+    expect(onChange).toHaveBeenCalledWith(unbounded);
+  });
+
+  it("shows no limit as the switch on and the number field out of play", () => {
+    const { input, toggle } = renderField(unbounded);
+    expect(toggle.checked).toBe(true);
+    expect(input.disabled).toBe(true);
+    expect(input.value).toBe("");
+    expect(
+      screen.getByText(/every missing run of this plan at once/i),
+    ).toBeTruthy();
+  });
+
+  it("returns to inheriting when no limit is switched off with no bound behind it", () => {
+    const { onChange, toggle } = renderField(unbounded);
+    fireEvent.click(toggle);
+    expect(onChange).toHaveBeenCalledWith(null);
+  });
+
+  it("restores the bound that no limit replaced when it is switched back off", () => {
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <BufferTargetField
+        value={bounded(4)}
+        accountDefault={bounded(7)}
+        onChange={onChange}
+      />,
+    );
+    fireEvent.click(screen.getByRole("switch", { name: "No limit" }));
+    expect(onChange).toHaveBeenLastCalledWith(unbounded);
+    rerender(
+      <BufferTargetField
+        value={unbounded}
+        accountDefault={bounded(7)}
+        onChange={onChange}
+      />,
+    );
+    fireEvent.click(screen.getByRole("switch", { name: "No limit" }));
+    expect(onChange).toHaveBeenLastCalledWith(bounded(4));
+  });
+
+  it("clamps a typed bound to what the backend stores", () => {
+    const { onChange, input } = renderField(bounded(3));
+    fireEvent.change(input, { target: { value: "9999" } });
+    expect(onChange).toHaveBeenCalledWith(bounded(500));
   });
 });
 

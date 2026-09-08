@@ -39,6 +39,12 @@ fn capped(in_flight: u32, max_parallel: u32) -> HarnessCapacity {
     }
 }
 
+/// A buffer that stops once `runs` are outstanding — the shape every test below
+/// exercises unless it is specifically about the unbounded one.
+fn bounded(runs: u32) -> BufferTarget {
+    BufferTarget::Bounded { runs }
+}
+
 /// Flatten a decision into `(cell index, runs)` pairs for terse assertions.
 fn pairs(launches: &[CellLaunch]) -> Vec<(usize, u32)> {
     launches.iter().map(|l| (l.cell, l.runs)).collect()
@@ -46,7 +52,7 @@ fn pairs(launches: &[CellLaunch]) -> Vec<(usize, u32)> {
 
 #[test]
 fn an_empty_plan_launches_nothing() {
-    assert!(top_up(&[], &[], 10, 0).is_empty());
+    assert!(top_up(&[], &[], bounded(10), 0).is_empty());
     assert_eq!(outstanding_across(&[]), 0);
 }
 
@@ -55,16 +61,16 @@ fn a_fully_satisfied_plan_launches_nothing() {
     // Every cell is at its target globally, so there is no work regardless of how
     // much room the buffer has.
     let cells = [cell(5, 5, 0), cell(5, 3, 2), cell(5, 6, 0)];
-    assert!(top_up(&cells, &[], 50, 0).is_empty());
+    assert!(top_up(&cells, &[], bounded(50), 0).is_empty());
 }
 
 #[test]
 fn a_full_buffer_launches_nothing_even_with_work_outstanding() {
     let cells = [cell(5, 0, 0), cell(5, 0, 0)];
     // Outstanding is already at the target: the reviewer has all they can hold.
-    assert!(top_up(&cells, &[], 4, 4).is_empty());
+    assert!(top_up(&cells, &[], bounded(4), 4).is_empty());
     // And past it — a previous top-up's deliberate overshoot.
-    assert!(top_up(&cells, &[], 4, 7).is_empty());
+    assert!(top_up(&cells, &[], bounded(4), 7).is_empty());
 }
 
 #[test]
@@ -73,7 +79,7 @@ fn a_cell_is_emitted_whole_never_split_to_fit_the_buffer() {
     // emitted whole: a case's repeats are reviewed against each other, so they
     // must land in the queue together.
     let cells = [cell(5, 0, 0), cell(5, 0, 0)];
-    assert_eq!(pairs(&top_up(&cells, &[], 3, 0)), vec![(0, 5)]);
+    assert_eq!(pairs(&top_up(&cells, &[], bounded(3), 0)), vec![(0, 5)]);
 }
 
 #[test]
@@ -82,7 +88,10 @@ fn the_overshoot_is_bounded_to_one_cell() {
     // second is emitted too) and the second overshoots to 10. The third is not
     // reached — the overshoot never compounds.
     let cells = [cell(5, 0, 0), cell(5, 0, 0), cell(5, 0, 0)];
-    assert_eq!(pairs(&top_up(&cells, &[], 6, 0)), vec![(0, 5), (1, 5)]);
+    assert_eq!(
+        pairs(&top_up(&cells, &[], bounded(6), 0)),
+        vec![(0, 5), (1, 5)]
+    );
 }
 
 #[test]
@@ -91,7 +100,7 @@ fn launching_stops_exactly_at_the_buffer_target() {
     // the fourth cell is left for the next top-up.
     let cells = [cell(2, 0, 0), cell(2, 0, 0), cell(2, 0, 0), cell(2, 0, 0)];
     assert_eq!(
-        pairs(&top_up(&cells, &[], 6, 0)),
+        pairs(&top_up(&cells, &[], bounded(6), 0)),
         vec![(0, 2), (1, 2), (2, 2)]
     );
 }
@@ -100,7 +109,10 @@ fn launching_stops_exactly_at_the_buffer_target() {
 fn a_satisfied_cell_is_skipped_without_stalling_the_ones_behind_it() {
     // The middle cell is done; the walk continues past it rather than stopping.
     let cells = [cell(2, 2, 0), cell(2, 0, 0), cell(2, 1, 0)];
-    assert_eq!(pairs(&top_up(&cells, &[], 10, 0)), vec![(1, 2), (2, 1)]);
+    assert_eq!(
+        pairs(&top_up(&cells, &[], bounded(10), 0)),
+        vec![(1, 2), (2, 1)]
+    );
 }
 
 #[test]
@@ -109,7 +121,7 @@ fn cells_are_launched_in_the_order_they_were_passed() {
     // execution order, so the decision must never reorder it.
     let cells = [cell(1, 0, 0), cell(1, 0, 0), cell(1, 0, 0)];
     assert_eq!(
-        pairs(&top_up(&cells, &[], 3, 0)),
+        pairs(&top_up(&cells, &[], bounded(3), 0)),
         vec![(0, 1), (1, 1), (2, 1)]
     );
 }
@@ -118,7 +130,7 @@ fn cells_are_launched_in_the_order_they_were_passed() {
 fn in_flight_jobs_count_toward_a_cell_target() {
     // Three of five are already coming, so only the shortfall of two is launched.
     let cells = [cell(5, 0, 3)];
-    assert_eq!(pairs(&top_up(&cells, &[], 10, 3)), vec![(0, 2)]);
+    assert_eq!(pairs(&top_up(&cells, &[], bounded(10), 3)), vec![(0, 2)]);
 }
 
 #[test]
@@ -127,7 +139,7 @@ fn a_cell_past_its_target_reports_no_shortfall() {
     // rather than wrapping into a huge launch.
     let overshot = cell(3, 5, 1);
     assert_eq!(overshot.missing(), 0);
-    assert!(top_up(&[overshot], &[], 10, 0).is_empty());
+    assert!(top_up(&[overshot], &[], bounded(10), 0).is_empty());
 }
 
 #[test]
@@ -141,11 +153,11 @@ fn a_cell_satisfied_by_runs_the_requester_has_not_reviewed_launches_nothing() {
 
     // With those five counted, a buffer of 5 is already full: the second cell waits
     // until the requester works through them.
-    assert!(top_up(&cells, &[], 5, outstanding_across(&cells)).is_empty());
+    assert!(top_up(&cells, &[], bounded(5), outstanding_across(&cells)).is_empty());
     // Raise the buffer and the second cell is reached, the satisfied one still
     // contributing nothing to launch.
     assert_eq!(
-        pairs(&top_up(&cells, &[], 8, outstanding_across(&cells))),
+        pairs(&top_up(&cells, &[], bounded(8), outstanding_across(&cells))),
         vec![(1, 5)]
     );
 }
@@ -162,11 +174,75 @@ fn outstanding_counts_in_flight_and_unjudged_across_every_cell() {
 }
 
 #[test]
+fn an_unbounded_buffer_emits_every_missing_cell_whatever_is_outstanding() {
+    // The occupancy is already far past any bound a reviewer would set, and the
+    // walk still emits every cell with a shortfall — satisfied cells are the only
+    // thing it skips.
+    let cells = [
+        unreviewed_cell(5, 0, 0, 0),
+        unreviewed_cell(5, 5, 0, 5),
+        unreviewed_cell(5, 2, 1, 2),
+        unreviewed_cell(5, 0, 0, 0),
+    ];
+    let outstanding = outstanding_across(&cells);
+    assert_eq!(outstanding, 8);
+    assert_eq!(
+        pairs(&top_up(&cells, &[], BufferTarget::Unbounded, outstanding)),
+        vec![(0, 5), (2, 2), (3, 5)]
+    );
+    // Nor does it invent work: once every cell is at target there is nothing left.
+    let full = [cell(5, 5, 0), cell(5, 3, 2)];
+    assert!(top_up(&full, &[], BufferTarget::Unbounded, 1_000).is_empty());
+}
+
+#[test]
+fn an_unbounded_buffer_still_defers_capped_harnesses_behind_free_ones() {
+    // No bound does not mean no ordering: the runnable-first pass still puts the
+    // harness with room ahead of the one at its cap, and the second pass then
+    // picks the capped one up rather than dropping it.
+    let cells = [on_harness(0, 5, 0, 0), on_harness(1, 5, 0, 0)];
+    let harnesses = [capped(2, 2), capped(0, 4)];
+    assert_eq!(
+        pairs(&top_up(&cells, &harnesses, BufferTarget::Unbounded, 0)),
+        vec![(1, 5), (0, 5)]
+    );
+}
+
+#[test]
+fn a_buffer_target_knows_when_it_is_full() {
+    assert!(!bounded(3).is_full(2));
+    assert!(bounded(3).is_full(3));
+    assert!(bounded(3).is_full(4));
+    assert!(bounded(0).is_full(0));
+    assert!(!BufferTarget::Unbounded.is_full(0));
+    assert!(!BufferTarget::Unbounded.is_full(u32::MAX));
+    assert_eq!(bounded(3).bound(), Some(3));
+    assert_eq!(BufferTarget::Unbounded.bound(), None);
+}
+
+#[test]
+fn a_buffer_target_is_tagged_on_the_wire() {
+    // The two shapes have to be told apart by a client that only sees JSON, and a
+    // stored `{ kind: "bounded", runs }` must read back as the same instruction.
+    assert_eq!(
+        serde_json::to_value(bounded(7)).unwrap(),
+        serde_json::json!({ "kind": "bounded", "runs": 7 })
+    );
+    assert_eq!(
+        serde_json::to_value(BufferTarget::Unbounded).unwrap(),
+        serde_json::json!({ "kind": "unbounded" })
+    );
+    let parsed: BufferTarget =
+        serde_json::from_value(serde_json::json!({ "kind": "unbounded" })).unwrap();
+    assert_eq!(parsed, BufferTarget::Unbounded);
+}
+
+#[test]
 fn a_zero_buffer_target_launches_nothing() {
     // A paused-by-buffer plan: the console can wind the buffer to zero to stop
     // topping up without touching the queue.
     let cells = [cell(5, 0, 0)];
-    assert!(top_up(&cells, &[], 0, 0).is_empty());
+    assert!(top_up(&cells, &[], bounded(0), 0).is_empty());
 }
 
 #[test]
@@ -175,17 +251,22 @@ fn repeating_a_top_up_after_enqueueing_moves_to_the_next_cells() {
     // in flight, re-running the algorithm returns the *next* slice of work, never
     // the same one again.
     let before = [cell(5, 0, 0), cell(5, 0, 0), cell(5, 0, 0)];
-    let first = top_up(&before, &[], 5, outstanding_across(&before));
+    let first = top_up(&before, &[], bounded(5), outstanding_across(&before));
     assert_eq!(pairs(&first), vec![(0, 5)]);
 
     let after = [cell(5, 0, 5), cell(5, 0, 0), cell(5, 0, 0)];
     // The five are still outstanding, so the buffer stays full and nothing is added.
-    assert!(top_up(&after, &[], 5, outstanding_across(&after)).is_empty());
+    assert!(top_up(&after, &[], bounded(5), outstanding_across(&after)).is_empty());
 
     // Once they complete and are reviewed, the buffer empties and cell 1 is next.
     let reviewed = [cell(5, 5, 0), cell(5, 0, 0), cell(5, 0, 0)];
     assert_eq!(
-        pairs(&top_up(&reviewed, &[], 5, outstanding_across(&reviewed))),
+        pairs(&top_up(
+            &reviewed,
+            &[],
+            bounded(5),
+            outstanding_across(&reviewed)
+        )),
         vec![(1, 5)]
     );
 }
@@ -197,7 +278,7 @@ fn an_unlimited_harness_never_defers_a_cell() {
     let cells = [on_harness(0, 2, 0, 0), on_harness(1, 2, 0, 0)];
     let harnesses = [HarnessCapacity::UNLIMITED, HarnessCapacity::UNLIMITED];
     assert_eq!(
-        pairs(&top_up(&cells, &harnesses, 10, 0)),
+        pairs(&top_up(&cells, &harnesses, bounded(10), 0)),
         vec![(0, 2), (1, 2)]
     );
 }
@@ -219,7 +300,7 @@ fn a_throttled_harness_does_not_spend_the_whole_buffer_before_an_idle_one() {
     // and the idle harness is fed first; the deferred cells then take the buffer
     // that is left, in their original order.
     assert_eq!(
-        pairs(&top_up(&cells, &harnesses, 10, 0)),
+        pairs(&top_up(&cells, &harnesses, bounded(10), 0)),
         vec![(0, 2), (3, 2), (4, 2), (1, 2), (2, 2)]
     );
 }
@@ -232,7 +313,7 @@ fn a_harness_already_at_its_cap_is_deferred_from_the_first_pass() {
     let cells = [on_harness(0, 3, 0, 0), on_harness(1, 3, 0, 0)];
     let harnesses = [capped(4, 2), HarnessCapacity::UNLIMITED];
     assert_eq!(
-        pairs(&top_up(&cells, &harnesses, 10, 0)),
+        pairs(&top_up(&cells, &harnesses, bounded(10), 0)),
         vec![(1, 3), (0, 3)]
     );
 }
@@ -244,7 +325,10 @@ fn a_deferred_cell_is_dropped_when_the_runnable_work_fills_the_buffer() {
     // overshooting on work that would only sit `pending`.
     let cells = [on_harness(0, 5, 0, 0), on_harness(1, 5, 0, 0)];
     let harnesses = [capped(2, 2), HarnessCapacity::UNLIMITED];
-    assert_eq!(pairs(&top_up(&cells, &harnesses, 5, 0)), vec![(1, 5)]);
+    assert_eq!(
+        pairs(&top_up(&cells, &harnesses, bounded(5), 0)),
+        vec![(1, 5)]
+    );
 }
 
 #[test]
@@ -256,7 +340,7 @@ fn a_plan_on_one_throttled_harness_still_queues_the_full_buffer() {
     let cells = [cell(2, 0, 0), cell(2, 0, 0), cell(2, 0, 0), cell(2, 0, 0)];
     let harnesses = [capped(0, 2)];
     assert_eq!(
-        pairs(&top_up(&cells, &harnesses, 6, 0)),
+        pairs(&top_up(&cells, &harnesses, bounded(6), 0)),
         vec![(0, 2), (1, 2), (2, 2)]
     );
 }
@@ -277,7 +361,7 @@ fn each_harness_is_fed_in_turn_while_it_has_room() {
     // full, deferring cell 3. Cell 4 is past lane 0's cap, so it too is deferred —
     // and both come back in order once the runnable pass is done.
     assert_eq!(
-        pairs(&top_up(&cells, &harnesses, 10, 0)),
+        pairs(&top_up(&cells, &harnesses, bounded(10), 0)),
         vec![(0, 1), (1, 1), (2, 1), (3, 1), (4, 1)]
     );
 }
@@ -290,7 +374,7 @@ fn a_zero_cap_holds_every_cell_back_to_the_second_pass() {
     let cells = [on_harness(0, 2, 0, 0), on_harness(1, 2, 0, 0)];
     let harnesses = [capped(0, 0), HarnessCapacity::UNLIMITED];
     assert_eq!(
-        pairs(&top_up(&cells, &harnesses, 10, 0)),
+        pairs(&top_up(&cells, &harnesses, bounded(10), 0)),
         vec![(1, 2), (0, 2)]
     );
 }
@@ -302,7 +386,7 @@ fn a_harness_lane_the_caller_did_not_describe_counts_as_unlimited() {
     let cells = [on_harness(7, 2, 0, 0), on_harness(0, 2, 0, 0)];
     let harnesses = [capped(9, 1)];
     assert_eq!(
-        pairs(&top_up(&cells, &harnesses, 10, 0)),
+        pairs(&top_up(&cells, &harnesses, bounded(10), 0)),
         vec![(0, 2), (1, 2)]
     );
 }

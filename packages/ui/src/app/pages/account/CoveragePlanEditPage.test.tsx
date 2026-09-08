@@ -100,7 +100,9 @@ function backendValue(existing: CoveragePlanOut) {
       ],
       listCoveragePlans: async () => [existing],
       listModels: async () => [],
-      getCoverageSettings: async () => ({ bufferTarget: 10 }),
+      getCoverageSettings: async () => ({
+        bufferTarget: { kind: "bounded", runs: 10 },
+      }),
       updateCoveragePlan: async (_id: string, input: CoveragePlanInput) => {
         saved = input;
         return existing;
@@ -214,6 +216,28 @@ describe("CoveragePlanEditPage settings", () => {
     expect(saved?.runsPerCell).toBe(4);
     expect(saved?.schedule?.autoTopUp).toBe(true);
     expect(saved?.schedule?.outerAxis).toBe("combination");
+  });
+
+  it("saves no limit as the unbounded shape, not as a large bound", async () => {
+    await renderEditor();
+    fireEvent.click(screen.getByRole("switch", { name: "No limit" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Save plan" }));
+    });
+    expect(saved?.schedule?.bufferTarget).toEqual({ kind: "unbounded" });
+  });
+
+  it("loads an unbounded override back as the switch, and drops it on reset", async () => {
+    await renderEditor(plan({ bufferTarget: { kind: "unbounded" } }));
+    const toggle = screen.getByRole("switch", { name: "No limit" });
+    expect((toggle as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Reset Review buffer" }),
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Save plan" }));
+    });
+    expect(saved?.schedule?.bufferTarget).toBeUndefined();
   });
 
   // The dashboard owns pausing, and a member edit is not a decision to resume.

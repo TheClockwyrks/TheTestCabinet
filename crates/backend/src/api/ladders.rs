@@ -77,7 +77,7 @@ use test_cabinet_core::test_case::TestType;
 
 use crate::auth::AuthUser;
 use crate::coverage::gate::{self, Gate, GateOutcome, GateTally, GateThreshold, RungRun};
-use crate::coverage::schedule::{CellDemand, top_up as decide_top_up};
+use crate::coverage::schedule::{BufferTarget, CellDemand, top_up as decide_top_up};
 use crate::db::{
     CellKey, JobOrigin, LadderOutcomeKind, StoredLadder, StoredLadderClimber, StoredLadderOutcome,
     StoredLadderRung, combination_key,
@@ -180,11 +180,14 @@ pub struct LadderSchedule {
     #[serde(default)]
     pub auto_top_up: bool,
     /// This ladder's override of the account's review-buffer target, or null to
-    /// inherit it. Null and `0` are different instructions — "no opinion" versus
-    /// "never top up".
+    /// inherit it. Null, a bound of `0`, and `unbounded` are three different
+    /// instructions — "no opinion", "never top up", and "top up everything". On a
+    /// ladder the last is the natural choice more often than on a plan: the gate is
+    /// already what stops a hopeless climb, so the buffer is only ever holding a
+    /// climber back from a rung it has earned.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
-    pub buffer_target: Option<u32>,
+    pub buffer_target: Option<BufferTarget>,
 }
 
 impl Default for LadderSchedule {
@@ -641,8 +644,9 @@ pub struct LadderProgress {
     /// between a finished ladder and a full one.
     pub runs_outstanding: u32,
     /// The buffer target in force (the ladder's override, else the account's setting,
-    /// else the backend default).
-    pub buffer_target: u32,
+    /// else the backend default). When it is `unbounded`, `runsOutstanding` never
+    /// stops a top-up.
+    pub buffer_target: BufferTarget,
 }
 
 /// The `POST /ladders/{id}/climbers` body: one combination's steering, written whole.
@@ -1009,7 +1013,7 @@ async fn top_up_locked(
     state: &AppState,
     user: &AuthUser,
     id: &str,
-    buffer_target: u32,
+    buffer_target: BufferTarget,
 ) -> Result<TopUpResult, ApiError> {
     // `record = true`: a top-up is a write, and the whole point of resolving the board
     // here is to write down the verdicts that let climbers move up.

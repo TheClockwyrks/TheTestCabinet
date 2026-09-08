@@ -66,6 +66,12 @@ pub struct Model {
     /// This plan's override of the account's buffer target, or `NULL` to inherit
     /// `coverage_settings.buffer_target`. Nullable rather than defaulted because
     /// "no opinion" and "explicitly zero" are different instructions.
+    ///
+    /// A non-negative value is the bound itself; a **negative** value is the third
+    /// instruction, "no bound — top up everything", which the backend reads and
+    /// writes as its `BufferTarget::Unbounded` and which no reviewer-typed bound can
+    /// ever collide with. The same encoding is used by `ladder.buffer_target` and
+    /// `coverage_settings.buffer_target`.
     #[sea_orm(nullable)]
     pub buffer_target: Option<i32>,
     /// RFC 3339 of when a top-up claimed this plan, or `NULL` when none is running.

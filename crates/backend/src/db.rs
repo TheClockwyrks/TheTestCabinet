@@ -48,6 +48,7 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
 use crate::coverage::gate::{Gate, GateOutcome, GateThreshold, RungRun};
+use crate::coverage::schedule::BufferTarget;
 use crate::error::{BackendError, Result};
 use crate::store::{CaseNames, StoredManifest};
 
@@ -58,6 +59,39 @@ use crate::store::{CaseNames, StoredManifest};
 /// back because its harness is at its parallelism cap); `dispatched`, `starting`,
 /// and `running` each have a driver Job coming up or executing.
 const IN_FLIGHT_STATES: [&str; 5] = ["queued", "pending", "dispatched", "starting", "running"];
+
+/// The column value that stores an [unbounded](BufferTarget::Unbounded) buffer target.
+///
+/// The three `buffer_target` columns (`coverage_settings`, `coverage_plan`, `ladder`)
+/// are integers that only ever held a non-negative run count, and on the two override
+/// tables `NULL` already means "inherit". A negative value is the one thing those
+/// columns could never legitimately hold, which makes it a lossless place to keep the
+/// third instruction without a second column whose combination with the first would
+/// need an invariant of its own. Every read and write goes through
+/// [`buffer_target_from_column`] and [`buffer_target_to_column`], so nothing else
+/// knows the number.
+const UNBOUNDED_BUFFER_COLUMN: i32 = -1;
+
+/// Decode a stored `buffer_target` column: negative is the unbounded marker, anything
+/// else the bound it counts.
+fn buffer_target_from_column(value: i32) -> BufferTarget {
+    if value < 0 {
+        BufferTarget::Unbounded
+    } else {
+        BufferTarget::Bounded { runs: value as u32 }
+    }
+}
+
+/// Encode a buffer target for its column; the inverse of
+/// [`buffer_target_from_column`]. A bound wider than the column is saturated rather
+/// than wrapped into the marker, so a caller that forgot to clamp cannot accidentally
+/// store "no bound".
+fn buffer_target_to_column(target: BufferTarget) -> i32 {
+    match target {
+        BufferTarget::Bounded { runs } => i32::try_from(runs).unwrap_or(i32::MAX),
+        BufferTarget::Unbounded => UNBOUNDED_BUFFER_COLUMN,
+    }
+}
 
 /// The job states that occupy a **parallelism slot** for their harness: a driver
 /// Job has been (or is being) created for them. Used to enforce a harness's maximum
@@ -2541,7 +2575,7 @@ impl Db {
             outer_axis: Set(schedule.outer_axis.clone()),
             paused: Set(schedule.paused),
             auto_top_up: Set(schedule.auto_top_up),
-            buffer_target: Set(schedule.buffer_target.map(|target| target as i32)),
+            buffer_target: Set(schedule.buffer_target.map(buffer_target_to_column)),
             // A fresh plan is nobody's claim: the marker is only ever set by a top-up
             // taking the plan, and cleared when it lets go.
             topping_up_at: Set(None),
@@ -2810,7 +2844,7 @@ impl Db {
                 outer_axis: row.outer_axis,
                 paused: row.paused,
                 auto_top_up: row.auto_top_up,
-                buffer_target: row.buffer_target.map(|target| target.max(0) as u32),
+                buffer_target: row.buffer_target.map(buffer_target_from_column),
             }))
     }
 
@@ -2840,7 +2874,7 @@ impl Db {
             )
             .col_expr(
                 coverage_plan::Column::BufferTarget,
-                Expr::value(schedule.buffer_target.map(|target| target as i32)),
+                Expr::value(schedule.buffer_target.map(buffer_target_to_column)),
             )
             .filter(coverage_plan::Column::Id.eq(id))
             .filter(coverage_plan::Column::UserId.eq(user_id))
@@ -2918,27 +2952,28 @@ impl Db {
     /// An account's chosen default buffer target, or `None` when they have never set
     /// one.
     ///
-    /// `None` is deliberately not `0`: an account with no row has expressed no
-    /// opinion, and the caller applies the backend's compiled-in default rather than
-    /// the store materializing a row on read. An explicit `0` — "never top me up
-    /// automatically" — is a different, storable instruction.
-    pub async fn coverage_buffer_target(&self, user_id: &str) -> Result<Option<u32>> {
+    /// `None` is deliberately not a bound of `0`: an account with no row has expressed
+    /// no opinion, and the caller applies the backend's compiled-in default rather
+    /// than the store materializing a row on read. An explicit `0` — "never top me up
+    /// automatically" — and an explicit "no bound" are both different, storable
+    /// instructions.
+    pub async fn coverage_buffer_target(&self, user_id: &str) -> Result<Option<BufferTarget>> {
         Ok(coverage_settings::Entity::find_by_id(user_id.to_string())
             .one(&self.conn())
             .await?
-            .map(|row| row.buffer_target.max(0) as u32))
+            .map(|row| buffer_target_from_column(row.buffer_target)))
     }
 
     /// Set an account's default buffer target, creating its settings row on first use.
     pub async fn set_coverage_buffer_target(
         &self,
         user_id: &str,
-        buffer_target: u32,
+        buffer_target: BufferTarget,
         now: &str,
     ) -> Result<()> {
         coverage_settings::Entity::insert(coverage_settings::ActiveModel {
             user_id: Set(user_id.to_string()),
-            buffer_target: Set(buffer_target as i32),
+            buffer_target: Set(buffer_target_to_column(buffer_target)),
             updated_at: Set(now.to_string()),
         })
         .on_conflict(
@@ -3570,9 +3605,10 @@ pub struct CoveragePlanSchedule {
     /// Whether submitting a review re-runs this plan's top-up automatically.
     pub auto_top_up: bool,
     /// This plan's override of the account's buffer target, or `None` to inherit
-    /// [`Db::coverage_buffer_target`]. `None` and `Some(0)` are different
-    /// instructions — "no opinion" versus "never top up".
-    pub buffer_target: Option<u32>,
+    /// [`Db::coverage_buffer_target`]. `None`, a bound of `0`, and
+    /// [`BufferTarget::Unbounded`] are three different instructions — "no opinion",
+    /// "never top up", and "top up everything".
+    pub buffer_target: Option<BufferTarget>,
 }
 
 impl Default for CoveragePlanSchedule {
@@ -4074,8 +4110,9 @@ pub struct LadderSchedule {
     /// Whether submitting a review re-runs this ladder's top-up automatically.
     pub auto_top_up: bool,
     /// This ladder's override of the account's buffer target, or `None` to inherit
-    /// [`Db::coverage_buffer_target`].
-    pub buffer_target: Option<u32>,
+    /// [`Db::coverage_buffer_target`]; the same three instructions as
+    /// [`CoveragePlanSchedule::buffer_target`].
+    pub buffer_target: Option<BufferTarget>,
 }
 
 impl Default for LadderSchedule {
@@ -4294,7 +4331,7 @@ impl Db {
             count_unloaded_as_broken: Set(stored.gate.unloaded_counts_as_broken),
             paused: Set(schedule.paused),
             auto_top_up: Set(schedule.auto_top_up),
-            buffer_target: Set(schedule.buffer_target.map(|target| target as i32)),
+            buffer_target: Set(schedule.buffer_target.map(buffer_target_to_column)),
             // A fresh ladder is nobody's claim; only a top-up ever sets this.
             topping_up_at: Set(None),
             combo_group_ids_json: Set(serde_json::to_string(&stored.combo_group_ids)?),
@@ -4411,7 +4448,7 @@ impl Db {
                 outer_axis: row.outer_axis,
                 paused: row.paused,
                 auto_top_up: row.auto_top_up,
-                buffer_target: row.buffer_target.map(|target| target.max(0) as u32),
+                buffer_target: row.buffer_target.map(buffer_target_from_column),
             }))
     }
 
@@ -4433,7 +4470,7 @@ impl Db {
             .col_expr(ladder::Column::AutoTopUp, Expr::value(schedule.auto_top_up))
             .col_expr(
                 ladder::Column::BufferTarget,
-                Expr::value(schedule.buffer_target.map(|target| target as i32)),
+                Expr::value(schedule.buffer_target.map(buffer_target_to_column)),
             )
             .filter(ladder::Column::Id.eq(id))
             .filter(ladder::Column::UserId.eq(user_id))

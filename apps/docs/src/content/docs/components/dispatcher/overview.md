@@ -90,9 +90,10 @@ every climber one rung and taking one climber as far as it gets. Both settings
 are purely a decision about the order cells are handed to `POST /jobs/batch`;
 the dispatcher behaves identically either way.
 
-A plan or ladder also does not enqueue its whole matrix at once. It keeps a
-bounded [review buffer](/components/backend/coverage/#the-review-buffer) of
-outstanding runs and refills it as they are reviewed, so the queue this
+A plan or ladder also keeps a
+[review buffer](/components/backend/coverage/#the-review-buffer) of outstanding
+runs and refills it as they are reviewed, unless its buffer is unbounded, so the
+queue this
 dispatcher drains is normally a short, deliberately ordered slice rather than an
 entire sweep.
 

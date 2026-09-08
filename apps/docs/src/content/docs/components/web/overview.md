@@ -267,7 +267,10 @@ reasoning longer than that line sits behind a help tip on the name. Runs per cel
 run order, the buffer-target override, and auto top-up are each a decision with a
 cost attached rather than a preference, so each is read as a labelled row. A setting
 with one answer takes a dropdown and a boolean takes a switch, so a row's control
-column reads as the value chosen. Pills are kept for the group toggles, where a plan
+column reads as the value chosen. The buffer-target row pairs its number with a
+"No limit" switch, since no limit is an instruction of its own rather than a large
+number, and the Reviewing settings tab offers the account-wide default the same
+way. Pills are kept for the group toggles, where a plan
 or ladder may reference several groups at once and the control is a selection rather
 than a value.
 

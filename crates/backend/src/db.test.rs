@@ -6103,16 +6103,67 @@ async fn coverage_buffer_target_is_absent_until_the_account_chooses_one() {
     // the store inventing a zero.
     assert_eq!(db.coverage_buffer_target("u1").await.unwrap(), None);
 
-    db.set_coverage_buffer_target("u1", 10, "2026-08-15T00:00:00Z")
-        .await
-        .unwrap();
-    assert_eq!(db.coverage_buffer_target("u1").await.unwrap(), Some(10));
+    db.set_coverage_buffer_target(
+        "u1",
+        BufferTarget::Bounded { runs: 10 },
+        "2026-08-15T00:00:00Z",
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        db.coverage_buffer_target("u1").await.unwrap(),
+        Some(BufferTarget::Bounded { runs: 10 })
+    );
     // An explicit zero is a real instruction — "never top me up" — and is stored.
-    db.set_coverage_buffer_target("u1", 0, "2026-08-15T01:00:00Z")
+    db.set_coverage_buffer_target(
+        "u1",
+        BufferTarget::Bounded { runs: 0 },
+        "2026-08-15T01:00:00Z",
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        db.coverage_buffer_target("u1").await.unwrap(),
+        Some(BufferTarget::Bounded { runs: 0 })
+    );
+    // So is "no bound at all", and it round-trips as itself rather than as some
+    // large number the read would have to reinterpret.
+    db.set_coverage_buffer_target("u1", BufferTarget::Unbounded, "2026-08-15T02:00:00Z")
         .await
         .unwrap();
-    assert_eq!(db.coverage_buffer_target("u1").await.unwrap(), Some(0));
+    assert_eq!(
+        db.coverage_buffer_target("u1").await.unwrap(),
+        Some(BufferTarget::Unbounded)
+    );
     assert_eq!(db.coverage_buffer_target("u2").await.unwrap(), None);
+}
+
+#[test]
+fn buffer_target_column_encoding_round_trips_every_shape() {
+    for target in [
+        BufferTarget::Bounded { runs: 0 },
+        BufferTarget::Bounded { runs: 10 },
+        BufferTarget::Bounded { runs: 500 },
+        BufferTarget::Unbounded,
+    ] {
+        assert_eq!(
+            buffer_target_from_column(buffer_target_to_column(target)),
+            target
+        );
+    }
+    // The unbounded marker is negative, so no bound the API can hand the store ever
+    // collides with it — a bound too wide for the column saturates rather than wraps.
+    assert!(buffer_target_to_column(BufferTarget::Unbounded) < 0);
+    assert_eq!(
+        buffer_target_from_column(buffer_target_to_column(BufferTarget::Bounded {
+            runs: u32::MAX
+        })),
+        BufferTarget::Bounded {
+            runs: i32::MAX as u32
+        }
+    );
+    // Any negative reads as unbounded: there is exactly one such instruction.
+    assert_eq!(buffer_target_from_column(-7), BufferTarget::Unbounded);
 }
 
 /// The minimal plan used by the scheduling/top-up tests.
@@ -6141,7 +6192,7 @@ async fn editing_a_plans_declaration_never_disturbs_its_schedule() {
         outer_axis: "combination".to_string(),
         paused: true,
         auto_top_up: true,
-        buffer_target: Some(4),
+        buffer_target: Some(BufferTarget::Bounded { runs: 4 }),
     };
     assert!(
         db.set_coverage_plan_schedule("u1", "p1", &paused)
@@ -6293,7 +6344,7 @@ async fn ladders_round_trip_with_their_gate_and_scope_to_account() {
         outer_axis: "combination".to_string(),
         paused: true,
         auto_top_up: false,
-        buffer_target: Some(6),
+        buffer_target: Some(BufferTarget::Unbounded),
     };
     assert!(db.set_ladder_schedule("u1", "l1", &steered).await.unwrap());
     assert!(!db.set_ladder_schedule("u2", "l1", &steered).await.unwrap());

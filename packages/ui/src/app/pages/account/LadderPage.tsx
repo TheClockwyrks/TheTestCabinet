@@ -28,6 +28,11 @@ import { useRunsRuntime } from "../../runtime/runsRuntime";
 import { useLiveRunUpdates } from "../../runtime/useLiveRunUpdates";
 import { routes } from "../../routes";
 import { ReviewQueue, describeUnlaunchable } from "./CoveragePlanPage";
+import {
+  bufferIsFull,
+  bufferedStatTitle,
+  formatBufferTarget,
+} from "./bufferTarget";
 import { comboLabel } from "./comboLabels";
 import { caseLabel } from "./caseLabels";
 import { RungRuns } from "./LadderRungRuns";
@@ -192,10 +197,10 @@ export function describeLadderTopUp(result: TopUpResult): string {
     return `Enqueued ${runs} across ${rungs}, in the order this ladder climbs them.${blocked}`;
   }
   const outstanding = result.outstanding ?? 0;
-  if (outstanding >= result.bufferTarget) {
+  if (bufferIsFull(result.bufferTarget, outstanding)) {
     return (
       `Nothing enqueued: your review buffer is full (${outstanding} of ` +
-      `${result.bufferTarget} outstanding). Review some runs and top up again.${blocked}`
+      `${formatBufferTarget(result.bufferTarget)} outstanding). Review some runs and top up again.${blocked}`
     );
   }
   if (blocked) {
@@ -265,10 +270,10 @@ export function ladderStatusNote(
   }
   if (
     progress.runsMissing > 0 &&
-    progress.runsOutstanding >= progress.bufferTarget
+    bufferIsFull(progress.bufferTarget, progress.runsOutstanding)
   ) {
     return (
-      `Waiting on you: ${progress.runsOutstanding} of ${progress.bufferTarget} ` +
+      `Waiting on you: ${progress.runsOutstanding} of ${formatBufferTarget(progress.bufferTarget)} ` +
       "buffered runs are outstanding (in flight, or finished and unreviewed), so a " +
       "top-up deliberately enqueues nothing until you review some. A rung's verdict " +
       `is your review, and nothing else can decide it.${blocked}`
@@ -1166,10 +1171,11 @@ export function LadderPage() {
             </span>
             <span
               className={styles.summaryStat}
-              title="Runs waiting on you or on the queue: in flight (queued, pending, or executing) plus finished but unreviewed by you. A top-up stops once this reaches the buffer target."
+              title={bufferedStatTitle(progress.bufferTarget)}
             >
               <strong>
-                {progress.runsOutstanding}/{progress.bufferTarget}
+                {progress.runsOutstanding}/
+                {formatBufferTarget(progress.bufferTarget)}
               </strong>{" "}
               buffered
             </span>

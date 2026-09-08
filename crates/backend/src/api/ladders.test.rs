@@ -440,9 +440,15 @@ fn a_schedule_round_trips_through_the_stores_shape() {
         outer_axis: LadderAxis::Combination,
         paused: true,
         auto_top_up: true,
-        buffer_target: Some(6),
+        buffer_target: Some(BufferTarget::Bounded { runs: 6 }),
     };
     assert_eq!(LadderSchedule::from_db(schedule.to_db()), schedule);
+    // The unbounded shape survives the store untouched too.
+    let unbounded = LadderSchedule {
+        buffer_target: Some(BufferTarget::Unbounded),
+        ..LadderSchedule::default()
+    };
+    assert_eq!(LadderSchedule::from_db(unbounded.to_db()), unbounded);
     let default = LadderSchedule::default();
     assert_eq!(default.outer_axis, LadderAxis::Rung);
     // Disabled on creation: saving a climb describes the question, and a ladder that

@@ -451,7 +451,13 @@ fn the_matrix_rollups_sum_the_per_account_and_global_numbers_separately() {
     ctx.unreviewed.insert(cell_key(&cases[0], &combos[0]), 2);
     ctx.in_flight.insert(cell_key(&cases[1], &combos[0]), 1);
 
-    let matrix = ctx.matrix(5, CoverageAxis::Case, 10, &combos, &cases);
+    let matrix = ctx.matrix(
+        5,
+        CoverageAxis::Case,
+        BufferTarget::Bounded { runs: 10 },
+        &combos,
+        &cases,
+    );
     assert_eq!(matrix.cells_total, 2);
     // `pong` is satisfied by its five completed runs; `carom` still needs four.
     assert_eq!(matrix.cells_satisfied, 1);
@@ -460,7 +466,7 @@ fn the_matrix_rollups_sum_the_per_account_and_global_numbers_separately() {
     // Outstanding is what the buffer bounds: everything in flight plus everything
     // finished the reviewer has not judged.
     assert_eq!(matrix.runs_outstanding, 3);
-    assert_eq!(matrix.buffer_target, 10);
+    assert_eq!(matrix.buffer_target, BufferTarget::Bounded { runs: 10 });
     assert_eq!(matrix.outer_axis, CoverageAxis::Case);
 }
 
@@ -495,7 +501,12 @@ fn the_top_up_walks_the_configured_axis_and_emits_whole_cells() {
         .iter()
         .map(|(case, member)| ctx.demand(5, case, member))
         .collect();
-    let launches = top_up(&demands, ctx.harness_capacity(), 5, 0);
+    let launches = top_up(
+        &demands,
+        ctx.harness_capacity(),
+        BufferTarget::Bounded { runs: 5 },
+        0,
+    );
     assert_eq!(launches.len(), 1);
     assert_eq!(launches[0].runs, 5);
     assert_eq!(order(&[ordered[launches[0].cell]]), vec!["pong/opus"]);
@@ -507,7 +518,12 @@ fn the_top_up_walks_the_configured_axis_and_emits_whole_cells() {
         .iter()
         .map(|(case, member)| ctx.demand(5, case, member))
         .collect();
-    let launches = top_up(&demands, ctx.harness_capacity(), 10, 0);
+    let launches = top_up(
+        &demands,
+        ctx.harness_capacity(),
+        BufferTarget::Bounded { runs: 10 },
+        0,
+    );
     assert_eq!(
         launches
             .iter()
@@ -538,7 +554,12 @@ fn a_throttled_harness_does_not_starve_the_rest_of_the_plan() {
         .iter()
         .map(|(case, member)| ctx.demand(2, case, member))
         .collect();
-    let launches = top_up(&demands, ctx.harness_capacity(), 8, 0);
+    let launches = top_up(
+        &demands,
+        ctx.harness_capacity(),
+        BufferTarget::Bounded { runs: 8 },
+        0,
+    );
     // Claude's first cell fills its two slots, so its second is deferred behind both
     // of Codex's — and only then takes the buffer that is left.
     assert_eq!(
@@ -570,7 +591,12 @@ fn a_harness_already_at_its_cap_yields_the_buffer_to_one_that_is_not() {
         .iter()
         .map(|(case, member)| ctx.demand(3, case, member))
         .collect();
-    let launches = top_up(&demands, ctx.harness_capacity(), 3, 0);
+    let launches = top_up(
+        &demands,
+        ctx.harness_capacity(),
+        BufferTarget::Bounded { runs: 3 },
+        0,
+    );
     // Only three buffer slots, and the runnable harness gets them.
     assert_eq!(
         launches
@@ -612,7 +638,12 @@ fn a_satisfied_cell_is_skipped_rather_than_stopping_the_walk() {
         .iter()
         .map(|(case, member)| ctx.demand(5, case, member))
         .collect();
-    let launches = top_up(&demands, ctx.harness_capacity(), 10, 0);
+    let launches = top_up(
+        &demands,
+        ctx.harness_capacity(),
+        BufferTarget::Bounded { runs: 10 },
+        0,
+    );
     // `pong` is done and costs nothing; the walk continues to `carom` rather than
     // stalling behind a finished case.
     assert_eq!(launches.len(), 1);
@@ -636,7 +667,15 @@ fn unreviewed_runs_hold_the_buffer_closed_even_when_nothing_is_in_flight() {
         .map(|(case, member)| ctx.demand(15, case, member))
         .collect();
     assert_eq!(demands[0].outstanding(), 10);
-    assert!(top_up(&demands, ctx.harness_capacity(), 10, 10).is_empty());
+    assert!(
+        top_up(
+            &demands,
+            ctx.harness_capacity(),
+            BufferTarget::Bounded { runs: 10 },
+            10
+        )
+        .is_empty()
+    );
 }
 
 #[test]
@@ -667,7 +706,7 @@ fn a_plan_input_clamps_its_target_and_keeps_the_schedule_separate() {
             outer_axis: CoverageAxis::Combination,
             paused: true,
             auto_top_up: true,
-            buffer_target: Some(99_999),
+            buffer_target: Some(BufferTarget::Bounded { runs: 99_999 }),
         }),
     };
     let (plan, schedule) = plan_from_input("p2".to_string(), input, "2026-08-15T00:00:00Z");
@@ -678,16 +717,73 @@ fn a_plan_input_clamps_its_target_and_keeps_the_schedule_separate() {
     assert!(schedule.paused);
     // The buffer bounds a top-up's fan-out, so a mistyped value is clamped on the
     // way to the store.
-    assert_eq!(schedule.to_db().buffer_target, Some(MAX_BUFFER_TARGET));
+    assert_eq!(
+        schedule.to_db().buffer_target,
+        Some(BufferTarget::Bounded {
+            runs: MAX_BUFFER_TARGET
+        })
+    );
 }
 
 #[test]
 fn a_zero_buffer_target_survives_clamping() {
     // "Never top me up automatically" is a real instruction and must be storable —
     // unlike a runs-per-cell target of zero, which would declare a cell nobody wants.
-    assert_eq!(clamp_buffer_target(0), 0);
-    assert_eq!(clamp_buffer_target(7), 7);
-    assert_eq!(clamp_buffer_target(u32::MAX), MAX_BUFFER_TARGET);
+    let bounded = |runs| BufferTarget::Bounded { runs };
+    assert_eq!(clamp_buffer_target(bounded(0)), bounded(0));
+    assert_eq!(clamp_buffer_target(bounded(7)), bounded(7));
+    assert_eq!(
+        clamp_buffer_target(bounded(u32::MAX)),
+        bounded(MAX_BUFFER_TARGET)
+    );
+}
+
+#[test]
+fn an_unbounded_buffer_target_is_not_clamped_into_a_bound() {
+    // The ceiling exists to catch a mistyped *number*. "No bound" is not a number
+    // that can be mistyped, and turning it into the largest bound would quietly
+    // reintroduce the stall the reviewer chose it to avoid.
+    assert_eq!(
+        clamp_buffer_target(BufferTarget::Unbounded),
+        BufferTarget::Unbounded
+    );
+    let schedule = CoverageSchedule {
+        buffer_target: Some(BufferTarget::Unbounded),
+        ..CoverageSchedule::default()
+    };
+    assert_eq!(
+        schedule.to_db().buffer_target,
+        Some(BufferTarget::Unbounded)
+    );
+    assert_eq!(CoverageSchedule::from_db(schedule.to_db()), schedule);
+}
+
+#[test]
+fn a_schedule_names_its_buffer_shape_on_the_wire() {
+    // A client has to be able to tell the three instructions apart from the JSON
+    // alone: absent (inherit), a bound, and no bound.
+    let inherit = serde_json::to_value(CoverageSchedule::default()).unwrap();
+    assert!(inherit.get("bufferTarget").is_none());
+    let unbounded = serde_json::to_value(CoverageSchedule {
+        buffer_target: Some(BufferTarget::Unbounded),
+        ..CoverageSchedule::default()
+    })
+    .unwrap();
+    assert_eq!(
+        unbounded["bufferTarget"],
+        serde_json::json!({ "kind": "unbounded" })
+    );
+    let parsed: CoverageSchedule = serde_json::from_value(serde_json::json!({
+        "outerAxis": "case",
+        "paused": false,
+        "autoTopUp": true,
+        "bufferTarget": { "kind": "bounded", "runs": 3 }
+    }))
+    .unwrap();
+    assert_eq!(
+        parsed.buffer_target,
+        Some(BufferTarget::Bounded { runs: 3 })
+    );
 }
 
 #[test]
@@ -696,7 +792,7 @@ fn a_schedule_round_trips_through_the_stores_shape() {
         outer_axis: CoverageAxis::Combination,
         paused: true,
         auto_top_up: true,
-        buffer_target: Some(4),
+        buffer_target: Some(BufferTarget::Bounded { runs: 4 }),
     };
     assert_eq!(CoverageSchedule::from_db(schedule.to_db()), schedule);
     // The default is the behaviour a plan had before it could be scheduled at all,
@@ -710,9 +806,9 @@ fn a_schedule_round_trips_through_the_stores_shape() {
 
 #[test]
 fn a_skipped_top_up_still_reports_what_it_was_aiming_for() {
-    let result = TopUpResult::skipped_by(TopUpSkipped::Paused, 12);
+    let result = TopUpResult::skipped_by(TopUpSkipped::Paused, BufferTarget::Bounded { runs: 12 });
     assert_eq!(result.skipped, Some(TopUpSkipped::Paused));
-    assert_eq!(result.buffer_target, 12);
+    assert_eq!(result.buffer_target, BufferTarget::Bounded { runs: 12 });
     // `outstanding` is absent rather than zero: the scheduler never ran, so nobody
     // measured it, and reporting zero would read as an empty buffer.
     assert_eq!(result.outstanding, None);

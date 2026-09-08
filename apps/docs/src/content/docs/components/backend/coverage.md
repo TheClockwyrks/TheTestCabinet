@@ -208,13 +208,29 @@ to ask for more right now.
 
 How much work you want waiting on you is a property of the **reviewer**, not of any
 one plan, so it lives on the account: `GET`/`PUT /coverage-settings` holds a single
-`bufferTarget`, defaulting to ten runs (roughly two cells at a typical five runs
-per cell) until the account chooses its own. A plan — or a ladder — may override it
-for the exceptions.
+`bufferTarget`, defaulting to a bound of ten runs (roughly two cells at a typical
+five runs per cell) until the account chooses its own. A plan — or a ladder — may
+override it for the exceptions.
 
-The override is nullable, and null is not zero: **null means "no opinion, inherit
-the account's setting"** while **`0` means "never top this up automatically"**.
-Collapsing the two would make "leave me alone" unexpressible.
+A buffer target is a tagged shape rather than a bare number, because there are two
+kinds of instruction it carries:
+
+```json
+{ "kind": "bounded", "runs": 10 }
+{ "kind": "unbounded" }
+```
+
+A **bounded** target stops a top-up once that many runs are outstanding, and a bound
+of `0` means "never top this up automatically". A bound is clamped to a ceiling of
+500 runs. An **unbounded** target switches the reviewer-backlog check off: a top-up
+emits every missing cell it can in one pass, however many runs are already waiting
+on the reviewer. The per-cell target, the harness parallelism preference, and a
+ladder's gate all still apply. Unbounded is stored and reported as its own shape,
+so a dashboard shows it as no limit rather than as a number.
+
+The override is nullable, and null is not zero: null means "no opinion, inherit the
+account's setting", a bound of `0` means "never top this up automatically", and
+unbounded means "top up everything". Each is a distinct instruction.
 
 ### Topping up
 
@@ -236,7 +252,8 @@ The algorithm is the same for plans and ladders:
 4. Defer any cell whose harness is already at its
    [parallelism cap](#harness-parallelism-comes-first).
 5. Emit **whole** cells — all of a cell's missing repeats together — until
-   `outstanding` reaches the buffer target.
+   `outstanding` reaches the buffer target. An unbounded target is never reached,
+   so every missing cell is emitted.
 6. Walk the deferred cells, in the same order, until the buffer target is reached.
 
 Every run a top-up enqueues carries its cell's whole pin: the slug, the version,

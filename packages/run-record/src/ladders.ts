@@ -7,7 +7,7 @@
 // JSON Schemas under `apps/docs/public/schema/` are generated from the same types
 // in the same pass.
 
-import type { ReviewPlanCombo } from "./coverage";
+import type { BufferTarget, ReviewPlanCombo } from "./coverage";
 import type { HarnessSlug } from "./index";
 import type { Rating } from "./review";
 
@@ -108,10 +108,13 @@ export type LadderSchedule = {
   autoTopUp: boolean;
   /**
    * This ladder's override of the account's review-buffer target, or null to
-   * inherit it. Null and `0` are different instructions — "no opinion" versus
-   * "never top up".
+   * inherit it. Null, a bound of `0`, and `unbounded` are three different
+   * instructions — "no opinion", "never top up", and "top up everything". On a
+   * ladder the last is the natural choice more often than on a plan: the gate is
+   * already what stops a hopeless climb, so the buffer is only ever holding a
+   * climber back from a rung it has earned.
    */
-  bufferTarget?: number;
+  bufferTarget?: BufferTarget;
 };
 
 /**
@@ -302,10 +305,13 @@ export type LadderOut = {
   autoTopUp: boolean;
   /**
    * This ladder's override of the account's review-buffer target, or null to
-   * inherit it. Null and `0` are different instructions — "no opinion" versus
-   * "never top up".
+   * inherit it. Null, a bound of `0`, and `unbounded` are three different
+   * instructions — "no opinion", "never top up", and "top up everything". On a
+   * ladder the last is the natural choice more often than on a plan: the gate is
+   * already what stops a hopeless climb, so the buffer is only ever holding a
+   * climber back from a rung it has earned.
    */
-  bufferTarget?: number;
+  bufferTarget?: BufferTarget;
 };
 
 /**
@@ -766,9 +772,10 @@ export type LadderProgress = {
   runsOutstanding: number;
   /**
    * The buffer target in force (the ladder's override, else the account's setting,
-   * else the backend default).
+   * else the backend default). When it is `unbounded`, `runsOutstanding` never
+   * stops a top-up.
    */
-  bufferTarget: number;
+  bufferTarget: BufferTarget;
 };
 
 /**

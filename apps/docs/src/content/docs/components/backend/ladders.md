@@ -310,8 +310,8 @@ order mechanism a plan uses:
 Everything else is shared: whole cells, the
 [harness-parallelism preference](/components/backend/coverage/#harness-parallelism-comes-first)
 that keeps one throttled harness from spending the whole buffer while a climber on
-another sits idle, the account-wide buffer target with a
-per-ladder override, the per-ladder claim that serializes concurrent top-ups,
+another sits idle, the account-wide [buffer target](/components/backend/coverage/#the-buffer-target)
+with a per-ladder override, the per-ladder claim that serializes concurrent top-ups,
 `autoTopUp` firing on review submit (see [above](#a-ladder-starts-disabled) for what
 differs — when it is on by default, and what it cannot start), and
 `GET /ladders/{id}/queue` returning the unreviewed-by-you runs **in the ladder's own
@@ -342,6 +342,11 @@ to do; the alternative is a climb that races ahead spending on runs nobody will 
 look at. The dashboard's **buffered** and **to review** figures and the queue
 underneath it are all drawn from that one set, so they can never disagree about which
 runs are waiting.
+
+A ladder whose gate is trusted to do the stopping can set its buffer target to
+`unbounded`. Each climber then launches its current rung as soon as it has earned it,
+and the reviewer's backlog holds nothing back; the gate still walls a climber whose
+rung fails, and a rung still waits on the requester's reviews to be decided at all.
 
 Deleting a ladder deliberately leaves the jobs it launched alone. They record the
 ladder only as their origin, and deleting the ladder you launched from is not a

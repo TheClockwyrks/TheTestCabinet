@@ -600,10 +600,10 @@ pub fn router(state: AppState) -> Router {
             "/coverage-plans/{id}/coverage",
             get(coverage::plan_coverage),
         )
-        // The account's review-buffer size: how many runs it wants outstanding
+        // The account's review-buffer target: how many runs it wants outstanding
         // (in flight, or completed and not yet reviewed by it) across a plan or ladder
-        // before topping up stops. One setting per account, overridable per plan and
-        // per ladder below.
+        // before topping up stops, or no limit at all. One setting per account,
+        // overridable per plan and per ladder below.
         .route(
             "/coverage-settings",
             get(coverage::settings).put(coverage::set_settings),

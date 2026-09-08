@@ -4,7 +4,8 @@
 //! reviewer's default **buffer target** — how many runs they are willing to have
 //! outstanding at once across a plan's or ladder's cells, counting both in-flight
 //! jobs and completed runs they have not yet reviewed. Top-up emits whole cells
-//! until that number is reached and then stops.
+//! until that number is reached and then stops — or, when the reviewer has chosen
+//! no bound at all, emits every missing cell.
 //!
 //! It lives on the account rather than on each plan because it describes the
 //! *person*: how much reviewing they can absorb in a sitting is the same whichever
@@ -27,6 +28,11 @@ pub struct Model {
     pub user_id: String,
     /// The account's default number of outstanding runs to keep buffered per plan or
     /// ladder. Not null: the row exists only because the reviewer chose a value.
+    ///
+    /// A non-negative value is the bound; a **negative** value records that the
+    /// reviewer chose no bound (the backend's `BufferTarget::Unbounded`), the one value
+    /// a typed bound can never be. `coverage_plan` and `ladder` encode their overrides
+    /// the same way.
     pub buffer_target: i32,
     /// RFC 3339 of when the settings were last saved.
     pub updated_at: String,

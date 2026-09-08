@@ -20,7 +20,9 @@ use anyhow::{Context, Result};
 
 use emit::{SchemaDoc, TsModule, finalize_schemas, finalize_ts, root_schema, ts_config, ts_decl};
 
-use test_cabinet_backend::{api as bapi, coverage::gate, error as berr, relay, snapshot as snap};
+use test_cabinet_backend::{
+    api as bapi, coverage::gate, coverage::schedule, error as berr, relay, snapshot as snap,
+};
 use test_cabinet_core::{
     accounts as acct, code_analysis as code, comparison as cmp, comparison_stats as cstats,
     event as ev, gg, gg_query as ggq, gg_reference as ggref, gg_session_record as ggr,
@@ -704,6 +706,7 @@ fn main() -> Result<()> {
             decls: ts_decls![&cfg;
                 bapi::ReviewPlanCase, bapi::ReviewPlanCombo,
                 bapi::CoverageGroupKind, bapi::CoverageGroup, bapi::CoverageGroupInput,
+                schedule::BufferTarget,
                 bapi::CoverageAxis, bapi::CoverageSchedule,
                 bapi::CoveragePlan, bapi::CoveragePlanOut, bapi::CoveragePlanInput,
                 bapi::CoveragePlanSummary,

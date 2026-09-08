@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import type {
+  BufferTarget,
   CoverageGroup,
   ReviewPlanCombo,
 } from "@clockwyrks/run-record/coverage";
@@ -20,6 +21,7 @@ import { BackChevron } from "../../components/BackChevron";
 import { SettingRow } from "../../components/SettingRow";
 import { Switch } from "../../components/Switch";
 import { routes } from "../../routes";
+import { DEFAULT_BUFFER_TARGET } from "./bufferTarget";
 import { BufferTargetField, ComboPicker } from "./coveragePickers";
 import {
   DEFAULT_GATE,
@@ -31,12 +33,6 @@ import {
 import { SubmitNotice } from "../../components/SubmitNotice";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Coverage.module.scss";
-
-// The backend's compiled-in review-buffer default, shown as the placeholder until the
-// account's own setting resolves. Only ever a display fallback: the number that
-// actually applies is whatever `GET /coverage-settings` reports, and an empty override
-// field defers to it rather than to this.
-const FALLBACK_BUFFER_TARGET = 10;
 
 /** The run target a new ladder starts with, and the one its control resets to. */
 const DEFAULT_RUNS_PER_CELL = 3;
@@ -77,8 +73,10 @@ export function LadderEditPage() {
   // fed exactly as one created by any other client.
   const [outerAxis, setOuterAxis] = useState<LadderAxis>("rung");
   const [autoTopUp, setAutoTopUp] = useState(true);
-  const [bufferTarget, setBufferTarget] = useState<number | null>(null);
-  const [accountBuffer, setAccountBuffer] = useState(FALLBACK_BUFFER_TARGET);
+  const [bufferTarget, setBufferTarget] = useState<BufferTarget | null>(null);
+  const [accountBuffer, setAccountBuffer] = useState<BufferTarget>(
+    DEFAULT_BUFFER_TARGET,
+  );
   // Whether the ladder was enabled when this form loaded. Not state, because nothing
   // here renders or edits it: it is only the fallback for the save's read-back below,
   // for a transport that cannot re-read a schedule on its own. A ladder being created
@@ -192,8 +190,9 @@ export function LadderEditPage() {
           outerAxis,
           paused,
           autoTopUp,
-          // Omitted rather than sent as 0 when there is no override — null means
-          // "inherit my account default", 0 means "never top this ladder up".
+          // Omitted when there is no override — null means "inherit my account
+          // default", a bound of 0 means "never top this ladder up", and no limit
+          // means "everything".
           ...(bufferTarget === null ? {} : { bufferTarget }),
         },
       };

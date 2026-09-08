@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
 import type {
+  BufferTarget,
   CoverageAxis,
   ReviewPlanCase,
   ReviewPlanCombo,
@@ -26,7 +27,14 @@ import { useTestCaseName } from "../../data/useTestCaseName";
 import { useEngineChoice } from "../../data/useEngineChoice";
 import { ModelCombobox } from "../../components/ModelCombobox";
 import { SettingRow } from "../../components/SettingRow";
+import { Switch } from "../../components/Switch";
 import { routes } from "../../routes";
+import {
+  BUFFER_TARGET_CEILING,
+  UNBOUNDED_BUFFER,
+  boundedBuffer,
+  describeBufferTarget,
+} from "./bufferTarget";
 import { CaseEngineField } from "./CaseEngineField";
 import { launchModelSlots } from "../runs/gg/ggConfigDraft";
 import { findGgConfig, useGgConfigs } from "../runs/gg/useGgConfigs";
@@ -152,14 +160,20 @@ export function AxisPicker({
 
 /**
  * The review-buffer override: how many runs this plan or ladder may leave outstanding
- * (in flight, or finished and unreviewed by you) before a top-up stops.
+ * (in flight, or finished and unreviewed by you) before a top-up stops — or no limit
+ * at all.
  *
  * Empty is not zero, and the field is built around that distinction: empty means
  * "no opinion — use my account default", while `0` means "never top this one up",
  * which is a different instruction the reviewer is entitled to give. So the value is
- * a nullable number, the placeholder shows the account default that an empty field
+ * a nullable target, the placeholder shows the account default that an empty field
  * inherits, and the row's reset control drops the override rather than making the
  * reviewer delete digits until the input happens to be blank.
+ *
+ * "No limit" is a third instruction with a switch of its own rather than a large
+ * number typed into the field: it tells the backend to run through every missing
+ * cell whatever is outstanding, and it reads back as what it is instead of as a
+ * figure that merely exceeds the plan today.
  */
 export function BufferTargetField({
   value,
@@ -168,19 +182,31 @@ export function BufferTargetField({
   subject = "plan",
 }: {
   /** The override, or null to inherit the account default. */
-  value: number | null;
+  value: BufferTarget | null;
   /** The account-wide default an empty field falls back to. */
-  accountDefault: number;
-  onChange: (next: number | null) => void;
+  accountDefault: BufferTarget;
+  onChange: (next: BufferTarget | null) => void;
   /** What the override belongs to, so the row names it. */
   subject?: "plan" | "ladder";
 }) {
+  const unbounded = value?.kind === "unbounded";
+  // The bound the field last held, so switching no-limit off restores it rather
+  // than leaving the reviewer to retype it; null when the field has only ever
+  // inherited.
+  const [lastBound, setLastBound] = useState<number | null>(
+    value?.kind === "bounded" ? value.runs : null,
+  );
+  const inherited = describeBufferTarget(accountDefault);
   const description =
     value === null
-      ? `Empty inherits your account default of ${accountDefault} outstanding runs.`
-      : value === 0
-        ? `0 stops this ${subject} topping itself up at all, which is different from empty, where it inherits your account default.`
-        : `This ${subject} keeps ${value} run${value === 1 ? "" : "s"} outstanding before a top-up stops.`;
+      ? `Empty inherits your account default of ${inherited}.`
+      : value.kind === "unbounded"
+        ? `No limit: a top-up enqueues every missing run of this ${subject} at once, however many are already waiting on you. Only its per-cell targets and the harness caps hold it back.`
+        : value.runs === 0
+          ? `0 stops this ${subject} topping itself up at all, which is different from empty, where it inherits your account default.`
+          : `This ${subject} keeps ${value.runs} run${value.runs === 1 ? "" : "s"} outstanding before a top-up stops.`;
+  const placeholder =
+    accountDefault.kind === "bounded" ? String(accountDefault.runs) : "";
   return (
     <SettingRow
       label="Review buffer"
@@ -189,28 +215,51 @@ export function BufferTargetField({
       onReset={() => onChange(null)}
     >
       {(id) => (
-        <span className={styles.settingNumber}>
-          <input
-            id={id}
-            className={exec.input}
-            type="number"
-            min={0}
-            max={500}
-            step={1}
-            value={value ?? ""}
-            placeholder={String(accountDefault)}
-            onChange={(e) => {
-              const raw = e.target.value.trim();
-              if (raw === "") {
-                onChange(null);
-                return;
+        <span className={styles.settingBuffer}>
+          <span className={styles.settingNumber}>
+            <input
+              id={id}
+              className={exec.input}
+              type="number"
+              min={0}
+              max={BUFFER_TARGET_CEILING}
+              step={1}
+              value={unbounded || value === null ? "" : value.runs}
+              placeholder={unbounded ? "" : placeholder}
+              disabled={unbounded}
+              onChange={(e) => {
+                const raw = e.target.value.trim();
+                if (raw === "") {
+                  onChange(null);
+                  return;
+                }
+                const n = Number(raw);
+                if (!Number.isFinite(n)) {
+                  onChange(null);
+                  return;
+                }
+                const next = boundedBuffer(n);
+                setLastBound(next.kind === "bounded" ? next.runs : null);
+                onChange(next);
+              }}
+            />
+          </span>
+          <label className={styles.settingToggle}>
+            <Switch
+              checked={unbounded}
+              ariaLabel="No limit"
+              onChange={(next) =>
+                onChange(
+                  next
+                    ? UNBOUNDED_BUFFER
+                    : lastBound === null
+                      ? null
+                      : boundedBuffer(lastBound),
+                )
               }
-              const n = Math.floor(Number(raw));
-              onChange(
-                Number.isFinite(n) ? Math.min(Math.max(n, 0), 500) : null,
-              );
-            }}
-          />
+            />
+            <span>No limit</span>
+          </label>
         </span>
       )}
     </SettingRow>

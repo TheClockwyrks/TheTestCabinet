@@ -163,7 +163,13 @@ fn a_member_whose_configuration_is_gone_keeps_its_place_and_says_why() {
     // And it is still a cell — in its declared place, carrying the reason.
     let cases = vec![case("pong")];
     let combos = vec![member(combo("opus")), orphan];
-    let matrix = empty_ctx().matrix(3, CoverageAxis::Case, 10, &combos, &cases);
+    let matrix = empty_ctx().matrix(
+        3,
+        CoverageAxis::Case,
+        BufferTarget::Bounded { runs: 10 },
+        &combos,
+        &cases,
+    );
     assert_eq!(matrix.cells_total, 2);
     assert!(matrix.cells[0].unlaunchable.is_none());
     assert!(matrix.cells[1].unlaunchable.is_some());
@@ -689,7 +695,12 @@ fn an_unlaunchable_member_spends_no_buffer_and_stops_no_walk() {
     assert_eq!(demands[0].missing(), 0);
     // …but its outstanding runs are still counted against the buffer.
     assert_eq!(demands[0].outstanding(), 2);
-    let launches = top_up(&demands, ctx.harness_capacity(), 10, 2);
+    let launches = top_up(
+        &demands,
+        ctx.harness_capacity(),
+        BufferTarget::Bounded { runs: 10 },
+        2,
+    );
     // The walk carries straight on to the member that can still run.
     assert_eq!(launches.len(), 1);
     assert_eq!(order(&[ordered[launches[0].cell]]), vec!["pong/sonnet"]);
@@ -716,7 +727,12 @@ fn gg_runs_are_throttled_by_their_own_capacity_lane() {
         .iter()
         .map(|(case, member)| ctx.demand(1, case, member))
         .collect();
-    let launches = top_up(&demands, ctx.harness_capacity(), 2, 0);
+    let launches = top_up(
+        &demands,
+        ctx.harness_capacity(),
+        BufferTarget::Bounded { runs: 2 },
+        0,
+    );
     assert_eq!(
         launches
             .iter()

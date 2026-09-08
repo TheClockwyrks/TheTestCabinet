@@ -932,16 +932,21 @@ running", which is otherwise indistinguishable from a wedged queue.
 
 - `GET|PUT /coverage-settings` — the account-wide `bufferTarget`: how many runs a
   top-up may leave outstanding (in flight, or finished and unreviewed by you) before
-  it stops. `GET` reports `isDefault` when the account has never chosen one — no row
-  is materialized on read. `0` is a legitimate value meaning "never top up".
+  it stops. It is a tagged shape, `{ "kind": "bounded", "runs": N }` or
+  `{ "kind": "unbounded" }`; see [the buffer target](/components/backend/coverage/#the-buffer-target).
+  `GET` reports `isDefault` when the account has never chosen one — no row is
+  materialized on read. A bound of `0` is a legitimate value meaning "never top up",
+  and `unbounded` means a top-up runs through everything.
   Schema: [`coverage/coverage-settings.schema.json`](https://docs.testcabinet.ai/schema/coverage/coverage-settings.schema.json).
 - `GET|PUT /coverage-plans/{id}/schedule` — one plan's `outerAxis`, `paused`,
-  `autoTopUp`, and its optional `bufferTarget` override. The override is nullable
-  and null is **not** zero: null inherits the account's setting, `0` means never.
+  `autoTopUp`, and its optional `bufferTarget` override, in the same tagged shape.
+  The override is nullable and null is **not** zero: null inherits the account's
+  setting, a bound of `0` means never, and `unbounded` means everything.
 - `POST /coverage-plans/{id}/topup` — walk the plan's cells in its own order, skip
   the ones already at target (counted **globally**), and enqueue **whole cells**
-  until the requester has `bufferTarget` runs outstanding. There is no background
-  daemon; this endpoint is what enqueues. It answers with the buffer target in
+  until the requester has `bufferTarget` runs outstanding, or every missing cell
+  when the target is unbounded. There is no background daemon; this endpoint is
+  what enqueues. It answers with the buffer target in
   force, the occupancy it observed, every cell it launched with its job ids in
   emission order, and every cell it could not launch with why.
 

@@ -7,6 +7,14 @@
 //! the entire budget before a single run has been looked at — and the first review
 //! is usually what tells you the plan was wrong.
 //!
+//! That bound is a [`BufferTarget`], and it has an explicit
+//! [unbounded](BufferTarget::Unbounded) shape for the plan whose author has already
+//! decided the runs are worth having in full — a settled plan being re-swept, a
+//! ladder whose gate is doing the stopping. It is a real variant rather than a
+//! large number so that "run through everything" is an instruction the owner can
+//! give, read back, and be shown, instead of a figure that merely happens to exceed
+//! the matrix today and stops happening to the day the plan grows.
+//!
 //! The algorithm the console calls into is:
 //!
 //! 1. Walk the cells in the order the caller passes them — that order *is* the
@@ -17,7 +25,8 @@
 //! 3. **Defer** cells whose harness is already at its parallelism cap — see
 //!    [below](#harness-parallelism-comes-first).
 //! 4. Emit **whole** cells — all of a cell's missing repeats together — until the
-//!    outstanding total reaches the buffer target.
+//!    outstanding total reaches the buffer target (an unbounded target is never
+//!    reached, so every missing cell is emitted).
 //! 5. Then make a second pass over the deferred cells, in their original order,
 //!    emitting until the buffer target is reached.
 //!
@@ -55,6 +64,51 @@
 //! owns serializing the top-up per plan/ladder — this function is pure, so two
 //! concurrent callers observing the same shortfall would each happily return the
 //! same launches.
+
+use serde::{Deserialize, Serialize};
+
+/// How deep a plan's or ladder's review buffer may go: the most runs the requesting
+/// account may have outstanding (in flight, or finished and unreviewed by them)
+/// before a top-up stops emitting — or no bound at all.
+///
+/// The unbounded shape is its own variant rather than a large bound so that it is
+/// stored, reported, and shown as the instruction it is, and so that no bound the
+/// reviewer types can be mistaken for it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum BufferTarget {
+    /// Keep at most `runs` runs outstanding. `0` is a legitimate bound — "never top
+    /// this up automatically" — and is not the same instruction as no bound.
+    Bounded {
+        /// The most runs the requester may have outstanding before a top-up stops.
+        runs: u32,
+    },
+    /// No bound: a top-up emits every missing cell it can, however many runs are
+    /// already waiting on the reviewer. The per-cell target and the harness
+    /// parallelism cap still apply; only the reviewer-backlog check is gone.
+    Unbounded,
+}
+
+impl BufferTarget {
+    /// Whether `outstanding` runs already fill this buffer, so a top-up must stop
+    /// before emitting another cell. An unbounded buffer is never full.
+    pub fn is_full(self, outstanding: u32) -> bool {
+        match self {
+            BufferTarget::Bounded { runs } => outstanding >= runs,
+            BufferTarget::Unbounded => false,
+        }
+    }
+
+    /// The bound, or `None` when there is none. For callers that want to show or
+    /// compare the number without matching on the shape.
+    pub fn bound(self) -> Option<u32> {
+        match self {
+            BufferTarget::Bounded { runs } => Some(runs),
+            BufferTarget::Unbounded => None,
+        }
+    }
+}
 
 /// One cell's demand: how many runs it wants, how many exist, and how many of
 /// them are occupying a slot in the requesting account's review buffer.
@@ -194,6 +248,8 @@ pub fn outstanding_across(cells: &[CellDemand]) -> u32 {
 /// `outstanding` is the requester's current buffer occupancy — normally
 /// [`outstanding_across`] over these same cells. Returning an empty vector means
 /// there is nothing to do: either the buffer is full or every cell is satisfied.
+/// An [unbounded](BufferTarget::Unbounded) `buffer_target` is never full, so the
+/// walk emits every missing cell and only the second reason remains.
 ///
 /// Idempotent by construction: it holds no state, so calling it again after the
 /// launches it returned have been enqueued (and therefore counted into
@@ -201,7 +257,7 @@ pub fn outstanding_across(cells: &[CellDemand]) -> u32 {
 pub fn top_up(
     cells: &[CellDemand],
     harnesses: &[HarnessCapacity],
-    buffer_target: u32,
+    buffer_target: BufferTarget,
     outstanding: u32,
 ) -> Vec<CellLaunch> {
     let mut launches = Vec::new();
@@ -218,7 +274,7 @@ pub fn top_up(
             // The buffer check comes *before* emitting, never after: a cell is emitted
             // whole once we decide to emit it at all, so the only place the total can be
             // held down is at the boundary between cells.
-            if outstanding >= buffer_target {
+            if buffer_target.is_full(outstanding) {
                 break;
             }
             if launched[cell] {

@@ -98,7 +98,9 @@ function backendValue(existing: LadderOut) {
         autoTopUp: existing.autoTopUp,
       }),
       listModels: async () => [],
-      getCoverageSettings: async () => ({ bufferTarget: 10 }),
+      getCoverageSettings: async () => ({
+        bufferTarget: { kind: "bounded", runs: 10 },
+      }),
       updateLadder: async (_id: string, input: LadderInput) => {
         saved = input;
         return existing;

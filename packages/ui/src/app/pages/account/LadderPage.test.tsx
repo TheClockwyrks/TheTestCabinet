@@ -193,7 +193,7 @@ function progress(over: Partial<LadderProgress> = {}): LadderProgress {
     runsMissing: 4,
     runsUnreviewed: 1,
     runsOutstanding: 3,
-    bufferTarget: 10,
+    bufferTarget: { kind: "bounded", runs: 10 },
     ...over,
   };
 }
@@ -326,7 +326,7 @@ describe("climberCombo", () => {
 describe("describeLadderTopUp", () => {
   function result(over: Partial<TopUpResult> = {}): TopUpResult {
     return {
-      bufferTarget: 5,
+      bufferTarget: { kind: "bounded", runs: 5 },
       enqueued: 0,
       cells: [],
       unlaunchable: [],
@@ -360,10 +360,19 @@ describe("describeLadderTopUp", () => {
 
   it("tells a full buffer apart from a ladder that has finished climbing", () => {
     expect(
-      describeLadderTopUp(result({ outstanding: 5, bufferTarget: 5 })),
+      describeLadderTopUp(
+        result({ outstanding: 5, bufferTarget: { kind: "bounded", runs: 5 } }),
+      ),
     ).toMatch(/buffer is full/i);
     expect(
-      describeLadderTopUp(result({ outstanding: 1, bufferTarget: 5 })),
+      describeLadderTopUp(
+        result({ outstanding: 900, bufferTarget: { kind: "unbounded" } }),
+      ),
+    ).not.toMatch(/buffer is full/i);
+    expect(
+      describeLadderTopUp(
+        result({ outstanding: 1, bufferTarget: { kind: "bounded", runs: 5 } }),
+      ),
     ).toMatch(/walled, held, or topped out/i);
   });
 
@@ -385,7 +394,7 @@ describe("describeLadderTopUp", () => {
     const message = describeLadderTopUp(
       result({
         outstanding: 1,
-        bufferTarget: 5,
+        bufferTarget: { kind: "bounded", runs: 5 },
         unlaunchable: [
           { reason: "launch slot `critic` is unbound" },
         ] as TopUpBlocked[],
@@ -442,11 +451,22 @@ describe("ladderStatusNote", () => {
 
   it("explains a full review buffer as waiting on you", () => {
     const note = ladderStatusNote(
-      progress({ runsOutstanding: 5, bufferTarget: 5 }),
+      progress({
+        runsOutstanding: 5,
+        bufferTarget: { kind: "bounded", runs: 5 },
+      }),
       false,
     );
     expect(note).toMatch(/5 of 5/);
     expect(note).toMatch(/your review/i);
+  });
+
+  it("never says an unbounded ladder is waiting on you", () => {
+    const note = ladderStatusNote(
+      progress({ runsOutstanding: 50, bufferTarget: { kind: "unbounded" } }),
+      false,
+    );
+    expect(note ?? "").not.toMatch(/waiting on you/i);
   });
 
   it("stays quiet when the ladder is simply climbing", () => {
@@ -841,7 +861,7 @@ describe("topUpLaddersAfterReview", () => {
       topUpLadder: async (id: string) => {
         topUp(id);
         return {
-          bufferTarget: 5,
+          bufferTarget: { kind: "bounded", runs: 5 },
           enqueued: 2,
           cells: [],
           unlaunchable: [],

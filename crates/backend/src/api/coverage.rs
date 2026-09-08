@@ -60,7 +60,9 @@ use test_cabinet_core::gg::GgCapabilitySet;
 use test_cabinet_core::run_record::HarnessSlug;
 
 use crate::auth::AuthUser;
-use crate::coverage::schedule::{CellDemand, HarnessCapacity, outstanding_across, top_up};
+use crate::coverage::schedule::{
+    BufferTarget, CellDemand, HarnessCapacity, outstanding_across, top_up,
+};
 use crate::db::{
     CANCELABLE_ACTIVE_STATES, CANCELABLE_WAITING_STATES, CellKey, JobCancelFilter, JobOrigin,
     SortDir, SummaryFilter, SummarySort, SummaryState, combination_key,
@@ -83,17 +85,23 @@ const MAX_RUNS_PER_CELL: u32 = 100;
 /// (which is the entire point of buffering rather than firing the whole matrix) and
 /// large enough that the queue never runs dry between review sessions. Ten runs is
 /// roughly two cells at a typical five-runs-per-cell target.
-const DEFAULT_BUFFER_TARGET: u32 = 10;
+const DEFAULT_BUFFER_TARGET: BufferTarget = BufferTarget::Bounded { runs: 10 };
 
-/// The largest review buffer an account or plan may set. The same class of guard as
-/// [`MAX_RUNS_PER_CELL`]: the buffer is the only thing bounding a top-up's fan-out,
-/// so a mistyped value here is a mistyped value in units of queued runs.
+/// The largest *bounded* review buffer an account or plan may set. The same class of
+/// guard as [`MAX_RUNS_PER_CELL`]: a bound is what limits a top-up's fan-out, so a
+/// mistyped value here is a mistyped value in units of queued runs.
+///
+/// Deliberately not the way to switch the buffer off. A reviewer who wants a plan to
+/// run through everything says so with [`BufferTarget::Unbounded`], which the
+/// scheduler honours as an instruction; a bound at this ceiling is still a bound, and
+/// silently becomes a stall the day a plan outgrows it.
 const MAX_BUFFER_TARGET: u32 = 500;
 
 /// The most runs one scoped review queue returns. The queue exists to be walked in
 /// order, not paged through — a reviewer works from the front of it — so it is
 /// capped rather than paginated, comfortably above [`MAX_BUFFER_TARGET`] so a full
-/// buffer is always visible whole.
+/// bounded buffer is always visible whole. An unbounded plan can outgrow it, and
+/// reports `truncated` when it has.
 const MAX_QUEUE_RUNS: usize = 600;
 
 /// How many of a cell's completed runs the queue inspects when picking out the
@@ -357,11 +365,12 @@ pub struct CoverageSchedule {
     #[serde(default)]
     pub auto_top_up: bool,
     /// This plan's override of the account's review-buffer target, or null to inherit
-    /// it. Null and `0` are different instructions — "no opinion" versus "never top
-    /// up" — which is why this is nullable rather than defaulted to zero.
+    /// it. Null, a bound of `0`, and `unbounded` are three different instructions —
+    /// "no opinion", "never top up", and "top up everything" — which is why this is
+    /// nullable rather than defaulted, and a shape rather than a number.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
-    pub buffer_target: Option<u32>,
+    pub buffer_target: Option<BufferTarget>,
 }
 
 impl Default for CoverageSchedule {
@@ -625,8 +634,9 @@ pub struct CoverageMatrix {
     /// which is the difference between a finished plan and a full one.
     pub runs_outstanding: u32,
     /// The buffer target in force for this plan (its own override, else the
-    /// account's setting, else the backend default).
-    pub buffer_target: u32,
+    /// account's setting, else the backend default). When it is `unbounded`,
+    /// `runsOutstanding` never stops a top-up.
+    pub buffer_target: BufferTarget,
 }
 
 /// One plan's coverage roll-up for the plans list and the Home widget: the cell
@@ -665,8 +675,10 @@ pub struct CoveragePlanSummary {
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct CoverageSettings {
     /// The account's default review-buffer target: how many runs a top-up may leave
-    /// outstanding (in flight, or finished and unreviewed) before it stops.
-    pub buffer_target: u32,
+    /// outstanding (in flight, or finished and unreviewed) before it stops, or
+    /// `unbounded` for a reviewer who wants every plan to run through everything
+    /// unless it says otherwise.
+    pub buffer_target: BufferTarget,
     /// Whether [`Self::buffer_target`] is the account's own choice or the backend's
     /// compiled-in default because they have never chosen one. A `PUT` always makes
     /// it a choice.
@@ -678,9 +690,10 @@ pub struct CoverageSettings {
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct CoverageSettingsInput {
-    /// The review-buffer target to store, clamped to `MAX_BUFFER_TARGET`. `0` is a
-    /// legitimate value — "never top me up automatically" — and is stored as such.
-    pub buffer_target: u32,
+    /// The review-buffer target to store. A bound is clamped to `MAX_BUFFER_TARGET`;
+    /// a bound of `0` is a legitimate value — "never top me up automatically" — and
+    /// is stored as such, and `unbounded` is stored as itself.
+    pub buffer_target: BufferTarget,
 }
 
 /// Why a top-up did no work. Distinguishing these matters: "paused" is a decision
@@ -813,7 +826,7 @@ pub struct TopUpResult {
     pub skipped: Option<TopUpSkipped>,
     /// The buffer target in force (the plan's override, else the account's setting,
     /// else the backend default).
-    pub buffer_target: u32,
+    pub buffer_target: BufferTarget,
     /// The requester's buffer occupancy as the scheduler saw it, or null when it
     /// never ran.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1343,7 +1356,7 @@ async fn plan_top_up_locked(
     user: &AuthUser,
     plan: &CoveragePlan,
     axis: CoverageAxis,
-    buffer_target: u32,
+    buffer_target: BufferTarget,
 ) -> Result<TopUpResult, ApiError> {
     let groups = group_index(state, &user.0.id).await?;
     let library = gg_library(state, &user.0.id).await?;
@@ -1580,13 +1593,14 @@ async fn plan_schedule_of(
 /// account's setting, else the backend's compiled-in default.
 ///
 /// An account with no stored setting has expressed no opinion, which is deliberately
-/// not the same as an explicit `0` ("never top me up") — hence the two `Option`
-/// layers rather than a single defaulted number.
+/// not the same as an explicit bound of `0` ("never top me up") or an explicit
+/// `unbounded` ("top up everything") — hence the two `Option` layers rather than a
+/// single defaulted value.
 pub(super) async fn resolve_buffer_target(
     state: &AppState,
     user_id: &str,
-    override_target: Option<u32>,
-) -> Result<u32, ApiError> {
+    override_target: Option<BufferTarget>,
+) -> Result<BufferTarget, ApiError> {
     if let Some(target) = override_target {
         return Ok(clamp_buffer_target(target));
     }
@@ -2270,7 +2284,7 @@ impl MatrixCtx {
         &self,
         runs_per_cell: u32,
         axis: CoverageAxis,
-        buffer_target: u32,
+        buffer_target: BufferTarget,
         combos: &[PlanMember],
         cases: &[ReviewPlanCase],
     ) -> CoverageMatrix {
@@ -2950,11 +2964,18 @@ pub(super) fn clamp_runs_per_cell(target: u32) -> u32 {
     target.clamp(1, MAX_RUNS_PER_CELL)
 }
 
-/// Clamp a review-buffer target to the range the backend will honour. `0` survives —
-/// "never top up automatically" is a real instruction, unlike a runs-per-cell target
-/// of zero, which would declare a cell nobody wants.
-pub(super) fn clamp_buffer_target(target: u32) -> u32 {
-    target.min(MAX_BUFFER_TARGET)
+/// Clamp a review-buffer target to the range the backend will honour. A bound of `0`
+/// survives — "never top up automatically" is a real instruction, unlike a
+/// runs-per-cell target of zero, which would declare a cell nobody wants — and so
+/// does `unbounded`, which has no number to clamp: the ceiling guards against a
+/// fat-fingered bound, not against a reviewer who chose to have none.
+pub(super) fn clamp_buffer_target(target: BufferTarget) -> BufferTarget {
+    match target {
+        BufferTarget::Bounded { runs } => BufferTarget::Bounded {
+            runs: runs.min(MAX_BUFFER_TARGET),
+        },
+        BufferTarget::Unbounded => BufferTarget::Unbounded,
+    }
 }
 
 /// The members as they are **stored** — every gg member stripped of the values a read
@@ -3036,7 +3057,7 @@ fn plan_from_input(
 impl TopUpResult {
     /// A top-up that never ran, and why. The buffer target is still reported: the
     /// reviewer's next question after "it did nothing" is "what was it aiming for?".
-    pub(super) fn skipped_by(reason: TopUpSkipped, buffer_target: u32) -> Self {
+    pub(super) fn skipped_by(reason: TopUpSkipped, buffer_target: BufferTarget) -> Self {
         Self {
             skipped: Some(reason),
             buffer_target,
