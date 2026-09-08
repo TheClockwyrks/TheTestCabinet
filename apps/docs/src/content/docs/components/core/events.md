@@ -2,30 +2,14 @@
 title: Harness Events
 ---
 
-While a run is in progress its harness runs commands, reads and writes files,
-emits assistant messages, and reports its own errors. The [agent harness
-layer](/components/core/harnesses/) converts that activity into a single stream
-of normalized harness events, so a caller observes a run as it happens through
-one uniform stream regardless of which harness produced it.
+Every supported harness reports its activity differently. The [agent harness
+layer](/components/core/harnesses/) translates each harness's raw output into one
+stream of normalized harness events, so a caller observes a run through a uniform
+stream regardless of which harness produced it. The orchestrator emits [system
+events](#system) of its own into the same stream, so a caller also sees the setup
+and teardown work bracketing a harness session.
 
-Every supported harness reports its activity differently. The harness layer
-translates each harness's raw output into the normalized event types defined
-here, exactly as it translates raw usage into the normalized token classes in
-[Metrics](/components/core/metrics/#tokens). Emitting events as they arrive lets
-a caller show live progress and, when a harness fails, surface the harness's own
-diagnostic output rather than a truncated summary.
-
-Some events originate in the orchestrator rather than in harness output. The
-orchestrator brackets a harness session with setup and teardown work, and any of
-those steps can take a while before the harness produces its first event. It
-emits [system events](#system) of its own into the same stream so that a caller
-always sees what the run is currently doing.
-
-This page is the authoritative definition of the normalized event types. The
-cross-cutting translation contract every harness shares lives in the [agent
-harness layer](/components/core/harnesses/#event-reporting), and the mapping for
-a specific harness lives on that harness's Events page under
-[Harnesses](/harnesses/overview/).
+This page is the authoritative definition of the normalized event types.
 
 ## Event stream
 
@@ -39,27 +23,22 @@ discriminator rather than inspecting a generic payload.
 
 ## Common fields
 
-Every event, regardless of type, carries the following fields.
+Every event carries the following fields, with its type specific data inline
+beside them.
 
 - Type — the discriminator slug identifying the event type. Each type below
   defines its own slug.
-- Timestamp — an ISO 8601 timestamp for when the event was observed. Most
-  harnesses do not stamp their own output, so this is the time the testing
-  harness saw the line rather than a harness provided time.
-- Session ID (optional) — the harness reported session identifier the event
-  belongs to, when the harness exposes one. The Test Cabinet mints no session
-  IDs of its own; this field carries the underlying harness's identifier when it
-  can be determined and is otherwise unset.
-
-The type discriminator is inline on every event. Type specific data sits inline
-beside it, so a caller checks the type field and reads the type specific fields
-directly.
+- Timestamp — an ISO 8601 timestamp for when the harness layer observed the
+  event, rather than a harness provided time.
+- Session ID (optional) — the underlying harness's own session identifier for
+  the event, unset when it cannot be determined. The Test Cabinet mints no
+  session IDs of its own.
 
 ## Event types
 
 ### Agent message
 
-Generated when an agent emits a plain natural language message that is not
+Generated when an agent emits a plain natural language message rather than
 structured tool activity, a harness diagnostic, or a terminal result the harness
 reports separately.
 
@@ -69,10 +48,7 @@ reports separately.
 ### Reasoning
 
 Generated when a harness reports the model's internal reasoning ("thinking")
-content as a stream distinct from the agent's visible message. It is kept
-separate from an [agent message](#agent-message) because reasoning is often long
-and is a different kind of activity, so a consumer can present it apart from the
-visible output.
+content as a stream distinct from the agent's visible message.
 
 A harness that folds reasoning into its visible text produces no reasoning
 events. Reasoning reported only as a token count is recorded in the run
@@ -99,8 +75,8 @@ for those operations rather than the dedicated file operation events below.
 
 ### File read
 
-Generated when an agent reads a file. Reports the operation that occurred, and
-the data returned by it stays out of the stream.
+Generated when an agent reads a file. The event reports the operation, and the
+data returned by it stays out of the stream.
 
 - Discriminator: `read`
 - Path — the file that was read, as an absolute path when it can be determined.
@@ -108,13 +84,12 @@ the data returned by it stays out of the stream.
 - Start line / End line (optional) — the inclusive line range read, when the
   harness reports it.
 - Is success (optional) — whether the read succeeded, which is distinct from
-  whether the path exists. A read can fail for other reasons such as
-  permissions. Unset when the harness does not report it.
+  whether the path exists. Unset when the harness does not report it.
 
 ### File write
 
-Generated when an agent writes to a file. Reports where the write occurred, and
-the written payload stays out of the stream.
+Generated when an agent writes to a file. The event reports where the write
+occurred, and the written payload stays out of the stream.
 
 - Discriminator: `write`
 - Path — the file that was written, as an absolute path when it can be
@@ -126,10 +101,10 @@ the written payload stays out of the stream.
 
 ### File search
 
-Generated when an agent searches the filesystem or searches within files.
-Reports the search that occurred, and its results stay out of the stream. A
-harness that reports searches as ordinary shell commands produces
-[command](#command) events for them instead.
+Generated when an agent searches the filesystem or searches within files. The
+event reports the search, and its results stay out of the stream. A harness that
+reports searches as ordinary shell commands produces [command](#command) events
+for them instead.
 
 - Discriminator: `search`
 - Query — the search pattern, file name, glob, or other search expression.
@@ -140,8 +115,8 @@ harness that reports searches as ordinary shell commands produces
 
 ### Directory list
 
-Generated when an agent lists directory contents. Reports the listing operation,
-and the entries returned stay out of the stream.
+Generated when an agent lists directory contents. The event reports the listing
+operation, and the entries returned stay out of the stream.
 
 - Discriminator: `list`
 - Path (optional) — the directory whose contents were listed, as an absolute
@@ -177,14 +152,12 @@ subagent starting or completing.
 ### Usage
 
 Generated when a harness reports per-turn token usage partway through a run, one
-event per turn. The counts carry that turn's tokens mapped onto the same four
+event per turn. The counts carry that turn's tokens mapped onto the same
 normalized classes as the run-level total, through the same shared mapping, so a
-per-turn slice and the session total never diverge. The run-level total in
-[Metrics](/components/core/metrics/) answers how much a run spent; these events
-answer where it was spent.
+per-turn slice and the session total never diverge.
 
-Only a harness that reports per-turn deltas produces these events. A harness
-that reports a cumulative running total produces none.
+Only a harness that reports per-turn deltas produces these events. A harness that
+reports a cumulative running total produces none.
 
 - Discriminator: `usage`
 - Tokens — this turn's [token counts](/components/core/metrics/#tokens), by
@@ -216,9 +189,8 @@ are surfaced as warnings.
 
 Generated by the orchestrator to report a run lifecycle stage as it begins,
 finishes, or fails. These bracket the setup and teardown work around a harness
-session so that a caller sees progress during steps that can take a while, most
-often pulling the image or installing the harness. They originate in the
-orchestrator rather than a harness, so they carry no session ID.
+session. They originate in the orchestrator rather than a harness, so they carry
+no session ID.
 
 - Discriminator: `system`
 - Stage — the lifecycle stage being reported, one of `pull_image`,
@@ -235,22 +207,22 @@ orchestrator rather than a harness, so they carry no session ID.
 
 Generated by [gg](/gg/overview/), which the core invokes directly rather than
 translating from a third-party CLI's output. gg emits a purpose-built
-[telemetry](/gg/telemetry/overview/) stream covering the agent tree, the issue board, and
-context-window breakdowns, all of which sit outside the taxonomy above. A gg run
-carries each telemetry event verbatim in this type, so gg's own events flow
-unchanged through the same sink, relay, and event store as every other event.
+[telemetry](/gg/telemetry/overview/) stream covering the agent tree, the issue
+board, and context-window breakdowns, all of which sit outside the taxonomy
+above. A gg run carries each telemetry event verbatim in this type, so gg's own
+events flow unchanged through the same sink, relay, and event store as every
+other event.
 
-A gg run also emits the mapped, human-facing types above alongside these events,
-so a console that does not understand gg's stream still shows live activity.
+A gg run also emits the mapped, human-facing types above alongside these
+events.
 
 - Discriminator: `gg`
 - Event — the gg telemetry event, verbatim.
 
 ### Unknown
 
-Generated when the harness layer cannot classify a piece of harness output as
-any of the types above. Preserving these keeps the stream lossless, which
-matters most when diagnosing a failing harness.
+Generated when the harness layer cannot classify a piece of harness output as any
+of the types above. Preserving these keeps the stream lossless.
 
 - Discriminator: `unknown`
 - Raw — the original harness output that could not be classified. It may be any
@@ -258,12 +230,8 @@ matters most when diagnosing a failing harness.
 
 ## Per-harness translation
 
-Each harness reports its activity in its own format, and the harness layer maps
-that format onto the event types above. The strategies it uses are the
-cross-cutting concern of the [agent harness
-layer](/components/core/harnesses/#event-reporting): a structured mapping for a
-harness with a documented machine readable stream, a best-effort fallback for
-one whose format is not yet modeled, and the standard handling of standard error
-and non-zero exits. The exact mapping for each harness, its raw stream, tool
-names, and quirks, lives on that harness's Events page under
-[Harnesses](/harnesses/overview/).
+The strategies the layer uses to map a harness's raw output onto these types are
+the cross-cutting concern of the [agent harness
+layer](/components/core/harnesses/#event-reporting). The exact mapping for each
+harness, its raw stream, tool names, and quirks, lives on that harness's Events
+page under [Harnesses](/harnesses/overview/).

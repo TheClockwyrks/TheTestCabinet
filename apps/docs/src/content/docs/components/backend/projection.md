@@ -26,13 +26,13 @@ rather than stored here.
 
 ## What reaches it
 
-Published runs. A run's row is written when the run is published and removed when
-it is unpublished or deleted, so the projection holds exactly the set the gallery
-is allowed to show.
+Published runs. A run's row is written when the run is published and removed
+when it is unpublished or deleted, so the projection holds exactly the set the
+gallery is allowed to show.
 
-Provider tokens are scrubbed by shape from a run's document and events before
-they are uploaded. The backend holds no key value, so it redacts any
-provider-shaped token, and its own stored copy keeps the original.
+Provider tokens are scrubbed from a run's document and events before they are
+uploaded. Redaction matches any provider-shaped token, and the backend's own
+stored copy keeps the original.
 
 ## Write ordering
 
@@ -56,9 +56,9 @@ A run is assigned a short code the first time it is published. The code is the
 shortest prefix of the run's digest that no published run already holds, and it
 is stored on the run's row.
 
-Assignment happens once. A code that has been handed out keeps addressing the run
-it was minted for, whatever is published afterwards, and the consoles read a run's
-code from its record rather than deriving one.
+Assignment happens once. A code that has been handed out keeps addressing the
+run it was minted for, whatever is published afterwards, and the consoles read a
+run's code from its record.
 
 ## Schema version
 

@@ -8,10 +8,8 @@ run's repository, executing the run in a container, invoking the agent harness,
 collecting metrics, running validation, writing the run record, and publishing.
 Every other component links against that library and exposes it under the
 interface it provides, whether that is a CLI, an HTTP API, or a desktop GUI.
-
-Keeping orchestration in the core is what makes batch runs, automation,
-unattended sweeps, and remote execution possible. Every component drives a run
-through the same library.
+Keeping orchestration in the core is what makes batch runs, unattended sweeps,
+and remote execution possible.
 
 ## Components
 
@@ -48,8 +46,7 @@ Two roles recur across the components.
 
 The Tauri app and the web console are launchers and reporters in one. They
 enqueue runs, watch them live, review them, and show results in one place. The
-Tauri app is the primary way The Test Cabinet is used. The two consoles differ
-in delivery and host wiring: a desktop binary against a browser bundle.
+Tauri app is the primary way The Test Cabinet is used.
 
 All three GUIs mount the same routed gallery application from the [UI
 library](/components/ui/overview/). The consoles are that application with the
@@ -67,9 +64,9 @@ one Kubernetes `Job` running a [driver](/components/driver/overview/).
 
 The driver executes the run, creating an untrusted sandbox pod through the
 Kubernetes API. It streams live progress back to the backend, which relays it to
-the launcher; uploads the produced tree to the [artifact
-service](/components/artifacts/overview/); and reports the produced record,
-which the backend stores privately.
+the launcher. It uploads the produced tree to the [artifact
+service](/components/artifacts/overview/) and reports the produced record, which
+the backend stores privately.
 
 Each run is one schedulable `Job`, so concurrency scales with the cluster. A
 launcher needs a reachable backend and an account, and no container runtime of
@@ -80,15 +77,15 @@ cluster](/development/running/), so a run is a `Job` everywhere. See
 ## The backend
 
 The [backend](/components/backend/overview/) records run results and serves as
-the canonical copy of the test case definitions runners need. It stays small and
-has no public write surface, and it sits on a private network, so reaching it is
-the first line of access control.
+the canonical copy of the test case definitions runners need. It has no public
+write surface and sits on a private network, so reaching it is the first line of
+access control.
 
 User [accounts](/components/backend/overview/#authentication), held in the
 standalone [auth service](/components/auth/overview/), identify who acts, so
 that every [review](/components/core/results/#reviews) is attributed to a
 person. The backend verifies the auth service's bearer tokens on the mutating
-run endpoints, review and publish; reads stay open.
+run endpoints, review and publish. Reads stay open.
 
 The [public site](/components/site/overview/) runs on its own public plane.
 Publishing writes the run's documents and media to a public bucket and its index
@@ -121,9 +118,7 @@ releases the produced code and flips the reviewed run public. See
 ## Live streaming
 
 Progress that happens inside the run container reaches a watching viewer in real
-time over a dedicated channel: the run host opens a per-run network listener
-that the in-container process connects back to, and each update is relayed to
-the viewer over the run's existing live channel. See [Live
+time over a dedicated channel. See [Live
 Streaming](/components/live-streaming/).
 
 ## The two meanings of "harness"

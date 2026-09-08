@@ -10,12 +10,11 @@ progress. Running those matches is CPU-bound, in-process wasm, so it lives in
 its own service rather than in the single-replica control-plane
 [backend](/components/backend/overview/).
 
-The arena is a data-plane peer of the backend, like the [artifact
-service](/components/artifacts/overview/). The backend owns the data (controller
-inputs, published tournaments, stored replays) and the arena owns the execution.
-A [console](/components/web/overview/) posts a match or tournament to the arena
-and streams a tournament's live progress from it, while arena reads stay on the
-backend. The backend reports the arena's public base URL
+The arena is a data-plane peer of the backend. The backend owns the data
+(controller inputs, published tournaments, stored replays) and the arena owns
+the execution. A [console](/components/web/overview/) posts a match or
+tournament to the arena and streams a tournament's live progress from it, while
+arena reads stay on the backend. The backend reports the arena's public base URL
 (`TCAB_ARENA_PUBLIC_URL`) via `GET /config`, and the console fetches it for
 those actions.
 
@@ -29,9 +28,9 @@ those actions.
 | `GET /tournaments/{id}`        | Read a tournament job's status                   |
 | `GET /tournaments/{id}/events` | Stream a tournament's live progress              |
 
-These endpoints are unauthenticated behind the private-network boundary. Their
-CPU-bound execution is bounded by the capacity guard rather than by auth. The
-arena has no Kubernetes API access and only talks HTTP to the backend.
+These endpoints are unauthenticated behind the private-network boundary, and
+their CPU-bound execution is bounded by the capacity guard. The arena has no
+Kubernetes API access and only talks HTTP to the backend.
 
 ## State
 
@@ -53,22 +52,21 @@ its CPU and the concurrency cap.
 
 ## Capacity guard
 
-The arena is the CPU-bound pod of the topology, so it bounds concurrent work
-hard. A semaphore (`TCAB_ARENA_MAX_CONCURRENT`, default `2`) caps how many
-matches and tournaments run their wasm at once. At capacity it rejects with
-`503` and a `warn` log rather than queueing, so a flood of submissions cannot
-pile up unbounded blocking tasks and stall the pod. A match holds one permit for
-its single blocking execution; a tournament holds one across its whole
+A semaphore (`TCAB_ARENA_MAX_CONCURRENT`, default `2`) caps how many matches and
+tournaments run their wasm at once. At capacity the arena rejects with `503` and
+a `warn` log rather than queueing, so a flood of submissions cannot pile up
+unbounded blocking tasks and stall the pod. A match holds one permit for its
+single blocking execution, and a tournament holds one across its whole
 background drive, including publishing. Its Kubernetes `Deployment` carries CPU
 requests and limits to match.
 
 ## Deployment
 
-The arena service is the `test-cabinet-arena` crate (`crates/arena`), an
-[Axum](https://github.com/tokio-rs/axum) server reusing the shared
-[`match_play`](/components/core/overview/) engine and, through it, the
-`foray-host` wasm sandbox. Its configuration is entirely environment variables,
-documented in `crates/arena/src/config.rs`.
+The arena service is the `test-cabinet-arena` crate (`crates/arena`), an Axum
+server reusing the shared match-play engine from the
+[core](/components/core/overview/) and the `foray-host` wasm sandbox it runs
+matches in. Its configuration is entirely environment variables, documented in
+`crates/arena/src/config.rs`.
 
 It binds all interfaces by default (`0.0.0.0:8791`), because the console reaches
 it over the cluster network, and the deployment fronts it with the same

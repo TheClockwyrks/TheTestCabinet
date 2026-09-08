@@ -6,22 +6,13 @@ The auth service is a standalone Rust server that holds The Test Cabinet's user
 accounts. It handles registration and login and mints the bearer tokens the
 [backend](/components/backend/overview/) verifies on every mutating run request,
 so every [review](/components/core/results/#reviews) a run carries is attributed
-to a named person.
-
-Accounts live in their own service, so the backend stores no credentials. The
-backend treats the auth service as an external dependency it asks who a token
-belongs to.
-
-## Identity on a private network
+to a named person. Accounts live in their own service, so the backend stores no
+credentials.
 
 The Test Cabinet's services sit on a private network, so reachability is the
-first line of access control. Identity is the layer on top of it that says who
-inside the network is acting. Reviews depend on it: an assessment is owned by a
-named reviewer, and a run can gather several independent reviews from different
-people.
-
-Self-registration is open because reaching the service already requires being on
-the private network.
+first line of access control and identity is the layer on top of it that says
+who inside the network is acting. Self-registration is open, because reaching
+the service already requires being on the private network.
 
 ## Responsibilities
 
@@ -67,9 +58,8 @@ of the system's contracts. Tokens are presented as
 - `DELETE /auth/profile/picture` — clears the signed-in account's avatar.
   Requires the account's token.
 - `GET /auth/users/{id}/picture` — an account's avatar bytes, served with their
-  stored content type. An open read, since avatars appear beside published
-  reviews. `404` when the account has no picture. An account's
-  `pictureUpdatedAt` is the cache-busting version.
+  stored content type. An open read. `404` when the account has no picture. An
+  account's `pictureUpdatedAt` is the cache-busting version.
 
 The account and token shapes are specified in
 [`auth.schema.json`](https://docs.testcabinet.ai/schema/backend-api/auth.schema.json).
@@ -101,6 +91,5 @@ which have defaults.
 | `TCAB_AUTH_DATABASE_URL` | Its own accounts database, separate from the backend's; the scheme picks SQLite or PostgreSQL. | `sqlite://./tcab-auth.sqlite?mode=rwc` |
 | `TCAB_AUTH_DB_AZURE_AD`  | Authenticate to PostgreSQL with a Microsoft Entra managed-identity token.                      | `false`                                |
 
-Like the backend, the auth service has no public surface and lives on the
-private network. It stores Argon2id password hashes, which the
-[backups](/deployment/backups/) page covers alongside the backend's database.
+It stores Argon2id password hashes, which the [backups](/deployment/backups/)
+page covers alongside the backend's database.

@@ -11,19 +11,18 @@ The run queue (`/jobs/…`) and the publish queue (`/publish-jobs/…`) are part
 the same API and are specified with the components that drive them: see
 [Dispatcher](/components/dispatcher/overview/) and
 [Driver](/components/driver/overview/). The bulk cancel controls over that queue
-are the exception and are specified [here](#stopping-runs-in-bulk), because they
-are an operator surface rather than a dispatch one.
+are specified [here](#stopping-runs-in-bulk) instead, as an operator surface.
 
 ## Conventions
 
 - The API is JSON over HTTP. Request and response bodies are camelCase, matching
   the [run record](/components/core/run-records/) contract.
 - A collection of objects is returned wrapped, under a named key (for example
-  `{ "testCases": [...] }`), so the response can grow new fields without
-  breaking clients. The three reads that return a plain list of values are bare
-  JSON arrays: the validation-file keys, a run's events, and a jam's prior
-  READMEs. The console-only [reviewer scheduling](#coverage-plans-ladders-and-the-review-buffer)
-  collections are bare arrays too, for the reason given there.
+  `{ "testCases": [...] }`). The three reads that return a plain list of values
+  are bare JSON arrays: the validation-file keys, a run's events, and a jam's
+  prior READMEs. The
+  [reviewer scheduling](#coverage-plans-ladders-and-the-review-buffer)
+  collections are bare arrays too.
 - Timestamps are RFC 3339 strings.
 - Harness slugs are those defined in [Harnesses](/components/core/harnesses/).
 - Ratings are the tiers defined in
@@ -54,38 +53,30 @@ configuration, so they are absent from this API. See
 
 ### `GET /healthz`
 
-Liveness probe and service identity. Always `200` while the process is serving.
-Returns the service status, the API contract version, and `storeReady`, whether
-the definition store can resolve test case versions yet.
-
-`storeReady` is reported here for display, on the console's Connections page. It
-is deliberately not what makes this endpoint `200`: a backend whose store is
-still filling is alive and must not be restarted.
+Liveness probe and service identity. Always `200` while the process is serving,
+including while the definition store is still filling. Returns the service
+status, the API contract version, and `storeReady`, whether the definition store
+can resolve test case versions yet.
 
 ### `GET /readyz`
 
 Readiness probe. `200` once the definition store holds versions the running
 build can read, `503` otherwise.
 
-Two states hold it at `503`. An empty store has nothing to resolve against. A
-store stamped with another record format holds versions this build cannot read
-(see [Test case definitions](/components/backend/overview/#test-case-definitions)),
-and serving it would answer with whatever subset happened to be re-ingested
-since. Both are cleared by an ingest scan.
+Two states hold it at `503`: an empty store, and a store stamped with another
+record format, which holds versions this build cannot read (see [Test case
+definitions](/components/backend/overview/#test-case-definitions)). Both are
+cleared by an ingest scan.
 
-Keep this separate from the `/healthz` liveness probe in every deployment. A
-backend whose definition store lives on an ephemeral volume starts with an empty
-store and re-ingests the whole catalog on boot, which takes minutes. A liveness
-probe on this signal would kill the pod mid-ingest and never converge, and a
-readiness probe on `/healthz` admits traffic to an empty store, so every run
-launched in that window fails with a spurious `test-case version … is not
-ingested` 404.
+Every deployment keeps this separate from the `/healthz` liveness probe. A
+backend whose definition store lives on an ephemeral volume re-ingests the whole
+catalog on boot, taking minutes, so a liveness probe on this signal would kill
+the pod mid-ingest and a readiness probe on `/healthz` would admit traffic to an
+empty store.
 
-The signal latches. Once the store is populated the backend stays ready and a
-later re-ingest does not withdraw it: re-ingest swaps each version into place
-atomically, so resolution keeps working throughout one, and the backend runs at
-a single replica, where going unready would empty its Service and fail every
-caller outright rather than 404 a single case.
+The signal latches. Once the store is populated the backend stays ready, and a
+later re-ingest does not withdraw it: a re-ingest swaps each version into place
+atomically, so resolution keeps working throughout one.
 
 ### `GET /config`
 
@@ -120,26 +111,23 @@ expanding to every version the case declares (`"carom"`), or a version-qualified
 version-qualified form re-ingests a single edited version without re-rendering
 the case's others.
 
-`force` overwrites a version already stored and re-renders its references. It is
-for development iteration on a version no run has been published against. A
-version that published runs reference is immutable and is revised by adding a
-new version.
+`force` overwrites a version already stored and re-renders its references, for
+development iteration on a version no run has been published against. A version
+that published runs reference is immutable and is revised by adding a new
+version.
 
 A scan against a store stamped with another record format is promoted to a
-forced whole-catalog scan, whatever the request asked for: no version in such a
-store can be read, so there is nothing for a partial scan to leave coherent.
-This is what repairs a store after a backend upgrade that changed the record
-shapes, including from the incremental re-ingest a local stack runs.
+forced whole-catalog scan, whatever the request asked for. This repairs a store
+after a backend upgrade that changed the record shapes.
 
 `catalogVersion` is an opaque token identifying the catalog content of a
 whole-catalog ingest, such as the calling build's commit. The backend records it
 in the store and, while the token is unchanged, reuses the already-ingested
-versions instead of re-rendering them, because the store already holds exactly
-that catalog. A changed or first-seen token forces a full re-ingest and advances
-the recorded marker, so content that changed under an unchanged version string
-is still picked up. The marker lives in the store, so a fresh store re-ingests
-unconditionally. A partial scan ignores `catalogVersion` and leaves the marker
-untouched.
+versions instead of re-rendering them. A changed or first-seen token forces a
+full re-ingest and advances the recorded marker, so content that changed under
+an unchanged version string is still picked up. The marker lives in the store,
+so a fresh store re-ingests unconditionally. A partial scan ignores
+`catalogVersion` and leaves the marker untouched.
 
 A full re-render can take a minute or more, so the response shape is content
 negotiated. By default the call answers once with the full JSON report. A client
@@ -159,11 +147,9 @@ discriminated by an `event` tag:
 
 The stream has already sent a `200` by the time it knows the outcome, so a late
 failure arrives as a closing `error` line rather than an HTTP error status.
-`scripts/reingest.sh` consumes this feed.
 
 A scan that actually (re)ingested a version queues a [public
-snapshot](/components/backend/snapshot/) refresh, so a repopulated or edited
-catalog re-exports corrected case metadata.
+snapshot](/components/backend/snapshot/) refresh.
 
 ## Test case resolution
 
@@ -179,8 +165,8 @@ test type, asset shape, difficulty, tags, and summary, read from the case's
 latest visible version, plus the case's
 [showcase](/components/core/showcase/#the-case-showcase) preview when that
 version has one: the first variant, in manifest order, that declares a
-showcase, with the media list the catalog's preview stage loops. The preview
-carries only the addressing; each file is fetched from the [showcase
+showcase, with its media list. The preview carries only the addressing; each
+file is fetched from the [showcase
 route](#get-test-casesslugversionsversionshowcasevariantfile), and the
 description rides the resolved version's variant.
 
@@ -214,19 +200,15 @@ description rides the resolved version's variant.
 }
 ```
 
-This is the **summary** half of the catalog contract, and it is deliberately
-self-sufficient: a client renders the whole catalog listing, preview stage
-included, from this one request.
-Anything heavier — the description, the variants with their prompts,
-seeded specs, references and checklists, plus the changelog and errata — lives on
-[`GET /test-cases/{slug}/versions/{version}`](#get-test-casesslugversionsversion)
-and is fetched only for the case a visitor opens. Folding that detail into the
-listing costs a request per version _and_ per variant, for every case in the
-catalog, before the listing can paint.
+This is the summary half of the catalog contract, and it is self-sufficient: a
+client renders the whole catalog listing from this one request. Anything
+heavier, the description, the variants with their prompts, seeded specs,
+references and checklists, plus the changelog and errata, lives on [`GET
+/test-cases/{slug}/versions/{version}`](#get-test-casesslugversionsversion) and
+is fetched only for the case a visitor opens.
 
 A case whose latest manifest cannot be read is omitted from this listing rather
-than failing it, so one unreadable sidecar costs that case's entry and not the
-whole catalog.
+than failing it.
 
 Schema:
 [`backend-api/test-case-catalog.schema.json`](https://docs.testcabinet.ai/schema/backend-api/test-case-catalog.schema.json).
@@ -361,20 +343,14 @@ match, or replay block. `404` if the version has not been ingested. Schema:
 An optional `engine` query parameter names the
 [engine](/components/core/engines/) each variant's `prompt` is rendered for. The
 [rendered specs route](#get-test-casesslugversionsversionspecsvariant) takes the
-same parameter, and the two are meant to be read together.
+same parameter, under the same rule. A case's `prompt.hbs` and its `.hbs` specs
+branch on the selected engine, so one stored template renders into different
+text depending on the runtime the build is written against.
 
-A case's `prompt.hbs` and its `.hbs` specs branch on the selected engine, so one
-stored template renders into different text depending on the runtime the build is
-written against. The engine is therefore a rendering input rather than part of a
-version's identity, which is why it rides as a query parameter here while the
-[validation baseline
-route](#get-test-casesslugversionsversionvalidation-baselineenginevariantfile)
-carries it as a path segment; there it names a distinct stored directory.
-
-A caller showing a run passes the engine that run recorded, including the explicit
-`none`, so the reader sees the text that run's harness received. A caller showing
-a case passes nothing and gets the engineless rendering, which is what `none`
-renders to. An unrecognised slug is a `400`.
+A caller showing a run passes the engine that run recorded, including the
+explicit `none`, so the reader sees the text that run's harness received. A
+caller showing a case passes nothing and gets the engineless rendering, which is
+what `none` renders to. An unrecognised slug is a `400`.
 
 ### `GET /test-cases/{slug}/versions/{version}/artifacts/{path...}`
 
@@ -387,10 +363,8 @@ if the key is unknown for the version.
 ### `GET /test-cases/{slug}/versions/{version}/specs/{variant}`
 
 The variant's full seeded spec set with each body already rendered for that
-variant, in seed order. This is the spec analogue of the inline prompt on the
-resolved version, and it is what a console shows on its Inputs tab. It takes the
-same optional `engine` query parameter, under the same rule: see [Rendering for
-an engine](#rendering-for-an-engine).
+variant, in seed order. It takes the same optional `engine` query parameter,
+under the same rule: see [Rendering for an engine](#rendering-for-an-engine).
 
 ### `GET /test-cases/{slug}/versions/{version}/references/{scope}/{file}`
 
@@ -413,8 +387,7 @@ empty for a version that declares no scripted items.
 ### `GET /test-cases/{slug}/versions/{version}/validation-baseline/{engine}/{variant}/{file}`
 
 Fetch one reference build's committed baseline validation media
-(`<item>__<output>.<ext>`), synthesized from the reference implementation. This
-is the case-scoped invariant counterpart to a run's own validation media. The
+(`<item>__<output>.<ext>`), synthesized from the reference implementation. The
 engine is part of the address because a variant has one reference implementation
 per [engine](/components/core/engines/), and a run is only comparable against
 the one it was itself built on.
@@ -423,10 +396,10 @@ the one it was itself built on.
 
 Fetch one media file of a variant's authored
 [case showcase](/components/core/showcase/#the-case-showcase), where `{file}` is
-the plain file name the carousel declares. The case-side counterpart of a run's
-`GET /runs/{id}/showcase/{file}`, addressed by case, version, and variant
-because the showcase is authored material committed with the version rather
-than run output. The content type follows the extension. Only a file the
+the plain file name the carousel declares. It is the case-side counterpart of a
+run's `GET /runs/{id}/showcase/{file}`, addressed by case, version, and variant
+because the showcase is authored material committed with the version rather than
+run output. The content type follows the extension. Only a file the
 variant's stored carousel lists resolves, and `showcase.toml` is never served.
 The catalog preview and the resolved version's `showcase` fields point here.
 
@@ -434,10 +407,9 @@ The catalog preview and the resolved version's `showcase` fields point here.
 
 The gameplay READMEs of earlier runs of a [game
 jam](/testing/game-jam/overview/) built by the required `model`, oldest first,
-across every harness: a model repeats its own ideas whichever harness drove it.
-The driver reads this before seeding a repeated jam run so the run can be briefed
-on earlier entries. Earlier runs count whether or not they were published; only
-those that captured a README appear.
+across every harness. The driver reads this before seeding a repeated jam run so
+the run can be briefed on earlier entries. Earlier runs count whether or not
+they were published; only those that captured a README appear.
 
 ## Test case groups
 
@@ -446,8 +418,7 @@ those that captured a README appear.
 The ingested [test-case groups](/components/core/test-case-groups/), under
 `groups`, in display order: the ordering rank is applied before serving and
 does not ride the wire. Each entry carries the group's slug, name, optional
-summary, and its member case slugs in authored order. An open read, backing the
-home page's per-group leaderboards.
+summary, and its member case slugs in authored order. An open read.
 
 ```jsonc
 {
@@ -469,24 +440,23 @@ reviews, then publish it (the [lifecycle](/components/core/results/#lifecycle)).
 Each requires a bearer token. Reads require none.
 
 A produced run's [run record](/components/core/run-records/) is stored privately
-when the run finishes. The [driver](/components/driver/overview/) reports it
-when it posts the job's terminal status, and the produced build and media land
-on the [artifact service](/components/artifacts/overview/), playable for review.
-The public release of the source repo and the Cloudflare build happens at
-publish time.
+when the run finishes, reported by the [driver](/components/driver/overview/)
+with the job's terminal status, and the produced build and media land on the
+[artifact service](/components/artifacts/overview/), playable for review. The
+public release of the source repo and the Cloudflare build happens at publish
+time.
 
 `POST /jobs/{id}/status`, the driver-authenticated status endpoint that carries
 that record, also accepts a `canceled` status, and it is the only status
 accepted on a job already in the terminal `canceled` state. Every other late
 report from a winding-down driver is discarded. A `canceled` status must carry a
-run record (`422` without one), and that record is normally a complete partial
-record: the driver [winds a gg run
-down](/components/driver/overview/#cancellation) and posts what the ordinary
-post-session path produced, including metrics, the collected tree and the
-session summary. The backend persists it with the events its relay accumulated
-and attaches the record id to the already-canceled job. The job keeps its
-`canceled` state and its cancellation detail, no completion notification fires,
-and no retry is enqueued.
+run record (`422` without one), normally a complete partial record: the driver
+[winds a gg run down](/components/driver/overview/#cancellation) and posts what
+the ordinary post-session path produced, including metrics, the collected tree
+and the session summary. The backend persists it with the events its relay
+accumulated and attaches the record id to the already-canceled job. The job
+keeps its `canceled` state and its cancellation detail, no completion
+notification fires, and no retry is enqueued.
 
 Only the driver of a killed gg run whose session had been launched posts this
 status. A killed run of any other harness, and a gg run killed before its
@@ -503,9 +473,9 @@ accepts follows its case version. A validator-rated run requires the single
 validators'; its `checklist` is optional and partial, carrying only the points
 the reviewer overrides. A legacy run takes `ratings` and the full checklist and
 refuses `aesthetic`. The review is attributed to the account the bearer token
-resolves to; the reviewer identity is taken from the token rather than the
-body. A run carries many reviews, one per account, and re-submitting from the
-same account updates that account's own review.
+resolves to, taken from the token rather than the body. A run carries many
+reviews, one per account, and re-submitting from the same account updates that
+account's own review.
 
 On a validator-rated run each `checklist` entry is the reviewer's verdict for
 one declared verdict id, an item id or an `<item>.<sub>` composite, with a
@@ -550,21 +520,15 @@ review, since it has no review checklist.
 
 The endpoint is idempotent while a release is under way. A run that already has
 a live publish job gets that job's id and live URL back rather than a second
-enqueue, so a double-click, a second console tab, or a retry after the live
-stream dropped re-attaches to the publish already running. This matters because
-a publish is not idempotent externally: every publish job runs `wrangler pages
-deploy`, which mints a brand-new Cloudflare Pages deployment, while the `gh`
-side reuses an existing repository, so two jobs for one run leave an orphaned
-public build behind, visible only on the Pages side. A partial unique index on
-the publish queue backs the check, so two concurrent requests cannot both
-enqueue.
+enqueue, and two concurrent requests cannot both enqueue. A publish is not
+idempotent externally: every publish job mints a brand-new Cloudflare Pages
+deployment, so two jobs for one run would leave an orphaned public build behind.
 
 A publish job whose publisher died before reporting stops blocking after an
-hour, since nothing reaps it and it would otherwise wedge the run's publishing
-forever, and a failed publish never blocks at all: it stays immediately
-retryable. As a second layer, the publisher itself re-checks the run's
-publication state before doing any external work, and skips the release,
-reporting the links the run already carries, when the run is already published.
+hour, and a failed publish never blocks at all: it stays immediately retryable.
+As a second layer, the publisher itself re-checks the run's publication state
+before doing any external work, and skips the release, reporting the links the
+run already carries, when the run is already published.
 
 ### `DELETE /runs/{id}`
 
@@ -581,20 +545,15 @@ and never fails the delete; it runs only when that URL and the service token are
 both configured. A tree a failed prune leaves behind is reclaimed by the
 [sweep](/components/backend/overview/#artifact-reclamation).
 
-The consoles expose this as a Delete run control on the run detail page, shown
-only for an unpublished run.
-
 Deletion acts on the stored row rather than on the record, so it also deletes a
-run whose stored record this build cannot read. The consoles offer that from the
-runs section's Unreadable tab, which reads
-[`GET /runs/unreadable`](#get-runsunreadable).
+run whose stored record this build cannot read.
 
 ### `GET /runs/unreadable`
 
 The stored runs whose records this build cannot read, as `{ runs, total }`,
-newest first by finish time. Each row carries the run's lifted identity — its id,
+newest first by finish time. Each row carries the run's lifted identity, its id,
 timestamps, case slug, version, variant and engine, harness, model, gg
-configuration, test type, run state, published flag and review count — together
+configuration, test type, run state, published flag and review count, together
 with the `error` its stored record produces when decoded now. An open read.
 
 `offset` and `limit` page it as the numbered mode of [`GET /runs`](#get-runs)
@@ -628,15 +587,11 @@ List stored runs, newest first. A `state` query parameter selects which runs:
   the default published listing.
 - `state=publishable` — the publish worklist: the subset of `state=unpublished`
   the publish gate accepts right now, which is a validator-rated completed run,
-  a reviewed legacy completed run, or one of the publishable failure tiers. This
-  backs the console's Unpublished tab, where every listed run is meant to be
-  selected and published, so the slice holds only rows the publish endpoint will
-  accept.
+  a reviewed legacy completed run, or one of the publishable failure tiers.
+  Every listed run is one the publish endpoint will accept.
 - `state=any` — the union of the published and unpublished slices: every
   recorded run, with no lifecycle predicate at all. This is what the consoles'
-  run listings draw from, so a produced, and therefore unreviewed, run sorts and
-  pages in the same listing as the published ones rather than being merged in
-  ahead of them client-side.
+  run listings draw from.
 
 `any` and `publishable` are offered only on the summary-plus-offset path below,
 since the cursor listings walk one lifecycle slice at a time.
@@ -653,17 +608,13 @@ launched, leaves no record, so it is listed by no selector.
 
 - Default, `fields` omitted — the full stored run per row, in the shape of the
   [detail endpoint](#get-runsid) (record, reviews, ratings, and score).
-- `fields=summary` — a lightweight `RunSummary` card per row: the run's id and
+- `fields=summary` — a lightweight summary card per row: the run's id and
   timestamps, its [subject](/components/core/run-records/#subject) including the
-  [test type](/testing/overview/), [metrics](/components/core/metrics/), the
-  `validationLoaded` signal, state, the functional `rating`, the `aesthetic`
-  rating, `validatorRated`, the `score` and `reviewCount`, the denormalized
-  case name, a performance run's fuel result,
-  the ranking slice of a run's code analysis, and links. That is enough to
-  render a run-list row, a card, a leaderboard entry, or a metrics aggregate
-  without fetching each full record; the [detail endpoint](#get-runsid) loads
-  the full record and the run's reviews one run at a time. This is the same
-  summary shape the [public
+  test type, [metrics](/components/core/metrics/), the `validationLoaded`
+  signal, state, the functional `rating`, the `aesthetic` rating,
+  `validatorRated`, the `score` and `reviewCount`, the denormalized case name, a
+  performance run's fuel result, the ranking slice of a run's code analysis, and
+  links. This is the same summary shape the [public
   projection](/components/backend/projection/) holds as its run row.
 
 #### Two pagination modes
@@ -689,43 +640,33 @@ The offset mode additionally accepts:
   each narrowing to runs matching that lifted subject value. They AND together,
   so `testCase=carom&model=…` is expressible, which the free-text `q` alone
   cannot do. A variant slug is unique only within its case, so `variant` is
-  paired with `testCase`, the case-detail Runs tab's slice, as `version`
-  normally is. `engine` matches the engine slug the run was launched under, and
-  the engineless run records the slug `none`.
+  paired with `testCase`, as `version` normally is. `engine` matches the engine
+  slug the run was launched under, and the engineless run records the slug
+  `none`.
 - Filter `versions`, a comma-separated list of exact versions, narrowing to runs
-  matching any of them. This is the case-detail Runs tab's version scope: the
-  console computes the versions in the anchored `major.minor` or major line from
-  the catalog and sends the concrete list. Like `version`, it silences
-  `latestVersions`.
+  matching any of them. Like `version`, it silences `latestVersions`.
 - Filter `testCases`, a comma-separated list of case slugs, narrowing to runs
-  matching any of them. This is the home page's group-leaderboard slice: one
-  query covers a [test-case group](/components/core/test-case-groups/)'s member
-  cases. It ANDs with the other filters, `testCase` included, so naming both
-  narrows to their intersection, and `latestVersions` composes with it as with
-  any case slice.
+  matching any of them, so one query covers a [test-case
+  group](/components/core/test-case-groups/)'s member cases. It ANDs with the
+  other filters, `testCase` included, and `latestVersions` composes with it as
+  with any case slice.
 - Filter `ggConfigId`, the id of a [gg configuration](/gg/configurations/),
   narrowing to the runs launched from it. A [coverage
   cell](/components/backend/coverage/#what-identifies-a-gg-cell) counts by the same
   id, so a listing narrowed by it holds exactly the runs behind that cell's figure.
-  The id rather than the configuration's name, which an operator rewrites freely and
-  two configurations may share. A run launched from no configuration matches no id.
+  A run launched from no configuration matches no id.
 - Filter `aesthetic`, one of the aesthetic tiers, narrowing to runs whose
   aggregate aesthetic rating, the worst run-wide tier across their reviews, is
   exactly that tier. A run no review has rated on that channel never matches.
-  `aesthetic=legendary` newest-first is the home page's showcase query.
 - Current versions `latestVersions=true`, restricting every run to its case's
   current `major.minor`: the newest one that case has a run for within the
   selected `state` slice. A case version is frozen once it has runs, so an older
-  minor is a different spec whose runs are not comparable with the current one's,
-  and this is the console listings' default. The current version is read off the
-  runs rather than the definition store, so a newly authored version does not
-  blank the listing before anything has run against it, and the static gallery,
-  which has only its run index, answers the identical question from the same
-  data. `latestVersions` is ignored when `version` names an exact version: an
-  explicit version is the more specific instruction, and AND'ing the two would
-  silently empty the listing whenever the picked version is not the current one.
+  minor is a different spec whose runs are not comparable with the current one's.
+  The current version is read off the runs rather than the definition store, so a
+  newly authored version does not blank the listing before anything has run
+  against it. `latestVersions` is ignored when `version` names an exact version.
 - Search `q`, a free-text match across the lifted subject columns: test case
-  slug, model id, harness slug, variant, and a [gg](/gg/overview/) run's
+  slug, model id, harness slug, variant, and a gg run's
   [configuration](/gg/configurations/) name. It matches the recorded ids rather
   than a model's resolved display name.
 - Sort `sort`, one of `date` (the default), `runtime`, `tokens`, `cost`,
@@ -733,12 +674,10 @@ The offset mode additionally accepts:
   (`asc` or `desc`), tie-broken by run id. `model` orders by the run's model or
   configuration identity: a gg run sorts by the configuration it was launched
   from, and everything else by its model id. `testCase` orders by the case's
-  **display name** — the name the listing shows, not the recorded slug — resolved
-  the same way each card's `caseName` is: the latest ingested manifest's `name`,
-  a case renamed on disk since the run was recorded (say a `pong` run, shown as
-  Carom) by its current name, and a slug the store does not know at all by the
-  slug itself. A column that displays names sorting by slugs would file Carom
-  under "p".
+  display name, resolved the same way each card's `caseName` is: the latest
+  ingested manifest's `name`, a case renamed on disk since the run was recorded
+  by its current name, and a slug the store does not know at all by the slug
+  itself.
 
 `limit` defaults to 50 and is clamped to 200.
 
@@ -760,15 +699,15 @@ cannot read answers `404` here and is reached through [`GET
   consumer can show the run's points and functional rating from the record
   immediately, offer publish without a review, and pre-fill a review from the
   validators' verdicts.
-- `rating`: the run's **functional** rating. On a validator-rated run the
+- `rating`: the run's functional rating. On a validator-rated run the
   validators' rating while the run has no reviews, present from completion,
   and the worst of its reviews' effective ratings once it has any; on a legacy
   run the review aggregate. Composed with the toolchain gate either way. `null`
-  while unset — a legacy run with no review.
-- `aesthetic`: the run's aggregate **aesthetic** rating, the worst run-wide
+  while unset, which is a legacy run with no review.
+- `aesthetic`: the run's aggregate aesthetic rating, the worst run-wide
   tier across its reviews. `null` when no review has rated that channel: every
   legacy run, and an unreviewed validator-rated one.
-- `score`: the run's points against its case version's checklist weights — the
+- `score`: the run's points against its case version's checklist weights, the
   same `{ earned, total, reviews, overallGrade }` the summary card carries. On
   a validator-rated run the validators' score while the run has no reviews
   (`reviews` is `0`), present from completion, and the mean of its reviews'
@@ -776,10 +715,8 @@ cannot read answers `404` here and is reached through [`GET
   run the mean across its reviews, `null` while unreviewed. `null` when the
   run's case version is not ingested.
 
-The four are always present (`null` rather than omitted when unset), so a
-consumer reads them without defaulting. The functional rating and the score
-come through the same seams the summary cards and the snapshot use, so a
-validator-rated run's detail and its card never disagree.
+The four are always present, `null` rather than omitted when unset. A run's
+detail and its summary card always report the same functional rating and score.
 
 ```jsonc
 {
@@ -818,9 +755,8 @@ validator-rated run's detail and its card never disagree.
 ### `GET /runs/{id}/events`
 
 The run's recorded normalized [event stream](/components/core/events/) as a JSON
-array, empty when the run recorded none. Raw harness output is never published,
-so it is not served here. This backs the run-detail Events tab. `404` for an
-unknown run.
+array, empty when the run recorded none. Raw harness output is never served.
+`404` for an unknown run.
 
 ### `POST /snapshot/refresh`
 
@@ -832,27 +768,26 @@ it covers, and whether the deploy hook fired.
 ## Coverage plans, ladders, and the review buffer
 
 The reviewer scheduling surface: what runs an account wants to exist, and how fast
-it wants them arriving. Every endpoint here requires a bearer token and is **keyed
-to the token's account** — there is no path parameter naming a user, and an id that
+it wants them arriving. Every endpoint here requires a bearer token and is keyed
+to the token's account. There is no path parameter naming a user, and an id that
 belongs to another account answers `404` rather than `403`, so one account cannot
-probe another's plan ids. The concepts, and the reasoning behind them, live on
+probe another's plan ids. The concepts live on
 [Coverage plans](/components/backend/coverage/) and
 [Ladders](/components/backend/ladders/); this section is the wire contract.
 
-Two conventions differ from the rest of this page, both because this is a
-console-only surface rather than a cross-component one: the collections return
-**bare JSON arrays** rather than the wrapped object [above](#conventions), and a
-plan's or ladder's _declaration_ and its _schedule_ (`outerAxis`, `paused`,
-`autoTopUp`, `bufferTarget`) are flattened into one object on the way out while
-being written separately — an absent `schedule` on a `PUT` means "leave it alone",
-so saving an edited model list can never un-pause a running plan.
+Two conventions differ from the rest of this page. The collections return bare
+JSON arrays rather than the wrapped object [above](#conventions), and a plan's or
+ladder's declaration and its schedule (`outerAxis`, `paused`, `autoTopUp`,
+`bufferTarget`) are flattened into one object on the way out while being written
+separately. An absent `schedule` on a `PUT` leaves the schedule alone, so saving
+an edited model list can never un-pause a running plan.
 
 ### Pinned cases
 
-Every case list on this surface — a `kind: "case"` group, and a plan's or ladder's
-one-off cases — carries the same `ReviewPlanCase`: `slug`, `version`, `variant`,
-and an optional `engine`. An absent `engine` is the `none` engine, so a list
-written without the field covers the engineless run.
+Every case list on this surface, a `kind: "case"` group and a plan's or ladder's
+one-off cases, carries the same fields: `slug`, `version`, `variant`, and an
+optional `engine`. An absent `engine` is the `none` engine, so a list written
+without the field covers the engineless run.
 
 A [cell](/components/backend/coverage/#pinned-cases) is that whole pin crossed with
 the combination, so every cell, launch, and queue entry this surface returns names
@@ -866,9 +801,9 @@ at save time.
 
 ### Combinations
 
-Every member list on this surface — a `kind: "combo"` group, a plan's or ladder's
-one-off members, and the body of `POST /ladders/{id}/climbers` — carries the same
-`ReviewPlanCombo`, which takes one of two shapes:
+Every member list on this surface, a `kind: "combo"` group, a plan's or ladder's
+one-off members, and the body of `POST /ladders/{id}/climbers`, carries the same
+member shape, which is one of two:
 
 | shape   | fields                                                                |
 | ------- | --------------------------------------------------------------------- |
@@ -890,7 +825,7 @@ endpoint that enqueues a gg run applies one rule to the capability set it carrie
 The set's `presetId` must name a gg configuration the token's account holds, or the
 launch is refused with `400`; `POST /gg/runs` and the gg runs of `POST /jobs` and
 `POST /jobs/batch` each answer to it, and a batch reports the refusal at that run's
-own index. The enqueued set records that configuration's **current** name in
+own index. The enqueued set records that configuration's current name in
 `preset`, so the label the run log slices by is the one the configuration bears
 rather than the one the client last read. A set carrying no `presetId` is enqueued
 as it arrived and belongs to no configuration's cell.
@@ -905,15 +840,12 @@ as it arrived and belongs to no configuration's cell.
   cascade. A `combo` member naming a gg configuration the account does not own is
   refused with `400`.
 - `GET|POST /coverage-plans`, `PUT|DELETE /coverage-plans/{id}` — the plans
-  themselves. Reads return `CoveragePlanOut` (declaration + schedule flattened).
-  `runsPerCell` is clamped server-side, because a mistyped target is a mistyped
-  number of queued runs.
-- `GET /coverage-plans/summary` — the roll-up the plans list and the Home widget
-  render: cell counts, runs missing, runs unreviewed by you, plus `paused` and
-  `autoTopUp` so the list can say _why_ a plan with missing runs is not filling
-  itself.
+  themselves. Reads return the declaration and schedule flattened.
+  `runsPerCell` is clamped server-side.
+- `GET /coverage-plans/summary` — the roll-up: cell counts, runs missing, runs
+  unreviewed by you, plus `paused` and `autoTopUp`.
 - `GET /coverage-plans/{id}/coverage` — the full matrix: one cell per
-  `case × combination` **in the plan's own emission order**, with the `outerAxis`
+  `case × combination` in the plan's own emission order, with the `outerAxis`
   echoed so a reader knows what that order means, and the `runsPending` /
   `runsUnreviewed` / `runsOutstanding` / `bufferTarget` roll-ups. A cell whose
   combination cannot be launched carries the reason in `unlaunchable`. Schemas:
@@ -921,91 +853,85 @@ as it arrived and belongs to no configuration's cell.
   [`coverage/coverage-matrix.schema.json`](https://docs.testcabinet.ai/schema/coverage/coverage-matrix.schema.json),
   [`coverage/coverage-group.schema.json`](https://docs.testcabinet.ai/schema/coverage/coverage-group.schema.json).
 
-Each cell reports `inFlight` and, separately, the `pending` subset of it — jobs the
+Each cell reports `inFlight` and, separately, the `pending` subset of it: jobs the
 queue is deliberately holding back behind a harness parallelism cap or a same-model
-game jam. That distinction is the answer to "my buffer is full but nothing is
-running", which is otherwise indistinguishable from a wedged queue.
+game jam.
 
 ### The review buffer
 
 - `GET|PUT /coverage-settings` — the account-wide `bufferTarget`: how many runs a
   top-up may leave outstanding (in flight, or finished and unreviewed by you) before
-  it stops. `GET` reports `isDefault` when the account has never chosen one — no row
-  is materialized on read. `0` is a legitimate value meaning "never top up".
+  it stops. `GET` reports `isDefault` when the account has never chosen one, and no
+  row is materialized on read. `0` is a legitimate value meaning "never top up".
   Schema: [`coverage/coverage-settings.schema.json`](https://docs.testcabinet.ai/schema/coverage/coverage-settings.schema.json).
 - `GET|PUT /coverage-plans/{id}/schedule` — one plan's `outerAxis`, `paused`,
   `autoTopUp`, and its optional `bufferTarget` override. The override is nullable
-  and null is **not** zero: null inherits the account's setting, `0` means never.
+  and null is not zero: null inherits the account's setting, `0` means never.
 - `POST /coverage-plans/{id}/topup` — walk the plan's cells in its own order, skip
-  the ones already at target (counted **globally**), and enqueue **whole cells**
+  the ones already at target (counted globally), and enqueue whole cells
   until the requester has `bufferTarget` runs outstanding. There is no background
   daemon; this endpoint is what enqueues. It answers with the buffer target in
   force, the occupancy it observed, every cell it launched with its job ids in
   emission order, and every cell it could not launch with why.
 
-  It is **serialized per plan** by a claim on the plan row — two console tabs, or
-  one fast double review-submit, would otherwise both observe the same shortfall and
-  both enqueue for it — and reports `skipped: "busy"` rather than waiting when the
-  claim is held, or `skipped: "paused"` when the plan is paused. A top-up that ran
-  and found nothing to do reports neither, with `enqueued: 0`. Otherwise idempotent:
-  it recomputes the shortfall on every call.
+  It is serialized per plan by a claim on the plan row, and reports
+  `skipped: "busy"` rather than waiting when the claim is held, or
+  `skipped: "paused"` when the plan is paused. A top-up that ran and found
+  nothing to do reports neither, with `enqueued: 0`. Otherwise idempotent: it
+  recomputes the shortfall on every call.
 
 - `GET /coverage-plans/{id}/queue` — the plan's completed runs the requesting
-  account has not reviewed, **in the plan's own order** rather than newest-first
+  account has not reviewed, in the plan's own order rather than newest-first
   like the global unreviewed listing, so reviewing walks the buffer in the order it
   was deliberately filled. Capped rather than paginated, with `truncated` set when
   there is more behind it.
 
 ### Halting
 
-Three controls per plan, and the same three per ladder, distinguished by what they
-cost rather than by how hard they sound:
+Three controls per plan, and the same three per ladder:
 
-| endpoint                             | pauses                           | cancels                                                |
-| ------------------------------------ | -------------------------------- | ------------------------------------------------------ |
-| `POST /coverage-plans/{id}/pause`    | yes (body: `{ "paused": true }`) | nothing                                                |
-| `POST /coverage-plans/{id}/halt`     | yes                              | its `queued` + `pending` jobs                          |
-| `POST /coverage-plans/{id}/halt-all` | yes                              | the above **plus** `dispatched`, `starting`, `running` |
+| endpoint                             | pauses                           | cancels                                            |
+| ------------------------------------ | -------------------------------- | -------------------------------------------------- |
+| `POST /coverage-plans/{id}/pause`    | yes (body: `{ "paused": true }`) | nothing                                            |
+| `POST /coverage-plans/{id}/halt`     | yes                              | its `queued` + `pending` jobs                      |
+| `POST /coverage-plans/{id}/halt-all` | yes                              | the above plus `dispatched`, `starting`, `running` |
 
-`pause` takes the state as a body rather than being two verbs, so a console can
-drive a toggle without tracking which direction it is going.
+`pause` takes the state as a body rather than being two verbs.
 
 Both halts reuse the same atomic cancel transition
 [`POST /jobs/{id}/cancel`](#stopping-runs-in-bulk) uses, and reach only jobs whose
-`origin` is this plan — a run launched by hand is never swept up. Both answer with
-`{ "canceled": n, "includedActive": bool }`. **The count is the contract**: a halt
-that reported only success could not be told apart from a halt whose scope was
-wrong, and those call for opposite next moves.
+`origin` is this plan, so a run launched by hand is never swept up. Both answer with
+`{ "canceled": n, "includedActive": bool }`.
 
 `halt-all` discards work that is partly or wholly paid for. A client must confirm
 before calling it and must never make it the default.
 
 ### Ladders
 
-A [ladder](/components/backend/ladders/) is a sibling of the coverage plan, not a
-mode of it: an ordered list of **rungs** (one [pinned case](#pinned-cases) each,
-addressed by a stable opaque id) that **climbers** ascend until a **gate** stops
-them. It reuses the plan's `kind: "combo"` groups, buffer, top-up, queue, and
-halting verbatim, so only its own endpoints are listed here.
+A [ladder](/components/backend/ladders/) is a sibling of the coverage plan: an
+ordered list of rungs (one [pinned case](#pinned-cases) each, addressed by a
+stable opaque id) that climbers ascend until a gate stops them. It reuses the
+plan's `kind: "combo"` groups, buffer, top-up, queue, and halting verbatim, so
+only its own endpoints are listed here.
 
 - `GET|POST /ladders`, `GET|PUT|DELETE /ladders/{id}` — the declaration: rungs,
   climbers, `runsPerCell`, and the single parameterised `gate` (`floor`,
   `threshold`, `unloadedCountsAsBroken`, `earlyStop`). A create with no `schedule`
-  takes the ladder default, which is **`paused: true`, `autoTopUp: true`** — a new
-  ladder enqueues nothing until it is enabled, and from then on each review feeds it
+  takes the ladder default, `paused: true, autoTopUp: true`: a new ladder
+  enqueues nothing until it is enabled, and from then on each review feeds it
   (see [A ladder starts disabled](/components/backend/ladders/#a-ladder-starts-disabled)).
-  Rungs are matched on their
-  stable ids and **reconciled, never replaced**, so a reorder, a version bump, or an
-  engine re-pin keeps every climber's recorded verdicts. A rung holding a
+  Rungs are matched on their stable ids and reconciled rather than replaced, so a
+  reorder, a version bump, or an engine re-pin keeps every climber's recorded
+  verdicts. A rung holding a
   [performance](/testing/performance/overview/) or
   [game jam](/testing/game-jam/overview/) case is refused with `400`: neither can
   ever produce a rating for the gate to read, so it would stall the climb silently.
   Schema: [`coverage/ladder.schema.json`](https://docs.testcabinet.ai/schema/coverage/ladder.schema.json).
 - `GET /ladders/{id}/progress` — the board: every climber's status
   (`climbing` / `awaitingReview` / `walled` / `held` / `toppedOut`), the rung it
-  stands on with the gate tally behind that answer, and its verdicts. A **read**:
+  stands on with the gate tally behind that answer, and its verdicts. It is a read:
   verdicts the gate has resolved but nobody has recorded are computed live and
-  flagged `recorded: false`, then persisted by the next top-up — a `GET` never
+  flagged `recorded: false`, then persisted by the next top-up, and a `GET` never
   advances a climber. A climber whose combination cannot be launched carries the
   reason in `unlaunchable`. Schema:
   [`coverage/ladder-progress.schema.json`](https://docs.testcabinet.ai/schema/coverage/ladder-progress.schema.json).
@@ -1017,49 +943,40 @@ halting verbatim, so only its own endpoints are listed here.
   rung was decided, so clearing it resumes exactly where the climb left off.
 - `POST /ladders/{id}/outcomes` — apply or clear a manual override of one recorded
   verdict: promote a climber past a rung its runs failed, or wall one they passed.
-  The override is stored **beside** the automatic verdict, so a recompute can never
+  The override is stored beside the automatic verdict, so a recompute can never
   silently undo it and `outcome: null` restores exactly what the gate says. `409`
-  when the rung has no verdict yet — an undecided rung has nothing to promote past,
-  and the control for "stop here regardless" is a hold.
+  when the rung has no verdict yet, since an undecided rung has nothing to promote
+  past and the control for "stop here regardless" is a hold.
 - `GET|PUT /ladders/{id}/schedule`, `POST /ladders/{id}/topup`,
   `GET /ladders/{id}/queue`, `POST /ladders/{id}/pause`, `.../halt`,
   `.../halt-all` — the plan endpoints above, with two differences. A top-up only
-  ever launches a climber's **current** rung, while the queue and the buffer cover
-  every rung a climber has **reached**, so a rung the gate has decided keeps
+  ever launches a climber's current rung, while the queue and the buffer cover
+  every rung a climber has reached, so a rung the gate has decided keeps
   offering the runs nobody reviewed
   ([why](/components/backend/ladders/#feeding-and-reviewing-are-different-sets-of-rungs)).
   And `pause` is the ladder's enable/disable switch: a ladder starts on its paused
   side, and `{ "paused": false }` only permits spending, so the caller that enables
-  follows with a `topup` (the console does).
+  follows with a `topup`.
 
 ## Stopping runs in bulk
 
-Three global sweeps back the console's Runs-page controls. All require a bearer
-token, and all answer
-`{ "canceled": n, "includedWaiting": bool, "includedActive": bool }` — the scope
-flags let a client phrase what it just did ("stopped 12 runs, including 3 already
-executing") from the response rather than from which button it pressed.
+Three global sweeps. All require a bearer token, and all answer
+`{ "canceled": n, "includedWaiting": bool, "includedActive": bool }`.
 
-| endpoint                    | sweeps                              | console label |
-| --------------------------- | ----------------------------------- | ------------- |
-| `POST /jobs/cancel-waiting` | `queued`, `pending`                 | Clear pending |
-| `POST /jobs/cancel-active`  | `dispatched`, `starting`, `running` | Kill active   |
-| `POST /jobs/cancel-all`     | both, in one transition             | Stop all      |
+| endpoint                    | sweeps                              |
+| --------------------------- | ----------------------------------- |
+| `POST /jobs/cancel-waiting` | `queued`, `pending`                 |
+| `POST /jobs/cancel-active`  | `dispatched`, `starting`, `running` |
+| `POST /jobs/cancel-all`     | both, in one transition             |
 
-They are named after the job states they reach rather than after those labels,
-because `pending` is a distinct state that is surfaced on its own — a
-"cancel-pending" endpoint that also swept `queued` would be actively misleading.
-
-These are **global and scoped to nothing**: they cancel matching jobs whatever
-launched them, including runs launched by hand and runs launched by another account.
-That is deliberate — they are the "stop the cabinet" controls, and narrowing them by
-account would silently skip every job recorded before jobs carried an account at
-all. The scoped equivalent is a plan's or ladder's
-[`halt`](#halting). Cancelling a single job by id remains
+These are global and scoped to nothing: they cancel matching jobs whatever
+launched them, including runs launched by hand and runs launched by another
+account. They are the "stop the cabinet" controls; the scoped equivalent is a
+plan's or ladder's [`halt`](#halting). Cancelling a single job by id remains
 `POST /jobs/{id}/cancel`, which these reuse rather than reimplement.
 
 `cancel-active` and `cancel-all` discard work in progress, so a client confirms
-first; `cancel-waiting` throws nothing away and does not need to.
+first. `cancel-waiting` needs no confirmation.
 
 ## Model probes
 
@@ -1069,13 +986,12 @@ run is spent on it. The backend replays gg's RaC turn-1 request per case: two
 scenarios over several input prompts (at least three prompts across them), on
 one program-language arm or on every arm. Each case's conversation is an
 embedded per-language fixture projected out of gg's own machinery by
-`scripts/gg-probe-fixtures.sh` — the real system prompt, the real bootstrap
-program and module listing, the real documentation views, and a seeded spec file
-view carrying its total-line-count heading — sent whole, never trimmed. The
-replay goes through OpenRouter chat/completions
-with the one `submit_program` tool offered and `tool_choice` forced to it, the
-wire shape gg sends, and each case is sampled `samples` times with no
-temperature set.
+`scripts/gg-probe-fixtures.sh`, holding the real system prompt, the real
+bootstrap program and module listing, the real documentation views, and a seeded
+spec file view carrying its total-line-count heading, sent whole and never
+trimmed. The replay goes through OpenRouter chat/completions with the one
+`submit_program` tool offered and `tool_choice` forced to it, the wire shape gg
+sends, and each case is sampled `samples` times with no temperature set.
 
 The two scenarios check different readiness properties:
 
@@ -1095,8 +1011,7 @@ labeled by how it dodged (`no-submission`, `stray-tool-call`, `no-program`).
 Call detection strips string literals and matches call spellings on identifier
 boundaries, so a documentation key passed as a string never reads as a call.
 The verdict is `ready` when every probed (language, scenario) group passes at
-least 80% of its scored calls, and `not-ready` otherwise; the per-call labels
-say why.
+least 80% of its scored calls, and `not-ready` otherwise.
 
 Probes are append-only history: a re-run is a new dated record. They are
 console-only data and never feed the public snapshot. A probe executes inside
@@ -1126,9 +1041,9 @@ Answers `202 Accepted` with the probe row already `running`; the probe executes
 in the backend and the row is read back by polling. `409` when a probe of the
 model is already running. `422` when `language` names no gg program language,
 or when the model has no OpenRouter slug to target: a probe targets a curated
-model's configured OpenRouter slug, falling back to the catalog slug itself
-when it reads as an OpenRouter id. `503` with
-code `openrouter_key_missing` when the backend has no key configured.
+model's configured OpenRouter slug, falling back to the catalog slug itself when
+it reads as an OpenRouter id. `503` with code `openrouter_key_missing` when the
+backend has no key configured.
 
 ### `GET /models/{slug}/probes`
 
@@ -1140,8 +1055,8 @@ overall pass rate, USD spend, and timestamps. An open read.
 
 One probe with its per-call items and the per-case requests exactly as sent
 under `requests`, one entry per probed (language, scenario, prompt) with its
-message array (the case's `submit_program` tool definition and forced
-`tool_choice` ride beside them on the wire to the provider). Each item records
+message array. The case's `submit_program` tool definition and forced
+`tool_choice` ride beside them on the wire to the provider. Each item records
 its (language, scenario, prompt, sample) coordinate, serving provider, finish
 reasons, outcome label and pass flag, the submitted program, the reply's own
 text with any separate reasoning text, token counts, USD cost, duration, and
@@ -1151,15 +1066,14 @@ the error that voided the call. An open read.
 
 The providers OpenRouter lists for the model, as name and context length, for
 pinning a probe to one. Requires a bearer token, because it reaches a third
-party on the caller's behalf, like the OpenRouter form fill.
+party on the caller's behalf.
 
 ## Cabinet statistics
 
 ### `GET /stats/cabinet`
 
 The cabinet's whole-of-corpus headline figures, folded over every stored run
-whatever its state or publication. An open read, backing the home page's totals
-band and activity chart.
+whatever its state or publication. An open read.
 
 Every figure here is folded from lifted columns, so the corpus covers the runs
 whose records this build cannot read as well. This count and a listing's `total`
@@ -1194,14 +1108,11 @@ therefore answer different questions.
 
 ## Provider and accuracy statistics
 
-Two aggregate reads fold cross-run statistics for the console's Providers view
-and the model detail's accuracy figures. Both fold from stored gg session
-summaries reached through the gg document index — the same per-id-reconciled,
-TTL-refreshed corpus the gg query endpoints read — so a request
-never re-parses the run store. Provider figures exist only on runs whose
-summary recorded `providerStats`; older runs are counted as scanned but
-contribute no provider rows, and a figure an older record omitted is never
-defaulted.
+Two aggregate reads fold cross-run statistics. Both fold from stored gg session
+summaries reached through the gg document index rather than re-parsing the run
+store. Provider figures exist only on runs whose summary recorded
+`providerStats`; older runs are counted as scanned but contribute no provider
+rows, and a figure an older record omitted is never defaulted.
 
 ### `GET /stats/providers`
 
@@ -1213,21 +1124,17 @@ Run evidence: one entry per upstream provider observed in any run's
 reports contributing runs, calls with their summed tokens and USD cost,
 length-capped rejections, and the attributed turns split into working turns and
 an error breakdown keyed by turn error type. The `provider: null` entry
-collects the calls that named no provider — a gateway that stamps none, or a
-turn whose call produced no reply to name one — and sorts last; a `modelId:
-null` row is a slice recorded before the agent's first usage delta named its
-model, on a run more than one model served.
+collects the calls that named no provider and sorts last; a `modelId: null` row
+is a slice recorded before the agent's first usage delta named its model, on a
+run more than one model served.
 
 Probe evidence: one entry per provider observed on
 [model-probe](#model-probes) items, per probed model: item count, case-check
-pass count, and errored calls. Probe rows are single-completion
-replays rather than full runs, which is why they are reported beside the run
-evidence rather than folded into it.
+pass count, and errored calls.
 
 The response also reports `runsScanned` (every stored gg run with a recorded
-session summary) and
-`runsWithProviderData`, so a consumer can present sparse provider coverage as
-sparse rather than as zero.
+session summary) and `runsWithProviderData`, so a consumer can present sparse
+provider coverage as sparse rather than as zero.
 
 ### `GET /stats/model-accuracy`
 
@@ -1249,22 +1156,21 @@ summary recorded the `toolCalls` dispatch total; a tool-calling run with
 failure evidence but no recorded total is tallied under
 `runsWithoutCallTotals` instead.
 
-A run that cannot be attributed to a single model — an older multi-model run
-with no per-model slices — is counted once under the response's
-`unattributableRuns`. Models are ordered by evidence volume (responses-as-code
-turns plus tool calls), largest first.
+A run that cannot be attributed to a single model is counted once under the
+response's `unattributableRuns`. Models are ordered by evidence volume
+(responses-as-code turns plus tool calls), largest first.
 
 ## The console stream
 
 One SSE connection carries everything the console learns about runs it is not
 individually watching: the alerts it shows a person, and the lifecycle transitions
-it maintains its in-flight list from. It is **worker-wide** — every console sees
-every run, whoever launched it — and **live-only**: nothing is replayed, and there
-is no backlog to catch up on.
+it maintains its in-flight list from. It is worker-wide, so every console sees
+every run whoever launched it, and live-only, with nothing replayed and no
+backlog to catch up on.
 
 ### `GET /notifications` — subscribe
 
-Opens the stream. Every frame is a **named** SSE event, so there is no unnamed
+Opens the stream. Every frame is a named SSE event, so there is no unnamed
 `message` frame and a client using `EventSource.onmessage` alone receives nothing.
 
 | `event:`       | payload               | topic                         |
@@ -1275,47 +1181,37 @@ Opens the stream. Every frame is a **named** SSE event, so there is no unnamed
 | `resync`       | `{ "dropped": n }`    | always                        |
 | `heartbeat`    | _(none)_              | always — every 15s while idle |
 
-The **hello frame** (`stream`) arrives first and carries the id the client quotes
-back to change its topics. The id is minted per _connection_, not per client: an
-`EventSource` reconnects on its own, and the reconnected stream is a new subscriber
-with default topics, so a client must re-apply what it wanted each time a hello
-frame arrives.
+The hello frame (`stream`) arrives first and carries the id the client quotes
+back to change its topics. The id is minted per connection rather than per
+client: an `EventSource` reconnects on its own, and the reconnected stream is a
+new subscriber with default topics, so a client must re-apply what it wanted
+each time a hello frame arrives.
 
-The **`resync` frame** says this client fell behind far enough that the backend
+The `resync` frame says this client fell behind far enough that the backend
 dropped messages for it. Nothing can be replayed, so the client's recovery is to
 re-read the authoritative lists (`GET /jobs/active`, and the run listing if it is
-showing produced runs). It exists because this is one of the two ways a client can
-stop being current _without_ the connection dropping.
+showing produced runs).
 
-The **`heartbeat` frame** covers the other. It carries no payload — its arrival is
-the whole message — and it is why an SSE _comment_ keep-alive is not enough here:
-the browser's `EventSource` consumes comments internally and surfaces nothing to
-the page, so a client cannot tell a healthy idle stream from a half-open socket
-that will never deliver anything again. With a heartbeat it can: arm a watchdog,
-rearm it on every frame, and treat an overdue one as a dead connection to tear
-down and reopen. `Sse::keep_alive` still runs alongside it, for the proxies that
-want the comment traffic.
+The `heartbeat` frame carries no payload; its arrival is the whole message. A
+client arms a watchdog, rearms it on every frame, and treats an overdue one as a
+dead connection to tear down and reopen. Comment keep-alive traffic runs
+alongside it, for the proxies that want it.
 
 ### Topics
 
 | topic           | carries                          | default |
 | --------------- | -------------------------------- | ------- |
-| `notifications` | a run finished; a publish failed | **on**  |
-| `runs`          | every in-flight list transition  | **off** |
+| `notifications` | a run finished; a publish failed | on      |
+| `runs`          | every in-flight list transition  | off     |
 
-The split is between _alerting_ and _list maintenance_. A notification is
-something a person should be told about, filed to the bell and raised as a toast,
-so it fires only for the two things worth interrupting someone over. A run event
-is every transition a list must reflect, including the many nobody wants a toast
-for — a queued run held back to `pending`, a driver reaching `starting`, forty runs
-ending at once under a bulk sweep.
+The split is between alerting and list maintenance. A notification is something
+a person should be told about, and it fires only for the two things worth
+interrupting someone over. A run event is every transition a list must reflect.
+The console holds one stream open for the whole session and carries the run
+churn only while a page is showing it.
 
-That is why `runs` is off by default and why the two are not one topic: the alerts
-must arrive wherever the user is, so the console holds one stream open for the
-whole session, while the churn is worth carrying only while a page is showing it.
-
-A `RunEvent` carries enough to patch a list in place without a round-trip — the
-run's identity and its state _after_ the transition:
+A `RunEvent` carries enough to patch a list in place without a round-trip, the
+run's identity and its state after the transition:
 
 ```json
 {
@@ -1333,35 +1229,30 @@ run's identity and its state _after_ the transition:
 ```
 
 The identity carries `engine` only when the run names one, an absent field being the
-`none` engine as it is on a launch request. It is there because the engine is a
-segment of the run's [cell](/components/backend/coverage/#pinned-cases): a client
-listing one cell's runs keeps another engine's live rows out with it, and an
-in-flight run has no record to read the engine from. `GET /jobs/active` reports the
+`none` engine as it is on a launch request. The engine is a segment of the run's
+[cell](/components/backend/coverage/#pinned-cases), so a client listing one cell's
+runs keeps another engine's live rows out with it. `GET /jobs/active` reports the
 same identity.
 
 `startedAt` is when the run itself began, present from the moment the job reaches
 `starting`. That transition is the anchor because the driver posts it immediately
-before taking the `startedAt` the produced record is measured from, so the reported
-start and the recorded one name the same moment. The enqueue time cannot serve in
-its place, since a run held behind a parallelism cap waited rather than ran. A
-queued, pending, or dispatched run omits the field, and a client showing that run
-shows neither a start nor a duration.
+before taking the `startedAt` the produced record is measured from, so the
+reported start and the recorded one name the same moment. A queued, pending, or
+dispatched run omits the field, since it has not started.
 
 A duration ticked from `startedAt` is elapsed wall clock, so it reads higher than the
-[run time](/components/core/metrics/#durations) the finished run records. That figure
-is frozen at teardown and has the wait for cluster capacity taken out of it, while
-the job holds at `running` through the post-run stages and the validation pass that
-follow, so a live duration steps down by their total once the run lands.
+[run time](/components/core/metrics/#durations) the finished run records, and steps
+down once the run lands.
 
 `kind` is `enqueued` (joined the queue), `state-changed` (moved between two
 non-terminal states), or `finished` (reached `succeeded`, `failed`, or `canceled`,
 and left the in-flight set). A `finished` event adds `recordId` when the run
-produced one and `detail` when it failed or was cancelled. Note that a cancelled
-run raises a run event but **no** notification: it is an operator action, not a
-failure to alert on — but the list must still drop the row.
+produced one and `detail` when it failed or was cancelled. A cancelled run raises
+a run event but no notification, since it is an operator action rather than a
+failure to alert on, and the list must still drop the row.
 
-A run that produced a record also makes the _produced-run_ listing stale, which the
-event does not carry; a client re-reads that separately.
+A run that produced a record also makes the produced-run listing stale, which the
+event does not carry. A client re-reads that separately.
 
 ### `PUT /notifications/{stream}/topics` — change topics
 
@@ -1372,18 +1263,15 @@ The control channel SSE itself does not have. Body:
 ```
 
 Both `notifications` and `runs` are optional, and an omitted field leaves that
-topic unchanged — so a client toggling one never disturbs the other. Answers `204`,
+topic unchanged, so a client toggling one never disturbs the other. Answers `204`,
 or `404` when no such stream is connected.
 
 A `404` is a normal, expected outcome rather than an error to surface: it means the
 client's stream died and its `EventSource` has reconnected (or is about to) under a
-new id. The recovery is to wait for the next hello frame and re-apply, which is
-what the console does.
+new id. The recovery is to wait for the next hello frame and re-apply.
 
 The topic change applies to the already-open stream, taking effect on the very
-next message. That is the whole point: the alternative — a second stream opened
-and closed per page — would drop the alerts riding the first one on every
-navigation, and cost a reconnect each time.
+next message.
 
 ### Staying current without polling
 
@@ -1399,23 +1287,16 @@ fall out of step:
 | a `resync` frame                     | messages the backend dropped for a client that fell behind   |
 | the watchdog forces a reopen         | a stream that died without saying so                         |
 
-The last two are the ones that make dropping the poll safe, and both are new: a
-lagged client used to be skipped in silence, and a wedged `EventSource` was
-undetectable. A poll was the only thing covering either.
+Two client-side details are load-bearing:
 
-Two client-side details are load-bearing, and a client that omits them will look
-correct in testing and go stale in production:
-
-- **Reopen a stream the browser has abandoned.** After enough failed attempts
+- Reopen a stream the browser has abandoned. After enough failed attempts
   `EventSource.readyState` settles on `CLOSED` and the browser stops retrying,
   permanently. Only an explicit reopen recovers it. While `readyState` is
-  `CONNECTING` a retry is already under way and should be left alone — racing it
-  just multiplies connections.
-- **Re-base, then replay.** The active-list snapshot describes the queue as of the
-  moment the request was served. Applying it over a list that live events have
-  since moved forward undoes them — re-adding a run that finished a moment ago, and
-  stranding that row for good with no poll to correct it. Buffer events for the
-  duration of the fetch and apply them on top of the snapshot.
+  `CONNECTING` a retry is already under way and is left alone.
+- Re-base, then replay. The active-list snapshot describes the queue as of the
+  moment the request was served, so applying it over a list that live events have
+  since moved forward would undo them. Buffer events for the duration of the fetch
+  and apply them on top of the snapshot.
 
 ## Reference rendering
 
