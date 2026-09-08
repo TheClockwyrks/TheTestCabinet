@@ -214,9 +214,9 @@ export function TestCaseDetailLayout({
 
   return (
     <PageLayout>
-      {/* Two rows spanning the content width: the title (with the version
-          selector sat immediately after it) against the difficulty rating, then
-          the tags against the page-level actions. */}
+      {/* Two rows spanning the content width: the title with its difficulty
+          rating against the coordinate selectors (version, variant, engine),
+          then the tags against the Run action. */}
       <header className={styles.header}>
         <div className={styles.titleRow}>
           <div className={styles.titleGroup}>
@@ -233,26 +233,18 @@ export function TestCaseDetailLayout({
               label="All test cases"
             />
             <h1 className={styles.title}>{testCase.name}</h1>
+            <span
+              className={styles.difficulty}
+              data-level={testCase.difficulty}
+            >
+              {testCase.difficulty}
+            </span>
+          </div>
+          {/* The coordinate selectors live in the header (not the tab strip):
+              they anchor every tab at once. All three read as one labelled
+              family, centered on the title's line. */}
+          <div className={styles.coordinateRow}>
             <VersionControl coordinate={coordinate} />
-          </div>
-          <span className={styles.difficulty} data-level={testCase.difficulty}>
-            {testCase.difficulty}
-          </span>
-        </div>
-        <div className={styles.metaRow}>
-          <div className={styles.tags}>
-            {testCase.tags.map((entry) => (
-              <span key={entry} className={styles.tag}>
-                {entry}
-              </span>
-            ))}
-          </div>
-          {/* Page-level actions live in the header (not the tab strip): the
-              variant and engine selectors anchor every tab at once, and the Run
-              action carries the whole viewed coordinate into the new-run form.
-              Keeping them here leaves the tab strip a clean single row that
-              reads like the run and model detail strips. */}
-          <div className={styles.actionRow}>
             <label className={styles.variant}>
               <span className={styles.variantLabel}>Variant</span>
               <select
@@ -286,27 +278,37 @@ export function TestCaseDetailLayout({
                 </select>
               </label>
             )}
-            {/* Only the consoles can launch runs; the static site omits this and
-                has no new-run form to land on. The whole anchored coordinate
-                carries through so the run form opens on exactly what is being
-                viewed. */}
-            {canExecute && (
-              <Link
-                className={styles.run}
-                to={routes.runNew({
-                  slug: testCase.slug,
-                  version: coordinate.version,
-                  variant: coordinate.variant.slug,
-                  engine:
-                    coordinate.engine === DEFAULT_ENGINE_SLUG
-                      ? undefined
-                      : coordinate.engine,
-                })}
-              >
-                Run ▸
-              </Link>
-            )}
           </div>
+        </div>
+        <div className={styles.metaRow}>
+          <div className={styles.tags}>
+            {testCase.tags.map((entry) => (
+              <span key={entry} className={styles.tag}>
+                {entry}
+              </span>
+            ))}
+          </div>
+          {/* Only the consoles can launch runs; the static site omits this and
+              has no new-run form to land on. The whole anchored coordinate
+              carries through so the run form opens on exactly what is being
+              viewed. Keeping the action here leaves the tab strip a clean
+              single row that reads like the run and model detail strips. */}
+          {canExecute && (
+            <Link
+              className={styles.run}
+              to={routes.runNew({
+                slug: testCase.slug,
+                version: coordinate.version,
+                variant: coordinate.variant.slug,
+                engine:
+                  coordinate.engine === DEFAULT_ENGINE_SLUG
+                    ? undefined
+                    : coordinate.engine,
+              })}
+            >
+              Run ▸
+            </Link>
+          )}
         </div>
       </header>
 
@@ -400,36 +402,50 @@ function CoordinateUnavailable({
   );
 }
 
-// The version beside the title: a selector when the case has more than one
-// published version, the plain badge otherwise. A superseded selection is
-// marked so reading an old deliverable never masquerades as the current one.
-// Shared with the game-jam detail layout, which mirrors this header.
+// The version selector, labelled like the variant and engine selectors it sits
+// beside: a selector when the case has more than one published version, the
+// plain badge otherwise. A superseded selection is marked so reading an old
+// deliverable never masquerades as the current one. Shared with the game-jam
+// detail layout, which mirrors this header.
 export function VersionControl({
   coordinate,
 }: {
   coordinate: SelectedCoordinate;
 }) {
+  // The marker sits beside the control rather than inside its label, so the
+  // label names the selector and nothing else.
+  const superseded = !coordinate.isLatest && (
+    <span className={styles.superseded}>superseded</span>
+  );
   if (coordinate.versions.length < 2) {
-    return <span className={styles.version}>{coordinate.version}</span>;
+    return (
+      <>
+        <span className={styles.variant}>
+          <span className={styles.variantLabel}>Version</span>
+          <span className={styles.version}>{coordinate.version}</span>
+        </span>
+        {superseded}
+      </>
+    );
   }
   return (
-    <span className={styles.versionControl}>
-      <select
-        className={styles.versionSelect}
-        aria-label="Version"
-        value={coordinate.version}
-        data-superseded={coordinate.isLatest ? undefined : true}
-        onChange={(event) => coordinate.setVersion(event.target.value)}
-      >
-        {coordinate.versions.map((entry) => (
-          <option key={entry} value={entry}>
-            {entry}
-          </option>
-        ))}
-      </select>
-      {!coordinate.isLatest && (
-        <span className={styles.superseded}>superseded</span>
-      )}
-    </span>
+    <>
+      <label className={styles.variant}>
+        <span className={styles.variantLabel}>Version</span>
+        <select
+          className={`${styles.variantSelect} ${styles.versionSelect}`}
+          value={coordinate.version}
+          data-superseded={coordinate.isLatest ? undefined : true}
+          onChange={(event) => coordinate.setVersion(event.target.value)}
+        >
+          {coordinate.versions.map((entry) => (
+            <option key={entry} value={entry}>
+              {entry}
+            </option>
+          ))}
+        </select>
+      </label>
+      {superseded}
+    </>
   );
 }

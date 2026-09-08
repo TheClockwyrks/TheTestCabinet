@@ -11,10 +11,10 @@
   margin-bottom: t.$space-lg;
 }
 
-// First row: the title with its version, then the difficulty rating pushed to
-// the right edge. Second row: the tag badges on the left, the page-level actions
-// on the right. Both span the full content width so the header uses the
-// available space.
+// First row: the title with its difficulty rating, then the coordinate
+// selectors pushed to the right edge. Second row: the tag badges on the left,
+// the Run action on the right. Both span the full content width so the header
+// uses the available space.
 .titleRow {
   display: flex;
   align-items: center;
@@ -23,12 +23,12 @@
   gap: t.$space-sm t.$space-md;
 }
 
-// Keeps the version sat immediately after the title, both aligned on their
-// shared baseline, while the row's space-between pushes the difficulty rating to
-// the far edge.
+// Keeps the difficulty rating sat immediately after the title, centered on the
+// title's line, while the row's space-between pushes the coordinate selectors
+// to the far edge.
 .titleGroup {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   flex-wrap: wrap;
   gap: t.$space-sm t.$space-md;
 }
@@ -79,9 +79,10 @@
 }
 
 .version {
+  font-size: t.$font-sm;
   font-variant-numeric: tabular-nums;
   color: t.$color-text-muted;
-  // Loose text in the title row, so it needs its own readability halo.
+  // Loose text in the header, so it needs its own readability halo.
   @include h.halo;
 }
 
@@ -165,12 +166,11 @@
   border-bottom-color: t.$color-accent;
 }
 
-// Page-level actions in the header: the variant selector paired with the Run
-// action (consoles only), right-aligned beneath the difficulty rating so they
-// read as the header's control column and never crowd the tab strip. Wraps to a
-// second line only if the variant name is extreme; the Run button stays beside
-// it.
-.actionRow {
+// The coordinate selectors (version, variant, engine) in the header's title
+// row, right-aligned and centered on the title's line, so they read as one
+// labelled family and never crowd the tab strip. Wraps to a second line only if
+// a name is extreme.
+.coordinateRow {
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -183,8 +183,7 @@
   align-items: center;
   gap: t.$space-sm;
 
-  // Grow to a comfortable tap target on narrow screens, with the Run button
-  // keeping its intrinsic size beside it.
+  // Grow to a comfortable tap target on narrow screens.
   @include bp.below(t.$bp-md) {
     flex: 1 1 auto;
   }
@@ -262,36 +261,12 @@
   @include h.halo;
 }
 
-// The version selector sits where the plain version badge otherwise does: in the
-// title group, on the title's baseline, paired with a "superseded" marker when
-// the selection is not the latest.
-.versionControl {
-  display: inline-flex;
-  align-items: center;
-  gap: t.$space-sm;
-}
-
-// Reads like the version badge (tabular numerals, muted) but is a real selector,
-// styled as the header's other selectors so the family is obvious.
+// The version selector on top of the shared selector styling: tabular numerals
+// (it lists versions), and a superseded selection reads in the warning accent
+// so an old deliverable never masquerades as the current one.
 .versionSelect {
-  font: inherit;
-  font-size: t.$font-sm;
   font-variant-numeric: tabular-nums;
-  padding: t.$space-xs t.$space-sm;
-  color: t.$color-text-muted;
-  background-color: s.$panel-bg;
-  border: t.$border-hairline solid t.$color-border;
-  border-radius: t.$radius-sm;
-  // After `padding`, so the mixin's chevron room (padding-right) wins.
-  @include f.select-control;
 
-  &:focus-visible {
-    outline: t.$border-hairline solid t.$color-accent;
-    border-color: t.$color-accent;
-  }
-
-  // A superseded selection reads in the warning accent so an old deliverable
-  // never masquerades as the current one.
   &[data-superseded] {
     color: t.$color-accent-2;
     border-color: t.$color-accent-2;

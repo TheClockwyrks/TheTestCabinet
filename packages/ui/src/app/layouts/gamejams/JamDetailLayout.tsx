@@ -115,8 +115,8 @@ export function JamDetailLayout({
 
   return (
     <PageLayout>
-      {/* Two rows spanning the content width: the title (with the version sat
-          immediately after it), then the tags against the page-level actions. A
+      {/* Two rows spanning the content width: the title against the coordinate
+          selectors (version, variant), then the tags against the Run action. A
           jam isn't tiered, so — unlike the test-case header — there is no
           difficulty badge; the theme reads through the tags. */}
       <header className={styles.header}>
@@ -131,18 +131,9 @@ export function JamDetailLayout({
               label="All game jams"
             />
             <h1 className={styles.title}>{testCase.name}</h1>
+          </div>
+          <div className={styles.coordinateRow}>
             <VersionControl coordinate={coordinate} />
-          </div>
-        </div>
-        <div className={styles.metaRow}>
-          <div className={styles.tags}>
-            {testCase.tags.map((entry) => (
-              <span key={entry} className={styles.tag}>
-                {entry}
-              </span>
-            ))}
-          </div>
-          <div className={styles.actionRow}>
             <label className={styles.variant}>
               <span className={styles.variantLabel}>Variant</span>
               <select
@@ -157,22 +148,31 @@ export function JamDetailLayout({
                 ))}
               </select>
             </label>
-            {/* Only the consoles can launch runs; the anchored coordinate
-                carries through so the run form opens on exactly what is being
-                viewed. */}
-            {canExecute && (
-              <Link
-                className={styles.run}
-                to={routes.runNew({
-                  slug: testCase.slug,
-                  version: coordinate.version,
-                  variant: coordinate.variant.slug,
-                })}
-              >
-                Run ▸
-              </Link>
-            )}
           </div>
+        </div>
+        <div className={styles.metaRow}>
+          <div className={styles.tags}>
+            {testCase.tags.map((entry) => (
+              <span key={entry} className={styles.tag}>
+                {entry}
+              </span>
+            ))}
+          </div>
+          {/* Only the consoles can launch runs; the anchored coordinate
+              carries through so the run form opens on exactly what is being
+              viewed. */}
+          {canExecute && (
+            <Link
+              className={styles.run}
+              to={routes.runNew({
+                slug: testCase.slug,
+                version: coordinate.version,
+                variant: coordinate.variant.slug,
+              })}
+            >
+              Run ▸
+            </Link>
+          )}
         </div>
       </header>
 
