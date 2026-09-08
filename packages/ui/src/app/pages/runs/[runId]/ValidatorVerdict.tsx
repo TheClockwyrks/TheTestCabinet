@@ -2,7 +2,6 @@ import { useMemo } from "react";
 import type { RunRecord } from "@clockwyrks/run-record";
 import { AestheticBadge, RatingBadge } from "@clockwyrks/ui";
 import {
-  AESTHETIC_META,
   RATING_META,
   aggregateAestheticRating,
   automatedVerdicts,
@@ -117,7 +116,9 @@ export function decideValidatorRun(
  * per-domain strip of effective functional ratings — overrides folded in. The
  * per-item detail (each point's verdict, media, assertions, failure cap, and
  * backing script) lives in the ReviewItemBrowser the verdict surfaces mount
- * beside this, so nothing is rendered twice.
+ * beside this, so nothing is rendered twice — and the browser's per-point cap
+ * badges carry the explanation of how failures decide the rating, so the header
+ * needs no prose of its own.
  *
  * `reviews` are the run's reviews: their checklists are the reviewers' verdict
  * overrides and their run-wide tiers aggregate into the aesthetic badge.
@@ -171,17 +172,6 @@ export function ValidatorVerdict({
           </p>
         </div>
       )}
-      <p className={styles.validatorNote}>
-        The verdicts are this run&rsquo;s validators&rsquo;: every scored point
-        was checked by its script, and each failing point caps the domains it
-        affects at its failure cap. A reviewer can override any point&rsquo;s
-        verdict — the rating and score fold those overrides in — and reviewers
-        also rate the run&rsquo;s aesthetics
-        {overallAesthetic
-          ? `: ${AESTHETIC_META[overallAesthetic].label.toLowerCase()} here, the worst any reviewer gave.`
-          : "; no reviewer has rated it yet."}
-      </p>
-
       {model.domains.length > 0 && (
         <div className={styles.domains}>
           <h2 className={styles.checklistHeading}>Domains</h2>

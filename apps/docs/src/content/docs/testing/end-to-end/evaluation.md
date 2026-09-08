@@ -147,11 +147,13 @@ no reviewer time.
 
 The run's Verdict tab presents the evidence in a single per-item browser, shown
 to every visitor including the public gallery. Each point shows its verdict,
-the failure cap and the domains a failure lowers, the validator script's detail
-and path and whether it ran, and the reference-vs-run media; an item rail marks
-each point pass or fail as the at-a-glance overview, and a compact strip shows
-each effective domain's functional rating. The figures and per-domain ratings
-shown are the effective ones, with any review [overrides](#review) folded in.
+the failure cap (as a rating badge, in the tier's color while the point fails
+and greyed out while it passes) and the domains a failure lowers, the validator
+script's detail and path and whether it ran, and the reference-vs-run media; an
+item rail marks each point pass or fail, with its cap badge, as the at-a-glance
+overview, and a compact strip shows each effective domain's functional rating.
+The figures and per-domain ratings shown are the effective ones, with any review
+[overrides](#review) folded in.
 
 ## Review
 

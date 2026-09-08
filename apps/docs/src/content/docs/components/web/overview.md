@@ -118,7 +118,10 @@ unmounted.
 
 On a [validator-rated](/testing/end-to-end/evaluation/#rating-channels) run the
 automated verdict is available the moment the run completes. It is
-informational, so every visitor sees it, the public gallery included.
+informational, so every visitor sees it, the public gallery included. Every
+capped point carries its failure cap as a rating badge, in the tier's colour
+while the point fails and the cap is in force, and dimmed while it passes or is
+undecided.
 
 A run's checklist is the case's checklist restricted to the run's engine,
 holding the points whose [validator covers that

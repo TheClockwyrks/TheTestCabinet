@@ -255,13 +255,42 @@ describe("ReviewChecklist on a validator-rated version", () => {
 
   it("shows each point's failure cap and the domains it affects, by name", () => {
     render(<ReviewChecklist model={rated} />);
-    expect(screen.getByText("caps at Broken")).toBeTruthy();
-    expect(screen.getByText(/Single player, Versus/)).toBeTruthy();
-    expect(screen.getByText("caps at Scuffed")).toBeTruthy();
+    // The definition view has no verdicts, so each cap reads in its tier's
+    // color (nothing has passed to grey it) and explains what a cap is.
+    const broken = screen.getByText("Broken");
+    expect(broken.getAttribute("data-rating")).toBe("broken");
+    expect(broken.getAttribute("data-muted")).toBeNull();
+    expect(broken.getAttribute("title")).toMatch(/^Failure cap: Broken\./);
+    expect(broken.getAttribute("title")).toMatch(/Single player and Versus/);
+    expect(screen.getByText(/caps Single player, Versus/)).toBeTruthy();
+    expect(screen.getByText("Scuffed")).toBeTruthy();
+  });
+
+  it("greys a passed point's cap and lights a failed point's", () => {
+    render(
+      <ReviewChecklist
+        model={rated}
+        verdicts={[
+          { id: "rules.serve", status: "pass" },
+          { id: "rules.ai", status: "fail" },
+        ]}
+      />,
+    );
+    const broken = screen.getByText("Broken");
+    expect(broken.getAttribute("data-muted")).toBe("true");
+    expect(broken.getAttribute("title")).toMatch(
+      /passed, so its cap does not apply/,
+    );
+    const scuffed = screen.getByText("Scuffed");
+    expect(scuffed.getAttribute("data-muted")).toBeNull();
+    expect(scuffed.getAttribute("title")).toMatch(
+      /failed, so its cap is in force/,
+    );
   });
 
   it("shows no caps on a legacy version even when a point carries one", () => {
     render(<ReviewChecklist model={{ ...rated, validatorRated: false }} />);
-    expect(screen.queryByText(/caps at/)).toBeNull();
+    expect(screen.queryByText(/caps /)).toBeNull();
+    expect(screen.queryByText("Broken")).toBeNull();
   });
 });

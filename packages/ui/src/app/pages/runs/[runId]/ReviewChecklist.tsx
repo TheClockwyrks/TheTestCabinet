@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
+import { FailureCapBadge, type FailureCapOutcome } from "@clockwyrks/ui";
 import {
-  FAILURE_CAP_META,
   GRADE_META,
   GRADE_MAX_POINTS,
   VERDICT_META,
@@ -429,6 +429,14 @@ function ChecklistRow({
   // not-scored point left unrated shows the blank unanswered marker rather than
   // collapsing the gutter and hanging left of its rated siblings.
   const bare = definition ?? false;
+  // Whether the cap is in force: only a failed, scored point lowers anything.
+  const capOutcome: FailureCapOutcome = notScored
+    ? "unscored"
+    : status === "fail"
+      ? "failed"
+      : status === "pass"
+        ? "passed"
+        : "undecided";
   return (
     <div
       className={`${styles.verdictRow} ${bare ? styles.verdictRowBare : rowClass}`}
@@ -454,17 +462,18 @@ function ChecklistRow({
         {description && <span className={styles.secondary}>{description}</span>}
         {cap && (
           <span className={styles.capLabel}>
-            <span
-              className={styles.capTier}
-              data-cap={cap.cap}
-              title={FAILURE_CAP_META[cap.cap].description}
-            >
-              caps at {FAILURE_CAP_META[cap.cap].label}
-            </span>
+            {/* The cap as a rating chip: colored while the point fails (its cap
+                is in force), greyed while it passed or went unrated. The
+                definition view has no verdict, so its chip carries no outcome. */}
+            <FailureCapBadge
+              cap={cap.cap}
+              outcome={bare ? undefined : capOutcome}
+              domains={cap.domains}
+            />
             {cap.domains.length > 0 && (
               <span className={styles.capDomains}>
                 {" "}
-                · {cap.domains.join(", ")}
+                caps {cap.domains.join(", ")}
               </span>
             )}
           </span>

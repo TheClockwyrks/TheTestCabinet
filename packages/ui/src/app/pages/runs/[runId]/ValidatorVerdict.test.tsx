@@ -146,9 +146,10 @@ describe("ValidatorVerdict", () => {
     // No reviewer has rated the aesthetic channel yet, so there is no aesthetic
     // badge — only the functional one.
     expect(screen.queryByLabelText(/^Aesthetic:/)).toBeNull();
-    expect(screen.getByText(/no reviewer has rated it yet/)).toBeTruthy();
-    // The explainer says overrides are possible, not that verdicts are locked.
-    expect(screen.getByText(/can override any point/)).toBeTruthy();
+    // No explainer paragraph: the item browser's per-point cap badges carry
+    // what a failure cap is, so the header is badges and points alone.
+    expect(screen.queryByText(/verdicts are this run/)).toBeNull();
+    expect(screen.queryByText(/no reviewer has rated it yet/)).toBeNull();
 
     // Per domain: the effective functional badge ONLY — no "capped by" list
     // (that detail lives in the item browser now) and no per-domain aesthetic.

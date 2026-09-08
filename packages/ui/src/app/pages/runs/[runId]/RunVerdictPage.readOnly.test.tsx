@@ -200,7 +200,7 @@ describe("RunVerdictPage read-only on a validator-rated run", () => {
     expect(
       screen.getByRole("navigation", { name: "Checked points" }),
     ).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Ball serves" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^Ball serves/ })).toBeTruthy();
     expect(screen.getByText("Serve still")).toBeTruthy();
     expect(screen.getByText("Reference")).toBeTruthy();
     expect(screen.getByText("This run")).toBeTruthy();
@@ -235,15 +235,41 @@ describe("RunVerdictPage read-only on a validator-rated run", () => {
     expect(within(rail).getAllByText("✓").length).toBeGreaterThan(0);
     expect(within(rail).getAllByText("✕").length).toBeGreaterThan(0);
 
-    // Stepping to the failing AI point, the browser shows the detail the strip
-    // no longer carries: the failure cap + affected domains, and the backing
-    // validator script's state and path.
-    fireEvent.click(
-      screen.getByRole("button", { name: "AI paddle tracks the ball (Solo)" }),
+    // Every rail row shows the tier its point caps at on failure: greyed on the
+    // passing serve (its Broken cap is not in force), lit on the failing AI
+    // point (its Scuffed cap is).
+    const serveNav = screen.getByRole("button", { name: /^Ball serves/ });
+    const serveCap = within(serveNav).getByText("Broken");
+    expect(serveCap.getAttribute("data-muted")).toBe("true");
+    expect(serveCap.getAttribute("title")).toMatch(
+      /passed, so its cap does not apply/,
     );
-    expect(
-      screen.getByText("Failing caps Single player at Scuffed."),
-    ).toBeTruthy();
+    const aiNav = screen.getByRole("button", {
+      name: /^AI paddle tracks the ball \(Solo\)/,
+    });
+    const aiCap = within(aiNav).getByText("Scuffed");
+    expect(aiCap.getAttribute("data-muted")).toBeNull();
+    expect(aiCap.getAttribute("title")).toMatch(
+      /failed, so its cap is in force/,
+    );
+
+    // The first (passing) point's panel also carries its cap line, greyed and
+    // saying the cap did not apply.
+    const serveNote = screen.getByText(/Failing would cap Single player/);
+    expect(serveNote.textContent).toBe(
+      "Failing would cap Single player; this item passed, so it does not apply.",
+    );
+    expect(serveNote.closest("p")!.getAttribute("data-applied")).toBeNull();
+
+    // Stepping to the failing AI point, the browser shows the detail the strip
+    // no longer carries: the failure cap (in force) + affected domains, and the
+    // backing validator script's state and path.
+    fireEvent.click(aiNav);
+    const aiNote = screen.getByText("Failing caps Single player.");
+    expect(aiNote.closest("p")!.getAttribute("data-applied")).toBe("true");
+    const panelCap = within(aiNote.closest("p")!).getByText("Scuffed");
+    expect(panelCap.getAttribute("data-muted")).toBeNull();
+    expect(panelCap.getAttribute("title")).toMatch(/^Failure cap: Scuffed\./);
     expect(
       screen.getByText(/The validator script ran to completion/),
     ).toBeTruthy();
@@ -258,7 +284,7 @@ describe("RunVerdictPage read-only on a validator-rated run", () => {
         <RunVerdictPage />
       </MemoryRouter>,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Ball serves" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Ball serves/ }));
 
     // The reason is the host's clock, and it is not dressed up as a fact about
     // the build's world.
@@ -277,7 +303,7 @@ describe("RunVerdictPage read-only on a validator-rated run", () => {
         <RunVerdictPage />
       </MemoryRouter>,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Ball serves" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Ball serves/ }));
 
     expect(screen.getByText(/precondition was not met/)).toBeTruthy();
   });

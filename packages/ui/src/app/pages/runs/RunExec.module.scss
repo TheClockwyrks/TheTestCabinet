@@ -713,15 +713,31 @@
   color: t.$color-text;
 }
 
-// The failure-cap consequence of a failing scored point, on the point itself
-// ("Failing caps Single player and Versus at Scuffed."): the detail that used to
-// live in the Domains strip's cap list, kept quiet but distinct from the muted
-// script note beneath it.
+// The failure cap of a browsed or reviewed point: the cap as a rating chip
+// (colored while the point fails and the cap is in force, greyed otherwise)
+// followed by the domains a failure lowers. Quiet by default; a cap in force
+// reads in the regular text color so the failing point's cost stands out.
 .capNote {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: t.$space-xs;
   margin: 0;
   font-size: t.$font-sm;
-  font-weight: 600;
-  color: t.$color-negative;
+  color: t.$color-text-muted;
+
+  &[data-applied="true"] {
+    color: t.$color-text;
+    font-weight: 600;
+  }
+}
+
+// A rail row's failure-cap chip, pushed to the row's end past the ellipsized
+// title, in the rail's smaller type.
+.navCap {
+  flex: 0 0 auto;
+  margin-left: auto;
+  font-size: 0.65rem;
 }
 
 // The validator script behind a browsed point: its state + failure detail, with

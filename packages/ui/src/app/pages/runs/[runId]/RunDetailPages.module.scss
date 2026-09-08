@@ -1261,13 +1261,6 @@ $verdict-gutter: 3.5rem;
   gap: t.$space-sm;
 }
 
-// The one-line explanation beneath a validator-rated headline: who decided what.
-.validatorNote {
-  margin: 0;
-  color: t.$color-text-muted;
-  font-size: t.$font-sm;
-}
-
 // A validator-rated domain row stacks its heading (name + badges) over the list
 // of failing points that capped it, so the row grows rather than squeezing.
 .domainHead {
@@ -1329,32 +1322,15 @@ $verdict-gutter: 3.5rem;
   color: t.$color-text-muted;
 }
 
-// The cap a failing point imposed, tinted by the tier it caps at (the legacy
-// checklist's per-row cap label).
-.capTier {
-  white-space: nowrap;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  font-size: 0.7rem;
-
-  &[data-cap="broken"] {
-    color: var(--tcab-rating-broken);
-  }
-  &[data-cap="scuffed"] {
-    color: var(--tcab-rating-scuffed);
-  }
-  &[data-cap="passable"] {
-    color: var(--tcab-rating-passable);
-  }
-  &[data-cap="great"] {
-    color: var(--tcab-rating-great);
-  }
-}
-
-// A checklist row's "caps at <tier> · <domains>" line on a validator-rated version.
+// A checklist row's failure-cap line on a validator-rated version: the cap as a
+// rating chip (colored while the point fails, greyed otherwise) followed by the
+// domains a failure lowers.
 .capLabel {
-  display: block;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: t.$space-xs;
+  margin-top: t.$space-2xs;
   font-size: 0.7rem;
   color: t.$color-text-muted;
 }

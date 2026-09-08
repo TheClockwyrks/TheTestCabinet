@@ -32,4 +32,11 @@
   &[data-rating="broken"] {
     --rating-color: var(--tcab-rating-broken);
   }
+
+  // A tier that is named but not in force (a failure cap on an item that did
+  // not fail) reads in the muted text color. Declared after the tier rules so it
+  // wins over them at equal specificity.
+  &[data-muted="true"] {
+    --rating-color: #{t.$color-text-muted};
+  }
 }
