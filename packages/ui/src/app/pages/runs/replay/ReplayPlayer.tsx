@@ -364,7 +364,15 @@ export function ReplayPlayer({
     );
   }
   if (loading || recording === null || resources === null) {
-    return <LoadingState size="section" label="Loading the replay…" />;
+    // A showcase replay plays on a stage whose geometry is already fixed (16:9,
+    // clipped), so the wait has to fit that box rather than reserve a section's
+    // worth of room inside it; anywhere else the player stands in page flow.
+    return (
+      <LoadingState
+        size={showcase ? "fill" : "section"}
+        label="Loading the replay…"
+      />
+    );
   }
   if (recording.frames.length === 0) {
     return <p className={styles.error}>This replay recorded no frames.</p>;

@@ -31,14 +31,32 @@ export interface SpinnerProps {
    * dead screen rather than a wait.
    */
   label?: string;
+  /**
+   * Scale the mark down to the box it is given rather than drawing it at its
+   * natural size. Set this whenever the spinner is dropped into an area with a
+   * height of its own — a fixed-aspect media stage, a tile — where the
+   * `squadron` at full size would overflow and be clipped. Off by default: a
+   * spinner that sits in ordinary page flow has all the room it needs.
+   */
+  fit?: boolean;
   className?: string;
 }
 
 // A branded loading indicator. The whole thing is a `role="status"` region so
 // screen readers announce it; the animation itself is an `<img>` whose alt is
 // empty (the caption carries the meaning) or falls back to "Loading".
-export function Spinner({ variant = "flap", label, className }: SpinnerProps) {
-  const classes = [styles.spinner, styles[variant], className]
+export function Spinner({
+  variant = "flap",
+  label,
+  fit = false,
+  className,
+}: SpinnerProps) {
+  const classes = [
+    styles.spinner,
+    styles[variant],
+    fit ? styles.fit : null,
+    className,
+  ]
     .filter(Boolean)
     .join(" ");
   const caption = label ?? (variant === "squadron" ? "Loading…" : undefined);

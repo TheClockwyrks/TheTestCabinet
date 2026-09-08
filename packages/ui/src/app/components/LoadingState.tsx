@@ -4,9 +4,11 @@ import styles from "./LoadingState.module.scss";
 /** How much of the viewport the pending content will occupy once it resolves.
  * `page` is a whole page body (the catalog, a detail page whose record hasn't
  * resolved); `section` is a large block inside a page that already has chrome
- * around it (a tab body, a panel). Both centre the mark; they differ only in how
- * much space they reserve while waiting. */
-export type LoadingStateSize = "page" | "section";
+ * around it (a tab body, a panel); `fill` is a box that already has a size of
+ * its own — a fixed-aspect media stage — which the mark must fit inside rather
+ * than reserve space for. `page` and `section` centre the mark and differ only
+ * in how much space they reserve while waiting. */
+export type LoadingStateSize = "page" | "section" | "fill";
 
 interface LoadingStateProps {
   /** The caption shown beneath the mark; also its accessible label. */
@@ -26,7 +28,7 @@ export function LoadingState({
 }: LoadingStateProps) {
   return (
     <div className={`${styles.wrap} ${styles[size]}`}>
-      <Spinner variant="squadron" label={label} />
+      <Spinner variant="squadron" label={label} fit={size === "fill"} />
     </div>
   );
 }
