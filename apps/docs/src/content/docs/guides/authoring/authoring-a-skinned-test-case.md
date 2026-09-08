@@ -49,10 +49,10 @@ skinned case is rigged and animated.
 The three skinned kinds differ in the surface character the extraction produces,
 a property of the binary rather than a manifest knob.
 
-| `asset_kind` | binary | surface character | pick for |
-| --- | --- | --- | --- |
-| `mc-skinned` | `mc-skin` | low poly: coarse grid, chunky faceted surface | stylized characters |
-| `sn-skinned` | `sn-skin` | smooth mid-fidelity: watertight, uniform, rounded | smooth organic creatures |
+| `asset_kind` | binary    | surface character                                     | pick for                         |
+| ------------ | --------- | ----------------------------------------------------- | -------------------------------- |
+| `mc-skinned` | `mc-skin` | low poly: coarse grid, chunky faceted surface         | stylized characters              |
+| `sn-skinned` | `sn-skin` | smooth mid-fidelity: watertight, uniform, rounded     | smooth organic creatures         |
 | `dc-skinned` | `dc-skin` | high fidelity: fine grid, preserves edges and corners | armored, hard-surface characters |
 
 The kind is a property of the whole version, so a case is exactly one kind. The

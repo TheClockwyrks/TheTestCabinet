@@ -137,8 +137,8 @@ describe("a cue names one real frame", () => {
     harness.debug.setArmed("arc");
     harness.debug.setPreview(30, 20);
     harness.debug.place();
-    harness.debug.sellTower(id);
     harness.debug.setTowerTripped(id, true);
+    harness.debug.sellTower(id);
     harness.debug.setScreen("victory");
     harness.debug.setMenuIndex(1);
     expect(harness.cues).toHaveLength(0);

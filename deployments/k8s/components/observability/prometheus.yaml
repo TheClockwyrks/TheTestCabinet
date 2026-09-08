@@ -59,7 +59,8 @@ storage:
 scrape_configs:
   # Per-container CPU and memory, straight from each node's kubelet. This is the
   # data behind "how much memory does a run pod ACTUALLY use" — the question that
-  # decides whether a memory limit is a safe ceiling or a scheduled OOM kill.
+  # sizes a run pod's memory REQUEST (run pods carry no limit) and decides whether
+  # a service's memory limit is a safe ceiling or a scheduled OOM kill.
   - job_name: kubelet-cadvisor
     # cAdvisor recomputes its stats on the kubelet's housekeeping interval (~10-15s),
     # so scraping faster than this only resamples the same numbers. Peak detection
@@ -108,8 +109,10 @@ scrape_configs:
       # high-water mark, maintained continuously by the kernel, so it captures a
       # spike that occurred BETWEEN two scrapes. Working-set is what the kubelet
       # actually evicts on, and the `spec_*` series record what the pod was
-      # configured with, so a query can compare real peaks against the declared
-      # ceiling without cross-referencing manifests.
+      # configured with, so a query can compare a service's real peaks against its
+      # declared ceiling without cross-referencing manifests. (Run pods have no
+      # memory limit, so their `spec_memory_limit_bytes` is the cgroup `max`
+      # sentinel; compare their peaks against the configured request instead.)
       #
       # The cfs throttling counters are here to check the other half of the resource
       # story: CPU oversubscription is only acceptable while throttling stays low,

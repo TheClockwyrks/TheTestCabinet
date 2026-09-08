@@ -8,18 +8,18 @@
 // under the title and tagline." specs/ui.md ("Presentation") fixes "no palette,
 // no font, and no styling, and each screen's layout is yours except where a
 // table below places one element relative to another", so the copy is looked
-// for folded and the only arrangement asserted is the one the file states: each
-// item above the next.
+// for ignoring case and whitespace and the only arrangement asserted is the one
+// the file states: each item above the next.
 //
 // WHY THE WORLD IS POSED AS IT IS. Nothing is posed: the harness's opening
 // reset leaves the game on `title`, which is where this copy lives, and one
 // frame is run to read what it draws. No menu is touched, so the frame read is
 // the screen as it is entered.
 //
-// THE TOLERANCE. The copy is matched folded — lower-cased, with spaces, dashes
-// and underscores removed, across consecutive runs of text — so a build that
-// letter-spaces its title, wraps its highlighted item in marks of its own, or
-// draws a line word by word passes. The stacking is a strict inequality between
+// THE TOLERANCE. The copy is matched ignoring case and whitespace, across the
+// runs of text the frame drew joined in reading order (the shared harness's
+// `drewTextAnywhere`) — so a build that letter-spaces its title, wraps its
+// highlighted item in marks of its own, or draws a line word by word passes. The stacking is a strict inequality between
 // two drawn rows, which no tolerance can soften.
 
 import { afterEach, beforeEach, it } from "vitest";

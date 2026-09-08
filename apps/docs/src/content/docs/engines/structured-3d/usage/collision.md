@@ -237,7 +237,13 @@ and name the actor itself in `ignore` so a ray leaving an actor skips its own
 collider. An actor's forward is `FORWARD` turned by its rotation.
 
 ```ts
-import { FORWARD, Pawn, add, quatRotate, vec3 } from "@clockwyrks/structured-3d";
+import {
+  FORWARD,
+  Pawn,
+  add,
+  quatRotate,
+  vec3,
+} from "@clockwyrks/structured-3d";
 import type { Actor } from "@clockwyrks/structured-3d";
 import { CHANNELS, EYE_HEIGHT, SIGHT_RANGE, TAGS } from "./constants";
 

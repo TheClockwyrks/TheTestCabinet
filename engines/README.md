@@ -7,7 +7,7 @@ engines also own rendering and a gameplay framework of their own.
 
 An engine is a **run dimension**: it is selected per run alongside the test case,
 variant, harness, and model, and it defaults to `none`. A case declares only the
-engines it *supports*, and a run naming an engine outside that set is rejected
+engines it _supports_, and a run naming an engine outside that set is rejected
 before any container work begins. An engine documents itself from its own
 package, so a case's specs state only what is specific to that game.
 
@@ -36,13 +36,13 @@ the per-engine catalogue is under
 
 Each `engine.toml` declares:
 
-| Field | Meaning |
-| --- | --- |
-| `slug` | Stable slug; must match the directory name. |
-| `name` | Human-readable name, shown by `tcab engines`. |
-| `description` | What the runtime provides, for display. |
-| `package` | Optional npm package providing the runtime. Absent for an engine that vendors no runtime. |
-| `docs` | Optional directory inside the package holding the documentation seeded into the run workspace. |
+| Field         | Meaning                                                                                        |
+| ------------- | ---------------------------------------------------------------------------------------------- |
+| `slug`        | Stable slug; must match the directory name.                                                    |
+| `name`        | Human-readable name, shown by `tcab engines`.                                                  |
+| `description` | What the runtime provides, for display.                                                        |
+| `package`     | Optional npm package providing the runtime. Absent for an engine that vendors no runtime.      |
+| `docs`        | Optional directory inside the package holding the documentation seeded into the run workspace. |
 
 ## The runtime
 

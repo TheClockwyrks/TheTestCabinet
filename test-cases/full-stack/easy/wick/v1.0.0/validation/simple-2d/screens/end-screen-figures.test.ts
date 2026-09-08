@@ -28,9 +28,9 @@
 // fail.
 //
 // THE TOLERANCE. None on the snapshot: three whole counts. On the frame each
-// figure is matched as a whole number in the frame's text, so a neighbouring
-// figure cannot supply it, and the clock as the `m:ss` spelling specs/ui.md
-// fixes.
+// figure is matched as a whole token of the frame's text through `hasToken`,
+// so a neighbouring figure cannot supply it, and the clock the same way in the
+// `m:ss` spelling specs/ui.md fixes.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual } from "../assert";
@@ -38,9 +38,10 @@ import { clockText } from "../constants";
 import {
   captureStill,
   createHarness,
-  drewPhrase,
   endFallen,
+  hasToken,
   isolate,
+  textReadings,
   type Harness,
 } from "../harness";
 
@@ -78,9 +79,14 @@ it("keeps and draws the ended run's clock, level, and kills", async () => {
   assertEqual(ended.run.level, LEVEL, "the level the end screen reports");
   assertEqual(ended.run.kills, KILLS, "the kills the end screen reports");
 
+  // The raw calls and the logical runs they spell, both (`textReadings`): a
+  // figure drawn a glyph per call is the number it is off the runs, and one
+  // drawn a narrow gap after its label, which the run rule merges into
+  // `KILLS143`, still stands alone as the raw call.
+  const lines = textReadings(calls);
   const figures = [clockText(TICK), String(LEVEL), String(KILLS)];
   assertDeepEqual(
-    figures.filter((text) => !drewPhrase(calls, text)),
+    figures.filter((figure) => !hasToken(lines, figure)),
     [],
     "the ended run's figures, missing from the end screen's frame",
   );

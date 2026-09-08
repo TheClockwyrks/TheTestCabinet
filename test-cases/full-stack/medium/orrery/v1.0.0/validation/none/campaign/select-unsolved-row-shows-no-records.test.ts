@@ -39,21 +39,23 @@
 import { afterEach, beforeEach, it } from "vitest";
 import {
   assertDeepEqual,
-  assertDefined,
   assertEqual,
   assertGreaterThan,
   assertNotNull,
   assertTrue,
 } from "../assert";
+import { drewTextAnywhere } from "../case-harness/text";
 import { METRICS } from "../constants";
 import {
   captureStill,
   createHarness,
+  drawnTextRuns,
+  lineWith,
   openChallenge,
   openSelect,
-  textDraws,
+  textLines,
   type Harness,
-  type TextDraw,
+  type TextLine,
 } from "../harness";
 
 /** The two rows read: challenge 1, unlocked and unsolved, and challenge 4, locked. */
@@ -75,31 +77,6 @@ beforeEach(async () => {
 afterEach(async () => {
   await h.dispose();
 });
-
-/** One baseline the frame drew text on, and the runs on it read left to right. */
-interface Line {
-  y: number;
-  text: string;
-}
-
-/** The frame's text runs gathered into the baselines they were drawn on. */
-function linesOf(draws: readonly TextDraw[]): Line[] {
-  const baselines = new Map<number, TextDraw[]>();
-  for (const draw of draws) {
-    const on = baselines.get(draw.y) ?? [];
-    on.push(draw);
-    baselines.set(draw.y, on);
-  }
-  return [...baselines.entries()]
-    .map(([y, on]) => ({
-      y,
-      text: [...on]
-        .sort((a, b) => a.x - b.x)
-        .map((draw) => draw.text)
-        .join(""),
-    }))
-    .sort((a, b) => a.y - b.y);
-}
 
 /** Text with its case and its whitespace dropped. */
 function squash(text: string): string {
@@ -123,9 +100,9 @@ const GROUP = "[,'\\u00A0\\u202F\\u2009]";
 const WHOLE = new RegExp(`\\d{1,3}(?:${GROUP}\\d{3})+|\\d+`, "gu");
 
 /** The baseline a challenge's row was drawn on, found by its name. */
-function baselineOf(lines: readonly Line[], name: string): number {
-  const row = lines.find((line) => squash(line.text).includes(squash(name)));
-  assertDefined(
+function baselineOf(lines: readonly TextLine[], name: string): number {
+  const row = lineWith(lines, name);
+  assertNotNull(
     row,
     `the campaign select screen draws a row carrying ${JSON.stringify(name)}, ` +
       "which is how the row this point reads is found; the lines the frame drew " +
@@ -135,7 +112,7 @@ function baselineOf(lines: readonly Line[], name: string): number {
 }
 
 /** The closest two of the course's row baselines come, which bounds a row's band. */
-function pitchOf(lines: readonly Line[], names: readonly string[]): number {
+function pitchOf(lines: readonly TextLine[], names: readonly string[]): number {
   const rows = names
     .map((name) => baselineOf(lines, name))
     .sort((a, b) => a - b);
@@ -187,8 +164,12 @@ it("draws no record figures on an unsolved row, locked or unlocked", async () =>
   await openSelect(h, "campaign");
   await h.debug.setSelectIndex(SOLVED_ROW);
   await h.advance(1);
-  const drawn = textDraws(await h.lastCalls());
-  const lines = linesOf(drawn);
+  const calls = await h.lastCalls();
+  const drawn = drawnTextRuns(calls);
+  // The rows are read as `drawing.ts`'s `textLines`: the shared harness's
+  // logical runs gathered onto the baselines they share, so a row drawn as one
+  // run, as a run per word or as a run per glyph reads the same way.
+  const lines = textLines(calls);
   await captureStill(h, "unsolved");
 
   const posed = await h.snapshot();
@@ -213,10 +194,9 @@ it("draws no record figures on an unsolved row, locked or unlocked", async () =>
       "locked, so the two rows read are one of each",
   );
 
-  const screen = squash(lines.map((line) => line.text).join(" "));
   for (const metric of METRICS) {
     assertTrue(
-      screen.includes(String(RECORDS[metric])),
+      drewTextAnywhere(calls, String(RECORDS[metric])),
       `the frame draws the solved challenge's ${metric} record, so this is a ` +
         "screen on which a records entry reaches the rows at all",
     );

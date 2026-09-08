@@ -41,7 +41,7 @@ import {
   poseNodes,
   poseWorm,
   startPlaying,
-  textDraws,
+  textDrawForms,
   type Harness,
 } from "../harness";
 
@@ -186,8 +186,10 @@ it("draws the HUD readouts inside the HUD bar", async () => {
   const h = await board(MID_ROW);
 
   // One frame is run and its operations kept, so every span below is one that
-  // frame drew.
-  const spans = textDraws(await h.frameCalls());
+  // frame drew — the calls and the runs they spell, so a readout letter-spaced
+  // a glyph per call is found in its run, placed at the baseline its glyphs
+  // share.
+  const spans = textDrawForms(await h.frameCalls());
   const readouts = spans.filter(
     (span) =>
       span.text.includes(String(SCORE)) ||

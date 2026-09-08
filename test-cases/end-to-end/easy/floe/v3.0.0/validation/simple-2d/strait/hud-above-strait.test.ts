@@ -57,7 +57,7 @@ import {
   createHarness,
   drawFrame,
   drawnImages,
-  drawnTextSpans,
+  drawnTextRuns,
   identifySprite,
   poseBear,
   poseLane,
@@ -166,8 +166,10 @@ it("draws the readouts inside the HUD bar and none of the strait's bodies there"
   captureStill(h, "hud");
   const reported = h.snapshot().critter;
 
-  // The readouts: every run of text carrying each, and the anchor it was drawn at.
-  const runs = drawnTextSpans(h, calls);
+  // The readouts: every run of text carrying each, and the anchor it was drawn
+  // at. The LOGICAL runs, so a readout letter-spaced a glyph per `fillText` is
+  // found by what it spells; a merged run keeps its glyphs' shared baseline.
+  const runs = drawnTextRuns(h, calls);
   const readouts = [
     {
       what: `the ${HUD_LEVEL_LABEL} readout`,

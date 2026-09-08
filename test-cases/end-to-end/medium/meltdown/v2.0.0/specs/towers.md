@@ -27,14 +27,14 @@ A footprint's size and shape are the same at every rotation.
 
 ## The emitters
 
-| Tower | Size | Cost | Range | Fire rate | Base damage | `heatPerShot` | Redline | Mass | Radiators (local) |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Arc | 2 | 15 | 6.0 | 2.0 | 6 | 10.3 | 80 | 1.0 | N, S |
-| Stutter | 2 | 40 | 5.0 | 7.0 | 2.0 | 4.2 | 60 | 0.5 | N, E |
-| Rime | 2 | 45 | 5.5 | 2.4 | 4 | 7.0 | 100 | 1.1 | N, S, E |
-| Flak | 2 | 60 | 8.0 | 2.6 | 6 | 9.6 | 78 | 0.9 | N, S |
-| Bloom | 3 | 150 | 6.0 | 1.2 | 10 | 27.3 | 82 | 1.8 | N, E |
-| Lance | 4 | 150 | 12.0 | 0.8 | 43 | 48.9 | 92 | 2.8 | N, E |
+| Tower   | Size | Cost | Range | Fire rate | Base damage | `heatPerShot` | Redline | Mass | Radiators (local) |
+| ------- | ---- | ---- | ----- | --------- | ----------- | ------------- | ------- | ---- | ----------------- |
+| Arc     | 2    | 15   | 6.0   | 2.0       | 6           | 10.3          | 80      | 1.0  | N, S              |
+| Stutter | 2    | 40   | 5.0   | 7.0       | 2.0         | 4.2           | 60      | 0.5  | N, E              |
+| Rime    | 2    | 45   | 5.5   | 2.4       | 4           | 7.0           | 100     | 1.1  | N, S, E           |
+| Flak    | 2    | 60   | 8.0   | 2.6       | 6           | 9.6           | 78      | 0.9  | N, S              |
+| Bloom   | 3    | 150  | 6.0   | 1.2       | 10          | 27.3          | 82      | 1.8  | N, E              |
+| Lance   | 4    | 150  | 12.0  | 0.8       | 43          | 48.9          | 92      | 2.8  | N, E              |
 
 Size is the footprint's side in tiles, cost is in money, range is a radius in
 tiles, fire rate is shots per second, and `heatPerShot` is the heat one shot adds
@@ -48,10 +48,10 @@ Both are 2x2, cost `20`, never fire, carry no heat, and have no radiator faces a
 any rotation. They do not rotate. Both block their four tiles like any other
 tower.
 
-| Tower | What it does to each emitter it touches | Level I | Level II | Level III |
-| --- | --- | --- | --- | --- |
-| Forge | Warms it toward the setpoint, and never past it (`FORGE_SETPOINT`) | 72 | 84 | 96 |
-| Sink | Drains it, per shared edge-tile, proportional to its heat (`SINK_OUTPUT`) | 16 | 24 | 36 |
+| Tower | What it does to each emitter it touches                                   | Level I | Level II | Level III |
+| ----- | ------------------------------------------------------------------------- | ------- | -------- | --------- |
+| Forge | Warms it toward the setpoint, and never past it (`FORGE_SETPOINT`)        | 72      | 84       | 96        |
+| Sink  | Drains it, per shared edge-tile, proportional to its heat (`SINK_OUTPUT`) | 16      | 24       | 36        |
 
 `specs/heat.md` gives the flow each one drives.
 
@@ -62,12 +62,12 @@ what a placed tower starts at.
 
 Each level above the first applies the following to an emitter, once per level:
 
-| Figure | Constant | Effect per level |
-| --- | --- | --- |
-| Base damage | `UPGRADE_DAMAGE` | multiplied by `1.6` |
-| Range | `UPGRADE_RANGE` | `1.0` tile added |
-| Fire rate | `UPGRADE_FIRE_RATE` | multiplied by `1.15` |
-| `heatPerShot` | `UPGRADE_HEAT` | multiplied by `1.3` |
+| Figure        | Constant            | Effect per level     |
+| ------------- | ------------------- | -------------------- |
+| Base damage   | `UPGRADE_DAMAGE`    | multiplied by `1.6`  |
+| Range         | `UPGRADE_RANGE`     | `1.0` tile added     |
+| Fire rate     | `UPGRADE_FIRE_RATE` | multiplied by `1.15` |
+| `heatPerShot` | `UPGRADE_HEAT`      | multiplied by `1.3`  |
 
 So a level III emitter carries `1.6^2` times its base damage, `2.0` tiles more
 range, `1.15^2` times its fire rate, and `1.3^2` times its `heatPerShot`.

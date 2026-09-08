@@ -155,7 +155,7 @@ export function itemAtPoint(
 /**
  * Which item each pointer in contact was PRESSED on, by pointer id.
  *
- * A confirm takes both of its edges inside one item's region (specs/ui.md), and
+ * A confirm requires both of its edges inside one item's region (specs/ui.md), and
  * the two can be frames apart — a player who presses, slides off, and lifts
  * elsewhere has confirmed nothing — so where each press landed is remembered
  * until that pointer lifts. It lives on the game instance, the one framework

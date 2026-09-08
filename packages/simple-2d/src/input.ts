@@ -138,7 +138,10 @@ export class InputRegistry {
       // Only a layout selected *before* this call claims the action: tagging
       // retroactively would let a late `useLayout` rewrite the provenance of
       // actions the game had already bound for itself.
-      layout: this.#layout?.actions.includes(name) === true ? this.#layout.name : null,
+      layout:
+        this.#layout?.actions.includes(name) === true
+          ? this.#layout.name
+          : null,
       heldCodes: new Set(),
       driven: 0,
       edge: false,

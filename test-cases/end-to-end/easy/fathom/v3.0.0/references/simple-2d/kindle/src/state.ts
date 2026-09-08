@@ -228,7 +228,7 @@ export interface FathomState {
   /**
    * The menu item a pointer or a finger is currently pressed on, or `null`.
    *
-   * A confirm takes both of its edges inside ONE region (`specs/ui.md`), so the
+   * A confirm requires both of its edges inside ONE region (`specs/ui.md`), so the
    * region the press landed in has to outlive the frame it landed on. It is
    * derived from the gesture in flight and nothing else, and every screen change
    * drops it, so no pose can leave a press latched over a menu it was not made

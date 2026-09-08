@@ -11,14 +11,14 @@ its thread archive.
 
 There are six kinds, and the list is closed.
 
-| Kind | What it holds |
-| --- | --- |
-| `history` | The agent's conversation window: every message, open view and pinned block. Always present. |
-| `memories` | The [memories](/gg/memories/) it curates, under whichever strategy the capability configures. |
-| `tasks` | The [task](/gg/tasks/) list, a blocked-by DAG. |
-| `board` | The [project-management](/gg/project-management/) board. Run-global: every holder holds the same board. |
-| `skills` | Its profile's [skills](/gg/skills/) catalogue and the set of skills used so far. |
-| `archive` | The thread archive [`archive_thread`](/gg/agent-managed-context/) fills and `search_archive` reads. |
+| Kind       | What it holds                                                                                           |
+| ---------- | ------------------------------------------------------------------------------------------------------- |
+| `history`  | The agent's conversation window: every message, open view and pinned block. Always present.             |
+| `memories` | The [memories](/gg/memories/) it curates, under whichever strategy the capability configures.           |
+| `tasks`    | The [task](/gg/tasks/) list, a blocked-by DAG.                                                          |
+| `board`    | The [project-management](/gg/project-management/) board. Run-global: every holder holds the same board. |
+| `skills`   | Its profile's [skills](/gg/skills/) catalogue and the set of skills used so far.                        |
+| `archive`  | The thread archive [`archive_thread`](/gg/agent-managed-context/) fills and `search_archive` reads.     |
 
 ## What reaches the prompt
 
@@ -229,13 +229,13 @@ The Agents tab reads the run per configured profile, which is the grain a
 configuration is tuned at. A Modules section under each profile's instance
 chips carries one row per kind, badged by how the stores are distributed:
 
-| Badge | What it means |
-| --- | --- |
+| Badge        | What it means                                                                                           |
+| ------------ | ------------------------------------------------------------------------------------------------------- |
 | agent-scoped | One store, bound by every instance at once. The contents belong to the agent, so they are shown inline. |
-| per instance | Every instance holds its own. Nothing is shown inline; Compare in Modules puts them side by side. |
-| handed on | One store, held one instance at a time. It has several holders and is not sharing. |
-| run-global | The store reaches beyond this profile: the board, or a store a spawner of another profile owns. |
-| split | Several stores, at least one genuinely shared. Usually worth opening. |
+| per instance | Every instance holds its own. Nothing is shown inline; Compare in Modules puts them side by side.       |
+| handed on    | One store, held one instance at a time. It has several holders and is not sharing.                      |
+| run-global   | The store reaches beyond this profile: the board, or a store a spawner of another profile owns.         |
+| split        | Several stores, at least one genuinely shared. Usually worth opening.                                   |
 
 Where the declared configuration and the observed distribution disagree, the row
 carries a note naming both and the likely cause: a `scope: inherited` whose

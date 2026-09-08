@@ -23,6 +23,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
+import { drewText } from "../case-harness/text";
 import { PAUSE_ITEMS, structureCenter } from "../constants";
 import {
   captureStill,
@@ -32,7 +33,7 @@ import {
   standComponent,
   type Harness,
 } from "../harness";
-import { colorDistance, drewText, sampleColor } from "./reading";
+import { colorDistance, sampleColor } from "./reading";
 
 /** A corner of the yard a centred pause menu does not reach. */
 const CORNER = { col: 2, row: 29 };

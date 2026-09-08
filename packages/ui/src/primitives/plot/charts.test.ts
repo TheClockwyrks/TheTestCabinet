@@ -253,11 +253,13 @@ describe("timeSeriesChart", () => {
   // sorted correctly and still be drawn in input order if the sort never reached the
   // mark, so the assertion has to read the geometry.
   function lineXs(node: Element): number[][] {
-    return [...node.querySelectorAll('[aria-label="line"] path')].map((path) => {
-      const d = path.getAttribute("d") ?? "";
-      const coords = [...d.matchAll(/(-?[\d.]+),(-?[\d.]+)/g)];
-      return coords.map((m) => Number(m[1]));
-    });
+    return [...node.querySelectorAll('[aria-label="line"] path')].map(
+      (path) => {
+        const d = path.getAttribute("d") ?? "";
+        const coords = [...d.matchAll(/(-?[\d.]+),(-?[\d.]+)/g)];
+        return coords.map((m) => Number(m[1]));
+      },
+    );
   }
 
   it("draws a line and a dot per observation", () => {
@@ -475,9 +477,9 @@ describe("distributionChart", () => {
     node.querySelectorAll(`[stroke="${palette.muted}"]`).length;
 
   it("draws the confidence interval for groups that carry one", () => {
-    expect(mutedMarks(render(distributionChart(groups, palette)))).toBeGreaterThan(
-      0,
-    );
+    expect(
+      mutedMarks(render(distributionChart(groups, palette))),
+    ).toBeGreaterThan(0);
   });
 
   // TCQ's `dist()` deliberately carries no bootstrap interval, so its groups arrive

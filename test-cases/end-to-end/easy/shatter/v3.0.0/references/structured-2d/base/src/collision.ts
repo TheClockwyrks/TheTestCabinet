@@ -75,7 +75,9 @@ function drop(roster: BulletState[], entry: BulletState): void {
 
 /** What one of the ship's bullets reached first, if it reached anything. */
 type BulletTarget =
-  { kind: "core" } | { kind: "saucer" } | { kind: "rock"; rock: RockState };
+  | { kind: "core" }
+  | { kind: "saucer" }
+  | { kind: "rock"; rock: RockState };
 
 /**
  * The ship's bullets: a rock splits and scores, the saucer is destroyed and

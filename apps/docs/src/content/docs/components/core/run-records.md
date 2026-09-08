@@ -108,10 +108,10 @@ Each validated verdict unit carries one entry per media output its checklist
 item declares, recording the output's id, its display name, its kind, and
 whether the build produced it. A kind is one of three:
 
-| Kind | Holds |
-| --- | --- |
-| `image` | A still image (`png`, `jpg`, `jpeg`, `webp`, `gif`). |
-| `video` | A video clip, captured as `webm` and published as `mp4`. |
+| Kind     | Holds                                                                                              |
+| -------- | -------------------------------------------------------------------------------------------------- |
+| `image`  | A still image (`png`, `jpg`, `jpeg`, `webp`, `gif`).                                               |
+| `video`  | A video clip, captured as `webm` and published as `mp4`.                                           |
 | `replay` | A draw-command [recording](/components/core/engines/#recording), captured and published as `json`. |
 
 The same kinds label a declared proof, whose kind is inferred from the path the

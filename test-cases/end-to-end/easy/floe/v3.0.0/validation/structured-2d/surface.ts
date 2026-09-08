@@ -33,7 +33,12 @@ export const FLOE_DEBUG_VERSION = 1;
 
 /** The six screens the game moves between. */
 export type Screen =
-  "title" | "howto" | "playing" | "paused" | "victory" | "gameover";
+  | "title"
+  | "howto"
+  | "playing"
+  | "paused"
+  | "victory"
+  | "gameover";
 
 /** The three sub-phases of the `playing` screen. */
 export type Phase = "crossing" | "dying" | "clearing";
@@ -223,6 +228,14 @@ export interface FloeDebugApi {
   reset(): void;
   snapshot(): FloeSnapshot;
   /**
+   * Bring every value the snapshot reports into agreement with the strait as it
+   * stands, without advancing anything. `timerMax`, the critter's `col`, `row`
+   * and `footing`, and a bear's `swimming` are all derived, and a build that
+   * keeps any of them as a stored copy rewrites that copy here. It moves no
+   * clock, runs no system, fires no cue, and corrects nothing.
+   */
+  reconcile(): void;
+  /**
    * A pure read of the hit region of item `index` on the menu the current screen
    * shows, or `null` where that screen shows no menu and where `index` names no
    * entry of the one it does.
@@ -306,6 +319,7 @@ export const READINGS = ["snapshot", "menuItemRect"] as const;
 export const REQUIRED_OPS = [
   "reset",
   "snapshot",
+  "reconcile",
   "menuItemRect",
 
   "setScreen",

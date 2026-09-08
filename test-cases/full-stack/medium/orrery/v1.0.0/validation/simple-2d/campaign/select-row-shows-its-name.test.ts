@@ -19,10 +19,14 @@
 //
 // THE WHOLE STRING, ON ONE ROW. A build that draws a shortened name — the first
 // word, or a name clipped to a column with an ellipsis — is not showing the name
-// the challenge carries, and the substring match below is what refuses it. Case
-// and whitespace are dropped before matching, because `specs/ui.md` "fixes no
-// palette, no font" and a build is free to set a row in capitals or to letterspace
-// it; nothing else about the string is.
+// the challenge carries, and the shared harness's `drewText` — substring,
+// ignoring case, the whitespace folded out of both sides, along each baseline —
+// is what refuses it. Case and whitespace are dropped before matching, because
+// `specs/ui.md` "fixes no palette, no font" and a build is free to set a row in
+// capitals or to letterspace it; nothing else about the string is. WHICH row
+// carries the name is then read off `drawing.ts`'s `textLines`: the same runs
+// gathered onto the baselines they share, so the row can be placed under the
+// row before it.
 //
 // EVERY ROW, LOCKED ONES INCLUDED. The course is read fresh, where "Challenge `1`
 // is unlocked from the start. Every other challenge begins locked"
@@ -40,15 +44,17 @@ import {
   assertEqual,
   assertGreaterThan,
   assertNotNull,
+  assertTrue,
 } from "../assert";
+import { drewText } from "../case-harness/text";
 import {
   captureStill,
   createHarness,
   openChallenge,
   openSelect,
-  textDraws,
+  spells,
+  textLines,
   type Harness,
-  type TextDraw,
 } from "../harness";
 
 let h: Harness;
@@ -60,41 +66,6 @@ beforeEach(async () => {
 afterEach(async () => {
   await h.dispose();
 });
-
-/** One baseline the frame drew text on, and the runs on it read left to right. */
-interface Line {
-  y: number;
-  text: string;
-}
-
-/**
- * The frame's text runs gathered into the baselines they were drawn on.
- *
- * A build is free to draw a row as one run of text or as a run per word or per
- * glyph — `specs/ui.md` "fixes no palette, no font", and `specs/assets.md`,
- * which puts every word on the stage on the frame as drawn text, fixes no more
- * than that. What every one of those does share is the baseline: the runs of
- * one row are drawn at one `y`, and the rows are drawn at different ones. So
- * the runs are grouped by the `y` their anchor maps to and joined in `x`
- * order, which reads a row the same way whichever way it was drawn.
- */
-function linesOf(draws: readonly TextDraw[]): Line[] {
-  const baselines = new Map<number, TextDraw[]>();
-  for (const draw of draws) {
-    const on = baselines.get(draw.y) ?? [];
-    on.push(draw);
-    baselines.set(draw.y, on);
-  }
-  return [...baselines.entries()]
-    .map(([y, on]) => ({
-      y,
-      text: [...on]
-        .sort((a, b) => a.x - b.x)
-        .map((draw) => draw.text)
-        .join(""),
-    }))
-    .sort((a, b) => a.y - b.y);
-}
 
 /** Text with its case and its whitespace dropped. */
 function squash(text: string): string {
@@ -137,7 +108,12 @@ it("draws each challenge's own name, whole, on a row of its own", async () => {
   }
 
   await openSelect(h, "campaign");
-  const lines = linesOf(textDraws(await h.lastCalls()));
+  const calls = await h.lastCalls();
+  // Each name is read with the shared harness's `drewText`, and the row it sits
+  // on as `drawing.ts`'s `textLines`: the same logical runs gathered onto the
+  // baselines they share, so a row drawn as one run, as a run per word or as a
+  // run per glyph reads the same way.
+  const lines = textLines(calls);
   await captureStill(h, "names");
 
   assertEqual(
@@ -149,16 +125,18 @@ it("draws each challenge's own name, whole, on a row of its own", async () => {
   let below = -Infinity;
   for (let index = 0; index < count; index += 1) {
     const name = names[index] ?? "";
-    const wanted = squash(name);
-    const row = lines.find(
-      (line) => line.y > below && squash(line.text).includes(wanted),
+    assertTrue(
+      drewText(calls, name),
+      `the select screen draws ${JSON.stringify(name)}, the name campaign ` +
+        `challenge ${index + 1} carries, whole; the lines the frame drew are ` +
+        JSON.stringify(lines.map((line) => line.text)),
     );
+    const row = lines.find((line) => line.y > below && spells(line, name));
     assertDefined(
       row,
-      `the select screen draws ${JSON.stringify(name)}, the name campaign ` +
-        `challenge ${index + 1} carries, whole and on a row of its own below ` +
-        `the row of the challenge before it; the lines the frame drew are ` +
-        JSON.stringify(lines.map((line) => line.text)),
+      `the select screen draws ${JSON.stringify(name)} on a row of its own ` +
+        "below the row of the challenge before it; the lines the frame drew " +
+        `are ${JSON.stringify(lines.map((line) => line.text))}`,
     );
     below = row?.y ?? below;
   }

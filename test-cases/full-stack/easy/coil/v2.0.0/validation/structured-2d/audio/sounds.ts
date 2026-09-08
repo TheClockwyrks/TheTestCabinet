@@ -7,13 +7,19 @@
 // makes it, and `specs/ui.md` fixes the event it plays on, so those six read the
 // file on disk and the five `*-cue-plays` points next door read the game.
 //
-// WHY THE FILE IS READ HERE RATHER THAN THROUGH THE ENGINE. The engine's loader
-// decodes a sound through a Web Audio context, and this process has none: a cue's
-// produced file cannot be loaded through the engine in a Node run whatever its
-// bytes are. That is a limit of this host and says nothing about the build — the
-// cue bus still names the cue the build asked to play, so the `*-cue-plays`
-// points still read it; what has to happen here instead is the bytes being read
-// where they actually live, which is on disk.
+// WHY THE FILE IS READ HERE RATHER THAN THROUGH THE ENGINE. The harness stands an
+// `AudioContext` in for this process, so a cue's produced file does load through
+// the engine — but what a load hands back is a BUFFER, and these six points are
+// about the FILE `specs/assets.md` names: that it is written at that path at all,
+// and that its bytes really are a RIFF/WAVE rather than something merely wearing
+// the extension. Neither survives the decode. Worse, the decoder the harness binds
+// is the TOLERANT one, which answers silence of a nominal length for a body it
+// cannot parse precisely so that a bad cue costs the point below rather than the
+// whole project — so a buffer cannot tell a malformed file from a quiet one, and a
+// point that has to REPORT a bad file must not be reading its verdict off one. The
+// bytes are therefore read where they actually live, which is on disk, and the
+// `*-cue-plays` points next door read the cue bus for the name the build asked to
+// play.
 //
 // WHY A READER WRITTEN HERE IS THE HONEST ONE, WHICH IT IS NOT ALWAYS. The
 // authoring guide warns against a decoder that covers only some of the formats a

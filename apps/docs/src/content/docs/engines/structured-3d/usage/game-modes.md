@@ -34,12 +34,12 @@ figures without a cast at every use.
 The engine builds a match out of the classes the mode names, so a game supplies
 its own subclasses in place of the framework's defaults.
 
-| Field | Read | Builds |
-| --- | --- | --- |
-| `gameStateClass` | Once, when the world is built | The game state the world exposes as `world.state` |
-| `playerStateClass` | On each `addPlayer` and `addBot` | The participant's player state |
-| `playerControllerClass` | On each `addPlayer` whose options name no controller | The player controller |
-| `pawnClass` | On each `restart` | The pawn the controller possesses |
+| Field                   | Read                                                 | Builds                                            |
+| ----------------------- | ---------------------------------------------------- | ------------------------------------------------- |
+| `gameStateClass`        | Once, when the world is built                        | The game state the world exposes as `world.state` |
+| `playerStateClass`      | On each `addPlayer` and `addBot`                     | The participant's player state                    |
+| `playerControllerClass` | On each `addPlayer` whose options name no controller | The player controller                             |
+| `pawnClass`             | On each `restart`                                    | The pawn the controller possesses                 |
 
 A mode whose controllers possess nothing sets `pawnClass` to `null`, and
 `restart` then returns `null`.

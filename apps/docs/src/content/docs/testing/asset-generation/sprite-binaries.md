@@ -77,14 +77,14 @@ stackable.
 Registration also sets the layer's resting transform, each property of which is
 [animatable](#animating-layers):
 
-| Flag | Meaning | Default |
-| --- | --- | --- |
-| `--x`, `--y` | top-left corner on the canvas | required |
-| `--width`, `--height` | the layer's own extent | required |
-| `--z` | composite order, low to high | `0` |
-| `--opacity` | `0` (invisible) to `255` (opaque) | `255` |
-| `--rotation` | whole degrees clockwise, about the layer's centre | `0` |
-| `--scale-x`, `--scale-y` | percent, `100` = actual size | `100` |
+| Flag                     | Meaning                                           | Default  |
+| ------------------------ | ------------------------------------------------- | -------- |
+| `--x`, `--y`             | top-left corner on the canvas                     | required |
+| `--width`, `--height`    | the layer's own extent                            | required |
+| `--z`                    | composite order, low to high                      | `0`      |
+| `--opacity`              | `0` (invisible) to `255` (opaque)                 | `255`    |
+| `--rotation`             | whole degrees clockwise, about the layer's centre | `0`      |
+| `--scale-x`, `--scale-y` | percent, `100` = actual size                      | `100`    |
 
 Rotation and scale resample nearest-neighbour about the layer's centre, which
 keeps the result crisp and stair-steps at angles that are not multiples of 90°.
@@ -210,14 +210,17 @@ host and adds a `live` block to the seeded `draw.config.json`:
 
 ```jsonc
 {
-  "width": 64, "height": 64, "background": "transparent",
-  "actions": "actions.json", "preview": "canvas.png",
+  "width": 64,
+  "height": 64,
+  "background": "transparent",
+  "actions": "actions.json",
+  "preview": "canvas.png",
   "layers": "layers.json",
   "live": {
     // the run host, reachable from the container as host.docker.internal
     "endpoint": "host.docker.internal:54123",
-    "token": "…"           // an opaque per-run token echoed with each frame
-  }
+    "token": "…", // an opaque per-run token echoed with each frame
+  },
 }
 ```
 

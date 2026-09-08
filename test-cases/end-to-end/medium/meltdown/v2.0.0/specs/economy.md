@@ -16,12 +16,12 @@ one is refused.
 
 ## The four income lines
 
-| Line | What it pays | When |
-| --- | --- | --- |
-| Bounty | The killed unit's bounty | On the frame a unit's hp reaches `0` |
-| Wave-clear bonus | `WAVE_CLEAR_BASE + WAVE_CLEAR_PER_WAVE * w`, which is `20 + 5w` for wave `w` | On the frame wave `w` clears |
-| Interest | `min(floor(INTEREST_RATE * money), INTEREST_CAP)`, which is `floor(0.08 * money)` capped at `40` | On entering a build phase between waves |
-| Early-send bonus | `EARLY_SEND_PER_SECOND` (`1`) per whole second left on the build timer, which is `floor(buildTimer)` | On sending a wave from a build phase |
+| Line             | What it pays                                                                                         | When                                    |
+| ---------------- | ---------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| Bounty           | The killed unit's bounty                                                                             | On the frame a unit's hp reaches `0`    |
+| Wave-clear bonus | `WAVE_CLEAR_BASE + WAVE_CLEAR_PER_WAVE * w`, which is `20 + 5w` for wave `w`                         | On the frame wave `w` clears            |
+| Interest         | `min(floor(INTEREST_RATE * money), INTEREST_CAP)`, which is `floor(0.08 * money)` capped at `40`     | On entering a build phase between waves |
+| Early-send bonus | `EARLY_SEND_PER_SECOND` (`1`) per whole second left on the build timer, which is `floor(buildTimer)` | On sending a wave from a build phase    |
 
 A unit that reaches its exhaust pays no bounty.
 
@@ -38,10 +38,10 @@ the untimed opening phase, which carries no timer, pays nothing.
 A score accumulates across a run and is reported on the end screens. It has three
 terms:
 
-| Term | Value |
-| --- | --- |
-| A kill | The killed unit's bounty, the same figure the money is paid |
-| A wave cleared | `SCORE_WAVE_CLEAR * w`, which is `100 * w` for wave `w` |
-| Victory | `SCORE_VICTORY_PER_LIFE * lives`, which is `250` per life remaining |
+| Term           | Value                                                               |
+| -------------- | ------------------------------------------------------------------- |
+| A kill         | The killed unit's bounty, the same figure the money is paid         |
+| A wave cleared | `SCORE_WAVE_CLEAR * w`, which is `100 * w` for wave `w`             |
+| Victory        | `SCORE_VICTORY_PER_LIFE * lives`, which is `250` per life remaining |
 
 The score changes nothing about play and is not carried between sessions.

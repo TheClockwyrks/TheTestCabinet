@@ -18,12 +18,12 @@ class GameInstance<D = unknown> {
 engine.debug: D;
 ```
 
-| Member | Called |
-| --- | --- |
-| `initialize` | Once, before the start level opens. Returns the debug surface. |
-| `worldOpened` | After each world's game mode has begun play. |
-| `worldClosing` | Before each world's actors end play. |
-| `shutdown` | Once, from `engine.destroy`. |
+| Member         | Called                                                         |
+| -------------- | -------------------------------------------------------------- |
+| `initialize`   | Once, before the start level opens. Returns the debug surface. |
+| `worldOpened`  | After each world's game mode has begun play.                   |
+| `worldClosing` | Before each world's actors end play.                           |
+| `shutdown`     | Once, from `engine.destroy`.                                   |
 
 The engine holds whatever the instance hands it and reads no member of it. The
 shape is the game's own: the methods it names, the values they return, and the
@@ -94,8 +94,14 @@ export interface Debug {
 
 export class Arcade extends GameInstance<Debug> {
   override initialize(api: InitApi): Debug {
-    api.input.register("move-up", { keys: ["KeyW", "ArrowUp"], kind: "analog" });
-    api.input.register("move-down", { keys: ["KeyS", "ArrowDown"], kind: "analog" });
+    api.input.register("move-up", {
+      keys: ["KeyW", "ArrowUp"],
+      kind: "analog",
+    });
+    api.input.register("move-down", {
+      keys: ["KeyS", "ArrowDown"],
+      kind: "analog",
+    });
 
     const ballActor = (): Ball => {
       const world = this.engine.world;
@@ -206,10 +212,10 @@ so the surface is reachable only by whoever holds the engine.
 
 ## Errors
 
-| Condition | Result |
-| --- | --- |
-| `engine.debug` read before `initialize` resolves | `Error` naming the ordering |
-| The instance's `initialize` returns `undefined` | `engine.initialize` rejects with an `Error` naming the debug surface |
+| Condition                                        | Result                                                               |
+| ------------------------------------------------ | -------------------------------------------------------------------- |
+| `engine.debug` read before `initialize` resolves | `Error` naming the ordering                                          |
+| The instance's `initialize` returns `undefined`  | `engine.initialize` rejects with an `Error` naming the debug surface |
 
 Reading before `initialize` resolves throws exactly as `engine.instance` and
 `engine.world` do. A game with no surface returns `null` there, and

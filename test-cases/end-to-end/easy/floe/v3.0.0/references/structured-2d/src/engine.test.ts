@@ -39,6 +39,7 @@ import {
   TITLE_ITEMS,
   TOTAL_LEVELS,
   WATER_LANES,
+  WATER_TOP,
   crossingTimer,
   tileCX,
   tileCY,
@@ -153,6 +154,7 @@ const SURFACE_MEMBERS = [
   "version",
   "reset",
   "snapshot",
+  "reconcile",
   "menuItemRect",
   "setScreen",
   "setPhase",
@@ -443,6 +445,96 @@ describe("the snapshot's shape", () => {
     expect(() => harness.debug.setFishBay(9)).toThrow(RangeError);
     expect(() => harness.debug.setLevel(0)).toThrow(RangeError);
     expect(() => harness.debug.setLevel(TOTAL_LEVELS + 1)).toThrow(RangeError);
+  });
+
+  it("re-derives a stored reading from a posed position", () => {
+    empty(harness);
+    // A water row with no floe under the critter: its footing, its tile and a
+    // bear's swimming flag are all functions of where the bodies are, and this
+    // pose moves what all three read from.
+    harness.debug.addCritter(20, WATER_TOP);
+    harness.debug.addBear(22, WATER_TOP);
+    harness.debug.reconcile();
+    let s = harness.snapshot();
+    expect(s.critter.footing).toBe("water");
+    expect(s.critter.col).toBe(20);
+    expect(s.critter.row).toBe(WATER_TOP);
+    expect(s.bears[0].swimming).toBe(true);
+
+    const bear = s.bears[0].id;
+    harness.debug.setCritterTile(20, ICE_TOP);
+    harness.debug.setBearTile(bear, 22, ICE_TOP);
+    harness.debug.reconcile();
+    s = harness.snapshot();
+    expect(s.critter.footing).toBe("solid");
+    expect(s.critter.row).toBe(ICE_TOP);
+    expect(s.bears[0].swimming).toBe(false);
+  });
+
+  it("advances nothing, and reconciling twice matches reconciling once", () => {
+    empty(harness);
+    harness.debug.setLevel(3);
+    harness.debug.addCritter(20, ROW_MEDIAN);
+    harness.debug.addBear(24, ROW_MEDIAN);
+    harness.debug.setHopCooldown(0.07);
+    harness.debug.setPhaseTimer(0.4);
+    harness.debug.setTimer(9);
+    harness.debug.setFishBay(2);
+
+    const before = harness.snapshot();
+    harness.debug.reconcile();
+    const once = harness.snapshot();
+    expect(once).toEqual(before);
+    harness.debug.reconcile();
+    expect(harness.snapshot()).toEqual(once);
+    // Named explicitly, because "equal snapshots" is only as strong as the
+    // clock, the bodies and the timers being in it.
+    expect(once.simTime).toBe(before.simTime);
+    expect(once.timer).toBe(before.timer);
+    expect(once.phaseTimer).toBe(before.phaseTimer);
+    expect(once.critter.hopCooldown).toBe(before.critter.hopCooldown);
+    expect(once.critter.x).toBe(before.critter.x);
+    expect(once.critter.y).toBe(before.critter.y);
+    expect(once.bears[0].x).toBe(before.bears[0].x);
+    expect(once.bears[0].y).toBe(before.bears[0].y);
+    expect(once.vehicles).toEqual(before.vehicles);
+    expect(once.floes).toEqual(before.floes);
+    expect(once.fishBay).toBe(before.fishBay);
+    expect(played(harness)).toEqual([]);
+  });
+
+  it("fails loudly on an id, a row and a lane value the strait has no state for", () => {
+    empty(harness);
+    const absent = 9999;
+    expect(() => harness.debug.setBearTile(absent, 3, 3)).toThrow(RangeError);
+    expect(() => harness.debug.setBearPosition(absent, 0, 0)).toThrow(
+      RangeError,
+    );
+    expect(() => harness.debug.setBearStep(absent, "up")).toThrow(RangeError);
+    expect(() => harness.debug.setBearTarget(absent, 3, 3)).toThrow(RangeError);
+    expect(() => harness.debug.setBearSense(absent, false)).toThrow(RangeError);
+    expect(() => harness.debug.setBearRouting(absent, false)).toThrow(
+      RangeError,
+    );
+    expect(() => harness.debug.setBearTravel(absent, false)).toThrow(
+      RangeError,
+    );
+    expect(() => harness.debug.removeBear(absent)).toThrow(RangeError);
+    expect(() => harness.debug.setVehicleX(absent, 0)).toThrow(RangeError);
+    expect(() => harness.debug.removeVehicle(absent)).toThrow(RangeError);
+    expect(() => harness.debug.setFloeX(absent, 0)).toThrow(RangeError);
+    expect(() => harness.debug.removeFloe(absent)).toThrow(RangeError);
+    // The shores and the median carry no lane at all.
+    expect(() => harness.debug.setLaneSpeed(ROW_MEDIAN, 1)).toThrow(RangeError);
+    expect(() => harness.debug.setLaneDirection(ROW_MEDIAN, 1)).toThrow(
+      RangeError,
+    );
+    // The two domains the specification fixes: a speed at or above 0, and a
+    // direction that is exactly 1 or -1. Neither is clamped or snapped.
+    expect(() => harness.debug.setLaneSpeed(ICE_TOP, -1)).toThrow(RangeError);
+    expect(() => harness.debug.setLaneDirection(ICE_TOP, 0 as 1 | -1)).toThrow(
+      RangeError,
+    );
   });
 });
 

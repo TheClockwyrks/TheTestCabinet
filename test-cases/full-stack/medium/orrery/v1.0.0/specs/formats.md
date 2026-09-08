@@ -15,7 +15,9 @@ of `specs/field.md`:
 ```json
 {
   "motes": [{ "q": 0, "r": 0, "type": "luna" }],
-  "filaments": [{ "a": { "q": 0, "r": 0 }, "b": { "q": 1, "r": 0 }, "weight": 1 }],
+  "filaments": [
+    { "a": { "q": 0, "r": 0 }, "b": { "q": 1, "r": 0 }, "weight": 1 }
+  ],
   "repeat": {
     "vector": { "q": 1, "r": 0 },
     "link": { "a": { "q": 0, "r": 0 }, "b": { "q": 1, "r": 0 }, "weight": 1 }
@@ -45,14 +47,18 @@ of `specs/field.md`:
 ```json
 {
   "name": "Twin Moons",
-  "reagents": [{ "motes": [{ "q": 0, "r": 0, "type": "luna" }], "filaments": [] }],
+  "reagents": [
+    { "motes": [{ "q": 0, "r": 0, "type": "luna" }], "filaments": [] }
+  ],
   "products": [
     {
       "motes": [
         { "q": 0, "r": 0, "type": "luna" },
         { "q": 1, "r": 0, "type": "luna" }
       ],
-      "filaments": [{ "a": { "q": 0, "r": 0 }, "b": { "q": 1, "r": 0 }, "weight": 1 }]
+      "filaments": [
+        { "a": { "q": 0, "r": 0 }, "b": { "q": 1, "r": 0 }, "weight": 1 }
+      ]
     }
   ],
   "permitted": ["arm", "bind"],
@@ -92,13 +98,23 @@ poses and tapes.
       "rotation": 3,
       "length": 2,
       "tape": [
-        "grab", "rotate-cw", "rotate-cw", "rotate-cw",
-        "drop", "rotate-ccw", "rotate-ccw", "rotate-ccw"
+        "grab",
+        "rotate-cw",
+        "rotate-cw",
+        "rotate-cw",
+        "drop",
+        "rotate-ccw",
+        "rotate-ccw",
+        "rotate-ccw"
       ]
     },
     {
       "kind": "track",
-      "cells": [{ "q": 0, "r": 2 }, { "q": 1, "r": 2 }, { "q": 2, "r": 2 }],
+      "cells": [
+        { "q": 0, "r": 2 },
+        { "q": 1, "r": 2 },
+        { "q": 2, "r": 2 }
+      ],
       "closed": false
     }
   ]
@@ -107,12 +123,12 @@ poses and tapes.
 
 Every part carries `kind`. The rest varies by class:
 
-| Class | Keys |
-| --- | --- |
-| Arms and wheels | `q`, `r`, `rotation` (`0` to `5`), `length` (`1` to `3`; wheels always `1`), `tape`. |
-| `track` | `cells`, the path in order, and `closed`. A track carries no `q`, `r`, or `rotation`; its anchor is the first cell of `cells` and its rotation is `0`. |
-| Sigils | `q`, `r`, `rotation`. |
-| `rise`, `set` | `q`, `r`, `rotation`, and `index`: which reagent or product, from `0`. |
+| Class           | Keys                                                                                                                                                   |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Arms and wheels | `q`, `r`, `rotation` (`0` to `5`), `length` (`1` to `3`; wheels always `1`), `tape`.                                                                   |
+| `track`         | `cells`, the path in order, and `closed`. A track carries no `q`, `r`, or `rotation`; its anchor is the first cell of `cells` and its rotation is `0`. |
+| Sigils          | `q`, `r`, `rotation`.                                                                                                                                  |
+| `rise`, `set`   | `q`, `r`, `rotation`, and `index`: which reagent or product, from `0`.                                                                                 |
 
 The order of `parts` is the machine's placement order, which fixes the tape
 panel's row order and the part indices the debug surface reports.

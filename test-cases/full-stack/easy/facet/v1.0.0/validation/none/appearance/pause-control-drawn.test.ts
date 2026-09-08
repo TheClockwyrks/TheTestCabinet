@@ -15,8 +15,9 @@
 // WHY THE READING IS IN TWO HALVES, AND HOW CLOSE THAT GETS. The two halves are
 // as near "the control is drawn inside its target" as this case can honestly get.
 //
-//   The copy — `PAUSE_LABEL` is looked for among the strings the frame drew, in
-//   whatever pieces the build drew them, which `showsText` reads.
+//   The copy — `PAUSE_LABEL` is looked for among the text the frame put on
+//   screen, in whatever pieces the build drew them, which `frameShows` reads —
+//   the calls through the shared harness's `drewTextAnywhere`.
 //
 //   The rectangle — the pixels inside the `pause` target the same screen reports
 //   are read off the canvas and asked to carry more than one color. Something is
@@ -42,8 +43,9 @@ import { PAUSE_LABEL } from "../constants";
 import {
   captureStill,
   createHarness,
+  frameShows,
   loadBoard,
-  showsText,
+  shownText,
   targetById,
   type Harness,
   type Viewport,
@@ -130,16 +132,16 @@ it("draws the PAUSE label and puts something inside the pause target it reports"
   const posed = await loadBoard(h, quietRowsWithEscape([]));
   assertEqual(posed.screen, "playing", "the screen a posed board stands on");
 
-  // One frame, and the strings it drew.
-  const drawn = await h.frameText();
+  // One frame, and everything it put on screen.
+  const frame = await h.frameText();
 
   // Evidence, and no part of the verdict: the control on the live board.
   await captureStill(h, "control");
 
   assertTrue(
-    showsText(drawn, PAUSE_LABEL),
+    frameShows(frame, PAUSE_LABEL),
     `the ${JSON.stringify(PAUSE_LABEL)} control drawn on the playing screen, ` +
-      `among ${JSON.stringify(drawn)}`,
+      `among ${JSON.stringify(shownText(frame))}`,
   );
 
   const target = targetById(await h.snapshot(), TARGET_ID);

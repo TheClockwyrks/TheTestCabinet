@@ -21,14 +21,19 @@
 //
 // Case is not the requirement, and neither is the run the label sits in: a build
 // that draws it with a prefix or a separator has drawn the label, so the match is
-// a case-insensitive substring of the frame's text.
+// a case-insensitive substring of the frame's text. And the text is the RUNS the
+// frame spells (`drewText`) rather than its `fillText` calls: a build that
+// letter-spaces the label draws it a glyph per call, and specs/stock.md fixes
+// the words, not their spacing. A miss is reported with those runs, so the
+// reviewer sees what the HUD drew instead.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertMatches } from "../assert";
+import { fail } from "../assert";
+import { drewText } from "../case-harness/text";
 import {
   captureStill,
   createHarness,
-  drawnText,
+  drawnTextLines,
   openTable,
   type Harness,
 } from "../harness";
@@ -50,6 +55,11 @@ it("draws DRAW THREE in the HUD during play", async () => {
   const calls = await h.drawFrame();
   captureStill(h, "hud");
 
-  const drawn = drawnText(calls).join(" | ").toUpperCase();
-  assertMatches(drawn, DEAL_MODE_LABEL, "the text the playing screen drew");
+  if (!drewText(calls, DEAL_MODE_LABEL)) {
+    fail(
+      `the text the playing screen drew to carry the literal "${DEAL_MODE_LABEL}", this ` +
+        "build's DEAL_MODE_LABEL (specs/stock.md, specs/screens.md)",
+      drawnTextLines(calls),
+    );
+  }
 });

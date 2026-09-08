@@ -193,13 +193,13 @@ finish, so a rejection is recognised by Roslyn's own diagnostic format. Only
 lines carrying `error CS` count. A warning is neither shown as a rejection nor
 allowed to decide a band.
 
-| What happened | How it is reported |
-| --- | --- |
-| Roslyn's parser refused it | a syntax error, at the model's own coordinates |
-| Only the binder refused it | a compile error, at the model's own coordinates |
-| A diagnostic describes gg's own arrangement | a toolchain failure |
-| A code module rebuilt beside the program was refused | a lowering failure naming the binding |
-| No diagnostic was reported at all | a toolchain failure |
+| What happened                                        | How it is reported                              |
+| ---------------------------------------------------- | ----------------------------------------------- |
+| Roslyn's parser refused it                           | a syntax error, at the model's own coordinates  |
+| Only the binder refused it                           | a compile error, at the model's own coordinates |
+| A diagnostic describes gg's own arrangement          | a toolchain failure                             |
+| A code module rebuilt beside the program was refused | a lowering failure naming the binding           |
+| No diagnostic was reported at all                    | a toolchain failure                             |
 
 `CS0006`, `CS1504`, `CS2001`, `CS2012` and `CS8101` describe the compilation gg
 arranged rather than the program in it: gg writes every source file the

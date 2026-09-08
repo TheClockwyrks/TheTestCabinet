@@ -17,10 +17,10 @@
 // with a broken title menu fails the title points rather than this one. One
 // frame is then run and read as the screen is entered, on its first tab.
 //
-// THE TOLERANCE. The copy is matched folded — lower-cased, with spaces, dashes
-// and underscores removed, across consecutive runs of text — so a build that
-// letter-spaces its heading, draws a tab word by word, or wraps the shown tab in
-// marks of its own passes. The bar's order is a strict inequality between four
+// THE TOLERANCE. The copy is matched ignoring case and whitespace, across the
+// runs of text the frame drew joined in reading order (the shared harness's
+// `drewTextAnywhere`) — so a build that letter-spaces its heading, draws a tab
+// word by word, or wraps the shown tab in marks of its own passes. The bar's order is a strict inequality between four
 // drawn anchors, which no tolerance can soften.
 //
 // The tab bar is `screens/almanac-draws-tabs`'.

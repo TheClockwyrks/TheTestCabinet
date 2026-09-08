@@ -69,6 +69,40 @@ function playing(): Drive {
   return d;
 }
 
+describe("reconcile", () => {
+  it("re-derives a stored reading from a posed run", () => {
+    const d = playing();
+    d.pose((s) => d.api.setTick(s, 600));
+    d.pose((s) => d.api.setPassive(s, 0, "tallow", 2));
+    d.pose((s) => d.api.spawnEnemy(s, "moth", 100, 100));
+    d.pose((s) => d.api.spawnEnemy(s, "gnat", 120, 100));
+    d.pose((s) => d.api.reconcile(s));
+    const snap = d.snap();
+    // Every derived reading answers for the run AS POSED, not as it was.
+    expect(snap.run.time).toBe(10);
+    expect(snap.run.spawnWindow).toBe(0);
+    expect(snap.run.maxHp).toBe(130);
+    expect(snap.run.aliveCommons).toBe(1);
+  });
+
+  it("advances nothing, and twice matches once", () => {
+    const d = playing();
+    d.pose((s) => d.api.setTick(s, 300));
+    d.pose((s) => d.api.setPlayerPosition(s, 40, 60));
+    d.pose((s) => d.api.setSpawnTimer(s, 1.25));
+    d.pose((s) => d.api.setWeaponCooldown(s, 0, 0.75));
+    d.pose((s) => d.api.spawnEnemy(s, "moth", 100, 100));
+    d.pose((s) => d.api.setEnemyAge(s, d.snap().run.enemies[0].id, 2));
+    const before = d.snap();
+    d.pose((s) => d.api.reconcile(s));
+    const once = d.snap();
+    d.pose((s) => d.api.reconcile(s));
+    const twice = d.snap();
+    expect(once).toEqual(before);
+    expect(twice).toEqual(once);
+  });
+});
+
 describe("the snapshot", () => {
   it("carries every field on every screen", () => {
     const d = build();
@@ -440,7 +474,6 @@ describe("the lamplighter and progression poses", () => {
     expect(snap.run.nextOffers).toEqual(["ember", "lure"]);
     const { api, state } = d;
     expect(() => api.setFacing(state, "up" as never)).toThrow();
-    expect(() => api.setHp(state, 101)).toThrow();
     expect(() => api.setLevel(state, 0)).toThrow();
     expect(() => api.setXp(state, -1)).toThrow();
     expect(() => api.setKills(state, 1.5)).toThrow();
@@ -456,16 +489,29 @@ describe("the lamplighter and progression poses", () => {
     expect(d.snap().screen).toBe("fallen");
   });
 
-  it("is inert off a run screen", () => {
+  it("poses from whatever screen is showing", () => {
     const d = build();
+    expect(d.snap().screen).toBe("title");
     d.pose((s) => d.api.setPlayerPosition(s, 10, 10));
     d.pose((s) => d.api.setLevel(s, 5));
     d.pose((s) => d.api.spawnEnemy(s, "moth", 0, 0));
     d.pose((s) => d.api.spawnGem(s, "small", 0, 0));
-    expect(d.snap().run.player.x).toBe(0);
-    expect(d.snap().run.level).toBe(1);
-    expect(d.snap().run.enemies).toEqual([]);
-    expect(d.snap().run.gems).toEqual([]);
+    expect(d.snap().run.player.x).toBe(10);
+    expect(d.snap().run.level).toBe(5);
+    expect(d.snap().run.enemies).toHaveLength(1);
+    expect(d.snap().run.gems).toHaveLength(1);
+    expect(d.snap().screen).toBe("title");
+  });
+
+  it("applies a health and an enemy health past the live maximum", () => {
+    const d = playing();
+    d.pose((s) => d.api.setHp(s, 1e4));
+    expect(d.snap().run.player.hp).toBe(1e4);
+    d.pose((s) => d.api.spawnEnemy(s, "moth", 0, 0));
+    const id = d.snap().run.enemies[0].id;
+    d.pose((s) => d.api.setEnemyHp(s, id, 1e4));
+    expect(d.snap().run.enemies[0].hp).toBe(1e4);
+    expect(() => d.api.setEnemyHp(d.state, id, 0)).toThrow();
   });
 
   it("takes an evolved id in nextOffers and discards the list at the open", () => {
@@ -487,9 +533,8 @@ describe("the lamplighter and progression poses", () => {
     d.pose((s) => d.api.choose(s, 0));
     expect(d.snap().screen).toBe("levelup");
     expect(d.snap().run.offers).toEqual(["lure"]);
-    d.pose((s) => d.api.choose(s, 5));
-    expect(d.snap().screen).toBe("levelup");
-    d.pose((s) => d.api.choose(s, -1));
+    expect(() => d.api.choose(d.state, 5)).toThrow();
+    expect(() => d.api.choose(d.state, -1)).toThrow();
     expect(d.snap().screen).toBe("levelup");
     expect(d.snap().run.offers).toEqual(["lure"]);
   });
@@ -592,7 +637,6 @@ describe("the enemy poses", () => {
     });
     const { api, state } = d;
     expect(() => api.setEnemyHp(state, 0, 0)).toThrow();
-    expect(() => api.setEnemyHp(state, 0, 100)).toThrow();
     expect(() => api.setEnemyHeading(state, 0, 0, 0)).toThrow();
     expect(() => api.setEnemyAge(state, 0, -1)).toThrow();
     expect(() => api.setEnemyPosition(state, 7, 0, 0)).toThrow();
@@ -743,7 +787,7 @@ describe("the drop roll reading", () => {
 });
 
 describe("the drawn outcome poses", () => {
-  it("set each field, read back by the snapshot, on a run screen alone", () => {
+  it("set each field, read back by the snapshot, from whatever screen is showing", () => {
     const d = playing();
     d.pose((s) => d.api.spawnEnemy(s, "moth", 100, 0));
     const [moth] = d.snap().run.enemies;
@@ -768,7 +812,8 @@ describe("the drawn outcome poses", () => {
     expect(d.snap().run.nextDrop).toBe("bread");
     d.pose((s) => d.api.setScreen(s, "title"));
     d.pose((s) => d.api.setNextDrop(s, "none"));
-    expect(d.snap().run.nextDrop).toBe("bread");
+    expect(d.snap().run.nextDrop).toBe("none");
+    expect(d.snap().screen).toBe("title");
   });
 
   it("refuse an argument outside its domain", () => {

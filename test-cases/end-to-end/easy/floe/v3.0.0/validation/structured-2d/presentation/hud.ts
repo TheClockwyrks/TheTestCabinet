@@ -8,6 +8,12 @@
 // and a run anchored below it is not, which is exactly what makes "the score is
 // drawn inside the HUD bar" decidable without knowing a build's arrangement.
 //
+// THE ONE WORD THE SPECIFICATION FIXES IS READ BY THE SHARED HARNESS. The level
+// readout's label is copy, and copy is matched the way every case matches it:
+// `drewText` (`case-harness/text.ts`), a substring along a baseline, ignoring
+// case, with the whitespace folded out of both sides. What this file adds to
+// that reading is only WHERE — the bar's runs go back to it through `hudText`.
+//
 // A FIGURE IS READ AS A NUMBER, NOT AS A STRING. specs/ui.md leaves the HUD's
 // "arrangement and styling" to the build, so a build may zero-pad its timer
 // (`07`), group its score (`1,240`), set the timer as a clock (`0:22`) or write a
@@ -21,29 +27,49 @@
 // points read the bar's PIXELS instead.
 
 import { HUD_H } from "../constants";
-import { drawnTextSpans, type Harness, type TextSpan } from "../harness";
+import {
+  drawnTextRuns,
+  type DrawCall,
+  type Harness,
+  type TextSpan,
+} from "../harness";
 
 /**
- * Every run of text the last frame drew inside the HUD bar, in draw order.
+ * Every logical run of text the last frame spelled inside the HUD bar, in
+ * reading order.
  *
  * Anchored at or above `HUD_H`, which is where specs/strait.md puts the bar and
  * specs/ui.md puts the five readouts. The ANCHOR is the reading rather than the
  * whole box: a build sets its own type, and a descender that dips a unit past the
  * boundary has not moved the readout out of the bar.
  *
+ * The runs are {@link drawnTextRuns}'s, never the raw `fillText` calls: a build
+ * that letter-spaces its readouts draws a glyph per call, and a figure read a
+ * digit at a time is not the figure it sets.
+ *
  * The frame is whatever `h.calls` currently holds, so a caller runs
  * {@link renderFrame} first and reads the frame it ran.
  */
 export function hudRuns(h: Harness): TextSpan[] {
-  return drawnTextSpans(h).filter((span) => span.y >= 0 && span.y <= HUD_H);
+  return drawnTextRuns(h).filter((span) => span.y >= 0 && span.y <= HUD_H);
 }
 
-/** {@link hudRuns}, joined and folded, as one string a check matches against. */
-export function hudCopy(h: Harness): string {
-  return hudRuns(h)
-    .map((span) => span.text)
-    .join("  ")
-    .toUpperCase();
+/**
+ * The last frame's text inside the HUD bar, as the calls the shared harness's
+ * copy readers read.
+ *
+ * The mirror of `screens/screens.ts`'s `screenText`: {@link hudRuns} go back to
+ * `drewText` as one `fillText` each, at the anchor the run landed on in stage
+ * units, so the comparison is the package's own rather than a fold of this
+ * file's. A run already spells what its glyphs spell, and the reader joins a
+ * baseline's runs again before it compares, so nothing it answers changes.
+ */
+export function hudText(h: Harness): DrawCall[] {
+  return hudRuns(h).map((span) => ({
+    kind: "call",
+    method: "fillText",
+    args: [span.text, span.x, span.y],
+  }));
 }
 
 /**
@@ -68,7 +94,7 @@ const DRAWN = new RegExp(
 );
 
 /**
- * Every number the HUD bar's readouts carry, in the order they were drawn.
+ * Every number the HUD bar's readouts carry, in reading order across the bar.
  *
  * A digit run is one number however it is set, so `LEVEL 1 / 8` yields `1` and
  * `8`, `TIME 07` yields `7`, and `SCORE 1,240` yields the one figure `1240` — which

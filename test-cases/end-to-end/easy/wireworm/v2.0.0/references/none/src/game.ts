@@ -200,7 +200,7 @@ function driveMenu(
  * Read this frame's input and act on it.
  *
  * A frame that changed the screen makes the runtime forget the press in
- * progress: a confirm takes both of its edges on one menu (specs/ui.md), and the
+ * progress: a confirm requires both of its edges on one menu (specs/ui.md), and the
  * release still to come belongs to a screen that is no longer shown.
  */
 export function handleInput(

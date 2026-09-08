@@ -1,27 +1,29 @@
 // instrumentation/structure-pose-off-the-build-screen-does-nothing — a structure
-// pose lands on the build screen and nowhere else.
+// pose reaches the open site's structure from every screen.
 //
-// `specs/instrumentation.md` § The operations: "Each pose applies on the screens
-// its section names and does nothing on any other, exactly as the control it
-// stands for does", and § The structure names one screen for all of them: "These
-// pose single edits on the build screen, entering the rule pipeline the build tools
-// feed". So `addMember`, `setRing`, `addCounterweight`, `removeMember` and
-// `clearStructure` change nothing on the other six screens.
+// `specs/instrumentation.md` § The operations: "No operation asks which screen is
+// showing, whether a run is in progress, or which tool is selected. Those are how
+// a player reaches a control and are not an operation's conditions, so an
+// operation acts from wherever the game stands: a structure pose edits the open
+// site's structure with the program screen up". § The structure says the same of
+// these five: "the build screen is how a player reaches the tools and is not a
+// condition here, so these edit the open site's structure whatever screen is
+// showing."
 //
 // EVERY SCREEN THE POINT NAMES IS DRIVEN, because the screens are not alike: the
-// program screen is an editing screen where the SITE poses do apply, and the run
-// screen is the one a run is watched on, so a build that gated the structure poses
-// on "not a menu screen" or on "not mid-run" would pass on some of these and fail
-// on others. Each screen is reached with `setScreen`, which "shows a named screen
-// and sets nothing else", so nothing but the screen differs between the passes.
+// program screen is the tape editor's, and the run screen is the one a run is
+// watched on, so a build that gated the structure poses on "not a menu screen" or
+// on "not mid-run" would pass on some of these and fail on others. Each screen is
+// reached with `setScreen`, which "shows a named screen and sets nothing else",
+// so nothing but the screen differs between the passes.
 //
-// THE FIVE CALLS ARE ALL ONES THAT WOULD LAND. A pose that the editor's rules would
-// refuse anyway proves nothing about the screen, so the member, the ring node and
-// the counterweight node are all legal against `specs/structure.md` on this
-// structure, the removed id exists, and `clearStructure` "is refused by nothing".
-// The last step of the check is that same `clearStructure` on the build screen,
-// which empties the structure — the control that says these calls were live all
-// along and the screen is what held them off.
+// THE FIVE CALLS ARE ALL ONES THE EDITOR'S OWN RULES TAKE. What rule B removes is
+// the reach — the screen — and not the edit's own rule, which is the edit rather
+// than a gate on reaching it. So the member placed is legal against
+// `specs/structure.md`, the removed id is one the structure carries, the pending
+// node is a lattice node, and `clearStructure` "is refused by nothing". A build
+// that quietly declined any of them on the strength of the screen leaves the
+// structure empty and the tool unmoved, which is what this reads.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
@@ -53,50 +55,70 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("changes nothing when a structure pose is made off the build screen", async () => {
+it("edits the open site's structure from every screen", async () => {
   await openSite(h, 0);
   await clearAll(h);
-  // Two legs from two anchors to the ring's bottom flange: they give the check a
-  // member to remove (id 0), a node a counterweight may stand on, and a base the
-  // ring at (0, 2, 0) joins nothing across (specs/structure.md).
-  await h.debug.addMember(0, 0, 0, 0, 2, 0, "strut");
-  await h.debug.addMember(2, 0, 0, 2, 2, 0, "strut");
-
-  const before = await h.snapshot();
-  const structure = JSON.stringify(before.structure);
 
   for (const screen of OTHER_SCREENS) {
     await h.debug.setScreen(screen);
-    await h.debug.addMember(0, 0, 2, 0, 2, 2, "strut");
-    await h.debug.setRing(0, 2, 0);
-    await h.debug.addCounterweight(0, 2, 0);
-    await h.debug.removeMember(0);
+    // A leg from an anchor to the lattice node above it: legal against
+    // specs/structure.md on an empty structure, so nothing but the screen could
+    // hold it off. `clearStructure` returns `nextMemberId` to `0` first, so the
+    // member this places carries id 0 whichever pass it is.
     await h.debug.clearStructure();
+    await h.debug.addMember(0, 0, 0, 0, 2, 0, "strut");
+    await h.debug.setTool("cable");
+    await h.debug.setPendingNode(0, 2, 0);
+    await h.debug.reconcile();
 
-    const after = await h.snapshot();
-    assertEqual(
-      JSON.stringify(after.structure),
-      structure,
-      `the structure across the five structure poses on the ${screen} screen ` +
+    const placed = await h.snapshot();
+    assertLength(
+      placed.structure.members,
+      1,
+      `the members addMember placed from the ${screen} screen, which is a ` +
+        "player's route to the tools and not the operation's condition " +
         "(specs/instrumentation.md)",
     );
     assertEqual(
-      after.historyDepth,
-      before.historyDepth,
-      `historyDepth across the five structure poses on the ${screen} screen: ` +
-        "an edit that lands pushes the history, and none of these landed",
+      placed.tool,
+      "cable",
+      `the tool setTool selected from the ${screen} screen ` +
+        "(specs/instrumentation.md)",
+    );
+    assertEqual(
+      JSON.stringify(placed.pendingNode),
+      JSON.stringify({ x: 0, y: 2, z: 0 }),
+      `the node setPendingNode held from the ${screen} screen ` +
+        "(specs/instrumentation.md)",
+    );
+    assertEqual(
+      placed.historyDepth > 0,
+      true,
+      `the history the landed edit pushed from the ${screen} screen: "Each ` +
+        'edit that lands pushes the undo history exactly as a click would"',
+    );
+
+    await h.debug.clearPendingNode();
+    await h.debug.removeMember(0);
+    await h.debug.reconcile();
+    assertLength(
+      (await h.snapshot()).structure.members,
+      0,
+      `the members left after removeMember from the ${screen} screen ` +
+        "(specs/instrumentation.md)",
     );
   }
 
-  // The control: the same call, on the screen its section names, lands.
+  // The picture: the structure a pose made from the results screen stands in.
   await h.debug.setScreen("build");
-  await h.debug.clearStructure();
-  const emptied = await h.snapshot();
-  await h.capture("state", "the structure the build screen's own clear emptied");
+  await h.debug.addMember(0, 0, 0, 0, 2, 0, "strut");
+  await h.debug.reconcile();
+  const standing = await h.snapshot();
+  await h.capture("state", "the structure a pose reached from every screen");
   assertLength(
-    emptied.structure.members,
-    0,
-    "the members clearStructure removes on the build screen, where the " +
-      "structure poses apply",
+    standing.structure.members,
+    1,
+    "the member the same call places on the build screen, which is the same " +
+      "call every screen above took",
   );
 });

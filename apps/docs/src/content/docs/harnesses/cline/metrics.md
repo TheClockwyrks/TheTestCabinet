@@ -11,12 +11,12 @@ record for a completed session.
 The raw JSON keys map onto the
 [normalized classes](/components/core/metrics/#tokens) as follows:
 
-| Normalized class | Cline JSON key |
-| --- | --- |
-| Uncached input | `inputTokens` − `cacheReadTokens` (plus `cacheWriteTokens`) |
-| Cached input | `cacheReadTokens` |
-| Output | `outputTokens` |
-| Reasoning | not reported, recorded as `null` |
+| Normalized class | Cline JSON key                                              |
+| ---------------- | ----------------------------------------------------------- |
+| Uncached input   | `inputTokens` − `cacheReadTokens` (plus `cacheWriteTokens`) |
+| Cached input     | `cacheReadTokens`                                           |
+| Output           | `outputTokens`                                              |
+| Reasoning        | not reported, recorded as `null`                            |
 
 Cline's `inputTokens` is cache-inclusive: it already contains the
 `cacheReadTokens` restated alongside it, so the cache reads are subtracted to

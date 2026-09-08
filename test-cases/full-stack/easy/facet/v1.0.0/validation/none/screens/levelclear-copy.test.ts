@@ -22,10 +22,12 @@
 // and `screens/levelclear-shows-best-move` read them, because a build can draw
 // the heading and the menu and never report what the level was measured by.
 //
-// The copy is read through `frameText`, which hands back every string one frame
-// put on screen, and `showsText` decides whether a string is among them across
-// every shape specs/ui.md leaves open — one call per line, one per word, one per
-// glyph, or a figure drawn beside its label in a single run.
+// The copy is read through `frameText`, which hands back a frame's draw calls
+// and the page's own rendered DOM text, and `frameShows` decides whether a
+// string is among what they show — the calls through the shared harness's
+// `drewTextAnywhere` — across every shape specs/ui.md leaves open: one call per
+// line, one per word, one per glyph, or a figure drawn beside its label in a
+// single run.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, fail } from "../assert";
@@ -34,8 +36,10 @@ import { quietRowsWithEscape } from "../board";
 import {
   captureStill,
   createHarness,
+  frameShows,
   loadBoard,
-  showsText,
+  shownText,
+  type FrameText,
   type Harness,
 } from "../harness";
 
@@ -43,11 +47,14 @@ let h: Harness;
 
 /**
  * The frame put `wanted` on screen, or the failure names the copy the screen
- * owes beside every string the frame actually drew.
+ * owes beside every string the frame actually showed.
  */
-function requireCopy(drawn: readonly string[], wanted: string): void {
-  if (!showsText(drawn, wanted)) {
-    fail(`the level-clear screen to show ${JSON.stringify(wanted)}`, drawn);
+function requireCopy(frame: FrameText, wanted: string): void {
+  if (!frameShows(frame, wanted)) {
+    fail(
+      `the level-clear screen to show ${JSON.stringify(wanted)}`,
+      shownText(frame),
+    );
   }
 }
 
@@ -72,12 +79,12 @@ it("draws the level-clear heading and every menu item", async () => {
   );
 
   // One frame, and everything it put on screen. The still is that same frame.
-  const drawn = await h.frameText();
+  const frame = await h.frameText();
   await captureStill(h, "levelclear");
 
-  requireCopy(drawn, LEVELCLEAR_TITLE_TEXT);
-  // Both entries, each on its own: `showsText` can find a phrase spanning two
+  requireCopy(frame, LEVELCLEAR_TITLE_TEXT);
+  // Both entries, each on its own: `frameShows` can find a phrase spanning two
   // adjacent draws, so the menu is asked about one item at a time rather than
   // as a joined run that a single long draw would answer for.
-  for (const item of LEVELCLEAR_ITEMS) requireCopy(drawn, item);
+  for (const item of LEVELCLEAR_ITEMS) requireCopy(frame, item);
 });

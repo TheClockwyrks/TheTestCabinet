@@ -72,7 +72,10 @@ afterEach(async () => {
 
 it("leaves the path as it stands and keeps the lay live", async () => {
   const patterns = { reagents: BARE.reagents, products: BARE.products };
-  assertTrue(adjacent(LIVE, TAKEN), "the refused hex is adjacent to the live end");
+  assertTrue(
+    adjacent(LIVE, TAKEN),
+    "the refused hex is adjacent to the live end",
+  );
   assertTrue(adjacent(LIVE, FREE), "and so is the hex that follows it");
   assertEqual(
     placementFault([trackPart([...PATH, TAKEN]), trackPart([TAKEN])], patterns)

@@ -23,8 +23,9 @@
 // level, which empties the pool, so lamp oil is offered on its own with nothing
 // posed.
 //
-// THE TOLERANCE. The tag is matched as a whole word in the frame's text, case
-// ignored. Nothing about where a tag sits is read, since specs/ui.md fixes no
+// THE TOLERANCE. The tag is matched as a whole token in the frame's text
+// through `hasToken`, case ignored, so `NEW` inside a longer word does not
+// count. Nothing about where a tag sits is read, since specs/ui.md fixes no
 // layout for a row.
 
 import { afterEach, beforeEach, it } from "vitest";
@@ -45,11 +46,12 @@ import {
 import {
   captureStill,
   createHarness,
-  drewPhrase,
+  hasToken,
   holdPassive,
   holdWeapon,
   isolate,
   openLevelUp,
+  textReadings,
   type Harness,
 } from "../harness";
 
@@ -76,7 +78,7 @@ async function offerAlone(harness: Harness, id: OfferId): Promise<boolean> {
     `the offer the overlay presents for ${id}`,
   );
   const { calls } = await harness.frameDraw();
-  return drewPhrase(calls, OFFER_NEW_TEXT);
+  return hasToken(textReadings(calls), OFFER_NEW_TEXT);
 }
 
 beforeEach(async () => {
@@ -111,7 +113,7 @@ it("tags a weapon, a passive, and lamp oil not held with NEW", async () => {
   );
   const { calls } = await h.frameDraw();
   assertEqual(
-    drewPhrase(calls, OFFER_NEW_TEXT),
+    hasToken(textReadings(calls), OFFER_NEW_TEXT),
     true,
     `the tag on the lamp-oil offer (${OFFER_NEW_TEXT})`,
   );

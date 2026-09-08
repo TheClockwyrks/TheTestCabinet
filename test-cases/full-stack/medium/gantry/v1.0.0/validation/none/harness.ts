@@ -35,6 +35,16 @@
 // lifts them out of `debug` and onto itself — `h.advance`, `h.project`,
 // `h.keyDown`… — and a validator never learns that they were engine-only here.
 //
+// AND A POSED WORLD IS RECONCILED BEFORE IT IS READ. A build is free to work a
+// derived reading out at the read or to keep it as a stored copy, and a stored
+// copy answers for the world as it was until `reconcile` rewrites it. So a
+// helper below that poses anything a reading derives from — the structure, the
+// tape, the yard, the run — ends with `reconcile`, and a check that reaches its
+// scenario through the helpers never calls it itself. A check that poses with
+// `h.debug.*` directly calls it once before its first read. Where a helper
+// batches its calls into one crossing, `reconcile` is the batch's last entry, so
+// the crossing count does not grow.
+//
 // AND THIS FILE OWNS EVERY COMPOUND SEQUENCE. The surface is atomic by design:
 // one operation sets one field, and `specs/instrumentation.md` says so in as many
 // words ("a caller that wants several things arranged makes several calls"). So
@@ -49,6 +59,7 @@ import { readFileSync } from "node:fs";
 import type { Page } from "playwright";
 import {
   createCaseHarness,
+  type DrawCall,
   type Harness as BaseHarness,
   type HarnessOptions,
 } from "./case-harness/index";
@@ -100,6 +111,7 @@ export const REQUIRED_OPS = [
   "menuItemRect",
   "project",
   "reset",
+  "reconcile",
   "setScreen",
   "setMenuIndex",
   "openSite",
@@ -212,6 +224,12 @@ const kit = createCaseHarness<GantrySnapshot, GantryDebugApi>({
   // back — and every check runs after this harness's opening reset, so that half
   // of the requirement would be invisible without a reading taken first.
   readOpeningSnapshot: true,
+  // Measure every text call the recorder holds, so `screenCalls` carries the
+  // width and alignment the shared merge rule needs to put a letter-spaced run —
+  // one glyph per `fillText` — back together into the copy it spells. Without
+  // it no two text draws ever coalesce, and a check reading copy off
+  // `drawnTextLines` would be reading the raw call split after all.
+  measureText: true,
   // Gantry draws through WebGL, so nothing here reads pixels off a 2D context;
   // what a still captures is the page's own composited frame.
   //
@@ -371,6 +389,27 @@ export interface Harness {
    * state nothing has run over yet.
    */
   paint(): Promise<void>;
+
+  /**
+   * Every operation the last CLOSED frame made on the screen layer, as draw
+   * calls, with every text call measured.
+   *
+   * THE SAME READING ON ALL THREE ENGINES. Under `none` it is the shared
+   * harness's own `lastCalls`, read off the recorder it injects before a line of
+   * the build runs; the two engine projects answer the package recorder's
+   * `calls`, taken off the context it wraps around the engine's screen layer.
+   * Either way each `fillText`/`strokeText` carries its measured width and the
+   * alignment in force, which is what lets `drawnTextLines` and `drawnTextRuns`
+   * (`case-harness/text.ts`) fold a heading a build letter-spaced — one glyph
+   * per call — back into the run it spells. A check that reads copy or figures
+   * reads them off those runs and never off the call split, because the
+   * specification fixes the words and leaves their spacing to the build.
+   *
+   * Call it after the frame that draws the thing under test: a frame that has
+   * only been posed has drawn nothing, so a check advances one frame and then
+   * reads.
+   */
+  screenCalls(): Promise<DrawCall[]>;
 
   /* ---- This engine's own, for the few suites that are about it ------------ */
 
@@ -548,6 +587,8 @@ export async function createHarness(
     },
 
     paintFrames: (count) => pump(base, count),
+
+    screenCalls: () => base.lastCalls(),
 
     surfaceFault: base.surfaceFault,
     pageErrors: base.pageErrors,
@@ -884,6 +925,7 @@ export async function offEveryMenuItem(
 export async function openSite(h: Harness, index: number): Promise<void> {
   await h.debug.openSite(index);
   await h.debug.setScreen("build");
+  await h.debug.reconcile();
 }
 
 /**
@@ -901,7 +943,11 @@ export async function openSite(h: Harness, index: number): Promise<void> {
 export async function emptyYard(h: Harness): Promise<void> {
   await poseAll(
     h,
-    await onEditScreenCalls(h, [["clearLoads"], ["clearObstacles"]]),
+    await onEditScreenCalls(h, [
+      ["clearLoads"],
+      ["clearObstacles"],
+      ["reconcile"],
+    ]),
   );
 }
 
@@ -921,7 +967,7 @@ export async function clearAll(h: Harness): Promise<void> {
   if (was !== "build" && was !== "program") calls.push(["setScreen", "build"]);
   calls.push(["clearLoads"], ["clearObstacles"], ["clearStructure"]);
   calls.push(["setScreen", "program"], ["clearProgram"]);
-  calls.push(["setScreen", was]);
+  calls.push(["setScreen", was], ["reconcile"]);
   await poseAll(h, calls);
 }
 
@@ -1022,6 +1068,7 @@ export async function poseCrane(
     calls.push(["addCounterweight", node[0], node[1], node[2]]);
   }
   if (was !== "build") calls.push(["setScreen", was]);
+  calls.push(["reconcile"]);
   await poseAll(h, calls);
 
   const { structure } = await h.snapshot();
@@ -1110,6 +1157,7 @@ export async function poseTape(
       }
     }
   });
+  await h.debug.reconcile();
 
   const program = (await h.snapshot()).program;
   if (program.length !== before + steps.length) {
@@ -1228,6 +1276,7 @@ export async function addOneLoad(
       ["clearLoads"],
       ["addLoad", cls, mass, from.x, from.y, from.z, from.yaw],
       ["setLoadTarget", 0, to.x, to.y, to.z, to.yaw],
+      ["reconcile"],
     ]),
   );
 }
@@ -1243,6 +1292,7 @@ export async function addOneObstacle(
     await onEditScreenCalls(h, [
       ["clearObstacles"],
       ["addObstacle", min.x, min.y, min.z, size.x, size.y, size.z],
+      ["reconcile"],
     ]),
   );
 }

@@ -41,7 +41,7 @@ import {
   createHarness,
   pixelsDiffering,
   tap,
-  textDraws,
+  placedRuns,
   type Harness,
 } from "../harness";
 import { anchorY, bandAt } from "./stage";
@@ -69,7 +69,7 @@ afterEach(() => {
 it("redraws both title items when the highlight moves between them", async () => {
   h.reset();
   const first = await h.frameDraw();
-  const draws = textDraws(first.calls);
+  const draws = placedRuns(first.calls);
   const anchors = MOVED_BETWEEN.map((item) => anchorY(draws, item));
   for (const [index, at] of anchors.entries()) {
     assertNotNull(at, `where ${MOVED_BETWEEN[index]} was drawn`);

@@ -9,7 +9,10 @@
 import { createCanvas } from "@napi-rs/canvas";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  CARD_H,
+  CARD_W,
   CASCADE_DEBUG_VERSION,
+  COLUMN_X,
   DEAL_MODE,
   DEAL_MODE_LABEL,
   DECK_SIZE,
@@ -30,6 +33,7 @@ import {
   type DebugHost,
 } from "./debug";
 import { game, type CascadeState } from "./game";
+import { columnCardTops, dropRect } from "./layout";
 import { createRuntime, type Runtime } from "./runtime";
 import { COLOR } from "./theme";
 import type { Surface } from "./viewport";
@@ -242,7 +246,9 @@ describe("the cards", () => {
     expect(debug.snapshot().tableau[0].map((card) => card.rank)).toEqual([
       3, 5,
     ]);
-    expect(() => debug.removeCard(9999)).not.toThrow();
+    // An id no card on the table carries names nothing to act on, so the call
+    // fails loudly rather than passing quietly (specs/instrumentation.md).
+    expect(() => debug.removeCard(9999)).toThrow(RangeError);
   });
 
   it("takes a removed waste card off the newest set that holds any", () => {
@@ -573,5 +579,87 @@ describe("the cascade operations", () => {
     expect(flyer.x).toBe(FOUNDATION_X[0]);
     expect(flyer.y).toBe(TOP_ROW_Y);
     expect(debug.snapshot().launched).toBe(1);
+  });
+});
+
+describe("reconcile", () => {
+  /** How far inside a card's top-left the grabs below press, as a player does. */
+  const GRAB_DX = CARD_W / 2;
+  const GRAB_DY = 8;
+
+  /**
+   * A black Queen taken into hand off column 0 and carried over column 1.
+   *
+   * The gesture is the real one: the press grabs through the pointer path and
+   * the move carries the run, so `dropTarget` is whatever that path decided for
+   * the table as it stood at the move.
+   */
+  function heldOverColumn(): void {
+    debug.setScreen("playing");
+    debug.addCard("tableau", 0, "spades", 12, true);
+    const under = dropRect(state, "tableau", 1);
+    debug.pointerDown(
+      COLUMN_X[0] + GRAB_DX,
+      columnCardTops(state.tableau[0])[0] + GRAB_DY,
+    );
+    debug.pointerMove(
+      under.x + under.w / 2 - CARD_W / 2 + GRAB_DX,
+      under.y + under.h / 2 - CARD_H / 2 + GRAB_DY,
+    );
+  }
+
+  it("re-derives a stored reading from a posed table", () => {
+    heldOverColumn();
+    // An empty column takes a King alone, so the held black Queen has no target
+    // yet.
+    expect(debug.snapshot().dropTarget).toBeNull();
+
+    // Posing a red King under it makes the column take the run. The pose writes
+    // the column, not the drop target, so until the readings are brought into
+    // agreement `dropTarget` is still answering for the table as it was.
+    debug.addCard("tableau", 1, "hearts", 13, true);
+    debug.reconcile();
+    expect(debug.snapshot().dropTarget).toEqual({ pile: "tableau", index: 1 });
+
+    // And back the other way: a black King under a black Queen is refused.
+    debug.clearPile("tableau", 1);
+    debug.addCard("tableau", 1, "clubs", 13, true);
+    debug.reconcile();
+    expect(debug.snapshot().dropTarget).toBeNull();
+
+    // The run is still in hand: nothing was moved to make the reading agree.
+    expect(debug.snapshot().drag?.cards[0].rank).toBe(12);
+    expect(debug.snapshot().tableau[0]).toEqual([]);
+  });
+
+  it("advances nothing", () => {
+    debug.setScreen("playing");
+    debug.addCard("tableau", 0, "spades", 5, true);
+    debug.addFlyer("hearts", 7, 100, 200, 40, -60);
+    debug.setLaunchClock(0.25);
+    debug.pointerDown(10, 10);
+
+    const before = debug.snapshot();
+    debug.reconcile();
+    const once = debug.snapshot();
+    debug.reconcile();
+    const twice = debug.snapshot();
+
+    // The clock, the flight and every gate stand exactly where they were, and a
+    // second call is worth no more than the first.
+    expect(once).toEqual(before);
+    expect(twice).toEqual(once);
+    expect(once.simTime).toBe(before.simTime);
+    expect(once.launchClock).toBe(0.25);
+    expect(once.flyers).toEqual(before.flyers);
+    expect(once.trailStamps).toBe(before.trailStamps);
+  });
+
+  it("is legal on every screen", () => {
+    for (const screen of ["title", "howto", "playing", "won"] as const) {
+      debug.setScreen(screen);
+      debug.reconcile();
+      expect(debug.snapshot().screen).toBe(screen);
+    }
   });
 });

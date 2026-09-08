@@ -71,15 +71,35 @@
 // change it is a pose.
 //
 // THE PRODUCED FILES REALLY LOAD. A bare Node process can neither fetch a
-// page-relative URL nor decode a PNG, so without help every produced sprite would
-// fail to load and every point about one would fail every build ever written — a
-// fact about Node rather than about the build. The package's `installAssetHost`
-// supplies what a browser gives the engine's loader: a `fetch` that reads the
-// file the build committed off the workspace, and a `createImageBitmap` that
-// decodes it. NO `AudioContext` is installed, deliberately: the engine announces
-// every cue by name whether or not a device could sound it, so Deepcore's audio
-// points are decided off those announcements and there is nothing here for a
-// decoder to do.
+// page-relative URL nor decode a PNG or a `.wav`, so without help every produced
+// file would fail to load and every point about one would fail every build ever
+// written — a fact about Node rather than about the build. The package's
+// `installAssetHost` supplies what a browser gives the engine's loader: a `fetch`
+// that reads the file the build committed off the workspace, and a
+// `createImageBitmap` that decodes it; `installAudioContext` supplies the
+// `AudioContext` whose `decodeAudioData` turns a produced `.wav` into the buffer
+// a cue is bound to.
+//
+// THE AUDIO SHIM IS NOT OPTIONAL, AND THIS HEADER ONCE CLAIMED IT WAS. The claim
+// was that the engine announces every cue by name whether or not a device could
+// sound it, so Deepcore's audio points are decided off the announcements and a
+// decoder has nothing to do here. That holds for a cue DECLARED with
+// `api.audio.define` and for nothing else. A name given to `api.audio.load` is
+// bound only once its file has decoded — `engine/audio.md`, and the bus itself:
+// "The name is bound only after the decode has succeeded" — and `play`, `loop`
+// and `stop` THROW `unknown audio cue "<name>"` for a name nothing declared. So
+// with no `AudioContext` the thirteen loads `specs/assets.md` asks for all reject,
+// nothing is bound, and a build that awaited them never finishes `initialize`
+// while a build that did not throws out of its own `update` on the first cue it
+// plays: every point in the project lost, in either case, to a fact about Node.
+//
+// THE REFERENCE CANNOT SHOW YOU THAT. `references/simple-2d/src/audio.ts`
+// declares a synth stand-in for all thirteen names with `api.audio.define` and
+// only then loads the produced clip over each with `.catch(() => undefined)`, so
+// every name is already bound before a decode is attempted and the reference
+// validates green with no decoder installed at all. A build that did exactly what
+// the specification asked — produce the thirteen files, bind each cue from its
+// file, play it by name — would have scored nothing.
 //
 // THE CLOCK IS THE SUITE'S. `specs/instrumentation.md` deliberately fixes no
 // timestep, because every rate in this game is per second and is integrated
@@ -90,6 +110,16 @@
 // delay is 180 — and that is the unit the tolerances in this project were
 // established in. A check that is ABOUT the step size builds harnesses with the
 // engine's other clocks, which are re-exported below.
+//
+// AND A POSED WORLD IS RECONCILED BEFORE IT IS READ. A build is free to work a
+// derived reading out at the read or to keep it as a stored copy, and a stored
+// copy answers for the world as it was until `reconcile()` rewrites it. So a
+// helper below that poses anything a reading derives from — a position, the
+// grid, the cargo, the tiers — ends with `reconcile()`, and a check that reaches
+// its scenario through the helpers never calls it itself. A check that poses
+// with `h.debug.set...` directly calls it once before its first read or sweep.
+// A helper that writes only state nothing derives from — a faculty gate, a held
+// count — does not.
 //
 // AND EVERY COMPOUND SEQUENCE LIVES HERE. The surface is atomic by design: one
 // field or one reading. Opening a scene, holding a faculty, laying a seam,
@@ -114,6 +144,8 @@ import {
   applyDriver,
   createEngineCaseHarness,
   installAssetHost,
+  installAudioContext,
+  wavAudioBuffer,
   type AssetHost,
   type EngineHarness,
   type EngineHarnessOptions,
@@ -136,6 +168,7 @@ import {
 } from "./case-harness/draw-calls";
 import {
   drawnText as rawDrawnText,
+  drawnTextLines,
   textDraws,
   type TextDraw,
 } from "./case-harness/text";
@@ -462,6 +495,40 @@ const ASSET_HOST = {
   label: "deepcore",
 } as const;
 
+/**
+ * Give this worker an `AudioContext` that decodes a produced `.wav` and never
+ * sounds it, so the cues a build binds from its own files actually bind.
+ *
+ * `specs/assets.md` has the build produce all thirteen sounds with `sfx-synth`,
+ * `sfx-sample` and `music`, commit each at `assets/audio/<name>.wav`, and define
+ * the cue by the name the table fixes. The engine's bus loads such a file through
+ * the asset host and hands the bytes to `decodeAudioData`, and it binds the name
+ * only once that decode has RESOLVED; a play, a loop or a stop aimed at a name
+ * nothing bound throws. Node carries no Web Audio, so without this the decode
+ * rejects for every cue and the build falls over before a single audio point — or
+ * any other point — is reached. Nothing here sounds: the stub answers a decode
+ * and returns inert nodes for everything else, which is the whole of what the bus
+ * needs to get past the bind.
+ *
+ * `wavAudioBuffer` really reads the channels the produced file carries, rather
+ * than the silence of the right length `silentAudioBuffer` would answer. No
+ * verdict in this project is taken off a buffer — `assets/audio-files-present`
+ * decodes the thirteen files itself, off disk, precisely because it will not put
+ * the question to the build's loader — but a decoder that answered silence would
+ * be making a claim about the produced file that this harness has no business
+ * making, and would quietly become the wrong answer the moment a check did read
+ * one. Its exception is deliberate too: a `.wav` no decoder can read leaves its
+ * cue unbound, which is what a browser would do with the same file.
+ *
+ * INSTALLED AT MODULE SCOPE, once for the worker, rather than per harness the way
+ * the asset host is. The context holds nothing belonging to one run, so there is
+ * no per-harness state for a `dispose` to give back; the package reference-counts
+ * it as it does the asset host, and leaving the hold standing for the life of the
+ * worker keeps one harness's teardown from pulling the decoder out from under a
+ * build another harness is still driving.
+ */
+installAudioContext({ decode: wavAudioBuffer });
+
 /* ---- The save slot -------------------------------------------------------- */
 
 /**
@@ -549,8 +616,11 @@ const kit = createEngineCaseHarness<
   stage: { width: STAGE_W, height: STAGE_H },
   tickHz: TICK_HZ,
   surfaceRequirement: SURFACE_REQUIREMENT,
-  // The text readings below place a run about its anchor, so each text call is
-  // measured and the transform in force at it recorded.
+  // The text readings below place a run about its anchor, and the package's
+  // `drewText` (which every copy check imports) reads copy off the logical
+  // runs the shared harness merges side-by-side glyphs into — nothing merges
+  // without each draw's extent — so each text call is measured and the
+  // transform in force at it recorded.
   recorder: { measureText: true },
   cueEvents: ["cue:played", "cue:looped"],
   defaultClock: () => new ConstantClock(TICK_MS),
@@ -961,6 +1031,7 @@ export function openScene(h: Harness, options: SceneOptions = {}): void {
   h.debug.setScreen(options.screen ?? "in-mine");
   if (options.travel !== undefined) h.debug.setMinerTravel(options.travel);
   if (options.drill !== undefined) h.debug.setMinerDrill(options.drill);
+  h.debug.reconcile();
 }
 
 /**
@@ -1005,6 +1076,7 @@ export function fillColumn(
   for (let row = fromRow; row <= toRow; row += 1) {
     h.debug.setTile(col, row, kind);
   }
+  h.debug.reconcile();
 }
 
 /** Fill a run of cells across one row with one kind. */
@@ -1018,6 +1090,7 @@ export function fillRow(
   for (let col = fromCol; col <= toCol; col += 1) {
     h.debug.setTile(col, row, kind);
   }
+  h.debug.reconcile();
 }
 
 /** Fill a rectangular block of cells with one kind. */
@@ -1029,6 +1102,7 @@ export function fillBlock(
   for (let row = block.fromRow; row <= block.toRow; row += 1) {
     fillRow(h, row, block.fromCol, block.toCol, kind);
   }
+  h.debug.reconcile();
 }
 
 /**
@@ -1060,6 +1134,7 @@ export function layFloor(
 export function layCamp(h: Harness, kind: TileKind = "rock"): void {
   layFloor(h, 1, kind);
   h.debug.setTile(CAVE_MOUTH_COL, 1, "tunnel");
+  h.debug.reconcile();
 }
 
 /**
@@ -1095,12 +1170,14 @@ export function standOn(
   h.debug.setMinerPosition(minerXOn(col), minerYOn(row));
   h.debug.setMinerVelocity(0, 0);
   if (facing !== undefined) h.debug.setFacing(facing);
+  h.debug.reconcile();
 }
 
 /** Put the miner's box at a world position, at rest. */
 export function placeAt(h: Harness, x: number, y: number): void {
   h.debug.setMinerPosition(x, y);
   h.debug.setMinerVelocity(0, 0);
+  h.debug.reconcile();
 }
 
 /** Stand the miner on the camp ground at `col`, where it spawns by default. */
@@ -1131,11 +1208,13 @@ export function digShaft(
   fillColumn(h, col - 1, fromRow, toRow, wall);
   fillColumn(h, col + 1, fromRow, toRow, wall);
   h.debug.setTile(col, toRow + 1, wall);
+  h.debug.reconcile();
 }
 
 /** Put an ore vein at a cell, at its band's full health. */
 export function layOre(h: Harness, col: number, row: number, ore: Ore): void {
   h.debug.setOreTile(col, row, ore);
+  h.debug.reconcile();
 }
 
 /** Put a material node at a cell, at its band's full health. */
@@ -1146,6 +1225,7 @@ export function layMaterial(
   material: Material,
 ): void {
   h.debug.setMaterialTile(col, row, material);
+  h.debug.reconcile();
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1167,6 +1247,7 @@ export function stageCargo(
   for (const [id, count] of Object.entries(ore)) {
     h.debug.setCargo(id as Ore, count as number);
   }
+  h.debug.reconcile();
 }
 
 /**
@@ -1190,6 +1271,7 @@ export function loadToFraction(
     (fraction * cargo.liftLimitKg) / mineralOf(ore).weightKg,
   );
   h.debug.setCargo(ore, count);
+  h.debug.reconcile();
   return { count, fraction: loadFraction(h.snapshot()) };
 }
 
@@ -1212,6 +1294,7 @@ export function stageTiers(
   for (const [track, tier] of Object.entries(tiers)) {
     h.debug.setTier(track as UpgradeTrack, tier as number);
   }
+  h.debug.reconcile();
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1470,11 +1553,13 @@ export async function driveFall(
 /* -------------------------------------------------------------------------- */
 //
 // The readings a check makes over what a frame left behind. Most are the
-// package's, taken under this project's own names; four are NOT, and each of the
-// four is a place where the package ships a reading of the same name that answers
-// a different question. Folding one into the other would silently move a
-// threshold rather than fail, so this file binds the reading Deepcore's verdicts
-// were established under and says which it is.
+// package's, taken under this project's own names; three are NOT (`DRAW_METHODS`,
+// `drawnPoints` and `imageDraws`), and each of the three is a place where the
+// package ships a reading of the same name that answers a different question.
+// Folding one into the other would silently move a threshold rather than fail,
+// so this file binds the reading Deepcore's verdicts were established under and
+// says which it is. `drewText` is not bound here at all: a suite imports the
+// package's from `case-harness/text`, and reads copy off the frame's logical runs.
 
 /** The radius the five-point colour cluster is spread over, in logical units. */
 const SAMPLE_RADIUS = 6;
@@ -1512,31 +1597,18 @@ export function sampleCell(
 
 /* ---- Reading one frame's render ------------------------------------------- */
 
+/**
+ * Every logical run of text the frame spelled, as the strings it spells: a
+ * letter-spaced heading drawn one glyph per call is ONE entry. The shared
+ * harness's reading, re-exported so a suite reads copy the way the package's
+ * `drewText` does; {@link drawnText} below stays the raw split, one string per
+ * call.
+ */
+export { drawnTextLines };
+
 /** Every string the frame drew, through `fillText` or `strokeText`. */
 export function drawnText(calls: readonly DrawCall[]): string[] {
   return rawDrawnText(calls);
-}
-
-/**
- * Whether the frame drew `text` as part of some run of text, ignoring case.
- *
- * Substring rather than equality on purpose: the copy a check asserts is the
- * case's own, but how a build presents it is the build's, and a menu entry is
- * commonly drawn with a selection marker or padding around it. Requiring the
- * exact run would fail a screen that shows precisely the right words.
- *
- * READ OFF THE RAW CALLS, AND NOT OFF THE PACKAGE'S LOGICAL RUNS. The package's
- * `drewText` coalesces the frame's text draws into runs first, so a heading
- * letter-spaced a glyph per `fillText` is found by the words it spells; this one
- * requires the words to be inside a single call. Every raw string is a substring
- * of the run it belongs to, so the package's reading can only ADD matches — which
- * is exactly why the two are not interchangeable here: this project asserts on
- * copy that is ABSENT as well as on copy that is present, and its twenty-two
- * call sites were decided under this reading.
- */
-export function drewText(calls: readonly DrawCall[], text: string): boolean {
-  const wanted = text.trim().toLowerCase();
-  return drawnText(calls).some((drawn) => drawn.toLowerCase().includes(wanted));
 }
 
 /** One run of text a frame drew, placed in logical units. */

@@ -25,7 +25,11 @@
 // with its tape length against the machine's period"). So the reading is by
 // CONTAINMENT, case and whitespace dropped: the run drawn on the part is one the
 // row's label also carries. Requiring the two to be the same run would fail a
-// build whose label draws the identifier and the annotation together.
+// build whose label draws the identifier and the annotation together. And the
+// runs are the LOGICAL ones the frame spells (`drawnTextRuns`, `textRunsIn`),
+// not the `fillText` calls: a build that letter-spaces its labels draws one
+// glyph per call, and read call by call three identifiers `A1`, `A2`, `A3` would
+// all share the run `a` and read as one mark rather than three.
 //
 // AND THE THREE MUST BE TELLING PARTS APART. The identifiers are "unique among the
 // machine's rows", so the three the field carries are three different strings —
@@ -42,11 +46,11 @@ import { BARE, EAST, ORIGIN, WEST } from "../fixtures";
 import {
   captureStill,
   createHarness,
+  drawnTextRuns,
   openChallengeDocument,
   partIds,
   placePart,
-  textDraws,
-  textIn,
+  textRunsIn,
   type Harness,
 } from "../harness";
 
@@ -91,7 +95,7 @@ it("draws each row's identifier on its own arm on the field", async () => {
   const carried: string[] = [];
 
   for (const [row, anchor] of ANCHORS.entries()) {
-    const label = textIn(calls, tapeLabel(row))
+    const label = textRunsIn(calls, tapeLabel(row))
       .map((draw) => squash(draw.text))
       .filter((text) => text.length > 0);
     assertGreaterThan(
@@ -101,7 +105,7 @@ it("draws each row's identifier on its own arm on the field", async () => {
     );
 
     const centre = hexCenter(anchor);
-    const onPart = textDraws(calls)
+    const onPart = drawnTextRuns(calls)
       .filter(
         (draw) =>
           Math.hypot(draw.x - centre.x, draw.y - centre.y) <= ON_THE_PART,

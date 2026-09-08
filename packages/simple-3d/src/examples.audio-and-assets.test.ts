@@ -135,7 +135,11 @@ function glb(json: unknown, bin: Uint8Array): ArrayBuffer {
   view.setUint32(at + 4, 0x4e4f534a, true); // "JSON"
   out.set(jsonBytes, at + 8);
   // The JSON chunk pads with spaces, per the container's own rules.
-  out.fill(0x20, at + 8 + jsonBytes.length, at + 8 + jsonBytes.length + jsonPad);
+  out.fill(
+    0x20,
+    at + 8 + jsonBytes.length,
+    at + 8 + jsonBytes.length + jsonPad,
+  );
   at += 8 + jsonBytes.length + jsonPad;
 
   view.setUint32(at, bin.length + binPad, true);
@@ -163,8 +167,13 @@ function shipGlb(): ArrayBuffer {
       asset: { version: "2.0" },
       scene: 0,
       scenes: [{ name: SHIP_NODES[0], nodes: [0] }],
-      nodes: [{ name: SHIP_NODES[1], mesh: 0, children: [1] }, { name: SHIP_NODES[2] }],
-      meshes: [{ name: "hull-mesh", primitives: [{ attributes: { POSITION: 0 } }] }],
+      nodes: [
+        { name: SHIP_NODES[1], mesh: 0, children: [1] },
+        { name: SHIP_NODES[2] },
+      ],
+      meshes: [
+        { name: "hull-mesh", primitives: [{ attributes: { POSITION: 0 } }] },
+      ],
       accessors: [
         {
           bufferView: 0,
@@ -202,7 +211,8 @@ function body(buffer: ArrayBuffer = new ArrayBuffer(8)): Blob {
 function serve(url: string): Promise<Response> {
   if (url === URL_MODEL) return Promise.resolve(response(body(SHIP_GLB)));
   if (url === URL_AUDIO) return Promise.resolve(response(body()));
-  if (url === URL_BANNER && bannerHeld) return Promise.resolve(response(body()));
+  if (url === URL_BANNER && bannerHeld)
+    return Promise.resolve(response(body()));
   return Promise.resolve({
     ok: false,
     status: 404,
@@ -501,7 +511,11 @@ const runner: Game<RunnerState, null> = {
     return [state, null];
   },
 
-  update(state: DeepReadonly<RunnerState>, api: UpdateApi, dt: number): RunnerState {
+  update(
+    state: DeepReadonly<RunnerState>,
+    api: UpdateApi,
+    dt: number,
+  ): RunnerState {
     if (api.input.pressed("mute")) api.audio.setMuted(!api.audio.muted());
 
     const startedLeft = api.input.pressed("left");
@@ -709,7 +723,8 @@ function cues(engine: Engine<RunnerState, null>): {
 /** Where the build's ship stands in the scene. */
 function shipOf(engine: Engine<RunnerState, null>): THREE.Object3D {
   const ship = engine.scene.getObjectByName("ship");
-  if (ship === undefined) throw new Error("the scene holds no object named ship");
+  if (ship === undefined)
+    throw new Error("the scene holds no object named ship");
   return ship;
 }
 
@@ -770,8 +785,14 @@ describe("the audio-and-assets example", () => {
     expect(announced).toHaveLength(3);
     expect(announced.slice(0, 2)).toEqual(
       expect.arrayContaining([
-        { event: "loaded", payload: { path: "models/ship.glb", url: URL_MODEL } },
-        { event: "loaded", payload: { path: "audio/impact.wav", url: URL_AUDIO } },
+        {
+          event: "loaded",
+          payload: { path: "models/ship.glb", url: URL_MODEL },
+        },
+        {
+          event: "loaded",
+          payload: { path: "audio/impact.wav", url: URL_AUDIO },
+        },
       ]),
     );
 
@@ -832,7 +853,9 @@ describe("the audio-and-assets example", () => {
     const light = engine.scene.children[1];
     expect(light).toBeInstanceOf(THREE.HemisphereLight);
     expect((light as THREE.HemisphereLight).intensity).toBe(2);
-    expect((light as THREE.HemisphereLight).color.getHexString()).toBe("ffffff");
+    expect((light as THREE.HemisphereLight).color.getHexString()).toBe(
+      "ffffff",
+    );
     expect((light as THREE.HemisphereLight).groundColor.getHexString()).toBe(
       "30343f",
     );
@@ -845,7 +868,9 @@ describe("the audio-and-assets example", () => {
     const observed = watched();
     await boot({ game: observed.game });
 
-    const model: Model = await observed.init().assets.loadModel("models/ship.glb");
+    const model: Model = await observed
+      .init()
+      .assets.loadModel("models/ship.glb");
     expect(model.nodes).toEqual([...SHIP_NODES]);
 
     const first = cloneModel(model);
@@ -1061,7 +1086,8 @@ describe("the audio-and-assets example", () => {
 
     // The positioned loop stands at its point, and `place` moves it there and then.
     const panner = audio.panners.at(-1);
-    if (panner === undefined) throw new Error("the placed loop built no panner");
+    if (panner === undefined)
+      throw new Error("the placed loop built no panner");
     expect(positionOf(panner)).toEqual({ x: 4, y: 0, z: -2 });
     bus.place("impact", { x: -5, y: 1, z: 0 });
     expect(positionOf(panner)).toEqual({ x: -5, y: 1, z: 0 });

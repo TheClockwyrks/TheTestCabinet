@@ -19,7 +19,8 @@
 // and a half shots a second climb past the Capacitor's one kill. The board has to
 // re-rank without anything else about the run changing.
 //
-// A row is found by the type it names, because a rank a player cannot attach to a
+// A row is found by the type it names — the name `specs/components.md` gives the
+// type, as `../constants` spells it — because a rank a player cannot attach to a
 // structure ranks nothing; the three types are named nowhere else on the stage
 // while the selection is clear.
 
@@ -39,12 +40,14 @@ import {
   type Harness,
   openYard,
   parkUnit,
+  reads,
   type Region,
   standComponent,
   structureById,
   textLines,
 } from "../harness";
 import {
+  COMPONENT_NAMES,
   componentDamage,
   type ComponentType,
   STAGE_H,
@@ -88,12 +91,10 @@ function inRangeOf(gun: Gun): { x: number; y: number } {
 
 /** The types the board named, in the order it drew them, top first. */
 function ranked(calls: readonly DrawCall[]): ComponentType[] {
-  const lines = textLines(calls, OVERLAY).map((line) =>
-    line.toUpperCase().replace(/[^A-Z0-9]+/g, ""),
-  );
+  const lines = textLines(calls, OVERLAY);
   const placed = GUNS.map((gun) => ({
     type: gun.type,
-    at: lines.findIndex((line) => line.includes(gun.type.toUpperCase())),
+    at: lines.findIndex((line) => reads(line, COMPONENT_NAMES[gun.type])),
   }));
   for (const one of placed) {
     if (one.at < 0) {

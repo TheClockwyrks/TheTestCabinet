@@ -23,6 +23,7 @@
 
 import { ConstantClock } from "@clockwyrks/structured-2d";
 import { afterEach, beforeEach, it } from "vitest";
+import { drewText } from "../case-harness/text";
 import { PAUSE_ITEMS, structureCenter } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
@@ -34,7 +35,7 @@ import {
   sampleColor,
   standComponent,
 } from "../harness";
-import { SAMPLE_SPREAD, drewText } from "./reading";
+import { SAMPLE_SPREAD } from "./reading";
 
 /** A corner of the yard a centred pause menu does not reach. */
 const CORNER = { col: 2, row: 29 };

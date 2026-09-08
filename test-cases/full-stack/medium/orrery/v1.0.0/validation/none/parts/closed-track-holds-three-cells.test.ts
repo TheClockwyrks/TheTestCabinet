@@ -40,7 +40,9 @@ import {
  * the placement rules of `specs/parts.md` alone, and throws an `Error` naming
  * the first rule it breaks" (`specs/instrumentation.md`, The machine).
  */
-async function refusesPlacement(place: () => Promise<unknown>): Promise<boolean> {
+async function refusesPlacement(
+  place: () => Promise<unknown>,
+): Promise<boolean> {
   try {
     await place();
     return false;
@@ -77,7 +79,11 @@ it("refuses to close a two-cell track whose ends are adjacent", async () => {
   // The geometry the check claims to be posing: every part of rule 6 but the
   // count holds of the two-cell path.
   for (const hex of [...PAIR, THIRD]) {
-    assertEqual(onField(hex), true, `the hex (${hex.q}, ${hex.r}) is on the field`);
+    assertEqual(
+      onField(hex),
+      true,
+      `the hex (${hex.q}, ${hex.r}) is on the field`,
+    );
   }
   assertEqual(
     adjacent(PAIR[0] as Hex, PAIR[1] as Hex),
@@ -89,7 +95,11 @@ it("refuses to close a two-cell track whose ends are adjacent", async () => {
     true,
     "and its last cell is adjacent to its first, so only the count is short",
   );
-  assertEqual(PAIR.length < CLOSED_MIN_CELLS, true, "the path holds fewer than three cells");
+  assertEqual(
+    PAIR.length < CLOSED_MIN_CELLS,
+    true,
+    "the path holds fewer than three cells",
+  );
   assertEqual(
     adjacent(PAIR[PAIR.length - 1] as Hex, THIRD),
     true,
@@ -127,7 +137,11 @@ it("refuses to close a two-cell track whose ends are adjacent", async () => {
     "and it still holds both the cells it was laid as",
   );
 
-  assertEqual(extended, false, "the third cell is laid on the still-open track");
+  assertEqual(
+    extended,
+    false,
+    "the third cell is laid on the still-open track",
+  );
   assertEqual(closedLong, false, "closing the three-cell path is taken");
   assertEqual(longState?.closed, true, "that track reads back closed");
   assertEqual(

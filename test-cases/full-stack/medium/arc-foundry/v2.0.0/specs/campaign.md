@@ -51,10 +51,10 @@ waves `25` and `50`.
 
 ## Ending a run
 
-| Outcome | When | What follows |
-| --- | --- | --- |
-| Victory | Wave `N` is cleared with Grid Integrity remaining. | The finale runs, then the victory screen. |
-| Defeat | Grid Integrity reaches `0`, at any point, including mid-wave. | The defeat screen, immediately. |
+| Outcome | When                                                          | What follows                              |
+| ------- | ------------------------------------------------------------- | ----------------------------------------- |
+| Victory | Wave `N` is cleared with Grid Integrity remaining.            | The finale runs, then the victory screen. |
+| Defeat  | Grid Integrity reaches `0`, at any point, including mid-wave. | The defeat screen, immediately.           |
 
 A defeat never reaches the finale, so a defeated run has no Maze Rating.
 

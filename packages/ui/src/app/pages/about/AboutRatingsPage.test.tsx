@@ -56,7 +56,9 @@ describe("AboutRatingsPage", () => {
   it("describes the aesthetic channel as run-wide, not per domain", () => {
     renderRatings();
     expect(screen.getByText(/for the whole run/)).toBeInTheDocument();
-    expect(screen.getByText(/worst tier across its reviews/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/worst tier across its reviews/),
+    ).toBeInTheDocument();
     expect(screen.queryByText(/per domain/)).toBeNull();
   });
 });

@@ -25,10 +25,10 @@ import {
   ACTION_KEY,
   captureStill,
   createHarness,
-  drawnText,
-  drewText,
+  drawnTextLines,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/index";
 import { drawnCopy } from "./frames";
 
 /** The two things specs/modes.md has both death rules turn on. */
@@ -87,7 +87,9 @@ it("reaches the mode choice, which states both death rules", async () => {
   const entries: readonly string[] = MODE_ITEMS.map((item) =>
     item.toUpperCase(),
   );
-  const stated = drawnText(calls)
+  // Off the logical runs, so a letter-spaced entry is dropped whole rather than
+  // leaving its glyphs behind to pass as a statement.
+  const stated = drawnTextLines(calls)
     .map((run) =>
       run
         .toUpperCase()

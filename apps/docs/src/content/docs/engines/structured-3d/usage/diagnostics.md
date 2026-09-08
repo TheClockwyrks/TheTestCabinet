@@ -79,10 +79,7 @@ it cheap: read a field, count a tag, format a position.
 ```ts
 world.diagnostics.register("elapsed", () => this.state.elapsed);
 world.diagnostics.register("bricks", () => world.byTag(TAG_BRICK).length);
-world.diagnostics.register(
-  "hud",
-  () => `${this.score()} in ${world.level}`,
-);
+world.diagnostics.register("hud", () => `${this.score()} in ${world.level}`);
 ```
 
 Prefer values the simulation already holds. A diagnostic that derives something

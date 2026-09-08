@@ -14,6 +14,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
+import { drewText } from "../case-harness/text";
 import {
   BEST_LABEL,
   CLEARED_TEXT,
@@ -25,7 +26,6 @@ import {
   arrangeFullBoard,
   captureStill,
   createHarness,
-  drewText,
   type Harness,
 } from "../harness";
 

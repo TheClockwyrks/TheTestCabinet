@@ -9,12 +9,12 @@ component carries are in `specs/components.md`, and the recipes are in
 
 ## The four things
 
-| Thing | Occupies the grid | Walls | Fires | Harvestable |
-| --- | --- | --- | --- | --- |
-| Rock | No, it is held on the cursor | No | No | No |
-| Candidate | Yes | Yes | No | Yes, this level only |
-| Blocker | Yes | Yes | No | No |
-| Component | Yes | Yes | Yes | Already harvested |
+| Thing     | Occupies the grid            | Walls | Fires | Harvestable          |
+| --------- | ---------------------------- | ----- | ----- | -------------------- |
+| Rock      | No, it is held on the cursor | No    | No    | No                   |
+| Candidate | Yes                          | Yes   | No    | Yes, this level only |
+| Blocker   | Yes                          | Yes   | No    | No                   |
+| Component | Yes                          | Yes   | Yes   | Already harvested    |
 
 - A rock is blank. It has no type and no quality until it lands.
 - A candidate is a rock that has landed and rolled. It shows its type and quality in the
@@ -47,9 +47,9 @@ A rock rolls the instant it lands, not when the press is pulled. Placing it spen
 stamp and rolls one component of a random type at a random quality at the footprint it
 landed on. Type and quality roll independently.
 
-| Axis | Distribution |
-| --- | --- |
-| Type | Uniform over the eight base types, `0.125` each. Refinement does not change it. |
+| Axis    | Distribution                                                                                |
+| ------- | ------------------------------------------------------------------------------------------- |
+| Type    | Uniform over the eight base types, `0.125` each. Refinement does not change it.             |
 | Quality | The five-tier distribution `REFINEMENT_ODDS[R]` for the run's current refinement level `R`. |
 
 At refinement `R0` the press rolls Scrap alone. The full odds table is under Refinement
@@ -78,11 +78,11 @@ harvest.
 
 Three actions are a harvest:
 
-| Action | What it produces |
-| --- | --- |
-| KEEP | The selected candidate becomes a permanent component at its rolled type and quality. |
-| DOWNGRADE | The selected candidate becomes a permanent component at one quality tier lower than it rolled. |
-| A combine that consumes at least one candidate | The combine's result becomes a permanent component. |
+| Action                                         | What it produces                                                                               |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| KEEP                                           | The selected candidate becomes a permanent component at its rolled type and quality.           |
+| DOWNGRADE                                      | The selected candidate becomes a permanent component at one quality tier lower than it rolled. |
+| A combine that consumes at least one candidate | The combine's result becomes a permanent component.                                            |
 
 Committing a harvest resolves in this order:
 
@@ -103,10 +103,10 @@ in place.
 
 What a combine consumes decides the phase:
 
-| Ingredients | Kind | Effect on the phase |
-| --- | --- | --- |
-| At least one candidate | The level's harvest | Resolves, then starts the wave. |
-| Standing structures only | A plain combine | Resolves and leaves the phase running. |
+| Ingredients              | Kind                | Effect on the phase                    |
+| ------------------------ | ------------------- | -------------------------------------- |
+| At least one candidate   | The level's harvest | Resolves, then starts the wave.        |
+| Standing structures only | A plain combine     | Resolves and leaves the phase running. |
 
 A plain combine is the only combine available during a live wave, since candidates exist
 only in a build phase. A build phase hosts at most one harvest combine, because the wave
@@ -127,12 +127,12 @@ begins the moment it fires.
 Two base structures of the same type and the same quality fold into one structure of that
 type one tier higher.
 
-| Folding | Produces |
-| --- | --- |
-| Two Scrap | One Tuned |
-| Two Tuned | One Charged |
-| Two Charged | One Primed |
-| Two Primed | One Tesla-Prime |
+| Folding     | Produces        |
+| ----------- | --------------- |
+| Two Scrap   | One Tuned       |
+| Two Tuned   | One Charged     |
+| Two Charged | One Primed      |
+| Two Primed  | One Tesla-Prime |
 
 A quality-combine is offered on a base structure that has a matching partner anywhere on
 the yard, and on nothing else. Tesla-Prime is the top rung and offers no quality-combine.
@@ -166,23 +166,23 @@ Refinement is permanent for the run and changes nothing but the quality distribu
 
 `REFINEMENT_ODDS` holds one five-tier distribution per level, each summing to `1`:
 
-| `R` | Scrap | Tuned | Charged | Primed | Tesla-Prime |
-| --- | --- | --- | --- | --- | --- |
-| `0` | `1.00` | `0.00` | `0.00` | `0.00` | `0.00` |
-| `1` | `0.70` | `0.30` | `0.00` | `0.00` | `0.00` |
-| `2` | `0.60` | `0.30` | `0.10` | `0.00` | `0.00` |
-| `3` | `0.50` | `0.30` | `0.20` | `0.00` | `0.00` |
-| `4` | `0.40` | `0.30` | `0.20` | `0.10` | `0.00` |
-| `5` | `0.30` | `0.30` | `0.30` | `0.10` | `0.00` |
-| `6` | `0.20` | `0.30` | `0.30` | `0.20` | `0.00` |
-| `7` | `0.10` | `0.30` | `0.30` | `0.30` | `0.00` |
-| `8` | `0.00` | `0.30` | `0.30` | `0.30` | `0.10` |
+| `R` | Scrap  | Tuned  | Charged | Primed | Tesla-Prime |
+| --- | ------ | ------ | ------- | ------ | ----------- |
+| `0` | `1.00` | `0.00` | `0.00`  | `0.00` | `0.00`      |
+| `1` | `0.70` | `0.30` | `0.00`  | `0.00` | `0.00`      |
+| `2` | `0.60` | `0.30` | `0.10`  | `0.00` | `0.00`      |
+| `3` | `0.50` | `0.30` | `0.20`  | `0.00` | `0.00`      |
+| `4` | `0.40` | `0.30` | `0.20`  | `0.10` | `0.00`      |
+| `5` | `0.30` | `0.30` | `0.30`  | `0.10` | `0.00`      |
+| `6` | `0.20` | `0.30` | `0.30`  | `0.20` | `0.00`      |
+| `7` | `0.10` | `0.30` | `0.30`  | `0.30` | `0.00`      |
+| `8` | `0.00` | `0.30` | `0.30`  | `0.30` | `0.10`      |
 
 `REFINEMENT_COSTS` holds the Charge cost of reaching each level from the one below it:
 
-| Reaching | `R1` | `R2` | `R3` | `R4` | `R5` | `R6` | `R7` | `R8` |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Cost | `20` | `50` | `80` | `110` | `140` | `170` | `200` | `230` |
+| Reaching | `R1` | `R2` | `R3` | `R4`  | `R5`  | `R6`  | `R7`  | `R8`  |
+| -------- | ---- | ---- | ---- | ----- | ----- | ----- | ----- | ----- |
+| Cost     | `20` | `50` | `80` | `110` | `140` | `170` | `200` | `230` |
 
 Refining is available in every phase, including during a live wave. It is refused at `R8`
 and when the player cannot afford the next level.

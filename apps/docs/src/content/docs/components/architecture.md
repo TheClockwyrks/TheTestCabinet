@@ -15,23 +15,23 @@ through the same library.
 
 ## Components
 
-| Component | What it is |
-| --------- | ---------- |
-| [Core](/components/core/overview/) | The Rust library that implements the run lifecycle and owns the data contracts. |
-| [CLI](/components/cli/overview/) | The `tcab` binary. Exposes the core so runs can be scripted and swept in batch. |
-| [Dispatcher](/components/dispatcher/overview/) | A controller that claims queued runs from the backend and creates one driver `Job` per run. |
-| [Driver](/components/driver/overview/) | The per-run executor. It runs exactly one test case in a `Job`, streams its progress to the backend, and exits. |
-| [Artifacts](/components/artifacts/overview/) | A data-plane service that serves produced run trees (playable builds, proof and asset media) off a persistent volume. |
-| [Arena](/components/arena/overview/) | A data-plane service that runs the adversarial test type's matches and tournaments off the backend. |
-| [Tauri app](/components/tauri/overview/) | The desktop GUI: the primary interactive way to launch runs, watch them live, review them, and publish. |
-| [Web console](/components/web/overview/) | The same launcher and reporter as the Tauri app, running in a browser. |
-| [Backend](/components/backend/overview/) | A private Rust server that distributes test case definitions, owns the run queue, and stores run results. |
-| [Auth service](/components/auth/overview/) | A standalone Rust server for user accounts: self-registration, password login, and the bearer tokens the backend verifies. |
-| [Site](/components/site/overview/) | The public gallery at [testcabinet.ai](https://testcabinet.ai) where published runs are browsed and played. |
-| [UI library](/components/ui/overview/) | Shared frontend code (`@clockwyrks/ui`): the routed gallery application all three GUIs mount, the primitives they render, and the backend client interfaces. |
-| [Voxel runtime](/components/voxel-runtime/overview/) | Poses and renders a produced voxel rig. |
-| [Particle runtime](/components/particle-runtime/overview/) | Simulates and renders a produced particle system. |
-| [Docs](/components/docs/overview/) | This documentation site. |
+| Component                                                  | What it is                                                                                                                                                   |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [Core](/components/core/overview/)                         | The Rust library that implements the run lifecycle and owns the data contracts.                                                                              |
+| [CLI](/components/cli/overview/)                           | The `tcab` binary. Exposes the core so runs can be scripted and swept in batch.                                                                              |
+| [Dispatcher](/components/dispatcher/overview/)             | A controller that claims queued runs from the backend and creates one driver `Job` per run.                                                                  |
+| [Driver](/components/driver/overview/)                     | The per-run executor. It runs exactly one test case in a `Job`, streams its progress to the backend, and exits.                                              |
+| [Artifacts](/components/artifacts/overview/)               | A data-plane service that serves produced run trees (playable builds, proof and asset media) off a persistent volume.                                        |
+| [Arena](/components/arena/overview/)                       | A data-plane service that runs the adversarial test type's matches and tournaments off the backend.                                                          |
+| [Tauri app](/components/tauri/overview/)                   | The desktop GUI: the primary interactive way to launch runs, watch them live, review them, and publish.                                                      |
+| [Web console](/components/web/overview/)                   | The same launcher and reporter as the Tauri app, running in a browser.                                                                                       |
+| [Backend](/components/backend/overview/)                   | A private Rust server that distributes test case definitions, owns the run queue, and stores run results.                                                    |
+| [Auth service](/components/auth/overview/)                 | A standalone Rust server for user accounts: self-registration, password login, and the bearer tokens the backend verifies.                                   |
+| [Site](/components/site/overview/)                         | The public gallery at [testcabinet.ai](https://testcabinet.ai) where published runs are browsed and played.                                                  |
+| [UI library](/components/ui/overview/)                     | Shared frontend code (`@clockwyrks/ui`): the routed gallery application all three GUIs mount, the primitives they render, and the backend client interfaces. |
+| [Voxel runtime](/components/voxel-runtime/overview/)       | Poses and renders a produced voxel rig.                                                                                                                      |
+| [Particle runtime](/components/particle-runtime/overview/) | Simulates and renders a produced particle system.                                                                                                            |
+| [Docs](/components/docs/overview/)                         | This documentation site.                                                                                                                                     |
 
 ## Runners and reporters
 

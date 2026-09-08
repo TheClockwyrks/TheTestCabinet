@@ -43,11 +43,11 @@ and each pose arranges the live world through the same systems play uses.
 
 ## Pages
 
-| Page | Covers |
-| --- | --- |
-| [The Suite](/engines/structured-2d/validators/the-suite/) | Where the files live, the vitest project that runs them, the headless harness, and the module contract a case fixes. |
-| [Simulation](/engines/structured-2d/validators/simulation/) | Stepping with a scripted clock, reading the world back, and asserting on outcomes that survive a change in step size. |
-| [World and Actors](/engines/structured-2d/validators/world-and-actors/) | The level open, the match phase, which actors exist, which controller holds which pawn, and what a transition produced. |
-| [Rendering](/engines/structured-2d/validators/rendering/) | Pixel readback through `getImageData` and the recording proxy over the 2D context, both converted through the camera and the viewport. |
-| [Input and Audio](/engines/structured-2d/validators/input-and-audio/) | Dispatching key events at the harness event target and asserting on the cues a build played. |
-| [Recording](/engines/structured-2d/validators/recording/) | Arming the engine's recorder around a scenario and emitting it as the review item's media. |
+| Page                                                                    | Covers                                                                                                                                 |
+| ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| [The Suite](/engines/structured-2d/validators/the-suite/)               | Where the files live, the vitest project that runs them, the headless harness, and the module contract a case fixes.                   |
+| [Simulation](/engines/structured-2d/validators/simulation/)             | Stepping with a scripted clock, reading the world back, and asserting on outcomes that survive a change in step size.                  |
+| [World and Actors](/engines/structured-2d/validators/world-and-actors/) | The level open, the match phase, which actors exist, which controller holds which pawn, and what a transition produced.                |
+| [Rendering](/engines/structured-2d/validators/rendering/)               | Pixel readback through `getImageData` and the recording proxy over the 2D context, both converted through the camera and the viewport. |
+| [Input and Audio](/engines/structured-2d/validators/input-and-audio/)   | Dispatching key events at the harness event target and asserting on the cues a build played.                                           |
+| [Recording](/engines/structured-2d/validators/recording/)               | Arming the engine's recorder around a scenario and emitting it as the review item's media.                                             |

@@ -247,7 +247,7 @@ build = "npm run build"
 # build will be run over the finished repository.
 [toolchain]
 typecheck = "npx tsc --noEmit"
-lint = "npx eslint ."
+lint = "npx eslint . --max-warnings 0"
 format = "npx prettier --check ."
 test = "npx vitest run --coverage"
 
@@ -1196,7 +1196,7 @@ validation = { script = "press/downgrade-one-tier.test.ts", outputs = [
 [[review.categories.items]]
 id = "downgrade-refused-on-scrap"
 title = "DOWNGRADE is refused on a Scrap candidate"
-description = "A Scrap candidate cannot be downgraded: the action changes nothing, no component is harvested, and no wave starts."
+description = "A Scrap candidate cannot be downgraded, there being no rung below Scrap: the call fails loudly or changes nothing, and either way no component is harvested and no wave starts."
 domains = ["simulation"]
 failure_cap = "passable"
 # Automated validation: arm a Scrap roll, drop it, attempt a downgrade, and
@@ -1220,11 +1220,11 @@ validation = { script = "press/dismantle-returns-nothing.test.ts", outputs = [
 [[review.categories.items]]
 id = "stamp-refused-midwave"
 title = "A stamp during a live wave changes nothing"
-description = "A stamp taken during a live wave, through the control and through the surface alike, places no structure and spends no stamp, so the wave walks the maze it started with."
+description = "A stamp taken during a live wave through the control a player presses places no structure and spends no stamp, so the wave walks the maze it started with."
 domains = ["simulation"]
 failure_cap = "scuffed"
-# Automated validation: pose a live wave over a standing yard, take the stamp
-# both ways, and hold the yard against the one the wave started with. See
+# Automated validation: pose a live wave over a standing yard, press the stamp
+# key, and hold the yard against the one the wave started with. See
 # validation/<engine>/press/stamp-refused-midwave.test.ts.
 validation = { script = "press/stamp-refused-midwave.test.ts", outputs = [
   { id = "refused", name = "The yard unchanged across a refused stamp", kind = "replay" },
@@ -1232,11 +1232,11 @@ validation = { script = "press/stamp-refused-midwave.test.ts", outputs = [
 [[review.categories.items]]
 id = "keep-refused-midwave"
 title = "A keep during a live wave changes nothing"
-description = "A keep taken during a live wave harvests no component and hardens no candidate, so the wave walks the maze it started with."
+description = "A keep taken during a live wave through the control a player presses harvests no component and hardens no candidate, so the wave walks the maze it started with."
 domains = ["simulation"]
 failure_cap = "scuffed"
-# Automated validation: pose a live wave over a standing candidate, take the
-# keep, and hold the yard against the one the wave started with. See
+# Automated validation: pose a live wave over a standing candidate, press the
+# keep key, and hold the yard against the one the wave started with. See
 # validation/<engine>/press/keep-refused-midwave.test.ts.
 validation = { script = "press/keep-refused-midwave.test.ts", outputs = [
   { id = "refused", name = "The yard unchanged across a refused keep", kind = "replay" },
@@ -1244,11 +1244,11 @@ validation = { script = "press/keep-refused-midwave.test.ts", outputs = [
 [[review.categories.items]]
 id = "downgrade-refused-midwave"
 title = "A downgrade during a live wave changes nothing"
-description = "A downgrade taken during a live wave harvests no component and hardens no candidate, so the wave walks the maze it started with."
+description = "A downgrade taken during a live wave through the control a player presses harvests no component and hardens no candidate, so the wave walks the maze it started with."
 domains = ["simulation"]
 failure_cap = "scuffed"
-# Automated validation: pose a live wave over a standing candidate, take the
-# downgrade, and hold the yard against the one the wave started with. See
+# Automated validation: pose a live wave over a standing candidate, press the
+# downgrade key, and hold the yard against the one the wave started with. See
 # validation/<engine>/press/downgrade-refused-midwave.test.ts.
 validation = { script = "press/downgrade-refused-midwave.test.ts", outputs = [
   { id = "refused", name = "The yard unchanged across a refused downgrade", kind = "replay" },
@@ -1256,11 +1256,11 @@ validation = { script = "press/downgrade-refused-midwave.test.ts", outputs = [
 [[review.categories.items]]
 id = "dismantle-refused-midwave"
 title = "A dismantle during a live wave changes nothing"
-description = "A dismantle taken during a live wave removes no structure, so the wave walks the maze it started with."
+description = "A dismantle taken during a live wave through the control a player presses removes no structure, so the wave walks the maze it started with."
 domains = ["simulation"]
 failure_cap = "scuffed"
-# Automated validation: pose a live wave over a standing component, take the
-# dismantle, and hold the yard against the one the wave started with. See
+# Automated validation: pose a live wave over a standing component, press the
+# dismantle key, and hold the yard against the one the wave started with. See
 # validation/<engine>/press/dismantle-refused-midwave.test.ts.
 validation = { script = "press/dismantle-refused-midwave.test.ts", outputs = [
   { id = "refused", name = "The yard unchanged across a refused dismantle", kind = "replay" },
@@ -2982,11 +2982,12 @@ validation = { script = "screens/difficultyselect-starts.test.ts", outputs = [
 [[review.categories.items]]
 id = "paused-refuses-the-yard-controls"
 title = "The pause menu takes the input, so the yard's controls commit nothing"
-description = "With a candidate standing and the pause menu open, a keep, a downgrade, a combine and a dismantle each change nothing: no candidate is harvested, no structure is removed and no wave starts, because the pause menu's own choices are what the player operates there."
+description = "With a candidate standing and the pause menu open, a keep, a downgrade, a combine and a dismantle taken by key and by pointer each change nothing: no candidate is harvested, no structure is removed and no wave starts, because the pause menu's own choices are what the player operates there."
 domains = ["simulation"]
 failure_cap = "scuffed"
 # Automated validation: stand two matching candidates in a build phase, open the
-# pause menu, commit all four acts and read the yard back. See
+# pause menu, take all four acts by key and by pointer, and read the yard back.
+# See
 # validation/<engine>/screens/paused-refuses-the-yard-controls.test.ts.
 validation = { script = "screens/paused-refuses-the-yard-controls.test.ts", outputs = [
   { id = "refused", name = "The yard unchanged behind the pause menu", kind = "image" },

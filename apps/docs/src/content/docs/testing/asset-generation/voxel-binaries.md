@@ -9,7 +9,7 @@ binary is the only channel for placing a voxel, the 3D counterpart of the
 - `voxel` sculpts a static model (`asset_kind = "voxel-model"`): one opaque-RGB
   voxel volume.
 - `voxel-anim` sculpts a rigged, animated model (`asset_kind =
-  "voxel-animation"`). It adds a required `--part <name>` on every operation, so
+"voxel-animation"`). It adds a required `--part <name>` on every operation, so
   each part is a separate volume with its own log and preview, plus rig
   subcommands that build the parts-and-joints hierarchy and author the
   animations.
@@ -297,7 +297,7 @@ rotation joint, the sign of a value follows this convention:
 - Pitch (`--axis x`): a positive value elevates, lifting a forward-pointing part
   up toward +y, and a negative value depresses it. For a gun that points
   forward, `max` aims high and `min` aims low. A `barrel_pitch` with `min =
-  -0.2` and `max = 0.8` raises the barrel as the value grows.
+-0.2` and `max = 0.8` raises the barrel as the value grows.
 - Yaw (`--axis y`) and roll (`--axis z`) are right-handed rotations about their
   axis through the pivot.
 

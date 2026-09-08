@@ -99,7 +99,13 @@ export interface GroundItem {
 // ---------------------------------------------------------------------------
 
 export type UpgradeTrack =
-  "fuel" | "drill" | "cargo" | "hull" | "jetpack" | "radiator" | "scanner";
+  | "fuel"
+  | "drill"
+  | "cargo"
+  | "hull"
+  | "jetpack"
+  | "radiator"
+  | "scanner";
 
 /** The current tier on each track. */
 export type UpgradeTiers = Record<UpgradeTrack, number>;
@@ -109,7 +115,11 @@ export type UpgradeTiers = Record<UpgradeTrack, number>;
 // ---------------------------------------------------------------------------
 
 export type RocketComponentId =
-  "hull-frame" | "fuel-cells" | "guidance" | "thruster" | "ignition";
+  | "hull-frame"
+  | "fuel-cells"
+  | "guidance"
+  | "thruster"
+  | "ignition";
 
 // ---------------------------------------------------------------------------
 // The prospector (specs/character.md)

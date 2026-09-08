@@ -17,7 +17,10 @@
 // ingredient `type@tier` but fixes no notation a build must draw, and a book
 // setting Scrap as `I`, as `1`, or as the word is drawing the same recipe. What a
 // flat read of the overlay's text can decide is that the type is named; binding a
-// tier to it would grade the notation.
+// tier to it would grade the notation. A type is named by the name
+// `specs/components.md` gives it, as `../constants` spells it: `Arc-Node`, with
+// its hyphen, and `Discharge Rig`, with its space, are the copy, not the
+// identifiers `arcnode` and `discharge`.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertContains, assertEqual, assertGreaterThan } from "../assert";
@@ -30,7 +33,13 @@ import {
   openYard,
   type Region,
 } from "../harness";
-import { COMBO_DAMAGE_MULT, COMBOS, STAGE_H, STAGE_W } from "../constants";
+import {
+  COMBO_DAMAGE_MULT,
+  COMBOS,
+  COMPONENT_NAMES,
+  STAGE_H,
+  STAGE_W,
+} from "../constants";
 
 /** The overlay covers the stage, so the whole of it is read. */
 const OVERLAY: Region = { x0: 0, y0: 0, x1: STAGE_W, y1: STAGE_H };
@@ -83,10 +92,10 @@ it("lists every one of the twelve towers with its stats", async () => {
     );
     for (const ingredient of combo.recipe) {
       assertEqual(
-        drew(drawn, OVERLAY, ingredient.type),
+        drew(drawn, OVERLAY, COMPONENT_NAMES[ingredient.type]),
         true,
-        `whether the recipe book names the ${ingredient.type} the ` +
-          `${combo.name}'s recipe calls for`,
+        `whether the recipe book names the ${COMPONENT_NAMES[ingredient.type]} ` +
+          `the ${combo.name}'s recipe calls for`,
       );
     }
   }

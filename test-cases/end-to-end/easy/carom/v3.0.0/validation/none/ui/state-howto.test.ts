@@ -12,6 +12,15 @@
 // so what is read is that the frame's text names the movement keys: `W` and `S`
 // as words of their own, and the arrow keys by name or by glyph. How the screen
 // says the rest is the build's.
+//
+// The text is the LOGICAL runs the frame spelled (`drawnTextLines`) AND the raw
+// `fillText` strings (`drawnText`) together. The runs are needed because a build
+// that letter-spaces its copy draws one glyph per call, and `U`, `P` joined by a
+// space would never read as `UP`. The raw split is kept beside them because the
+// patterns are boundary-anchored: `W` is one glyph, so a build that draws it and
+// its action as two calls close together (`W`, then `UP` a few units on) can
+// coalesce into `WUP` and lose the boundary the raw string still has. The union
+// reads both, so neither presentation is fed back as a failure.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertMatches } from "../assert";
@@ -20,6 +29,7 @@ import {
   captureStill,
   createHarness,
   drawnText,
+  drawnTextLines,
   type Harness,
 } from "../harness";
 
@@ -51,7 +61,9 @@ it("opens the how-to screen from the menu, naming the movement keys", async () =
 
   assertEqual((await h.snapshot()).screen, "howto");
 
-  const text = drawnText(calls).join(" ").toUpperCase();
+  const text = [...drawnText(calls), ...drawnTextLines(calls)]
+    .join(" ")
+    .toUpperCase();
   assertMatches(text, NAMES_W);
   assertMatches(text, NAMES_S);
   assertMatches(text, NAMES_ARROWS);

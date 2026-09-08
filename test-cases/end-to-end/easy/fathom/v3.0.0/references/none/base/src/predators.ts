@@ -74,6 +74,27 @@ export interface PredatorWorld {
 
 /** Whether a predator is pursuing a fix. Asked as a call, so the narrowing a
  * literal comparison would impose does not survive the mutations below. */
+/**
+ * The rate a predator travels at in the `state` it is in (`specs/state.md`).
+ *
+ * The one place the rule lives: every update below assigns through it, and the
+ * surface's `reconcile` brings the reported `speed` back into agreement with a
+ * posed `state` through the same call, so the two can never say different
+ * things. An undetected Lanternjaw drifts at exactly the bonus drifter's pace,
+ * so its bulb cannot be told from a drifter's until it finds you; a chasing
+ * Gloamfin runs at the chase speed its ramp has reached.
+ */
+export function predatorSpeed(p: Predator): number {
+  if (p.state === "den") return PREDATOR_SPEED;
+  if (p.kind === "lanternjaw") {
+    return p.state === "chase" ? PREDATOR_SPEED : DRIFTER_SPEED;
+  }
+  if (p.kind === "gloamfin" && p.state === "chase" && p.fix !== null) {
+    return p.chaseSpeed;
+  }
+  return PREDATOR_SPEED;
+}
+
 function chasing(p: Predator): boolean {
   return p.state === "chase";
 }
@@ -150,7 +171,7 @@ function updateLanternjaw(p: Predator, dt: number, w: PredatorWorld): void {
   }
   // Undetected it drifts at exactly the bonus drifter's pace, on the drifter's
   // own routing, so its bulb cannot be told from a drifter's until it finds you.
-  p.speed = p.state === "chase" ? PREDATOR_SPEED : DRIFTER_SPEED;
+  p.speed = predatorSpeed(p);
 }
 
 // ---- The Gloamfin ----------------------------------------------------------
@@ -160,7 +181,7 @@ function beginSearch(p: Predator): void {
   p.searchTimer = GLOAMFIN_GIVEUP;
   p.searchPingTimer = GLOAMFIN_SEARCH_DELAY;
   p.searchPinged = false;
-  p.speed = PREDATOR_SPEED;
+  p.speed = predatorSpeed(p);
 }
 
 function updateGloamfin(p: Predator, dt: number, w: PredatorWorld): void {
@@ -180,7 +201,7 @@ function updateGloamfin(p: Predator, dt: number, w: PredatorWorld): void {
   }
 
   if (p.state === "search") {
-    p.speed = PREDATOR_SPEED;
+    p.speed = predatorSpeed(p);
     p.searchTimer -= dt;
     if (!p.searchPinged) {
       p.searchPingTimer -= dt;
@@ -201,7 +222,7 @@ function updateGloamfin(p: Predator, dt: number, w: PredatorWorld): void {
       GLOAMFIN_CHASE_SPEED,
       p.chaseSpeed + CHASE_RAMP_RATE * dt,
     );
-    p.speed = p.chaseSpeed;
+    p.speed = predatorSpeed(p);
     const arrived = p.col === p.fix.col && p.row === p.fix.row;
     const foragerThere =
       w.forager.col === p.fix.col && w.forager.row === p.fix.row;
@@ -211,7 +232,7 @@ function updateGloamfin(p: Predator, dt: number, w: PredatorWorld): void {
 
   p.state = "wander";
   p.fix = null;
-  p.speed = PREDATOR_SPEED;
+  p.speed = predatorSpeed(p);
 }
 
 /** Set a Gloamfin's ping timers after it casts, whichever ping it was. */
@@ -293,7 +314,7 @@ function tryFlareLock(p: Predator, w: PredatorWorld): void {
 }
 
 function updateFlarefish(p: Predator, dt: number, w: PredatorWorld): void {
-  p.speed = PREDATOR_SPEED;
+  p.speed = predatorSpeed(p);
 
   if (!chasing(p)) {
     runFlareCycle(p, dt, w);
@@ -348,7 +369,7 @@ function updateInDen(p: Predator, dt: number, w: PredatorWorld): void {
     return;
   }
 
-  p.speed = PREDATOR_SPEED;
+  p.speed = predatorSpeed(p);
   if (!p.travel) {
     // Crossing the chamber to the gate is travel, so a predator with its travel
     // off waits its slot out, turns its `released` flag over, and holds in the

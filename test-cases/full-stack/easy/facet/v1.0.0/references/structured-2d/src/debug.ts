@@ -67,6 +67,7 @@ import {
   pointerUp,
   poseSwap,
   quiet,
+  reconcile,
   reset,
   setBestChain,
   setBestMove,
@@ -97,6 +98,11 @@ export type { FacetSnapshot };
 export interface FacetDebugApi {
   version: number;
   reset(): void;
+  /**
+   * Every reading this surface reports brought into agreement with the game as
+   * it stands, advancing nothing.
+   */
+  reconcile(): void;
   snapshot(): FacetSnapshot;
   setScreen(screen: Screen): void;
   setMenuIndex(index: number): void;
@@ -156,6 +162,29 @@ export function createDebugApi(world: () => World): FacetDebugApi {
      */
     reset() {
       pose((state) => reset(state));
+    },
+
+    /**
+     * Every reading this surface reports brought into agreement with the game as
+     * it stands, without advancing anything.
+     *
+     * This build works every derived reading out at the read — `src/core/`'s
+     * `snapshot` computes a cell's center, the level's target, the multiplier,
+     * the longest fall, the step's hold, whether a legal swap exists, and the
+     * screen's targets from the state each follows from — so there is nothing
+     * held here that a pose can leave behind, and the core call brings back the
+     * state it was handed. It is written out rather than left absent because
+     * every build owes the operation, and one that kept any of those as a stored
+     * copy would rewrite it in exactly this place.
+     *
+     * NOT THROUGH `pose`, deliberately. A pose shows its effects, and showing is
+     * the one thing this must not do: `specs/instrumentation.md` has it fire
+     * nothing and advance nothing, so it reaches the state alone and leaves the
+     * presentation exactly as the last frame or pose left it.
+     */
+    reconcile() {
+      const state = live();
+      applyCore(state, reconcile(toCore(state)));
     },
 
     /** A pure read of the state. It changes nothing. */

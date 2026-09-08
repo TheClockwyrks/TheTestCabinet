@@ -51,18 +51,22 @@ export function menuItems(screen: ScreenName): MenuItem[] {
       ];
     case "mapselect":
       return [
-        ...MAPS.map((m): MenuItem => ({
-          action: `map-${m.id}` as MenuAction,
-          label: m.name,
-        })),
+        ...MAPS.map(
+          (m): MenuItem => ({
+            action: `map-${m.id}` as MenuAction,
+            label: m.name,
+          }),
+        ),
         { action: "back", label: BACK_ITEM },
       ];
     case "difficultyselect":
       return [
-        ...DIFFICULTIES.map((d): MenuItem => ({
-          action: `difficulty-${d.id}` as MenuAction,
-          label: d.name,
-        })),
+        ...DIFFICULTIES.map(
+          (d): MenuItem => ({
+            action: `difficulty-${d.id}` as MenuAction,
+            label: d.name,
+          }),
+        ),
         { action: "back", label: BACK_ITEM },
       ];
     case "howto":

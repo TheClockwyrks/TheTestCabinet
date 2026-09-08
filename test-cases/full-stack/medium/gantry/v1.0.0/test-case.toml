@@ -169,7 +169,7 @@ build = "npm run build"
 # `specs/overview.md` tells the build will be run over the finished repository.
 [toolchain]
 typecheck = "npx tsc --noEmit"
-lint = "npx eslint ."
+lint = "npx eslint . --max-warnings 0"
 format = "npx prettier --check ."
 test = "npx vitest run --coverage"
 
@@ -729,15 +729,15 @@ validation = { script = "instrumentation/clear-best-removes-a-score.test.ts", ou
   { id = "state", name = "The driven state this point decides", kind = "image" },
 ] }
 
-# On the build screen of site 0 with a sound crane posed, read checkResult
-# (null), call showCheck, and read it again beside the check reading. —
-# checkResult carries exactly what check reports: the same issues, cost,
-# budget, stable verdict and member list.
+# With a sound crane posed on site 0, read checkResult (null), call showCheck on
+# the title screen and again on the build screen, and read it beside the check
+# reading. — checkResult carries exactly what check reports, from either screen:
+# the same issues, cost, budget, stable verdict and member list.
 # From specs/instrumentation.md § The run and the screens.
 [[review.categories.items]]
 id = "show-check-leaves-the-result-showing"
 title = "showCheck leaves the check result showing"
-description = "showCheck poses the check action: it computes the static check and leaves it showing on the build screen, so checkResult carries what the check reading reports."
+description = "showCheck poses the check action: it computes the static check and leaves it showing wherever it is called, so checkResult carries what the check reading reports."
 domains = ["construction"]
 failure_cap = "passable"
 validation = { script = "instrumentation/show-check-leaves-the-result-showing.test.ts", outputs = [
@@ -1162,18 +1162,18 @@ validation = { script = "instrumentation/set-best-records-a-score.test.ts", outp
   { id = "best", name = "The score setBest recorded", kind = "image" },
 ] }
 
-# Call setCamera(-30, 95, 200) and read snapshot().camera. — yaw reads 330,
-# pitch reads 80 and dist reads 80, none of the three arguments having been
-# stored as given.
+# Call setCamera(-30, 40, 30) and read snapshot().camera, then call it again
+# with a pitch of 95 and again with a distance of 200. — yaw reads 330, both
+# out-of-domain calls raise, and the camera is where the first call left it.
 # From specs/instrumentation.md § The run and the screens.
 [[review.categories.items]]
 id = "set-camera-goes-through-the-clamp"
-title = "setCamera commits through the same clamp the orbit controls use"
-description = "setCamera sets the orbit camera's pose as the orbit controls set it, so an out-of-range argument is held rather than written raw."
+title = "setCamera wraps the yaw and fails loudly past its constant bounds"
+description = "The pitch and distance limits specs/controls.md fixes are constants, so they are setCamera's domain and a value outside either fails loudly rather than being snapped to the nearest legal one; the yaw is unbounded and wraps to at or above 0 and below 360."
 domains = ["construction", "presentation"]
 failure_cap = "passable"
 validation = { script = "instrumentation/set-camera-goes-through-the-clamp.test.ts", outputs = [
-  { id = "clamped", name = "The camera after an out-of-range pose", kind = "image" },
+  { id = "clamped", name = "The camera an out-of-domain pose could not move", kind = "image" },
 ] }
 
 # Call setCamera(123, 45, 32) and read snapshot().camera. — camera reads yaw
@@ -1219,14 +1219,15 @@ validation = { script = "instrumentation/set-cleared-opens-the-next-site.test.ts
   { id = "state", name = "The driven state this point decides", kind = "image" },
 ] }
 
-# setScreen("build"), read menuIndex, call setMenuIndex(3), read it again. —
-# menuIndex is unchanged by the call on the build screen, while the same call
-# on select moves it.
+# setMenuIndex(3) on select, then setScreen to each of howto, build, program
+# and run and call setMenuIndex(1) on each, reading menuIndex after every
+# call. — the select call moves the highlight, each menuless call raises, and
+# the highlight is where select left it.
 # From specs/instrumentation.md § The run and the screens.
 [[review.categories.items]]
 id = "set-menu-index-menu-screens-only"
-title = "setMenuIndex applies on the three screens that show a menu"
-description = "setMenuIndex applies on title, select and results and does nothing on howto, build, program and run, whatever the index."
+title = "setMenuIndex takes an index against the menu the screen carries"
+description = "setMenuIndex applies on title, select and results, and on howto, build, program and run there is no entry to name, so the call fails loudly rather than passing quietly."
 domains = ["construction"]
 failure_cap = "great"
 validation = { script = "instrumentation/set-menu-index-menu-screens-only.test.ts", outputs = [
@@ -1300,15 +1301,16 @@ validation = { script = "instrumentation/start-run-has-not-ticked.test.ts", outp
 ] }
 
 # Pose a ready crane and a one-step tape on site 0, then setScreen to each of
-# title, howto, select, run and results in turn, calling startRun and reading
-# snapshot() after each; finish on the build screen. — run.phase stays idle
-# and the screen is unchanged on all five, and the same call on the build
-# screen starts the run.
+# With a ready crane and a tape standing, setScreen to title, howto, select,
+# run, results, program and build in turn, calling startRun and abortRun on
+# each; then empty the tape and call startRun from title. — every screen
+# starts a run, and the empty tape refuses one with check naming
+# empty-program.
 # From specs/instrumentation.md § The run and the screens.
 [[review.categories.items]]
 id = "start-run-only-on-the-build-and-program-screens"
-title = "startRun applies on the build and program screens alone"
-description = "startRun poses the run action, which lives on the build and program screens, so it does nothing on the title, howto, select, run and results screens even with a ready crane and a tape standing."
+title = "startRun starts from every screen, the readiness deciding"
+description = "The screen is a player's route to the run action and is not a condition on startRun, so it starts a run from the title, howto, select, run and results screens too; what still refuses a start is the structure's readiness, which is the act's own rule."
 domains = ["choreography"]
 failure_cap = "passable"
 validation = { script = "instrumentation/start-run-only-on-the-build-and-program-screens.test.ts", outputs = [
@@ -1501,19 +1503,19 @@ validation = { script = "instrumentation/remove-counterweight-on-a-bare-node-is-
   { id = "state", name = "the crane a bare-node removal left untouched", kind = "image" },
 ] }
 
-# Pose a crane on site 0, setScreen("program"), then call addMember, setRing,
-# addCounterweight, removeMember and clearStructure in turn, reading
-# structure and historyDepth after each. — structure and historyDepth are
-# unchanged by every call, and the same calls on the build screen land.
+# On site 0, setScreen to each screen but build in turn, then call
+# clearStructure, addMember, setTool, setPendingNode and removeMember,
+# reading structure, tool, pendingNode and historyDepth after each. — every
+# edit lands and the history is pushed, on every screen.
 # From specs/instrumentation.md § The structure.
 [[review.categories.items]]
 id = "structure-pose-off-the-build-screen-does-nothing"
-title = "A structure pose off the build screen does nothing"
-description = "The structure poses apply on the build screen, so addMember, setRing, addCounterweight, removeMember, setTool, setPendingNode and clearStructure change nothing on the program, run, title, select, howto and results screens."
+title = "A structure pose edits the structure from every screen"
+description = "The build screen is a player's route to the tools and is not a condition on the structure poses, so addMember, setRing, addCounterweight, removeMember, setTool, setPendingNode and clearStructure edit the open site's structure on the program, run, title, select, howto and results screens too."
 domains = ["construction"]
 failure_cap = "passable"
 validation = { script = "instrumentation/structure-pose-off-the-build-screen-does-nothing.test.ts", outputs = [
-  { id = "state", name = "the structure the build screen's own clear emptied", kind = "image" },
+  { id = "state", name = "the structure a pose reached from every screen", kind = "image" },
 ] }
 
 # clearLoads, then addLoad("container", 90, 6, 2, -6, 0) and addLoad("drum",
@@ -1614,18 +1616,19 @@ validation = { script = "instrumentation/set-load-target-sets-the-pad.test.ts", 
 ] }
 
 # Start a run on a site carrying one load and one obstacle, advance ten
-# ticks, then call clearLoads, addLoad, clearObstacles and addObstacle,
-# reading site and run.loads after each. — site.loads, site.obstacles and
-# run.loads are unchanged by every call, and the run is still running.
+# ticks, then call clearLoads, addLoad, setLoadTarget, clearObstacles and
+# addObstacle, reading site and run.loads after each. — each call moves the
+# site's own lists, run.loads is unchanged by every one of them, and the run
+# is still running.
 # From specs/instrumentation.md § The site.
 [[review.categories.items]]
 id = "site-poses-do-nothing-during-a-run"
-title = "A site pose during a run does nothing"
-description = "The site poses apply with no run in progress, so clearLoads, addLoad, setLoadTarget, clearObstacles and addObstacle change nothing while a run is running."
+title = "A site pose during a run reaches the yard, not the run"
+description = "Whether a run is live is not a condition on the site poses, so clearLoads, addLoad, setLoadTarget, clearObstacles and addObstacle edit the yard mid-run; the loads a run carries are the ones standing when it started, so the run's own entries do not move."
 domains = ["choreography"]
 failure_cap = "passable"
 validation = { script = "instrumentation/site-poses-do-nothing-during-a-run.test.ts", outputs = [
-  { id = "state", name = "the yard a mid-run site pose could not touch", kind = "image" },
+  { id = "state", name = "the yard a mid-run site pose reached", kind = "image" },
 ] }
 
 # Place a member, then addObstacle over the ground its segment runs through,
@@ -1658,18 +1661,20 @@ validation = { script = "instrumentation/run-pose-reaches-no-verdict.test.ts", o
   { id = "state", name = "the run at the call, with every load placed", kind = "image" },
 ] }
 
-# On the build screen with an idle run call each of the seven poses in turn,
-# reading snapshot().run after each. — run is still the idle placeholder
-# after every call.
+# On the build screen with an idle run call setAxis, setAxisRate, setBob,
+# setBobVelocity and setRunTick, read snapshot().run, then call
+# setLoadPose(0, …) and setLoadPhase(0, …). — the five unindexed poses reach
+# the placeholder, and the two naming a load index raise, the idle run
+# carrying no load entries.
 # From specs/instrumentation.md § The run in progress.
 [[review.categories.items]]
 id = "run-poses-do-nothing-with-no-run"
-title = "A run pose with no run in progress does nothing"
-description = "setAxis, setAxisRate, setBob, setBobVelocity, setLoadPose, setLoadPhase and setRunTick pose a run in progress, so they change nothing against an idle run."
+title = "A run pose with no run in progress reaches the idle run"
+description = "Whether a run is live is not a condition on the run poses, so setAxis, setAxisRate, setBob, setBobVelocity and setRunTick pose the idle placeholder the snapshot reports; setLoadPose and setLoadPhase name a load index the idle run carries no entry for and fail loudly."
 domains = ["choreography"]
 failure_cap = "passable"
 validation = { script = "instrumentation/run-poses-do-nothing-with-no-run.test.ts", outputs = [
-  { id = "state", name = "the idle run seven run poses could not touch", kind = "image" },
+  { id = "state", name = "the idle run five run poses reached", kind = "image" },
 ] }
 
 # Start a run whose first step commands the hoist, advance until it is
@@ -1912,18 +1917,18 @@ validation = { script = "instrumentation/set-speed-index-after-a-run-ends.test.t
   { id = "speed", name = "The watch speed posed on an ended run", kind = "image" },
 ] }
 
-# On the build screen read run.speedIndex, call setSpeedIndex(2), read it
-# again, then setScreen("run") during a run and call it there. — speedIndex
-# is unchanged on the build screen and reads 2 on the run screen.
+# Start a run, then setScreen("build") and call setSpeedIndex(2), and
+# setScreen("program") and call setSpeedIndex(1), reading run.speedIndex
+# after each. — speedIndex reads 2 and then 1, off the run screen.
 # From specs/instrumentation.md § The run in progress.
 [[review.categories.items]]
 id = "set-speed-index-off-the-run-screen-does-nothing"
-title = "setSpeedIndex off the run screen does nothing"
-description = "setSpeedIndex poses the watch speed on the run screen, as the speed action does, so it changes nothing on the build and program screens."
+title = "setSpeedIndex sets the watch speed from every screen"
+description = "The run screen is a player's route to the speed action and is not a condition on setSpeedIndex, so it poses the watch speed on the build and program screens too."
 domains = ["choreography"]
 failure_cap = "great"
 validation = { script = "instrumentation/set-speed-index-off-the-run-screen-does-nothing.test.ts", outputs = [
-  { id = "elsewhere", name = "The watch speed unmoved off the run screen", kind = "image" },
+  { id = "elsewhere", name = "The watch speed posed off the run screen", kind = "image" },
 ] }
 
 # With auto-step off, read simTime on the build screen, call advance(60), and
@@ -2015,19 +2020,19 @@ validation = { script = "instrumentation/clear-program-empties-the-tape.test.ts"
   { id = "empty", name = "The program screen with the tape emptied", kind = "image" },
 ] }
 
-# On site 0's build screen call addMoveStep, addActionStep and clearProgram
-# against a two-step tape, reading program after each, then repeat on the
-# program screen. — program is unchanged by every call on the build screen
-# and takes each edit on the program screen.
+# On site 0, setScreen to each screen but program in turn, then call
+# addMoveStep, addCommand, addActionStep, removeStep and clearProgram against
+# a two-step tape, reading program after each. — every edit lands, on every
+# screen.
 # From specs/instrumentation.md § The tape.
 [[review.categories.items]]
 id = "tape-pose-off-the-program-screen-does-nothing"
-title = "A tape pose off the program screen does nothing"
-description = "The tape poses apply on the program screen, so addMoveStep, addCommand, addActionStep, removeStep and clearProgram change nothing on the build, run, title, select, howto and results screens."
+title = "A tape pose edits the tape from every screen"
+description = "The program screen is a player's route to the tape editor and is not a condition on the tape poses, so addMoveStep, addCommand, addActionStep, removeStep and clearProgram edit the open site's tape on the build, run, title, select, howto and results screens too."
 domains = ["choreography"]
 failure_cap = "passable"
 validation = { script = "instrumentation/tape-pose-off-the-program-screen-does-nothing.test.ts", outputs = [
-  { id = "untouched", name = "The tape the poses off the program screen left", kind = "image" },
+  { id = "untouched", name = "The tape a pose reached from every screen", kind = "image" },
 ] }
 
 # On the build screen with the strut tool, pointerMove far from every node,
@@ -6847,14 +6852,14 @@ validation = { script = "tape/run-first-tick-is-numbered-one.test.ts", outputs =
 
 # Open a site, so the build screen is showing, clear the tape, and call
 # addMoveStep("slew", 90, 30). Then show the program screen and make the same
-# call. — snapshot().program is still empty after the first call and carries
-# exactly one move step after the second.
+# call. — snapshot().program carries one move step after the first call and
+# two after the second.
 # From specs/program.md § The tape — "edited on the program screen";
 # specs/instrumentation.md § The tape.
 [[review.categories.items]]
 id = "tape-edits-apply-on-the-program-screen"
-title = "A tape edit applies on the program screen and nowhere else"
-description = "The tape is edited on the program screen, so a tape edit posed while the build screen is showing changes nothing, and the same edit on the program screen appends its step."
+title = "A tape edit applies on the program screen, and from every other"
+description = "The tape is edited on the program screen, and the program screen is a player's route to that editor rather than a condition on the tape poses, so the same edit appends its step whether it is posed from the build screen or the program screen."
 domains = ["choreography"]
 failure_cap = "passable"
 validation = { script = "tape/tape-edits-apply-on-the-program-screen.test.ts", outputs = [
@@ -8837,17 +8842,18 @@ validation = { script = "controls/a-move-step-takes-a-further-command.test.ts", 
 ] }
 
 # openSite(0) (which shows the build screen), clearProgram, then
-# addMoveStep("slew", 90, 30) and addActionStep("attach"), advancing a frame.
-# — program is still empty.
+# addMoveStep("slew", 90, 20) and addActionStep("attach"), advancing a frame.
+# — program carries the two steps, the screen is still build, and the
+# structure is still empty.
 # From specs/controls.md § Editing the tape.
 [[review.categories.items]]
 id = "a-tape-edit-does-nothing-off-the-program-screen"
-title = "A tape edit posed on the build screen adds no step"
-description = "The tape is edited on the program screen, so a tape edit posed while the build screen is showing changes nothing."
+title = "A tape edit posed on the build screen appends its step and moves no screen"
+description = "The program screen is a player's route to the tape editor and is not a condition on a tape pose, so an edit posed while the build screen is showing appends its step; what it does not do is carry the caller to the program screen or reach the structure."
 domains = ["choreography"]
 failure_cap = "great"
 validation = { script = "controls/a-tape-edit-does-nothing-off-the-program-screen.test.ts", outputs = [
-  { id = "state", name = "The build screen with the tape still empty", kind = "image" },
+  { id = "state", name = "The build screen with the tape the poses appended", kind = "image" },
 ] }
 
 # openSite(0), setScreen("program"), clearProgram, addMoveStep("slew", 90,

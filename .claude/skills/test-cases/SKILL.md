@@ -158,7 +158,7 @@ Avoid these patterns entirely.
 ### Minimize Negatives
 
 Specs should state what designs should do and minimize mentions of what an
-implementation should *not* do. Proper authoritative specs rule out illegal
+implementation should _not_ do. Proper authoritative specs rule out illegal
 implementations by virtue of specifying the exact properties that a compliant
 implementation must contain, not by attempting to enumerate all possible ways
 an implementation could be non-compliant.

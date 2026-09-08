@@ -69,10 +69,10 @@ plays.
 
 The file extension states what an entry is.
 
-| Extension | Media |
-| --- | --- |
-| `.png` | A screenshot of the running game. |
-| `.webm` | A video clip of the running game. |
+| Extension | Media                             |
+| --------- | --------------------------------- |
+| `.png`    | A screenshot of the running game. |
+| `.webm`   | A video clip of the running game. |
 
 The leading entry is a `.webm` clip recorded at 30 frames a second or better,
 and the stills are `.png`. Gantry draws a 3D yard, so the clip is video: it is

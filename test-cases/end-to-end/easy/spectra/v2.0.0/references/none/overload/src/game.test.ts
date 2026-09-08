@@ -875,6 +875,59 @@ describe("the three drones", () => {
   });
 });
 
+// `reconcile` brings every reported reading into agreement with the game without
+// advancing anything. This build works every derived reading out at the READ, so
+// the call has nothing to rewrite; what these two cases pin is that it still
+// ANSWERS for a posed game and that it costs no simulation time, which is the
+// whole difference between it and advancing a frame.
+describe("reconcile", () => {
+  it("re-derives a reading from a posed source", () => {
+    const driven = driver();
+    startPosed(driven);
+
+    driven.debug.setStage(5);
+    driven.debug.reconcile();
+    expect(driven.debug.snapshot().fluxHold).toBe(fluxHold(5));
+
+    driven.debug.setResonance(RESONANCE_MAX);
+    driven.debug.reconcile();
+    expect(driven.debug.snapshot().dischargeReady).toBe(true);
+
+    driven.debug.setInversion(2);
+    driven.debug.reconcile();
+    expect(driven.debug.snapshot().inversionActive).toBe(true);
+
+    driven.debug.setPhase("ready");
+    driven.debug.reconcile();
+    expect(driven.debug.snapshot().ship.alive).toBe(false);
+  });
+
+  it("advances nothing, and twice matches once", () => {
+    const driven = driver();
+    startPosed(driven);
+    driven.debug.setStage(3);
+    driven.debug.setPhaseTimer(1.25);
+    driven.debug.setDiveClock(0.4);
+    driven.debug.setInversion(2.5);
+    driven.debug.setFireLockout(0.24);
+    driven.debug.setShipX(500);
+    poseDrone(driven, "flux", 400, 200);
+    poseDrone(driven, "prism", 600, 200);
+    driven.debug.addPlayerBullet(400, 500, "magenta");
+
+    const before = JSON.stringify(driven.debug.snapshot());
+    driven.debug.reconcile();
+    const once = JSON.stringify(driven.debug.snapshot());
+    driven.debug.reconcile();
+    const twice = JSON.stringify(driven.debug.snapshot());
+
+    // The clock, the positions and every timer are untouched, so the whole
+    // snapshot is byte-identical rather than merely close.
+    expect(once).toBe(before);
+    expect(twice).toBe(once);
+  });
+});
+
 describe("stages", () => {
   it("clears when the last drone of the game's own wave dies", () => {
     const driven = driver();
@@ -889,11 +942,19 @@ describe("stages", () => {
     const ids = driven.debug.snapshot().drones.map((drone) => drone.id);
     for (const id of ids.slice(0, -1)) driven.debug.removeDrone(id);
     expect(driven.debug.snapshot().screen).toBe("inWave");
-    const last = driven.debug.snapshot().drones[0] as { id: number; x: number };
+    const last = driven.debug.snapshot().drones[0] as {
+      id: number;
+      x: number;
+      kind: string;
+    };
     driven.debug.setDronePosition(last.id, 640, 300);
     driven.debug.setDroneTravel(last.id, false);
     driven.debug.setDroneBand(last.id, "cyan");
-    driven.debug.setDroneShell(last.id, false);
+    // A SHELL BELONGS TO A PRISM, so the pose is made only where there is one to
+    // break: `setDroneShell` fails loudly on any other kind rather than passing
+    // quietly (`specs/instrumentation.md`). One cyan round is what this wants,
+    // and only a Prism needs its shell taken off first.
+    if (last.kind === "prism") driven.debug.setDroneShell(last.id, false);
     driven.debug.addPlayerBullet(640, 320, "cyan");
     driven.advance(0.1, 6);
     const shape = driven.debug.snapshot();
@@ -1044,12 +1105,16 @@ describe("the run", () => {
     driven.frame(1 / 120);
     const ids = driven.debug.snapshot().drones.map((drone) => drone.id);
     for (const id of ids.slice(0, -1)) driven.debug.removeDrone(id);
-    const last = driven.debug.snapshot().drones[0] as { id: number };
+    const last = driven.debug.snapshot().drones[0] as {
+      id: number;
+      kind: string;
+    };
     driven.debug.setScore(0);
     driven.debug.setDronePosition(last.id, 640, 300);
     driven.debug.setDroneTravel(last.id, false);
     driven.debug.setDroneBand(last.id, "cyan");
-    driven.debug.setDroneShell(last.id, false);
+    // Only a Prism has a shell to take off; see the note in "stages" above.
+    if (last.kind === "prism") driven.debug.setDroneShell(last.id, false);
     driven.debug.addPlayerBullet(640, 320, "cyan");
     driven.advance(0.1, 6);
     expect(driven.debug.snapshot().score).toBeGreaterThanOrEqual(

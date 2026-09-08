@@ -10,10 +10,10 @@ specification gives it here.
 
 The `1280 x 720` stage is split into two regions, stacked.
 
-| Region | Extent | Holds |
-| --- | --- | --- |
-| HUD bar | `x` in `[0, 1280]`, `y` in `[0, HUD_H]` (`80`) | The three readouts `specs/ui.md` states. |
-| Board | `x` in `[0, BOARD_W]` (`1280`), `y` in `[BOARD_Y, BOARD_Y + BOARD_H]` (`[80, 720]`) | Everything play consists of. |
+| Region  | Extent                                                                              | Holds                                    |
+| ------- | ----------------------------------------------------------------------------------- | ---------------------------------------- |
+| HUD bar | `x` in `[0, 1280]`, `y` in `[0, HUD_H]` (`80`)                                      | The three readouts `specs/ui.md` states. |
+| Board   | `x` in `[0, BOARD_W]` (`1280`), `y` in `[BOARD_Y, BOARD_Y + BOARD_H]` (`[80, 720]`) | Everything play consists of.             |
 
 The HUD bar's three readouts are drawn inside the HUD bar. No node, worm
 segment, foe, or bolt is drawn in it: play is confined to the board region
@@ -58,12 +58,12 @@ A tile lies on the board when `inBounds(c, r)`, which is `0 <= c < COLS` and
 
 ## The rows that matter
 
-| Row | Name | Role |
-| --- | --- | --- |
-| `0` | The entry row | The row a level's worm enters along, as `specs/worm.md` states. |
-| `1` to `17` | The scatter rows | The rows a new run scatters nodes across, as `specs/nodes.md` states. |
-| `18` and `19` | The player band | The two rows the cursor is confined to. |
-| `19` | The floor | The bottom row of the board. |
+| Row           | Name             | Role                                                                  |
+| ------------- | ---------------- | --------------------------------------------------------------------- |
+| `0`           | The entry row    | The row a level's worm enters along, as `specs/worm.md` states.       |
+| `1` to `17`   | The scatter rows | The rows a new run scatters nodes across, as `specs/nodes.md` states. |
+| `18` and `19` | The player band  | The two rows the cursor is confined to.                               |
+| `19`          | The floor        | The bottom row of the board.                                          |
 
 ## The player band
 
@@ -73,12 +73,12 @@ width of the board.
 
 The cursor's center is clamped to the band's four bounds:
 
-| Bound | Constant | Value |
-| --- | --- | --- |
-| Leftmost center `x` | `CURSOR_X_MIN` | `16` |
-| Rightmost center `x` | `CURSOR_X_MAX` | `1264` |
-| Topmost center `y` | `CURSOR_Y_MIN` | `672` |
-| Bottommost center `y` | `CURSOR_Y_MAX` | `704` |
+| Bound                 | Constant       | Value  |
+| --------------------- | -------------- | ------ |
+| Leftmost center `x`   | `CURSOR_X_MIN` | `16`   |
+| Rightmost center `x`  | `CURSOR_X_MAX` | `1264` |
+| Topmost center `y`    | `CURSOR_Y_MIN` | `672`  |
+| Bottommost center `y` | `CURSOR_Y_MAX` | `704`  |
 
 The vertical bounds are the centers of rows `18` and `19`, so the band gives the
 cursor `32` units of vertical travel and the full width horizontally. The band's

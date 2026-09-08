@@ -77,7 +77,7 @@ import {
   captureStill,
   createHarness,
   drawnImages,
-  drawnTextSpans,
+  drawnTextRuns,
   nearestSeededFrame,
   poseBear,
   poseLane,
@@ -215,7 +215,9 @@ it("draws the level and score readouts inside the HUD bar", async () => {
     "the posed score, read back (specs/instrumentation.md)",
   );
 
-  const runs = drawnTextSpans(populated);
+  // The LOGICAL runs, so a readout letter-spaced a glyph per `fillText` is
+  // found by what it spells; a merged run keeps its glyphs' shared baseline.
+  const runs = drawnTextRuns(populated);
   const readouts = [
     {
       what: `the ${HUD_LEVEL_LABEL} readout, whose label specs/ui.md fixes`,

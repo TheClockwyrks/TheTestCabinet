@@ -9,6 +9,17 @@
 // reaches the game the way anything reaches it: over the surface
 // `specs/instrumentation.md` told the build to install.
 //
+// RECONCILING AFTER A POSE. A helper here that poses anything a reading derives
+// from ends with `reconcile`, so a check that poses through these helpers never
+// calls it itself. Spectra's derived readings are `isChallenge`, the four
+// stage-scaled figures, `dischargeReady`, `inversionActive`, `ship.alive`, every
+// `effectiveBand`, a Flux's `shimmer` and a burst's `particles` — so `startPosed`
+// and the drone and bullet poses carry the call. A check that poses with
+// `h.debug.set...` DIRECTLY, outside these helpers, calls `reconcile` once itself
+// before its first read or sweep. It costs no simulation time, so it never moves
+// a measurement that begins at a posed rest state, which is exactly what stepping
+// a frame to refresh a reading would do.
+//
 // THE MACHINERY THAT DOES THAT IS NOT SPECTRA'S. Serving the build, connecting to
 // the one browser, opening a page per harness, injecting the draw-command
 // recorder and the audio probe, bracketing each driven frame around one
@@ -90,6 +101,8 @@ import {
   SequenceClock,
   distance,
   drawnText,
+  drawnTextLines,
+  drawnTextRuns,
   meanOf,
   mouseGlide,
   rectCenter,
@@ -197,6 +210,7 @@ export const REQUIRED_OPS = [
   // The core.
   "reset",
   "snapshot",
+  "reconcile",
   "menuItemRect",
   // The clock (this engine alone).
   "setAutoStep",
@@ -416,6 +430,15 @@ export interface MenuRect {
 export interface SpectraDebugApi {
   reset(): Promise<void>;
   snapshot(): Promise<SpectraSnapshot>;
+  /**
+   * Brings every value the snapshot reports into agreement with the game as it
+   * stands, without advancing anything (`specs/instrumentation.md`).
+   *
+   * A build that works its derived readings out at the read has nothing to do
+   * here; a build that keeps one as a stored copy rewrites it from its source.
+   * It is what a driver calls after posing a game and before reading it back.
+   */
+  reconcile(): Promise<void>;
   menuItemRect(index: number): Promise<MenuRect | null>;
 
   setAutoStep(enabled: boolean): Promise<void>;
@@ -953,40 +976,46 @@ export function watchCues(h: Harness): TimedCue[] {
 /* Reading one frame's render                                                 */
 /* -------------------------------------------------------------------------- */
 //
-// `drawnText` and `textDraws` are the package's, under the same names. The two
-// predicates below are NOT: the package's `drewText` reads copy off the LOGICAL
-// runs a frame spells, merging draws that sit side by side on one baseline, and
-// this project has always asked its question of the RAW strings a build issued.
-// A heading drawn a glyph at a time answers differently under the two, and every
-// screen check here was taken under this one.
+// `drawnText` and `textDraws` are the package's, under the same names, and answer
+// the CALLS: one entry per `fillText`/`strokeText`, for the reader that counts
+// draws or holds one draw clear of a region. `drawnTextLines` and `drawnTextRuns`
+// are the package's too, and answer the LOGICAL RUNS a frame spells, merging
+// draws that sit side by side on one baseline. Every reader of COPY — the
+// package's `drewText`, which the screen suites import directly, `drewWord`
+// below, and the screen suites' `numberRuns` and `runCarrying` — reads the
+// runs, because a build that letter-spaces a heading draws it a glyph per call
+// and the specification fixes the words, not their spacing.
 
 /**
- * Whether the frame drew `text` as part of some run of text, ignoring case.
+ * The frame's text as the LOGICAL RUNS it spells: the strings alone, and the
+ * runs placed the way {@link textDraws} places one draw.
  *
- * Substring rather than equality on purpose: the copy a check asserts is the
- * case's own, but how a build presents it is the build's, and a menu entry is
- * commonly drawn with a selection marker or padding around it. Requiring the
- * exact run would fail a screen that shows precisely the right words.
+ * Both are the shared harness's own (`case-harness/text.ts`), re-exported so a
+ * suite reads them beside the rest of this harness. A check that reads copy AND
+ * where it sits — `screens/reading`'s `numberRuns` and `runCarrying` — takes
+ * `drawnTextRuns`, because {@link textDraws} would hand it a letter-spaced
+ * figure a glyph at a time, and no glyph reads as the figure. {@link textDraws}
+ * stays one entry per call, for the reader that needs each draw's own extent.
  */
-export function drewText(calls: readonly DrawCall[], text: string): boolean {
-  const wanted = text.trim().toLowerCase();
-  return drawnText(calls).some((drawn) => drawn.toLowerCase().includes(wanted));
-}
+export { drawnTextLines, drawnTextRuns };
 
 /**
  * Whether the frame drew `word` as a STANDALONE token, ignoring case.
  *
- * The stricter sibling of {@link drewText}, for the copy `specs/ui.md` requires
- * as a word rather than as a substring — the how-to screen's `SPACE`, `ARROWS`
- * and `AD`. A screen reading "press the spacebar" contains `space` and does not
- * name the key the specification named.
+ * The stricter sibling of the shared harness's `drewText`
+ * (`case-harness/text.ts`), for the copy `specs/ui.md` requires as a word
+ * rather than as a substring — the how-to screen's `SPACE`, `ARROWS` and `AD`.
+ * A screen reading "press the spacebar" contains `space` and does not name the
+ * key the specification named. Read off the same logical runs as `drewText`,
+ * for the same reason: `SPACE` letter-spaced a glyph per call is still the
+ * word.
  */
 export function drewWord(calls: readonly DrawCall[], word: string): boolean {
   const pattern = new RegExp(
     `(^|[^A-Za-z0-9])${word.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^A-Za-z0-9]|$)`,
     "i",
   );
-  return drawnText(calls).some((drawn) => pattern.test(drawn));
+  return drawnTextLines(calls).some((line) => pattern.test(line));
 }
 
 /**
@@ -1927,6 +1956,11 @@ export async function startPosed(
     ["setExtraLifeAwarded", false],
     ["setChallengeHits", 0],
     ["setDiveClock", 0],
+    // LAST IN THE BATCH, so the readings agree with the game this posed before
+    // anything reads it, and the crossing count does not grow by one for it.
+    // The stage, the resonance, the inversion, the phase and the ship's band are
+    // all posed above, and the derived figures follow every one of them.
+    ["reconcile"],
   ]);
 }
 
@@ -2151,6 +2185,11 @@ function arrangeDrone(added: DroneView, spec: DroneSpec): SurfaceCall[] {
   calls.push(["setDroneTravel", id, spec.travel ?? false]);
   calls.push(["setDroneOscillation", id, spec.oscillation ?? false]);
   calls.push(["setDroneFire", id, spec.fire ?? false]);
+  // The band, the shell and the band clock posed above are what a drone's
+  // `effectiveBand` and its `shimmer` follow, so the readings are brought into
+  // agreement before the caller reads any of them back. It is the LAST entry of
+  // the batch, so a formation of forty still costs the crossings it did.
+  calls.push(["reconcile"]);
   return calls;
 }
 

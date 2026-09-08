@@ -53,6 +53,7 @@ export type EffectKind = "widen" | "narrow" | "pierce";
  */
 export const REQUIRED_OPS = [
   "reset",
+  "reconcile",
   "snapshot",
   "menuItemRect",
   "setScreen",
@@ -185,7 +186,15 @@ export interface KesslerSnapshot {
  * that changes the screen takes effect at the call. A pose changes the state
  * alone and sounds nothing; the cues a scenario hears come from the ticks run
  * after it. An argument outside its stated domain fails loudly, except where
- * an operation states that it normalizes or ignores the call.
+ * an operation states that it normalizes the call.
+ *
+ * No operation declines. The screen showing, the entry
+ * highlighted, and where the deflector and the balls sit are how a PLAYER
+ * reaches a thing and are not an operation's conditions, so an operation acts
+ * from wherever the game stands; a call the field has no state for — a launch
+ * with nothing parked, a second parked ball, a seventh ball where six is the
+ * whole capacity, a menu entry on a screen carrying no menu — fails loudly
+ * rather than passing quietly.
  */
 export interface KesslerDebugApi {
   /**
@@ -197,6 +206,14 @@ export interface KesslerDebugApi {
    * outcome.
    */
   reset(): void;
+
+  /**
+   * Brings every value the surface reports into agreement with the field as it
+   * stands, without advancing anything. A build that works its derived
+   * readings out at the read has nothing to do; one that keeps any of them as
+   * a stored copy rewrites that copy from its source.
+   */
+  reconcile(): void;
 
   /** A pure read of the state; changes nothing. */
   snapshot(): KesslerSnapshot;
@@ -224,7 +241,7 @@ export interface KesslerDebugApi {
   /**
    * Sets the highlighted menu entry to `n`, a whole number from `0` to the
    * current screen's entry count minus `1`. No cue sounds; off a menu the
-   * call changes nothing.
+   * call fails loudly.
    */
   setMenuIndex(n: number): void;
   /** Sets the interstitial timer to `ticks`, a whole number of at least `0`. */
@@ -246,7 +263,7 @@ export interface KesslerDebugApi {
 
   /**
    * Acts exactly as `Space` on a parked ball: it launches radially outward
-   * at the current wave's ball speed. With no parked ball, changes nothing.
+   * at the current wave's ball speed. With no parked ball, fails loudly.
    */
   launchBall(): void;
 
@@ -256,14 +273,14 @@ export interface KesslerDebugApi {
   /**
    * Adds one unparked ball at `(x, y)` with velocity `(vx, vy)`, appended in
    * spawn order, piercing exactly when `pierceTicks > 0` at the call. At the
-   * 6-ball cap, changes nothing.
+   * 6-ball cap, fails loudly.
    */
   spawnBall(x: number, y: number, vx: number, vy: number): void;
 
   /**
    * Parks one ball on the deflector at the serve position, following it
-   * until launched. While a parked ball exists, or at the cap, changes
-   * nothing.
+   * until launched. While a parked ball exists, or at the cap, fails
+   * loudly.
    */
   parkBall(): void;
 

@@ -16,8 +16,8 @@
 // well: its point is the inlet ... so a core carrying one is drawn at the inlet
 // until the train carries it past `0`".
 //
-// THE POSE. One core, at arc -50. `specs/instrumentation.md` (`poseTrain`) clamps
-// an arc position "to at most `5000`" and states no lower bound, so a negative one
+// THE POSE. One core, at arc -50. `specs/instrumentation.md` (`poseTrain`) bounds
+// an arc position "at most `5000`" and states no lower bound, so a negative one
 // is placed exactly as given, and the core is the whole train — a lone core "forms
 // a segment of one" (`specs/channel.md`), so there is no core behind it whose
 // spacing could decide the reading instead. The inlet is held and the quota is a

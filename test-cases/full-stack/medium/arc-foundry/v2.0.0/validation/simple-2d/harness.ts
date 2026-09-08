@@ -11,12 +11,25 @@
 // draw-command recorder, the debug surface and the stand-in for a missing one, the
 // driver that threads a PURE surface through `engine.apply`, the frame sweep, the
 // cue stamping, the transport that serves the produced tree to the engine's asset
-// loader, and the evidence a review item's output is written from — every engine
-// case needs exactly that, and it lives once, in `@clockwyrks/case-harness`, staged
-// beside this file as `./case-harness/`. What stays HERE is what is genuinely Arc
+// loader, the stand-in `AudioContext` a produced cue decodes into, and the
+// evidence a review item's output is written from — every engine case needs
+// exactly that, and it lives once, in `@clockwyrks/case-harness`, staged beside
+// this file as `./case-harness/`. What stays HERE is what is genuinely Arc
 // Foundry's: its snapshot and surface types, its stage regions, its tick rate, the
 // sentence a missing surface is failed against, the readings it takes off a drawn
 // frame, and every compound sequence that poses this game.
+//
+// RECONCILING AFTER A POSE. `specs/instrumentation.md` says what a build REPORTS,
+// not how it holds it, so a derived reading — `qualityOdds`, `mazeLength`, a
+// structure's `range`, `damage`, `fireRate` and `auraBonus`, a unit's `speed` and
+// `progress`, `held.legal` — may be worked out at the read in one build and kept
+// as a stored copy in another. Both are conformant, and they part company the
+// moment a pose writes what such a reading is derived from. `reconcile` closes
+// that gap: it brings every reported reading into agreement with the yard as it
+// stands without advancing anything. A helper here that poses something a reading
+// derives from calls it before it returns, so a check that poses through the
+// helpers never calls `reconcile` itself; a check that poses with `h.debug.set…`
+// directly calls it once before its first read or sweep.
 //
 // WHAT A CHECK READS. The game's own state (through the debug surface's
 // `snapshot`), the six layout readings, the engine's frame counter, the cues
@@ -99,7 +112,9 @@ import {
   breathe,
   createEngineCaseHarness,
   installAssetHost,
+  installAudioContext,
   rasterize,
+  tolerantAudioBuffer,
   type AssetFailure,
   type EngineHarness,
   type EngineHarnessOptions,
@@ -116,7 +131,13 @@ import {
 } from "./case-harness/engine/2d";
 import { colorDistance, luminance, type Rgb } from "./case-harness/color";
 import { callsTo, setsOf, type DrawCall } from "./case-harness/draw-calls";
-import { drawnText } from "./case-harness/text";
+import {
+  drawnText,
+  drawnTextRuns,
+  RUN_BASELINE_SLACK,
+  textDraws as placedText,
+  type TextDraw as PlacedText,
+} from "./case-harness/text";
 import {
   IDENTITY,
   apply,
@@ -292,8 +313,9 @@ const WORKSPACE = resolve(PROJECT_ROOT, "..");
 /* -------------------------------------------------------------------------- */
 
 /**
- * The transport the engine's asset loader fetches through, and the decoder behind
- * it.
+ * The transport the engine's asset loader fetches through, and the image decoder
+ * behind it. The cue decoder is installed just below, because it is a separate
+ * shim with a separate choice to make.
  *
  * There is no page behind the engine's asset loader here, so without this every
  * produced file would fail to load and a build whose `initialize` awaits its loads
@@ -310,13 +332,6 @@ const WORKSPACE = resolve(PROJECT_ROOT, "..");
  * a build that did not produce a required file fails the items about that file and
  * only those.
  *
- * NO `AudioContext` IS INSTALLED, and that is deliberate. Decoding a cue needs Web
- * Audio and a node process has none, so each of the twelve `.wav` files fetches
- * cleanly and settles as a failure whose reason names the missing context. Nothing
- * about a cue is read from the decode: the engine announces every play by name, and
- * that is what the `audio/` points read — while `sprites/assets-load-clean` reads
- * the shape of that one failure and holds every OTHER failure to zero.
- *
  * INSTALLED ONCE PER WORKER, and never taken down: the shims go onto `globalThis`,
  * the package reference-counts them, and a worker that simply exits leaves them
  * standing.
@@ -328,6 +343,53 @@ installAssetHost({
   images: true,
   label: "arc-foundry",
 });
+
+/**
+ * The `AudioContext` the engine's loader decodes a produced cue into, which a
+ * node process does not otherwise have.
+ *
+ * WITHOUT IT EVERY POINT IN THIS PROJECT IS DECIDED BY NODE RATHER THAN BY THE
+ * BUILD. `specs/ui.md` has the build "define exactly the twelve cues in `CUES`
+ * from `initialize`, binding each to the file `specs/assets.md` produces for it",
+ * and the engine's bus binds a name ONLY once that file has decoded — a load that
+ * could not be decoded "leaves the name exactly as it was", which for a cue the
+ * build never separately declared is UNDECLARED — while `play`, `loop` and `stop`
+ * each throw `unknown audio cue "<name>"` for a name nothing declared. So on a
+ * host with no Web Audio a build that wrote exactly what the specification asks
+ * for either awaits twelve rejections and never initializes, or reaches its first
+ * cue and throws out of its own `update`; either way it loses the whole project
+ * for a fact about the HOST. That the committed reference survived without this
+ * says nothing: its `loadAssets` declares a synthesized shape under each of the
+ * twelve names BEFORE it loads the produced file over it and swallows the
+ * rejection, which is one defensible way to write a build and is nowhere asked
+ * for.
+ *
+ * `tolerantAudioBuffer` RATHER THAN `wavAudioBuffer`, which the package is right
+ * to call a real choice rather than a default it may make for a case. The throwing
+ * half leaves an unreadable `.wav` unbound, which under this engine costs the build
+ * the WHOLE PROJECT — the same undeclared-name throw described above — and Arc
+ * Foundry has already said where a malformed cue is judged: `audio/cue-files-present`
+ * reads all twelve off disk and decides there whether each "decodes as PCM audio"
+ * and carries a sound, and `audio/cue-files-distinct` tells the eleven effect cues
+ * apart the same way. Pricing that fact a second time, at a hundred times the cost,
+ * would be this harness overruling the case's own scoring. The tolerant half hands
+ * an unreadable file back as silence of a fallback length instead, so the cue binds,
+ * the run drives, and the file is judged where the case says it is judged. It is
+ * also what this case's `structured-2d` project binds, and the two must agree:
+ * they grade the SAME produced `.wav` files.
+ *
+ * NOTHING HERE IS HEARD, and no point reads a sample back off the buffer: the
+ * engine announces every play by name and the `audio/` event points read those
+ * announcements, while the two points about the files themselves decode the bytes
+ * off disk through `audio/wav.ts`. So the silence a readable file comes back as
+ * costs no reading either. What the decode buys is the BINDING — and, with it, the
+ * twelve cues arriving cleanly, which is what lets `sprites/assets-load-clean` hold
+ * every asset failure to zero with no exception carved out for this host.
+ *
+ * Installed once per worker and reference-counted, exactly as the asset host
+ * above is.
+ */
+installAudioContext({ decode: tolerantAudioBuffer });
 
 /**
  * A no-op `close` over the package's decoder, which is the one member of
@@ -492,10 +554,16 @@ const arrivals = new WeakMap<object, string[]>();
  *  - `pointerEvent` is {@link PointerEvt}, this case's own — position and a device,
  *    and no button mask.
  *
- * The recorder is left plain. No `measureText`: {@link textDraws} places a run by
- * walking the frame's own transform operations and reads copy off the anchors, and
- * no point here measures a run's extent. No `internImages`: {@link imageDraws}
- * reads where a blit LANDED, and never which bitmap it was.
+ * The recorder measures text and interns nothing. `measureText`, because the
+ * screens checks read a screen's copy off the LOGICAL RUNS the frame spells and
+ * not off the `fillText` split: a build that letter-spaces a heading draws one
+ * glyph per call, and the shared merge rule (`case-harness/text.ts`) needs each
+ * glyph's measured extent and alignment to fold them back into the word — without
+ * it nothing merges, and `ARC FOUNDRY` drawn a letter at a time is eleven strings
+ * no reading of the copy would find. This project's own {@link textDraws} is
+ * the package's placement with the operation's INDEX added, for the one check
+ * that decides an order. No `internImages`: {@link imageDraws} reads where a blit
+ * LANDED, and never which bitmap it was.
  */
 const kit = createEngineCaseHarness<
   FoundrySnapshot,
@@ -508,6 +576,9 @@ const kit = createEngineCaseHarness<
   stage: { width: STAGE_W, height: STAGE_H },
   tickHz: TICK_HZ,
   surfaceRequirement: SURFACE_REQUIREMENT,
+  // Each text call measured and the transform in force at it recorded, for the
+  // reason the paragraph above gives.
+  recorder: { measureText: true },
   defaultClock: () => new ConstantClock(TICK_MS),
   createEngine: ({ canvas, clock, surface }) => {
     const engine = createEngine<FoundryState, FoundrySurface>({
@@ -744,10 +815,11 @@ export type Harness = EngineHarness<
  * the touch layout — so one harness serves every build of this case. Everything
  * else the build decided lives inside `src/game.ts`.
  *
- * EVERY PRODUCED FILE IS SERVED, to every check without exception: the transport
- * above stands before the first harness is built, so the engine resolves, requests,
- * decodes and announces exactly as it does in a page, and the build asks for its
- * files exactly as it always does.
+ * EVERY PRODUCED FILE IS SERVED AND DECODES, to every check without exception:
+ * the transport and the cue decoder above both stand before the first harness is
+ * built, so the engine resolves, requests, decodes and announces exactly as it
+ * does in a page — a sprite becomes an image and a `.wav` becomes the buffer its
+ * cue binds — and the build asks for its files exactly as it always does.
  */
 export async function createHarness(
   options: HarnessOptions = {},
@@ -1000,6 +1072,7 @@ export function openRun(h: Harness, options: YardOptions = {}): void {
   if (options.difficulty !== undefined)
     h.debug.setDifficulty(options.difficulty);
   h.debug.startRun();
+  h.debug.reconcile();
 }
 
 /**
@@ -1014,6 +1087,7 @@ export function emptyYard(h: Harness): void {
   h.debug.clearStructures();
   h.debug.clearUnits();
   h.debug.clearProjectiles();
+  h.debug.reconcile();
 }
 
 /**
@@ -1036,6 +1110,7 @@ export function openYard(h: Harness, options: YardOptions = {}): void {
   }
   if (options.stamps !== undefined) h.debug.setStamps(options.stamps);
   if (options.speed !== undefined) h.debug.setSpeed(options.speed);
+  h.debug.reconcile();
 }
 
 /**
@@ -1055,6 +1130,7 @@ export function openYard(h: Harness, options: YardOptions = {}): void {
  */
 export function clearHand(h: Harness): void {
   h.debug.clearHeld();
+  h.debug.reconcile();
 }
 
 /**
@@ -1108,6 +1184,7 @@ export function standComponent(
 ): number {
   const before = h.snapshot().structures.length;
   h.debug.placeComponent(type, quality, col, row);
+  h.debug.reconcile();
   return placed(
     h.snapshot(),
     before,
@@ -1125,12 +1202,16 @@ export function standCombo(
 ): number {
   const before = h.snapshot().structures.length;
   h.debug.placeCombo(combo, col, row);
+  h.debug.reconcile();
   const id = placed(
     h.snapshot(),
     before,
     `placeCombo(${combo}, ${col}, ${row})`,
   );
-  if (level !== 0) h.debug.setComboLevel(id, level);
+  if (level !== 0) {
+    h.debug.setComboLevel(id, level);
+    h.debug.reconcile();
+  }
   return id;
 }
 
@@ -1138,6 +1219,7 @@ export function standCombo(
 export function standBlocker(h: Harness, col: number, row: number): number {
   const before = h.snapshot().structures.length;
   h.debug.placeBlocker(col, row);
+  h.debug.reconcile();
   return placed(h.snapshot(), before, `placeBlocker(${col}, ${row})`);
 }
 
@@ -1174,6 +1256,7 @@ export function standCandidate(
   h.debug.placeRock(col, row);
   h.debug.clearNextRoll();
   h.debug.clearHeld();
+  h.debug.reconcile();
   return placed(
     h.snapshot(),
     before,
@@ -1259,6 +1342,7 @@ export function releaseUnit(
     h.debug.setUnitBurn(id, pose.burn.dps, pose.burn.seconds);
   }
   if (pose.frozen !== undefined) h.debug.setUnitFrozen(id, pose.frozen);
+  h.debug.reconcile();
   return id;
 }
 
@@ -1319,6 +1403,7 @@ export function enterBuild(h: Harness): void {
  */
 export function holdWave(h: Harness): void {
   h.debug.setWaveHold(true);
+  h.debug.reconcile();
 }
 
 /** Release the wave-clear hold, so the wave resolves the ordinary way again. */
@@ -1360,6 +1445,7 @@ export function startWave(
 ): number {
   const candidate = standCandidate(h, type, quality, col, row);
   h.debug.keep(candidate);
+  h.debug.reconcile();
   return candidate;
 }
 
@@ -1844,12 +1930,70 @@ export function inRegion(region: Region, x: number, y: number): boolean {
 /* -------------------------------------------------------------------------- */
 /* Text                                                                       */
 /* -------------------------------------------------------------------------- */
+//
+// COPY IS READ THROUGH THE SHARED HARNESS. What a frame spelled is the package's
+// reading (`case-harness/text.ts`): `drawnTextRuns` places every draw through
+// the transform in force and folds a letter-spaced word back into the string it
+// spells, and `drewText` / `drewTextAnywhere` compare copy ignoring case and
+// whitespace. What this file adds is the two facts `specs/overview.md` makes Arc
+// Foundry's own: WHERE on the stage a run sits — the bar, the panel, the yard, an
+// overlay — and, for the one check that decides an ORDER, where a draw sat in
+// the frame's operations. Nothing here re-reads the raw calls for copy, and
+// nothing here compares copy by a rule of its own.
 
-/** One `fillText` or `strokeText`, with its anchor mapped onto the stage. */
-export interface TextDraw {
-  text: string;
+/**
+ * One `fillText` or `strokeText`, placed as the package places it, with where it
+ * sat in the frame's operations.
+ */
+export interface TextDraw extends PlacedText {
+  /**
+   * The operation's place in the WHOLE call list, property sets included, so a
+   * draw compares directly against the index `yard-drawing/order.ts` answers.
+   */
+  index: number;
+}
+
+/**
+ * Every text draw of a frame, each anchored where it actually landed, in the
+ * order the frame issued them.
+ *
+ * The placement is the package's `textDraws` — one entry per call, the anchor
+ * mapped through the transform in force — and the package answers no index, so
+ * the index is taken here by walking the calls it walks: it places every
+ * `fillText` or `strokeText` whose text is a string and whose anchor is two
+ * numbers, in order, and nothing else. The two walks are held to the same count.
+ */
+export function textDraws(calls: readonly DrawCall[]): TextDraw[] {
+  const placed = placedText(calls);
+  const indexes: number[] = [];
+  calls.forEach((call, index) => {
+    if (call.kind !== "call") return;
+    const { method, args } = call;
+    if (method !== "fillText" && method !== "strokeText") return;
+    if (typeof args[0] !== "string" || numbers(args.slice(1), 2) === null) {
+      return;
+    }
+    indexes.push(index);
+  });
+  if (indexes.length !== placed.length) {
+    throw new Error(
+      `textDraws: the package placed ${placed.length} text draws where the ` +
+        `index walk found ${indexes.length}`,
+    );
+  }
+  return placed.map((draw, i) => ({ ...draw, index: indexes[i]! }));
+}
+
+/** One `drawImage`, with the destination it blitted to mapped onto the stage. */
+export interface ImageDraw {
+  /** The destination rectangle's bounding box on the stage. */
   x: number;
   y: number;
+  w: number;
+  h: number;
+  /** Its center, which is where a rotated head lands whatever it was rotated by. */
+  cx: number;
+  cy: number;
   /** Where it sat in the frame's operations, so two draws can be ordered. */
   index: number;
 }
@@ -1864,14 +2008,15 @@ interface Placed {
 /**
  * Every call of a frame, each paired with the transform in force when it ran.
  *
- * The transform is tracked rather than assumed, because a build is free to draw
- * its yard, its bar, and its panel from any origin it likes and the
- * specification fixes only where the result lands. The walk itself is the
- * package's `transformed`, so this file and `yard-drawing/order.ts` cannot drift
- * on what a transform operation does.
+ * What {@link imageDraws} reads a blit's landing through. The transform is
+ * tracked rather than assumed, because a build is free to draw its yard, its
+ * bar, and its panel from any origin it likes and the specification fixes only
+ * where the result lands. The walk itself is the package's `transformed`, so
+ * this file cannot drift from the package's own text placement on what a
+ * transform operation does.
  *
  * `index` is the operation's place in the WHOLE call list, property sets
- * included, so it compares directly against the index `order.ts` answers.
+ * included, so it compares directly against the index {@link textDraws} answers.
  */
 function placedCalls(calls: readonly DrawCall[]): Placed[] {
   const placed: Placed[] = [];
@@ -1891,34 +2036,6 @@ function placedCalls(calls: readonly DrawCall[]): Placed[] {
     placed.push({ call: { method, args }, matrix: m, index });
   });
   return placed;
-}
-
-/** Every text draw of a frame, each anchored where it actually landed. */
-export function textDraws(calls: readonly DrawCall[]): TextDraw[] {
-  const draws: TextDraw[] = [];
-  for (const { call, matrix, index } of placedCalls(calls)) {
-    if (call.method !== "fillText" && call.method !== "strokeText") continue;
-    const text = call.args[0];
-    const v = numbers(call.args.slice(1), 2);
-    if (typeof text !== "string" || v === null) continue;
-    const point = apply(matrix, v[0], v[1]);
-    draws.push({ text, x: point.x, y: point.y, index });
-  }
-  return draws;
-}
-
-/** One `drawImage`, with the destination it blitted to mapped onto the stage. */
-export interface ImageDraw {
-  /** The destination rectangle's bounding box on the stage. */
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  /** Its center, which is where a rotated head lands whatever it was rotated by. */
-  cx: number;
-  cy: number;
-  /** Where it sat in the frame's operations, so two draws can be ordered. */
-  index: number;
 }
 
 /**
@@ -1973,85 +2090,67 @@ export function imageDraws(calls: readonly DrawCall[]): ImageDraw[] {
   return draws;
 }
 
-/** How far apart two draws may sit and still read as one letter-spaced word. */
-const LETTER_GAP = 24;
-
-/** How far apart two baselines may sit and still read as one line. */
-const LINE_GAP = 3;
-
 /**
  * The lines a region's text reads as, top to bottom.
  *
- * Draws sharing a baseline are one line, ordered left to right, and two of them
- * are run together only when both are single characters set close enough to be
- * letter spacing. Everything else is separated by a space, so `473` beside `17`
- * never reads as `47317`.
+ * The package's logical runs (`drawnTextRuns`) — a letter-spaced word already
+ * folded back into the string it spells, in reading order — kept to those
+ * anchored inside the region and joined a baseline at a time: the runs sharing
+ * one, within the package's own `RUN_BASELINE_SLACK`, make one line, separated
+ * by a space so `473` beside `17` never reads as `47317`. The region is the one
+ * fact added here; the placement, the merge, and the order are the package's.
  */
 export function textLines(
   calls: readonly DrawCall[],
   region: Region,
 ): string[] {
-  const draws = textDraws(calls)
-    .filter((d) => inRegion(region, d.x, d.y))
-    .sort((a, b) => (a.y === b.y ? a.x - b.x : a.y - b.y));
   const lines: string[] = [];
-  let baseline: number | null = null;
-  let row: TextDraw[] = [];
-  const close = (): void => {
-    if (row.length === 0) return;
-    const ordered = [...row].sort((a, b) => a.x - b.x);
-    let line = "";
-    let previous: TextDraw | null = null;
-    for (const draw of ordered) {
-      if (previous !== null) {
-        const spaced =
-          previous.text.length <= 1 &&
-          draw.text.length <= 1 &&
-          draw.x - previous.x < LETTER_GAP;
-        if (!spaced) line += " ";
-      }
-      line += draw.text;
-      previous = draw;
+  let baseline: number | undefined;
+  for (const run of drawnTextRuns(calls)) {
+    if (!inRegion(region, run.x, run.y)) continue;
+    if (
+      baseline !== undefined &&
+      Math.abs(run.y - baseline) <= RUN_BASELINE_SLACK
+    ) {
+      lines[lines.length - 1] += ` ${run.text}`;
+      continue;
     }
-    lines.push(line);
-    row = [];
-  };
-  for (const draw of draws) {
-    if (baseline === null || Math.abs(draw.y - baseline) > LINE_GAP) {
-      close();
-      baseline = draw.y;
-    }
-    row.push(draw);
+    lines.push(run.text);
+    baseline = run.y;
   }
-  close();
   return lines;
 }
 
-/** Every line of a region, joined, as one reading. */
-export function textIn(calls: readonly DrawCall[], region: Region): string {
-  return textLines(calls, region).join("\n");
+/**
+ * Whether `text` spells `needle`, compared the way the package's `drewText`
+ * compares copy: as a substring, ignoring case, with the whitespace folded out
+ * of both sides.
+ *
+ * Case and spacing come off because a build is free to letter-space a label
+ * and to wrap a long line; nothing else does. What the specification fixes is
+ * the words, as `../constants` spells them, and a build that draws `Arc-Node`
+ * as `ARC NODE` has drawn different words.
+ */
+export function reads(text: string, needle: string): boolean {
+  return foldWhitespace(text).includes(foldWhitespace(needle));
+}
+
+/** `text` in lower case with every run of whitespace removed. */
+function foldWhitespace(text: string): string {
+  return text.replace(/\s+/g, "").toLowerCase();
 }
 
 /**
- * One reading of a piece of text: its letters and its digits, and nothing else.
- *
- * Case, spacing, and punctuation all come off, on both sides of a comparison,
- * because a build is free to letter-space a label, to wrap a long line, and to
- * set `Arc-Node` as `ARC NODE`. What the specification fixes is the words.
+ * A region's text carries `needle`, read across every line of the region joined
+ * — the package's `drewTextAnywhere` reading, confined to the region — so copy
+ * a narrow panel wraps is still found.
  */
-function normalize(text: string): string {
-  return text.toUpperCase().replace(/[^A-Z0-9]+/g, "");
-}
-
-/** A region's text carries `needle`, read that way. */
 export function drew(
   calls: readonly DrawCall[],
   region: Region,
   needle: string,
 ): boolean {
-  return normalize(textLines(calls, region).join(" ")).includes(
-    normalize(needle),
-  );
+  return reads(textLines(calls, region).join(" "), needle);
 }
 
 /**
@@ -2065,9 +2164,10 @@ export function drew(
  * `1234` and one that draws `1,234` are read the same.
  *
  * The ASCII space is deliberately absent from the class. {@link textLines} joins
- * the separate draws of a row with one, so accepting it would read the two
- * figures of `40 130` as the single `40130`. `.` is absent for a related reason:
- * it is the decimal point, and a build drawing `1.5` means one and a half.
+ * the runs of a baseline with one, and the package's merge writes one at a word
+ * gap a run crossed, so accepting it would read the two figures of `40 130` as
+ * the single `40130`. `.` is absent for a related reason: it is the decimal
+ * point, and a build drawing `1.5` means one and a half.
  */
 const GROUP = "[,'\\u00A0\\u202F\\u2009]";
 

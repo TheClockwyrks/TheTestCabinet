@@ -25,8 +25,9 @@
 // the name `specs/ui.md` fixes, so the engine announces the name and
 // `watchCues` reads it — which separates a build that plays the wrong cue on the
 // rise from one that plays the right one, as counting sounds could not. What is
-// read is the ask the cue bus announces rather than a sound: this process has no
-// Web Audio context, so no produced file is decoded here.
+// read is the ask the cue bus announces rather than a sound: the produced file is
+// decoded here, because the harness installs the context that binds the cue, but
+// that context is inert and nothing in this process makes a noise.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {

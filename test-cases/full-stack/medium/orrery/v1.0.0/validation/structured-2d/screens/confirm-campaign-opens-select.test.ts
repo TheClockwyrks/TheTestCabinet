@@ -22,7 +22,11 @@
 // and it is neither `title` nor `editor` nor `howto`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThanOrEqual, assertNotEqual } from "../assert";
+import {
+  assertEqual,
+  assertGreaterThanOrEqual,
+  assertNotEqual,
+} from "../assert";
 import { TITLE_ITEMS } from "../constants";
 import {
   captureStill,

@@ -21,11 +21,11 @@ import {
   ACTION_KEY,
   captureStill,
   createHarness,
-  drewText,
   type Harness,
   openScene,
   standAtBuilding,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 import { menuLength } from "./expedition";
 import { denyStorage, ran, restoreStorage } from "./no-storage";
 

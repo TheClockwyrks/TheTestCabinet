@@ -35,12 +35,12 @@ import { PAUSE_ITEMS } from "../constants";
 import {
   captureStill,
   createHarness,
-  drewText,
   isolate,
   poseScreen,
-  textDraws,
+  placedRuns,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 import { anchorY } from "./stage";
 
 let h: Harness;
@@ -68,7 +68,7 @@ it("draws RESUME above MAIN MENU on the pause screen", async () => {
     );
   }
 
-  const draws = textDraws(calls);
+  const draws = placedRuns(calls);
   const first = anchorY(draws, PAUSE_ITEMS[0]);
   const second = anchorY(draws, PAUSE_ITEMS[1]);
   assertNotNull(first, `where ${PAUSE_ITEMS[0]} was drawn`);

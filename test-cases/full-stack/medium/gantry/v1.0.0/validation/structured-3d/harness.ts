@@ -85,6 +85,16 @@
 // drives a game that has just initialized, with no key held, nothing muted and
 // nothing built. `dispose` destroys the engine and drops its listeners.
 //
+// AND A POSED WORLD IS RECONCILED BEFORE IT IS READ. A build is free to work a
+// derived reading out at the read or to keep it as a stored copy, and a stored
+// copy answers for the world as it was until `reconcile` rewrites it. So a
+// helper below that poses anything a reading derives from — the structure, the
+// tape, the yard, the run — ends with `reconcile`, and a check that reaches its
+// scenario through the helpers never calls it itself. A check that poses with
+// `h.debug.*` directly calls it once before its first read. Where a helper
+// batches its calls into one crossing, `reconcile` is the batch's last entry, so
+// the crossing count does not grow.
+//
 // AND THIS FILE OWNS EVERY COMPOUND SEQUENCE. The surface is atomic by design:
 // one operation sets one field, and `specs/instrumentation.md` says so in as many
 // words ("a caller that wants several things arranged makes several calls"). So
@@ -160,7 +170,7 @@ import {
   type EngineHarness,
   type TimedCue,
 } from "./case-harness/engine/index";
-import type { DrawCall } from "./case-harness/draw-calls";
+import type { DrawCall, RecordedOp } from "./case-harness/draw-calls";
 import {
   ASSET_ROOT,
   CUES,
@@ -226,6 +236,7 @@ export const REQUIRED_OPS = [
   "drawn",
   "menuItemRect",
   "reset",
+  "reconcile",
   "setScreen",
   "setMenuIndex",
   "openSite",
@@ -534,6 +545,21 @@ export interface Harness {
    * reads the world's own render components instead.
    */
   screenOps(): Promise<RecordedOp[]>;
+  /**
+   * The same frame's operations as the draw calls the package's recorder wrote,
+   * each text call carrying the width and alignment it was measured at.
+   *
+   * THE READING A CHECK TAKES COPY AND FIGURES OFF, on all three engines. The
+   * measurement — `recorder: { measureText: true }` in the kit below — is what
+   * lets `drawnTextLines` and `drawnTextRuns` (`case-harness/text.ts`) fold a
+   * heading a build letter-spaced, one glyph per `fillText`, back into the run
+   * it spells; the specification fixes the words and leaves their spacing to
+   * the build, so a check reads the runs and never the call split.
+   * {@link screenOps} answers the same calls, measurement and all, in the
+   * engineless recorder's document; a check that reads copy reads this one
+   * because the readers take draw calls.
+   */
+  screenCalls(): Promise<DrawCall[]>;
 
   /**
    * The screen layer as a PNG: the readouts, menus, tape and fail copy exactly as
@@ -558,13 +584,11 @@ export interface Harness {
  * THE SAME DOCUMENT THE ENGINELESS PROJECT'S INJECTED RECORDER WRITES
  * (`RecordedOp` in `@clockwyrks/case-harness`), so a check reads a frame's
  * drawing through the same helpers — `toDrawCall`, `drawnText`, `textDraws` —
- * whichever project it is running in. It is spelled here rather than imported
- * because it is the shape the SUITES declare and cast to, in all three
- * directories.
+ * whichever project it is running in. It is the package's own type,
+ * re-exported, because it is the shape the SUITES declare and cast to, in all
+ * three directories.
  */
-export type RecordedOp =
-  | { op: "call"; method: string; args: unknown[] }
-  | { op: "set"; property: string; value: unknown };
+export type { RecordedOp };
 
 /**
  * One call the package's recorder wrote, as the engineless recorder would have
@@ -573,13 +597,18 @@ export type RecordedOp =
  * The two records hold the same facts under two spellings — `kind` here, `op`
  * there — because the engineless recorder is injected into a page and writes the
  * console player's replay format. Renaming the discriminant is the whole of the
- * difference; the `text` geometry an engine recorder can also take is dropped,
- * because this project never asks for it (see `recorder` in the kit below).
+ * difference: the `text` geometry the package's recorder attached to a measured
+ * text call travels with it, and `toDrawCall` carries it back, so a check reads
+ * the same measured calls whether it asked for {@link Harness.screenOps} or
+ * {@link Harness.screenCalls}.
  */
 function recordedOp(call: DrawCall): RecordedOp {
-  return call.kind === "call"
-    ? { op: "call", method: call.method, args: call.args }
-    : { op: "set", property: call.property, value: call.value };
+  if (call.kind === "set") {
+    return { op: "set", property: call.property, value: call.value };
+  }
+  const op: RecordedOp = { op: "call", method: call.method, args: call.args };
+  if (call.text !== undefined) op.text = call.text;
+  return op;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -836,10 +865,13 @@ const kit: EngineCaseKit<GantrySnapshot, GantryDriver, GantryEngine, unknown> =
     stage: { width: STAGE_W, height: STAGE_H },
     tickHz: TICK_HZ,
     surfaceRequirement: SURFACE_REQUIREMENT,
-    // No `measureText`: every check that reads the frame's copy walks the operation
-    // list and composes the transforms itself, exactly as it does under `none`,
-    // where the injected recorder carries no measurement either.
-    recorder: {},
+    // Measure every text call, so the calls `h.screenCalls()` answers carry the
+    // width and alignment the shared merge rule needs to put a letter-spaced run
+    // — one glyph per `fillText` — back together into the copy it spells, as the
+    // `none` project asks with `measureText: true`. Without it no two text draws
+    // ever coalesce, and a check reading copy off `drawnTextLines` would be
+    // reading the raw call split after all.
+    recorder: { measureText: true },
     cueEvents: ["cue:played", "cue:looped"],
     defaultClock: () => new ConstantClock(TICK_MS),
     createEngine: ({ canvas, clock, surface, shape }) => {
@@ -1265,6 +1297,11 @@ export async function createHarness(
       return base.calls.map(recordedOp);
     },
 
+    async screenCalls() {
+      if (surface === null) refuse();
+      return [...base.calls];
+    },
+
     async screenPng() {
       if (surface === null) refuse();
       return base.canvas.toBuffer("image/png");
@@ -1675,6 +1712,7 @@ export async function offEveryMenuItem(
 export async function openSite(h: Harness, index: number): Promise<void> {
   await h.debug.openSite(index);
   await h.debug.setScreen("build");
+  await h.debug.reconcile();
 }
 
 /**
@@ -1694,6 +1732,7 @@ export async function emptyYard(h: Harness): Promise<void> {
     await h.debug.clearLoads();
     await h.debug.clearObstacles();
   });
+  await h.debug.reconcile();
 }
 
 /**
@@ -1710,6 +1749,7 @@ export async function clearAll(h: Harness): Promise<void> {
     await h.debug.clearStructure();
   });
   await onScreen(h, "program", () => h.debug.clearProgram());
+  await h.debug.reconcile();
 }
 
 /**
@@ -1753,6 +1793,7 @@ export async function poseCrane(
       await h.debug.addCounterweight(node[0], node[1], node[2]);
     }
   });
+  await h.debug.reconcile();
 
   const { structure } = await h.snapshot();
   const placed = new Set(structure.members.map((m) => edgeKey(m.a, m.b)));
@@ -1840,6 +1881,7 @@ export async function poseTape(
       }
     }
   });
+  await h.debug.reconcile();
 
   const program = (await h.snapshot()).program;
   if (program.length !== before + steps.length) {
@@ -1963,6 +2005,7 @@ export async function addOneLoad(
     await h.debug.addLoad(cls, mass, from.x, from.y, from.z, from.yaw);
     await h.debug.setLoadTarget(0, to.x, to.y, to.z, to.yaw);
   });
+  await h.debug.reconcile();
 }
 
 /** The yard holding exactly one obstacle: the box with that corner and size. */
@@ -1975,6 +2018,7 @@ export async function addOneObstacle(
     await h.debug.clearObstacles();
     await h.debug.addObstacle(min.x, min.y, min.z, size.x, size.y, size.z);
   });
+  await h.debug.reconcile();
 }
 
 /* -------------------------------------------------------------------------- */

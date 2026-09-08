@@ -35,7 +35,7 @@ full set is whatever [`build.sh`](#building) builds; the notable ones:
   [`asset_dimension`](../apps/docs/src/content/docs/testing/full-stack/manifests.md)
   picks between them: `"2d"` (the default) resolves **full-stack-2d**, which carries
   `draw`, `draw-sheet`, `particle-2d`, `sfx-synth`, `sfx-sample` and `music`; `"3d"`
-  resolves **full-stack-3d**, which carries those six *plus* `voxel`, `voxel-anim`
+  resolves **full-stack-3d**, which carries those six _plus_ `voxel`, `voxel-anim`
   and `particle-3d`, and the Mesa software-Vulkan runtime those three render their
   preview PNGs through. The 3D image is a **sibling** of the 2D one rather than
   built `FROM` it — both are `FROM` base-wasm — so a 2D run carries neither the 3D
@@ -142,15 +142,15 @@ one `COPY` on top of its parent
 ([`gg/Dockerfile`](gg/Dockerfile), copying out of the builder in
 [`gg-toolchains/Dockerfile`](gg-toolchains/Dockerfile)). Three facts shape it:
 
-- **Every toolchain is present together.** A program's language is resolved *per
-  agent*, so one run may drive a C# agent and a Python agent at the same time. An
+- **Every toolchain is present together.** A program's language is resolved _per
+  agent_, so one run may drive a C# agent and a Python agent at the same time. An
   image carrying one language's compiler could not run that configuration at all.
 - **It is a variant, not a layer on the shared image.** The toolchains are for one
   harness. A run driven by Claude Code or Codex must not pull gigabytes it cannot
   use — and a model that found a Swift compiler on `PATH` in an end-to-end run
   would have been handed a capability no other arm of that comparison has.
 - **Every image has one, and the name is derived.** A program's language is resolved
-  per agent, so a gg run of *any* kind — an asset-generation case, an adversarial
+  per agent, so a gg run of _any_ kind — an asset-generation case, an adversarial
   case — may drive a compiled-language agent, and an image with no toolchains would
   fail every one of that agent's programs. `ImageSpec::gg_variant` in `crates/core`
   appends the suffix rather than consulting a list, [`image-names.sh`](image-names.sh)
@@ -230,7 +230,7 @@ containers/
 (each run is a fresh repository), a Node.js build toolchain (test cases produce
 web UIs that are built inside the container), the shared libraries a headless
 Chromium links against (so a test case can install Playwright and Chromium
-*itself* and drive its build in a real browser to verify it), system fonts (a
+_itself_ and drive its build in a real browser to verify it), system fonts (a
 slim base ships none, so without them Chromium and Canvas text render no glyphs —
 `fonts-dejavu-core` covers the monospace stack the test cases require), the
 `curl`/`unzip` tooling the curl-piped harness installers rely on, and an
@@ -312,8 +312,8 @@ it must not shell out to `draw`. The case's specification states that contract.
 Some produced assets are **not self-describing data** the way a sprite PNG is: a
 [particle](../apps/docs/src/content/docs/testing/asset-generation/particle-binaries.md)
 effect is a `system.json` a game plays by **simulating it live**, and a voxel/mesh
-rig is **posed** at runtime. A game that consumes one needs the *runtime that
-plays it*, not just the asset. Those runtimes already exist in this repo as the
+rig is **posed** at runtime. A game that consumes one needs the _runtime that
+plays it_, not just the asset. Those runtimes already exist in this repo as the
 `@clockwyrks/*` libraries the in-repo viewers use
 ([`@clockwyrks/particle-runtime`](../packages/particle-runtime),
 [`@clockwyrks/voxel-runtime`](../packages/voxel-runtime)); an end-to-end case
@@ -385,7 +385,7 @@ To add one:
 1. **Make the package shippable.** It must build to a `dist/` with a package
    `exports` map and a `files` field listing what to publish (as
    `packages/particle-runtime` and `packages/voxel-runtime` already do). It should
-   be framework-agnostic and MIT-licensed; a peer dependency the *game* provides
+   be framework-agnostic and MIT-licensed; a peer dependency the _game_ provides
    (for example `three`) is fine, since the game installs it, but a hard dependency
    on an npm-published package is not.
 2. **Add it to the shippable list** in
@@ -471,7 +471,7 @@ the keep-alive `CMD`, and adds only its binary — or, for the `ui` and `materia
 its two binaries. Unlike a harness CLI, these binaries are part
 of The Test Cabinet itself and must match the orchestrator's own logic — the
 orchestrator regenerates a `draw`/`draw-sheet` run's scored image from its action
-log through the *same* library those tools use, and core's validator decodes the
+log through the _same_ library those tools use, and core's validator decodes the
 emitted data every other kind produces (the UI images, PBR maps, geometry, particle
 system, or `.wav`) — so each is
 compiled from this repo (a multi-stage build in its Dockerfile) and baked in
@@ -564,10 +564,19 @@ the container against the recorded sha256 and byte length. A store with no lock,
 and one whose bytes disagree with it, each fail the run.
 
 That tree ships as the `audio-store` image. The driver image copies it in at
-`/opt/tcab-audio`, and a local checkout fetches it with
+`/opt/tcab-audio`, and a local checkout gets it with
 [`scripts/fetch-audio-store.sh`](../scripts/fetch-audio-store.sh), which pulls the
-published image and extracts the tree. `TCAB_AUDIO_STORE` points core at a store
-elsewhere on the host.
+published image and extracts the tree — or, with `--stage` (and automatically when
+the pull fails), materializes it straight out of the audio object store instead.
+`TCAB_AUDIO_STORE` points core at a store elsewhere on the host.
+
+**The image is never the only source, and it must not be.** It is published _behind_
+the object store, so anyone who has just published a pack would otherwise have to
+push a container image before they could hear it. Every consumer therefore has a
+path that skips the registry: `--stage` here, and
+[`deployments/local/Makefile`](../deployments/local/Makefile)'s `audio-store` target,
+which builds the store from the checkout and hands the driver image build that ref
+so a local `make images` pulls no audio at all.
 
 ### What a run receives
 
@@ -622,7 +631,7 @@ tooling**, compiled from `crates/` in a multi-stage build and copied under
 
 - the **`foray` CLI** (`/usr/local/bin/foray`) — the binary a model runs its
   controller through to play local matches against the baselines. It hosts the
-  *same* `foray-host` engine the validator scores with, so it must be built from
+  _same_ `foray-host` engine the validator scores with, so it must be built from
   this repo and kept in lockstep, not installed at run time;
 - the **controller buildkit** (`/opt/foray/buildkit`) — fresh, source-only copies
   of `foray-core` and `foray-controller-sdk` (with a de-workspaced root manifest,
@@ -662,7 +671,7 @@ tooling**, compiled from `crates/` in a multi-stage build and copied under
 
 - the **`lattice` CLI** (`/usr/local/bin/lattice`) — the binary a model runs to
   solve scenarios with the oracle and score its engine locally. It hosts the
-  *same* `lattice-host` the validator scores with, so it must be built from this
+  _same_ `lattice-host` the validator scores with, so it must be built from this
   repo and kept in lockstep, not installed at run time;
 - the **engine buildkit** (`/opt/lattice/buildkit`) — fresh, source-only copies of
   `lattice-core` and `lattice-sdk` (with a de-workspaced root manifest,
@@ -704,7 +713,7 @@ DOCKER=podman ./build.sh       # build with Podman instead
 Building a `-gg` variant asks nothing about whether the compilers it carries **run**
 in it. The third constraint on
 [the gg toolchain builder](#the-gg-toolchain-builder) below says a toolchain is
-self-contained *and proven where it runs*; this flag is the second half of that
+self-contained _and proven where it runs_; this flag is the second half of that
 sentence made mechanical.
 
 `--gg-selfcheck <PATH-TO-GG>` takes a `gg` binary — build one with
@@ -731,7 +740,7 @@ says two.
 
 `full-stack-3d-gg` is the fifth, and it is the one that looks redundant: it carries the
 same `libicu72`, from the same `mesa-vulkan-drivers`, that `voxel-gg` does. What makes it
-a distinct environment is everything *else* in the image — it is the only run image that
+a distinct environment is everything _else_ in the image — it is the only run image that
 is `FROM` base-wasm **and** installs the mesa stack, because it is the only one that both
 compiles Rust to wasm and renders a preview — and the grouping is the whole package set,
 not the one library the original bug happened to be about. A representative that were
@@ -771,7 +780,7 @@ This replaced a per-image `cargo build`, which recompiled the shared dependency
 graph from scratch for every image: **1865 crate-compilations across the set where
 only 182 distinct crates exist** — `syn`, `serde` and `proc-macro2` built 23 times
 each, the ~90-crate `wgpu`/`naga` graph that the 13 rendering tools share built 13
-times over, and `ui`/`material` compiling the *identical* `test-cabinet-paint` crate
+times over, and `ui`/`material` compiling the _identical_ `test-cabinet-paint` crate
 twice. The builder also carries cargo registry/target cache mounts, so an
 incremental rebuild costs only the crates that actually changed.
 
@@ -793,7 +802,7 @@ exactly the same reason: it assembles every language toolchain a gg run's progra
 may be compiled with under one prefix (`/opt/gg/toolchains`), exports it as a
 `scratch` image, and each `-gg` variant resolves it through a `GG_TOOLCHAINS_IMAGE`
 build arg and copies the tree out. It is not a run image and never appears in
-`image-names.sh` — that list is the set of images a *run resolves*, and `build.sh`'s
+`image-names.sh` — that list is the set of images a _run resolves_, and `build.sh`'s
 `build_one` dispatches on it by name, so an entry would route `make run-images` through
 the asset-image builder. (The Rust suite is not what blocks it: that test keeps a
 `NOT_A_RUN_IMAGE` exception list, which already holds `base`.) Like the asset tooling it is **always**
@@ -820,7 +829,7 @@ several compilers run concurrently inside one run, and a shared build strategy a
 a shared output tree have each been measured interleaving two agents' programs
 while every process exited zero. The calling side supplies most of that — gg runs every
 compiler with its working directory, `HOME`, `TMPDIR` and `XDG_*` roots inside that
-preparation's own tree — so what this constrains is the toolchain that can *only* be
+preparation's own tree — so what this constrains is the toolchain that can _only_ be
 driven through a process shared between compilations. See
 [per-agent compiler isolation](../apps/docs/src/content/docs/gg/languages/compilation.md#per-agent-compiler-isolation).
 
@@ -831,7 +840,7 @@ loader path (or the tree's own rpath reaches it). The second half of it is where
 proof lives. Each installer below ends by compiling with the pruned copy, and that compile
 runs in this **builder** stage — which `apt-get install`s the arm's own dependencies
 and then exports `/opt/gg` without them, so a pass here says nothing about the image
-the tree is copied *into*. The gate that does is
+the tree is copied _into_. The gate that does is
 [`gg selfcheck`](../apps/docs/src/content/docs/gg/languages/selfcheck.md), run inside
 a **built** `-gg` variant of each environment — `sprite-gg`, `base-wasm-gg`, `voxel-gg`,
 `full-stack-3d-gg` and `blender-gg` — before any is published. A dependency satisfied by
@@ -855,7 +864,7 @@ and installed by
 Dockerfile runs rather than duplicating, so a pin is edited in one place. (It used to pass
 the two versions in as build args over `ARG` defaults that restated them; a default is a
 second answer, correct only until somebody edits the version file, and it was reachable by
-any `docker build -f` that skipped `containers/build.sh`.) What is *not* here is the library
+any `docker build -f` that skipped `containers/build.sh`.) What is _not_ here is the library
 set a PureScript program is compiled against: that is compiled at build time into a cargo
 `OUT_DIR` and embedded in gg's binary, because this image is built separately from the
 binary that runs in it and a library tree of a different vintage from the SDK compiled into
@@ -869,12 +878,12 @@ Dockerfile runs rather than duplicating, so the list of jars exists once. A JDK 
 excluded by the "shared process" constraint above: gg drives it through a **pool** of warm
 JVMs that lends each to one preparation at a time, which is what makes a warm build
 (0.33–0.56 s) affordable where a cold one is 4–9 s, and what makes the measured TeaVM
-corruption's precondition impossible. gg's own compiler driver is *not* here — it is one
+corruption's precondition impossible. gg's own compiler driver is _not_ here — it is one
 `.java` file inside gg's binary, run by the JDK's single-file source-code launcher, for the
 vintage reason PureScript's library set is not here either.
 
 **Kotlin** rides on top of that, and adds ~67 MB of compiler jars and nothing else: a Kotlin
-program is compiled to JVM bytecode and handed to the *same* TeaVM, so everything from
+program is compiled to JVM bytecode and handed to the _same_ TeaVM, so everything from
 bytecode onwards already exists here. Its installer
 ([`scripts/ci/install-kotlin.sh`](../scripts/ci/install-kotlin.sh)) runs the Java one rather
 than installing a second JDK beside it. Everything it writes is a classpath entry: a model's
@@ -882,12 +891,12 @@ program is an ordinary Kotlin file with its own `fun main()`, so the compiler ne
 jars and nothing else.
 
 **Rust** is the heaviest thing in the tree — **~380 MB** — and the first that is not a
-compiler *for* a guest. Every arm above compiles a model's program into something an
+compiler _for_ a guest. Every arm above compiles a model's program into something an
 interpreter already inside a committed component evaluates; `rustc` emits the component
 itself, per turn, because there is no Rust runtime to commit. What is installed is a rustup
 `minimal` toolchain pruned to `rustc`, its two shared libraries, the
 `wasm32-unknown-unknown` standard library and `rust-lld` — with `cargo`, `rustdoc`, the
-lint tools, the standard-library sources, the documentation share and the *host* standard
+lint tools, the standard-library sources, the documentation share and the _host_ standard
 library all removed, none of which a cross-compile of a program with no proc macros
 touches. A rustup toolchain directory is relocatable (`rustc` derives its sysroot from its
 own path), and the Dockerfile proves it by compiling a `cdylib` with the pruned copy before
@@ -899,7 +908,7 @@ all. That set is not here, for the vintage reason PureScript's is not.
 
 **Swift** is the second arm of that shape and the second heaviest thing in the tree —
 **~835 MB**, against `rustc`'s 380 MB — because a Swift cross-compile needs a compiler, a
-target SDK holding a wasm sysroot and standard library, *and* a vendored copy of the shared
+target SDK holding a wasm sysroot and standard library, _and_ a vendored copy of the shared
 libraries the published linker was built against. That last one is the whole reason its
 install is a script rather than two `curl`s: the toolchain is built for Debian 12 and its
 `lld` links against that distribution's `libxml2` soname, which the Debian-derived run images
@@ -910,7 +919,7 @@ compile. What is kept out of 3.3 GB is the driver, the front end, `clang`, `lld`
 transitive closure of the shared objects those actually need — walked rather than copied by
 directory, which is what leaves Foundation's networking half and `libcurl`'s system closure
 behind; what goes with them is the editor services, the debugger, the formatter, the
-documentation tool, the build system, the *host* standard library and 577 MB of Embedded Swift
+documentation tool, the build system, the _host_ standard library and 577 MB of Embedded Swift
 resources for every target. The Dockerfile proves the pruning by compiling both a C file
 and a Swift file for the wasm target with the pruned copy, because each of those exercises a
 different half of what was deleted. The bindings a program is compiled against are not here,
@@ -928,14 +937,14 @@ beside it, where that rpath finds them and nothing else in the image does. No
 `LD_LIBRARY_PATH`; the closure is walked to decide that list rather than to place it.
 What is dropped out of ~650 MB is `lldb`, the lint and
 format tools, the object utilities, the other linker drivers, `wasm-component-ld` — and, the
-largest deletion by far, four of the wasi-sysroot's five *targets*, since gg compiles to
+largest deletion by far, four of the wasi-sysroot's five _targets_, since gg compiles to
 exactly the one its package pins. The Dockerfile proves the pruning by compiling both a C
 file and a C++ one for the wasm target with the pruned copy, because a C++ compile
 additionally needs libc++'s headers, its archives and `libunwind`, and a C compile touches
 none of them. Two things are not here: the bindings a program is compiled against, for the
 vintage reason PureScript's library set is not; and the **precompiled header** of the ~55
 standard-library headers every program is compiled with — that one is built once per
-*machine*, into a content-keyed shared directory, because a PCH is readable only by the clang
+_machine_, into a content-keyed shared directory, because a PCH is readable only by the clang
 that wrote it.
 
 **.NET** is the one toolchain here whose missing dependency is invisible to the tools that
@@ -975,8 +984,14 @@ R2 credential: the driver image resolves it through an `AUDIO_STORE_IMAGE` build
 arg and `COPY --from`s the tree out, and `scripts/fetch-audio-store.sh` pulls the
 same published image for a local `tcab run`.
 
+It is the source for a machine that _cannot_ stage, not for one that can. A build
+in this repository that has the presign credentials should produce the store rather
+than pull it — `deployments/local/Makefile` overrides `AUDIO_STORE_IMAGE` with a
+locally-built ref for exactly that reason — so publishing an image is never on the
+path between changing audio and running with it.
+
 Like the gg toolchain builder it is **not** a run image and never appears in
-`image-names.sh` — that list is the set of images a *run resolves*, and `build.sh`'s
+`image-names.sh` — that list is the set of images a _run resolves_, and `build.sh`'s
 `build_one` dispatches on it by name. It **is** pushed under `PUSH=1`, and the
 `manifest` job in `build-containers.yml` fuses its one arch pair by name beside the
 `gg-toolchains` block.
@@ -994,7 +1009,7 @@ a run image nor a builder anything here copies from. It exists for the machines 
 
 Since the eleven signature catalogues stopped being committed, `crates/gg/build.rs`
 reflects each of them out of its arm's own SDK with its arm's own documentation tool on
-every build — and since every arm's *artifacts* followed them, that same build also **runs**
+every build — and since every arm's _artifacts_ followed them, that same build also **runs**
 those toolchains rather than only reading with them: it bakes four language runtimes and
 links six compile targets. So a machine that cannot run `swiftc`, `javac`, `purs`, Roslyn and
 the rest cannot run `cargo build --workspace` at all.
@@ -1015,7 +1030,7 @@ Three things about it are decisions rather than details:
 
 - **It installs into a staged `$HOME` (`/gg-home`), not `/opt`.** That is what makes it a
   second image rather than a `--target` of `gg-toolchains`. The run tree lives at
-  `/opt/gg/toolchains` because gg resolves it there inside a run container; the *build*
+  `/opt/gg/toolchains` because gg resolves it there inside a run container; the _build_
   path resolves through `$HOME`, and three of the eleven arms cannot be redirected away
   from it at all — `install-uv.sh` overwrites any inherited `UV_INSTALL_DIR`, YARD is a
   `--user-install` gem in `Gem.user_dir`, and the `wasm32-unknown-unknown` standard library
@@ -1023,13 +1038,13 @@ Three things about it are decisions rather than details:
   defaults are the point.
 - **It is not in `image-names.sh` and `build.sh` never builds it.** `make run-images` must
   not start a 1.9 GB build of something no run container will pull, and that list is the set
-  of images a *run resolves* (asserted both ways by the Rust suite). It has its own
+  of images a _run resolves_ (asserted both ways by the Rust suite). It has its own
   workflow, [`build-gg-ci-image.yml`](../.github/workflows/build-gg-ci-image.yml), whose
   `paths:` are the closure of the pinned list expressed as globs, so a new arm is covered
   without an edit.
 - **Hydrating from it never replaces the pinned installer.**
   [`scripts/ci/hydrate-gg-toolchains.sh`](../scripts/ci/hydrate-gg-toolchains.sh) copies the
-  tree in *before* `rust-test.sh` / `contract-drift.sh` run `install-gg-toolchains.sh` as
+  tree in _before_ `rust-test.sh` / `contract-drift.sh` run `install-gg-toolchains.sh` as
   they always have. The image supplies the bytes; the pinned list verifies them, and repairs
   the one arm an image built before a pin moved has wrong. Every failure path in that
   script — no image yet, a fork, a registry hiccup — falls back to the full install and

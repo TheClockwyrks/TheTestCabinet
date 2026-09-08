@@ -51,7 +51,12 @@ export const BRICK_COLLIDER: ColliderOptions = {
 };
 
 export const FLOOR_COLLIDER: ColliderOptions = {
-  shape: { kind: "box", width: FIELD.width, height: FIELD.wall, depth: FIELD.depth },
+  shape: {
+    kind: "box",
+    width: FIELD.width,
+    height: FIELD.wall,
+    depth: FIELD.depth,
+  },
   channel: CHANNEL.floor,
   responses: { [CHANNEL.ball]: "overlap" },
 };
@@ -104,7 +109,11 @@ import {
   quatLookAt,
   vec3,
 } from "@clockwyrks/structured-3d";
-import type { ActorSpec, GameDefinition, Vec3 } from "@clockwyrks/structured-3d";
+import type {
+  ActorSpec,
+  GameDefinition,
+  Vec3,
+} from "@clockwyrks/structured-3d";
 import { Ball } from "./actors/ball";
 import { Brick } from "./actors/brick";
 import { Floor } from "./actors/floor";
@@ -119,7 +128,9 @@ function bar(w: number, h: number, position: Vec3, channel: string): ActorSpec {
     type: Actor,
     transform: { position },
     configure(actor: Actor) {
-      actor.attach(new MeshComponent({ geometry: shape, material: { color: "#39465c" } }));
+      actor.attach(
+        new MeshComponent({ geometry: shape, material: { color: "#39465c" } }),
+      );
       actor.attach(new ColliderComponent({ shape, channel, responses: BLOCK }));
     },
   };
@@ -129,8 +140,12 @@ const lights: ActorSpec = {
   type: Actor,
   transform: { rotation: quatLookAt(vec3(-0.4, -1, -0.6)) },
   configure(actor: Actor) {
-    actor.attach(new LightComponent({ light: { kind: "hemisphere", intensity: 0.6 } }));
-    actor.attach(new LightComponent({ light: { kind: "directional", intensity: 2 } }));
+    actor.attach(
+      new LightComponent({ light: { kind: "hemisphere", intensity: 0.6 } }),
+    );
+    actor.attach(
+      new LightComponent({ light: { kind: "directional", intensity: 2 } }),
+    );
   },
 };
 
@@ -146,7 +161,10 @@ const actors: ActorSpec[] = [
       position: vec3(-6.4 + (i % 9) * 1.6, 3.4 - Math.floor(i / 9) * 0.7, 0),
     },
   })),
-  { type: Floor, transform: { position: vec3(0, -(height / 2 + wall / 2), 0) } },
+  {
+    type: Floor,
+    transform: { position: vec3(0, -(height / 2 + wall / 2), 0) },
+  },
   { type: Ball, transform: { position: SERVE } },
 ];
 
@@ -196,7 +214,10 @@ export class Ball extends Actor {
   }
 
   override tick(dt: number): void {
-    this.transform.position = add(this.transform.position, scale(this.velocity, dt));
+    this.transform.position = add(
+      this.transform.position,
+      scale(this.velocity, dt),
+    );
   }
 
   serve(): void {
@@ -205,7 +226,10 @@ export class Ball extends Actor {
   }
 
   reflect(normal: Vec3, depth: number): void {
-    this.transform.position = sub(this.transform.position, scale(normal, depth));
+    this.transform.position = sub(
+      this.transform.position,
+      scale(normal, depth),
+    );
     const into = dot(this.velocity, normal);
     if (into <= 0) return;
     this.velocity = sub(this.velocity, scale(normal, 2 * into));
@@ -235,7 +259,9 @@ export class Brick extends Actor {
   constructor() {
     super();
     const { shape } = BRICK_COLLIDER;
-    this.attach(new MeshComponent({ geometry: shape, material: { color: "#ffd479" } }));
+    this.attach(
+      new MeshComponent({ geometry: shape, material: { color: "#ffd479" } }),
+    );
     this.attach(new ColliderComponent(BRICK_COLLIDER));
   }
 }

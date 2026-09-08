@@ -33,7 +33,10 @@ const COMPACT = new Intl.NumberFormat("en-US", {
  * the handful of namespaces that have one, and the value's own rendering otherwise — so a
  * field a feature adds tomorrow is legible without anyone teaching this function about it.
  */
-export function formatFieldValue(field: string, value: GgValue | undefined): string {
+export function formatFieldValue(
+  field: string,
+  value: GgValue | undefined,
+): string {
   if (value === undefined) return ABSENT;
   if (typeof value === "boolean") return value ? "true" : "false";
   if (typeof value !== "number") return value;
@@ -66,7 +69,8 @@ export function formatDuration(seconds: number): string {
   const total = Math.round(seconds);
   if (total < 60) return `${total}s`;
   const minutes = Math.floor(total / 60);
-  if (minutes < 60) return `${minutes}m ${String(total % 60).padStart(2, "0")}s`;
+  if (minutes < 60)
+    return `${minutes}m ${String(total % 60).padStart(2, "0")}s`;
   return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, "0")}m`;
 }
 

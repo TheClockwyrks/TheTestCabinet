@@ -408,22 +408,19 @@ fn driver_resource_requests_default_so_the_pod_is_never_best_effort() {
             config.driver_resources.memory_request.as_deref(),
             Some(DEFAULT_DRIVER_MEMORY_REQUEST)
         );
-        // The memory limit defaults too, and to the SAME value as the request: that
-        // equality is what makes a node reserve exactly what a driver may use, so
-        // nothing on the node can be killed to satisfy the driver's growth.
+        // The memory LIMIT does NOT default. A memory limit is a cgroup ceiling the
+        // kernel enforces by SIGKILL, and a driver OOM-killed mid-run destroys a run
+        // that has already paid for its API calls — so a run pod carries a request
+        // (the node's reservation) and no ceiling. See `DEFAULT_DRIVER_MEMORY_REQUEST`.
         assert_eq!(
-            config.driver_resources.memory_limit.as_deref(),
-            Some(DEFAULT_DRIVER_MEMORY_LIMIT)
+            config.driver_resources.memory_limit, None,
+            "a default driver memory limit is an OOM kill waiting for the first run \
+             that outgrows it; the driver must carry a request and no limit"
         );
-        assert_eq!(
-            config.driver_resources.memory_request, config.driver_resources.memory_limit,
-            "the driver's memory request and limit must default to one value; a gap \
-             between them is memory the scheduler has promised twice"
-        );
-        // The CPU limit defaults as well, and that is what holds the memory ceiling
-        // above steady: the post-run toolchain sizes its worker pools from the CPU
-        // this container may use, so an unbounded driver on a large node would fan
-        // out across the whole machine and outgrow a ceiling measured on a small one.
+        // The CPU limit defaults, and that is what keeps the driver's memory footprint
+        // steady across node sizes: the post-run toolchain sizes its worker pools from
+        // the CPU this container may use, so an unbounded driver on a large node would
+        // fan out across the whole machine. Over-limit CPU throttles rather than kills.
         assert_eq!(
             config.driver_resources.cpu_limit.as_deref(),
             Some(DEFAULT_DRIVER_CPU_LIMIT)
@@ -460,9 +457,9 @@ fn blanking_a_driver_request_omits_it_rather_than_defaulting() {
         set_required();
         set("TCAB_DISPATCHER_DRIVER_CPU_REQUEST", "");
         set("TCAB_DISPATCHER_DRIVER_MEMORY_REQUEST", "   ");
-        // Both limits default as well, so they have to be blanked too for the
-        // container to carry no `resources` at all — the state `is_empty` names.
-        set("TCAB_DISPATCHER_DRIVER_MEMORY_LIMIT", "");
+        // The CPU limit defaults as well, so it has to be blanked too for the
+        // container to carry no `resources` at all — the state `is_empty` names. The
+        // memory limit never defaults, so leaving it unset is already "omit".
         set("TCAB_DISPATCHER_DRIVER_CPU_LIMIT", "");
         let config = Config::from_env().expect("config should resolve");
 
@@ -475,16 +472,15 @@ fn blanking_a_driver_request_omits_it_rather_than_defaulting() {
 }
 
 #[test]
-fn blanking_the_driver_memory_limit_leaves_the_container_unbounded() {
-    // The documented escape hatch for an operator managing driver QoS elsewhere (a
-    // `LimitRange`). It must stay reachable, but it is the one opt-out that gives up
-    // the "sum of a node's limits is knowable" property, so it is asserted explicitly
-    // rather than left to follow from the blanking rule.
+fn a_driver_memory_limit_is_an_explicit_opt_in_only() {
+    // The one way a driver container gets a memory ceiling is an operator setting the
+    // variable — for a namespace `LimitRange` or quota that insists on one. Unset AND
+    // blank must both mean "no limit": collapsing either into a default would put the
+    // OOM kill this removal exists to prevent straight back on every driver.
     with_env(|| {
         set_required();
-        set("TCAB_DISPATCHER_DRIVER_MEMORY_LIMIT", "");
+        set("TCAB_DISPATCHER_DRIVER_MEMORY_LIMIT", "   ");
         let config = Config::from_env().expect("config should resolve");
-
         assert!(config.driver_resources.memory_limit.is_none());
         // The request survives, so the pod is still not `BestEffort`.
         assert_eq!(
@@ -492,6 +488,12 @@ fn blanking_the_driver_memory_limit_leaves_the_container_unbounded() {
             Some(DEFAULT_DRIVER_MEMORY_REQUEST)
         );
         assert!(!config.driver_resources.is_empty());
+    });
+    with_env(|| {
+        set_required();
+        set("TCAB_DISPATCHER_DRIVER_MEMORY_LIMIT", "3Gi");
+        let config = Config::from_env().expect("config should resolve");
+        assert_eq!(config.driver_resources.memory_limit.as_deref(), Some("3Gi"));
     });
 }
 

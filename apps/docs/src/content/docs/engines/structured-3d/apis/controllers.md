@@ -39,20 +39,20 @@ interface InputReader {
 }
 ```
 
-| Member | Semantics |
-| --- | --- |
-| `world` | The world that holds the controller. |
-| `pawn` | The pawn the controller holds, or `null`. |
-| `playerState` | The player state built alongside the controller, carrying its index, name, and score. |
-| `possess(pawn)` | Takes `pawn`, as specified under Possession below. |
-| `unpossess()` | Releases the held pawn, as specified under Possession below. |
-| `beginPlay()` | Runs once, as the controller is added to the world. |
-| `tick(dt)` | Runs once per frame, before any actor ticks. `dt` is seconds. |
-| `endPlay(reason)` | Runs with `"level-closed"` when the world closes, in reverse order of addition. |
-| `PlayerController.index` | The player index the controller was added under, which is the value its player state carries. |
-| `PlayerController.input` | The reader for the registered actions. |
-| `InputReader.value(name)` | The action's magnitude: `0` or `1` for a digital action, the magnitude as given for an analog one, and `0` for an unregistered name. |
-| `InputReader.pressed(name)` | `true` exactly once per armed edge per player controller, and the call consumes this controller's copy. |
+| Member                      | Semantics                                                                                                                            |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `world`                     | The world that holds the controller.                                                                                                 |
+| `pawn`                      | The pawn the controller holds, or `null`.                                                                                            |
+| `playerState`               | The player state built alongside the controller, carrying its index, name, and score.                                                |
+| `possess(pawn)`             | Takes `pawn`, as specified under Possession below.                                                                                   |
+| `unpossess()`               | Releases the held pawn, as specified under Possession below.                                                                         |
+| `beginPlay()`               | Runs once, as the controller is added to the world.                                                                                  |
+| `tick(dt)`                  | Runs once per frame, before any actor ticks. `dt` is seconds.                                                                        |
+| `endPlay(reason)`           | Runs with `"level-closed"` when the world closes, in reverse order of addition.                                                      |
+| `PlayerController.index`    | The player index the controller was added under, which is the value its player state carries.                                        |
+| `PlayerController.input`    | The reader for the registered actions.                                                                                               |
+| `InputReader.value(name)`   | The action's magnitude: `0` or `1` for a digital action, the magnitude as given for an analog one, and `0` for an unregistered name. |
+| `InputReader.pressed(name)` | `true` exactly once per armed edge per player controller, and the call consumes this controller's copy.                              |
 
 The base class's methods do nothing, so a subclass overrides only what it needs.
 A subclass reads its input or runs its behavior in `tick` and writes to
@@ -93,11 +93,11 @@ is whatever it was left holding until another controller takes it.
 };
 ```
 
-| Field | Meaning |
-| --- | --- |
-| `controller` | The controller whose possession changed. |
-| `pawn` | What the controller holds after the change, and `null` for an unpossession. |
-| `previous` | What the controller held before the change, and `null` when it held nothing. |
+| Field        | Meaning                                                                      |
+| ------------ | ---------------------------------------------------------------------------- |
+| `controller` | The controller whose possession changed.                                     |
+| `pawn`       | What the controller holds after the change, and `null` for an unpossession.  |
+| `previous`   | What the controller held before the change, and `null` when it held nothing. |
 
 `GameMode.restart(controller)` destroys the controller's current pawn, spawns
 `pawnClass` at `spawnPoint(controller)`, and possesses it, returning `null` when
@@ -137,11 +137,11 @@ deflection along each direction in `0..1` and a held key reports `1`.
 
 ## Errors
 
-| Condition | Result |
-| --- | --- |
-| A controller's `beginPlay` throws while the start level is being built | `engine.initialize` rejects with the cause |
-| A controller's `tick` throws under `engine.run` | The error propagates to the host, and the loop schedules the next frame |
-| A controller's `tick` throws under `engine.advance` | `advance` rejects with the cause, and the remaining frames do not run |
+| Condition                                                              | Result                                                                  |
+| ---------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| A controller's `beginPlay` throws while the start level is being built | `engine.initialize` rejects with the cause                              |
+| A controller's `tick` throws under `engine.run`                        | The error propagates to the host, and the loop schedules the next frame |
+| A controller's `tick` throws under `engine.advance`                    | `advance` rejects with the cause, and the remaining frames do not run   |
 
 ## Exports
 

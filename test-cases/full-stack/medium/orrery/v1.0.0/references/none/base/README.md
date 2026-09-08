@@ -118,19 +118,19 @@ mouse, a pen and a finger all reach the game the same way.
 
 ### Everywhere
 
-| Key | Does |
-| --- | --- |
-| `M` | Mutes and unmutes the sound. |
+| Key     | Does                                     |
+| ------- | ---------------------------------------- |
+| `M`     | Mutes and unmutes the sound.             |
 | `` ` `` | Shows and hides the diagnostics overlay. |
 
 ### Menus and the challenge lists
 
-| Key | Does |
-| --- | --- |
-| `↑` `↓` | Moves the highlight. |
-| `←` `→` | Turns the how-to's pages. |
+| Key     | Does                        |
+| ------- | --------------------------- |
+| `↑` `↓` | Moves the highlight.        |
+| `←` `→` | Turns the how-to's pages.   |
 | `Enter` | Takes the highlighted item. |
-| `Esc` | Leaves the screen. |
+| `Esc`   | Leaves the screen.          |
 
 Moving the pointer onto an item highlights it, and pressing and releasing on
 the one item takes it; a tap does the same. The title menu remembers the entry
@@ -138,40 +138,40 @@ you left it by, so coming back lands on it.
 
 ### The editor, while you are building
 
-| Input | Does |
-| --- | --- |
+| Input   | Does                                                                                                                   |
+| ------- | ---------------------------------------------------------------------------------------------------------------------- |
 | Pointer | Drags a part out of the tray onto the field, moves a placed part, lays a track hex by hex, and points the tape cursor. |
-| `Q` `E` | Turns the selected or dragged part one step. |
-| `W` `S` | Lengthens and shortens the selected or dragged arm. |
-| `X` | Removes the selected part. |
-| `U` `I` | Undo and redo. |
-| `Space` | Starts the run. |
-| `N` | Starts the run paused, one cycle at a time. |
-| `Esc` | Returns to the challenge list. |
+| `Q` `E` | Turns the selected or dragged part one step.                                                                           |
+| `W` `S` | Lengthens and shortens the selected or dragged arm.                                                                    |
+| `X`     | Removes the selected part.                                                                                             |
+| `U` `I` | Undo and redo.                                                                                                         |
+| `Space` | Starts the run.                                                                                                        |
+| `N`     | Starts the run paused, one cycle at a time.                                                                            |
+| `Esc`   | Returns to the challenge list.                                                                                         |
 
 ### The editor, with the tape panel focused
 
 A press inside the tape panel focuses it; a press anywhere else on the editor
 returns the focus to the field.
 
-| Key | Writes at the cursor |
-| --- | --- |
-| `G` `V` | `grab`, `drop` |
-| `A` `D` | `rotate-ccw`, `rotate-cw` |
-| `Z` `C` | `pivot-ccw`, `pivot-cw` |
-| `W` `S` | `extend`, `retract` |
-| `T` `B` | `advance`, `recede` |
-| `Delete` | A blank cell. |
-| `Backspace` | Blanks the cell before the cursor. |
-| `R` | The `reset` macro: the run of instructions that returns the arm to its rest pose. |
-| `Y` | The `repeat` macro: a copy of the tape up to the cursor. |
-| `↑` `↓` `←` `→` | Moves the cursor between rows and cells. |
+| Key             | Writes at the cursor                                                              |
+| --------------- | --------------------------------------------------------------------------------- |
+| `G` `V`         | `grab`, `drop`                                                                    |
+| `A` `D`         | `rotate-ccw`, `rotate-cw`                                                         |
+| `Z` `C`         | `pivot-ccw`, `pivot-cw`                                                           |
+| `W` `S`         | `extend`, `retract`                                                               |
+| `T` `B`         | `advance`, `recede`                                                               |
+| `Delete`        | A blank cell.                                                                     |
+| `Backspace`     | Blanks the cell before the cursor.                                                |
+| `R`             | The `reset` macro: the run of instructions that returns the arm to its rest pose. |
+| `Y`             | The `repeat` macro: a copy of the tape up to the cursor.                          |
+| `↑` `↓` `←` `→` | Moves the cursor between rows and cells.                                          |
 
 ### While a machine is running
 
-| Key | Does |
-| --- | --- |
-| `Space` | Pauses and resumes. |
-| `N` | Runs one more cycle and pauses. |
-| `,` `.` | Slows down and speeds up. |
-| `Esc` | Stops the run and returns to editing. |
+| Key     | Does                                  |
+| ------- | ------------------------------------- |
+| `Space` | Pauses and resumes.                   |
+| `N`     | Runs one more cycle and pauses.       |
+| `,` `.` | Slows down and speeds up.             |
+| `Esc`   | Stops the run and returns to editing. |

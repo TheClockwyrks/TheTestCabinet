@@ -26,7 +26,7 @@ import { TITLE_ITEMS_NO_SAVE, TITLE_TEXT } from "../constants";
 import {
   captureStill,
   createHarness,
-  drawnText,
+  drawnTextLines,
   type Harness,
 } from "../harness";
 
@@ -54,7 +54,9 @@ it("shows a tagline beside its name and its menu", async () => {
   const named: readonly string[] = [TITLE_TEXT, ...TITLE_ITEMS_NO_SAVE].map(
     (text) => text.toUpperCase(),
   );
-  const tagline = drawnText(calls)
+  // Off the logical runs, so a letter-spaced tagline — one glyph per call —
+  // comes back as the phrase it spells rather than as eight stray glyphs.
+  const tagline = drawnTextLines(calls)
     .map((run) =>
       run
         .toUpperCase()

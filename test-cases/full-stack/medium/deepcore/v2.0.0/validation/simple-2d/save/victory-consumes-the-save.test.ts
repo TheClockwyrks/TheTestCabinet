@@ -26,11 +26,11 @@ import { assertEqual, assertTrue } from "../assert";
 import {
   captureStill,
   createHarness,
-  drewText,
   type Harness,
   pinDrill,
   pinMiner,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 import { bankSave, menuLength, openAtCamp } from "./expedition";
 
 /** Seconds of game time the lift-off is given to reach the Victory screen. */

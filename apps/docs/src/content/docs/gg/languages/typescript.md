@@ -28,7 +28,7 @@ The bytes gg compiles are the bytes the model sent: no prologue, no wrapper, no
 appended line. Every SDK name a program uses comes from an `import` the program
 wrote, and every top-level name is the program's own.
 
-The bytes that *execute* are `tsc`'s emission, because types have to be erased
+The bytes that _execute_ are `tsc`'s emission, because types have to be erased
 and `tsc` erases them by re-printing. That is the position every compiled arm is
 in. What makes it legitimate is the source map: a frame the engine reports
 against `program.js` is read back through `tsc`'s own map into the line and
@@ -83,14 +83,14 @@ Nothing below is committed. Every file is cut on the build that embeds it, so th
 pinned `typescript` a program is judged by and the pinned `typescript` its
 catalogue was emitted with are one release by construction.
 
-| Artifact | What it is | Built by |
-| --- | --- | --- |
-| `ecmascript.core.wasm` | The guest's core module, encoded into a component in gg's own process. | `crates/gg-sandbox-artifacts/typescript`, running `packages/gg-sandbox/build.sh` |
-| `typescript.tsc.js` | The compiler the arm runs. | the same `build.sh` |
-| `typescript.lib.d.ts` | The ES2022 standard library, 57 `lib.*.d.ts` files concatenated so one open replaces 57. | the same `build.sh` |
-| `typescript.globals.d.ts` | The globals no SDK declaration covers. | the same `build.sh` |
-| `typescript.checker.json` | Which release the above are. | the same `build.sh` |
-| `typescript.signatures.json` | This arm's signature catalogue. | `crates/gg/build.rs`, running `packages/gg-sandbox/signatures.sh` |
+| Artifact                     | What it is                                                                               | Built by                                                                         |
+| ---------------------------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `ecmascript.core.wasm`       | The guest's core module, encoded into a component in gg's own process.                   | `crates/gg-sandbox-artifacts/typescript`, running `packages/gg-sandbox/build.sh` |
+| `typescript.tsc.js`          | The compiler the arm runs.                                                               | the same `build.sh`                                                              |
+| `typescript.lib.d.ts`        | The ES2022 standard library, 57 `lib.*.d.ts` files concatenated so one open replaces 57. | the same `build.sh`                                                              |
+| `typescript.globals.d.ts`    | The globals no SDK declaration covers.                                                   | the same `build.sh`                                                              |
+| `typescript.checker.json`    | Which release the above are.                                                             | the same `build.sh`                                                              |
+| `typescript.signatures.json` | This arm's signature catalogue.                                                          | `crates/gg/build.rs`, running `packages/gg-sandbox/signatures.sh`                |
 
 The catalogue is parsed once per process and asserted to carry this arm's own
 language id. One generated under another stem panics rather than reaching a model

@@ -12,23 +12,51 @@
 // per-frame copies. A frame is one `fixedStep` call plus direct reads — the front end never
 // re-implements a rule; it forwards actions in and renders the state out.
 
-import init, { Sim as WasmSim, wasm_memory } from "./sim-core-pkg/junction_sim_core.js";
+import init, {
+  Sim as WasmSim,
+  wasm_memory,
+} from "./sim-core-pkg/junction_sim_core.js";
 import { Camera } from "./camera";
 import { MAP_COLS, MAP_ROWS, TILE_COUNT } from "./constants";
 import { colOf, rowOf, idx } from "./grid";
-import type { Cue, FxEvent, FxKind, GameState, Overlay, Tool, VehicleKind, ZoneKind } from "./types";
+import type {
+  Cue,
+  FxEvent,
+  FxKind,
+  GameState,
+  Overlay,
+  Tool,
+  VehicleKind,
+  ZoneKind,
+} from "./types";
 
 // ---- Enum ↔ code tables (must mirror the Rust `types` module) ------------------
 const STATES: GameState[] = ["title", "howto", "playing", "paused", "bankrupt"];
 const OVERLAYS: Overlay[] = ["none", "traffic", "utility", "landvalue"];
-const TOOL_CODES: Tool[] = ["zoneRes", "zoneCom", "zoneInd", "road", "rail", "station", "plant", "wire", "source", "pipe", "bulldoze"];
+const TOOL_CODES: Tool[] = [
+  "zoneRes",
+  "zoneCom",
+  "zoneInd",
+  "road",
+  "rail",
+  "station",
+  "plant",
+  "wire",
+  "source",
+  "pipe",
+  "bulldoze",
+];
 const CUES: Cue[] = ["build", "chime", "alert"];
 const FX: FxKind[] = ["haze", "dust", "fireworks"];
 const TONES: Array<"info" | "good" | "alert"> = ["info", "good", "alert"];
 const VEHICLE_KINDS: VehicleKind[] = ["car", "truck", "tram"];
 const SOURCE_KINDS: Array<"plant" | "source"> = ["plant", "source"];
 const ZONES: ZoneKind[] = ["res", "com", "ind"];
-const ZONE_TOOL: Record<ZoneKind, Tool> = { res: "zoneRes", com: "zoneCom", ind: "zoneInd" };
+const ZONE_TOOL: Record<ZoneKind, Tool> = {
+  res: "zoneRes",
+  com: "zoneCom",
+  ind: "zoneInd",
+};
 
 export interface MenuItem {
   label: string;
@@ -101,7 +129,8 @@ class World {
     const b = mem.buffer;
     this.buf = b;
     const u8 = (ptr: number): Uint8Array => new Uint8Array(b, ptr, TILE_COUNT);
-    const f32 = (ptr: number): Float32Array => new Float32Array(b, ptr, TILE_COUNT);
+    const f32 = (ptr: number): Float32Array =>
+      new Float32Array(b, ptr, TILE_COUNT);
     this.terrain = u8(this.wasm.terrain_ptr());
     this.zone = u8(this.wasm.zone_ptr());
     this.net = u8(this.wasm.net_ptr());
@@ -129,7 +158,13 @@ class World {
     const p = this.wasm.sources();
     const out: SourceView[] = [];
     for (let k = 0; k < p.length; k += 5) {
-      out.push({ col: p[k]!, row: p[k + 1]!, kind: SOURCE_KINDS[p[k + 2]!]!, capacity: p[k + 3]!, supplied: p[k + 4]! });
+      out.push({
+        col: p[k]!,
+        row: p[k + 1]!,
+        kind: SOURCE_KINDS[p[k + 2]!]!,
+        capacity: p[k + 3]!,
+        supplied: p[k + 4]!,
+      });
     }
     return out;
   }
@@ -147,7 +182,10 @@ export class Game {
   constructor() {
     this.wasm = new WasmSim();
     this._world = new World(this.wasm);
-    this.mode = { menuLabel: this.wasm.mode_menu_label(), tagline: this.wasm.mode_tagline() };
+    this.mode = {
+      menuLabel: this.wasm.mode_menu_label(),
+      tagline: this.wasm.mode_tagline(),
+    };
     this.centerOnMode();
   }
 
@@ -187,7 +225,13 @@ export class Game {
   get selectedTile(): number {
     return this.wasm.selected_tile();
   }
-  get budget(): { treasury: number; income: number; upkeep: number; balance: number; taxRate: number } {
+  get budget(): {
+    treasury: number;
+    income: number;
+    upkeep: number;
+    balance: number;
+    taxRate: number;
+  } {
     return {
       treasury: this.wasm.treasury(),
       income: this.wasm.income(),
@@ -211,8 +255,14 @@ export class Game {
       shops: this.wasm.shops(),
       peakPopulation: this.wasm.peak_population(),
       monthsSurvived: this.wasm.months_survived(),
-      power: { supply: this.wasm.power_supply(), demand: this.wasm.power_demand() },
-      water: { supply: this.wasm.water_supply(), demand: this.wasm.water_demand() },
+      power: {
+        supply: this.wasm.power_supply(),
+        demand: this.wasm.power_demand(),
+      },
+      water: {
+        supply: this.wasm.water_supply(),
+        demand: this.wasm.water_demand(),
+      },
     };
   }
   get rci(): { r: number; c: number; d: number } {
@@ -226,21 +276,43 @@ export class Game {
     const p = this.wasm.vehicles();
     const out: VehicleView[] = [];
     for (let k = 0; k < p.length; k += 5) {
-      out.push({ x: p[k]!, y: p[k + 1]!, angle: p[k + 2]!, kind: VEHICLE_KINDS[p[k + 3]!]!, animT: p[k + 4]! });
+      out.push({
+        x: p[k]!,
+        y: p[k + 1]!,
+        angle: p[k + 2]!,
+        kind: VEHICLE_KINDS[p[k + 3]!]!,
+        animT: p[k + 4]!,
+      });
     }
     return out;
   }
   get signals(): Array<{ col: number; row: number; phase: number }> {
     const p = this.wasm.signals();
     const out: Array<{ col: number; row: number; phase: number }> = [];
-    for (let k = 0; k < p.length; k += 3) out.push({ col: p[k]!, row: p[k + 1]!, phase: p[k + 2]! });
+    for (let k = 0; k < p.length; k += 3)
+      out.push({ col: p[k]!, row: p[k + 1]!, phase: p[k + 2]! });
     return out;
   }
-  get notifications(): Array<{ text: string; age: number; ttl: number; tone: "info" | "good" | "alert" }> {
+  get notifications(): Array<{
+    text: string;
+    age: number;
+    ttl: number;
+    tone: "info" | "good" | "alert";
+  }> {
     const n = this.wasm.notif_len();
-    const out: Array<{ text: string; age: number; ttl: number; tone: "info" | "good" | "alert" }> = [];
+    const out: Array<{
+      text: string;
+      age: number;
+      ttl: number;
+      tone: "info" | "good" | "alert";
+    }> = [];
     for (let i = 0; i < n; i++) {
-      out.push({ text: this.wasm.notif_text(i), age: this.wasm.notif_age(i), ttl: this.wasm.notif_ttl(i), tone: TONES[this.wasm.notif_tone(i)]! });
+      out.push({
+        text: this.wasm.notif_text(i),
+        age: this.wasm.notif_age(i),
+        ttl: this.wasm.notif_ttl(i),
+        tone: TONES[this.wasm.notif_tone(i)]!,
+      });
     }
     return out;
   }
@@ -250,7 +322,8 @@ export class Game {
     const c = colOf(i);
     const r = rowOf(i);
     for (const s of this.world.sources) {
-      if (c >= s.col && c <= s.col + 1 && r >= s.row && r <= s.row + 1) return s;
+      if (c >= s.col && c <= s.col + 1 && r >= s.row && r <= s.row + 1)
+        return s;
     }
     return null;
   }
@@ -259,7 +332,11 @@ export class Game {
   menuItems(): MenuItem[] {
     const n = this.wasm.menu_len();
     const out: MenuItem[] = [];
-    for (let i = 0; i < n; i++) out.push({ label: this.wasm.menu_label(i), action: this.wasm.menu_action(i) });
+    for (let i = 0; i < n; i++)
+      out.push({
+        label: this.wasm.menu_label(i),
+        action: this.wasm.menu_action(i),
+      });
     return out;
   }
   get menuIndex(): number {
@@ -277,14 +354,22 @@ export class Game {
   }
 
   // ---- Tool preview (legality + cost + refusal, computed in the core) --------
-  toolPreview(anchor: number, hover: number): { cells: Array<{ i: number; ok: boolean }>; cost: number; refusal: string | null } {
+  toolPreview(
+    anchor: number,
+    hover: number,
+  ): {
+    cells: Array<{ i: number; ok: boolean }>;
+    cost: number;
+    refusal: string | null;
+  } {
     const tp = this.wasm.tool_preview(anchor, hover);
     const cost = tp.cost;
     const refusal = tp.refusal ?? null;
     const packed = tp.cells();
     tp.free();
     const cells: Array<{ i: number; ok: boolean }> = [];
-    for (let k = 0; k < packed.length; k += 2) cells.push({ i: packed[k]!, ok: packed[k + 1]! !== 0 });
+    for (let k = 0; k < packed.length; k += 2)
+      cells.push({ i: packed[k]!, ok: packed[k + 1]! !== 0 });
     return { cells, cost, refusal };
   }
 
@@ -301,7 +386,13 @@ export class Game {
   drainFx(): FxEvent[] {
     const p = this.wasm.drain_fx();
     const out: FxEvent[] = [];
-    for (let k = 0; k < p.length; k += 4) out.push({ kind: FX[p[k]!]!, x: p[k + 1]!, y: p[k + 2]!, strength: p[k + 3]! });
+    for (let k = 0; k < p.length; k += 4)
+      out.push({
+        kind: FX[p[k]!]!,
+        x: p[k + 1]!,
+        y: p[k + 2]!,
+        strength: p[k + 3]!,
+      });
     return out;
   }
 
@@ -313,9 +404,20 @@ export class Game {
     this.wasm.dispatch(action);
     // `menu:play`/`again`/`restart` start a fresh city; the camera (a front-end concern)
     // re-centres on the mode's focus tile since the core does not touch it.
-    if (action === "menu:play" || action === "menu:again" || action === "menu:restart") this.centerOnMode();
+    if (
+      action === "menu:play" ||
+      action === "menu:again" ||
+      action === "menu:restart"
+    )
+      this.centerOnMode();
   }
-  applyDrag(tool: Tool, c0: number, r0: number, c1: number, r1: number): number {
+  applyDrag(
+    tool: Tool,
+    c0: number,
+    r0: number,
+    c1: number,
+    r1: number,
+  ): number {
     return this.wasm.apply_drag(TOOL_CODES.indexOf(tool), c0, r0, c1, r1);
   }
   applyStamp(tool: Tool, col: number, row: number): number {
@@ -385,7 +487,13 @@ export class Game {
   }
 
   // ---- Scripted control surface (window.__junction, DESIGN §6) ---------------
-  zoneRect(kind: ZoneKind, c0: number, r0: number, c1: number, r1: number): { placed: number } {
+  zoneRect(
+    kind: ZoneKind,
+    c0: number,
+    r0: number,
+    c1: number,
+    r1: number,
+  ): { placed: number } {
     return { placed: this.applyDrag(ZONE_TOOL[kind], c0, r0, c1, r1) };
   }
   road(c0: number, r0: number, c1: number, r1: number): { placed: number } {
@@ -409,7 +517,12 @@ export class Game {
   source(col: number, row: number): { placed: number } {
     return { placed: this.applyStamp("source", col, row) };
   }
-  bulldozeRect(c0: number, r0: number, c1: number, r1: number): { placed: number } {
+  bulldozeRect(
+    c0: number,
+    r0: number,
+    c1: number,
+    r1: number,
+  ): { placed: number } {
     return { placed: this.applyDrag("bulldoze", c0, r0, c1, r1) };
   }
   setTreasury(value: number): void {
@@ -418,7 +531,14 @@ export class Game {
   forceBankruptcy(): void {
     this.wasm.force_bankruptcy();
   }
-  snapshot(): { population: number; peakPopulation: number; treasury: number; balance: number; monthsSurvived: number; bankrupt: boolean } {
+  snapshot(): {
+    population: number;
+    peakPopulation: number;
+    treasury: number;
+    balance: number;
+    monthsSurvived: number;
+    bankrupt: boolean;
+  } {
     const s = this.wasm.snapshot();
     const o = {
       population: s.population,

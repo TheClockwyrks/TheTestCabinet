@@ -39,6 +39,18 @@
 // below only ARRANGE the floor through the surface, and the real update the build
 // wrote is what runs from there.
 //
+//
+// A HELPER THAT POSES ANYTHING A READING DERIVES FROM RECONCILES BEFORE IT
+// RETURNS. `specs/instrumentation.md` lets a build work a derived reading out at
+// the read or keep it as a stored copy, and `reconcile()` is what brings a
+// stored copy back into agreement — so `startRun`, `poseTower` and its three
+// variants, `poseTarget` and `poseWalker` each end with the call, because a
+// unit's `col`, `row` and `remaining`, a tower's `heatMult`, `damage` and
+// `slowFactor`, the mode's figures, both route lengths and `build.valid` all
+// follow from what those helpers write. A check that poses only through the
+// helpers therefore never calls `reconcile` itself; a check that poses with
+// `h.debug.set…` directly calls it once before its first read or sweep.
+//
 // THE HARNESS OWNS EVERY COMPOUND SEQUENCE. The debug surface is atomic by
 // design — each operation sets one field, reads the state, or moves the clock
 // (`guides/authoring/writing-debug-apis-and-validators.md`) — so "open a run with
@@ -89,13 +101,18 @@ import {
   ConstantClock,
   createCaseHarness,
   drawnText,
+  drawnTextLines,
+  drawnTextRuns,
   luminance,
+  restrikes,
   sampleColor,
+  textDraws,
   type Clock,
   type DrawCall,
   type Harness as BaseHarness,
   type HarnessOptions,
   type Rgb,
+  type TextDraw,
   type UntilResult as BaseUntilResult,
 } from "./case-harness/index";
 import { fail } from "./assert";
@@ -147,7 +164,8 @@ export {
   drawOps,
   drawnPoints,
   drawnText,
-  drewText,
+  drawnTextLines,
+  drawnTextRuns,
   luminance,
   sampleColor,
   setsOf,
@@ -188,6 +206,7 @@ export const REQUIRED_OPS = [
   // The core.
   "reset",
   "snapshot",
+  "reconcile",
   // The screen and the run.
   "setScreen",
   "setPhase",
@@ -448,6 +467,11 @@ export interface MeltdownDebugApi {
   // The core.
   reset(): Promise<void>;
   snapshot(): Promise<MeltdownSnapshot>;
+  /**
+   * Bring every value the snapshot reports into agreement with the floor as it
+   * now stands, without advancing anything.
+   */
+  reconcile(): Promise<void>;
 
   // The screen and the run.
   setScreen(screen: Screen): Promise<void>;
@@ -865,25 +889,123 @@ export function speedOverFrames(delta: number, frames: number): number {
 /* -------------------------------------------------------------------------- */
 //
 // The readings themselves are the shared harness's; what is here is the two
-// this case adds. `drewWord` is the stricter sibling of `drewText`, for copy a
-// specification names as a WORD; the transform walk is what lets a check about
-// where the build drew something read a frame that drew it under a translate or
-// a rotate, which every screen in this game does.
+// this case adds. `drewWord` is the stricter sibling of the package's
+// `drewText`, for copy a specification names as a WORD; the transform walk is
+// what lets a check about where the build drew something read a frame that
+// drew it under a translate or a rotate, which every screen in this game does.
 
 /**
  * Whether the frame drew `word` as a STANDALONE token, ignoring case.
  *
- * The stricter sibling of {@link drewText}, for the copy `specs/screens.md` and
- * `specs/hud.md` require as a word rather than as a substring — a readout's
- * `WAVE` label, or the how-to screen naming a key. A panel reading "waveform"
- * contains `wave` and does not carry the label the specification named.
+ * The stricter sibling of the package's `drewText`, for the copy
+ * `specs/screens.md` and `specs/hud.md` require as a word rather than as a
+ * substring — a readout's `WAVE` label, or the how-to screen naming a key. A
+ * panel reading "waveform" contains `wave` and does not carry the label the
+ * specification named.
+ *
+ * Read off the LOGICAL RUNS the frame spells, as the package's `drewText` is,
+ * AND off the raw `fillText` split, and the two are not redundant. A build that
+ * letter-spaces its label draws `WAVE` a glyph per call, and no single glyph is
+ * the word; the harness measures every text call, so the shared merge rule
+ * (`case-harness/text.ts`) folds those glyphs back into the word they spell.
+ * But the merge joins any gap up to 0.6 of the run's mean advance and
+ * concatenates VERBATIM wherever the gap stays inside the run's own tracking,
+ * writing a space only past it: a label and its figure drawn as two calls set
+ * tight, or a letter-spaced label whose figure sits one tracking gap along,
+ * come back as the one run `WAVE3/15`, in which `WAVE` is no longer a whole
+ * token. A substring reader still finds its copy in that; a whole-word reader
+ * would lose the match it had call by call. So both readings are taken, and
+ * coalescing only ever adds a match.
  */
 export function drewWord(calls: readonly DrawCall[], word: string): boolean {
   const pattern = new RegExp(
     `(^|[^A-Za-z0-9])${word.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^A-Za-z0-9]|$)`,
     "i",
   );
-  return drawnText(calls).some((drawn) => pattern.test(drawn));
+  return (
+    drawnTextLines(calls).some((line) => pattern.test(line)) ||
+    drawnText(calls).some((drawn) => pattern.test(drawn))
+  );
+}
+
+/**
+ * One logical run of text, and the draws it was spelled from.
+ *
+ * `parts` is the `textDraws` entries the run coalesced, in reading order — one
+ * entry, the draw itself, for a run drawn in a single call. A reader that
+ * matches a WHOLE TOKEN reads both: see {@link spelledRuns} for why.
+ */
+export interface TextRun extends TextDraw {
+  parts: readonly TextDraw[];
+}
+
+/**
+ * The shared harness's `drawnTextRuns`, each run carrying the draws that spelled
+ * it.
+ *
+ * The runs are what a reader of COPY wants — a heading letter-spaced a glyph per
+ * `fillText` is one run here and a dozen calls — and what a reader of a whole
+ * TOKEN cannot use alone, for the reason {@link drewWord} gives: the rule
+ * writes a space into a run only where a gap opens past the run's own tracking,
+ * so a label drawn one call and its figure the next a word space apart reads
+ * `WAVE 3/15`, but a figure set tight against its label, or a gap no wider than
+ * a letter-spaced label's tracking, reads `WAVE3/15`, a run `WAVE` is no whole
+ * token of. And two readouts on one baseline a word space apart — `KILLS 0` and
+ * `DEALT 0` — are one run `KILLS 0 DEALT 0`, which a reader counting readouts
+ * counts once. So a run here also names the draws it took; a token reader tests
+ * the run and every part, and a counting reader counts the parts. Coalescing
+ * then only ever adds a match.
+ *
+ * Which draws a run took is recovered from the order the shared rule documents:
+ * it partitions the frame's draws in reading order, down the frame then across
+ * it, so the members are consumed in that same order, each matched verbatim
+ * against the run's text where it stands, until the text is spelled. A space
+ * the rule wrote at a word gap is spelled by no draw and is stepped over; a
+ * draw of whitespace alone is in the run verbatim, since the rule writes no
+ * space beside one; and a RESTRIKE — the same text struck again where the last
+ * draw consumed already stands, an outlined glyph's fill over its stroke — is
+ * the glyph the run already spells, folded by the rule under the one test it
+ * folds it by, the package's {@link restrikes}, and is passed over without
+ * becoming a part. Were a run's text ever left unspelled by that walk, every
+ * run in the frame would be handed back as its own only part, which is the
+ * reading a whole-token reader had before the runs existed; the walk above is
+ * the rule's own, so that is a guard and not a path the rule takes.
+ */
+export function spelledRuns(calls: readonly DrawCall[]): TextRun[] {
+  const runs = drawnTextRuns(calls);
+  const ordered = textDraws(calls)
+    .filter((draw) => draw.text.length > 0)
+    .sort((a, b) => a.y - b.y || a.left - b.left);
+
+  const spelled: TextRun[] = [];
+  let next = 0;
+  /** The last draw taken as a part, which a restrike repeats. */
+  let last: TextDraw | undefined;
+  for (const run of runs) {
+    const parts: TextDraw[] = [];
+    let at = 0;
+    while (at < run.text.length && next < ordered.length) {
+      const member = ordered[next];
+      if (last !== undefined && restrikes(member, last)) {
+        next += 1;
+      } else if (run.text.startsWith(member.text, at)) {
+        parts.push(member);
+        at += member.text.length;
+        next += 1;
+        last = member;
+      } else if (run.text[at] === " ") {
+        // A space the rule wrote at a word gap, which no draw spelled.
+        at += 1;
+      } else {
+        break;
+      }
+    }
+    if (at !== run.text.length || parts.length === 0) {
+      return runs.map((each) => ({ ...each, parts: [{ ...each }] }));
+    }
+    spelled.push({ ...run, parts });
+  }
+  return spelled;
 }
 
 /** A 2D affine transform, in the canvas's `[a, b, c, d, e, f]` order. */
@@ -1254,6 +1376,10 @@ export async function startRun(
   await debug.setHoverShop(null);
   await debug.setArmed(null);
   await debug.setSpeed(1);
+  // The mode, the difficulty, the wave and the empty floor are what the mode's
+  // figures, `nextWave`, `waveRemaining` and both route lengths follow from, so
+  // the readings are brought into agreement before the caller reads them.
+  await debug.reconcile();
 }
 
 /**
@@ -1283,7 +1409,22 @@ export async function poseTower(
       "the tower roster was still empty after addTower",
     );
   }
+  // A tower blocks its footprint, so both route lengths, every unit's
+  // `remaining`, and `build.valid` all follow from it.
+  await h.debug.reconcile();
   return added.id;
+}
+
+/**
+ * Whether `type` is an emitter, which is the only kind that carries a heat of
+ * its own.
+ *
+ * `setTowerHeat` reaches an emitter's heat; a Forge and a Sink have none for it
+ * to reach, so the call fails loudly on one (specs/instrumentation.md). The
+ * scenario atoms below therefore pose a heat only where there is a heat.
+ */
+function carriesHeat(type: TowerType): boolean {
+  return TOWER_DEFS[type].kind === "emitter";
 }
 
 /**
@@ -1307,7 +1448,9 @@ export async function poseIdleTower(
 ): Promise<number> {
   const id = await poseTower(h, type, col, row, options.rotation ?? 0);
   await h.debug.setTowerFiring(id, false);
-  await h.debug.setTowerHeat(id, options.heat ?? 0);
+  if (carriesHeat(type)) await h.debug.setTowerHeat(id, options.heat ?? 0);
+  // `heatMult`, `damage` and a Rime's `slowFactor` all follow from the heat.
+  await h.debug.reconcile();
   return id;
 }
 
@@ -1333,7 +1476,9 @@ export async function posePinnedTower(
 ): Promise<number> {
   const id = await poseTower(h, type, col, row, rotation);
   await h.debug.setTowerThermal(id, false);
-  await h.debug.setTowerHeat(id, heat);
+  if (carriesHeat(type)) await h.debug.setTowerHeat(id, heat);
+  // `heatMult`, `damage` and a Rime's `slowFactor` all follow from the heat.
+  await h.debug.reconcile();
   return id;
 }
 
@@ -1363,7 +1508,9 @@ export async function poseTrippedTower(
   const id = await poseTower(h, type, col, row, options.rotation ?? 0);
   await h.debug.setTowerTripped(id, true);
   await h.debug.setTowerTripTimer(id, options.timer ?? TRIP_TIME);
-  await h.debug.setTowerHeat(id, options.heat ?? 100);
+  if (carriesHeat(type)) await h.debug.setTowerHeat(id, options.heat ?? 100);
+  // `heatMult` and `damage` follow from the heat, and `firing` from the trip.
+  await h.debug.reconcile();
   return id;
 }
 
@@ -1402,6 +1549,10 @@ export async function poseTarget(
   await h.debug.setUnitMotion(id, false);
   await h.debug.setUnitMaxHp(id, hp);
   await h.debug.setUnitHp(id, hp);
+  // The unit's `col`, `row` and `remaining` all follow from where it now is, so
+  // a build that keeps any of them as a stored copy rewrites it here rather than
+  // answering for the tile the unit entered at.
+  await h.debug.reconcile();
   return id;
 }
 
@@ -1426,6 +1577,8 @@ export async function poseWalker(
       "the surge roster was still empty after addUnit",
     );
   }
+  // The unit's `col`, `row` and `remaining` follow from where it entered.
+  await h.debug.reconcile();
   return added.id;
 }
 

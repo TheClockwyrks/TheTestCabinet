@@ -72,7 +72,7 @@ import {
   type Harness,
   type TapeStepSpec,
 } from "../harness";
-import { drawnText, toDrawCall } from "../case-harness/index";
+import { figureRuns, figuresAcross, type FigureRun } from "./figures";
 
 /** Site 1. Which site it is decides nothing here; its yard is emptied. */
 const SITE = 0;
@@ -112,41 +112,24 @@ const COST_TOLERANCE = 1;
  * readouts are drawn on a 2D layer composited on top of the picture, laid out
  * in logical stage units" — so the words a screen shows are the runs of text
  * that layer's frame issued, whatever font, colour, or arrangement a build
- * chose for them. */
-async function screenText(harness: Harness): Promise<string[]> {
-  const ops = await harness.screenOps();
-  return drawnText(ops.map(toDrawCall));
-}
-
-/**
- * The separators a build may set between a figure's digit triples.
+ * chose for them.
  *
- * ASCII space is deliberately absent: a frame's text is assembled by joining
- * separate draw runs with one, so accepting it would read the two figures in
- * `40 130` as the single number 40130. `.` is absent for the same sort of
- * reason — it is the decimal point, and a build drawing `1.5` means one and a
- * half.
- */
-const GROUP = "[,'\\u00A0\\u202F\\u2009]";
-
-/** One drawn number: a grouped figure, or a plain one. */
-const DRAWN = new RegExp(
-  `\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|\\d+(?:\\.\\d+)?`,
-  "g",
-);
-
-/**
- * Every number the drawn text carries, as figures rather than characters.
+ * Read off the LOGICAL RUNS the frame spells, never off the `fillText` split:
+ * a build that letter-spaces its copy draws a glyph per call, which is the only
+ * portable way to letter-space canvas text, and the specification fixes the
+ * words a screen shows while leaving their spacing to the build. `screenCalls`
+ * carries the measured geometry the shared merge rule (`case-harness/text.ts`)
+ * needs to put side-by-side glyphs on one baseline back together, and every
+ * raw string is a substring of its run, so coalescing can only add a match.
  *
- * A grouped figure reads as the one figure it is, so `1,234` and `1234` both
- * come back as 1234 and a build is free to group the figure it draws.
+ * Each run comes back carrying the raw draws that spelled it as well, because
+ * a figure is read off BOTH (`./figures`): a space the BUILD wrote inside one
+ * draw groups the figure it sits in — this case's own reference sets a cost
+ * that way — while a space the MERGE wrote between two draws groups nothing,
+ * since the two figures either side of it were drawn apart.
  */
-function drawnNumbers(runs: readonly string[]): number[] {
-  return runs.flatMap((run) =>
-    (run.match(DRAWN) ?? []).map((one) =>
-      Number(one.replace(new RegExp(GROUP, "g"), "")),
-    ),
-  );
+async function screenText(harness: Harness): Promise<FigureRun[]> {
+  return figureRuns(await harness.screenCalls());
 }
 
 let h: Harness;
@@ -188,11 +171,11 @@ it("shows the cost of the crane the run was made with", async () => {
 
   const cost = ended.structure.cost;
   const shown = await screenText(h);
-  const figures = drawnNumbers(shown);
+  const figures = figuresAcross(shown);
   assertTrue(
     figures.some((one) => Math.abs(one - cost) <= COST_TOLERANCE),
     `the cost of the crane the run was made with, ${cost.toFixed(2)}, among ` +
       "the figures the results screen draws (specs/ui.md § Results); it drew " +
-      `[${shown.join(" | ")}]`,
+      `[${shown.map((run) => run.text).join(" | ")}]`,
   );
 });

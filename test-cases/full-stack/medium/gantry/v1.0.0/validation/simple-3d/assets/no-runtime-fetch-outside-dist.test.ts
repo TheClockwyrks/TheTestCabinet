@@ -26,6 +26,20 @@
 // every path this build has fetched since it was initialized, including the ones
 // its own `initialize` made before a check could look.
 //
+// AND THE OFF-ORIGIN ONES ARE THE POINT OF IT. The harness's transport answers a
+// page-relative URL out of the workspace and hands anything carrying a scheme to
+// the platform, and it records both, so the CDN fetch this point exists to catch
+// arrives in the reading with `offOrigin` set rather than being quietly absent
+// from it. That is what makes the reading below a judgement rather than a
+// formality: were the off-origin requests dropped before a check could see them,
+// this point would pass every build, including the one that fetches every model
+// it draws from the web.
+//
+// `data:` AND `blob:` ARE THE ONE KIND OF SCHEME THAT PASSES. Both carry their
+// own bytes and reach no host at all, so neither leaves the built output and
+// neither breaks a site served without a network — which is the whole of what
+// this requirement protects.
+//
 // THE SITE IS PLAYED, NOT JUST OPENED, because a build is free to fetch late: a
 // screen's art on first arrival, a cue on first play. So all seven screens are
 // shown, an edit is made and taken back, and a run is driven to its verdict
@@ -166,9 +180,13 @@ it("fetches nothing from outside the origin its own dist is served on", async ()
   const outside = fetched
     .filter(
       (one) =>
-        // A scheme of any kind leaves the output; so does a leading `/`, which
-        // reaches the host's root rather than the path the site is served from.
-        /^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(one.path) || one.path.startsWith("/"),
+        // A scheme of any kind leaves the output, and `offOrigin` is the
+        // transport's own reading of exactly that — a request it did not answer
+        // off the workspace but handed to the platform — save for `data:` and
+        // `blob:`, which name no host. A leading `/` leaves it too, by reaching
+        // the host's root rather than the path the site is served from.
+        (one.offOrigin && !/^(data|blob):/i.test(one.path)) ||
+        one.path.startsWith("/"),
     )
     .map((one) => one.path);
 
@@ -184,7 +202,13 @@ it("fetches nothing from outside the origin its own dist is served on", async ()
   console.log(
     `gantry: every asset the played-through site requested —\n  ` +
       fetched
-        .map((one) => `${one.found ? "ok " : "404"} ${one.path}`)
+        // An off-origin request has no status of this transport's to report: it
+        // went to the platform, so it is neither the `ok` of a file the output
+        // answered with nor the `404` of one it did not carry.
+        .map(
+          (one) =>
+            `${one.offOrigin ? "off" : one.found ? "ok " : "404"} ${one.path}`,
+        )
         .join("\n  "),
   );
 });

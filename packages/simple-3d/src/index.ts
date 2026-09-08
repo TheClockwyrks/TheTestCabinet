@@ -146,7 +146,8 @@ function sharedAudioContext(): () => AudioContext | null {
   let context: AudioContext | null = null;
   return (): AudioContext | null => {
     if (context !== null) return context;
-    const ctor = (globalThis as { AudioContext?: typeof AudioContext }).AudioContext;
+    const ctor = (globalThis as { AudioContext?: typeof AudioContext })
+      .AudioContext;
     context = ctor ? new ctor() : null;
     return context;
   };
@@ -322,7 +323,9 @@ export function createEngine<S, D = unknown>(
    */
   const frameBuilt = (): { state: S; debug: D } => {
     if (built === null) {
-      throw new Error("simple-3d: a frame ran before the game's state was built");
+      throw new Error(
+        "simple-3d: a frame ran before the game's state was built",
+      );
     }
     return built;
   };
@@ -836,7 +839,13 @@ export function createEngine<S, D = unknown>(
 }
 
 export { cloneModel } from "./assets";
-export { ConstantClock, JitterClock, PacedClock, SequenceClock, WallClock } from "./clocks";
+export {
+  ConstantClock,
+  JitterClock,
+  PacedClock,
+  SequenceClock,
+  WallClock,
+} from "./clocks";
 export { TOUCH_LAYOUTS } from "./input";
 export { applyViewport, fitViewport, syncCanvas } from "./viewport";
 

@@ -43,17 +43,17 @@ This file is for people working on the case. Nothing in it is seeded.
 
 ## Where things live
 
-| Path | Seeded? | What it is |
-| --- | --- | --- |
-| `specs/` | **Yes** | The eleven-file specification, by concern. |
-| `workspaces/<engine>/` | **Yes** | The starter project for the run's engine, seeded to the run root. |
-| `prompt.hbs` | No | Rendered per run into the model's instruction. |
-| `test-case.toml` | No | The manifest: engines, build, toolchain, specs, domains, checklist. |
-| `variants/base.toml` | No | The single variant, and the per-engine `[reference_implementation]` table. |
-| `references/<engine>/base/` | No | The authored, correct build of the variant, one per engine. |
-| `description.md` | No | The site blurb. |
-| `changelog.md` | No | This version's entry. |
-| `README.md` | No | This file. |
+| Path                        | Seeded? | What it is                                                                 |
+| --------------------------- | ------- | -------------------------------------------------------------------------- |
+| `specs/`                    | **Yes** | The eleven-file specification, by concern.                                 |
+| `workspaces/<engine>/`      | **Yes** | The starter project for the run's engine, seeded to the run root.          |
+| `prompt.hbs`                | No      | Rendered per run into the model's instruction.                             |
+| `test-case.toml`            | No      | The manifest: engines, build, toolchain, specs, domains, checklist.        |
+| `variants/base.toml`        | No      | The single variant, and the per-engine `[reference_implementation]` table. |
+| `references/<engine>/base/` | No      | The authored, correct build of the variant, one per engine.                |
+| `description.md`            | No      | The site blurb.                                                            |
+| `changelog.md`              | No      | This version's entry.                                                      |
+| `README.md`                 | No      | This file.                                                                 |
 
 The eleven specs are common, seeded for every run. Six are `.hbs` templates and
 branch on `engine.slug` alone — `overview`, `controls`, `ui`, `state`,

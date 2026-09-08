@@ -197,8 +197,27 @@ export function openLevelUpNow(state: WickState, sink: CueSink): boolean {
   return true;
 }
 
-/** On `levelup`, accept the offer at `index`. */
-export function choose(
+/**
+ * Accept the offer at `index`: the transaction the choice names, run on the
+ * world as it stands. The item is applied, the queue falls by one, and either
+ * the next overlay opens or the run resumes.
+ */
+export function performChoose(
+  state: WickState,
+  index: number,
+  sink: CueSink,
+): void {
+  const cues = new Set<CueName>();
+  acceptOffer(makeTickContext(state, rngOf(state), state.held, cues), index);
+  for (const cue of cues) sink(cue);
+}
+
+/**
+ * The PLAYER's route to a choice: only the level-up overlay shows one, and only
+ * its own offers can be highlighted. The debug surface calls `performChoose`
+ * instead, because a driver is not walking this route.
+ */
+export function tryChoose(
   state: WickState,
   index: number,
   sink: CueSink,
@@ -206,9 +225,7 @@ export function choose(
   if (state.screen !== "levelup") return false;
   if (!Number.isInteger(index)) return false;
   if (index < 0 || index >= state.run.offers.length) return false;
-  const cues = new Set<CueName>();
-  acceptOffer(makeTickContext(state, rngOf(state), state.held, cues), index);
-  for (const cue of cues) sink(cue);
+  performChoose(state, index, sink);
   return true;
 }
 
@@ -304,7 +321,7 @@ export function confirmItem(
       else toHowto(state);
       return;
     case "levelup":
-      choose(state, state.menuIndex, sink);
+      tryChoose(state, state.menuIndex, sink);
       return;
     case "chest":
       closeChest(state);

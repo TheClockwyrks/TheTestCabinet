@@ -19,11 +19,11 @@ startRecording(): void;
 stopRecording(): Promise<Recording>;
 ```
 
-| Member | Returns | Behavior |
-| --- | --- | --- |
-| `recording()` | `boolean` | Whether frames are being captured. |
-| `startRecording()` | `void` | Arms the recorder. Capture begins at the next frame. |
-| `stopRecording()` | `Promise<Recording>` | Disarms the recorder, flushes the encoder, and resolves with everything captured since `startRecording`. |
+| Member             | Returns              | Behavior                                                                                                 |
+| ------------------ | -------------------- | -------------------------------------------------------------------------------------------------------- |
+| `recording()`      | `boolean`            | Whether frames are being captured.                                                                       |
+| `startRecording()` | `void`               | Arms the recorder. Capture begins at the next frame.                                                     |
+| `stopRecording()`  | `Promise<Recording>` | Disarms the recorder, flushes the encoder, and resolves with everything captured since `startRecording`. |
 
 `stopRecording` is asynchronous because the encoder is flushed before the
 container is closed, and the promise resolves once the last frame's bytes are
@@ -41,12 +41,12 @@ interface Recording {
 }
 ```
 
-| Field | Meaning |
-| --- | --- |
-| `video` | The WebM bytes. |
-| `width`, `height` | The frame size in device pixels. |
-| `frames` | One entry per video frame, in order. |
-| `ended` | `true` when the [frame bound](#the-frame-bound) stopped capture before `stopRecording`. |
+| Field             | Meaning                                                                                 |
+| ----------------- | --------------------------------------------------------------------------------------- |
+| `video`           | The WebM bytes.                                                                         |
+| `width`, `height` | The frame size in device pixels.                                                        |
+| `frames`          | One entry per video frame, in order.                                                    |
+| `ended`           | `true` when the [frame bound](#the-frame-bound) stopped capture before `stopRecording`. |
 
 `frames.length` is the number of video frames the container holds, so a suite
 reads the frame count from it and a player indexes the video's frames by it.
@@ -61,11 +61,11 @@ interface RecordedFrame {
 }
 ```
 
-| Field | Meaning |
-| --- | --- |
-| `count` | The engine's frame counter for this frame. |
-| `timeMs` | The engine's accumulated simulated time through this frame, in milliseconds. |
-| `deltaMs` | What the frame was worth, in milliseconds. |
+| Field     | Meaning                                                                      |
+| --------- | ---------------------------------------------------------------------------- |
+| `count`   | The engine's frame counter for this frame.                                   |
+| `timeMs`  | The engine's accumulated simulated time through this frame, in milliseconds. |
+| `deltaMs` | What the frame was worth, in milliseconds.                                   |
 
 The three are the frame's `count`, `timeMs`, and `lastDeltaMs` as the engine's
 `FrameInfo` reported them, kept beside the video so a frame in the recording is
@@ -125,12 +125,12 @@ While idle the recorder costs nothing per frame.
 
 ## Errors
 
-| Condition | Result |
-| --- | --- |
-| `startRecording` while already armed | `Error` naming the unbalanced call |
-| `stopRecording` while not armed | `Error` naming the unbalanced call |
-| `startRecording` where the host has no `VideoEncoder` | `Error` naming WebCodecs |
-| `engine.destroy()` while armed | The capture is discarded and the recorder is disarmed |
+| Condition                                             | Result                                                |
+| ----------------------------------------------------- | ----------------------------------------------------- |
+| `startRecording` while already armed                  | `Error` naming the unbalanced call                    |
+| `stopRecording` while not armed                       | `Error` naming the unbalanced call                    |
+| `startRecording` where the host has no `VideoEncoder` | `Error` naming WebCodecs                              |
+| `engine.destroy()` while armed                        | The capture is discarded and the recorder is disarmed |
 
 ## Exports
 

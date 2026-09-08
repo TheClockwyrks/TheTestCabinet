@@ -18,9 +18,10 @@
 // (specs/instrumentation.md). The clock is posed one tick short of the figure
 // read, because the ending tick is itself a tick of the run.
 //
-// THE TOLERANCE. The copy is matched folded — lower-cased, with spaces, dashes
-// and underscores removed, across consecutive runs of text — and the level and
-// the kill count are matched as whole numbers standing alone rather than as
+// THE TOLERANCE. The copy is matched ignoring case and whitespace, across the
+// runs of text the frame drew joined in reading order (the shared harness's
+// `drewTextAnywhere`) — and the level and the kill count are matched as whole
+// numbers standing alone rather than as
 // digits inside another figure, because specs/ui.md fixes the figures and not
 // the words around them. The menu's order is a strict inequality between two
 // drawn rows.

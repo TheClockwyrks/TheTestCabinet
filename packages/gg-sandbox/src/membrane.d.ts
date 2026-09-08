@@ -78,7 +78,10 @@ declare module "test-cabinet:gg/types" {
    * A three-way edit of an optional text field: leave it, empty it, or replace it. The SDK lowers
    * `undefined` / `null` / a string onto these three cases so a model never writes a tagged union.
    */
-  export type TextEdit = { tag: "keep" } | { tag: "clear" } | { tag: "set"; val: string };
+  export type TextEdit =
+    | { tag: "keep" }
+    | { tag: "clear" }
+    | { tag: "set"; val: string };
 }
 
 /** Running commands in the workspace. */
@@ -94,7 +97,10 @@ declare module "test-cabinet:gg/shell" {
   }
 
   /** Run a command with `sh -c` in the workspace directory. */
-  export function shell(command: string, timeoutSecs: number | undefined): ShellOutput;
+  export function shell(
+    command: string,
+    timeoutSecs: number | undefined,
+  ): ShellOutput;
 }
 
 /** Reading and writing files. A relative path resolves against the workspace root. */
@@ -132,7 +138,9 @@ declare module "test-cabinet:gg/files" {
   }
 
   /** What a read returned: text, or a picture. The format is detected by magic bytes. */
-  export type FileReadRaw = { tag: "text"; val: TextRead } | { tag: "image"; val: ImageRead };
+  export type FileReadRaw =
+    | { tag: "text"; val: TextRead }
+    | { tag: "image"; val: ImageRead };
 
   /** What a directory entry is. */
   export type EntryKind = "file" | "directory" | "other";
@@ -152,7 +160,11 @@ declare module "test-cabinet:gg/files" {
   /** Write UTF-8 text to a workspace file. Returns the number of bytes written. */
   export function writeFile(path: string, contents: string): bigint;
   /** Replace the single exact occurrence of `oldString` with `newString`. */
-  export function editFile(path: string, oldString: string, newString: string): void;
+  export function editFile(
+    path: string,
+    oldString: string,
+    newString: string,
+  ): void;
   /** List a workspace directory, sorted by name. `undefined` lists the workspace root. */
   export function listDir(path: string | undefined): DirEntry[];
 
@@ -160,7 +172,10 @@ declare module "test-cabinet:gg/files" {
    * Render the tree beneath a workspace directory, honouring ignore files. An `undefined` path is
    * the workspace root; an `undefined` depth is gg's default of 2, and 10 is the ceiling.
    */
-  export function tree(path: string | undefined, depth: number | undefined): string;
+  export function tree(
+    path: string | undefined,
+    depth: number | undefined,
+  ): string;
 
   /** One line `search` matched: its file, its 1-based line number, and the line, clipped at 200 characters. */
   export interface SearchMatch {
@@ -318,7 +333,10 @@ declare module "test-cabinet:gg/board" {
   export type IssueStatusRaw = "open" | "in-progress" | "done";
 
   /** How an issue's epic grouping changes: leave it, detach it, or set it. */
-  export type EpicAssignment = { tag: "keep" } | { tag: "ungroup" } | { tag: "set"; val: string };
+  export type EpicAssignment =
+    | { tag: "keep" }
+    | { tag: "ungroup" }
+    | { tag: "set"; val: string };
 
   /** An epic to create. `prefix` is 3-6 letters; upper-cased it becomes the epic's id. */
   export interface EpicInput {
@@ -598,7 +616,9 @@ declare module "test-cabinet:gg/programs" {
 /** Delegating work to child agents. */
 declare module "test-cabinet:gg/delegation" {
   /** What a child agent is asked to do — exactly one of a written brief or a board issue. */
-  export type SubagentBrief = { tag: "prompt"; val: string } | { tag: "issue"; val: string };
+  export type SubagentBrief =
+    | { tag: "prompt"; val: string }
+    | { tag: "issue"; val: string };
 
   /** A spawn request. */
   export interface SpawnRequest {
@@ -644,7 +664,10 @@ declare module "test-cabinet:gg/delegation" {
   /** Deliver a message to a running child's inbox. */
   export function sendMessage(agentId: string, message: string): void;
   /** Declare a move to another state of the machine driving this agent; performed after the turn. */
-  export function transitionState(state: string, note: string | undefined): void;
+  export function transitionState(
+    state: string,
+    note: string | undefined,
+  ): void;
   /** Declare that this session continues as another agent; performed after the turn. */
   export function exec(agent: string, prompt: string | undefined): void;
   /** Register a copy of this agent; its handle comes back now, the copy starts after the turn. */

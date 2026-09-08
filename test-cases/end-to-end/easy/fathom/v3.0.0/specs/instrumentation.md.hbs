@@ -118,10 +118,24 @@ leaves as it was; a reading returns what it read. The headings below name the
 parameters that follow the state.
 {{/if}}
 
+An operation applies its effect every time it is called. It is the route a driver
+has instead of a player, so what a player would have had to do first is not its
+condition: which screen is showing, whether the dive is in live play, and whether
+a key is being held are how a hand reaches an effect, and this surface reaches it
+from wherever the game stands. A pose reaches the value it names whatever the
+game's own rules would have allowed, so a predator is added to a roster the depth
+never gave, a drifter is spawned past the `DRIFTER_MAX` (`2`) ceiling, and a
+cooldown is set to a figure no cast would have left. Nothing here declines to
+act, and nothing here quietly leaves the game as it was in place of doing what it
+was asked.
+
 An argument outside the domain its operation states is invalid, and the call fails
 loudly rather than guessing what was meant. So is a call whose subject is not in
 the condition the operation states, such as a predator index the roster does not
-hold.
+hold. A domain is what this file fixes as a constant, an enumerated set, or the
+shape of the tile grid; a figure the running game happens to be carrying is not
+one, so a value is applied as it is given rather than trimmed to what the dive
+would have reached on its own.
 
 {{#if (eq engine.slug "none")}}
 ### `setAutoStep(enabled)`
@@ -177,13 +191,66 @@ dive opens with.
 A pure reading of `state`, returned as the plain object `specs/state.md` defines.
 It returns no state, because it poses nothing.
 
-### `setScreen(state, s)`
+### `reconcile(state)`
 {{else}}
 ### `snapshot()`
 
 A pure read of the game, returned as the plain object `specs/state.md` defines. It
 changes nothing.
 
+### `reconcile()`
+{{/if}}
+
+Brings every value this surface reports into agreement with the dive as it now
+stands, without advancing anything. The forager's, the drifters' and the
+predators' `tx` and `ty` follow from their centers and the tile grid;
+`visionRadius`{{#if (eq variant.slug "kindle")}}, `windowRadius`{{/if}} and each
+hunter's `detectRange` follow from `brightness`; `sonar.range` follows from
+`depth`; `sonar.ready` and `ink.ready` follow from their cooldowns;
+`planktonRemaining` follows from the plankton layer; and a predator's `speed`
+follows from the `state` it is in and the kind it is. After a pose each of them
+answers for the dive as it is now rather than as it was before, so a predator
+posed into `"chase"` reports the speed a chase carries and a forager posed onto a
+tile reports that tile.
+
+A build that works those out at the read has nothing to do here and this call
+changes nothing. A build that keeps any of them as a stored copy rewrites that
+copy from what it is a copy of, by the same rule the game's own code uses.
+
+It moves no clock and runs no system: `simTime` stands where it was, no tick is
+run at any length, no body travels, no mind senses or decides, no pulse front
+advances, no ink cloud thins, no timer runs down — `brightHold`, `drifterIn`,
+both cooldowns and the detection alert included — and the generator is not drawn
+from. It fires nothing: no cue and no sound, no screen or menu change, no pulse
+cast, no drifter admitted, no plankton eaten, no contact made and no life lost.
+It moves nothing to make a reading agree: a body standing on a tile closed to it
+holds that tile and reads as it is rather than being put somewhere legal, and a
+brightness posed above the curve is left where it was posed.
+
+Four things stay the update's and are left exactly as they stand. `score`,
+`lives` and `depth` are figures the dive has accumulated rather than readings of
+the world as it stands. `muted` is the runtime's bit, which every frame
+refreshes. `visibility` carries what light has ALREADY reached as well as what it
+reaches now, and each body's `lit` says what is being drawn this instant, so both
+follow the frame that draws them rather than this call — a `clearFog` followed by
+a reconcile still reports `u` everywhere. And a predator's `alert` and
+`hearingLock` are its MIND: a predator whose mind is off senses nothing and keeps
+the fix it was posed with, so answering for them here would be sensing.
+
+Calling it twice leaves the same state as calling it once.
+
+It is never an error. It may be called on any screen, whether or not the game is
+stepping itself, and before or after a `reset`.
+{{#if (eq engine.slug "simple-2d")}}
+
+It returns the next `FathomState`, built from the one it was handed, which it
+leaves as it was. A build that works every one of those readings out at the call
+returns a state equal to the one it was given.
+{{/if}}
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setScreen(state, s)`
+{{else}}
 ### `setScreen(s)`
 {{/if}}
 

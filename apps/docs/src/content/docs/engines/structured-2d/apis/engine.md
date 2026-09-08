@@ -43,18 +43,18 @@ interface EngineOptions<D = unknown> {
 }
 ```
 
-| Field | Default | Meaning |
-| --- | --- | --- |
-| `canvas` | — | The canvas the engine sizes, clears, and renders through. |
-| `width` | — | The logical design width the camera projects into. Finite and positive. |
-| `height` | — | The logical design height the camera projects into. Finite and positive. |
-| `game` | — | The [game definition](/engines/structured-2d/apis/game-instance/): the level registry, the start level, and the game instance class. |
-| `background` | — | A CSS color cleared to before every frame. Absent, the frame clears to transparency. |
-| `imageSmoothing` | `true` | Whether an image the fit scales is resampled bilinearly. `false` samples nearest-neighbor, which keeps pixel art crisp. See [rendering](/engines/structured-2d/apis/rendering/). |
-| `layout` | — | A touch layout from `TOUCH_LAYOUTS`, whose vocabulary the game then registers. |
-| `clock` | `new WallClock()` | The [clock](/engines/structured-2d/apis/clocks/) supplying each frame's delta. |
-| `surface` | Read from the canvas | Where the engine reads element size and device pixel ratio, and attaches its key listeners. |
-| `assetRoot` | `"assets/"` | The root every [asset path](/engines/structured-2d/apis/assets/) resolves under. |
+| Field            | Default              | Meaning                                                                                                                                                                          |
+| ---------------- | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `canvas`         | —                    | The canvas the engine sizes, clears, and renders through.                                                                                                                        |
+| `width`          | —                    | The logical design width the camera projects into. Finite and positive.                                                                                                          |
+| `height`         | —                    | The logical design height the camera projects into. Finite and positive.                                                                                                         |
+| `game`           | —                    | The [game definition](/engines/structured-2d/apis/game-instance/): the level registry, the start level, and the game instance class.                                             |
+| `background`     | —                    | A CSS color cleared to before every frame. Absent, the frame clears to transparency.                                                                                             |
+| `imageSmoothing` | `true`               | Whether an image the fit scales is resampled bilinearly. `false` samples nearest-neighbor, which keeps pixel art crisp. See [rendering](/engines/structured-2d/apis/rendering/). |
+| `layout`         | —                    | A touch layout from `TOUCH_LAYOUTS`, whose vocabulary the game then registers.                                                                                                   |
+| `clock`          | `new WallClock()`    | The [clock](/engines/structured-2d/apis/clocks/) supplying each frame's delta.                                                                                                   |
+| `surface`        | Read from the canvas | Where the engine reads element size and device pixel ratio, and attaches its key listeners.                                                                                      |
+| `assetRoot`      | `"assets/"`          | The root every [asset path](/engines/structured-2d/apis/assets/) resolves under.                                                                                                 |
 
 ## `SurfaceMetrics`
 
@@ -130,24 +130,24 @@ interface RunOptions {
 }
 ```
 
-| Member | Effect |
-| --- | --- |
-| `events` | Subscribe to engine events. Available from construction. |
-| `instance` | The [game instance](/engines/structured-2d/apis/game-instance/), live. |
-| `world` | The world currently open, live. |
-| `renderer` | The [rendering pipeline](/engines/structured-2d/apis/rendering/): its mode and its collision overlay. |
-| `debug` | The [debug surface](/engines/structured-2d/apis/game-instance/) the instance's `initialize` returned. |
-| `initialize` | Construct the game instance, run its `initialize`, open `startLevel`, and resolve to the instance. |
-| `run` | Drive the game off the host's frame callback until the supplied signal aborts. |
-| `advance` | Tick the clock `frames` times, running a frame for each tick the clock accepts. |
-| `setClock` | Replace the clock. The next frame takes its delta from the new one. |
-| `frame` | The frame counter, the accumulated simulated time, and the most recent delta. |
-| `viewport` | The current logical-to-device fit, as a snapshot the caller owns. |
-| `diagnostics` | Every registered [diagnostic](/engines/structured-2d/apis/diagnostics/) source and what it reports now, the instance registry's first and then the world's. |
-| `recording` | Whether draw-command [recording](/engines/structured-2d/apis/recording/) is currently capturing. |
-| `startRecording` | Arm the recorder. Capture begins at the next frame. |
-| `stopRecording` | Disarm the recorder and return everything captured since `startRecording`. |
-| `destroy` | Close the world, halt the loop, and drop every listener. |
+| Member           | Effect                                                                                                                                                      |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `events`         | Subscribe to engine events. Available from construction.                                                                                                    |
+| `instance`       | The [game instance](/engines/structured-2d/apis/game-instance/), live.                                                                                      |
+| `world`          | The world currently open, live.                                                                                                                             |
+| `renderer`       | The [rendering pipeline](/engines/structured-2d/apis/rendering/): its mode and its collision overlay.                                                       |
+| `debug`          | The [debug surface](/engines/structured-2d/apis/game-instance/) the instance's `initialize` returned.                                                       |
+| `initialize`     | Construct the game instance, run its `initialize`, open `startLevel`, and resolve to the instance.                                                          |
+| `run`            | Drive the game off the host's frame callback until the supplied signal aborts.                                                                              |
+| `advance`        | Tick the clock `frames` times, running a frame for each tick the clock accepts.                                                                             |
+| `setClock`       | Replace the clock. The next frame takes its delta from the new one.                                                                                         |
+| `frame`          | The frame counter, the accumulated simulated time, and the most recent delta.                                                                               |
+| `viewport`       | The current logical-to-device fit, as a snapshot the caller owns.                                                                                           |
+| `diagnostics`    | Every registered [diagnostic](/engines/structured-2d/apis/diagnostics/) source and what it reports now, the instance registry's first and then the world's. |
+| `recording`      | Whether draw-command [recording](/engines/structured-2d/apis/recording/) is currently capturing.                                                            |
+| `startRecording` | Arm the recorder. Capture begins at the next frame.                                                                                                         |
+| `stopRecording`  | Disarm the recorder and return everything captured since `startRecording`.                                                                                  |
+| `destroy`        | Close the world, halt the loop, and drop every listener.                                                                                                    |
 
 `instance` and `world` are live references rather than copies, so a reader
 observes the current frame's values. `world` follows each transition, so a
@@ -230,10 +230,10 @@ interface FrameInfo {
 }
 ```
 
-| Field | Meaning |
-| --- | --- |
-| `count` | Frames delivered since the loop started. |
-| `timeMs` | Accumulated simulated time, in milliseconds. |
+| Field         | Meaning                                         |
+| ------------- | ----------------------------------------------- |
+| `count`       | Frames delivered since the loop started.        |
+| `timeMs`      | Accumulated simulated time, in milliseconds.    |
 | `lastDeltaMs` | The most recent frame's delta, in milliseconds. |
 
 `world.frame()` and a `DrawComponent`'s `api.frame()` return the same shape.
@@ -298,7 +298,7 @@ interface EngineEventMap {
     b: Actor;
     colliders: [ColliderComponent, ColliderComponent];
   };
-  "hit": {
+  hit: {
     a: Actor;
     b: Actor;
     colliders: [ColliderComponent, ColliderComponent];
@@ -307,24 +307,24 @@ interface EngineEventMap {
 }
 ```
 
-| Event | Emitted |
-| --- | --- |
-| `asset:loaded` | A loader's value arrives. |
-| `asset:failed` | A loader refuses the path, or the fetch, the status, or the decode fails. |
-| `cue:played` | `world.audio.play` runs, on a muted bus as well as an audible one. |
-| `cue:looped` | `world.audio.loop` starts a cue looping, on a muted bus as well as an audible one. |
-| `cue:stopped` | `world.audio.stop` ends a running loop, or a redeclaration replaces a looping cue. |
-| `audio:unlocked` | The engine opens the audio context, on the first pointerdown or keydown event it sees. |
-| `world:opening` | A transition begins, carrying the outgoing level name and the incoming one. |
-| `world:closed` | The outgoing world's game mode has ended play. |
-| `world:opened` | The incoming world is built and its game mode has begun play. |
-| `actor:spawned` | An actor is spawned into the world. |
-| `actor:destroyed` | An actor is destroyed. |
-| `possession:changed` | A controller takes a pawn or releases the one it held. |
-| `match:phase` | `setPhase` sets a phase the game mode does not already hold. |
-| `overlap:begin` | On the first frame the collision pass finds an overlapping pair. |
-| `overlap:end` | On the first frame it stops finding it, and when either actor is destroyed or the world closes. |
-| `hit` | On every frame the pass finds a blocking pair. |
+| Event                | Emitted                                                                                         |
+| -------------------- | ----------------------------------------------------------------------------------------------- |
+| `asset:loaded`       | A loader's value arrives.                                                                       |
+| `asset:failed`       | A loader refuses the path, or the fetch, the status, or the decode fails.                       |
+| `cue:played`         | `world.audio.play` runs, on a muted bus as well as an audible one.                              |
+| `cue:looped`         | `world.audio.loop` starts a cue looping, on a muted bus as well as an audible one.              |
+| `cue:stopped`        | `world.audio.stop` ends a running loop, or a redeclaration replaces a looping cue.              |
+| `audio:unlocked`     | The engine opens the audio context, on the first pointerdown or keydown event it sees.          |
+| `world:opening`      | A transition begins, carrying the outgoing level name and the incoming one.                     |
+| `world:closed`       | The outgoing world's game mode has ended play.                                                  |
+| `world:opened`       | The incoming world is built and its game mode has begun play.                                   |
+| `actor:spawned`      | An actor is spawned into the world.                                                             |
+| `actor:destroyed`    | An actor is destroyed.                                                                          |
+| `possession:changed` | A controller takes a pawn or releases the one it held.                                          |
+| `match:phase`        | `setPhase` sets a phase the game mode does not already hold.                                    |
+| `overlap:begin`      | On the first frame the collision pass finds an overlapping pair.                                |
+| `overlap:end`        | On the first frame it stops finding it, and when either actor is destroyed or the world closes. |
+| `hit`                | On every frame the pass finds a blocking pair.                                                  |
 
 `on` returns the function that removes the handler. Handlers run synchronously
 at the moment the event happens, so a subscriber sees the frame the event
@@ -336,18 +336,18 @@ observes the start level being built and every transition after it.
 
 ## Errors
 
-| Condition | Result |
-| --- | --- |
-| A `width` or `height` that is not finite and positive | `Error` naming the size |
-| A canvas that yields no 2D context | `Error` |
-| A `layout` outside `TOUCH_LAYOUTS` | `Error` naming every valid layout |
-| `levels` with no entries | `Error` |
-| `startLevel` naming no entry of `levels` | `Error` naming every registered level |
-| The instance's `initialize`, a level's `load`, or a `beginPlay` throws | `initialize` rejects with the cause |
-| `world`, `instance`, `debug`, `run`, or `advance` reached before `initialize` resolves | `Error` naming the ordering |
-| The instance's `initialize` returns `undefined` | `initialize` rejects with an `Error` naming the debug surface |
-| `advance` with a count that is not a whole, non-negative number | `RangeError` naming the value |
-| `startRecording` while already recording, or `stopRecording` while not | `Error` naming the unbalanced call |
+| Condition                                                                              | Result                                                        |
+| -------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| A `width` or `height` that is not finite and positive                                  | `Error` naming the size                                       |
+| A canvas that yields no 2D context                                                     | `Error`                                                       |
+| A `layout` outside `TOUCH_LAYOUTS`                                                     | `Error` naming every valid layout                             |
+| `levels` with no entries                                                               | `Error`                                                       |
+| `startLevel` naming no entry of `levels`                                               | `Error` naming every registered level                         |
+| The instance's `initialize`, a level's `load`, or a `beginPlay` throws                 | `initialize` rejects with the cause                           |
+| `world`, `instance`, `debug`, `run`, or `advance` reached before `initialize` resolves | `Error` naming the ordering                                   |
+| The instance's `initialize` returns `undefined`                                        | `initialize` rejects with an `Error` naming the debug surface |
+| `advance` with a count that is not a whole, non-negative number                        | `RangeError` naming the value                                 |
+| `startRecording` while already recording, or `stopRecording` while not                 | `Error` naming the unbalanced call                            |
 
 Each construction failure otherwise presents as a build that runs and draws
 nothing, which is the most expensive kind to trace, so each is refused where it

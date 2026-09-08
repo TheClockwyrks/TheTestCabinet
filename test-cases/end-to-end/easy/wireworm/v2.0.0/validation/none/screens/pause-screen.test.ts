@@ -27,11 +27,11 @@ import {
   captureStill,
   createHarness,
   drawnFrom,
-  drewText,
   poseNodes,
   startPlaying,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/index";
 import { pauseLiveBoard } from "./screens";
 
 /**

@@ -28,6 +28,7 @@ import {
   assertGreaterThanOrEqual,
   assertLessThan,
 } from "../assert";
+import { drewText } from "../case-harness/text";
 import { GAMEOVER_ITEMS } from "../constants";
 import {
   captureStill,
@@ -35,7 +36,7 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
-import { assertDrew, drawnText, frameOps, opDiff } from "./screens";
+import { frameOps, opDiff, runOrder } from "./screens";
 
 /**
  * How much more of the frame must change when the selection moves than when it
@@ -79,18 +80,23 @@ it("draws PLAY AGAIN then MENU, with one of the two selected", async () => {
   const moved = await frameOps(h);
 
   for (const item of GAMEOVER_ITEMS) {
-    assertDrew(
-      selected,
-      item,
+    assertEqual(
+      drewText(selected, item),
+      true,
       `an item of the game-over menu, which is ` +
         `${GAMEOVER_ITEMS.join(" then ")} (specs/ui.md)`,
     );
+    // Placed before two placings are compared: `-1` would sort before anything.
+    assertGreaterThanOrEqual(
+      runOrder(selected, item),
+      0,
+      `where ${item} was drawn in the game-over frame's reading order`,
+    );
   }
 
-  const drawn = drawnText(selected);
   assertLessThan(
-    drawn.indexOf(GAMEOVER_ITEMS[0]),
-    drawn.indexOf(GAMEOVER_ITEMS[1]),
+    runOrder(selected, GAMEOVER_ITEMS[0]),
+    runOrder(selected, GAMEOVER_ITEMS[1]),
     `where ${GAMEOVER_ITEMS[0]} was drawn against ${GAMEOVER_ITEMS[1]}, which ` +
       "the game-over menu stacks in the order specs/ui.md gives",
   );

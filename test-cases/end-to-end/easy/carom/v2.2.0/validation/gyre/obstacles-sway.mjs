@@ -35,9 +35,11 @@ export default function item() {
     // recorded clip shows the obstacles travelling between them.
     async act(api) {
       await api.call("setObstacleClock", 0); // seconds, not ticks
+      await api.call("reconcile");
       at0 = (await api.snapshot()).obstacles;
       await api.advance(HOLD);
       await api.call("setObstacleClock", 0.9); // ~quarter of the sway period: peak sway
+      await api.call("reconcile");
       atPeak = (await api.snapshot()).obstacles;
       await api.advance(HOLD);
     },

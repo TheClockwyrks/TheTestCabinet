@@ -12,13 +12,16 @@
 // `hud-menu-returns`, `hud-sound-mutes`), and how legibly the labels read
 // against the strip is the reviewer's.
 //
-// HOW A LABEL IS FOUND. Every `fillText` and `strokeText` the frame made, placed
-// in logical units through the transform and the alignment it was drawn with,
-// and matched by SUBSTRING, ignoring case: the copy is the specification's, but
-// how a build presents it is the build's, and a label commonly carries a marker
-// or padding around it. The run must lie inside its own rectangle, which is what
-// separates the three: the rectangles do not overlap, so a build that drew all
-// three labels in one place answers for one control at most.
+// HOW A LABEL IS FOUND. Every run of text the frame spelled — its `fillText`
+// and `strokeText` calls coalesced into the logical runs they spell, so a label
+// letter-spaced a glyph per call is read as the label (`drawnRunSpans`) —
+// placed in logical units through the transform and the alignment it was drawn
+// with, and matched by SUBSTRING, ignoring case: the copy is the
+// specification's, but how a build presents it is the build's, and a label
+// commonly carries a marker or padding around it. The run must lie inside its
+// own rectangle, which is what separates the three: the rectangles do not
+// overlap, so a build that drew all three labels in one place answers for one
+// control at most.
 //
 // THE DEAL-MODE LABEL IS ALSO IN THE STRIP (specs/screens.md), and is neither
 // looked for nor disturbed here: it carries none of the three control labels as
@@ -43,7 +46,7 @@ import { HUD_ITEMS, type Rect } from "../constants";
 import {
   captureStill,
   createHarness,
-  drawnTextSpans,
+  drawnRunSpans,
   menuRect,
   openTable,
   type Harness,
@@ -85,7 +88,7 @@ afterEach(() => {
 it("draws each of the three HUD labels inside its own control's rectangle", async () => {
   openTable(h);
   const calls = await h.drawFrame();
-  const spans = drawnTextSpans(h, calls);
+  const spans = drawnRunSpans(h, calls);
   captureStill(h, "hud");
 
   const inside = (span: TextSpan, rect: Rect): boolean => {

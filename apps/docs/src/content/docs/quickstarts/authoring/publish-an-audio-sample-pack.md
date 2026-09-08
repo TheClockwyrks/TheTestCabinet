@@ -78,6 +78,12 @@ The driver image copies that store in, and `scripts/fetch-audio-store.sh` pulls 
 onto a local checkout. A run container is then given the packs its test case
 declares in `[audio] packs`; no run image is rebuilt for a new pack version.
 
+Pushing that image is a release step, not something to do before trying the pack.
+`make -C deployments/local audio-store` builds the store the local driver image
+carries from this checkout, and `scripts/fetch-audio-store.sh --stage` does the
+same for a host-side `tcab run` — both straight out of the object store, with no
+registry involved.
+
 ## Verify
 
 ```sh

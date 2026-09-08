@@ -991,14 +991,55 @@ describe("the world", () => {
     expect(() => harness.debug.spawnObstacle(2)).toThrow(RangeError);
   });
 
-  it("ignores every ball operation while no ball is present", () => {
+  // An absent ball is no ball to pose. A surface that quietly did nothing would
+  // let a caller read its own pose back off a field that never took it, so every
+  // ball operation fails where the caller can see it instead.
+  it("fails loudly on every ball operation while no ball is present", () => {
     harness.debug.clearWorld();
-    harness.debug.setBallPosition(1, 2);
-    harness.debug.setBallVelocity(3, 4);
-    harness.debug.setBallSpin(5);
-    harness.debug.setBallHeld(false);
-    harness.debug.setBallHoldTimer(0);
+    expect(() => harness.debug.setBallPosition(1, 2)).toThrow();
+    expect(() => harness.debug.setBallVelocity(3, 4)).toThrow();
+    expect(() => harness.debug.setBallSpin(5)).toThrow();
+    expect(() => harness.debug.setBallHeld(false)).toThrow();
+    expect(() => harness.debug.setBallHoldTimer(0)).toThrow();
     expect(harness.debug.snapshot().ball).toBeNull();
+  });
+
+  // `reconcile` re-derives what this build stores: an obstacle's pose is a
+  // function of the obstacle clock alone. Posing the clock through the field's
+  // own state — rather than through `setObstacleClock`, which re-poses as it
+  // writes — is what leaves a stale pose for the call to answer for.
+  it("re-derives a stored obstacle pose from the posed clock", () => {
+    harness.debug.setObstacleClockRunning(false);
+    harness.debug.setObstacleClock(0);
+    const upright = harness.debug.snapshot().obstacles.map((o) => o.theta);
+
+    harness.state.obstacleClock = 1.7;
+    harness.debug.reconcile();
+
+    const posed = harness.debug.snapshot().obstacles.map((o) => o.theta);
+    expect(posed).not.toEqual(upright);
+    expect(posed).toEqual(
+      harness.debug.snapshot().obstacles.map((o) => o.theta),
+    );
+  });
+
+  it("advances nothing", () => {
+    harness.debug.setObstacleClockRunning(false);
+    harness.debug.setObstacleClock(0.9);
+    harness.debug.setScreen("playing");
+    harness.debug.spawnBall();
+    harness.debug.setBallPosition(400, 300);
+    harness.debug.setBallVelocity(250, -120);
+    harness.debug.setBallHoldTimer(0.4);
+
+    const before = harness.debug.snapshot();
+    harness.debug.reconcile();
+    const once = harness.debug.snapshot();
+    harness.debug.reconcile();
+    const twice = harness.debug.snapshot();
+
+    expect(once).toEqual(before);
+    expect(twice).toEqual(once);
   });
 });
 

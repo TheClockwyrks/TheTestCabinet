@@ -29,11 +29,11 @@ import { assertEqual, assertMatches } from "../assert";
 import {
   captureStill,
   createHarness,
-  drawnText,
-  drewText,
+  drawnTextForms,
   resetTo,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 
 /** The run the screen reports: lost, out of lives, and well scored. */
 const RUN_SCORE = 3070;
@@ -97,7 +97,9 @@ it("reports the score, the level reached and both ending items", async () => {
   await h.advance(1);
   captureStill(h, "gameover");
 
-  const copy = drawnText(h.calls).join("  ");
+  // Both as the calls split the copy and as the runs it spells, because the
+  // figure is held to a boundary on both sides (`drawnTextForms`).
+  const copy = drawnTextForms(h.calls).join("  ");
   assertMatches(
     copy,
     drawnFigure(RUN_SCORE),

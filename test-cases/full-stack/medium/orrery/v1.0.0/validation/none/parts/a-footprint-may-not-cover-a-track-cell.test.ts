@@ -40,7 +40,9 @@ import { sigilHexes } from "../parts";
  * the placement rules of `specs/parts.md` alone, and throws an `Error` naming
  * the first rule it breaks" (`specs/instrumentation.md`, The machine).
  */
-async function refusesPlacement(place: () => Promise<unknown>): Promise<boolean> {
+async function refusesPlacement(
+  place: () => Promise<unknown>,
+): Promise<boolean> {
   try {
     await place();
     return false;
@@ -71,7 +73,11 @@ it("refuses a sigil, a rise or a set whose footprint covers a track cell", async
 
   // The geometry the check claims to be posing.
   for (const hex of [...PATH, CLEAR]) {
-    assertEqual(onField(hex), true, `the hex (${hex.q}, ${hex.r}) is on the field`);
+    assertEqual(
+      onField(hex),
+      true,
+      `the hex (${hex.q}, ${hex.r}) is on the field`,
+    );
   }
   assertEqual(
     sigilHexes("bind", CLEAR, 0).filter((hex) =>
@@ -110,16 +116,36 @@ it("refuses a sigil, a rise or a set whose footprint covers a track cell", async
   await h.advance(1);
   await captureStill(h, "refused");
 
-  assertEqual(waneOverCell, true, "a wane whose seat is a track cell is refused");
-  assertEqual(bindOverCell, true, "a bind whose first hex is a track cell is refused");
-  assertEqual(riseOverCell, true, "a rise whose footprint covers a track cell is refused");
-  assertEqual(setOverCell, true, "a set whose footprint covers a track cell is refused");
+  assertEqual(
+    waneOverCell,
+    true,
+    "a wane whose seat is a track cell is refused",
+  );
+  assertEqual(
+    bindOverCell,
+    true,
+    "a bind whose first hex is a track cell is refused",
+  );
+  assertEqual(
+    riseOverCell,
+    true,
+    "a rise whose footprint covers a track cell is refused",
+  );
+  assertEqual(
+    setOverCell,
+    true,
+    "a set whose footprint covers a track cell is refused",
+  );
   assertEqual(
     afterRefusals,
     1,
     "not one of the four refused placements added a part: the track stands alone",
   );
-  assertEqual(bindClear, false, "a sigil clear of every cell of the path is placed");
+  assertEqual(
+    bindClear,
+    false,
+    "a sigil clear of every cell of the path is placed",
+  );
 
   const snapshot = await h.snapshot();
   assertEqual(

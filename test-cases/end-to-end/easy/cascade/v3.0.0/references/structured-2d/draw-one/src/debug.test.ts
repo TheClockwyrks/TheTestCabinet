@@ -4,12 +4,15 @@
 
 import { beforeEach, afterEach, describe, expect, it } from "vitest";
 import {
+  CARD_W,
   CASCADE_DEBUG_VERSION,
+  COLUMN_X,
   DEAL_MODE,
   DEAL_MODE_LABEL,
   LAUNCH_INTERVAL,
   LAUNCH_VX_MAX,
   LAUNCH_VX_MIN,
+  TABLEAU_Y,
   TURN_COUNT,
 } from "./constants";
 import {
@@ -35,6 +38,7 @@ afterEach(() => {
 const OPERATIONS = [
   "reset",
   "snapshot",
+  "reconcile",
   "setScreen",
   "addCard",
   "removeCard",
@@ -462,5 +466,85 @@ describe("the clock", () => {
       return JSON.stringify(debug.snapshot().flyers.map((f) => f.vx));
     };
     expect(await run()).not.toBe(await run());
+  });
+});
+
+describe("reconcile", () => {
+  /** How far inside the card's top-left the grab below presses. */
+  const GRAB_DY = 8;
+
+  /**
+   * A black Queen taken into hand off column 0 and carried over column 1.
+   *
+   * The gesture is the real one: the press grabs through the pointer path and
+   * the move carries the run, so `dropTarget` is whatever that path decided for
+   * the table as it stood at the move.
+   */
+  function heldOverColumn(): void {
+    const { debug } = h;
+    openTable(debug);
+    poseColumn(debug, 0, [{ suit: "spades", rank: 12 }]);
+    debug.pointerDown(COLUMN_X[0] + CARD_W / 2, TABLEAU_Y + GRAB_DY);
+    debug.pointerMove(COLUMN_X[1] + CARD_W / 2, TABLEAU_Y + GRAB_DY);
+  }
+
+  it("re-derives a stored reading from a posed table", () => {
+    const { debug } = h;
+    heldOverColumn();
+    // An empty column takes a King alone, so the held black Queen has no target
+    // yet.
+    expect(debug.snapshot().dropTarget).toBeNull();
+
+    // Posing a red King under it makes the column take the run. The pose writes
+    // the column, not the drop target, so until the readings are brought into
+    // agreement `dropTarget` is still answering for the table as it was.
+    poseColumn(debug, 1, [{ suit: "hearts", rank: 13 }]);
+    debug.reconcile();
+    expect(debug.snapshot().dropTarget).toEqual({ pile: "tableau", index: 1 });
+
+    // And back the other way: a black King under a black Queen is refused.
+    debug.clearPile("tableau", 1);
+    poseColumn(debug, 1, [{ suit: "clubs", rank: 13 }]);
+    debug.reconcile();
+    expect(debug.snapshot().dropTarget).toBeNull();
+
+    // The run is still in hand: nothing was moved to make the reading agree.
+    expect(debug.snapshot().drag?.cards[0].rank).toBe(12);
+    expect(debug.snapshot().tableau[0]).toEqual([]);
+  });
+
+  it("advances nothing", () => {
+    const { debug } = h;
+    openTable(debug);
+    poseColumn(debug, 0, [{ suit: "spades", rank: 5 }]);
+    debug.addFlyer("hearts", 7, 100, 200, 40, -60);
+    debug.setLaunchClock(0.25);
+    debug.pointerDown(10, 10);
+
+    const before = debug.snapshot();
+    const cuesBefore = h.cues.length;
+    debug.reconcile();
+    const once = debug.snapshot();
+    debug.reconcile();
+    const twice = debug.snapshot();
+
+    // The clock, the flight and every gate stand exactly where they were, no
+    // cue was played, and a second call is worth no more than the first.
+    expect(once).toEqual(before);
+    expect(twice).toEqual(once);
+    expect(once.simTime).toBe(before.simTime);
+    expect(once.launchClock).toBe(0.25);
+    expect(once.flyers).toEqual(before.flyers);
+    expect(once.trailStamps).toBe(before.trailStamps);
+    expect(h.cues.length).toBe(cuesBefore);
+  });
+
+  it("is legal on every screen", () => {
+    const { debug } = h;
+    for (const screen of ["title", "howto", "playing", "won"] as const) {
+      debug.setScreen(screen);
+      debug.reconcile();
+      expect(debug.snapshot().screen).toBe(screen);
+    }
   });
 });

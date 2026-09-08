@@ -168,7 +168,7 @@ the ingress controller has its internal LB IP.
    `cert-manager-cloudflare` and `tcab-grafana-admin` Secrets materialize.
    cert-manager completes the DNS-01 challenge with the Cloudflare token and
    issues the six certificates; confirm with `kubectl -n <namespace> get
-   certificate`, which should report `Ready=True` for each.
+certificate`, which should report `Ready=True` for each.
 
 7. Confirm VPN DNS resolution. The OpenVPN configuration must make clients
    resolve the private zone, by pushing Azure DNS `168.63.129.16` or a resolver

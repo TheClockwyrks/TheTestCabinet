@@ -40,10 +40,10 @@ swappable implementation. A chatty command can spend a large fraction of a
 context window in a single call, so the amount that returns inline is a
 configurable arm rather than a fixed behavior.
 
-| Mode | Returned inline | On disk |
-| --- | --- | --- |
-| `offload` | The tail, plus a note naming the files | Both |
-| `inline` | The whole output, capped at 16 KiB | Nothing |
+| Mode      | Returned inline                        | On disk |
+| --------- | -------------------------------------- | ------- |
+| `offload` | The tail, plus a note naming the files | Both    |
+| `inline`  | The whole output, capped at 16 KiB     | Nothing |
 
 The tail is the last `maxLines` lines and/or `maxChars` characters, described
 under [the two ceilings](#the-two-ceilings) below.

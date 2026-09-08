@@ -59,7 +59,7 @@ build = "npm run build"      # static-build command (required, non-empty)
 # "The TypeScript toolchain".
 [toolchain]
 typecheck = "npx tsc --noEmit"     # required; a non-zero exit rates the run broken
-lint = "npx eslint ."              # optional; recorded
+lint = "npx eslint . --max-warnings 0"  # optional; recorded
 format = "npx prettier --check ."  # optional; recorded
 test = "npx vitest run --coverage" # optional; results read from the reports it writes
 
@@ -330,6 +330,7 @@ description = "The escalating Frenzy mode: uncapped speed that ramps every hit."
   - `{ type = "click", x = 320, y = 180 }` clicks a logical-pixel point.
 
   See [Checks](/testing/end-to-end/evaluation/#checks).
+
 - `[instrumentation]` names the case's debug-API surface once for the whole
   case. `handle` is the `window` property the build installs its debug API on,
   without the `window.` prefix, and must be a plain identifier of letters,
@@ -385,10 +386,10 @@ A case says which starter project a run is seeded with in exactly one way, and
 which way it picks decides whether the case may name an
 [engine](/components/core/engines/) at all.
 
-| Spelling | Starter project | Engines |
-| --- | --- | --- |
-| `workspace` | One directory for the whole case. | None. A run of the case is the engineless run. |
-| `[workspaces]` | One directory per engine. | Declared with `engines` and `[[engine]]`. |
+| Spelling       | Starter project                   | Engines                                        |
+| -------------- | --------------------------------- | ---------------------------------------------- |
+| `workspace`    | One directory for the whole case. | None. A run of the case is the engineless run. |
+| `[workspaces]` | One directory per engine.         | Declared with `engines` and `[[engine]]`.      |
 
 A starter project is written against a runtime: its `package.json` declares the
 engine's dependency, and the case-owned modules it ships are written against that
@@ -457,11 +458,11 @@ min_version = "1.0.0"
 max_version = "2.0.0"
 ```
 
-| Key | Required | Meaning |
-| --- | --- | --- |
-| `slug` | Yes | An engine slug the catalogue knows. |
-| `min_version` | Yes | The lowest engine version a run may select, inclusive. |
-| `max_version` | No | The version support stops at, exclusive. Unbounded by default. |
+| Key           | Required | Meaning                                                        |
+| ------------- | -------- | -------------------------------------------------------------- |
+| `slug`        | Yes      | An engine slug the catalogue knows.                            |
+| `min_version` | Yes      | The lowest engine version a run may select, inclusive.         |
+| `max_version` | No       | The version support stops at, exclusive. Unbounded by default. |
 
 Both forms may appear in one manifest, and each slug is declared at most once
 across the two. Every slug must be one the engine catalogue knows and every
@@ -500,17 +501,21 @@ that check it:
 ```toml
 [toolchain]
 typecheck = "npx tsc --noEmit"
-lint = "npx eslint ."
+lint = "npx eslint . --max-warnings 0"
 format = "npx prettier --check ."
 test = "npx vitest run --coverage"
 ```
 
-| Key | Required | Effect |
-| --- | --- | --- |
-| `typecheck` | Yes | Gating. A non-zero exit rates the run `broken` and scores it zero. |
-| `lint` | No | Recorded. |
-| `format` | No | Recorded. |
-| `test` | No | Recorded, with the results and coverage read from the report files it writes. |
+| Key         | Required | Effect                                                                        |
+| ----------- | -------- | ----------------------------------------------------------------------------- |
+| `typecheck` | Yes      | Gating. A non-zero exit rates the run `broken` and scores it zero.            |
+| `lint`      | No       | Recorded.                                                                     |
+| `format`    | No       | Recorded.                                                                     |
+| `test`      | No       | Recorded, with the results and coverage read from the report files it writes. |
+
+A warning is a failure. `lint` runs ESLint with `--max-warnings 0`, so a warning
+exits non-zero the way an error does, and `format` exits non-zero on any file
+Prettier would change.
 
 Each declared command must be non-empty and runs from the implementation's
 repository root once the `[build]` install has completed, so the dependencies it
@@ -735,7 +740,7 @@ validation = { script = "validation/scoring-point.mjs", outputs = [
 - `script` is a path, by convention `validation/<item>.mjs` for a whole-item
   driver and `validation/<item>/<sub>.mjs` for a per-sub-item one, to an ES
   module that default-exports a validation item: an `{ id, arrange, act,
-  assert }` object, or a factory returning one. Its `id` names the verdict the
+assert }` object, or a factory returning one. Its `id` names the verdict the
   script backs, the item's own id or the composite `<item>.<sub>`. `arrange`
   poses the scenario through the debug API and `act` runs the behavior under
   test, both required; the optional `assert` records the checks that decide the
@@ -772,10 +777,10 @@ validation = { script = "validation/scoring-point.mjs", outputs = [
   baseline media share that name and are told apart by where they are served
   from.
 
-  | `kind` | Extension | Captured by |
-  | --- | --- | --- |
-  | `image` | `png` | A still the drive screenshots. |
-  | `video` | `mp4` | A clip recorded across the drive. |
+  | `kind`   | Extension | Captured by                                                                                         |
+  | -------- | --------- | --------------------------------------------------------------------------------------------------- |
+  | `image`  | `png`     | A still the drive screenshots.                                                                      |
+  | `video`  | `mp4`     | A clip recorded across the drive.                                                                   |
   | `replay` | `json.gz` | The draw-command [recording](/components/core/engines/#recording) a validator takes off the engine. |
 
   A recording is a JSON document stored gzipped, which both extensions state. A
@@ -792,6 +797,7 @@ validation = { script = "validation/scoring-point.mjs", outputs = [
   so one suite may hand back a recording per scenario it walks through and each
   is a separate output. A `replay` output belongs to a validator, since the
   recorder is an engine capability a browser drive has no access to.
+
 - Per run, validation runs the script — or the engine's validator suite — against
   the model's build to capture the actual media. The baseline is the same thing
   run against the variant's `reference_implementation` for the same engine, a

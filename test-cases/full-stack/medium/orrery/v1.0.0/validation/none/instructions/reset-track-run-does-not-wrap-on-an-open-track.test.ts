@@ -82,12 +82,7 @@ it("counts the run along an open path rather than through its ends", async () =>
     h,
     solution([
       trackPart(LINE, false),
-      armPart("arm", -2, 0, 0, 1, [
-        "advance",
-        "advance",
-        "advance",
-        "advance",
-      ]),
+      armPart("arm", -2, 0, 0, 1, ["advance", "advance", "advance", "advance"]),
     ]),
   );
   const arm = (await partIds(h))[1] ?? -1;

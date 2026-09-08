@@ -52,7 +52,9 @@ interface Live {
 
 export class Bursts {
   private live: Live[] = [];
-  constructor(private readonly systems: Record<FxKind, ParticleSystem | undefined>) {}
+  constructor(
+    private readonly systems: Record<FxKind, ParticleSystem | undefined>,
+  ) {}
 
   spawn(ev: FxEvent): void {
     const system = this.systems[ev.kind];
@@ -61,7 +63,11 @@ export class Bursts {
     // A looping effect (fire) already burning near here is refreshed, not stacked.
     if (system.loop) {
       for (const b of this.live) {
-        if (b.loop && b.kind === ev.kind && Math.hypot(b.x - ev.x, b.y - ev.y) <= LOOP_REFRESH_DIST) {
+        if (
+          b.loop &&
+          b.kind === ev.kind &&
+          Math.hypot(b.x - ev.x, b.y - ev.y) <= LOOP_REFRESH_DIST
+        ) {
           b.x = ev.x;
           b.y = ev.y;
           b.age = 0;
@@ -75,7 +81,10 @@ export class Bursts {
     canvas.height = FIELD;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    const player = new ParticleCanvasPlayer(system, ctx, { composite: "lighter", clear: true });
+    const player = new ParticleCanvasPlayer(system, ctx, {
+      composite: "lighter",
+      clear: true,
+    });
     this.live.push({
       player,
       canvas,

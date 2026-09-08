@@ -20,9 +20,9 @@
 // detail shows is the first of `ENEMY_IDS`, which is the Moth. Both the tab and
 // the highlight are read back before the frame is.
 //
-// THE TOLERANCE. The name, the labels and the line are matched folded —
-// lower-cased, with spaces, dashes and underscores removed, across consecutive
-// runs of text. Each figure is read as a whole number standing alone, bounded by
+// THE TOLERANCE. The name, the labels and the line are matched ignoring case
+// and whitespace, across the runs of text the frame drew joined in reading
+// order (the shared harness's `drewTextAnywhere`). Each figure is read as a whole number standing alone, bounded by
 // non-digits, so a build that writes one inside a longer number fails.
 
 import { afterEach, beforeEach, it } from "vitest";

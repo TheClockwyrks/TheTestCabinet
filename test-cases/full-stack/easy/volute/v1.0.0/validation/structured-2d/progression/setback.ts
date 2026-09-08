@@ -11,8 +11,8 @@
 // EACH FIGURE IS MOVED OFF ITS OPENING VALUE FIRST, or a point would pass on a
 // build that restores nothing.
 //
-//   Pressure       `setPressure`, which `specs/instrumentation.md` clamps to
-//                  0 through 100.
+//   Pressure       `setPressure`, whose domain `specs/instrumentation.md` gives
+//                  as 0 through 100.
 //   Machinery      `grantMachinery("sightline")`, which becomes "the active
 //                  machinery at its full duration" of 12 s — far longer than the
 //                  drive, so it is still in force when the cell is spent. It is

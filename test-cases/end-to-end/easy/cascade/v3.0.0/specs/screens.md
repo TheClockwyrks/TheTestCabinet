@@ -15,12 +15,12 @@ yours.
 
 The game is on exactly one of four screens at a time, and it opens on `title`.
 
-| Screen | What it is |
-| --- | --- |
-| `title` | The opening screen, and where the game starts. |
-| `howto` | How to play. |
-| `playing` | Live play on the table. |
-| `won` | The victory cascade and the message that follows it. |
+| Screen    | What it is                                           |
+| --------- | ---------------------------------------------------- |
+| `title`   | The opening screen, and where the game starts.       |
+| `howto`   | How to play.                                         |
+| `playing` | Live play on the table.                              |
+| `won`     | The victory cascade and the message that follows it. |
 
 There is no pause screen. The game is untimed and nothing on the table moves
 between one gesture and the next, so play carries nothing to interrupt: leaving a
@@ -28,20 +28,20 @@ game for the title is the whole of stepping away from it.
 
 ### `title`
 
-| Element | Constant | Content |
-| --- | --- | --- |
-| Title | `TITLE_TEXT` | `CASCADE` |
-| Tagline | `TAGLINE_TEXT` | `KLONDIKE SOLITAIRE` |
-| Items | `TITLE_ITEMS` | `NEW GAME`, `HOW TO PLAY`, in that order |
+| Element         | Constant          | Content                                        |
+| --------------- | ----------------- | ---------------------------------------------- |
+| Title           | `TITLE_TEXT`      | `CASCADE`                                      |
+| Tagline         | `TAGLINE_TEXT`    | `KLONDIKE SOLITAIRE`                           |
+| Items           | `TITLE_ITEMS`     | `NEW GAME`, `HOW TO PLAY`, in that order       |
 | Deal-mode label | `DEAL_MODE_LABEL` | This build's label, as `specs/stock.md` states |
 
 The two items are the title's menu, in that order. The deal-mode label is drawn
 somewhere on the screen so a player sees which deal the game is played with.
 
-| Item | Does |
-| --- | --- |
-| `NEW GAME` | Deals a fresh game, as `specs/deal.md` states, and moves to `playing`. |
-| `HOW TO PLAY` | Moves to `howto`. |
+| Item          | Does                                                                   |
+| ------------- | ---------------------------------------------------------------------- |
+| `NEW GAME`    | Deals a fresh game, as `specs/deal.md` states, and moves to `playing`. |
+| `HOW TO PLAY` | Moves to `howto`.                                                      |
 
 Activating either item sets `titleIndex` to that item's index, so `titleIndex` is
 `0` after `NEW GAME` and `1` after `HOW TO PLAY`.
@@ -86,11 +86,11 @@ The HUD occupies the strip `specs/table.md` fixes along the bottom of the table,
 so it never overlaps a pile. It is drawn on the `playing` screen and carries
 three controls and one label.
 
-| Item | Constant | Does |
-| --- | --- | --- |
-| `NEW GAME` | `HUD_ITEMS[0]` | Deals a fresh game and stays on `playing`. |
-| `MENU` | `HUD_ITEMS[1]` | Returns to `title`. |
-| `SOUND` | `HUD_ITEMS[2]` | Toggles muting, as `specs/audio.md` states. |
+| Item       | Constant       | Does                                        |
+| ---------- | -------------- | ------------------------------------------- |
+| `NEW GAME` | `HUD_ITEMS[0]` | Deals a fresh game and stays on `playing`.  |
+| `MENU`     | `HUD_ITEMS[1]` | Returns to `title`.                         |
+| `SOUND`    | `HUD_ITEMS[2]` | Toggles muting, as `specs/audio.md` states. |
 
 `HUD_ITEMS` is `["NEW GAME", "MENU", "SOUND"]`. The three are the HUD's menu, in
 that order. Every deal that begins play selects the first of them, so `menuIndex`

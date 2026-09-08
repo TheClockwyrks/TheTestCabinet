@@ -16,7 +16,10 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const outfile = join(mkdtempSync(join(tmpdir(), "sunfront-sim-")), "sim.test.mjs");
+const outfile = join(
+  mkdtempSync(join(tmpdir(), "sunfront-sim-")),
+  "sim.test.mjs",
+);
 
 await build({
   entryPoints: [join(here, "sim.test.ts")],

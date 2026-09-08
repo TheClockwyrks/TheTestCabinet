@@ -49,6 +49,15 @@
 // scenario section at the foot of this file, and every suite that needs part of
 // one calls the operations it needs instead of restating the whole.
 //
+// RECONCILING AFTER A POSE. `specs/instrumentation.md`'s `reconcile()` brings
+// every reading the surface reports into agreement with the game as it stands,
+// without advancing anything — so a build that keeps a reading as a stored copy
+// of something a pose can leave behind answers for the world the scene posed
+// rather than for the one before it. A helper here that poses anything a reading
+// derives from calls it before it returns, so a check that poses through the
+// helpers never calls it itself. A check that poses with `h.debug.set…` directly
+// and then reads calls it once, before its first read.
+//
 // EVERYTHING CROSSING INTO THE PAGE IS ASYNC. That is the whole of the difference
 // between a suite here and its counterpart under an engine: `await h.snapshot()`
 // rather than reading the state in process, `await h.debug.setSnake(cells)`
@@ -123,7 +132,6 @@ export {
   callsTo,
   colorDistance,
   drawnText,
-  drewText,
   setsOf,
   textDraws,
 } from "./case-harness/index";
@@ -232,6 +240,11 @@ const kit = createCaseHarness<CoilSnapshot, DrivenSurface>({
   // without it `navigator.maxTouchPoints` is zero and a dispatched contact
   // arrives as a mouse.
   hasTouch: true,
+  // The copy readings place a run at its anchor and read the LOGICAL runs a
+  // frame spells, so every text call is measured in the page — width and
+  // alignment under the build's own font — and side-by-side glyphs on one
+  // baseline coalesce back into the string they spell (`case-harness/text.ts`).
+  measureText: true,
   // This case's own audio probe, beside the kit's two. The kit's probe at
   // `__tcabAudio` COUNTS sounds, which is enough for a case whose audio points
   // ask whether a frame sounded; Coil's ask WHICH of four cues sounded and
@@ -1343,6 +1356,7 @@ export async function poseScene(
   if (scene.menuIndex !== undefined) {
     await h.debug.setMenuIndex(scene.menuIndex);
   }
+  await h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -1476,6 +1490,7 @@ export async function arrangeApproach(
 /** Reset to a clean title, off the wall clock, with nothing posed on the board. */
 export async function openTitle(h: Harness): Promise<CoilSnapshot> {
   await h.debug.reset();
+  await h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -1672,5 +1687,6 @@ export async function arrangeFullBoard(h: Harness): Promise<FullBoardScene> {
   await h.debug.clearTurns();
   await h.debug.setPellet(pellet.col, pellet.row);
   await h.debug.setScreen("playing");
+  await h.debug.reconcile();
   return { snapshot: await h.snapshot(), chain, pellet };
 }

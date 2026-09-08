@@ -6,6 +6,15 @@
 // binds: `W` and `S` as keys of their own, and the arrow keys by name or glyph.
 // How the screen reads as a whole is the reviewer's, from the capture.
 //
+// The copy is the LOGICAL runs the frame spelled (`drawnTextLines`) AND the raw
+// `fillText` strings (`drawnText`) together. The runs are needed because a build
+// that letter-spaces its copy draws one glyph per call, and `U`, `P` joined by a
+// space would never read as `UP`. The raw split is kept beside them because the
+// patterns are boundary-anchored: `W` is one glyph, so a build that draws it and
+// its action as two calls close together (`W`, then `UP` a few units on) can
+// coalesce into `WUP` and lose the boundary the raw string still has. The union
+// reads both, so neither presentation is fed back as a failure.
+//
 // The screen is POSED. `openHowTo` is `reset`, `setMenuIndex(0)` and
 // `setScreen("howto")` — the three atomic poses that are exactly the state
 // specs/ui.md says arriving there leaves — rather than the title menu walked with
@@ -24,6 +33,7 @@ import {
   captureStill,
   createHarness,
   drawnText,
+  drawnTextLines,
   openHowTo,
   type Harness,
 } from "../harness";
@@ -46,7 +56,7 @@ it("draws a how-to-play screen naming the movement keys", async () => {
 
   assertEqual(h.snapshot().screen, "howto");
 
-  const copy = drawnText(h.calls).join(" ");
+  const copy = [...drawnText(h.calls), ...drawnTextLines(h.calls)].join(" ");
   assertMatches(copy, /\bW\b/i);
   assertMatches(copy, /\bS\b/i);
   assertMatches(copy, /arrow|\bup\b|\bdown\b|\u2191|\u2193/i);

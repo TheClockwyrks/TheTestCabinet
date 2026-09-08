@@ -151,16 +151,16 @@ await engine.advance(30);
 const { ball } = engine.debug.snapshot();
 ```
 
-| Group | Operations |
-| --- | --- |
-| The world | `clearWorld()`, `spawnBall()`, `spawnObstacle(index)`, `reset()` |
-| Screens and menus | `setScreen(screen)`, `setMode(mode)`, `setMenuIndex(index)`, `setTitleIndex(index)`, `setResumeScreen(screen)` |
-| Match state | `setScore(p1, p2)`, `setWinner(side)`, `setReceiver(side)` |
-| Paddles | `setPaddleCy(side, cy)`, `setPaddleVy(side, vy)`, `setPaddleDriven(side, driven)` |
-| The ball | `setBallPosition(x, y)`, `setBallVelocity(vx, vy)`, `setBallSpin(spin)`, `setBallHeld(held)`, `setBallHoldTimer(seconds)`, `setBallServeSign(sign)`, `drawBallServeSign()` |
-| The AI | `setAiTracking(enabled)`, `setAiMovement(enabled)` |
-| Audio | `setMuted(muted)` |
-| Readings | `snapshot()`, `menuItemRect(index)` |
+| Group             | Operations                                                                                                                                                                 |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The world         | `clearWorld()`, `spawnBall()`, `spawnObstacle(index)`, `reset()`, `reconcile()`                                                                                            |
+| Screens and menus | `setScreen(screen)`, `setMode(mode)`, `setMenuIndex(index)`, `setTitleIndex(index)`, `setResumeScreen(screen)`                                                             |
+| Match state       | `setScore(p1, p2)`, `setWinner(side)`, `setReceiver(side)`                                                                                                                 |
+| Paddles           | `setPaddleCy(side, cy)`, `setPaddleVy(side, vy)`, `setPaddleDriven(side, driven)`                                                                                          |
+| The ball          | `setBallPosition(x, y)`, `setBallVelocity(vx, vy)`, `setBallSpin(spin)`, `setBallHeld(held)`, `setBallHoldTimer(seconds)`, `setBallServeSign(sign)`, `drawBallServeSign()` |
+| The AI            | `setAiTracking(enabled)`, `setAiMovement(enabled)`                                                                                                                         |
+| Audio             | `setMuted(muted)`                                                                                                                                                          |
+| Readings          | `snapshot()`, `menuItemRect(index)`                                                                                                                                        |
 
 `snapshot()` reports every field an operation sets, so each one is verified by
 setting a value and reading it back, and `menuItemRect(index)` reports the hit

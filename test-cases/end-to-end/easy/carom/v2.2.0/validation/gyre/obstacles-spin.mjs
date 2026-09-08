@@ -34,12 +34,15 @@ export default function item() {
     // recorded clip shows the obstacles turning further at every step.
     async act(api) {
       await api.call("setObstacleClock", 0); // seconds, not ticks
+      await api.call("reconcile");
       at0 = (await api.snapshot()).obstacles;
       await api.advance(HOLD);
       await api.call("setObstacleClock", 0.5);
+      await api.call("reconcile");
       atHalf = (await api.snapshot()).obstacles;
       await api.advance(HOLD);
       await api.call("setObstacleClock", 1.0);
+      await api.call("reconcile");
       atOne = (await api.snapshot()).obstacles;
       await api.advance(HOLD);
     },

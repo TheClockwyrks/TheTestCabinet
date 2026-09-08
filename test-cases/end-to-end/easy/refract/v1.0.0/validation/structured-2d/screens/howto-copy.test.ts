@@ -14,13 +14,22 @@
 // The screen is POSED with `setScreen`, not walked to through the title menu: a
 // build with a broken `down` binding must fail `screens/title-down` and pass
 // this point.
+//
+// The frame's text is read as its COALESCED RUNS (the harness's `drawnTextLines`),
+// never as the raw `fillText` split: a build that letter-spaces its copy draws
+// one glyph per call, which is the only portable way to letter-space canvas
+// text, and read call by call every glyph is a word of its own — the R inside a
+// letter-spaced REFRACT would name the key, and a standalone R could sit in no
+// run at all. The recorder measures every text call, so the harness's merge
+// rule folds side-by-side glyphs on one baseline back into the string they
+// spell, and the word boundary decides what it is meant to.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,
   createHarness,
-  drawnText,
+  drawnTextLines,
   resetTo,
   type Harness,
 } from "../harness";
@@ -49,7 +58,7 @@ it("draws how-to text naming the clear key as a standalone R", async () => {
   await h.advance(1);
   captureStill(h, "howto");
 
-  const texts = drawnText(h.calls);
+  const texts = drawnTextLines(h.calls);
   assertGreaterThan(texts.length, 0, "the how-to frame draws text");
   assertEqual(
     texts.some((text) => /\bR\b/.test(text)),

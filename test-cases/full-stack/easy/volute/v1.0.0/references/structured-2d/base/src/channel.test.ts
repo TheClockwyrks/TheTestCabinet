@@ -230,11 +230,10 @@ describe("pressure", () => {
     await isolate(h);
     poseTrain(
       h,
-      Array.from({ length: count }, (_unused, index): PosedCore => [
-        3000 - index * SPACING,
-        "halide",
-        null,
-      ]),
+      Array.from(
+        { length: count },
+        (_unused, index): PosedCore => [3000 - index * SPACING, "halide", null],
+      ),
     );
     h.debug.setPressure(pressure);
   }

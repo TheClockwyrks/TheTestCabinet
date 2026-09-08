@@ -171,6 +171,12 @@ export interface VoluteDebugApi {
   /** Restore every declared field to its title value. */
   reset(state: DeepReadonly<VoluteState>): VoluteState;
 
+  /**
+   * Bring every reported reading into agreement with the hall as it stands,
+   * without advancing anything, and return the next state.
+   */
+  reconcile(state: DeepReadonly<VoluteState>): VoluteState;
+
   /** A pure reading of the running game. */
   snapshot(state: DeepReadonly<VoluteState>): VoluteSnapshot;
 

@@ -21,10 +21,10 @@ work reports what it did. A reviewer returns a verdict, and a verdict that
 requests changes carries the list of changes. Each call's signature carries
 exactly what that result is made of.
 
-| Role | Ending calls | Dispatched for |
-| --- | --- | --- |
-| Standard | `finish(summary)` | The root agent, a spawned subagent, an issue's implementer, the merge agent. |
-| Review | `approve()` / `requestChanges(items)` | An issue's [reviewers](/gg/project-management/). |
+| Role     | Ending calls                          | Dispatched for                                                               |
+| -------- | ------------------------------------- | ---------------------------------------------------------------------------- |
+| Standard | `finish(summary)`                     | The root agent, a spawned subagent, an issue's implementer, the merge agent. |
+| Review   | `approve()` / `requestChanges(items)` | An issue's [reviewers](/gg/project-management/).                             |
 
 Only the role's own group is offered: a reviewer is given no `finish`, and an
 implementer no `approve`. Both modes name the same three calls. The tool-calling

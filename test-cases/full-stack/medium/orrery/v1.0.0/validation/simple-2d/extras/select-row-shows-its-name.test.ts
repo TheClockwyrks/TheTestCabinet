@@ -21,10 +21,12 @@
 // `specs/assets.md`, which puts every word on the stage on the frame as drawn
 // text, fixes no more than that: a build may draw a row as one run of text, as
 // a run per word, or as a run per glyph — this reference draws its state word
-// letter by letter. What every one of those shares is the baseline, so the
-// frame's text runs are gathered into the baselines they were drawn on, joined
-// in `x` order, and matched with the whitespace dropped. A row counts as a
-// challenge's when its line carries that challenge's name.
+// letter by letter. What every one of those shares is the baseline, which is
+// the line the shared harness's `drewText` reads copy along — substring,
+// ignoring case, the whitespace folded out of both sides — so that is what
+// reads each name. WHICH row carries it is then `drawing.ts`'s `textLines`,
+// the same runs gathered onto their baselines: a row counts as a challenge's
+// when its line carries that challenge's name.
 //
 // THE SHELF IS READ FRESH: nothing is solved and no record is set, so a row
 // carries the least text it ever carries ("An unsolved row shows none of the
@@ -35,16 +37,17 @@
 // the Extras select screen, each on a row of its own.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertDefined, assertEqual } from "../assert";
+import { assertDefined, assertEqual, assertTrue } from "../assert";
+import { drewText } from "../case-harness/text";
 import { EXTRA_NAMES } from "../challenges";
 import {
   captureStill,
   createHarness,
   openSelect,
   openTitle,
-  textDraws,
+  spells,
+  textLines,
   type Harness,
-  type TextDraw,
 } from "../harness";
 
 let h: Harness;
@@ -57,52 +60,10 @@ afterEach(async () => {
   await h.dispose();
 });
 
-/** One baseline the frame drew text on, and the runs on it read left to right. */
-interface Line {
-  y: number;
-  text: string;
-}
-
-/**
- * The frame's text runs gathered into the baselines they were drawn on.
- *
- * The runs of one row are drawn at one `y` and the rows are drawn at different
- * ones, whichever way a build breaks a row into runs, so grouping by the `y` an
- * anchor maps to reads a row the same way under all of them.
- */
-function linesOf(draws: readonly TextDraw[]): Line[] {
-  const baselines = new Map<number, TextDraw[]>();
-  for (const draw of draws) {
-    const on = baselines.get(draw.y) ?? [];
-    on.push(draw);
-    baselines.set(draw.y, on);
-  }
-  return [...baselines.entries()]
-    .map(([y, on]) => ({
-      y,
-      text: [...on]
-        .sort((a, b) => a.x - b.x)
-        .map((draw) => draw.text)
-        .join(""),
-    }))
-    .sort((a, b) => a.y - b.y);
-}
-
-/**
- * Text with its case and its whitespace dropped.
- *
- * A run per word and a run per glyph join to `First Light` and to `FirstLight`,
- * and a build is free to letter-space or pad a name; none of that is a different
- * name, and no sentence of `specs/` fixes any of it.
- */
-function squash(text: string): string {
-  return text.toLowerCase().replace(/\s+/gu, "");
-}
-
 it("draws each of the ten Extras' names, each on its own row", async () => {
   await openTitle(h);
   await openSelect(h, "extras");
-  const drawn = textDraws(await h.lastCalls());
+  const calls = await h.lastCalls();
   await captureStill(h, "names");
 
   const shown = await h.snapshot();
@@ -117,12 +78,23 @@ it("draws each of the ten Extras' names, each on its own row", async () => {
     "and it is showing the Extras, whose ten names specs/challenges.md fixes",
   );
 
-  const lines = linesOf(drawn);
+  // Each name is read with the shared harness's `drewText`, and the row it sits
+  // on as `drawing.ts`'s `textLines`: the same logical runs gathered onto the
+  // baselines they share, a line found by the rule `drewText` matched it by. A
+  // run per word and a run per glyph join to `First Light` and to `FirstLight`,
+  // and a build is free to letter-space or pad a name; none of that is a
+  // different name, and no sentence of `specs/` fixes any of it.
+  const lines = textLines(calls);
   const claimed = new Set<number>();
   for (const name of EXTRA_NAMES) {
+    assertTrue(
+      drewText(calls, name),
+      `the Extras select screen draws ${JSON.stringify(name)}, the name ` +
+        "specs/challenges.md gives that challenge; the lines the frame drew " +
+        `are ${JSON.stringify(lines.map((line) => line.text))}`,
+    );
     const row = lines.find(
-      (line) =>
-        !claimed.has(line.y) && squash(line.text).includes(squash(name)),
+      (line) => !claimed.has(line.y) && spells(line, name),
     );
     assertDefined(
       row,

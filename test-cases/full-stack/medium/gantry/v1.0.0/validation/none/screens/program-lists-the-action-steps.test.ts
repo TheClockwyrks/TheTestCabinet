@@ -22,7 +22,7 @@
 // through the widgets, so what is read is the listing and not the editing.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { textDraws, toDrawCall, type RecordedOp } from "../case-harness/index";
+import { drawnTextRuns } from "../case-harness/index";
 import { fail } from "../assert";
 import {
   createHarness,
@@ -32,9 +32,6 @@ import {
   type Harness,
   type TapeStepSpec,
 } from "../harness";
-
-/** The page global the shared harness installs its draw recorder on. */
-const RECORDER = "__tcabRec";
 
 /** Two runs are drawn in the same place when their anchors sit this close. */
 const ANCHOR_TOL = 3;
@@ -48,16 +45,20 @@ const MOVE: TapeStepSpec = {
   commands: [{ axis: "slew", target: 90, rate: 30 }],
 };
 
-/** Every run of text the last closed frame drew, with where it landed. */
+/**
+ * Every run of text the last closed frame drew, with where it landed.
+ *
+ * The runs are the LOGICAL ones the frame spells, each placed where its first
+ * draw was, never the `fillText` split: a build that letter-spaces a label or
+ * a figure draws a glyph per call, which is the only portable way to
+ * letter-space canvas text, and a line assembled from those glyphs reads `1 2`
+ * where the screen says `12`. `screenCalls` carries the measured geometry the
+ * shared merge rule (`case-harness/text.ts`) needs to put side-by-side glyphs
+ * on one baseline back together, and every raw string is a substring of its
+ * run, so coalescing can only add a match.
+ */
 async function frameDraws(harness: Harness) {
-  const ops = (await harness.page.evaluate(
-    (global) =>
-      (window as unknown as Record<string, { last(): unknown[] }>)[
-        global
-      ]!.last(),
-    RECORDER,
-  )) as RecordedOp[];
-  return textDraws(ops.map(toDrawCall)).sort((a, b) =>
+  return drawnTextRuns(await harness.screenCalls()).sort((a, b) =>
     Math.abs(a.y - b.y) > LINE_TOL ? a.y - b.y : a.x - b.x,
   );
 }

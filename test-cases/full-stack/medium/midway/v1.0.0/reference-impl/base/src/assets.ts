@@ -12,9 +12,20 @@ import type { RideKind, StaffKind } from "./constants";
 import { RIDE_ORDER, STAFF_ORDER } from "./constants";
 import type { Cue, FxKind, GuestMood } from "./types";
 
-const pngUrls = import.meta.glob<string>("../assets/**/*.png", { eager: true, query: "?url", import: "default" });
-const fxJson = import.meta.glob<ParticleSystem>("../assets/fx/*.system.json", { eager: true, import: "default" });
-const wavUrls = import.meta.glob<string>("../assets/audio/*.wav", { eager: true, query: "?url", import: "default" });
+const pngUrls = import.meta.glob<string>("../assets/**/*.png", {
+  eager: true,
+  query: "?url",
+  import: "default",
+});
+const fxJson = import.meta.glob<ParticleSystem>("../assets/fx/*.system.json", {
+  eager: true,
+  import: "default",
+});
+const wavUrls = import.meta.glob<string>("../assets/audio/*.wav", {
+  eager: true,
+  query: "?url",
+  import: "default",
+});
 
 function keyOf(globPath: string, ext: string): string {
   return globPath.replace("../assets/", "").replace(ext, "");
@@ -78,14 +89,17 @@ export async function loadAssets(): Promise<Assets> {
   for (const kind of STAFF_ORDER) staff[kind] = frames(`staff/${kind}`);
 
   const rawFx: Record<string, ParticleSystem> = {};
-  for (const [globPath, sys] of Object.entries(fxJson)) rawFx[keyOf(globPath, ".system.json").replace("fx/", "")] = sys;
+  for (const [globPath, sys] of Object.entries(fxJson))
+    rawFx[keyOf(globPath, ".system.json").replace("fx/", "")] = sys;
   const fx = {} as Record<FxKind, ParticleSystem | undefined>;
   for (const k of FX_KINDS) fx[k] = rawFx[k];
 
   const rawWav: Record<string, string> = {};
-  for (const [globPath, url] of Object.entries(wavUrls)) rawWav[keyOf(globPath, ".wav").replace("audio/", "")] = url;
+  for (const [globPath, url] of Object.entries(wavUrls))
+    rawWav[keyOf(globPath, ".wav").replace("audio/", "")] = url;
   const audioUrl = {} as Record<Cue, string>;
-  for (const k of ["coin", "ding", "alarm", "crowd", "music"] as Cue[]) audioUrl[k] = rawWav[k] ?? "";
+  for (const k of ["coin", "ding", "alarm", "crowd", "music"] as Cue[])
+    audioUrl[k] = rawWav[k] ?? "";
 
   return {
     sprite,

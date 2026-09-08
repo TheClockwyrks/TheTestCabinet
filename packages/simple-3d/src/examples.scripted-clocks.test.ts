@@ -222,7 +222,10 @@ const game: Game<State, Debug> = {
   update(state: DeepReadonly<State>, api: UpdateApi, dt: number): State {
     const drive = api.input.value("down") - api.input.value("up");
     const paddleLimit = COURT_DEPTH / 2 - PADDLE_LENGTH / 2;
-    const paddleZ = clamp(state.paddle.z + drive * PADDLE_SPEED * dt, paddleLimit);
+    const paddleZ = clamp(
+      state.paddle.z + drive * PADDLE_SPEED * dt,
+      paddleLimit,
+    );
 
     const x = state.ball.x + state.ball.vx * dt;
     let z = state.ball.z + state.ball.vz * dt;
@@ -362,7 +365,8 @@ async function advanceMs(engine: Engine<State>, ms: number): Promise<void> {
 /* validation/constant.test.ts — "Exact stepping with `ConstantClock`"         */
 /* -------------------------------------------------------------------------- */
 
-const framesFor = (ms: number, stepMs: number): number => Math.round(ms / stepMs);
+const framesFor = (ms: number, stepMs: number): number =>
+  Math.round(ms / stepMs);
 
 describe("examples/scripted-clocks", () => {
   it("advances simulated time by the step it was given", async () => {
@@ -456,7 +460,8 @@ describe("examples/scripted-clocks", () => {
     const { engine } = harness;
     const bounces: { t: number; stepMs: number }[] = [];
     engine.events.on("cue:played", ({ cue, t }) => {
-      if (cue === "bounce") bounces.push({ t, stepMs: engine.frame().lastDeltaMs });
+      if (cue === "bounce")
+        bounces.push({ t, stepMs: engine.frame().lastDeltaMs });
     });
 
     harness.setBallPosition(0, 4.1);
@@ -533,7 +538,9 @@ describe("examples/scripted-clocks", () => {
   // and the two halves are "one scenario rather than two" — the ball keeps the
   // position and the velocity the constant-clock half left it with.
   it("swaps the clock in place and carries the frame and the time over", async () => {
-    const harness = await createHarness({ clock: new ConstantClock(1000 / 120) });
+    const harness = await createHarness({
+      clock: new ConstantClock(1000 / 120),
+    });
     const { engine } = harness;
     harness.setBallPosition(0, 0);
     harness.setBallVelocity(0, 3);

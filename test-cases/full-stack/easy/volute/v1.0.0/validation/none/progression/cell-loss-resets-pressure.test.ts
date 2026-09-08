@@ -4,7 +4,7 @@
 // sets the run back by: "| Pressure | 0 |".
 //
 // THE POSE. The pressure is raised to 50 before the arrival, which
-// `specs/instrumentation.md` clamps into the 0-to-100 range it takes, so a build
+// is inside the 0-to-100 range `specs/instrumentation.md` gives it, so a build
 // that never zeroes it cannot pass by having started at 0. Nothing else is moved
 // off its opening value: the other three rows of the same table are their own
 // points.

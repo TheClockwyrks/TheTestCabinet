@@ -30,8 +30,8 @@
 // that is exactly what this refuses.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { toDrawCall, type RecordedOp } from "../case-harness/draw-calls";
-import { textDraws, type TextDraw } from "../case-harness/text";
+import type { TextDraw } from "../case-harness/text";
+import { alongBaseline, drawnFigures, type DrawnFigures } from "./figures";
 import { assertTrue, fail } from "../assert";
 import {
   GRIP_MAX_RATE,
@@ -101,57 +101,62 @@ afterEach(async () => {
   await h.dispose();
 });
 
-/** Every run of text the frame the page last drew put on its readout layer. */
-async function readoutText(harness: Harness): Promise<TextDraw[]> {
-  const ops = (await harness.screenOps()) as RecordedOp[];
-  return textDraws(ops.map(toDrawCall));
+/**
+ * The figures the frame the page last drew put on its readout layer, and the
+ * runs it spelled.
+ *
+ * The runs are the LOGICAL ones the frame spells, each placed where its first
+ * draw was, never the `fillText` split: a build that letter-spaces a label or
+ * a figure draws a glyph per call, which is the only portable way to
+ * letter-space canvas text, and a line assembled from those glyphs reads `1 2`
+ * where the screen says `12`. `screenCalls` carries the measured geometry the
+ * shared merge rule (`case-harness/text.ts`) needs to put side-by-side glyphs
+ * on one baseline back together.
+ *
+ * The figures come from `./figures`, this project's one reading of a number on
+ * the screen, which reads those runs together with the RAW draws underneath
+ * them. The runs alone cannot be read for a figure a space groups, because the
+ * merge writes an ASCII space of its own wherever it crosses a word gap and a
+ * run's spaces are therefore not all the build's; the raw draws alone cannot be
+ * read for the letter-spaced figure above. Read together, a figure either one
+ * carries is a figure the frame drew.
+ */
+async function readoutFigures(harness: Harness): Promise<DrawnFigures> {
+  return drawnFigures(await harness.screenCalls());
 }
 
 /**
- * The separators a build may set between a figure's digit triples.
+ * One readout line: the text it spells, and the baseline it is drawn on.
  *
- * ASCII space is deliberately absent: a frame's text is assembled by joining
- * separate draw runs with one, so accepting it would read the two figures in
- * `40 130` as the single number 40130. `.` is absent for the same sort of
- * reason — it is the decimal point, and a build drawing `1.5` means one and a
- * half.
+ * The baseline is kept beside the text because the line is READ twice — once as
+ * copy, for the axis it names, and once for the figures on it — and the second
+ * reading is scoped by where the text sits rather than by the string the first
+ * reading built.
  */
-const GROUP = "[,'\\u00A0\\u202F\\u2009]";
-
-/** One drawn number: a grouped figure, or a plain one. */
-const DRAWN = new RegExp(
-  `-?\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|-?\\d+(?:\\.\\d+)?`,
-  "g",
-);
-
-/**
- * Every number a run of text carries.
- *
- * A grouped figure reads as the one figure it is, so `1,234` and `1234` both
- * come back as 1234 and a build is free to group the figure it draws.
- */
-function numbersIn(text: string): number[] {
-  return (text.match(DRAWN) ?? []).map((one) =>
-    Number(one.replace(new RegExp(GROUP, "g"), "")),
-  );
+interface Line {
+  readonly text: string;
+  readonly y: number;
 }
 
-/** The readout line the named axis is drawn on, as one string. */
-function axisLine(draws: readonly TextDraw[], axis: string): string {
-  const named = draws.find((draw) => draw.text.toLowerCase().includes(axis));
+/** The readout line the named axis is drawn on. */
+function axisLine(runs: readonly TextDraw[], axis: string): Line {
+  const named = runs.find((run) => run.text.toLowerCase().includes(axis));
   if (named === undefined) {
     fail(
       `the run screen to name the ${axis} axis, so what is drawn beside it ` +
         "reads as that axis's (specs/ui.md)",
       `no run of drawn text carries "${axis}": ` +
-        `[${draws.map((draw) => draw.text.trim()).join(" | ")}]`,
+        `[${runs.map((run) => run.text.trim()).join(" | ")}]`,
     );
   }
-  return draws
-    .filter((draw) => Math.abs(draw.y - named.y) <= LINE_SLOP)
-    .sort((one, two) => one.x - two.x)
-    .map((draw) => draw.text)
-    .join(" ");
+  return {
+    text: runs
+      .filter((run) => Math.abs(run.y - named.y) <= LINE_SLOP)
+      .sort((one, two) => one.x - two.x)
+      .map((run) => run.text)
+      .join(" "),
+    y: named.y,
+  };
 }
 
 it("draws no target beside an axis carrying no live command", async () => {
@@ -181,21 +186,27 @@ it("draws no target beside an axis carrying no live command", async () => {
     );
   }
 
-  const draws = await readoutText(h);
+  const frame = await readoutFigures(h);
   await h.capture("axis-readout", "The axis readouts with one command live");
 
   for (const axis of QUIET) {
     const value = state.run.axes[axis].value;
-    const line = axisLine(draws, axis);
-    const stray = numbersIn(line).filter(
-      (figure) => Math.abs(figure - value) > FIGURE_TOL,
-    );
+    const line = axisLine(frame.runs, axis);
+    // The figures of that LINE, scoped by the baseline it was found on. The
+    // reading is `./figures`' union of the coalesced runs and the raw draws,
+    // which is what makes this refusal a refusal of FIGURES rather than of
+    // draws: the raw half adds only what an ASCII space inside one call
+    // groups, so a build that letter-spaces `1.0u` a glyph per `fillText` is
+    // still read as carrying the one figure `1.0` and not the two `1` and `0`.
+    const stray = frame
+      .where(alongBaseline(line.y, LINE_SLOP))
+      .filter((figure) => Math.abs(figure - value) > FIGURE_TOL);
     if (stray.length > 0) {
       fail(
         `the ${axis} axis's readout to carry its value, ` +
           `${value.toFixed(2)}, and no target: no command is live on it ` +
           "(specs/ui.md)",
-        `that line reads "${line.trim()}", carrying ` +
+        `that line reads "${line.text.trim()}", carrying ` +
           `[${stray.join(", ")}] besides`,
       );
     }

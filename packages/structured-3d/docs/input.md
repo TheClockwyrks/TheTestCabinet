@@ -61,10 +61,10 @@ Reading happens only through `PlayerController.input`, in the controller's tick.
 Controllers tick before any actor, so what a controller writes onto its pawn is
 what the pawn's own tick applies this frame. See `controllers.md`.
 
-| Member | Result | Semantics |
-| --- | --- | --- |
-| `value(name)` | `number` | The action's resolved magnitude. A `"digital"` action reports `0` or `1`, with every non-zero magnitude quantized to `1`. An `"analog"` action reports the magnitude as given, and a held key gives it full deflection. An unregistered name reports `0`. |
-| `pressed(name)` | `boolean` | `true` exactly once per armed edge per player controller, and the call consumes that controller's copy. An unregistered name reports `false`. |
+| Member          | Result    | Semantics                                                                                                                                                                                                                                                 |
+| --------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `value(name)`   | `number`  | The action's resolved magnitude. A `"digital"` action reports `0` or `1`, with every non-zero magnitude quantized to `1`. An `"analog"` action reports the magnitude as given, and a held key gives it full deflection. An unregistered name reports `0`. |
+| `pressed(name)` | `boolean` | `true` exactly once per armed edge per player controller, and the call consumes that controller's copy. An unregistered name reports `false`.                                                                                                             |
 
 `value` is for things that happen while a key is held, and `pressed` is for
 things that happen once per press:
@@ -150,14 +150,14 @@ interface WheelDelta {
 }
 ```
 
-| Field | Meaning |
-| --- | --- |
-| `id` | The pointer a sample or contact belongs to. A mouse keeps one id for the life of the page, and each touch gets its own. |
-| `primary` | Whether this is the primary pointer, the one the snapshot and the edges follow. A mouse is always primary, and among touches the first one down is. |
-| `device` | Which kind of device drove it. |
-| `button` | The button whose state a sample reports, or `null` when the sample reports movement alone. |
-| `buttons` | Every button held once the sample has been applied, in the order `PointerButton` lists them. A pen or a touch in contact holds `primary`. |
-| `WheelDelta.x`, `.y` | Wheel travel over one input frame, in logical units, positive rightward and downward. |
+| Field                | Meaning                                                                                                                                             |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                 | The pointer a sample or contact belongs to. A mouse keeps one id for the life of the page, and each touch gets its own.                             |
+| `primary`            | Whether this is the primary pointer, the one the snapshot and the edges follow. A mouse is always primary, and among touches the first one down is. |
+| `device`             | Which kind of device drove it.                                                                                                                      |
+| `button`             | The button whose state a sample reports, or `null` when the sample reports movement alone.                                                          |
+| `buttons`            | Every button held once the sample has been applied, in the order `PointerButton` lists them. A pen or a touch in contact holds `primary`.           |
+| `WheelDelta.x`, `.y` | Wheel travel over one input frame, in logical units, positive rightward and downward.                                                               |
 
 The engine maps every pointer into the logical design coordinates handed to
 `createEngine`: each event's client position is taken relative to the surface's
@@ -167,14 +167,14 @@ position into a world-space ray through `camera.logicalToRay` and casts it; see
 `camera.md`. A point inside a letterbox bar maps outside `0..width` or
 `0..height`, and a game clamps it or treats it as a miss.
 
-| Member | Result | Semantics |
-| --- | --- | --- |
-| `pointer()` | `PointerSnapshot` | The primary pointer's most recent position, whether it is held, the device that last drove it, and the buttons it holds, as a fresh copy. Before the first pointer event the position is `(0, 0)`, `down` is `false`, `device` is `"mouse"`, and `buttons` is empty. |
-| `pointerPressed(button?)` | `boolean` | `true` exactly once per press edge of `button` per player controller, and the call consumes that controller's copy. `button` defaults to `"primary"`. |
-| `pointerReleased(button?)` | `boolean` | `true` exactly once per release edge of `button` per player controller, and the call consumes that controller's copy. `button` defaults to `"primary"`. |
-| `pointerSamples()` | `PointerSample[]` | Every sample every pointer delivered since the input frame last closed, in arrival order, as a fresh copy. Reading does not consume the list. |
-| `pointerContacts()` | `PointerContact[]` | Every pointer in contact with the surface, in the order they came into contact, as a fresh copy. |
-| `wheel()` | `WheelDelta` | The wheel travel accumulated since the input frame last closed, as a fresh copy. |
+| Member                     | Result             | Semantics                                                                                                                                                                                                                                                            |
+| -------------------------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pointer()`                | `PointerSnapshot`  | The primary pointer's most recent position, whether it is held, the device that last drove it, and the buttons it holds, as a fresh copy. Before the first pointer event the position is `(0, 0)`, `down` is `false`, `device` is `"mouse"`, and `buttons` is empty. |
+| `pointerPressed(button?)`  | `boolean`          | `true` exactly once per press edge of `button` per player controller, and the call consumes that controller's copy. `button` defaults to `"primary"`.                                                                                                                |
+| `pointerReleased(button?)` | `boolean`          | `true` exactly once per release edge of `button` per player controller, and the call consumes that controller's copy. `button` defaults to `"primary"`.                                                                                                              |
+| `pointerSamples()`         | `PointerSample[]`  | Every sample every pointer delivered since the input frame last closed, in arrival order, as a fresh copy. Reading does not consume the list.                                                                                                                        |
+| `pointerContacts()`        | `PointerContact[]` | Every pointer in contact with the surface, in the order they came into contact, as a fresh copy.                                                                                                                                                                     |
+| `wheel()`                  | `WheelDelta`       | The wheel travel accumulated since the input frame last closed, as a fresh copy.                                                                                                                                                                                     |
 
 The snapshot is what aiming and hovering read. The samples are what a game that
 resolves each position on its own reads: a sweep that crossed several targets
@@ -330,13 +330,13 @@ const engine = createEngine({
 });
 ```
 
-| Layout | Controls | Own vocabulary |
-| --- | --- | --- |
-| `dpad-4` | A four-way pad | `up`, `down`, `left`, `right` |
-| `dpad-4-two-buttons` | A four-way pad and two action buttons | `up`, `down`, `left`, `right`, `a`, `b` |
-| `single-stick` | One analog stick | `move-up`, `move-down`, `move-left`, `move-right` |
-| `dual-stick` | Two analog sticks | The `single-stick` vocabulary followed by `look-up`, `look-down`, `look-left`, `look-right` |
-| `dual-stick-two-buttons` | Two analog sticks and two action buttons | The `dual-stick` vocabulary followed by `a`, `b` |
+| Layout                   | Controls                                 | Own vocabulary                                                                              |
+| ------------------------ | ---------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `dpad-4`                 | A four-way pad                           | `up`, `down`, `left`, `right`                                                               |
+| `dpad-4-two-buttons`     | A four-way pad and two action buttons    | `up`, `down`, `left`, `right`, `a`, `b`                                                     |
+| `single-stick`           | One analog stick                         | `move-up`, `move-down`, `move-left`, `move-right`                                           |
+| `dual-stick`             | Two analog sticks                        | The `single-stick` vocabulary followed by `look-up`, `look-down`, `look-left`, `look-right` |
+| `dual-stick-two-buttons` | Two analog sticks and two action buttons | The `dual-stick` vocabulary followed by `a`, `b`                                            |
 
 The menu actions `["confirm", "back", "pause", "mute"]` are appended to every
 entry's own vocabulary in that order, so `TOUCH_LAYOUTS["single-stick"].actions`
@@ -397,6 +397,6 @@ free of bindings.
 
 ## Errors
 
-| Condition | Result |
-| --- | --- |
+| Condition                                                     | Result                                           |
+| ------------------------------------------------------------- | ------------------------------------------------ |
 | `EngineOptions.layout` names a layout outside `TOUCH_LAYOUTS` | `createEngine` throws, naming every valid layout |

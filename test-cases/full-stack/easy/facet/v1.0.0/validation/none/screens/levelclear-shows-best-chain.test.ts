@@ -30,7 +30,7 @@
 //
 // WHY 27, AND WHY THE OTHER FIGURES ARE POSED TOO. specs/ui.md fixes each
 // readout's label and the field it shows and fixes no numeric format, and
-// `showsText` searches the frame's whole run of text, so the figure under test
+// `frameShows` spans the whole frame's text, so the figure under test
 // has to be one no other readout on the screen could be built from. The level is
 // posed at `4`, whose target is `8000`, and the level score is posed at that
 // target; the score and the best move are posed to `0`. `27` shares no digit
@@ -69,10 +69,12 @@ import {
   advanceStep,
   captureStill,
   createHarness,
+  frameShows,
   loadBoard,
-  showsText,
+  shownText,
   swapAndStep,
   writeBoard,
+  type FrameText,
   type Harness,
 } from "../harness";
 
@@ -104,11 +106,14 @@ let h: Harness;
 
 /**
  * The frame put `wanted` on screen, or the failure names the copy the screen
- * owes beside every string the frame actually drew.
+ * owes beside every string the frame actually showed.
  */
-function requireCopy(drawn: readonly string[], wanted: string): void {
-  if (!showsText(drawn, wanted)) {
-    fail(`the level-clear screen to show ${JSON.stringify(wanted)}`, drawn);
+function requireCopy(frame: FrameText, wanted: string): void {
+  if (!frameShows(frame, wanted)) {
+    fail(
+      `the level-clear screen to show ${JSON.stringify(wanted)}`,
+      shownText(frame),
+    );
   }
 }
 
@@ -177,9 +182,9 @@ it("draws the longest-chain label and the level's longest chain", async () => {
   );
 
   // One frame, and everything it put on screen. The still is that same frame.
-  const drawn = await h.frameText();
+  const frame = await h.frameText();
   await captureStill(h, "levelclear");
 
-  requireCopy(drawn, BEST_CHAIN_LABEL);
-  requireCopy(drawn, String(POSED_BEST_CHAIN));
+  requireCopy(frame, BEST_CHAIN_LABEL);
+  requireCopy(frame, String(POSED_BEST_CHAIN));
 });

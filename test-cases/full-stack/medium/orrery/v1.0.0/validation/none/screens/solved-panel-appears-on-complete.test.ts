@@ -47,6 +47,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNotNull, assertTrue } from "../assert";
+import { drewText } from "../case-harness/text";
 import { ARM_MIN_LEN, SOLVED_ITEMS, SOLVED_TITLE_TEXT } from "../constants";
 import { armPart, setPart, solution } from "../formats";
 import { BARE, ONE_DELIVERY, ORIGIN } from "../fixtures";
@@ -59,10 +60,7 @@ import {
   pauseRun,
   resumeRun,
   spawnMote,
-  textDraws,
-  type DrawCall,
   type Harness,
-  type TextDraw,
 } from "../harness";
 
 /** The whole machine of the completing world: one set, at the origin. */
@@ -79,38 +77,6 @@ const ALWAYS_SHOWN: readonly string[] = [
   SOLVED_ITEMS[1],
   SOLVED_ITEMS[2],
 ];
-
-/**
- * The frame's text, one string per baseline it drew on.
- *
- * A build is free to draw a line as one run or as a run per word, and nothing in
- * `specs/` says which; what they share is the baseline, so the runs at one `y`
- * are joined in `x` order and read as that line.
- */
-function linesOf(draws: readonly TextDraw[]): string[] {
-  const baselines = new Map<number, TextDraw[]>();
-  for (const draw of draws) {
-    const on = baselines.get(draw.y) ?? [];
-    on.push(draw);
-    baselines.set(draw.y, on);
-  }
-  return [...baselines.entries()]
-    .sort((a, b) => a[0] - b[0])
-    .map(([, on]) =>
-      [...on]
-        .sort((a, b) => a.x - b.x)
-        .map((draw) => draw.text)
-        .join(" "),
-    );
-}
-
-/** Whether the frame drew one piece of the panel's copy, however it spaced it. */
-function drewCopy(calls: readonly DrawCall[], copy: string): boolean {
-  const wanted = copy.replace(/\s+/g, "").toLowerCase();
-  return linesOf(textDraws(calls)).some((line) =>
-    line.replace(/\s+/g, "").toLowerCase().includes(wanted),
-  );
-}
 
 let h: Harness;
 
@@ -172,7 +138,7 @@ it("draws the solved panel while the run is complete, and not while it is runnin
 
   for (const copy of ALWAYS_SHOWN) {
     assertTrue(
-      drewCopy(completeCalls, copy),
+      drewText(completeCalls, copy),
       `the panel drawn over the completed run shows ${JSON.stringify(copy)}`,
     );
   }
@@ -183,7 +149,7 @@ it("draws the solved panel while the run is complete, and not while it is runnin
   ] as const) {
     for (const copy of ALWAYS_SHOWN) {
       assertTrue(
-        !drewCopy(calls, copy),
+        !drewText(calls, copy),
         `no solved panel is drawn over a ${status} run, so the frame does not ` +
           `show ${JSON.stringify(copy)}`,
       );

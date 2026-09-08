@@ -83,7 +83,10 @@ class RallyInstance extends GameInstance<null> {
 export const rally: GameDefinition<null> = {
   instance: RallyInstance,
   levels: {
-    [LEVELS.rally]: { mode: RallyMode, actors: [{ type: Ball, tags: [TAGS.ball] }] },
+    [LEVELS.rally]: {
+      mode: RallyMode,
+      actors: [{ type: Ball, tags: [TAGS.ball] }],
+    },
   },
   startLevel: LEVELS.rally,
 };
@@ -112,7 +115,11 @@ export function rallyState(world: World): RallyState {
 ## src/actors/ball.ts
 
 ```ts
-import { Actor, ColliderComponent, ShapeComponent } from "@clockwyrks/structured-2d";
+import {
+  Actor,
+  ColliderComponent,
+  ShapeComponent,
+} from "@clockwyrks/structured-2d";
 import type { Shape } from "@clockwyrks/structured-2d";
 import { BALL, FILLS, HEIGHT, TAGS, WIDTH } from "../constants";
 import { rallyState } from "../state";
@@ -120,7 +127,9 @@ import { rallyState } from "../state";
 const SHAPE: Shape = { kind: "circle", radius: BALL.radius };
 
 export class Ball extends Actor {
-  readonly body = this.attach(new ShapeComponent({ shape: SHAPE, fill: FILLS.ball }));
+  readonly body = this.attach(
+    new ShapeComponent({ shape: SHAPE, fill: FILLS.ball }),
+  );
   readonly collider = this.attach(
     new ColliderComponent({ shape: SHAPE, responses: { default: "overlap" } }),
   );
@@ -165,14 +174,24 @@ counting the contact are the ball's own rules.
 ## src/actors/paddle.ts
 
 ```ts
-import { ColliderComponent, Pawn, ShapeComponent } from "@clockwyrks/structured-2d";
+import {
+  ColliderComponent,
+  Pawn,
+  ShapeComponent,
+} from "@clockwyrks/structured-2d";
 import type { Shape } from "@clockwyrks/structured-2d";
 import { FILLS, PADDLE, TAGS } from "../constants";
 
-const SHAPE: Shape = { kind: "rect", width: PADDLE.width, height: PADDLE.height };
+const SHAPE: Shape = {
+  kind: "rect",
+  width: PADDLE.width,
+  height: PADDLE.height,
+};
 
 export class Paddle extends Pawn {
-  readonly body = this.attach(new ShapeComponent({ shape: SHAPE, fill: FILLS.paddle }));
+  readonly body = this.attach(
+    new ShapeComponent({ shape: SHAPE, fill: FILLS.paddle }),
+  );
   readonly collider = this.attach(
     new ColliderComponent({ shape: SHAPE, responses: { default: "overlap" } }),
   );
@@ -202,7 +221,8 @@ class PaddleController extends PlayerController {
     const pawn = this.pawn;
     if (pawn === null) return;
     const side = this.index === 0 ? "p1" : "p2";
-    const dir = this.input.value(`${side}-down`) - this.input.value(`${side}-up`);
+    const dir =
+      this.input.value(`${side}-down`) - this.input.value(`${side}-up`);
     const half = PADDLE.height / 2;
     const y = pawn.transform.y + dir * PADDLE.speed * dt;
     pawn.transform.y = Math.min(Math.max(y, half), HEIGHT - half);
@@ -274,11 +294,11 @@ match from its `match:phase` subscription.
 
 ## Where each figure lives
 
-| Figure | Holder | Rebuilt |
-| --- | --- | --- |
-| `phase`, `elapsed`, `rallies` | `RallyState` | With the world |
+| Figure                           | Holder             | Rebuilt             |
+| -------------------------------- | ------------------ | ------------------- |
+| `phase`, `elapsed`, `rallies`    | `RallyState`       | With the world      |
 | `index`, `name`, `score`, `aces` | `RallyPlayerState` | On each `addPlayer` |
-| `matches` | `RallyInstance` | Never |
+| `matches`                        | `RallyInstance`    | Never               |
 
 A figure that describes the match belongs to the game state. `rallies` is read
 by the ball and by the mode and means nothing outside this match, so it sits

@@ -76,13 +76,29 @@ export function fillEverySlot(h: Harness): void {
   }
 }
 
-/** Every run of text the frame drew that carries `text`, ignoring case. */
+/** `text` lower-cased with every run of whitespace removed: how copy is compared here. */
+export function folded(text: string): string {
+  return text.replace(/\s+/g, "").toLowerCase();
+}
+
+/**
+ * Every run of text the frame drew that carries `text`, ignoring case and
+ * whitespace.
+ *
+ * Compared with the whitespace folded out of BOTH sides, the way the shared
+ * harness's `drewText` compares: a build that letter-spaces its copy may skip
+ * the space glyph and advance the pen, and one that colours a word may draw a
+ * line's words as separate calls, so a run spelling `LIGHTTHELAMP` — or a run
+ * the merge rule wrote a space into — is the copy `LIGHT THE LAMP` either way.
+ * Fed {@link placedRuns} by every reader here, so a menu item drawn a glyph at
+ * a time is one run holding its name.
+ */
 export function drawsCarrying(
   draws: readonly TextDraw[],
   text: string,
 ): TextDraw[] {
-  const wanted = text.trim().toLowerCase();
-  return draws.filter((draw) => draw.text.toLowerCase().includes(wanted));
+  const wanted = folded(text);
+  return draws.filter((draw) => folded(draw.text).includes(wanted));
 }
 
 /**
@@ -108,17 +124,20 @@ export function lowestAnchorY(
   return found.length === 0 ? null : Math.max(...found.map((d) => d.y));
 }
 
-/** The distinct strings the frame drew below `y`, ignoring the ones carrying `except`. */
+/**
+ * The distinct strings the frame drew below `y`, ignoring the ones carrying
+ * `except` — compared folded, as {@link drawsCarrying} compares.
+ */
 export function textBelow(
   draws: readonly TextDraw[],
   y: number,
   except: string,
 ): string[] {
-  const skip = except.trim().toLowerCase();
+  const skip = folded(except);
   return [
     ...new Set(
       draws
-        .filter((draw) => draw.y > y && !draw.text.toLowerCase().includes(skip))
+        .filter((draw) => draw.y > y && !folded(draw.text).includes(skip))
         .map((draw) => draw.text),
     ),
   ].sort();

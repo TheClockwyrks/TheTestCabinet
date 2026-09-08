@@ -11,18 +11,18 @@ every fault it can raise, is in `specs/simulation.md`.
 `INSTRUCTIONS` holds the ten instructions. A tape cell holds one of them or is
 blank.
 
-| Instruction | Meaning |
-| --- | --- |
-| `grab` | Every gripper closes. A gripper over a mote takes hold of that mote's constellation, as `specs/simulation.md` states. |
-| `drop` | Every gripper opens, releasing whatever it held. |
-| `rotate-cw` | The part turns one 60 degree step clockwise about its base. |
-| `rotate-ccw` | The same, counterclockwise. |
-| `pivot-cw` | Each held constellation turns one 60 degree step clockwise about the gripper holding it. |
-| `pivot-ccw` | The same, counterclockwise. |
-| `extend` | A piston's length rises by one. |
-| `retract` | A piston's length falls by one. |
-| `advance` | A mounted part's base moves to the next cell of its track. |
-| `recede` | The same, to the previous cell. |
+| Instruction  | Meaning                                                                                                               |
+| ------------ | --------------------------------------------------------------------------------------------------------------------- |
+| `grab`       | Every gripper closes. A gripper over a mote takes hold of that mote's constellation, as `specs/simulation.md` states. |
+| `drop`       | Every gripper opens, releasing whatever it held.                                                                      |
+| `rotate-cw`  | The part turns one 60 degree step clockwise about its base.                                                           |
+| `rotate-ccw` | The same, counterclockwise.                                                                                           |
+| `pivot-cw`   | Each held constellation turns one 60 degree step clockwise about the gripper holding it.                              |
+| `pivot-ccw`  | The same, counterclockwise.                                                                                           |
+| `extend`     | A piston's length rises by one.                                                                                       |
+| `retract`    | A piston's length falls by one.                                                                                       |
+| `advance`    | A mounted part's base moves to the next cell of its track.                                                            |
+| `recede`     | The same, to the previous cell.                                                                                       |
 
 A blank cell is a rest: the part holds its pose for the cycle, keeping
 whatever grip it has.

@@ -275,6 +275,64 @@ describe("the surface", () => {
   });
 });
 
+describe("reconciling derived state", () => {
+  it("carries every core operation", () => {
+    for (const op of ["reset", "reconcile", "snapshot", "advance"] as const) {
+      expect(typeof h.debug[op]).toBe("function");
+    }
+  });
+
+  it("agrees with the world a pose left, and advances nothing", () => {
+    enterSite(h, 0);
+    rig(h.game);
+    h.debug.setAutoStep(false);
+    h.debug.startRun();
+    h.debug.setAxis("slew", 30);
+    h.debug.setBob(1, 2, 3);
+    h.debug.setBobVelocity(0, -1, 0);
+
+    const before = h.debug.snapshot();
+    const cues = h.cues.length;
+    h.debug.reconcile();
+    const once = h.debug.snapshot();
+    h.debug.reconcile();
+    const twice = h.debug.snapshot();
+
+    // Every reading agrees with the world as it stands, and no tick, no cue and
+    // no verdict came of the call. Twice is the same as once.
+    expect(once).toEqual(before);
+    expect(twice).toEqual(once);
+    expect(once.run.tick).toBe(before.run.tick);
+    expect(once.simTime).toBe(before.simTime);
+    expect(h.cues).toHaveLength(cues);
+  });
+
+  it("moves nothing to make a reading agree", () => {
+    // The bob is put where it was asked for; the pendulum's own constraint runs
+    // on the next tick, and this call is not that tick.
+    enterSite(h, 0);
+    rig(h.game);
+    h.debug.startRun();
+    h.debug.setBob(9, 9, 9);
+    h.debug.reconcile();
+    expect(h.debug.snapshot().run.bob.pos).toEqual({ x: 9, y: 9, z: 9 });
+  });
+
+  it("answers for the structure the world now holds", () => {
+    enterSite(h, 0);
+    const empty = h.debug.snapshot().structure;
+    expect(empty.cost).toBe(0);
+    expect(empty.issues).toContain("no-ring");
+
+    rig(h.game);
+    h.debug.reconcile();
+    const posed = h.debug.snapshot().structure;
+    expect(posed.members.length).toBeGreaterThan(0);
+    expect(posed.cost).toBeGreaterThan(0);
+    expect(posed.issues).not.toContain("no-ring");
+  });
+});
+
 describe("the snapshot", () => {
   it("reports the whole shape at its resting values", () => {
     const s = h.debug.snapshot();
@@ -417,9 +475,10 @@ describe("the domains", () => {
     h.debug.setMenuIndex(5);
     expect(h.debug.snapshot().menuIndex).toBe(5);
     expect(() => h.debug.setMenuIndex(6)).toThrow();
-    // A screen with no menu does nothing, whatever the index.
+    // A screen carrying no menu has no entry to name, so there is no defined
+    // state to reach and the call fails loudly rather than passing quietly.
     h.debug.setScreen("build");
-    h.debug.setMenuIndex(99);
+    expect(() => h.debug.setMenuIndex(0)).toThrow();
     expect(h.debug.snapshot().menuIndex).toBe(5);
   });
 });
@@ -468,13 +527,18 @@ describe("the screens and the run", () => {
     expect(s.cleared[2]).toBe(true);
   });
 
-  it("poses the camera as the orbit controls do", () => {
-    h.debug.setCamera(-45, 120, 500);
+  it("wraps the yaw and takes the pitch and distance inside their limits", () => {
+    h.debug.setCamera(-45, 80, CAMERA_DIST_MAX);
     expect(h.debug.snapshot().camera).toEqual({
       yaw: 315,
       pitch: 80,
       dist: CAMERA_DIST_MAX,
     });
+    // The pitch and distance limits are constants, so they are the operation's
+    // domain: a value outside either fails loudly rather than being snapped
+    // back inside it (`specs/instrumentation.md`).
+    expect(() => h.debug.setCamera(0, 120, 30)).toThrow();
+    expect(() => h.debug.setCamera(0, 40, CAMERA_DIST_MAX + 1)).toThrow();
   });
 
   it("refuses a start the `run` action refuses, silently", () => {
@@ -504,25 +568,26 @@ describe("the screens and the run", () => {
     expect(h.cues).toEqual(["run-start"]);
   });
 
-  it("does not start from a screen the `run` action has no reach on", () => {
+  it("starts from wherever the game stands, the screen being no condition", () => {
+    // Which screen is showing is how a PLAYER reaches the `run` action and is
+    // not this operation's condition (`specs/instrumentation.md`). What still
+    // decides the start is the structure's readiness, which is the act itself.
     enterSite(h, 0);
     rig(h.game);
     h.debug.setScreen("title");
     h.debug.startRun();
-    expect(h.debug.snapshot().run.phase).toBe("idle");
+    expect(h.debug.snapshot().run.phase).toBe("running");
   });
 
-  it("poses the check action on the build screen alone", () => {
+  it("poses the check action from wherever the game stands", () => {
     enterSite(h, 0);
     h.debug.showCheck();
     expect(vi.mocked(editor.showCheck)).toHaveBeenCalledTimes(1);
-    // The `check` action reaches the build screen and nothing else, and so
-    // does this pose (`specs/instrumentation.md`).
     h.debug.setScreen("program");
     h.debug.showCheck();
     h.debug.setScreen("title");
     h.debug.showCheck();
-    expect(vi.mocked(editor.showCheck)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(editor.showCheck)).toHaveBeenCalledTimes(3);
   });
 
   it("aborts a run in progress with no verdict", () => {
@@ -653,19 +718,23 @@ describe("the structure poses", () => {
     expect(h.cues).toEqual(["place"]);
   });
 
-  it("apply on the build screen and nowhere else", () => {
+  it("edit the open site's structure from whatever screen is showing", () => {
+    // The build screen is how a PLAYER reaches the tools and is not a condition
+    // on these (`specs/instrumentation.md`, The operations).
     enterSite(h, 0);
     h.debug.setScreen("program");
     h.debug.setRing(0, 2, 0);
-    h.debug.clearStructure();
     h.debug.setTool("cable");
     h.debug.setPendingNode(0, 2, 0);
+    expect(vi.mocked(editor.setRing)).toHaveBeenCalledTimes(1);
+    const posed = h.debug.snapshot();
+    expect(posed.tool).toBe("cable");
+    expect(posed.pendingNode).toEqual({ x: 0, y: 2, z: 0 });
+
     h.debug.clearPendingNode();
-    expect(vi.mocked(editor.setRing)).not.toHaveBeenCalled();
-    expect(vi.mocked(editor.clearStructure)).not.toHaveBeenCalled();
-    const s = h.debug.snapshot();
-    expect(s.tool).toBe("strut");
-    expect(s.pendingNode).toBeNull();
+    h.debug.clearStructure();
+    expect(vi.mocked(editor.clearStructure)).toHaveBeenCalledTimes(1);
+    expect(h.debug.snapshot().pendingNode).toBeNull();
   });
 });
 
@@ -710,10 +779,14 @@ describe("the tape poses", () => {
     });
   });
 
-  it("do nothing off the program screen", () => {
+  it("edit the open site's tape from whatever screen is showing", () => {
+    // The program screen is how a PLAYER reaches the tape editor and is not a
+    // condition on these (`specs/instrumentation.md`, The operations).
     h.debug.setScreen("build");
     h.debug.addActionStep("release");
-    expect(h.debug.snapshot().program).toEqual([]);
+    expect(h.debug.snapshot().program).toEqual([
+      { kind: "action", action: "release" },
+    ]);
   });
 });
 
@@ -750,12 +823,17 @@ describe("the site poses", () => {
     expect(h.debug.snapshot().site.obstacles).toHaveLength(1);
   });
 
-  it("do nothing with a run in progress", () => {
+  it("reach the yard with a run in progress", () => {
+    // Whether a run is live is how a PLAYER is kept out of the yard and is not
+    // a condition on these (`specs/instrumentation.md`, The operations). The
+    // run carries the loads it started with, so what changes is the site.
     enterSite(h, 0);
     rig(h.game);
     h.debug.startRun();
     h.debug.clearLoads();
-    expect(h.debug.snapshot().site.loads).toHaveLength(1);
+    const s = h.debug.snapshot();
+    expect(s.site.loads).toEqual([]);
+    expect(s.run.loads).toHaveLength(1);
   });
 });
 
@@ -810,21 +888,27 @@ describe("the run poses", () => {
     expect(() => h.debug.setRunTick(1.5)).toThrow(/tick/);
   });
 
-  it("cycle the watch speed on the run screen", () => {
+  it("cycle the watch speed from whatever screen is showing", () => {
     h.debug.setSpeedIndex(2);
     expect(h.debug.snapshot().run.speedIndex).toBe(2);
     h.debug.setScreen("build");
     h.debug.setSpeedIndex(0);
-    expect(h.debug.snapshot().run.speedIndex).toBe(2);
+    expect(h.debug.snapshot().run.speedIndex).toBe(0);
   });
 
-  it("do nothing with no run in progress", () => {
+  it("pose the run the snapshot reports, run or no run", () => {
+    // The run the snapshot reports is the idle placeholder once a run is
+    // aborted, and posing it is a defined state to reach, so these act
+    // (`specs/instrumentation.md`, The run in progress).
     h.debug.abortRun();
     h.debug.setAxis("slew", 90);
     h.debug.setBob(9, 9, 9);
+    h.debug.setRunTick(600);
     const s = h.debug.snapshot();
-    expect(s.run.axes.slew.value).toBe(0);
-    expect(s.run.bob.pos).toEqual({ x: 0, y: 0, z: 0 });
+    expect(s.run.phase).toBe("idle");
+    expect(s.run.axes.slew.value).toBe(90);
+    expect(s.run.bob.pos).toEqual({ x: 9, y: 9, z: 9 });
+    expect(s.run.tick).toBe(600);
   });
 });
 

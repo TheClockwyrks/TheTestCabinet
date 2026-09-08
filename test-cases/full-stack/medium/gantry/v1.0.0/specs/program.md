@@ -6,12 +6,12 @@ to cleared or failed.
 
 ## The axes
 
-| Axis | Value | Range | Max rate | Acceleration |
-| --- | --- | --- | --- | --- |
-| `slew` | the arm's angle, degrees | unbounded | `SLEW_MAX_RATE` (`30`) deg/s | `SLEW_ACCEL` (`30`) deg/s² |
-| `trolley` | distance along the track from its origin, units | `0` to the track length | `TROLLEY_MAX_RATE` (`4`) u/s | `TROLLEY_ACCEL` (`4`) u/s² |
-| `hoist` | the cable length, units | `HOIST_MIN` (`1`) to `HOIST_MAX` (`40`) | `HOIST_MAX_RATE` (`4`) u/s | `HOIST_ACCEL` (`6`) u/s² |
-| `grip` | the hook's yaw, degrees | unbounded | `GRIP_MAX_RATE` (`45`) deg/s | `GRIP_ACCEL` (`90`) deg/s² |
+| Axis      | Value                                           | Range                                   | Max rate                     | Acceleration               |
+| --------- | ----------------------------------------------- | --------------------------------------- | ---------------------------- | -------------------------- |
+| `slew`    | the arm's angle, degrees                        | unbounded                               | `SLEW_MAX_RATE` (`30`) deg/s | `SLEW_ACCEL` (`30`) deg/s² |
+| `trolley` | distance along the track from its origin, units | `0` to the track length                 | `TROLLEY_MAX_RATE` (`4`) u/s | `TROLLEY_ACCEL` (`4`) u/s² |
+| `hoist`   | the cable length, units                         | `HOIST_MIN` (`1`) to `HOIST_MAX` (`40`) | `HOIST_MAX_RATE` (`4`) u/s   | `HOIST_ACCEL` (`6`) u/s²   |
+| `grip`    | the hook's yaw, degrees                         | unbounded                               | `GRIP_MAX_RATE` (`45`) deg/s | `GRIP_ACCEL` (`90`) deg/s² |
 
 Every run starts from the same posture: `slew` `0`, the build pose;
 `trolley` `0`, the track origin; `hoist` `HOIST_START` (`2`); `grip` `0`. The

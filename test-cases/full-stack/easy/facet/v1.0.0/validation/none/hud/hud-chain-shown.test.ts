@@ -36,12 +36,14 @@
 // figures the readouts beside it are built from — `0`, `3`, and the level's
 // `6000` target — cannot be mistaken for the `1` a chain at step 1 is worth.
 //
-// The copy is read through `frameText`, which gathers a frame's canvas text and
-// the page's own DOM text alike, because specs/assets.md has an engineless
-// build draw its chrome "in code (canvas or DOM)" and this point is not about
-// which of the two it chose. `showsText` then decides whether a string is on
-// screen across every shape specs/ui.md leaves open — one call per line, one
-// per word, one per glyph, or a figure drawn beside its label in a single run.
+// The copy is read through `frameText`, which hands back a frame's draw calls
+// and the page's own rendered DOM text alike, because specs/assets.md has an
+// engineless build draw its chrome "in code (canvas or DOM)" and this point is
+// not about which of the two it chose. `frameShows` then decides whether a
+// string is on screen — the calls through the shared harness's
+// `drewTextAnywhere`, the document by the same reading — across every shape
+// specs/ui.md leaves open: one call per line, one per word, one per glyph, or a
+// figure drawn beside its label in a single run.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength, assertTrue, fail } from "../assert";
@@ -57,9 +59,11 @@ import { HUD_CHAIN_LABEL } from "../constants";
 import {
   captureStill,
   createHarness,
+  frameShows,
   loadBoard,
-  showsText,
+  shownText,
   swapAndStep,
+  type FrameText,
   type Harness,
 } from "../harness";
 
@@ -80,10 +84,13 @@ const POSED_LEVEL = 3;
 
 let h: Harness;
 
-/** The frame showed `wanted`, or the failure names it beside what it drew. */
-function requireCopy(drawn: readonly string[], wanted: string): void {
-  if (!showsText(drawn, wanted)) {
-    fail(`the resolving frame to show ${JSON.stringify(wanted)}`, drawn);
+/** The frame showed `wanted`, or the failure names it beside what it showed. */
+function requireCopy(frame: FrameText, wanted: string): void {
+  if (!frameShows(frame, wanted)) {
+    fail(
+      `the resolving frame to show ${JSON.stringify(wanted)}`,
+      shownText(frame),
+    );
   }
 }
 
@@ -125,7 +132,7 @@ it("shows the chain label and the multiplier while a chain resolves", async () =
 
   // One frame — a sixty-fourth of a second, far inside the step's own hold —
   // and everything it put on screen. The still is that same frame.
-  const drawn = await h.frameText();
+  const frame = await h.frameText();
   await captureStill(h, "hud");
   assertEqual(
     (await h.snapshot()).phase,
@@ -133,6 +140,6 @@ it("shows the chain label and the multiplier while a chain resolves", async () =
     "the phase it was read at",
   );
 
-  requireCopy(drawn, HUD_CHAIN_LABEL);
-  requireCopy(drawn, String(resolving.multiplier));
+  requireCopy(frame, HUD_CHAIN_LABEL);
+  requireCopy(frame, String(resolving.multiplier));
 });

@@ -51,11 +51,22 @@ import {
 
 /** The seven screens of `specs/ui.md`. */
 export type Screen =
-  "title" | "howto" | "select" | "build" | "program" | "run" | "results";
+  | "title"
+  | "howto"
+  | "select"
+  | "build"
+  | "program"
+  | "run"
+  | "results";
 
 /** The six build tools of `specs/controls.md`. */
 export type Tool =
-  "strut" | "cable" | "rail" | "ring" | "counterweight" | "delete";
+  | "strut"
+  | "cable"
+  | "rail"
+  | "ring"
+  | "counterweight"
+  | "delete";
 
 export const SCREENS: readonly Screen[] = [
   "title",

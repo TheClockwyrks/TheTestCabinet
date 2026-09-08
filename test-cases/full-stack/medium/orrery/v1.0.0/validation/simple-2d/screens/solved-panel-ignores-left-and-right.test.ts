@@ -103,40 +103,16 @@ it("leaves the highlight, the screen and the how-to page alone under left and ri
     HIGHLIGHT,
     "left is omitted from the editor, faulted or complete row, so it does not move the highlight",
   );
-  assertEqual(
-    afterLeft.screen,
-    "editor",
-    "and it does not leave the editor",
-  );
-  assertEqual(
-    afterLeft.howtoPage,
-    0,
-    "and it turns no how-to page",
-  );
-  assertEqual(
-    afterLeft.sim?.status,
-    "complete",
-    "and it leaves the panel up",
-  );
+  assertEqual(afterLeft.screen, "editor", "and it does not leave the editor");
+  assertEqual(afterLeft.howtoPage, 0, "and it turns no how-to page");
+  assertEqual(afterLeft.sim?.status, "complete", "and it leaves the panel up");
 
   assertEqual(
     afterRight.menuIndex,
     HIGHLIGHT,
     "right is omitted from the same row, so it does not move the highlight either",
   );
-  assertEqual(
-    afterRight.screen,
-    "editor",
-    "and it does not leave the editor",
-  );
-  assertEqual(
-    afterRight.howtoPage,
-    0,
-    "and it turns no how-to page",
-  );
-  assertEqual(
-    afterRight.sim?.status,
-    "complete",
-    "and it leaves the panel up",
-  );
+  assertEqual(afterRight.screen, "editor", "and it does not leave the editor");
+  assertEqual(afterRight.howtoPage, 0, "and it turns no how-to page");
+  assertEqual(afterRight.sim?.status, "complete", "and it leaves the panel up");
 });

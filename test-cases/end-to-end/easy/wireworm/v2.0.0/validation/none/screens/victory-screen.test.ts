@@ -32,10 +32,10 @@ import { ENDING_ITEMS, TOTAL_LEVELS } from "../constants";
 import {
   captureStill,
   createHarness,
-  drewText,
   drewWord,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/index";
 import { poseEnding, renderDigest } from "./screens";
 
 /**

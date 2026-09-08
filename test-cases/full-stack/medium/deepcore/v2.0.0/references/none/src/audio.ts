@@ -18,7 +18,11 @@ export type Cue =
 
 /** Cues that play as a sustained loop while active (started/stopped by the game). */
 export type LoopCue =
-  "drill" | "thrust" | "alarm-fuel" | "alarm-core" | "music";
+  | "drill"
+  | "thrust"
+  | "alarm-fuel"
+  | "alarm-core"
+  | "music";
 
 type Name = Cue | LoopCue;
 

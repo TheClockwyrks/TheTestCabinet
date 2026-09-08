@@ -25,9 +25,11 @@
 // yours" — and letter spacing is not portable, so a build is free to draw one
 // entry as one call, as a call per word, or as a call per glyph. What all of
 // those share is the baseline: one entry is drawn at one `y`, and stacked
-// entries at different ones. So the frame's text runs are gathered by the `y`
-// their anchor maps to and joined in `x` order, and each entry is found by the
-// line it lies on. Nothing here reads a coordinate, a size or a colour
+// entries at different ones. So each entry is read with the shared harness's
+// `drewText`, and then placed by the line it lies on — `drawing.ts`'s
+// `textLines`, the same logical runs gathered onto the baselines they share,
+// and `lineWith`, which finds a line by the rule `drewText` matched it by.
+// Nothing here reads a coordinate, a size or a colour
 // `specs/` does not fix — only which line is further down the stage than
 // which, and the stage's `y` grows downward.
 //
@@ -35,7 +37,13 @@
 // `SOLVED_ITEMS`, and each is drawn below the one before it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThan, assertNotNull } from "../assert";
+import {
+  assertEqual,
+  assertGreaterThan,
+  assertNotNull,
+  assertTrue,
+} from "../assert";
+import { drewText } from "../case-harness/text";
 import { SOLVED_ITEMS } from "../constants";
 import { extra } from "../challenges";
 import { setPart, solution } from "../formats";
@@ -44,11 +52,12 @@ import {
   advanceCycles,
   captureStill,
   createHarness,
+  lineWith,
   loadMachine,
   openChallenge,
-  textDraws,
+  textLines,
   type Harness,
-  type TextDraw,
+  type TextLine,
 } from "../harness";
 
 /** The Extra this check completes: the first, which the shelf holds nine after. */
@@ -67,35 +76,6 @@ afterEach(async () => {
   await h.dispose();
 });
 
-/** One baseline the frame drew text on, and the runs on it read left to right. */
-interface Line {
-  y: number;
-  text: string;
-}
-
-/** The frame's text runs, gathered into the baselines they were drawn on. */
-function linesOf(draws: readonly TextDraw[]): Line[] {
-  const baselines = new Map<number, TextDraw[]>();
-  for (const draw of draws) {
-    baselines.set(draw.y, [...(baselines.get(draw.y) ?? []), draw]);
-  }
-  return [...baselines.entries()]
-    .map(([y, on]) => ({
-      y,
-      text: [...on]
-        .sort((a, b) => a.x - b.x)
-        .map((draw) => draw.text)
-        .join(""),
-    }))
-    .sort((a, b) => a.y - b.y);
-}
-
-/** The topmost line the frame drew `text` on, or `null` when it drew it on none. */
-function lineWith(lines: readonly Line[], text: string): Line | null {
-  const wanted = text.trim().toLowerCase();
-  return lines.find((line) => line.text.toLowerCase().includes(wanted)) ?? null;
-}
-
 it("stacks NEXT CHALLENGE, KEEP TINKERING and BACK TO SELECT down the panel", async () => {
   await openChallenge(h, "extras", INDEX);
   await loadMachine(h, ONE_SET);
@@ -104,7 +84,8 @@ it("stacks NEXT CHALLENGE, KEEP TINKERING and BACK TO SELECT down the panel", as
   await advanceCycles(h, 1);
   await h.advance(1);
 
-  const lines = linesOf(textDraws(await h.lastCalls()));
+  const calls = await h.lastCalls();
+  const lines = textLines(calls);
   await captureStill(h, "menu");
 
   const shown = await h.snapshot();
@@ -115,13 +96,17 @@ it("stacks NEXT CHALLENGE, KEEP TINKERING and BACK TO SELECT down the panel", as
     "the boundary that reached the target completed the run, which is when the panel is up",
   );
 
-  const rows: Line[] = [];
+  const rows: TextLine[] = [];
   for (const item of SOLVED_ITEMS) {
+    assertTrue(
+      drewText(calls, item),
+      `the solved panel draws the SOLVED_ITEMS entry ${item}, which the mode ` +
+        "offers here because it holds a challenge after this one",
+    );
     const row = lineWith(lines, item);
     assertNotNull(
       row,
-      `the solved panel draws the SOLVED_ITEMS entry ${item}, which the mode ` +
-        "offers here because it holds a challenge after this one",
+      `the SOLVED_ITEMS entry ${item} lies on a line of its own`,
     );
     if (row !== null) rows.push(row);
   }

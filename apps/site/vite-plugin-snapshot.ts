@@ -505,7 +505,24 @@ interface AssembledSnapshot {
   // Resolved *actual* automated-validation media URLs, keyed by run id then by the
   // flat `<item>__<output>.<ext>` name the reviewer UI requests. The app's
   // `validationMediaUrl(runId, file)` reads this.
+  //
+  // A recording's SHARED IMAGE STORE is deliberately NOT in here — see
+  // `validationStorePrefixes`.
   validationMediaUrls: Record<string, Record<string, string>>;
+  // Where a run's shared image store lives, as an absolute URL prefix, keyed by run
+  // id. One string per run rather than one per file, and that is the whole point of
+  // it: every generated map in this module is inlined into a single eagerly-imported
+  // constant that every visitor downloads before the home page renders, and a run's
+  // store holds a distinct file per unique image its recordings drew — some fifteen
+  // hundred of them for the busiest case in the corpus. Listing those individually
+  // would put a few hundred kilobytes of JavaScript in the main chunk per published
+  // run, for URLs only one replay on one run page will ever ask for.
+  //
+  // Store file names are content-addressed and published verbatim, so the prefix
+  // plus the name the recording carries is the URL. The prefix is taken from a
+  // published key rather than composed here, so this file learns no key shape it did
+  // not already know.
+  validationStorePrefixes: Record<string, string>;
   // Resolved showcase media URLs (the run's carousel media plus any image the
   // description references), keyed by run id then by the recorded file name (a
   // video's `.webm` request resolving to its published `.mp4`). The app's
@@ -531,7 +548,14 @@ interface AssembledSnapshot {
   // `<slug>/<version>/<engine>/<variant>` subject key then by the flat
   // `<item>__<output>.<ext>` name. Case-scoped, so keyed by subject rather than run
   // id. The app's `validationBaselineUrl(subject, file)` reads this.
+  //
+  // The shared image store is not in here either — see `baselineStorePrefixes`.
   validationBaselineUrls: Record<string, Record<string, string>>;
+  // Where a case version's committed image store lives, as an absolute URL prefix,
+  // keyed by the same `<slug>/<version>/<engine>/<variant>` subject key. The
+  // case-scoped counterpart of `validationStorePrefixes`, and carried for the same
+  // reason: a reference's store is the larger of the two.
+  baselineStorePrefixes: Record<string, string>;
   // Resolved **asset-reference** media URLs — a published reference frame's image,
   // and the action log it was drawn from — keyed by a `<slug>/<version>/<variant>`
   // subject key then by the file below that variant's prefix (`frames/<index>.png`,
@@ -816,10 +840,12 @@ const EMPTY: AssembledSnapshot = {
   proofMediaUrls: {},
   assetMediaUrls: {},
   validationMediaUrls: {},
+  validationStorePrefixes: {},
   showcaseMediaUrls: {},
   caseShowcaseMediaUrls: {},
   codeAnalysisUrls: {},
   validationBaselineUrls: {},
+  baselineStorePrefixes: {},
   referenceMediaUrls: {},
 };
 
@@ -857,6 +883,26 @@ function worstAestheticRating(tiers: string[]): string | null {
 }
 
 // Join a base URL with a snapshot-relative key, collapsing any double slash.
+/**
+ * Whether `file` is one of a recording's shared image store rather than a declared
+ * validation output.
+ *
+ * MIRRORS `VALIDATION_IMAGE_PREFIX` / `is_validation_image_name` in
+ * `crates/core/src/validator.rs` and `IMAGE_STORE_PREFIX` in
+ * `packages/case-harness/src/replay/store.ts`. A declared output's flat name always
+ * carries `__` and a store file's never does, which is what keeps the two apart in
+ * the one namespace they share.
+ */
+function isImageStoreFile(file: string): boolean {
+  return file.startsWith("img.");
+}
+
+/** Everything of a published key up to and including its last `/`. */
+function prefixOf(key: string): string {
+  const cut = key.lastIndexOf("/");
+  return cut < 0 ? "" : key.slice(0, cut + 1);
+}
+
 function joinUrl(base: string, key: string): string {
   return `${base.replace(/\/+$/, "")}/${key.replace(/^\/+/, "")}`;
 }
@@ -1320,10 +1366,12 @@ async function loadSnapshot(
   const proofMediaUrls: Record<string, Record<string, string>> = {};
   const assetMediaUrls: Record<string, Record<string, string>> = {};
   const validationMediaUrls: Record<string, Record<string, string>> = {};
+  const validationStorePrefixes: Record<string, string> = {};
   const showcaseMediaUrls: Record<string, Record<string, string>> = {};
   const caseShowcaseMediaUrls: Record<string, Record<string, string>> = {};
   const codeAnalysisUrls: Record<string, string> = {};
   const validationBaselineUrls: Record<string, Record<string, string>> = {};
+  const baselineStorePrefixes: Record<string, string> = {};
   const referenceMediaUrls: Record<string, Record<string, string>> = {};
   // The case-version keys referenced by published runs; deduplicated.
   const caseKeys = new Set<string>();
@@ -1380,6 +1428,19 @@ async function loadSnapshot(
     if (runFile.validationMedia?.length) {
       const byFile: Record<string, string> = {};
       for (const media of runFile.validationMedia) {
+        // A recording's shared image store contributes ONE prefix rather than one
+        // entry per file. Every map in this module is inlined into a constant the
+        // main chunk carries, and a run's store holds a file per unique image its
+        // recordings drew — fifteen hundred of them for the busiest case here. The
+        // names are content-addressed and published verbatim, so a prefix taken
+        // from any one of the run's store keys resolves all of them.
+        if (isImageStoreFile(media.file)) {
+          validationStorePrefixes[summary.id] ??= joinUrl(
+            base,
+            prefixOf(media.key),
+          );
+          continue;
+        }
         byFile[media.file] = joinUrl(base, media.key);
       }
       validationMediaUrls[summary.id] = byFile;
@@ -1431,6 +1492,17 @@ async function loadSnapshot(
   for (const file of caseFiles) {
     for (const baseline of file.validationBaselines ?? []) {
       const subjectKey = `${file.slug}/${file.version}/${baseline.engine}/${baseline.variant}`;
+      // The store is carried as one prefix per subject, for the same reason and by
+      // the same rule as the run-scoped one above. A committed reference's store is
+      // the larger of the two, since it holds an entry for every image the whole
+      // baseline corpus of that engine and variant drew.
+      if (isImageStoreFile(baseline.file)) {
+        baselineStorePrefixes[subjectKey] ??= joinUrl(
+          base,
+          prefixOf(baseline.key),
+        );
+        continue;
+      }
       const byFile = validationBaselineUrls[subjectKey] ?? {};
       byFile[baseline.file] = joinUrl(base, baseline.key);
       validationBaselineUrls[subjectKey] = byFile;
@@ -1564,9 +1636,11 @@ async function loadSnapshot(
     assetMediaUrls,
     codeAnalysisUrls,
     validationMediaUrls,
+    validationStorePrefixes,
     showcaseMediaUrls,
     caseShowcaseMediaUrls,
     validationBaselineUrls,
+    baselineStorePrefixes,
     referenceMediaUrls,
   };
 }
@@ -1586,9 +1660,11 @@ function serialize(data: AssembledSnapshot): string {
     `export const assetMediaUrls = ${JSON.stringify(data.assetMediaUrls)};`,
     `export const codeAnalysisUrls = ${JSON.stringify(data.codeAnalysisUrls)};`,
     `export const validationMediaUrls = ${JSON.stringify(data.validationMediaUrls)};`,
+    `export const validationStorePrefixes = ${JSON.stringify(data.validationStorePrefixes)};`,
     `export const showcaseMediaUrls = ${JSON.stringify(data.showcaseMediaUrls)};`,
     `export const caseShowcaseMediaUrls = ${JSON.stringify(data.caseShowcaseMediaUrls)};`,
     `export const validationBaselineUrls = ${JSON.stringify(data.validationBaselineUrls)};`,
+    `export const baselineStorePrefixes = ${JSON.stringify(data.baselineStorePrefixes)};`,
     `export const referenceMediaUrls = ${JSON.stringify(data.referenceMediaUrls)};`,
   ].join("\n");
 }

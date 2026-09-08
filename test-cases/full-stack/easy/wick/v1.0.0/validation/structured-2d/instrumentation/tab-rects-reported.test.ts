@@ -36,7 +36,7 @@ import {
   menuRects,
   poseScreen,
   tabRects,
-  textDraws,
+  placedRuns,
   type Harness,
 } from "../harness";
 import {
@@ -79,7 +79,7 @@ it("reports one rectangle per tab, in ALMANAC_TABS order, clear of the entry row
   captureStill(h, "tabs");
   assertLabelledInOrder(
     h,
-    textDraws(drawn.calls),
+    placedRuns(drawn.calls),
     tabs,
     ALMANAC_TABS,
     "tabRects() reports the tab bar's rectangles in ALMANAC_TABS order",

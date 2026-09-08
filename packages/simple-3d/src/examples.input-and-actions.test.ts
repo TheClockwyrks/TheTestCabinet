@@ -132,7 +132,11 @@ export const hopper: Game<HopperState, null> = {
     ];
   },
 
-  update(state: DeepReadonly<HopperState>, api: UpdateApi, dt: number): HopperState {
+  update(
+    state: DeepReadonly<HopperState>,
+    api: UpdateApi,
+    dt: number,
+  ): HopperState {
     const paused = api.input.pressed("pause") ? !state.paused : state.paused;
     if (paused) return { ...state, paused };
 
@@ -143,8 +147,16 @@ export const hopper: Game<HopperState, null> = {
     const strafe = api.input.value("move-right") - api.input.value("move-left");
     const sin = Math.sin(yaw);
     const cos = Math.cos(yaw);
-    const x = clamp(state.x + (cos * strafe - sin * forward) * RUN * dt, -LIMIT, LIMIT);
-    const z = clamp(state.z - (sin * strafe + cos * forward) * RUN * dt, -LIMIT, LIMIT);
+    const x = clamp(
+      state.x + (cos * strafe - sin * forward) * RUN * dt,
+      -LIMIT,
+      LIMIT,
+    );
+    const z = clamp(
+      state.z - (sin * strafe + cos * forward) * RUN * dt,
+      -LIMIT,
+      LIMIT,
+    );
 
     const jumping = api.input.pressed("a") && state.grounded;
     const launched = jumping
@@ -256,8 +268,10 @@ function boot(game: Game<HopperState, null> = hopper): {
       (canvas) =>
         canvas !== stage && contexts.context2dFor(canvas) !== undefined,
     );
-    const hud = screen === undefined ? undefined : contexts.context2dFor(screen);
-    if (hud === undefined) throw new Error("the engine minted no screen canvas");
+    const hud =
+      screen === undefined ? undefined : contexts.context2dFor(screen);
+    if (hud === undefined)
+      throw new Error("the engine minted no screen canvas");
 
     return { engine, surface, hud };
   } finally {
@@ -299,7 +313,9 @@ describe("examples/input-and-actions", () => {
     let seen: TouchLayout | null = null;
     const { engine } = boot({
       ...hopper,
-      async initialize(api: InitApi<HopperState>): Promise<[HopperState, null]> {
+      async initialize(
+        api: InitApi<HopperState>,
+      ): Promise<[HopperState, null]> {
         seen = api.input.layout();
         return await hopper.initialize(api);
       },
@@ -382,7 +398,10 @@ describe("examples/input-and-actions", () => {
 
     // "the one the sixtieth frame's `render` posed from the state that frame left"
     // — the whole pose, not the one component the page checks.
-    expect(camera.position.z).toBeCloseTo(engine.state.z + ORBIT * Math.cos(yaw), 6);
+    expect(camera.position.z).toBeCloseTo(
+      engine.state.z + ORBIT * Math.cos(yaw),
+      6,
+    );
     expect(camera.position.y).toBeCloseTo(EYE_HEIGHT, 6);
     // Looking left and right at once is no turn at all, so the look axis is a
     // difference like the move axes are.

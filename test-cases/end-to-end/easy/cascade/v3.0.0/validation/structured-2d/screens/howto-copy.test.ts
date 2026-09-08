@@ -16,6 +16,10 @@
 // STOCKING does not name the STOCK — while any phrasing that uses the word does:
 // "up to the KING", "off the STOCK onto the waste", "DOUBLE-CLICK a card". Case
 // is ignored, because which case a build sets its copy in is its own typography.
+// So is spacing: the copy is read as the RUNS the frame spells
+// (`drawnTextLines`) rather than as its `fillText` calls, because a build that
+// letter-spaces a heading draws it a glyph per call, and `S T O C K` is the
+// word.
 //
 // THE SCREEN IS POSED WITH `setScreen`, so a build that draws the right copy
 // behind a broken menu fails `screens/title-how-to-opens` alone.
@@ -25,7 +29,7 @@ import { assertEqual, assertGreaterThan, assertMatches } from "../assert";
 import {
   captureStill,
   createHarness,
-  drawnText,
+  drawnTextLines,
   resetTo,
   type Harness,
 } from "../harness";
@@ -54,7 +58,7 @@ it("names ACE, KING, STOCK and DOUBLE-CLICK as standalone words", async () => {
   const calls = await h.drawFrame();
   captureStill(h, "howto");
 
-  const runs = drawnText(calls);
+  const runs = drawnTextLines(calls);
   assertGreaterThan(
     runs.length,
     0,

@@ -18,9 +18,11 @@
 // reaches `36000`. Every driver switch is off, so nothing spawns into the last
 // tick and nothing else moves a figure the screen reports.
 //
-// THE TOLERANCE. The copy is matched folded, the level and the kill count are
-// matched as whole numbers standing alone, and the menu's order is a strict
-// inequality between two drawn rows.
+// THE TOLERANCE. The copy is matched ignoring case and whitespace, across the
+// runs of text the frame drew joined in reading order (the shared harness's
+// `drewTextAnywhere`), the level and the kill count are matched as whole
+// numbers standing alone, and the menu's order is a strict inequality between
+// two drawn rows.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";

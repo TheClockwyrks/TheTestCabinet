@@ -231,7 +231,7 @@ build = "npm run build"
 # build will be run over the finished repository.
 [toolchain]
 typecheck = "npx tsc --noEmit"
-lint = "npx eslint ."
+lint = "npx eslint . --max-warnings 0"
 format = "npx prettier --check ."
 test = "npx vitest run --coverage"
 

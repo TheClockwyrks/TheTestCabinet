@@ -32,15 +32,15 @@ interface TouchLayout {
 }
 ```
 
-| Field | Meaning |
-| --- | --- |
-| `ActionBinding.keys` | The `KeyboardEvent.code` values that drive the action. |
-| `ActionBinding.kind` | How a magnitude reaching the action is reported. Defaults to `"digital"`. |
-| `RegisteredAction.name` | The name the action was registered under. |
-| `RegisteredAction.keys` | The bound codes, as a copy. |
-| `RegisteredAction.kind` | The resolved kind, always present. |
+| Field                     | Meaning                                                                                                 |
+| ------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `ActionBinding.keys`      | The `KeyboardEvent.code` values that drive the action.                                                  |
+| `ActionBinding.kind`      | How a magnitude reaching the action is reported. Defaults to `"digital"`.                               |
+| `RegisteredAction.name`   | The name the action was registered under.                                                               |
+| `RegisteredAction.keys`   | The bound codes, as a copy.                                                                             |
+| `RegisteredAction.kind`   | The resolved kind, always present.                                                                      |
 | `RegisteredAction.layout` | The touch layout the action belongs to, or `null` when the selected layout's vocabulary omits the name. |
-| `TouchLayout.actions` | The layout's own vocabulary followed by the four menu actions. |
+| `TouchLayout.actions`     | The layout's own vocabulary followed by the four menu actions.                                          |
 
 A `RegisteredAction` is the resolved form of a registration: the binding with
 its defaults filled in and its layout provenance attached.
@@ -54,10 +54,10 @@ readonly input: {
 };
 ```
 
-| Member | Semantics |
-| --- | --- |
+| Member                    | Semantics                                                                                                                                                                                                                                                                                                                                                                         |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `register(name, binding)` | Registers or re-registers `name`. `binding.keys` is copied, `binding.kind` defaults to `"digital"`, and `layout` resolves to the selected layout's name when that layout's vocabulary contains `name` and to `null` otherwise. Re-registering replaces the binding wholesale, returns the action to rest, and keeps its position in the registration order. Any name is accepted. |
-| `layout()` | The layout selected by `EngineOptions.layout`, or `null` when the engine was built without one. |
+| `layout()`                | The layout selected by `EngineOptions.layout`, or `null` when the engine was built without one.                                                                                                                                                                                                                                                                                   |
 
 The layout is chosen at construction through
 [`EngineOptions.layout`](/engines/structured-3d/apis/engine/) and holds for the
@@ -95,10 +95,10 @@ any actor, so a pawn's own tick observes the input its controller already
 applied. [Possession](/engines/structured-3d/concepts/possession/) covers the
 relationship in full.
 
-| Member | Result | Semantics |
-| --- | --- | --- |
-| `value(name)` | `number` | The action's resolved magnitude. A `"digital"` action reports `0` or `1`, with every non-zero magnitude quantized to `1`. An `"analog"` action reports the magnitude as given, and a held key gives it full deflection. An unregistered name reports `0`. |
-| `pressed(name)` | `boolean` | `true` exactly once per armed edge per player controller, and the call consumes that controller's copy. An unregistered name reports `false`. |
+| Member          | Result    | Semantics                                                                                                                                                                                                                                                 |
+| --------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `value(name)`   | `number`  | The action's resolved magnitude. A `"digital"` action reports `0` or `1`, with every non-zero magnitude quantized to `1`. An `"analog"` action reports the magnitude as given, and a held key gives it full deflection. An unregistered name reports `0`. |
+| `pressed(name)` | `boolean` | `true` exactly once per armed edge per player controller, and the call consumes that controller's copy. An unregistered name reports `false`.                                                                                                             |
 
 An edge is armed whenever a change takes the resolved value from `0` to
 non-zero, whatever the source. A key event whose `repeat` flag is set arms
@@ -154,14 +154,14 @@ interface WheelDelta {
 }
 ```
 
-| Field | Meaning |
-| --- | --- |
-| `id` | The pointer a sample or contact belongs to. A mouse keeps one id for the life of the page, and each touch gets its own. |
-| `primary` | Whether this is the primary pointer, the one the snapshot and the edges follow. A mouse is always primary, and among touches the first one down is. |
-| `device` | Which kind of device drove it. |
-| `button` | The button whose state a sample reports, or `null` when the sample reports movement alone. |
-| `buttons` | Every button held once the sample has been applied, in the order `PointerButton` lists them. A pen or a touch in contact holds `primary`. |
-| `WheelDelta.x`, `.y` | Wheel travel over one input frame, in logical units, positive rightward and downward. |
+| Field                | Meaning                                                                                                                                             |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                 | The pointer a sample or contact belongs to. A mouse keeps one id for the life of the page, and each touch gets its own.                             |
+| `primary`            | Whether this is the primary pointer, the one the snapshot and the edges follow. A mouse is always primary, and among touches the first one down is. |
+| `device`             | Which kind of device drove it.                                                                                                                      |
+| `button`             | The button whose state a sample reports, or `null` when the sample reports movement alone.                                                          |
+| `buttons`            | Every button held once the sample has been applied, in the order `PointerButton` lists them. A pen or a touch in contact holds `primary`.           |
+| `WheelDelta.x`, `.y` | Wheel travel over one input frame, in logical units, positive rightward and downward.                                                               |
 
 The engine maps every pointer into the logical design coordinates handed to
 `createEngine`: each event's client position is taken relative to the surface's
@@ -172,14 +172,14 @@ know what the pointer is over turns the position into a world-space ray through
 point inside a letterbox bar maps outside `0..width` or `0..height`, and a game
 clamps it or treats it as a miss.
 
-| Member | Result | Semantics |
-| --- | --- | --- |
-| `pointer()` | `PointerSnapshot` | The primary pointer's most recent position, whether it is held, the device that last drove it, and the buttons it holds, as a fresh copy. Before the first pointer event the position is `(0, 0)`, `down` is `false`, `device` is `"mouse"`, and `buttons` is empty. |
-| `pointerPressed(button?)` | `boolean` | `true` exactly once per press edge of `button` per player controller, and the call consumes that controller's copy. `button` defaults to `"primary"`. |
-| `pointerReleased(button?)` | `boolean` | `true` exactly once per release edge of `button` per player controller, and the call consumes that controller's copy. `button` defaults to `"primary"`. |
-| `pointerSamples()` | `PointerSample[]` | Every sample every pointer delivered since the input frame last closed, in arrival order, as a fresh copy. Reading does not consume the list. |
-| `pointerContacts()` | `PointerContact[]` | Every pointer in contact with the surface, in the order they came into contact, as a fresh copy. |
-| `wheel()` | `WheelDelta` | The wheel travel accumulated since the input frame last closed, as a fresh copy. |
+| Member                     | Result             | Semantics                                                                                                                                                                                                                                                            |
+| -------------------------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pointer()`                | `PointerSnapshot`  | The primary pointer's most recent position, whether it is held, the device that last drove it, and the buttons it holds, as a fresh copy. Before the first pointer event the position is `(0, 0)`, `down` is `false`, `device` is `"mouse"`, and `buttons` is empty. |
+| `pointerPressed(button?)`  | `boolean`          | `true` exactly once per press edge of `button` per player controller, and the call consumes that controller's copy. `button` defaults to `"primary"`.                                                                                                                |
+| `pointerReleased(button?)` | `boolean`          | `true` exactly once per release edge of `button` per player controller, and the call consumes that controller's copy. `button` defaults to `"primary"`.                                                                                                              |
+| `pointerSamples()`         | `PointerSample[]`  | Every sample every pointer delivered since the input frame last closed, in arrival order, as a fresh copy. Reading does not consume the list.                                                                                                                        |
+| `pointerContacts()`        | `PointerContact[]` | Every pointer in contact with the surface, in the order they came into contact, as a fresh copy.                                                                                                                                                                     |
+| `wheel()`                  | `WheelDelta`       | The wheel travel accumulated since the input frame last closed, as a fresh copy.                                                                                                                                                                                     |
 
 The snapshot is what aiming and hovering read. The samples are what a game that
 resolves each position on its own reads: a sweep that crossed several targets
@@ -287,13 +287,13 @@ const TOUCH_LAYOUTS: Readonly<Record<string, TouchLayout>>;
 menu actions are `["confirm", "back", "pause", "mute"]`, appended to every
 entry's own vocabulary in that order.
 
-| Layout | Controls | Own vocabulary |
-| --- | --- | --- |
-| `dpad-4` | A four-way pad | `up`, `down`, `left`, `right` |
-| `dpad-4-two-buttons` | A four-way pad and two action buttons | `up`, `down`, `left`, `right`, `a`, `b` |
-| `single-stick` | One analog stick | `move-up`, `move-down`, `move-left`, `move-right` |
-| `dual-stick` | Two analog sticks | `move-up`, `move-down`, `move-left`, `move-right`, `look-up`, `look-down`, `look-left`, `look-right` |
-| `dual-stick-two-buttons` | Two analog sticks and two action buttons | The `dual-stick` vocabulary followed by `a`, `b` |
+| Layout                   | Controls                                 | Own vocabulary                                                                                       |
+| ------------------------ | ---------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `dpad-4`                 | A four-way pad                           | `up`, `down`, `left`, `right`                                                                        |
+| `dpad-4-two-buttons`     | A four-way pad and two action buttons    | `up`, `down`, `left`, `right`, `a`, `b`                                                              |
+| `single-stick`           | One analog stick                         | `move-up`, `move-down`, `move-left`, `move-right`                                                    |
+| `dual-stick`             | Two analog sticks                        | `move-up`, `move-down`, `move-left`, `move-right`, `look-up`, `look-down`, `look-left`, `look-right` |
+| `dual-stick-two-buttons` | Two analog sticks and two action buttons | The `dual-stick` vocabulary followed by `a`, `b`                                                     |
 
 Each entry's `actions` is the vocabulary above followed by the four menu
 actions, so `TOUCH_LAYOUTS["single-stick"].actions` is `["move-up",
@@ -309,15 +309,24 @@ deflection either way.
 
 ```ts
 api.input.register("move-up", { keys: ["KeyW", "ArrowUp"], kind: "analog" });
-api.input.register("move-down", { keys: ["KeyS", "ArrowDown"], kind: "analog" });
-api.input.register("move-left", { keys: ["KeyA", "ArrowLeft"], kind: "analog" });
-api.input.register("move-right", { keys: ["KeyD", "ArrowRight"], kind: "analog" });
+api.input.register("move-down", {
+  keys: ["KeyS", "ArrowDown"],
+  kind: "analog",
+});
+api.input.register("move-left", {
+  keys: ["KeyA", "ArrowLeft"],
+  kind: "analog",
+});
+api.input.register("move-right", {
+  keys: ["KeyD", "ArrowRight"],
+  kind: "analog",
+});
 ```
 
 ## Errors
 
-| Condition | Result |
-| --- | --- |
+| Condition                                                     | Result                                           |
+| ------------------------------------------------------------- | ------------------------------------------------ |
 | `EngineOptions.layout` names a layout outside `TOUCH_LAYOUTS` | `createEngine` throws, naming every valid layout |
 
 ## Exports

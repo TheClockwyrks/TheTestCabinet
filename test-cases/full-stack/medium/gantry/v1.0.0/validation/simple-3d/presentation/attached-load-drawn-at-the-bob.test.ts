@@ -69,7 +69,10 @@ it("draws an attached load at the bob it hangs from", async () => {
 
   await h.capture("hanging", "The attached load hanging at the bob");
 
-  assertTrue(models.length > 0, `a \`${CLASS}\` model among what the frame drew`);
+  assertTrue(
+    models.length > 0,
+    `a \`${CLASS}\` model among what the frame drew`,
+  );
   const away = distance3(entryAt(models[0]!), run.bob.pos);
   assertTrue(
     away <= REACH,

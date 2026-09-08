@@ -58,7 +58,9 @@ function symbol(over: Partial<CodeSymbolEntry> = {}): CodeSymbolEntry {
   };
 }
 
-function document(over: Partial<CodeAnalysisDocument> = {}): CodeAnalysisDocument {
+function document(
+  over: Partial<CodeAnalysisDocument> = {},
+): CodeAnalysisDocument {
   return {
     analyzerVersion: 1,
     summary: {} as CodeAnalysisDocument["summary"],
@@ -95,7 +97,12 @@ describe("CodeOutliers", () => {
           symbols: [
             symbol({ name: "update", file: 0, line: 12, cyclomatic: 30 }),
             symbol({ name: "update", file: 1, line: 40, cyclomatic: 20 }),
-            symbol({ name: "resolveCollision", file: 0, line: 90, cyclomatic: 25 }),
+            symbol({
+              name: "resolveCollision",
+              file: 0,
+              line: 90,
+              cyclomatic: 25,
+            }),
           ],
         })}
       />,
@@ -122,15 +129,44 @@ describe("CodeOutliers", () => {
       <CodeOutliers
         document={document({
           symbols: [
-            symbol({ name: "third", file: 1, line: 90, cyclomatic: 7, cognitive: 3 }),
-            symbol({ name: "second", file: 1, line: 5, cyclomatic: 7, cognitive: 3 }),
-            symbol({ name: "first", file: 0, line: 60, cyclomatic: 7, cognitive: 9 }),
-            symbol({ name: "zeroth", file: 0, line: 3, cyclomatic: 12, cognitive: 1 }),
+            symbol({
+              name: "third",
+              file: 1,
+              line: 90,
+              cyclomatic: 7,
+              cognitive: 3,
+            }),
+            symbol({
+              name: "second",
+              file: 1,
+              line: 5,
+              cyclomatic: 7,
+              cognitive: 3,
+            }),
+            symbol({
+              name: "first",
+              file: 0,
+              line: 60,
+              cyclomatic: 7,
+              cognitive: 9,
+            }),
+            symbol({
+              name: "zeroth",
+              file: 0,
+              line: 3,
+              cyclomatic: 12,
+              cognitive: 1,
+            }),
           ],
         })}
       />,
     );
-    expect(bandLabels(container, 0)).toEqual(["zeroth", "first", "second", "third"]);
+    expect(bandLabels(container, 0)).toEqual([
+      "zeroth",
+      "first",
+      "second",
+      "third",
+    ]);
   });
 
   it("never draws a zero-line file, even when there is room for one", () => {

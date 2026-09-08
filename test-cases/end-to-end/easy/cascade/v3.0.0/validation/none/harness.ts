@@ -50,6 +50,17 @@
 // below does anything a caller did not ask for, and a check that needs half a
 // sequence calls the operations it needs.
 //
+//
+// A HELPER THAT POSES ANYTHING A READING DERIVES FROM RECONCILES BEFORE IT
+// RETURNS. `wasteVisibleCount`, a card's `color` and `dropTarget` are derived
+// rather than stored (`specs/instrumentation.md`, Snapshot shape), and a build
+// is free to keep any of them as a stored copy — so a pose that writes the piles
+// or the set memory can leave one of them answering for the table as it was.
+// `reconcile()` is what brings them back into agreement, and it costs no
+// simulation time, so every pose helper below ends with it and a check posed
+// through the helpers never calls it itself. A check that poses with
+// `h.debug.addCard` and friends directly calls it once before its first read.
+//
 // AND THE HELPERS FIX GEOMETRY, NEVER THRESHOLDS. A helper poses a table, drives
 // a gesture, or reads a value out of a snapshot. Every tolerance a check
 // asserts — a percentage, a colour distance, a number of units — is stated in
@@ -94,7 +105,7 @@ import {
   IDENTITY,
   apply,
   createCaseHarness,
-  drawnText,
+  drawnTextLines,
   mouseGlide,
   mousePress,
   mouseRelease,
@@ -164,6 +175,7 @@ export const REQUIRED_OPS = [
   // The core.
   "reset",
   "snapshot",
+  "reconcile",
   "menuItemRect",
   // The screen and the menus.
   "setScreen",
@@ -339,6 +351,15 @@ export interface CascadeSnapshot {
 export interface CascadeDebugApi {
   reset(): Promise<void>;
   snapshot(): Promise<CascadeSnapshot>;
+  /**
+   * Brings every value the surface reports into agreement with the table as it
+   * stands, advancing nothing (specs/instrumentation.md, The core).
+   *
+   * `wasteVisibleCount`, a card's `color` and `dropTarget` are derived rather
+   * than stored, and a build is free to keep any of them as a copy — this is
+   * what rewrites such a copy from what it is a copy of after a pose.
+   */
+  reconcile(): Promise<void>;
   /** The region of item `index` on the current screen's menu, or `null`. */
   menuItemRect(index: number): Promise<MenuRect | null>;
 
@@ -862,7 +883,8 @@ export {
   closeWorkerBrowser,
   colorDistance,
   drawnText,
-  drewText,
+  drawnTextLines,
+  drawnTextRuns,
   luminance,
   mouseGlide,
   mousePress,
@@ -891,27 +913,41 @@ export { DEFAULT_REPLAY_BACKGROUND as REPLAY_BACKGROUND } from "./case-harness/i
 /* Reading one frame's render                                                 */
 /* -------------------------------------------------------------------------- */
 //
-// What a frame drew is the shared harness's reading — `drawnText`, `drewText`,
-// `textDraws`, `callsTo` and `setsOf` are re-exported above and behave the same
-// in every engineless project. The two below are Cascade's own: one reads a
-// STANDALONE word rather than a substring, and the other reads the boxes of the
-// shapes a frame painted, which is how the `table` group finds the cards without
-// requiring the build to have drawn them as rectangles.
+// What a frame drew is the shared harness's reading — `drawnText`,
+// `drawnTextLines`, `drawnTextRuns`, `textDraws`, `callsTo` and `setsOf` are
+// re-exported above and behave the same in every engineless project, and a
+// suite that asks whether a frame spelled some copy imports the package's
+// `drewText` from `../case-harness/index` directly. Copy is read off the
+// LOGICAL RUNS a frame spells (`drewText`, `drawnTextLines`,
+// `drawnTextRuns`) and never off the `fillText` split: a build that
+// letter-spaces a heading draws one glyph per call, and the specification fixes
+// the words while leaving their spacing to the build. The two below are
+// Cascade's own: one reads a STANDALONE word rather than a substring, and the
+// other reads the boxes of the shapes a frame painted, which is how the `table`
+// group finds the cards without requiring the build to have drawn them as
+// rectangles.
 
 /**
  * Whether the frame drew `word` as a STANDALONE token, ignoring case.
  *
- * The stricter sibling of `drewText`, for the copy `specs/screens.md` requires as
+ * The stricter sibling of the package's `drewText`, for the copy `specs/screens.md` requires as
  * a word rather than as a substring — the how-to screen's `ACE`, `KING`, `STOCK`
  * and `DOUBLE-CLICK`, which `HOWTO_TOKENS` holds. A screen reading "restocking"
  * contains `stock` and does not name the pile the specification named.
+ *
+ * Read off the logical runs the frame spells, like `drewText`: `S T O C K` drawn
+ * a glyph per call is the word, and a match against the `fillText` split would
+ * find five one-letter runs and no word among them. The harness measures every
+ * text call, so the shared merge rule (`case-harness/text.ts`) can fold them
+ * back together; every raw string is a substring of its run, so this only ever
+ * adds a match.
  */
 export function drewWord(calls: readonly DrawCall[], word: string): boolean {
   const pattern = new RegExp(
     `(^|[^A-Za-z0-9])${word.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^A-Za-z0-9]|$)`,
     "i",
   );
-  return drawnText(calls).some((drawn) => pattern.test(drawn));
+  return drawnTextLines(calls).some((line) => pattern.test(line));
 }
 
 /**
@@ -1811,6 +1847,7 @@ export async function openTable(h: Harness): Promise<void> {
   await h.debug.reset();
   await h.debug.setScreen("playing");
   await h.debug.clearTable();
+  await h.debug.reconcile();
 
   const opened = await h.snapshot();
   if (opened.screen !== "playing") {
@@ -1848,6 +1885,7 @@ export async function openTitle(h: Harness): Promise<void> {
   await h.debug.reset();
   await h.debug.setScreen("title");
   await h.debug.clearTable();
+  await h.debug.reconcile();
 }
 
 /** The how-to screen, over an empty table. */
@@ -1855,6 +1893,7 @@ export async function openHowto(h: Harness): Promise<void> {
   await h.debug.reset();
   await h.debug.setScreen("howto");
   await h.debug.clearTable();
+  await h.debug.reconcile();
 }
 
 /**
@@ -1872,6 +1911,7 @@ export async function openWon(h: Harness): Promise<void> {
   await h.debug.reset();
   await h.debug.setScreen("won");
   await h.debug.clearTable();
+  await h.debug.reconcile();
 }
 
 /**
@@ -1891,12 +1931,15 @@ async function addCards(
   index: number,
   specs: readonly CardSpec[],
 ): Promise<number[]> {
-  await h.pose(
-    specs.map((spec) => ({
+  await h.pose([
+    ...specs.map((spec) => ({
       op: "addCard",
       args: [pile, index, spec.suit, spec.rank, spec.faceUp ?? true],
     })),
-  );
+    // Last in the same crossing, so bringing the readings into agreement costs
+    // no extra round trip.
+    { op: "reconcile", args: [] },
+  ]);
   if (specs.length === 0) return [];
   const placed = pileOf(await h.snapshot(), pile, index);
   if (placed.length < specs.length) {
@@ -1978,6 +2021,9 @@ export async function poseWaste(
   }
   const ids = await addCards(h, "waste", 0, specs);
   for (const count of sets) await h.debug.addWasteSet(count);
+  // `wasteVisibleCount` follows the newest set, so the sets are posed before the
+  // readings are brought into agreement.
+  await h.debug.reconcile();
   return ids;
 }
 

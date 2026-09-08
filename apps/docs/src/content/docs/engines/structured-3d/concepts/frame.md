@@ -37,10 +37,10 @@ interface FrameInfo {
 }
 ```
 
-| Field | Meaning |
-| --- | --- |
-| `count` | Frames delivered since the loop started. |
-| `timeMs` | Accumulated simulated time, in milliseconds. |
+| Field         | Meaning                                         |
+| ------------- | ----------------------------------------------- |
+| `count`       | Frames delivered since the loop started.        |
+| `timeMs`      | Accumulated simulated time, in milliseconds.    |
 | `lastDeltaMs` | The most recent frame's delta, in milliseconds. |
 
 `engine.frame()` and `world.frame()` both return it.

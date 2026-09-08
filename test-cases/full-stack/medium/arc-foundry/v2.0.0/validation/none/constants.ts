@@ -370,6 +370,18 @@ export const COMPONENT_TYPES: readonly ComponentType[] = [
   "regulator",
 ];
 
+/** Each base type's name, as `specs/components.md` writes it — the copy a screen names it by. */
+export const COMPONENT_NAMES: Readonly<Record<ComponentType, string>> = {
+  capacitor: "Capacitor",
+  coil: "Coil",
+  emitter: "Emitter",
+  arcnode: "Arc-Node",
+  discharge: "Discharge Rig",
+  choke: "Choke",
+  rectifier: "Rectifier",
+  regulator: "Regulator",
+};
+
 /** The seven base types that fire. */
 export const FIRING_TYPES: readonly ComponentType[] = COMPONENT_TYPES.filter(
   (t) => t !== NON_FIRING_TYPE,

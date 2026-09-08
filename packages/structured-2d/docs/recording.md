@@ -15,11 +15,11 @@ engine.startRecording(): void;
 engine.stopRecording(): Recording;
 ```
 
-| Member | Effect |
-| --- | --- |
-| `recording` | Whether operations are being captured right now. |
-| `startRecording` | Arm the recorder. Capture begins at the next frame. |
-| `stopRecording` | Disarm and return everything captured since `startRecording`. |
+| Member           | Effect                                                        |
+| ---------------- | ------------------------------------------------------------- |
+| `recording`      | Whether operations are being captured right now.              |
+| `startRecording` | Arm the recorder. Capture begins at the next frame.           |
+| `stopRecording`  | Disarm and return everything captured since `startRecording`. |
 
 ## Arming the recorder
 
@@ -39,9 +39,9 @@ clip and the path together. Nothing accumulates per frame.
 const engine = createEngine({ canvas, width: 640, height: 360, game });
 await engine.initialize();
 
-await engine.advance(60);        // setup, not captured
+await engine.advance(60); // setup, not captured
 engine.startRecording();
-await engine.advance(120);       // the 120 frames the recording holds
+await engine.advance(120); // the 120 frames the recording holds
 const recording = engine.stopRecording();
 ```
 
@@ -77,17 +77,17 @@ interface Recording {
 }
 ```
 
-| Field | Meaning |
-| --- | --- |
-| `format` | The format version, `RECORDING_FORMAT`. A player checks it before drawing anything. |
-| `width` | The logical design width the operations were issued in. |
-| `height` | The logical design height the operations were issued in. |
-| `background` | The color each frame was cleared to, or `null` for transparency. |
-| `images` | The bitmaps and pixel buffers the operations draw, by index. |
-| `resources` | The values the context produced and the operations draw with, by index. |
-| `ops` | Every distinct operation the recording holds, by index. |
-| `states` | Every distinct inherited state block, by index. |
-| `frames` | The frames captured, in order. |
+| Field        | Meaning                                                                             |
+| ------------ | ----------------------------------------------------------------------------------- |
+| `format`     | The format version, `RECORDING_FORMAT`. A player checks it before drawing anything. |
+| `width`      | The logical design width the operations were issued in.                             |
+| `height`     | The logical design height the operations were issued in.                            |
+| `background` | The color each frame was cleared to, or `null` for transparency.                    |
+| `images`     | The bitmaps and pixel buffers the operations draw, by index.                        |
+| `resources`  | The values the context produced and the operations draw with, by index.             |
+| `ops`        | Every distinct operation the recording holds, by index.                             |
+| `states`     | Every distinct inherited state block, by index.                                     |
+| `frames`     | The frames captured, in order.                                                      |
 
 `images`, `resources`, `ops`, and `states` belong to the whole recording rather
 than to any one frame. Each holds every distinct entry once, and a frame names
@@ -116,15 +116,15 @@ interface RecordedFrame {
 }
 ```
 
-| Field | Meaning |
-| --- | --- |
-| `count` | The engine's frame counter at this frame. |
-| `timeMs` | Accumulated simulated time through this frame, in milliseconds. |
-| `deltaMs` | What this frame was worth, in milliseconds. |
-| `surface` | The canvas backing store this frame was drawn into, in device pixels. |
-| `state` | Index into `states` of the context state this frame inherited, before its own operations. |
-| `stack` | Indices into `states` of the states the context had saved when this frame opened, outermost first. |
-| `ops` | Indices into `ops` of the operations this frame issued, in the order it issued them. |
+| Field       | Meaning                                                                                                                    |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `count`     | The engine's frame counter at this frame.                                                                                  |
+| `timeMs`    | Accumulated simulated time through this frame, in milliseconds.                                                            |
+| `deltaMs`   | What this frame was worth, in milliseconds.                                                                                |
+| `surface`   | The canvas backing store this frame was drawn into, in device pixels.                                                      |
+| `state`     | Index into `states` of the context state this frame inherited, before its own operations.                                  |
+| `stack`     | Indices into `states` of the states the context had saved when this frame opened, outermost first.                         |
+| `ops`       | Indices into `ops` of the operations this frame issued, in the order it issued them.                                       |
 | `truncated` | Present and `true` when the save stack, a clip region, or the current path this frame inherited was cut down to its bound. |
 
 `count`, `timeMs`, and `deltaMs` are the figures `engine.frame()` reports for
@@ -182,13 +182,13 @@ interface PathSegment {
 }
 ```
 
-| Field | Meaning |
-| --- | --- |
-| `properties` | The style properties in force at the top of the frame, by name. |
-| `transform` | The transform as `[a, b, c, d, e, f]`, or `null` when the context could not report one. |
-| `lineDash` | The dash pattern, or `null` when the context could not report one. |
-| `clip` | The clip region in force, as the segments that built it, in the order they were applied. |
-| `path` | The current path, as the segments holding the path operations issued since the last `beginPath`. |
+| Field        | Meaning                                                                                          |
+| ------------ | ------------------------------------------------------------------------------------------------ |
+| `properties` | The style properties in force at the top of the frame, by name.                                  |
+| `transform`  | The transform as `[a, b, c, d, e, f]`, or `null` when the context could not report one.          |
+| `lineDash`   | The dash pattern, or `null` when the context could not report one.                               |
+| `clip`       | The clip region in force, as the segments that built it, in the order they were applied.         |
+| `path`       | The current path, as the segments holding the path operations issued since the last `beginPath`. |
 
 `properties` covers the canvas state that survives a frame boundary: the alpha,
 the composite operation, the filter, the image smoothing, the stroke and fill
@@ -254,12 +254,12 @@ type DrawOp =
   | { op: "set"; property: string; value: DrawValue };
 ```
 
-| Field | Meaning |
-| --- | --- |
-| `method` | The method called, for a `call`. |
-| `args` | The call's arguments, encoded as `DrawValue`. |
-| `property` | The property assigned, for a `set`. |
-| `value` | The value assigned, encoded as `DrawValue`. |
+| Field      | Meaning                                       |
+| ---------- | --------------------------------------------- |
+| `method`   | The method called, for a `call`.              |
+| `args`     | The call's arguments, encoded as `DrawValue`. |
+| `property` | The property assigned, for a `set`.           |
+| `value`    | The value assigned, encoded as `DrawValue`.   |
 
 Every entry of `ops` is an operation the context itself performed on itself. The
 call that produced a gradient or a pattern, and every operation performed on
@@ -288,15 +288,15 @@ type DrawValue =
   | { readonly [key: string]: DrawValue };
 ```
 
-| Form | Meaning |
-| --- | --- |
-| `null`, `boolean`, `number`, `string` | The value itself. |
-| Array | Each entry encoded in turn. |
-| `{ $res: n }` | `resources[n]`, a value the context produced. |
-| `{ $img: n }` | `images[n]`, a bitmap or pixel buffer. |
-| `{ $opaque: "Name" }` | A value the recorder could not carry, named by its constructor. |
-| `{ $opaque: "truncated" }` | The remainder of a container the expansion bound fell inside. |
-| Object | A plain object, encoded field by field. |
+| Form                                  | Meaning                                                         |
+| ------------------------------------- | --------------------------------------------------------------- |
+| `null`, `boolean`, `number`, `string` | The value itself.                                               |
+| Array                                 | Each entry encoded in turn.                                     |
+| `{ $res: n }`                         | `resources[n]`, a value the context produced.                   |
+| `{ $img: n }`                         | `images[n]`, a bitmap or pixel buffer.                          |
+| `{ $opaque: "Name" }`                 | A value the recorder could not carry, named by its constructor. |
+| `{ $opaque: "truncated" }`            | The remainder of a container the expansion bound fell inside.   |
+| Object                                | A plain object, encoded field by field.                         |
 
 A player draws an operation whose arguments resolve and reports one carrying an
 `$opaque` value rather than substituting something else.
@@ -324,16 +324,19 @@ answers the same input with the same document.
 ```ts
 type CapturedImage =
   | { kind: "bitmap"; width: number; height: number; src: string }
-  | { kind: "pixels"; width: number; height: number; data: string };
+  | { kind: "bitmap"; width: number; height: number; store: string }
+  | { kind: "pixels"; width: number; height: number; data: string }
+  | { kind: "pixels"; width: number; height: number; store: string };
 ```
 
-| Field | Meaning |
-| --- | --- |
-| `kind` | How the value is rebuilt: `bitmap` as an image a context draws, `pixels` as `ImageData`. |
-| `width` | The captured width in pixels. |
-| `height` | The captured height in pixels. |
-| `src` | A `data:image/png;base64,…` URL holding a `bitmap` entry's pixels. |
-| `data` | A `pixels` entry's RGBA bytes, base64 encoded, four bytes per pixel in row order. |
+| Field    | Meaning                                                                                  |
+| -------- | ---------------------------------------------------------------------------------------- |
+| `kind`   | How the value is rebuilt: `bitmap` as an image a context draws, `pixels` as `ImageData`. |
+| `width`  | The captured width in pixels.                                                            |
+| `height` | The captured height in pixels.                                                           |
+| `src`    | A `data:image/png;base64,…` URL holding a `bitmap` entry's pixels.                       |
+| `data`   | A `pixels` entry's RGBA bytes, base64 encoded, four bytes per pixel in row order.        |
+| `store`  | The file beside the recording holding a stored entry's bytes.                            |
 
 Every bitmap source the pipeline draws from is captured, so a sprite-based build
 replays with its sprites. A `bitmap` entry rebuilds where a `CanvasImageSource`
@@ -347,6 +350,17 @@ pixel's alpha, and reading the pixels back un-premultiplies them, so a partially
 transparent pixel is quantized to eight bits twice and comes back a different
 color. `ImageData` is the one kind of image that compares byte for byte, so it
 is carried byte for byte.
+
+An entry carries its pixels inline or names them. An inline entry holds them in
+`src` or `data`, which is what the recorder writes, since a recording it hands
+back is assembled in memory. A stored entry holds `store`, the flat file name of
+the bytes sitting beside the recording, which a writer with a directory to put
+them in produces after the recording is closed. Those bytes are written once per
+run under a name derived from the bytes themselves, so a sprite drawn in forty
+recordings is one file and opening one replay costs the images that replay
+draws. A player resolves `store` through the same lookup it resolved the
+recording with, and reports and skips the operations naming an entry it cannot
+resolve.
 
 A source whose content is fixed is keyed on its identity and encoded once, so
 the sprite sheets a build loads at startup cost one entry each however many
@@ -383,10 +397,10 @@ type ResourceOp =
   | { op: "set"; property: string; value: DrawValue };
 ```
 
-| Field | Meaning |
-| --- | --- |
+| Field  | Meaning                                                                             |
+| ------ | ----------------------------------------------------------------------------------- |
 | `make` | The context call that created the value, with its arguments encoded as `DrawValue`. |
-| `then` | The calls and assignments made on the value before this use, in order. |
+| `then` | The calls and assignments made on the value before this use, in order.              |
 
 Exactly four context methods produce a resource: `createLinearGradient`,
 `createRadialGradient`, `createConicGradient`, and `createPattern`. A producing
@@ -446,12 +460,12 @@ Everything else a context call returns is data rather than a resource, because
 re-issuing a recipe is faithful only for a value whose content is independent of
 context state:
 
-| Returned value | Recorded as |
-| --- | --- |
-| `DOMMatrix`, `DOMMatrixReadOnly` | `{ a, b, c, d, e, f }`. |
-| `ImageData` | A `CapturedImage` of kind `pixels`, referenced as a `$img`. |
-| An array or a plain object | Its fields, encoded one by one. |
-| Anything else | `{ $opaque: … }`. |
+| Returned value                   | Recorded as                                                 |
+| -------------------------------- | ----------------------------------------------------------- |
+| `DOMMatrix`, `DOMMatrixReadOnly` | `{ a, b, c, d, e, f }`.                                     |
+| `ImageData`                      | A `CapturedImage` of kind `pixels`, referenced as a `$img`. |
+| An array or a plain object       | Its fields, encoded one by one.                             |
+| Anything else                    | `{ $opaque: … }`.                                           |
 
 A matrix records as the `DOMMatrix2DInit` that `setTransform` accepts, so a
 build that reads its transform, changes it, and later puts the original back
@@ -539,10 +553,10 @@ captured.
 
 ## Errors
 
-| Condition | Result |
-| --- | --- |
+| Condition                                | Result                             |
+| ---------------------------------------- | ---------------------------------- |
 | `startRecording` while already recording | `Error` naming the unbalanced call |
-| `stopRecording` while not recording | `Error` naming the unbalanced call |
+| `stopRecording` while not recording      | `Error` naming the unbalanced call |
 
 Both refuse rather than proceed, because the mistake is always an unbalanced
 call and an empty recording handed back from one reads as a build that drew

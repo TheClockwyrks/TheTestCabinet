@@ -22,7 +22,7 @@
 // AN EDGE IS NEWS FOR ONE FRAME. What moved, what was pressed and what was
 // released are cleared at the end of every frame that ran, so a gesture is acted
 // on once. The press ITSELF is not an edge: it is held until it comes up, because
-// a confirm takes both of its edges inside one region and they may be frames
+// a confirm requires both of its edges inside one region and they may be frames
 // apart.
 
 /** A position in the field's logical units. */
@@ -166,7 +166,7 @@ export class PointerInput {
    *
    * What the game calls when a frame's keyboard input moved it to another screen:
    * the release still to come belongs to a menu that is no longer on the field,
-   * and a confirm takes both of its edges on one menu.
+   * and a confirm requires both of its edges on one menu.
    */
   forget(): void {
     this.pressId = null;

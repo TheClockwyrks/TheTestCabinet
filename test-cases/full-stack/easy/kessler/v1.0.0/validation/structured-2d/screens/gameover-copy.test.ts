@@ -11,10 +11,10 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertTrue } from "../assert";
+import { drewText } from "../case-harness/text";
 import { GAMEOVER_TEXT } from "../constants";
 import {
   captureStill,
-  drewText,
   openHarness,
   startFreshSession,
   type Harness,

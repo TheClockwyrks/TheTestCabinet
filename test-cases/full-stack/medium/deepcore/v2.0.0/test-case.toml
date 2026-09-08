@@ -251,7 +251,7 @@ build = "npm run build"
 # and does not depend on the model leaving the seeded scripts intact.
 [toolchain]
 typecheck = "npx tsc --noEmit"
-lint = "npx eslint ."
+lint = "npx eslint . --max-warnings 0"
 format = "npx prettier --check ."
 test = "npx vitest run --coverage"
 
@@ -4190,7 +4190,7 @@ validation = { script = "panels/pointer-hover-highlights-a-menu-item.test.ts", o
 [[review.categories.items]]
 id = "a-split-press-chooses-nothing"
 title = "A press and a release in different regions choose nothing"
-description = "A choice takes both of its edges inside one region, so a pointer pressed inside one menu item and released inside another chooses neither."
+description = "A choice requires both of its edges inside one region, so a pointer pressed inside one menu item and released inside another chooses neither."
 domains = ["simulation"]
 failure_cap = "passable"
 # Automated validation: press inside the region the build reports for one title
@@ -5033,14 +5033,14 @@ validation = { script = "assets/particle-on-death.test.ts", outputs = [
   { id = "burst", name = "The burst at a death", kind = "replay" },
 ] }
 [[review.categories.items]]
-id = "gas-seep-round-robin"
-title = "Every visible gas pocket wisps in turn"
-description = "The gas-seep system is emitted over the gas pockets currently on screen in round-robin turn, so every visible pocket wisps within GAS_SEEP_PERIOD (2) seconds and a player watching a suspect cell sees it breathe."
+id = "gas-seep-covers-every-pocket"
+title = "Every visible gas pocket wisps within the seep period"
+description = "The gas-seep system is emitted over the gas pockets currently on screen so that every visible pocket wisps within GAS_SEEP_PERIOD (2) seconds and a player watching a suspect cell sees it breathe. How the seeps are shared among the visible pockets is the build's own business."
 domains = ["presentation"]
 failure_cap = "great"
 # Automated validation: pose several gas pockets in view, advance
 # GAS_SEEP_PERIOD and hold at least one seep emitted over each of them.
-validation = { script = "assets/gas-seep-round-robin.test.ts", outputs = [
+validation = { script = "assets/gas-seep-covers-every-pocket.test.ts", outputs = [
   { id = "seep", name = "Gas wisping from the pockets in view", kind = "replay" },
 ] }
 [[review.categories.items]]

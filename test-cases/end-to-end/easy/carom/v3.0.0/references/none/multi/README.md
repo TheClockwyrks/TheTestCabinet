@@ -133,7 +133,7 @@ The build exposes the surface `specs/instrumentation.md` specifies on
 **`window.__carom`**, so a scenario can be posed in Carom's own world from code.
 The surface is **atomic**: every operation is a reading or a pose, and a pose sets
 one field, places or removes one entity, or moves the clock. Starting a match,
-staging a rally and reaching a screen are *sequences* of these, which belong to
+staging a rally and reaching a screen are _sequences_ of these, which belong to
 whoever is driving the game.
 
 - **The clock** — `setAutoStep(enabled)` and `advance(seconds, frames)`. Nothing

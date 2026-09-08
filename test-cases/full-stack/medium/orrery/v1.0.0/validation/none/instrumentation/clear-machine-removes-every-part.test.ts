@@ -32,11 +32,7 @@
 // period stand at their resting values.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertDeepEqual,
-  assertEqual,
-  assertLength,
-} from "../assert";
+import { assertDeepEqual, assertEqual, assertLength } from "../assert";
 import type { PartName } from "../constants";
 import { at } from "../field";
 import { BARE } from "../fixtures";

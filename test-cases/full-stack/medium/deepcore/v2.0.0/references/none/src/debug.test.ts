@@ -33,6 +33,21 @@ interface Stub {
   dispatched: { type: string; code: string }[];
 }
 
+/** A stand-in for the browser's storage, for the operations that reach the slot. */
+function memoryStorage(): Storage {
+  const map = new Map<string, string>();
+  return {
+    get length() {
+      return map.size;
+    },
+    clear: () => map.clear(),
+    getItem: (k: string) => map.get(k) ?? null,
+    key: (i: number) => [...map.keys()][i] ?? null,
+    removeItem: (k: string) => void map.delete(k),
+    setItem: (k: string, v: string) => void map.set(k, v),
+  } as Storage;
+}
+
 function surface(): { api: DeepcoreDebugApi; game: Game; stub: Stub } {
   const stub: Stub = { dispatched: [] };
   const win = {
@@ -87,6 +102,19 @@ describe("the surface itself", () => {
     expect(
       (window as unknown as Record<string, unknown>)[DEEPCORE_HANDLE],
     ).toBe(api);
+  });
+
+  it("carries every core operation", () => {
+    const { api } = surface();
+    for (const op of [
+      "reset",
+      "reconcile",
+      "snapshot",
+      "setAutoStep",
+      "advance",
+    ] as const) {
+      expect(typeof api[op]).toBe("function");
+    }
   });
 });
 
@@ -286,8 +314,8 @@ describe("posing the miner", () => {
     expect(api.tileAt(5, 200).kind).toBe("rock");
   });
 
-  it("sets the velocity, the facing, the fuel, and the hull within their domains", () => {
-    const { api, game } = surface();
+  it("sets the velocity, the facing, the fuel, and the hull", () => {
+    const { api } = surface();
     api.setMinerVelocity(-40, 300);
     expect(api.snapshot().miner.vx).toBe(-40);
     expect(api.snapshot().miner.vy).toBe(300);
@@ -295,11 +323,20 @@ describe("posing the miner", () => {
     expect(api.snapshot().miner.facing).toBe("west");
     api.setFuel(12);
     expect(api.snapshot().miner.fuel).toBe(12);
-    expect(() => api.setFuel(game.maxFuel() + 1)).toThrow();
     api.setHull(0);
     expect(api.snapshot().miner.hull).toBe(0);
-    expect(() => api.setHull(-1)).toThrow();
     expect(() => api.setFacing("north" as "east")).toThrow();
+  });
+
+  it("applies fuel and hull as given rather than clamping to the tier's maximum", () => {
+    const { api, game } = surface();
+    // specs/instrumentation.md, The operations: a bound that reads a live game
+    // value is a rule rather than a domain, so the pose reaches what it names.
+    api.setFuel(game.maxFuel() + 100);
+    expect(api.snapshot().miner.fuel).toBe(game.maxFuel() + 100);
+    api.setHull(game.maxHull() + 5);
+    expect(api.snapshot().miner.hull).toBe(game.maxHull() + 5);
+    expect(() => api.setFuel("full" as unknown as number)).toThrow();
   });
 
   it("holds each faculty on its own", () => {
@@ -511,6 +548,30 @@ describe("the controls", () => {
     expect(api.snapshot().items.nanobots).toBe(0);
   });
 
+  it("acts from wherever the game stands rather than where a player would be", () => {
+    const { api, game } = surface();
+    // specs/instrumentation.md, The controls: the screen, the open panel, and
+    // where the miner stands are a player's route and not the control's
+    // conditions. The miner is posed deep in the mine, nowhere near the camp.
+    api.setMinerPosition(colCenterX(7, MINER_W), 200 * TILE - MINER_H);
+    expect(game.atSurface()).toBe(false);
+
+    api.setCargo("ferron", 2);
+    api.sell();
+    expect(api.snapshot().cargo.slotsUsed).toBe(0);
+    expect(api.snapshot().credits).toBe(2 * 28);
+
+    // The Save Pad's footprint is at the camp, and the miner is not at it.
+    vi.stubGlobal("localStorage", memoryStorage());
+    api.save();
+    expect(api.snapshot().hasSave).toBe(true);
+
+    api.setItemCount("nanobots", 1);
+    api.setHull(1);
+    api.useItem("nanobots");
+    expect(api.snapshot().items.nanobots).toBe(0);
+  });
+
   it("drops one unit of an ore, losing it", () => {
     const { api } = surface();
     api.setCargo("cuprite", 2);
@@ -547,6 +608,64 @@ describe("the controls", () => {
     api.launch();
     api.advance(4, 60);
     expect(api.snapshot().screen).toBe("victory");
+  });
+});
+
+describe("reconciling derived state", () => {
+  it("re-derives a stored reading from a posed position", () => {
+    const { api } = surface();
+    // A floor with open air two rows above it, so the posed miner is off ground.
+    api.setTile(9, 200, "rock");
+    api.setMinerPosition(colCenterX(9, MINER_W), 198 * TILE - MINER_H);
+    api.reconcile();
+    expect(api.snapshot().miner.grounded).toBe(false);
+    expect(api.snapshot().miner.row).toBe(197);
+
+    api.setMinerPosition(colCenterX(9, MINER_W), 200 * TILE - MINER_H);
+    api.reconcile();
+    expect(api.snapshot().miner.grounded).toBe(true);
+  });
+
+  it("advances nothing, and twice is the same as once", () => {
+    const { api } = surface();
+    api.setAutoStep(false);
+    api.setTile(9, 200, "rock");
+    api.setMinerPosition(colCenterX(9, MINER_W), 190 * TILE - MINER_H);
+    api.setMinerVelocity(0, 0);
+    api.setFuel(40);
+    api.setCoreCarried(true);
+    api.setCoreTimer(30);
+    api.setElapsed(7);
+
+    const before = api.snapshot();
+    api.reconcile();
+    const once = api.snapshot();
+    api.reconcile();
+    const twice = api.snapshot();
+
+    // The clock, the position, the velocity, and every timer are where they were.
+    expect(once.simTime).toBe(before.simTime);
+    expect(once.elapsedSeconds).toBe(before.elapsedSeconds);
+    expect(once.miner.x).toBe(before.miner.x);
+    expect(once.miner.y).toBe(before.miner.y);
+    expect(once.miner.vx).toBe(before.miner.vx);
+    expect(once.miner.vy).toBe(before.miner.vy);
+    expect(once.miner.fuel).toBe(before.miner.fuel);
+    expect(once.coreTimer).toBe(before.coreTimer);
+    expect(once).toEqual(before);
+    expect(twice).toEqual(once);
+  });
+
+  it("moves nothing to make a reading agree", () => {
+    const { api } = surface();
+    // A miner posed inside a solid cell stays lodged there and reads as it is.
+    api.setTile(9, 200, "rock");
+    const x = colCenterX(9, MINER_W);
+    const y = 200 * TILE;
+    api.setMinerPosition(x, y);
+    api.reconcile();
+    expect(api.snapshot().miner.x).toBe(x);
+    expect(api.snapshot().miner.y).toBe(y);
   });
 });
 

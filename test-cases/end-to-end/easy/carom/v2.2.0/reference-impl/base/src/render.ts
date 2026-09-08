@@ -382,7 +382,9 @@ function drawTitle(ctx: Ctx, game: Game): void {
     COLOR.p1,
   );
 
-  const hint = game.audio.muted ? "▲ ▼ MOVE    ENTER SELECT    M UNMUTE" : "▲ ▼ MOVE    ENTER SELECT    M MUTE";
+  const hint = game.audio.muted
+    ? "▲ ▼ MOVE    ENTER SELECT    M UNMUTE"
+    : "▲ ▼ MOVE    ENTER SELECT    M MUTE";
   drawText(ctx, hint, FIELD_W / 2, FIELD_H - 34, {
     size: 16,
     color: COLOR.textFaint,
@@ -408,8 +410,14 @@ function drawHowTo(ctx: Ctx, game: Game): void {
     ["", "Versus: P1 uses W / S,  P2 uses ↑ / ↓"],
     ["SPIN", "Swing your paddle as you strike to curve the ball."],
     ["", "Up and down swings curve it opposite ways; spin fades in ~2 s."],
-    ["OBSTACLES", "Two mid-field blocks bounce the ball — bank shots around them."],
-    ["SCORE", "Send the ball past your opponent's edge. First to 11, win by 2."],
+    [
+      "OBSTACLES",
+      "Two mid-field blocks bounce the ball — bank shots around them.",
+    ],
+    [
+      "SCORE",
+      "Send the ball past your opponent's edge. First to 11, win by 2.",
+    ],
     ["PAUSE", "Esc or P.   Mute with M."],
   ];
   let y = 190;
@@ -482,11 +490,7 @@ function drawCountdownOverlay(ctx: Ctx, game: Game): void {
   });
 }
 
-function drawPanel(
-  ctx: Ctx,
-  w: number,
-  h: number,
-): { x: number; y: number } {
+function drawPanel(ctx: Ctx, w: number, h: number): { x: number; y: number } {
   const x = FIELD_W / 2 - w / 2;
   const y = FIELD_H / 2 - h / 2;
   ctx.save();
@@ -584,18 +588,12 @@ function drawMatchOver(ctx: Ctx, game: Game): void {
     glowBlur: 18,
     baseline: "middle",
   });
-  drawText(
-    ctx,
-    `${game.scoreP1}  –  ${game.scoreP2}`,
-    FIELD_W / 2,
-    y + 182,
-    {
-      size: 40,
-      color: COLOR.text,
-      spacing: 10,
-      baseline: "middle",
-    },
-  );
+  drawText(ctx, `${game.scoreP1}  –  ${game.scoreP2}`, FIELD_W / 2, y + 182, {
+    size: 40,
+    color: COLOR.text,
+    spacing: 10,
+    baseline: "middle",
+  });
   drawMenu(
     ctx,
     OVER_ITEMS,

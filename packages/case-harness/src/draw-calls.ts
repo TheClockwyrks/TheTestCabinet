@@ -39,9 +39,17 @@ export type DrawCall =
   | { kind: "call"; method: string; args: unknown[]; text?: TextGeometry }
   | { kind: "set"; property: string; value: unknown };
 
-/** One operation as the injected recorder writes it. */
+/**
+ * One operation as a recorder writes it.
+ *
+ * The injected page recorder under `none` writes the two shapes and nothing
+ * more; a text call's measurement is attached afterwards, in the page. A
+ * recorder wrapped around a context this process holds — an engine's screen
+ * layer, see `context-recorder.ts` — measures each text call as it is made and
+ * writes the geometry beside the call, which {@link toDrawCall} carries across.
+ */
 export type RecordedOp =
-  | { op: "call"; method: string; args: unknown[] }
+  | { op: "call"; method: string; args: unknown[]; text?: TextGeometry }
   | { op: "set"; property: string; value: unknown };
 
 /**
@@ -94,9 +102,15 @@ export interface ImageDraw {
  * one file that held both halves before the extraction.
  */
 export function toDrawCall(op: RecordedOp): DrawCall {
-  return op.op === "call"
-    ? { kind: "call", method: op.method, args: op.args }
-    : { kind: "set", property: op.property, value: op.value };
+  if (op.op === "set") {
+    return { kind: "set", property: op.property, value: op.value };
+  }
+  const call: DrawCall = { kind: "call", method: op.method, args: op.args };
+  // A measurement the recorder took as the call was made travels with it, so
+  // a text draw read off a process-held context coalesces exactly as one
+  // measured in the page afterwards does.
+  if (op.text !== undefined) call.text = op.text;
+  return call;
 }
 
 /** Every argument list `method` was called with, in order. */

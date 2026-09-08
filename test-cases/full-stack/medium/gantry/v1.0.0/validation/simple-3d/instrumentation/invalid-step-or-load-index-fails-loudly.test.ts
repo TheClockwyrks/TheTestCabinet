@@ -84,7 +84,11 @@ it("fails loudly on a step or load index nothing carries, and edits nothing", as
 
     const posed = await h.snapshot();
     assertLength(posed.program, TAPE.length, "the steps the scenario appended");
-    assertLength(posed.site.loads, 1, "the load the scenario stood in the yard");
+    assertLength(
+      posed.site.loads,
+      1,
+      "the load the scenario stood in the yard",
+    );
 
     // The tape poses, on the program screen the tape editor lives on.
     await h.debug.setScreen("program");

@@ -234,17 +234,25 @@ export function newExpedition(
 
 /** Whether the expedition may be saved right now. */
 export function canSave(d: DeepcoreState): boolean {
-  return atSurface(d.miner) && d.coreTimer === null && coreGround(d) === null;
+  return atSurface(d.miner) && !coreSampleBlocksSave(d);
 }
 
-/** Save from the Save Pad, with a note either way. */
-export function trySave(d: DeepcoreState): boolean {
-  if (d.screen !== "in-mine" || d.dying || d.launchAnim !== null) return false;
-  if (!atSurface(d.miner)) {
-    note(d, "NO SAVE PAD HERE");
-    return false;
-  }
-  if (!canSave(d)) {
+/** Whether a live Core Sample is holding the save open. */
+export function coreSampleBlocksSave(d: DeepcoreState): boolean {
+  return d.coreTimer !== null || coreGround(d) !== null;
+}
+
+/**
+ * Write the save, with a note either way.
+ *
+ * This is the transaction the Save Pad's control names, and it runs from
+ * wherever the miner stands. The unstable Core Sample is the Pad's own rule and
+ * stays here; the screen, live play, and standing at the Pad are the player's
+ * route and live in `trySave`. The debug surface calls this one
+ * (`specs/instrumentation.md`, The controls).
+ */
+export function performSave(d: DeepcoreState): boolean {
+  if (coreSampleBlocksSave(d)) {
     note(d, "CAN'T SAVE — UNSTABLE CORE SAMPLE ACTIVE");
     return false;
   }
@@ -274,6 +282,16 @@ export function trySave(d: DeepcoreState): boolean {
     note(d, "SAVE FAILED");
   }
   return ok;
+}
+
+/** The player's route to the Save Pad: live play and the Pad itself, then the save. */
+export function trySave(d: DeepcoreState): boolean {
+  if (d.screen !== "in-mine" || d.dying || d.launchAnim !== null) return false;
+  if (!atSurface(d.miner)) {
+    note(d, "NO SAVE PAD HERE");
+    return false;
+  }
+  return performSave(d);
 }
 
 /** Restore the save, placing the miner back on the surface. */

@@ -86,6 +86,27 @@ directly; coordinates and velocities are in the logical-pixel space of
 - `snapshot()` returns a plain, JSON-serializable object describing the current
   game state (see [Snapshot shape](#snapshot-shape)). It is a pure read and never
   changes anything.
+- `reconcile()` brings every value `snapshot` reports into agreement with the
+  game as it now stands, without advancing the simulation by any amount. A ball's
+  `speed` follows from its velocity{{#if (eq variant.slug "gyre")}}, and each obstacle's `cx`, `cy` and
+  `theta` follow from the obstacle clock{{/if}}, so after a control operation has posed
+  the world {{#if (eq variant.slug "gyre")}}they answer{{else}}it answers{{/if}} for the world as it is now rather than as it was
+  before. A build that works {{#if (eq variant.slug "gyre")}}them{{else}}it{{/if}} out at the read has nothing to do here and
+  this call changes nothing; a build that keeps {{#if (eq variant.slug "gyre")}}either{{else}}it{{/if}} as a stored copy rewrites
+  that copy from what it is a copy of. This is the call to make after posing a
+  situation and before reading it back.
+
+  It moves no clock and runs no system: `simTime` is untouched, nothing is
+  integrated, no collision is resolved, no ball is served, no countdown ticks, no
+  trail sample is written, and nothing is drawn from the random generator. It
+  plays no sound, changes no screen, and writes nothing a player would see. It
+  moves nothing to make a reading agree, so a ball posed inside a paddle stays
+  where it was put and reads as it is; a paddle's `vy` is what the last step
+  integrated and stays a step's to change. Calling it twice leaves the same state
+  as calling it once, and it is never an error on any screen. `step` is not a
+  substitute: a step advances the clock and runs every system, which moves the
+  very thing the pose just placed, so a measurement taken from a posed rest state
+  comes out wrong by the step that was meant to refresh the reading.
 
 ### Control operations
 
@@ -97,6 +118,16 @@ keyboard or the AI, until the next `reset` — except that in Solo `setAiControl
 (below) can hand the AI's paddle back to the computer opponent so a scenario can
 exercise it.
 
+A control operation carries out its own effect from wherever the game stands. The
+screen that is up, where the paddles are, and whether a match is live are how a
+player reaches an effect and are none of an operation's conditions, so `serve()`
+launches the ball from whatever screen the game is on and `setPaddle` poses a
+paddle whether or not a rally is running. What an operation never does is refuse
+quietly: a call the game has nothing to act on — a ball index this build does not
+play with — fails loudly rather than leaving the state as it was, so a caller
+never reads a refusal as a pose. A caller reads what an operation left from
+`snapshot()` rather than from a return value.
+
 A control operation may also switch the game to manual stepping, as `reset` and
 `step` do. Posing a situation and then stepping it is the usual reason to call one,
 and holding the clock keeps the pose exactly as it was set rather than letting stray
@@ -107,8 +138,10 @@ the clock back, which is how a caller watches a posed scenario play out in real 
 - `startMatch(mode)` starts a real match, with `mode` being `"solo"` or
   `"versus"`, exactly as choosing it from the menu would. The match opens on the
   pre-serve countdown.
-- `serve()` launches the ball now, ending the pre-serve countdown immediately
-  instead of waiting it out. On a live rally it re-serves.
+- `serve()` launches the ball now, through the game's own serve, ending the
+  pre-serve countdown immediately instead of waiting it out. On a live rally it
+  re-serves, and on a menu screen it serves anyway — the screen a player would
+  have had to reach first is not a condition of the call.
 - `setScore(p1, p2)` sets the two scores directly, as a precondition; the win and
   deuce rules still resolve through real play, so drive a real point to end a
   match.
@@ -118,20 +151,24 @@ the clock back, which is how a caller watches a posed scenario play out in real 
   ball, which is what drives the spin mechanic.
 {{#if (eq variant.slug "multi")}}
 - `setBall(index, state)` places and aims a ball. `index` selects one of the three
-  balls, numbered in play order from `0`. `state` may set any of `x`, `y`, `vx`,
-  `vy`, and `spin`. Posing a ball takes it into live play, so a scenario can drive
-  one ball while parking the others out of the way.
+  balls, numbered in play order from `0`, and an index outside that range names no
+  ball, so the call fails loudly rather than passing quietly. `state` may set any
+  of `x`, `y`, `vx`, `vy`, and `spin`. Posing a ball takes it into live play, so a
+  scenario can drive one ball while parking the others out of the way.
 {{else}}
 - `setBall(index, state)` places and aims a ball. `index` is `0`, selecting the
-  single ball in play. `state` may set any of `x`, `y`, `vx`, `vy`, and `spin`.
+  single ball in play; any other index names no ball, so the call fails loudly
+  rather than passing quietly. `state` may set any of `x`, `y`, `vx`, `vy`, and
+  `spin`.
 {{/if}}
 - `setAiControl(enabled)` hands the AI-controlled (right) paddle back to the
   computer opponent for the rest of the driven scenario, so `step` runs the real AI
   against the posed ball while the left paddle and ball stay under the caller's
   control. This is how a scenario exercises the opponent: pose the ball's approach
   and the AI paddle's start with `setBall` and `setPaddle`, call `setAiControl(true)`,
-  then `step` and read where the AI moved its paddle. It applies only in Solo (the
-  mode with an AI); `false` is the default and restores full driver control of both
+  then `step` and read where the AI moved its paddle. The flag is set whatever mode
+  the game is in; it is only ever consulted in Solo, because Versus has no AI to
+  hand a paddle to. `false` is the default and restores full driver control of both
   paddles. A `reset` clears it.
 {{#if (eq variant.slug "gyre")}}
 - `setObstacleClock(t)` poses the obstacles by setting the obstacle clock to `t`
@@ -219,6 +256,15 @@ the paddle and ball ended up.
 `held` is `true` while a ball is parked for its pre-serve countdown rather than in
 flight. `speed` is the ball's current speed, the magnitude of its velocity.
 `muted` reflects the mute toggle, so pressing the mute key updates it.
+
+{{#if (eq variant.slug "gyre")}}`speed` and each obstacle's pose are derived rather than stored: `speed` is a
+function of the velocity, and a pose is a function of the obstacle clock. A build
+is free to work either out at the read or to keep it as a stored copy, and
+`reconcile()` is what brings a stored copy back into agreement after a control
+operation has posed the world.{{else}}`speed` is derived rather than stored, being a function of the velocity. A build
+is free to work it out at the read or to keep it as a stored copy, and
+`reconcile()` is what brings a stored copy back into agreement after a control
+operation has posed the world.{{/if}}
 {{#if (eq variant.slug "gyre")}}
 Each entry of `obstacles` is the current pose of one obstacle — its center
 (`cx`, `cy`) and its rotation `theta` in radians — the same values that drive its

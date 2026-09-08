@@ -30,8 +30,10 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 
+import { assertEqual } from "../assert";
+import { drewText } from "../case-harness/text";
 import { createHarness, captureStill, type Harness } from "../harness";
-import { assertDrew, frameOps } from "./screens";
+import { frameOps } from "./screens";
 
 /** The three hunters, named as specs/predators.md names them. */
 const PREDATORS = ["LANTERNJAW", "GLOAMFIN", "FLAREFISH"] as const;
@@ -66,24 +68,24 @@ it("names the controls, the three predators and both ways of reading the dark", 
   captureStill(h, "howto");
 
   for (const predator of PREDATORS) {
-    assertDrew(
-      ops,
-      predator,
+    assertEqual(
+      drewText(ops, predator),
+      true,
       "a hunter the how-to screen names, of the three specs/predators.md fixes",
     );
   }
   for (const sense of SENSES) {
-    assertDrew(
-      ops,
-      sense,
+    assertEqual(
+      drewText(ops, sense),
+      true,
       "a way of reading the dark the how-to screen describes, of the forager's " +
         "own light and the sonar pulse (specs/ui.md)",
     );
   }
   for (const key of NAMED_KEYS) {
-    assertDrew(
-      ops,
-      key,
+    assertEqual(
+      drewText(ops, key),
+      true,
       "a key the how-to screen names for the control it is bound to " +
         "(specs/movement.md)",
     );

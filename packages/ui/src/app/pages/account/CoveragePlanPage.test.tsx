@@ -408,7 +408,10 @@ describe("buildGroups", () => {
     // `none` is the ordinary case and every pin has an engine, so spelling it out
     // would add a word to every block on the page and distinguish nothing.
     expect(plain[0]!.subtitle).toBe("base · v1.0.0");
-    const engined = buildGroups(matrix([cell({ engine: "simple-2d" })]), nameOf);
+    const engined = buildGroups(
+      matrix([cell({ engine: "simple-2d" })]),
+      nameOf,
+    );
     expect(engined[0]!.subtitle).toBe("base · v1.0.0 · Simple 2D");
   });
 

@@ -23,9 +23,10 @@
 // THE MATCH IS A SUBSTRING, PAST THE HUD. A menu entry is commonly set with a
 // marker beside it ("> RESUME <"), and casing, font and typography are the
 // build's, so each entry is looked for inside the frame's copy rather than as a
-// whole run. Only what the build drew over the strait counts, which is what
-// `screenCopy` filters to: `specs/ui.md` requires the HUD on `playing` and a
-// build is free to keep drawing it under the pause menu.
+// whole run, by the shared harness's `drewTextAnywhere`. Only what the build
+// drew over the strait counts, which is what `screenText` hands it:
+// `specs/ui.md` requires the HUD on `playing` and a build is free to keep
+// drawing it under the pause menu.
 //
 // THE ORDER IS NOT GRADED HERE. `specs/ui.md` fixes it, and the three transition
 // items decide it between them: `screens.pause-resume` confirms index `0` and
@@ -34,7 +35,8 @@
 // keeps this point and loses those.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThan, assertMatches } from "../assert";
+import { assertEqual, assertGreaterThan, assertTrue } from "../assert";
+import { drewTextAnywhere } from "../case-harness/index";
 import { PAUSE_ITEMS } from "../constants";
 import {
   captureStill,
@@ -42,7 +44,7 @@ import {
   startCrossing,
   type Harness,
 } from "../harness";
-import { screenCopy, screenRuns } from "./screens";
+import { screenRuns, screenText } from "./screens";
 
 /** Every string `specs/ui.md` requires the pause menu to carry. */
 const REQUIRED_COPY: readonly string[] = PAUSE_ITEMS;
@@ -70,17 +72,18 @@ it("draws RESUME, RESTART and QUIT TO MENU on the pause menu", async () => {
   const calls = await h.frameCalls();
   await captureStill(h, "pause");
 
-  const copy = screenCopy(calls);
+  const runs = screenRuns(calls);
   assertGreaterThan(
-    screenRuns(calls).length,
+    runs.length,
     0,
     "the pause menu to draw text over the strait at all (specs/ui.md)",
   );
+  const text = screenText(calls);
   for (const required of REQUIRED_COPY) {
-    assertMatches(
-      copy,
-      required.toUpperCase(),
-      `the pause menu draws ${JSON.stringify(required)} (specs/ui.md)`,
+    assertTrue(
+      drewTextAnywhere(text, required),
+      `the pause menu draws ${JSON.stringify(required)} (specs/ui.md) — ` +
+        `the strait drew ${JSON.stringify(runs)}`,
     );
   }
 });

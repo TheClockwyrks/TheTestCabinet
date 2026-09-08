@@ -27,10 +27,10 @@ import { assertEqual, assertTrue } from "../assert";
 import {
   captureStill,
   createHarness,
-  drewText,
   startPosed,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 import { drawFrame } from "./reading";
 
 let h: Harness;

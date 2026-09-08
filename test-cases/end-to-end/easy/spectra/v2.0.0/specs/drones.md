@@ -37,9 +37,9 @@ A band window is `fluxWindow(stage) = fluxHold(stage) + FLUX_SHIMMER`, with
 `fluxHold(stage)` the hold `specs/stages.md` states and `FLUX_SHIMMER` (`0.4`)
 seconds. The window runs in two parts.
 
-| The band clock | The Flux is |
-| --- | --- |
-| Below `fluxHold(stage)` | Holding its stored band |
+| The band clock                | The Flux is                         |
+| ----------------------------- | ----------------------------------- |
+| Below `fluxHold(stage)`       | Holding its stored band             |
 | At or above `fluxHold(stage)` | Shimmering, settled on neither band |
 
 When the band clock reaches `fluxWindow(stage)`, the Flux's stored band flips to the
@@ -78,10 +78,10 @@ shell's band is the Prism's stored band, and the core's is always the opposite. 
 shell hides the core until the shell is gone, so exactly one layer is exposed at a
 time.
 
-| The Prism | The exposed layer | Broken by |
-| --- | --- | --- |
-| Shell intact | The shell | A shot whose effective band matches the shell's |
-| Shell broken | The core | A shot whose effective band matches the core's |
+| The Prism    | The exposed layer | Broken by                                       |
+| ------------ | ----------------- | ----------------------------------------------- |
+| Shell intact | The shell         | A shot whose effective band matches the shell's |
+| Shell broken | The core          | A shot whose effective band matches the core's  |
 
 Breaking the shell leaves the Prism alive with its core exposed; destroying the
 exposed core destroys the Prism. Each layer falls to a single matching shot, and a

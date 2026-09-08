@@ -48,7 +48,12 @@ export type Screen =
 export type Facing = "left" | "right";
 
 export type ZoneKind =
-  "puddle" | "lantern" | "aura" | "slash" | "strike" | "burst";
+  | "puddle"
+  | "lantern"
+  | "aura"
+  | "slash"
+  | "strike"
+  | "burst";
 
 /** What `setNextDrop` poses for the next common kill's roll. */
 export type NextDrop = "bread" | "draft" | "none";

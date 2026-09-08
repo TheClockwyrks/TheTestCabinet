@@ -156,6 +156,11 @@ export interface CaromDebugApi {
   spawnObstacle(state: DeepReadonly<CaromState>, index: number): CaromState;
   /** Returns the game to its title-screen state. Leaves `muted` alone. */
   reset(state: DeepReadonly<CaromState>): CaromState;
+  /**
+   * Brings every reading this surface reports into agreement with the world as
+   * it stands, advancing nothing.
+   */
+  reconcile(state: DeepReadonly<CaromState>): CaromState;
 
   /* Screens and menus. */
 
@@ -279,14 +284,19 @@ function posePaddle(
 /**
  * The state with one field of the ball changed and nothing else.
  *
- * Every ball operation has no effect while the ball is absent
- * (specs/instrumentation.md), which is what the `null` guard says.
+ * An absent ball is no ball to pose. An operation that quietly returned the
+ * state as it was would leave a caller reading its own pose back off a field
+ * that never took it, and every check driving that operation would grade a world
+ * it did not arrange — so this fails where the caller can see it
+ * (specs/instrumentation.md). `spawnBall` is how a field of one is posed.
  */
 function poseBall(
   state: DeepReadonly<CaromState>,
   patch: Partial<BallState>,
 ): CaromState {
-  if (state.ball === null) return state;
+  if (state.ball === null) {
+    throw new Error("Carom: no ball is on the field; spawnBall places one");
+  }
   const ball: BallState = { ...state.ball, ...patch };
   return { ...state, ball };
 }
@@ -369,10 +379,14 @@ export function createDebugApi(): CaromDebugApi {
 
     /**
      * Obstacle `index` at its fixed center. Spawning one already present returns
-     * it there; an index outside the field's obstacles changes nothing.
+     * it there; an index outside the two this field is built with names no
+     * obstacle, so the call fails where the caller can see it rather than
+     * passing quietly.
      */
     spawnObstacle(state, index) {
-      if (!isObstacleIndex(index)) return state;
+      if (!isObstacleIndex(index)) {
+        throw new RangeError(`Carom: no obstacle ${index}`);
+      }
       return {
         ...state,
         obstacles: withObstacle(state.obstacles, obstacleAt(index)),
@@ -394,6 +408,23 @@ export function createDebugApi(): CaromDebugApi {
      */
     reset(state) {
       return { ...createInitialState(), muted: state.muted };
+    },
+
+    /**
+     * Every reading brought into agreement with the world as it stands, without
+     * advancing anything.
+     *
+     * Every derived reading this build reports is worked out at the read: the
+     * ball's `speed` is `ballSpeed(ball)` in `ballView`, and every other field
+     * of the snapshot is the state's own. Nothing is held that a pose can leave
+     * behind, so the state handed in is already the state to hand back. The
+     * operation is required of every build, including one that keeps those
+     * readings as stored copies, and returning the state unchanged is what it
+     * comes to in a build that keeps none — not an omission. Running the update
+     * would be wrong: an update moves the very thing a pose has just placed.
+     */
+    reconcile(state) {
+      return { ...state };
     },
 
     // ---- Screens and menus ---------------------------------------------

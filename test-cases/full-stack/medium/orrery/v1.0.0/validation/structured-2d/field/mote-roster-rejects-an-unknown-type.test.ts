@@ -4,9 +4,9 @@
 // A NAME FROM `MOTES` IN `specs/field.md`, resting on `(q, r)` with a fresh `id`"
 // (`specs/instrumentation.md`, The run), under the rule the whole surface is
 // written against: "an argument outside the domain its operation states is
-// invalid, and the call fails loudly rather than guessing what was meant, except
-// where an operation states that it normalizes or ignores the call". `spawnMote`
-// states no normalizing and no ignoring, and `specs/field.md` closes the roster —
+// invalid … each one fails loudly and changes nothing, rather than passing with
+// the state exactly as it was". `spawnMote`
+// states no licence to pass quietly, and `specs/field.md` closes the roster —
 // "`MOTES` NAMES THE FIFTEEN TYPES" — so a sixteenth name is outside the domain.
 //
 // WHY IT MATTERS THAT IT THROWS RATHER THAN SHRUGS. Failing loudly and doing

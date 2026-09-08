@@ -17,17 +17,17 @@ The case is a collection arena. A runner pawn moves under a player controller,
 sweeps up orbs by overlapping them, and the match travels to a summary level
 once the last orb is gone.
 
-| Figure | Value |
-| --- | --- |
-| Logical design size | `640 × 360` |
-| Levels | `arena`, then `summary` |
-| Tag vocabulary | `wall`, `orb`, `runner` |
-| Runner | The pawn player 0 possesses, radius `12`, `180` units per second |
-| Dash | `480` units per second for `0.25` seconds, armed by one press |
-| Orbs | Six, radius `8`, worth `10` points each, destroyed on overlap |
-| Actions | `up`, `down`, `left`, `right`, `dash` |
-| Cues | `collect`, `dash`, `over` |
-| Diagnostics | `best` on the instance, `orbs` on the world |
+| Figure              | Value                                                            |
+| ------------------- | ---------------------------------------------------------------- |
+| Logical design size | `640 × 360`                                                      |
+| Levels              | `arena`, then `summary`                                          |
+| Tag vocabulary      | `wall`, `orb`, `runner`                                          |
+| Runner              | The pawn player 0 possesses, radius `12`, `180` units per second |
+| Dash                | `480` units per second for `0.25` seconds, armed by one press    |
+| Orbs                | Six, radius `8`, worth `10` points each, destroyed on overlap    |
+| Actions             | `up`, `down`, `left`, `right`, `dash`                            |
+| Cues                | `collect`, `dash`, `over`                                        |
+| Diagnostics         | `best` on the instance, `orbs` on the world                      |
 
 The case fixes the level names, the tag vocabulary, the action names with the
 keys they bind, and the cue names, so a check names things every build of the
@@ -245,13 +245,15 @@ class Collector extends GameInstance<Debug> {
       },
       placeOrb: (index, at) => {
         const orb = this.orbs()[index];
-        if (orb === undefined) throw new Error(`the arena holds no orb ${index}`);
+        if (orb === undefined)
+          throw new Error(`the arena holds no orb ${index}`);
         orb.transform.x = at.x;
         orb.transform.y = at.y;
       },
       keepOrbs: (count) => {
         const orbs = this.orbs();
-        if (orbs.length < count) throw new Error(`the arena holds ${orbs.length} orbs`);
+        if (orbs.length < count)
+          throw new Error(`the arena holds ${orbs.length} orbs`);
         for (const orb of orbs.slice(count)) orb.destroy();
       },
       snapshot: () => {
@@ -261,7 +263,10 @@ class Collector extends GameInstance<Debug> {
           level: world.level,
           phase: world.state.phase,
           runner: { x: runner.transform.x, y: runner.transform.y },
-          orbs: this.orbs().map((orb) => ({ x: orb.transform.x, y: orb.transform.y })),
+          orbs: this.orbs().map((orb) => ({
+            x: orb.transform.x,
+            y: orb.transform.y,
+          })),
           score: world.state.players[0]?.score ?? 0,
         };
       },
@@ -280,7 +285,12 @@ class Collector extends GameInstance<Debug> {
   }
 }
 
-function wall(x: number, y: number, width: number, height: number): ActorSpec<Wall> {
+function wall(
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+): ActorSpec<Wall> {
   return {
     type: Wall,
     transform: { x, y },
@@ -289,17 +299,20 @@ function wall(x: number, y: number, width: number, height: number): ActorSpec<Wa
   };
 }
 
-const orbs: readonly ActorSpec<Orb>[] = Array.from({ length: ORB_COUNT }, (_, i) => {
-  const angle = (i / ORB_COUNT) * Math.PI * 2;
-  return {
-    type: Orb,
-    transform: {
-      x: DESIGN_WIDTH / 2 + Math.cos(angle) * 120,
-      y: DESIGN_HEIGHT / 2 + Math.sin(angle) * 90,
-    },
-    tags: [TAGS.orb],
-  };
-});
+const orbs: readonly ActorSpec<Orb>[] = Array.from(
+  { length: ORB_COUNT },
+  (_, i) => {
+    const angle = (i / ORB_COUNT) * Math.PI * 2;
+    return {
+      type: Orb,
+      transform: {
+        x: DESIGN_WIDTH / 2 + Math.cos(angle) * 120,
+        y: DESIGN_HEIGHT / 2 + Math.sin(angle) * 90,
+      },
+      tags: [TAGS.orb],
+    };
+  },
+);
 
 export const game: GameDefinition<Debug> = {
   instance: Collector,
@@ -308,9 +321,19 @@ export const game: GameDefinition<Debug> = {
       mode: ArenaMode,
       actors: [
         wall(DESIGN_WIDTH / 2, HALF, DESIGN_WIDTH, WALL_THICKNESS),
-        wall(DESIGN_WIDTH / 2, DESIGN_HEIGHT - HALF, DESIGN_WIDTH, WALL_THICKNESS),
+        wall(
+          DESIGN_WIDTH / 2,
+          DESIGN_HEIGHT - HALF,
+          DESIGN_WIDTH,
+          WALL_THICKNESS,
+        ),
         wall(HALF, DESIGN_HEIGHT / 2, WALL_THICKNESS, DESIGN_HEIGHT),
-        wall(DESIGN_WIDTH - HALF, DESIGN_HEIGHT / 2, WALL_THICKNESS, DESIGN_HEIGHT),
+        wall(
+          DESIGN_WIDTH - HALF,
+          DESIGN_HEIGHT / 2,
+          WALL_THICKNESS,
+          DESIGN_HEIGHT,
+        ),
         ...orbs,
       ],
     },
@@ -513,24 +536,35 @@ function recorder(target: SKRSContext2D, calls: DrawCall[]): SKRSContext2D {
   });
 }
 
-export function callsTo(calls: readonly DrawCall[], method: string): unknown[][] {
+export function callsTo(
+  calls: readonly DrawCall[],
+  method: string,
+): unknown[][] {
   return calls.flatMap((call) =>
     call.kind === "call" && call.method === method ? [call.args] : [],
   );
 }
 
-export function setsOf(calls: readonly DrawCall[], property: string): unknown[] {
+export function setsOf(
+  calls: readonly DrawCall[],
+  property: string,
+): unknown[] {
   return calls.flatMap((call) =>
     call.kind === "set" && call.property === property ? [call.value] : [],
   );
 }
 
-export async function createHarness(options: HarnessOptions = {}): Promise<Harness> {
+export async function createHarness(
+  options: HarnessOptions = {},
+): Promise<Harness> {
   const cssWidth = options.cssWidth ?? DESIGN_WIDTH;
   const cssHeight = options.cssHeight ?? DESIGN_HEIGHT;
   const dpr = options.dpr ?? 1;
 
-  const canvas = createCanvas(Math.round(cssWidth * dpr), Math.round(cssHeight * dpr));
+  const canvas = createCanvas(
+    Math.round(cssWidth * dpr),
+    Math.round(cssHeight * dpr),
+  );
   const ctx = canvas.getContext("2d");
   const calls: DrawCall[] = [];
   const recorded = recorder(ctx, calls);
@@ -681,7 +715,10 @@ it("spends the dash over its stated duration", async () => {
 
   const dashed = DASH_SPEED * DASH_SECONDS;
   const walked = RUNNER_SPEED * (1 - DASH_SECONDS);
-  expect(engine.debug.snapshot().runner.x).toBeCloseTo(320 + dashed + walked, 2);
+  expect(engine.debug.snapshot().runner.x).toBeCloseTo(
+    320 + dashed + walked,
+    2,
+  );
 });
 
 it("is blocked by the arena wall", async () => {
@@ -702,7 +739,9 @@ it("is blocked by the arena wall", async () => {
   expect(hits.length).toBeGreaterThan(0);
   expect(hits[0].wall).toBe(true);
   expect(hits[0].normal.x).toBeCloseTo(-1, 6);
-  expect(engine.debug.snapshot().runner.x).toBeLessThan(DESIGN_WIDTH - RUNNER_RADIUS);
+  expect(engine.debug.snapshot().runner.x).toBeLessThan(
+    DESIGN_WIDTH - RUNNER_RADIUS,
+  );
 });
 ```
 
@@ -783,7 +822,9 @@ it("removes a destroyed orb from the world at the end of the frame", async () =>
   await engine.advance(1);
 
   expect(destroyed).toHaveLength(ORB_COUNT - 1);
-  expect(world.actors().filter((actor) => actor.hasTag(TAGS.orb))).toEqual([kept]);
+  expect(world.actors().filter((actor) => actor.hasTag(TAGS.orb))).toEqual([
+    kept,
+  ]);
 });
 
 it("travels to the summary level when the last orb is collected", async () => {
@@ -791,8 +832,12 @@ it("travels to the summary level when the last orb is collected", async () => {
   const arena = harness.world();
 
   const travel: string[] = [];
-  engine.events.on("world:opening", ({ from, to }) => travel.push(`${from} -> ${to}`));
-  engine.events.on("world:opened", ({ level }) => travel.push(`opened ${level}`));
+  engine.events.on("world:opening", ({ from, to }) =>
+    travel.push(`${from} -> ${to}`),
+  );
+  engine.events.on("world:opened", ({ level }) =>
+    travel.push(`opened ${level}`),
+  );
 
   engine.debug.keepOrbs(1);
   await engine.advance(1);
@@ -941,7 +986,9 @@ it("draws the orbs beneath the runner", async () => {
   expect(arcs).toHaveLength(ORB_COUNT + 1);
   expect(arcs.at(-1)?.slice(0, 3)).toEqual([320, 180, RUNNER_RADIUS]);
 
-  const fills = setsOf(calls, "fillStyle").filter((color) => color !== BACKGROUND);
+  const fills = setsOf(calls, "fillStyle").filter(
+    (color) => color !== BACKGROUND,
+  );
   expect(fills.at(-1)).toBe(RUNNER_COLOR);
   expect(fills.filter((color) => color === ORB_COLOR)).toHaveLength(ORB_COUNT);
 });

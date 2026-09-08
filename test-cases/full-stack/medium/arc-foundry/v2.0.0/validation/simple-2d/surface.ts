@@ -373,6 +373,16 @@ export interface FoundrySnapshot {
 export interface FoundryDebugApi<S = unknown> {
   version: number;
 
+  /**
+   * The next state, with every reported reading in agreement with the yard it
+   * describes and nothing advanced. `qualityOdds`, `mazeLength`, a structure's
+   * `range`, `damage`, `fireRate` and `auraBonus`, a unit's `speed` and
+   * `progress`, and `held.legal` all answer for the yard as posed after it. A
+   * build that works them out at the call returns a state equal to the one it
+   * was given.
+   */
+  reconcile(state: DeepReadonly<S>): S;
+
   /* Readings. */
   snapshot(state: DeepReadonly<S>): FoundrySnapshot;
   panelButtons(state: DeepReadonly<S>): PanelButton[];
@@ -518,6 +528,8 @@ export const REQUIRED_OPS = [
   "recipeEntries",
   "waveCount",
   "rollPress",
+  // Reconciling.
+  "reconcile",
   // The run.
   "reset",
   "setMap",

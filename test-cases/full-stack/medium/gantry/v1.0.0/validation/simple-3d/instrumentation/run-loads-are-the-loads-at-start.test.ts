@@ -55,7 +55,10 @@ it("carries one entry per load standing when the run started", async () => {
   await standMinimalCrane(h);
   await addOneLoad(h, "crate", 40, FROM, { x: -6, y: 2, z: 0, yaw: 0 });
   await poseTape(h, [
-    { kind: "move", commands: [{ axis: "hoist", target: HOIST_MIN, rate: HOIST_MAX_RATE }] },
+    {
+      kind: "move",
+      commands: [{ axis: "hoist", target: HOIST_MIN, rate: HOIST_MAX_RATE }],
+    },
   ]);
 
   const started = await startRun(h);

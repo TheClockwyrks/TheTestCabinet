@@ -22,7 +22,12 @@ import { Sim } from "./sim";
 
 /** The screen the game is on. */
 export type Screen =
-  "title" | "howto" | "playing" | "paused" | "gameover" | "cleared";
+  | "title"
+  | "howto"
+  | "playing"
+  | "paused"
+  | "gameover"
+  | "cleared";
 
 /** Every screen, in the order `specs/ui.md` lists them. */
 export const SCREENS: readonly Screen[] = [
@@ -36,7 +41,14 @@ export const SCREENS: readonly Screen[] = [
 
 /** The one action a press raises, as `specs/controls.md` names them. */
 export type Action =
-  "up" | "down" | "left" | "right" | "confirm" | "back" | "pause" | "mute";
+  | "up"
+  | "down"
+  | "left"
+  | "right"
+  | "confirm"
+  | "back"
+  | "pause"
+  | "mute";
 
 /**
  * What the game asks of the audio layer.
@@ -143,6 +155,25 @@ export class Game {
     // The best rises the instant the live score passes it, during play rather than
     // at the end of a round, and a best posed below the live score is raised back.
     if (this.sim.score > this.best) this.best = this.sim.score;
+    this.reconcile();
+  }
+
+  /**
+   * Bring the readings the state MIRRORS back into agreement with what they
+   * mirror, without advancing anything.
+   *
+   * `muted` is the game's readable copy of the runtime's mute bit rather than a
+   * figure the game owns, so it is refreshed rather than computed. `update` ends
+   * by calling this, and `specs/instrumentation.md`'s `reconcile()` reaches the
+   * same call from the debug surface — which is what lets a caller pose a world
+   * and then read a description of the world it posed rather than of the one
+   * before it.
+   *
+   * It advances nothing. No tick resolves, no accumulator moves, and the best
+   * score is left to the update above, which is where `specs/scoring.md` puts
+   * it.
+   */
+  reconcile(): void {
     this.muted = this.audio.muted;
   }
 
@@ -172,7 +203,7 @@ export class Game {
     this.simTime = 0;
     this.accumulator = 0;
     this.biteRemaining = 0;
-    this.muted = this.audio.muted;
+    this.reconcile();
   }
 
   /**

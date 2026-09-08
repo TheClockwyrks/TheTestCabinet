@@ -4,9 +4,12 @@
 // there. On `paused` the pause menu's own choices and the mute action are the
 // whole of what the player operates: every other action, every status bar control,
 // and every build panel control is inert, whether it is pressed with the pointer
-// or fired from the keyboard." `specs/instrumentation.md` carries that to the
-// surface: an operation "that stands for a control a player operates commits
-// through that same control, so it is refused wherever the control is refused".
+// or fired from the keyboard." That is a rule on the PLAYER'S ROUTE, and it is
+// the route this drives: `specs/instrumentation.md` makes a debug operation
+// unconditional, so `keep`, `downgrade`, `combine` and `dismantle` on the surface
+// each commit their own transaction from wherever the game stands and could not
+// decide this. Both halves of the route are taken — the key each act is bound to,
+// and a pointer press at whatever the build panel still draws.
 //
 // SO THE PAUSE MENU IS A GATE, NOT A PICTURE. `specs/ui.md` shows the yard
 // "visible and frozen behind it", and a build that freezes the clock but leaves
@@ -26,8 +29,10 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
 import {
   captureStill,
+  clickControl,
   createHarness,
   openYard,
+  pressAction,
   standCandidate,
   structureById,
   type Harness,
@@ -36,6 +41,9 @@ import {
 /** Two anchors clear of the Substation's chain, its entry and its collector. */
 const CANDIDATE = { col: 10, row: 0 };
 const PARTNER = { col: 14, row: 0 };
+
+/** The four yard acts the pause menu must take the input away from. */
+const ACTS = ["keep", "downgrade", "combine", "dismantle"] as const;
 
 /** The roll both rocks carry, so a combine has a partner to fold with. */
 const TYPE = "capacitor";
@@ -73,10 +81,15 @@ it("commits no keep, downgrade, combine or dismantle from the pause menu", async
     "the screen the pause menu is shown on (specs/ui.md)",
   );
 
-  h.debug.keep(candidate);
-  h.debug.downgrade(candidate);
-  h.debug.combine(candidate);
-  h.debug.dismantle(partner);
+  // The keyboard half: each act fired from the key `specs/controls.md` binds it to.
+  for (const act of ACTS) await pressAction(h, act);
+  // And the pointer half: a press at the center of whatever the panel still draws
+  // for those four acts, which is the other way a player reaches them.
+  for (const control of h.debug.panelButtons()) {
+    if ((ACTS as readonly string[]).includes(control.action)) {
+      await clickControl(h, control);
+    }
+  }
   captureStill(h, "refused");
 
   const after = h.snapshot();

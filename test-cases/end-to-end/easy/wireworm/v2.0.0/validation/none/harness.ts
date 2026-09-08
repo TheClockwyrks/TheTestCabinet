@@ -58,6 +58,16 @@
 // carried the tolerance would hide what the check is really asserting. Look for
 // a threshold in this file and you will not find one.
 //
+//
+// A HELPER THAT POSES ANYTHING A READING DERIVES FROM RECONCILES BEFORE IT
+// RETURNS. `specs/instrumentation.md` lets a build work a derived reading out at
+// the read or keep it as a stored copy, and `reconcile()` is what brings a
+// stored copy back into agreement — so `startPlaying`, which poses the level the
+// step interval and the worm length follow, ends with the call. A check that
+// poses only through the helpers therefore never calls `reconcile` itself; a
+// check that poses with `h.debug.set…` directly calls it once before its first
+// read or sweep.
+//
 // THE CLOCK IS THE SURFACE'S. Nothing outside an engineless build owns its loop,
 // so `specs/instrumentation.md` puts the clock on the surface: `setAutoStep(false)`
 // takes the game off real time and `advance(seconds, frames)` runs whole frames
@@ -81,6 +91,8 @@ import {
   apply,
   createCaseHarness,
   drawnText,
+  drawnTextLines,
+  drawnTextRuns,
   imageRef,
   luminance,
   mouseGlide,
@@ -90,12 +102,14 @@ import {
   touchGlide,
   touchPress,
   touchRelease,
+  textDraws,
   transformed,
   type DrawCall,
   type Harness as BaseHarness,
   type HarnessOptions,
   type Matrix,
   type Rgb,
+  type TextDraw,
   type UntilOptions,
   type UntilResult as BaseUntilResult,
 } from "./case-harness/index";
@@ -126,7 +140,8 @@ export {
   drawOps,
   drawnPoints,
   drawnText,
-  drewText,
+  drawnTextLines,
+  drawnTextRuns,
   imageDraws,
   imageRef,
   luminance,
@@ -187,6 +202,7 @@ export const REQUIRED_OPS = [
   // The core.
   "reset",
   "snapshot",
+  "reconcile",
   // The screen and the run.
   "setScreen",
   "setPhase",
@@ -366,6 +382,7 @@ export interface WirewormDebugApi {
   advance(seconds: number, frames?: number): Promise<void>;
   reset(): Promise<void>;
   snapshot(): Promise<WirewormSnapshot>;
+  reconcile(): Promise<void>;
 
   setScreen(screen: Screen): Promise<void>;
   setPhase(phase: Phase): Promise<void>;
@@ -969,19 +986,75 @@ export function frameIndexes(
 /* -------------------------------------------------------------------------- */
 
 /**
+ * Every string the frame drew, BOTH as the calls split it and as the logical
+ * runs those calls spell.
+ *
+ * The shared `drewText` reads copy off the logical runs alone, and rightly: a
+ * build that letter-spaces a heading draws one glyph per `fillText`, the merge
+ * rule (`case-harness/text.ts`) folds those back into the string they spell,
+ * and every raw string is a substring of its run. A reader that holds a word or
+ * a figure to a BOUNDARY on both sides needs the raw split as well, because a
+ * run can also swallow a boundary — a label drawn one space clear of its figure
+ * joins it under the same rule. The union can only add a match.
+ */
+export function drawnTextForms(calls: readonly DrawCall[]): string[] {
+  return [...drawnText(calls), ...drawnTextLines(calls)];
+}
+
+/**
+ * Every text draw the frame made, placed, BOTH as the calls split it and as the
+ * logical runs those calls spell: the placed counterpart of
+ * {@link drawnTextForms}.
+ *
+ * For the reader that has to FIND a run of copy on the frame before it can hold
+ * it to anything — the HUD label a readout's digits sit beside, the readout that
+ * must sit inside the bar. `textDraws` is one entry per call, and a build that
+ * letter-spaces its label or its score draws a glyph per call, so no single entry
+ * then carries the copy; `drawnTextRuns` folds those back into the run they
+ * spell, placed at its first draw and spanning its glyphs. A span holds the copy
+ * whole only if the build drew it in one call, and a run only if the run did not
+ * swallow a boundary the reader holds, so the union is read and can only add a
+ * match. A run of one draw is that draw, and is listed once.
+ */
+export function textDrawForms(calls: readonly DrawCall[]): TextDraw[] {
+  const draws = textDraws(calls);
+  const runs = drawnTextRuns(calls).filter(
+    (run) => !draws.some((draw) => sameDraw(draw, run)),
+  );
+  return [...draws, ...runs];
+}
+
+/** How far apart two placements of one draw may read, in canvas pixels. */
+const SAME_DRAW_SLACK = 1e-3;
+
+/** Whether two draws are one draw read twice: the same text at the same place. */
+function sameDraw(a: TextDraw, b: TextDraw): boolean {
+  return (
+    a.text === b.text &&
+    Math.abs(a.y - b.y) <= SAME_DRAW_SLACK &&
+    Math.abs(a.left - b.left) <= SAME_DRAW_SLACK &&
+    Math.abs(a.right - b.right) <= SAME_DRAW_SLACK
+  );
+}
+
+/**
  * Whether the frame drew `word` as a STANDALONE token, ignoring case.
  *
  * The stricter sibling of the shared harness's `drewText`, for the copy
  * `specs/ui.md` requires as a word rather than as a substring — the how-to
  * screen's `SPACE`, `ARROWS` and `WASD`. A screen reading "press the spacebar"
  * contains `space` and does not name the key the specification named.
+ *
+ * Read off {@link drawnTextForms}, so a key name letter-spaced a glyph per call
+ * is still the word it spells, and one drawn a space clear of its explanation is
+ * still bounded.
  */
 export function drewWord(calls: readonly DrawCall[], word: string): boolean {
   const pattern = new RegExp(
     `(^|[^A-Za-z0-9])${word.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^A-Za-z0-9]|$)`,
     "i",
   );
-  return drawnText(calls).some((drawn) => pattern.test(drawn));
+  return drawnTextForms(calls).some((drawn) => pattern.test(drawn));
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1268,6 +1341,9 @@ export async function startPlaying(
   await debug.setCursor(BAND_CX, BAND_CY);
   await debug.setCursorInvulnerable(0);
   await debug.setFireCooldown(0);
+  // The level is posed above and the step interval and the worm length follow
+  // it, so the readings are brought into agreement before the caller reads them.
+  await debug.reconcile();
 }
 
 /**

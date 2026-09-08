@@ -122,11 +122,7 @@ it("faults as unmounted when the track under a mounted arm is moved away", async
     [arm],
     "a fetch fault names the faulting part, and the arm is the only part that fetched one",
   );
-  assertDeepEqual(
-    sim?.fault?.motes,
-    [],
-    "a fetch fault names no mote",
-  );
+  assertDeepEqual(sim?.fault?.motes, [], "a fetch fault names no mote");
   assertNear(
     sim?.fraction ?? -1,
     0,

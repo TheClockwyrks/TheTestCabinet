@@ -8,7 +8,7 @@ creates one **driver** (`tcab-driver`) Job per queued run, and each driver spawn
 separate **sandbox pod** via the Kubernetes API. There is no worker pool and no
 headless Service.
 
-This folder holds the *assets*; the authoritative, narrative documentation is the
+This folder holds the _assets_; the authoritative, narrative documentation is the
 **Deployment** section of the docs site, which explains what these files are for
 and how they fit together:
 
@@ -94,13 +94,22 @@ images a run executes inside ([`containers/`](../containers/README.md)), which a
 published separately by [`build-containers.yml`](../.github/workflows/build-containers.yml).
 
 The `tcab-driver` stage carries the [audio store](../containers/README.md#the-audio-store)
-at `/opt/tcab-audio`, copied out of the published `test-cabinet-audio-store` image
-that `build-containers.yml` publishes. `images/services.Dockerfile` resolves that
-image through the `AUDIO_STORE_IMAGE` build arg, so the build reads no audio
-credential and pins the store by digest where a deployment wants one. The driver
-stages each run's declared packs out of that store, so it and `TCAB_CONTAINER_TAG`
-move to the same commit; see
+at `/opt/tcab-audio`, resolved through the `AUDIO_STORE_IMAGE` build arg, so the
+build itself reads no audio credential. The driver stages each run's declared packs
+out of that store, so it and `TCAB_CONTAINER_TAG` move to the same commit; see
 [Pinning images](../apps/docs/src/content/docs/deployment/kubernetes/overview.md#pinning-images).
+
+Where that store comes from depends on who is building:
+
+- **A deployment build** takes the arg's default — the published
+  `test-cabinet-audio-store` image `build-containers.yml` pushes — or overrides it
+  with a digest to pin the store alongside the environment's other images.
+- **A local build does not pull anything.** `local/Makefile`'s `audio-store` target
+  builds the store from the checkout (staging it out of the audio object store with
+  the read-scoped `CLOUDFLARE_AUDIO_R2_PRESIGN` credentials) and `make images` passes
+  that ref in as `AUDIO_STORE_IMAGE`. So an audio change can be published to the
+  object store and exercised locally without pushing a container image anywhere. See
+  that target for what happens on a machine with no audio credentials.
 
 ## Secrets
 

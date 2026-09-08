@@ -12,14 +12,15 @@ fires and decays to empty), not a single frame of it.
 ## How the particle tool works
 
 The only way to shape the effect is the `particle-3d` binary already on your
-`PATH`. It is the sole channel, and — this is the key idea — you do **not** place
-individual particles. You **author a system**: emitters that spawn particles,
-forces that push them around, and per-particle curves for size, opacity, and color
-over each particle's life. The review UI and the game **simulate that system live**,
-exactly the way a real particle editor (Unreal's Niagara, Unity's VFX Graph) plays
-a system. Because it is a live stochastic simulation, the effect **varies slightly
-from one play to the next** — so build something that reads as an energy discharge
-across replays and from any orbit angle, not a frozen arrangement.
+`PATH`. It is the sole channel, and — this is the key idea — you do **not**
+place individual particles. You **author a system**: emitters that spawn
+particles, forces that push them around, and per-particle curves for size,
+opacity, and color over each particle's life. That system is **simulated live**,
+by the game and by any viewer that plays it, exactly the way a real particle
+editor (Unreal's Niagara, Unity's VFX Graph) plays a system. Because it is a
+live stochastic simulation, the effect **varies slightly from one play to the
+next** — so build something that reads as an energy discharge across replays and
+from any orbit angle, not a frozen arrangement.
 
 You build the system by calling `particle-3d` **one operation at a time**, and the
 ordered list of operations you issue — recorded to `actions.json` — is the

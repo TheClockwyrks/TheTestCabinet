@@ -12,10 +12,10 @@ import { assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,
-  drewText,
   driveCourse,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 
 let h: Harness;
 

@@ -11,9 +11,9 @@ small, the wave-clear bonus is small, and Charge never accrues interest.
 
 ### Income
 
-| Source | Amount |
-| --- | --- |
-| Kill bounty | The killed unit's bounty from `specs/enemies.md`, paid the instant it is removed. |
+| Source           | Amount                                                                                                                                    |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Kill bounty      | The killed unit's bounty from `specs/enemies.md`, paid the instant it is removed.                                                         |
 | Wave-clear bonus | `WAVE_BONUS_BASE + WAVE_BONUS_STEP * waveNumber`, with `WAVE_BONUS_BASE` (`8`) and `WAVE_BONUS_STEP` (`2`). Wave `1` therefore pays `10`. |
 
 The wave-clear bonus is a function of the wave number and of nothing else. It does not
@@ -27,9 +27,9 @@ There is no other income. Charge does not accrue interest.
 
 Charge is spent on exactly two things.
 
-| Sink | Cost |
-| --- | --- |
-| Refining the press | `REFINEMENT_COSTS`, in `specs/scrap-press.md`. |
+| Sink                          | Cost                                                                    |
+| ----------------------------- | ----------------------------------------------------------------------- |
+| Refining the press            | `REFINEMENT_COSTS`, in `specs/scrap-press.md`.                          |
 | Upgrading a combination tower | A fraction of the tower's reference damage, in `specs/combinations.md`. |
 
 Stamping a rock, keeping, downgrading, combining, dismantling, and changing a targeting

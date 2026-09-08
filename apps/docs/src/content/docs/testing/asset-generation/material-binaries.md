@@ -29,14 +29,14 @@ log, and one seeded config.
 The case's `[material]` table declares the channels the material emits. Every
 material carries `base-color`; a case may declare any of the rest.
 
-| Channel | What it encodes | Color space |
-| --- | --- | --- |
-| `base-color` | the surface albedo (required) | sRGB |
-| `normal` | tangent-space surface relief (RGB-encoded normal) | linear |
-| `roughness` | microfacet roughness, 0 = mirror … 1 = matte | linear |
-| `metallic` | dielectric (0) vs. metal (1) | linear |
-| `ao` | baked ambient occlusion | linear |
-| `emissive` | self-illumination color | sRGB |
+| Channel      | What it encodes                                   | Color space |
+| ------------ | ------------------------------------------------- | ----------- |
+| `base-color` | the surface albedo (required)                     | sRGB        |
+| `normal`     | tangent-space surface relief (RGB-encoded normal) | linear      |
+| `roughness`  | microfacet roughness, 0 = mirror … 1 = matte      | linear      |
+| `metallic`   | dielectric (0) vs. metal (1)                      | linear      |
+| `ao`         | baked ambient occlusion                           | linear      |
+| `emissive`   | self-illumination color                           | sRGB        |
 
 Each channel is an independent square map of the case's `size`, edited as its own
 layered document and selected with a global `--map <channel>` on every operation

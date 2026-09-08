@@ -91,7 +91,10 @@ export type Tape = readonly TapeStep[];
 
 /** The readiness issues of `specs/structure.md`, in the order they are listed. */
 export type ReadinessIssue =
-  "no-ring" | "no-rail" | "invalid-rail" | "disconnected-members";
+  | "no-ring"
+  | "no-rail"
+  | "invalid-rail"
+  | "disconnected-members";
 
 /** What refuses a run: the readiness issues, and `empty-program` last. */
 export type StartIssue = ReadinessIssue | "empty-program";

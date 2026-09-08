@@ -57,6 +57,8 @@ export function requestChanges(items: string[]): void {
       `expected an array of strings, got ${typeName(items)}`,
     );
   }
-  const listed = items.map((item) => (typeof item === "string" ? item : String(item)));
+  const listed = items.map((item) =>
+    typeof item === "string" ? item : String(item),
+  );
   call(() => raw.requestChanges(listed));
 }

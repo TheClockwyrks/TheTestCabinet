@@ -50,6 +50,17 @@
 // checks that reach the game through it and never the `beforeEach` that built
 // the harness.
 //
+//
+// A HELPER THAT POSES ANYTHING A READING DERIVES FROM RECONCILES BEFORE IT
+// RETURNS. `wasteVisibleCount`, a card's `color` and `dropTarget` are derived
+// rather than stored (specs/instrumentation.md, Snapshot shape), and a build is
+// free to keep any of them as a stored copy — so a pose that writes the piles or
+// the set memory can leave one of them answering for the table as it was.
+// `reconcile()` is what brings them back into agreement, and it costs no
+// simulation time, so every pose helper below ends with it and a check posed
+// through the helpers never calls it itself. A check that poses with
+// `h.debug.addCard` and friends directly calls it once before its first read.
+//
 // HOW THE SURFACE IS DRIVEN — the IDENTITY strategy, which is what a structured
 // engine's state model allows. A pose acts on the live game at the moment of the
 // call and a reading is built at the call (specs/instrumentation.md), so the
@@ -119,6 +130,7 @@ import {
 import { colorDistance, rgbOf, type Rgb } from "./case-harness/color";
 import {
   drawnText as rawDrawnText,
+  drawnTextRuns,
   textDraws,
   type TextDraw,
 } from "./case-harness/text";
@@ -169,6 +181,15 @@ import type {
   Suit,
   TargetPile,
 } from "./surface";
+
+// The logical runs a frame spells, for the suites that join a frame's text
+// themselves. Copy is READ OFF THE RUNS, never off the `fillText` split: a
+// build that letter-spaces a heading draws one glyph per call, and the
+// specification fixes the words while leaving their spacing to the build. A
+// suite that asks whether a frame spelled some copy imports the package's
+// `drewText` from `../case-harness/text` directly; this project keeps no reader
+// of its own for that question.
+export { drawnTextLines } from "./case-harness/text";
 
 export type {
   CascadeSnapshot,
@@ -778,6 +799,7 @@ export function openTable(h: Harness): void {
   resetTo(h);
   h.debug.setScreen("playing");
   h.debug.clearTable();
+  h.debug.reconcile();
 }
 
 /**
@@ -804,6 +826,7 @@ export function openTitle(h: Harness): void {
   resetTo(h);
   h.debug.setScreen("title");
   h.debug.clearTable();
+  h.debug.reconcile();
 }
 
 /** The how-to screen, over an empty table. */
@@ -811,6 +834,7 @@ export function openHowto(h: Harness): void {
   resetTo(h);
   h.debug.setScreen("howto");
   h.debug.clearTable();
+  h.debug.reconcile();
 }
 
 /** The `won` screen, over an empty table, with nothing in flight. */
@@ -818,6 +842,7 @@ export function openWon(h: Harness): void {
   resetTo(h);
   h.debug.setScreen("won");
   h.debug.clearTable();
+  h.debug.reconcile();
 }
 
 /**
@@ -832,6 +857,7 @@ export function dealInPlay(h: Harness): void {
   resetTo(h);
   h.debug.setScreen("playing");
   h.debug.deal();
+  h.debug.reconcile();
 }
 
 /**
@@ -848,6 +874,7 @@ export function poseCard(
   spec: CardSpec,
 ): number {
   h.debug.addCard(pile, index, spec.suit, spec.rank, spec.faceUp ?? true);
+  h.debug.reconcile();
   const cards = pileOf(h.snapshot(), pile, index);
   if (cards.length === 0) {
     fail(
@@ -922,6 +949,9 @@ export function poseWaste(
   }
   const ids = cards.map((spec) => poseCard(h, "waste", 0, spec));
   for (const count of sets) h.debug.addWasteSet(count);
+  // `wasteVisibleCount` follows the newest set, so the sets are posed before the
+  // readings are brought into agreement.
+  h.debug.reconcile();
   return ids;
 }
 
@@ -1437,28 +1467,6 @@ export function fractionUnlike(
 export const drawnText = rawDrawnText;
 
 /**
- * Whether the frame drew `text` as part of some run of text, ignoring case.
- *
- * Substring rather than equality on purpose: the copy a check asserts is the
- * case's own, but how a build presents it is the build's, and a label is
- * commonly drawn with a marker or padding around it. Requiring the exact run
- * would fail a screen that shows precisely the right words.
- *
- * READ OFF THE RAW CALLS, WHICH IS NOT WHAT THE PACKAGE'S `drewText` READS. The
- * package's spells the frame's text into LOGICAL RUNS first, so a heading drawn
- * a glyph per `fillText` reads as the word it spells; this one asks whether some
- * single call carried the copy. The two agree on every build that draws a label
- * in one call and disagree on one that does not, so binding the package's here
- * would quietly widen what this project's `screens` and `presentation` points
- * accept. Cascade's engineless project binds the package's; these two do not,
- * and that difference is recorded in the README's collision table.
- */
-export function drewText(calls: readonly DrawCall[], text: string): boolean {
-  const wanted = text.trim().toLowerCase();
-  return drawnText(calls).some((drawn) => drawn.toLowerCase().includes(wanted));
-}
-
-/**
  * Walk a frame's operations, handing `visit` each one with the transform in
  * force at it.
  *
@@ -1757,9 +1765,9 @@ export type TextSpan = TextDraw;
  * through the same context, in device pixels under an identity transform, which
  * this mapping carries back to logical units like any other run.
  *
- * ONE ENTRY PER CALL, never merged: a check here holds a drawn label against the
- * region the build reported for it, and a merged run is wider than any of its
- * members.
+ * ONE ENTRY PER CALL, never merged: the reading for a check that counts draws
+ * or holds one draw's own extent. A check that reads COPY against a region asks
+ * {@link drawnRunSpans} instead, whose runs are wider than any of their members.
  */
 export function drawnTextSpans(
   h: Harness,
@@ -1767,6 +1775,31 @@ export function drawnTextSpans(
 ): TextSpan[] {
   return allInLogical(h.viewport(), textDraws(calls));
 }
+
+/**
+ * The frame's text coalesced into the LOGICAL RUNS it spells, placed in logical
+ * units the way {@link drawnTextSpans} places one call.
+ *
+ * What a reader that holds COPY against a REGION reads. A build that
+ * letter-spaces a label draws one glyph per `fillText`, which is the only
+ * portable way to letter-space canvas text, and specs/screens.md fixes the words
+ * a control carries while leaving their spacing to the build; a span per call
+ * would then carry one letter each and match no label. The shared harness's
+ * merge rule (`case-harness/text.ts`) folds side-by-side draws on one baseline
+ * back into the run they spell, and a run keeps its first draw's anchor while
+ * its right edge grows, so its extent is the whole label's. Every raw string is
+ * a substring of its run, so coalescing can only add a match.
+ *
+ * The runs come back in canvas pixels, placed exactly as {@link drawnTextSpans}
+ * places one draw, and are carried back through the engine's fit the same way.
+ */
+export function drawnRunSpans(
+  h: Harness,
+  calls: readonly DrawCall[] = h.calls,
+): TextSpan[] {
+  return allInLogical(h.viewport(), drawnTextRuns(calls));
+}
+
 /* -------------------------------------------------------------------------- */
 /* The diagnostics overlay                                                    */
 /* -------------------------------------------------------------------------- */

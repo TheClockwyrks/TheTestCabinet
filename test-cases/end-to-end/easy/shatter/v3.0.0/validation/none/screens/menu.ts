@@ -29,6 +29,7 @@ import { fail } from "../assert";
 import { FIELD_H, FIELD_W } from "../constants";
 import {
   colorDistance,
+  drawnTextRuns,
   textDraws,
   type DrawCall,
   type Harness,
@@ -91,6 +92,16 @@ export interface Band {
  *
  * Fails when the entry was not drawn at all, which is the precondition a look check
  * cannot proceed without.
+ *
+ * THE LOGICAL RUNS FIRST, THEN THE CALLS. A build that letter-spaces its menu
+ * draws one glyph per `fillText` — the only portable way to letter-space canvas
+ * text — and `specs/ui.md` fixes the words while leaving their spacing to the
+ * build, so read a call at a time such a menu shows `P`, `L`, `A`, `Y` and no
+ * entry. The package's `drawnTextRuns` coalesces the glyphs back into the entry
+ * they spell, placed as one extent, which is exactly the span a band wants (this
+ * harness asks for `measureText`, so the runs are measured). The calls follow,
+ * so a run the merge glued onto a neighbour still reads as the call that drew it;
+ * a run drawn whole appears in both and the first, the run, is the one kept.
  */
 export function entryDraw(
   calls: readonly DrawCall[],
@@ -105,7 +116,8 @@ export function entryDraw(
     .filter((other) => other !== entry)
     .map((other) => other.trim().toLowerCase())
     .filter((other) => other.includes(wanted));
-  const found = textDraws(calls).filter((draw) => {
+  const runs = drawnTextRuns(calls);
+  const found = [...runs, ...textDraws(calls)].filter((draw) => {
     const drawn = draw.text.toLowerCase();
     return (
       drawn.includes(wanted) &&
@@ -115,7 +127,7 @@ export function entryDraw(
   if (found.length === 0) {
     fail(
       `the menu entry "${entry}" drawn on ${where} (specs/ui.md)`,
-      textDraws(calls).map((draw) => draw.text),
+      runs.map((run) => run.text),
     );
   }
   // The topmost, so a build that draws the same entry twice — a shadow or an outline

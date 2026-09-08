@@ -33,14 +33,14 @@ brief.
   sheet has **48 frames, numbered 0–47**, in three tiers of sixteen, each tier
   split into two eight-frame loops:
 
-  | Frames | Tier | Form | Flow |
-  | --- | --- | --- | --- |
-  | `0`–`7` | Tier 1 | the straight belt | enters West, leaves East |
-  | `8`–`15` | Tier 1 | the curve | enters West, leaves South |
-  | `16`–`23` | Tier 2 | the straight belt | enters West, leaves East |
-  | `24`–`31` | Tier 2 | the curve | enters West, leaves South |
-  | `32`–`39` | Tier 3 | the straight belt | enters West, leaves East |
-  | `40`–`47` | Tier 3 | the curve | enters West, leaves South |
+  | Frames    | Tier   | Form              | Flow                      |
+  | --------- | ------ | ----------------- | ------------------------- |
+  | `0`–`7`   | Tier 1 | the straight belt | enters West, leaves East  |
+  | `8`–`15`  | Tier 1 | the curve         | enters West, leaves South |
+  | `16`–`23` | Tier 2 | the straight belt | enters West, leaves East  |
+  | `24`–`31` | Tier 2 | the curve         | enters West, leaves South |
+  | `32`–`39` | Tier 3 | the straight belt | enters West, leaves East  |
+  | `40`–`47` | Tier 3 | the curve         | enters West, leaves South |
 
 - Each group of eight is a **single scrolling loop**.
 
@@ -53,11 +53,11 @@ else. The metal body, the cross-section, the silhouette, and the whole
 construction language stay identical, so a higher tier is unmistakably the same
 belt, only upgraded.
 
-| Tier | Accent (mover) | Mechanical detail | Speed |
-| --- | --- | --- | --- |
-| Tier 1 | amber | the base belt — plain rails, one tread run, one chevron row | base |
-| Tier 2 | red-orange | reinforced — a bolt/rib line worked into each rail, a finer tread | faster |
-| Tier 3 | blue-cyan | the most advanced — the densest tread and rail detail, a subtle energy glow along the chevrons | fastest |
+| Tier   | Accent (mover) | Mechanical detail                                                                              | Speed   |
+| ------ | -------------- | ---------------------------------------------------------------------------------------------- | ------- |
+| Tier 1 | amber          | the base belt — plain rails, one tread run, one chevron row                                    | base    |
+| Tier 2 | red-orange     | reinforced — a bolt/rib line worked into each rail, a finer tread                              | faster  |
+| Tier 3 | blue-cyan      | the most advanced — the densest tread and rail detail, a subtle energy glow along the chevrons | fastest |
 
 - **Accent color.** The **movers** — the tread-blade catch-lights and the chevrons
   — carry the tier's accent color (amber, then red-orange, then blue-cyan), using
@@ -230,7 +230,7 @@ rails, the outlines, and the surface band must run straight through the boundary
 with **no step, no gap, and no overhang**: the two rails of the straight belt
 continue as the curve's outer and inner rails, and the surface continues as the
 curve's surface. The same must hold at the South exit against a straight belt
-rotated to run South. A curved *band* pulled back from the corner — which would
+rotated to run South. A curved _band_ pulled back from the corner — which would
 narrow the mouths below the full belt width — is wrong, and so is a mouth that
 drops the inner rail and runs bare surface into the corner.
 
@@ -278,7 +278,7 @@ between two positions.
 - Because the per-frame step is the pitch divided by the frame count, **every one
   of the eight frames sits at a distinct offset** — no two frames are alike, so the
   eye sees the blades and chevrons creeping steadily forward rather than two frames
-  alternating in place. (A step of *half* the pitch, for example, would collapse a
+  alternating in place. (A step of _half_ the pitch, for example, would collapse a
   loop into just two repeating images that oscillate — avoid that.)
 - **The last frame of each loop must return seamlessly to its first**: after the
   eighth frame's offset the next step lands exactly one full pitch on, which is
@@ -308,37 +308,37 @@ movers (tread catch-lights and chevrons) in its own accent trio.
 
 ### Shared metal body — every tier
 
-| Role | Hex |
-| --- | --- |
+| Role                  | Hex       |
+| --------------------- | --------- |
 | Dark outline / shadow | `#1b1d21` |
-| Belt metal base | `#34383d` |
-| Belt metal mid | `#4a4f55` |
+| Belt metal base       | `#34383d` |
+| Belt metal mid        | `#4a4f55` |
 | Rail / edge highlight | `#6b7178` |
 
 ### Tier 1 mover — amber
 
-| Role | Hex |
-| --- | --- |
+| Role            | Hex       |
+| --------------- | --------- |
 | Mover / chevron | `#e6b329` |
 | Mover highlight | `#f6d96b` |
-| Mover shadow | `#b88410` |
+| Mover shadow    | `#b88410` |
 
 ### Tier 2 mover — red-orange
 
-| Role | Hex |
-| --- | --- |
+| Role            | Hex       |
+| --------------- | --------- |
 | Mover / chevron | `#e6602a` |
 | Mover highlight | `#f59a5a` |
-| Mover shadow | `#b8400f` |
+| Mover shadow    | `#b8400f` |
 
 ### Tier 3 mover — blue-cyan
 
-| Role | Hex |
-| --- | --- |
+| Role            | Hex       |
+| --------------- | --------- |
 | Mover / chevron | `#2ab0e6` |
 | Mover highlight | `#7fd8f6` |
-| Mover shadow | `#1069b8` |
-| Energy glow | `#bfeeff` |
+| Mover shadow    | `#1069b8` |
+| Energy glow     | `#bfeeff` |
 
 The tier-3 **energy glow** is a thin bloom of pale cyan used sparingly along the
 chevron row to sell the most advanced belt; it appears in no other tier.

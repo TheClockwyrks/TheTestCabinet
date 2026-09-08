@@ -2,65 +2,37 @@
   "parts": [
     {
       "name": "hall",
-      "pivot": [
-        36,
-        0,
-        36
-      ]
+      "pivot": [36, 0, 36]
     },
     {
       "name": "casting_bed",
       "parent": "hall",
-      "pivot": [
-        36,
-        4,
-        57
-      ]
+      "pivot": [36, 4, 57]
     },
     {
       "name": "gantry",
       "parent": "hall",
-      "pivot": [
-        36,
-        4,
-        49
-      ]
+      "pivot": [36, 4, 49]
     },
     {
       "name": "crucible",
       "parent": "gantry",
-      "pivot": [
-        36,
-        30,
-        52
-      ]
+      "pivot": [36, 30, 52]
     },
     {
       "name": "pour_stream",
       "parent": "hall",
-      "pivot": [
-        36,
-        24,
-        60
-      ]
+      "pivot": [36, 24, 60]
     },
     {
       "name": "bellows_left",
       "parent": "hall",
-      "pivot": [
-        5,
-        16,
-        24
-      ]
+      "pivot": [5, 16, 24]
     },
     {
       "name": "bellows_right",
       "parent": "hall",
-      "pivot": [
-        66,
-        16,
-        24
-      ]
+      "pivot": [66, 16, 24]
     }
   ],
   "joints": [
@@ -69,11 +41,7 @@
       "part": "bellows_left",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        5,
-        16,
-        24
-      ],
+      "pivot": [5, 16, 24],
       "min": -0.33,
       "max": 0.06,
       "rest": 0.0,
@@ -84,11 +52,7 @@
       "part": "bellows_right",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        66,
-        16,
-        24
-      ],
+      "pivot": [66, 16, 24],
       "min": -0.33,
       "max": 0.06,
       "rest": 0.0,
@@ -99,11 +63,7 @@
       "part": "crucible",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        36,
-        30,
-        52
-      ],
+      "pivot": [36, 30, 52],
       "min": -1.3,
       "max": 0.15,
       "rest": 0.0,
@@ -114,11 +74,7 @@
       "part": "pour_stream",
       "kind": "translation",
       "axis": "y",
-      "pivot": [
-        36,
-        24,
-        60
-      ],
+      "pivot": [36, 24, 60],
       "min": -32.0,
       "max": 0.0,
       "rest": 0.0,

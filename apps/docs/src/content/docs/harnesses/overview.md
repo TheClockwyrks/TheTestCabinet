@@ -34,16 +34,16 @@ usage reporting, and event translation. The declarative half of each harness
 
 ## Supported harnesses
 
-| Harness | Slug | Website | Example model IDs |
-| --- | --- | --- | --- |
-| [Anthropic Claude Code](/harnesses/claude/overview/) | `claude` | [claude.com/claude-code](https://claude.com/claude-code) | `claude-opus-4-8`, `claude-sonnet-4-6`, `claude-haiku-4-5` |
-| [OpenAI Codex](/harnesses/codex/overview/) | `codex` | [openai.com/codex](https://openai.com/codex/) | `gpt-5.5`, `gpt-5.4-mini`, `gpt-5.3-codex-spark` |
-| [Cline](/harnesses/cline/overview/) | `cline` | [cline.bot](https://cline.bot/) | `z-ai/glm-5.2`, `moonshotai/kimi-k2.7-code`, `qwen/qwen3.7-plus` |
-| [Goose](/harnesses/goose/overview/) | `goose` | [goose-docs.ai](https://goose-docs.ai/) | `z-ai/glm-5.2`, `moonshotai/kimi-k2.7-code`, `qwen/qwen3.7-plus` |
-| [Pi](/harnesses/pi/overview/) | `pi` | [pi.dev](https://pi.dev/) | `z-ai/glm-5.2`, `moonshotai/kimi-k2.7-code`, `qwen/qwen3.7-plus` |
-| [OpenCode](/harnesses/opencode/overview/) | `opencode` | [opencode.ai](https://opencode.ai/) | `openrouter/minimax/minimax-m3`, `openrouter/google/gemini-3.5-flash` |
-| [Kilo Code](/harnesses/kilo/overview/) | `kilo` | [kilo.ai](https://kilo.ai/) | `openrouter/minimax/minimax-m3`, `openrouter/google/gemini-3.5-flash` |
-| [Google Antigravity](/harnesses/antigravity/overview/) | `antigravity` | [antigravity.google](https://antigravity.google/) | — |
+| Harness                                                | Slug          | Website                                                  | Example model IDs                                                     |
+| ------------------------------------------------------ | ------------- | -------------------------------------------------------- | --------------------------------------------------------------------- |
+| [Anthropic Claude Code](/harnesses/claude/overview/)   | `claude`      | [claude.com/claude-code](https://claude.com/claude-code) | `claude-opus-4-8`, `claude-sonnet-4-6`, `claude-haiku-4-5`            |
+| [OpenAI Codex](/harnesses/codex/overview/)             | `codex`       | [openai.com/codex](https://openai.com/codex/)            | `gpt-5.5`, `gpt-5.4-mini`, `gpt-5.3-codex-spark`                      |
+| [Cline](/harnesses/cline/overview/)                    | `cline`       | [cline.bot](https://cline.bot/)                          | `z-ai/glm-5.2`, `moonshotai/kimi-k2.7-code`, `qwen/qwen3.7-plus`      |
+| [Goose](/harnesses/goose/overview/)                    | `goose`       | [goose-docs.ai](https://goose-docs.ai/)                  | `z-ai/glm-5.2`, `moonshotai/kimi-k2.7-code`, `qwen/qwen3.7-plus`      |
+| [Pi](/harnesses/pi/overview/)                          | `pi`          | [pi.dev](https://pi.dev/)                                | `z-ai/glm-5.2`, `moonshotai/kimi-k2.7-code`, `qwen/qwen3.7-plus`      |
+| [OpenCode](/harnesses/opencode/overview/)              | `opencode`    | [opencode.ai](https://opencode.ai/)                      | `openrouter/minimax/minimax-m3`, `openrouter/google/gemini-3.5-flash` |
+| [Kilo Code](/harnesses/kilo/overview/)                 | `kilo`        | [kilo.ai](https://kilo.ai/)                              | `openrouter/minimax/minimax-m3`, `openrouter/google/gemini-3.5-flash` |
+| [Google Antigravity](/harnesses/antigravity/overview/) | `antigravity` | [antigravity.google](https://antigravity.google/)        | —                                                                     |
 
 The example IDs are illustrative. Each harness accepts whatever models its
 configured provider exposes, and the ID formats differ. Claude Code and Codex
@@ -57,16 +57,16 @@ format.
 Harness telemetry differs by harness, so each harness's Telemetry page carries
 the detail.
 
-| Harness | Traces | Metrics | Logs | Joins the run's trace | Configured by |
-| --- | --- | --- | --- | --- | --- |
-| [Claude Code](/harnesses/claude/telemetry/) | Yes | Yes | Yes | Yes, `TRACEPARENT` | environment |
-| [OpenCode](/harnesses/opencode/telemetry/) | Yes | Yes | Yes | Yes, `OPENCODE_TRACEPARENT` | plugin + config file |
-| [Goose](/harnesses/goose/telemetry/) | Yes | Yes | Yes | No | environment |
-| [Codex](/harnesses/codex/telemetry/) | Yes | No | Yes | No | config file |
-| [Kilo Code](/harnesses/kilo/telemetry/) | Yes | No | Yes | No | environment |
-| [Cline](/harnesses/cline/telemetry/) | No | — | — | — | — |
-| [Pi](/harnesses/pi/telemetry/) | No | — | — | — | — |
-| [Antigravity](/harnesses/antigravity/telemetry/) | No | — | — | — | — |
+| Harness                                          | Traces | Metrics | Logs | Joins the run's trace       | Configured by        |
+| ------------------------------------------------ | ------ | ------- | ---- | --------------------------- | -------------------- |
+| [Claude Code](/harnesses/claude/telemetry/)      | Yes    | Yes     | Yes  | Yes, `TRACEPARENT`          | environment          |
+| [OpenCode](/harnesses/opencode/telemetry/)       | Yes    | Yes     | Yes  | Yes, `OPENCODE_TRACEPARENT` | plugin + config file |
+| [Goose](/harnesses/goose/telemetry/)             | Yes    | Yes     | Yes  | No                          | environment          |
+| [Codex](/harnesses/codex/telemetry/)             | Yes    | No      | Yes  | No                          | config file          |
+| [Kilo Code](/harnesses/kilo/telemetry/)          | Yes    | No      | Yes  | No                          | environment          |
+| [Cline](/harnesses/cline/telemetry/)             | No     | —       | —    | —                           | —                    |
+| [Pi](/harnesses/pi/telemetry/)                   | No     | —       | —    | —                           | —                    |
+| [Antigravity](/harnesses/antigravity/telemetry/) | No     | —       | —    | —                           | —                    |
 
 Every exporting harness carries the `tcab.harness`, `tcab.test_case`,
 `tcab.variant`, `tcab.model`, and `tcab.run_id` resource attributes, so a

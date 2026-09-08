@@ -53,6 +53,17 @@ export interface OrreryDriver {
   reset(): Promise<void>;
   /** A pure read of the state. */
   snapshot(): Promise<OrrerySnapshot>;
+  /**
+   * Bring every value the surface reports into agreement with the game as it now
+   * stands, without advancing anything.
+   *
+   * The cost, the period, a mote's drawn position, the banked area and each
+   * mode's counts all follow from state a pose can write, and a build is free to
+   * work any of them out at the read or to keep it as a stored copy. This is the
+   * call that brings a stored copy back into agreement, so a check that poses a
+   * world and reads it back reads the world it posed.
+   */
+  reconcile(): Promise<void>;
   /** Set the completion switch. */
   setCompletion(enabled: boolean): Promise<void>;
 
@@ -248,6 +259,7 @@ export interface OrreryDriver {
 export const STATE_OPS = [
   "reset",
   "snapshot",
+  "reconcile",
   "setCompletion",
   "setScreen",
   "setMode",

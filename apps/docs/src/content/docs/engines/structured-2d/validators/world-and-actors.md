@@ -113,7 +113,10 @@ its own, and `possess` then hands it the pawn the check wants driven.
 
 ```ts
 const paddle = world.byTag(TAGS.paddleP2)[0] as Pawn;
-const bot = world.mode.addBot(Scripted, { name: "check", pawn: null }) as Scripted;
+const bot = world.mode.addBot(Scripted, {
+  name: "check",
+  pawn: null,
+}) as Scripted;
 
 bot.possess(paddle);
 bot.drive = -1;

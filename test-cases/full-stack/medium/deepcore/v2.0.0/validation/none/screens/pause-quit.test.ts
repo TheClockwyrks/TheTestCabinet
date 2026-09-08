@@ -20,10 +20,10 @@ import {
   ACTION_KEY,
   captureStill,
   createHarness,
-  drewText,
   openScene,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/index";
 import { menuLength } from "../save/expedition";
 
 let h: Harness;

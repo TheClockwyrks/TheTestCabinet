@@ -47,7 +47,7 @@ import {
   wasteVisibleCount,
   withPile,
 } from "./piles";
-import { pointerDown, pointerMove, pointerUp } from "./pointer";
+import { pointerDown, pointerMove, pointerUp, withDropTarget } from "./pointer";
 import type {
   CardState,
   CascadeState,
@@ -133,6 +133,8 @@ export interface CascadeDebugApi {
 
   reset(state: DeepReadonly<CascadeState>): CascadeState;
   snapshot(state: DeepReadonly<CascadeState>): CascadeSnapshot;
+  /** Bring every reported reading into agreement with the table as it stands. */
+  reconcile(state: DeepReadonly<CascadeState>): CascadeState;
   /**
    * The hit region of item `index` on the menu the current screen shows.
    *
@@ -280,6 +282,46 @@ function flyerView(flyer: FlyerState): FlyerSnapshot {
   };
 }
 
+// ---- Naming nothing ------------------------------------------------------
+
+/**
+ * A call whose subject the table does not hold names nothing the surface can
+ * act on, so it fails loudly rather than passing quietly with the state
+ * unchanged (specs/instrumentation.md, The operations).
+ */
+function refuse(where: string, why: string): never {
+  throw new RangeError(`Cascade: ${where}() ${why}`);
+}
+
+/** The pile a `(kind, index)` pair names, or a thrown complaint. */
+function requirePile(where: string, pile: PileKind, index: number): void {
+  if (!isPile(pile, index)) {
+    refuse(where, `has no pile "${String(pile)}" at ${index}`);
+  }
+}
+
+/** Where an id's card sits, or a thrown complaint. */
+function requireCard(
+  state: DeepReadonly<CascadeState>,
+  where: string,
+  id: number,
+): { pile: PileKind; index: number } {
+  const ref = findCard(state, id);
+  if (ref === null) refuse(where, `has no card with id ${id}`);
+  return ref;
+}
+
+/** That an id names a flyer in flight, or a thrown complaint. */
+function requireFlyer(
+  state: DeepReadonly<CascadeState>,
+  where: string,
+  id: number,
+): void {
+  if (!state.flyers.some((flyer) => flyer.id === id)) {
+    refuse(where, `has no flyer with id ${id}`);
+  }
+}
+
 // ---- Posing the flyers ---------------------------------------------------
 
 function withFlyer(
@@ -360,6 +402,29 @@ export function createDebugApi(): CascadeDebugApi {
       };
     },
 
+    /**
+     * Bring every reported reading into agreement with the table as it stands,
+     * without advancing anything (specs/instrumentation.md, The core).
+     *
+     * Of this build's derived readings, `wasteVisibleCount` and a card's
+     * `color` are worked out inside `snapshot`, so there is nothing to rewrite
+     * for either. `dropTarget` is the one this build keeps in the state: the
+     * pointer path writes it as a gesture moves, so a pose that changes what
+     * the pile beneath a held run holds leaves it answering for the table as it
+     * was. `withDropTarget` is the rule the pointer path itself uses, so this
+     * is the same answer that path would have written rather than a restatement
+     * of the drop rule.
+     *
+     * It runs no system and moves no clock. `simTime` and `launchClock` stand
+     * where they were, no flyer moves or paints, no card turns, no win is
+     * detected, no cue is raised, and nothing is drawn from the generator. It
+     * corrects nothing either: a run held over a pile that no longer accepts it
+     * is left in hand and simply reports no drop target.
+     */
+    reconcile(state) {
+      return withDropTarget(state as CascadeState);
+    },
+
     menuItemRect(state, index) {
       return menuItemRect(state.screen, index);
     },
@@ -377,7 +442,7 @@ export function createDebugApi(): CascadeDebugApi {
     },
 
     addCard(state, pile, index, suit, rank, faceUp) {
-      if (!isPile(pile, index)) return state;
+      requirePile("addCard", pile, index);
       const [ids, nextId] = takeIds(state, 1);
       const cards = [
         ...pileCards(state, pile, index),
@@ -387,8 +452,7 @@ export function createDebugApi(): CascadeDebugApi {
     },
 
     removeCard(state, id) {
-      const ref = findCard(state, id);
-      if (ref === null) return state;
+      const ref = requireCard(state, "removeCard", id);
       const cards = pileCards(state, ref.pile, ref.index);
       const next = withPile(
         state,
@@ -402,8 +466,7 @@ export function createDebugApi(): CascadeDebugApi {
     },
 
     setCardFaceUp(state, id, faceUp) {
-      const ref = findCard(state, id);
-      if (ref === null) return state;
+      const ref = requireCard(state, "setCardFaceUp", id);
       const cards = pileCards(state, ref.pile, ref.index).map((card) =>
         card.id === id ? { ...card, faceUp } : card,
       );
@@ -411,7 +474,7 @@ export function createDebugApi(): CascadeDebugApi {
     },
 
     clearPile(state, pile, index) {
-      if (!isPile(pile, index)) return state;
+      requirePile("clearPile", pile, index);
       const cleared = withPile(state, pile, index, []);
       return pile === "waste" ? { ...cleared, wasteSets: [] } : cleared;
     },
@@ -504,14 +567,17 @@ export function createDebugApi(): CascadeDebugApi {
     },
 
     setFlyerPosition(state, id, x, y) {
+      requireFlyer(state, "setFlyerPosition", id);
       return withFlyer(state, id, (flyer) => ({ ...flyer, x, y }));
     },
 
     setFlyerVelocity(state, id, vx, vy) {
+      requireFlyer(state, "setFlyerVelocity", id);
       return withFlyer(state, id, (flyer) => ({ ...flyer, vx, vy }));
     },
 
     removeFlyer(state, id) {
+      requireFlyer(state, "removeFlyer", id);
       return {
         ...state,
         flyers: state.flyers.filter((flyer) => flyer.id !== id),

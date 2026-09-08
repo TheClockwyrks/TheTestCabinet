@@ -2,29 +2,17 @@
   "parts": [
     {
       "name": "body",
-      "pivot": [
-        0,
-        0,
-        0
-      ]
+      "pivot": [0, 0, 0]
     },
     {
       "name": "door",
       "parent": "body",
-      "pivot": [
-        32,
-        17,
-        57
-      ]
+      "pivot": [32, 17, 57]
     },
     {
       "name": "flywheel",
       "parent": "body",
-      "pivot": [
-        63,
-        22,
-        33
-      ]
+      "pivot": [63, 22, 33]
     }
   ],
   "joints": [
@@ -33,11 +21,7 @@
       "part": "door",
       "kind": "translation",
       "axis": "y",
-      "pivot": [
-        32,
-        17,
-        57
-      ],
+      "pivot": [32, 17, 57],
       "min": 0.0,
       "max": 24.0,
       "rest": 0.0,
@@ -48,11 +32,7 @@
       "part": "flywheel",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        63,
-        22,
-        33
-      ],
+      "pivot": [63, 22, 33],
       "min": 0.0,
       "max": 6.4,
       "rest": 0.0,

@@ -16,10 +16,10 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import { PAUSE_ITEMS } from "../constants";
+import { drewText } from "../case-harness/index";
 import {
   captureStill,
   createHarness,
-  drewText,
   startPlaying,
   type Harness,
 } from "../harness";

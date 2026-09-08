@@ -28,9 +28,11 @@
 // `MAIN MENU`, is `paused-lists-items`; what is read here is the heading above
 // the menu, which is the relation the `paused` row states of the heading.
 //
-// THE TOLERANCE. The copy is matched folded, the level and the kill count are
-// matched as whole numbers standing alone rather than as digits inside another
-// figure, and the moth's drawn center is within `BLIT_TOL` (`1` unit) of the
+// THE TOLERANCE. The copy is matched ignoring case and whitespace, across the
+// runs of text the frame drew joined in reading order (the shared harness's
+// `drewTextAnywhere`), the level and the kill count are matched as whole
+// numbers standing alone rather than as digits inside another figure, and the
+// moth's drawn center is within `BLIT_TOL` (`1` unit) of the
 // camera's point, the case's allowance for a build that rounds a world position
 // to the pixel grid before it blits. specs/ui.md ("Presentation") leaves the
 // layout to the build, so the only arrangement asserted is the one the `paused`

@@ -63,9 +63,7 @@ function fakeNow(): { now: () => number; advance: (ms: number) => void } {
 }
 
 /** A loop with a log of everything it drove, and the host it was driven through. */
-function build(
-  options: Partial<FrameLoopOptions> = {},
-): {
+function build(options: Partial<FrameLoopOptions> = {}): {
   loop: FrameLoop;
   log: string[];
   host: ReturnType<typeof fakeHost>;
@@ -172,12 +170,7 @@ describe("a declined tick", () => {
 
     loop.advance(4);
 
-    expect(log).toEqual([
-      "update:0.016",
-      "render",
-      "update:0.016",
-      "render",
-    ]);
+    expect(log).toEqual(["update:0.016", "render", "update:0.016", "render"]);
     expect(loop.info()).toEqual({ count: 2, timeMs: 32, lastDeltaMs: 16 });
   });
 

@@ -45,11 +45,12 @@
 import { assertLessThan } from "../assert";
 import { ALMANAC_TABS, FIGURE_TOLERANCE, type AlmanacTab } from "../constants";
 import {
-  drawnText,
+  placedRuns,
   present,
   tap,
   textDraws,
   textDrawsOf,
+  textReadings,
   topAnchorOf,
   type DrawCall,
   type Harness,
@@ -125,9 +126,16 @@ function figuresIn(line: string): number[] {
   );
 }
 
-/** Every number the frame wrote, whatever a build wrote beside it. */
+/**
+ * Every number the frame wrote, whatever a build wrote beside it. Read off the
+ * logical runs the frame spells as well as the raw calls (`textReadings`):
+ * a build that draws a figure one glyph per call wrote `143` and not `1`,
+ * `4`, `3`, which only the runs say, and two figures the run rule joins into
+ * one are still each their own raw call. A figure may therefore be listed
+ * twice; {@link holds} asks whether it is listed at all.
+ */
 export function figuresDrawn(calls: readonly DrawCall[]): number[] {
-  return drawnText(calls).flatMap(figuresIn);
+  return textReadings(calls).flatMap(figuresIn);
 }
 
 /** Whether `value` is one of `figures`, to `FIGURE_TOLERANCE`. */
@@ -166,14 +174,18 @@ function figuresOnLineOf(
 
 /**
  * Whether the frame wrote `value` as the figure beside `label`: a number on
- * the line one of the runs that drew the label was written on.
+ * the line one of the runs that drew the label was written on. The label is
+ * read off the logical runs ({@link placedRuns}), which hold every raw string,
+ * and the figures off the raw calls and the runs both, for the reason
+ * {@link figuresDrawn} gives; a run keeps its first call's baseline, so a
+ * figure listed both ways stands on the one line either way.
  */
 export function drewFigureBeside(
   calls: readonly DrawCall[],
   label: string,
   value: number,
 ): boolean {
-  const numbered = textDraws(calls).filter(
+  const numbered = [...textDraws(calls), ...placedRuns(calls)].filter(
     (draw) => figuresIn(draw.text).length > 0,
   );
   if (numbered.length === 0) return false;

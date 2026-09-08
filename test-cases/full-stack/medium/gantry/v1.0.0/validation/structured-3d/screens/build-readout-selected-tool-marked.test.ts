@@ -42,7 +42,10 @@ it("marks the selected tool on the build screen", async () => {
 
   const drawn = await h.drawn();
 
-  await h.capture("build-selected-tool", "The build screen marking the selected tool");
+  await h.capture(
+    "build-selected-tool",
+    "The build screen marking the selected tool",
+  );
 
   assertTrue(
     entriesOf(drawn, "mark", "selected-tool").length > 0,

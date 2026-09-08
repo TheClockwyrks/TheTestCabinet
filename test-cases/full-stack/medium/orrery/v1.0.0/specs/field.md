@@ -16,13 +16,13 @@ The field is a grid of pointy-top hexes addressed by axial coordinates
 - `hexX(q, r) = FIELD_CX + HEX_PITCH * (q + r / 2)`
 - `hexY(q, r) = FIELD_CY + HEX_PITCH * (sqrt(3) / 2) * r`
 
-| Constant | Value | Meaning |
-| --- | --- | --- |
-| `FIELD_CX` | `616` | Stage `x` of hex `(0, 0)`. |
-| `FIELD_CY` | `304` | Stage `y` of hex `(0, 0)`. |
-| `HEX_PITCH` | `48` | Distance between adjacent hex centers. |
-| `FIELD_R` | `5` | Radius of the field, in hexes. |
-| `HEX_HIT_R` | `26` | Pointer targeting radius around a hex center. |
+| Constant    | Value | Meaning                                       |
+| ----------- | ----- | --------------------------------------------- |
+| `FIELD_CX`  | `616` | Stage `x` of hex `(0, 0)`.                    |
+| `FIELD_CY`  | `304` | Stage `y` of hex `(0, 0)`.                    |
+| `HEX_PITCH` | `48`  | Distance between adjacent hex centers.        |
+| `FIELD_R`   | `5`   | Radius of the field, in hexes.                |
+| `HEX_HIT_R` | `26`  | Pointer targeting radius around a hex center. |
 
 The field is the hexagonal region of radius `FIELD_R` around `(0, 0)`: hex
 `(q, r)` is on the field exactly when `max(|q|, |r|, |q + r|) <= FIELD_R`. That
@@ -34,14 +34,14 @@ from center to center.
 `DIRS` holds the six neighbor offsets, indexed `0` to `5`, in clockwise order
 on the stage starting from east:
 
-| Index | Offset `(dq, dr)` | Toward |
-| --- | --- | --- |
-| `0` | `(+1, 0)` | East |
-| `1` | `(0, +1)` | Southeast |
-| `2` | `(-1, +1)` | Southwest |
-| `3` | `(-1, 0)` | West |
-| `4` | `(0, -1)` | Northwest |
-| `5` | `(+1, -1)` | Northeast |
+| Index | Offset `(dq, dr)` | Toward    |
+| ----- | ----------------- | --------- |
+| `0`   | `(+1, 0)`         | East      |
+| `1`   | `(0, +1)`         | Southeast |
+| `2`   | `(-1, +1)`        | Southwest |
+| `3`   | `(-1, 0)`         | West      |
+| `4`   | `(0, -1)`         | Northwest |
+| `5`   | `(+1, -1)`        | Northeast |
 
 Two hexes are adjacent when their difference is one of `DIRS`.
 
@@ -68,23 +68,23 @@ A mote is one celestial body resting on a hex or carried through the air by an
 arm. At rest a mote sits exactly on a hex center, and at most one mote occupies
 a hex. `MOTES` names the fifteen types:
 
-| Type | Class | What it is |
-| --- | --- | --- |
-| `dust` | base | Inert stardust. |
-| `nebula` | essence | The essence of cloud. |
-| `comet` | essence | The essence of ice. |
-| `nova` | essence | The essence of fire. |
-| `meteor` | essence | The essence of stone. |
-| `mercury` | catalyst | Spent to raise a planet one rung. |
-| `saturn` | planet | The first rung of the planetary ladder. |
-| `jupiter` | planet | The second rung. |
-| `mars` | planet | The third rung. |
-| `venus` | planet | The fourth rung. |
-| `luna` | planet | The fifth rung. |
-| `sol` | planet | The sixth and final rung. |
-| `umbra` | polarity | Condensed shadow. |
-| `lumen` | polarity | Condensed light. |
-| `aether` | quintessence | The union of all four essences. |
+| Type      | Class        | What it is                              |
+| --------- | ------------ | --------------------------------------- |
+| `dust`    | base         | Inert stardust.                         |
+| `nebula`  | essence      | The essence of cloud.                   |
+| `comet`   | essence      | The essence of ice.                     |
+| `nova`    | essence      | The essence of fire.                    |
+| `meteor`  | essence      | The essence of stone.                   |
+| `mercury` | catalyst     | Spent to raise a planet one rung.       |
+| `saturn`  | planet       | The first rung of the planetary ladder. |
+| `jupiter` | planet       | The second rung.                        |
+| `mars`    | planet       | The third rung.                         |
+| `venus`   | planet       | The fourth rung.                        |
+| `luna`    | planet       | The fifth rung.                         |
+| `sol`     | planet       | The sixth and final rung.               |
+| `umbra`   | polarity     | Condensed shadow.                       |
+| `lumen`   | polarity     | Condensed light.                        |
+| `aether`  | quintessence | The union of all four essences.         |
 
 `ESSENCES` holds `nebula`, `comet`, `nova`, `meteor` in that order. `PLANETS`
 holds the ladder `saturn`, `jupiter`, `mars`, `venus`, `luna`, `sol` in that
@@ -93,10 +93,10 @@ rung. Which sigils transmute which types is defined in `specs/sigils.md`.
 
 Two radii govern a mote:
 
-| Constant | Value | Governs |
-| --- | --- | --- |
-| `MOTE_R` | `22` | Every mote's drawn form fits inside this radius of its position. |
-| `MOTE_COLLIDE_R` | `19` | Collision radius. Two motes collide when their centers come closer than `2 * MOTE_COLLIDE_R` (`38`), as `specs/simulation.md` defines. |
+| Constant         | Value | Governs                                                                                                                                |
+| ---------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `MOTE_R`         | `22`  | Every mote's drawn form fits inside this radius of its position.                                                                       |
+| `MOTE_COLLIDE_R` | `19`  | Collision radius. Two motes collide when their centers come closer than `2 * MOTE_COLLIDE_R` (`38`), as `specs/simulation.md` defines. |
 
 A fixture is one of the six motes a zodiac wheel carries, defined in
 `specs/parts.md`. A fixture collides as a mote does, and `specs/sigils.md`

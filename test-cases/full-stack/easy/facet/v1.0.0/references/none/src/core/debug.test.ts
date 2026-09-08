@@ -23,6 +23,7 @@ import {
   dealBoard,
   loadBoard,
   poseSwap,
+  reconcile,
   reset,
   setBestChain,
   setBestMove,
@@ -355,6 +356,11 @@ describe("the single-element poses", () => {
   it("setMenuIndex highlights an item and touches nothing else", () => {
     const before = title();
     expect(setMenuIndex(before, 1)).toEqual({ ...before, menuIndex: 1 });
+    // The index is applied as given, on whichever screen the game is on: the
+    // screen is a player's route to a menu rather than a condition on the pose.
+    const playing = play(ROW_RUN);
+    expect(setMenuIndex(playing, 2)).toEqual({ ...playing, menuIndex: 2 });
+    expect(() => setMenuIndex(before, -1)).toThrow();
   });
 
   it("dealBoard deals an opening board and leaves the screen alone", () => {
@@ -431,8 +437,12 @@ describe("the writing poses", () => {
     expect(snapshot(setLevel(play(), 5)).levelTarget).toBe(
       5 * LEVEL_TARGET_STEP,
     );
-    expect(setLevel(play(), 0).level).toBe(1);
-    expect(setLevel(play(), -3).level).toBe(1);
+    // The bound is a domain the specification fixes rather than a live figure of
+    // the game, so a level outside it names no state the game has and the call
+    // fails where the caller can see it rather than settling for `1`.
+    expect(() => setLevel(play(), 0)).toThrow();
+    expect(() => setLevel(play(), -3)).toThrow();
+    expect(() => setLevel(play(), 2.5)).toThrow();
   });
 
   it("sets the two figures a finished level is reported by", () => {
@@ -440,7 +450,7 @@ describe("the writing poses", () => {
     expect(posed.bestChain).toBe(6);
     expect(posed.bestMove).toBe(1280);
     expect(posed.moveScore).toBe(0);
-    expect(setBestChain(play(), -2).bestChain).toBe(0);
+    expect(() => setBestChain(play(), -2)).toThrow();
   });
 
   it("holds and offers a cell without asking for a swap", () => {
@@ -556,5 +566,52 @@ describe("setRefillKinds and clearRefillKinds", () => {
   it("clears every column's pose at once", () => {
     const posed = setRefillKinds(setRefillKinds(play(), 1, "RA"), 6, "J");
     expect(clearRefillKinds(posed).refillKinds).toEqual(NO_REFILL);
+  });
+});
+
+describe("reconcile", () => {
+  it("leaves every reading answering for the board that was posed", () => {
+    // Nothing this core holds is a copy of something a pose can leave behind:
+    // `legalSwap`, `lastFall`, `stepHold`, `multiplier`, `levelTarget`, a cell's
+    // center and the screen's targets are all worked out at the read. So the
+    // guarantee reads the same before and after — which is what a build that
+    // keeps any of them stored has to reach on demand.
+    const posed = loadBoard(play(), quietRowsWith(ROW_RUN));
+
+    const reconciled = reconcile(posed);
+
+    expect(snapshot(reconciled)).toEqual(snapshot(posed));
+    expect(snapshot(reconciled).legalSwap).toBe(snapshot(posed).legalSwap);
+  });
+
+  it("advances nothing, and twice matches once", () => {
+    const posed = setSelection(
+      setLevelScore(loadBoard(play(), quietRowsWith(ROW_RUN)), 900),
+      3,
+      3,
+    );
+    const before = snapshot(posed);
+
+    const once = reconcile(posed);
+    const after = snapshot(once);
+
+    expect(after.simTime).toBe(before.simTime);
+    expect(after.phase).toBe(before.phase);
+    expect(after.swapTimer).toBe(before.swapTimer);
+    expect(after.stepTimer).toBe(before.stepTimer);
+    expect(after.chainStep).toBe(before.chainStep);
+    expect(after.refillKinds).toEqual(before.refillKinds);
+    expect(after.board).toEqual(before.board);
+    expect(after.selection).toEqual(before.selection);
+    expect(after).toEqual(before);
+
+    expect(snapshot(reconcile(once))).toEqual(after);
+  });
+
+  it("is legal on any screen, before or after a reset", () => {
+    expect(() => reconcile(title())).not.toThrow();
+    expect(snapshot(reconcile(reset(title())))).toEqual(
+      snapshot(reset(title())),
+    );
   });
 });

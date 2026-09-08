@@ -12,7 +12,7 @@ that sink tile.
 The sink swallows **whatever** the factory sends it, and the **renderer draws
 that item** arriving and being consumed at run time. So you draw **only the
 fixture** — the housing, its intake, and its indicators. Do **not** draw an item
-being swallowed: a fixed item painted into the sprite would show the *same* item
+being swallowed: a fixed item painted into the sprite would show the _same_ item
 in every frame no matter what the sink is actually consuming, which is wrong. The
 animation you draw is the fixture's own **reaction** to consuming — a red intake
 flash and a pulsing indicator — timed as if an item were entering, but the item
@@ -28,7 +28,7 @@ sprite for the other three directions.
 
 This sink is the **mirror role** of the Lattice source emitter: the source pushes
 an item **outward to the East**; the sink pulls an item **inward from the West**.
-Draw it so it reads as the *output/drain*, distinct from an emitter.
+Draw it so it reads as the _output/drain_, distinct from an emitter.
 
 ## The style — flat, top-down 2D
 
@@ -80,14 +80,14 @@ swallows an item — that loops. There is **no item drawn**: what pulses is the
 **red intake flash** at the aperture and the **red indicator**, rising as an item
 would be drawn in and falling back to idle.
 
-| Frame | What it shows |
-| --- | --- |
-| 0 | **Idle.** Aperture dark and at rest; the red indicator at its dim/idle state. |
-| 1 | **Charging.** The indicator begins to brighten; the aperture stays dark — an item is arriving (drawn by the renderer). |
-| 2 | **Intake begins.** A touch of the red accent appears at the aperture rim as the intake starts to flash; the indicator brightens further. |
-| 3 | **Peak.** The intake **flashes red at its brightest** — the red accent glows across the aperture and the indicator is at full brightness. This is the peak of the pulse, where an item is being consumed. |
-| 4 | **Dimming.** The red intake flash **fades** back down and the indicator begins to settle. |
-| 5 | **Returning to idle.** Aperture and indicator settle back toward the idle look of frame 0, so **frame 5 loops seamlessly into frame 0** with no jump or backward slip. |
+| Frame | What it shows                                                                                                                                                                                             |
+| ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0     | **Idle.** Aperture dark and at rest; the red indicator at its dim/idle state.                                                                                                                             |
+| 1     | **Charging.** The indicator begins to brighten; the aperture stays dark — an item is arriving (drawn by the renderer).                                                                                    |
+| 2     | **Intake begins.** A touch of the red accent appears at the aperture rim as the intake starts to flash; the indicator brightens further.                                                                  |
+| 3     | **Peak.** The intake **flashes red at its brightest** — the red accent glows across the aperture and the indicator is at full brightness. This is the peak of the pulse, where an item is being consumed. |
+| 4     | **Dimming.** The red intake flash **fades** back down and the indicator begins to settle.                                                                                                                 |
+| 5     | **Returning to idle.** Aperture and indicator settle back toward the idle look of frame 0, so **frame 5 loops seamlessly into frame 0** with no jump or backward slip.                                    |
 
 Played 0→1→2→3→4→5→0, this must read as the sink **consuming one item** — the red
 intake flash rising on frames 2–3 and falling on frames 4–5, the indicator
@@ -98,15 +98,15 @@ job is the fixture's reaction to it.
 
 Use only these colors:
 
-| Role | Hex |
-| --- | --- |
-| Dark outline / shadow | `#1b1d21` |
+| Role                      | Hex       |
+| ------------------------- | --------- |
+| Dark outline / shadow     | `#1b1d21` |
 | Housing light (grey-blue) | `#6a7884` |
-| Housing mid | `#4d5a64` |
-| Housing dark | `#36424b` |
-| Drain accent — red mid | `#d6473a` |
-| Drain accent — red dark | `#99281f` |
-| Drain accent — red pale | `#f59a90` |
+| Housing mid               | `#4d5a64` |
+| Housing dark              | `#36424b` |
+| Drain accent — red mid    | `#d6473a` |
+| Drain accent — red dark   | `#99281f` |
+| Drain accent — red pale   | `#f59a90` |
 
 ## Working the tool
 

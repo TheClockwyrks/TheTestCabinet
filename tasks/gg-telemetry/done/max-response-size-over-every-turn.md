@@ -13,14 +13,14 @@ fails on its longest programs, so the arms most likely to produce a large
 response are the arms most likely to have it excluded. Measured across six runs
 of one test case that differ only in program language:
 
-| arm | reported | largest response | dropped because |
-|---|---|---|---|
-| typescript | 4,858 | 21,089 | the turn errored |
-| javascript | 16,980 | 16,980 | |
-| python | 22,987 | 22,987 | |
-| csharp | 19,718 | 19,718 | |
-| purescript | 19,601 | 19,601 | |
-| purescript | 19,474 | 19,474 | |
+| arm        | reported | largest response | dropped because  |
+| ---------- | -------- | ---------------- | ---------------- |
+| typescript | 4,858    | 21,089           | the turn errored |
+| javascript | 16,980   | 16,980           |                  |
+| python     | 22,987   | 22,987           |                  |
+| csharp     | 19,718   | 19,718           |                  |
+| purescript | 19,601   | 19,601           |                  |
+| purescript | 19,474   | 19,474           |                  |
 
 Every arm wrote one large program. The reported figure puts TypeScript at a
 quarter of its peers, and the true figures put it in the middle.

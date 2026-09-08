@@ -23,10 +23,10 @@ import { DAWN_TICK, clockText } from "../constants";
 import {
   captureStill,
   createHarness,
-  drewText,
   poseScreen,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 
 /** The clock at dawn, as the game draws a clock (specs/ui.md). */
 const DAWN_CLOCK = clockText(DAWN_TICK);

@@ -34,11 +34,11 @@ it rather than as a replay of the authoring steps.
 All three are authored the same way and emit a native glTF. They differ in the
 rig they carry and whether they animate:
 
-| `asset_kind` | authoring | `[model]` animations | emitted glTF | viewer |
-| --- | --- | --- | --- | --- |
-| `blender-character` | mesh + armature + skin weights + Actions | required | `character.glb` | skinned, clip picker |
-| `blender-mechanism` | parented parts + Actions on transforms | required | `model.glb` | rigid, clip picker |
-| `blender-prop` | geometry alone, no rig | forbidden | `model.glb` | static turntable |
+| `asset_kind`        | authoring                                | `[model]` animations | emitted glTF    | viewer               |
+| ------------------- | ---------------------------------------- | -------------------- | --------------- | -------------------- |
+| `blender-character` | mesh + armature + skin weights + Actions | required             | `character.glb` | skinned, clip picker |
+| `blender-mechanism` | parented parts + Actions on transforms   | required             | `model.glb`     | rigid, clip picker   |
+| `blender-prop`      | geometry alone, no rig                   | forbidden            | `model.glb`     | static turntable     |
 
 A `blender-prop` declares no `[model]` table. Its `build.py` builds geometry
 alone, with no armature and no Actions, and the runner emits an unrigged

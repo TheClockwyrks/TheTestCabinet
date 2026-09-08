@@ -41,7 +41,11 @@ const FRAGMENT = /* glsl */ `
 // full-viewport translucent layer every frame), which means the scene has to
 // paint the sunset gradient the page used to show through. Rendered first
 // (`renderOrder={-1}`, depth test/write off) so every other object lands on top.
-export function GradientBackground({ top, mid, bottom }: GradientBackgroundProps) {
+export function GradientBackground({
+  top,
+  mid,
+  bottom,
+}: GradientBackgroundProps) {
   const uniforms = useMemo(
     () => ({
       uTop: { value: top.clone() },

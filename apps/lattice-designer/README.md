@@ -97,11 +97,11 @@ ABI is what removes that.
 The browser cannot touch the repository, so the **vite dev server** does the file
 I/O, through a small plugin (`scenario-api.ts`) mounted only under `vite dev`:
 
-| Route | What it does |
-| --- | --- |
-| `GET /api/scenarios` | lists the case's `cases/*.json` with grid, timeline, and component count |
-| `GET /api/scenarios/<name>` | reads one scenario |
-| `PUT /api/scenarios/<name>` | overwrites it with the request body |
+| Route                       | What it does                                                             |
+| --------------------------- | ------------------------------------------------------------------------ |
+| `GET /api/scenarios`        | lists the case's `cases/*.json` with grid, timeline, and component count |
+| `GET /api/scenarios/<name>` | reads one scenario                                                       |
+| `PUT /api/scenarios/<name>` | overwrites it with the request body                                      |
 
 The write surface is deliberately narrow: only files that **already exist** directly
 inside that one folder can be read or written — no traversal, no creating new files

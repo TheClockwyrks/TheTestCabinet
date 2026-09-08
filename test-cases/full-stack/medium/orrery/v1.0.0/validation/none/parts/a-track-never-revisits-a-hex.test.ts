@@ -38,7 +38,9 @@ import {
  * the placement rules of `specs/parts.md` alone, and throws an `Error` naming
  * the first rule it breaks" (`specs/instrumentation.md`, The machine).
  */
-async function refusesPlacement(place: () => Promise<unknown>): Promise<boolean> {
+async function refusesPlacement(
+  place: () => Promise<unknown>,
+): Promise<boolean> {
   try {
     await place();
     return false;
@@ -73,7 +75,11 @@ it("refuses an extension onto a hex the track already holds", async () => {
   // The geometry the check claims to be posing.
   const live = PATH[PATH.length - 1] as Hex;
   for (const hex of [...PATH, FRESH]) {
-    assertEqual(onField(hex), true, `the hex (${hex.q}, ${hex.r}) is on the field`);
+    assertEqual(
+      onField(hex),
+      true,
+      `the hex (${hex.q}, ${hex.r}) is on the field`,
+    );
   }
   assertEqual(
     adjacent(live, REVISITED),
@@ -86,7 +92,8 @@ it("refuses an extension onto a hex the track already holds", async () => {
     "so is the fresh hex the control extension takes",
   );
   assertEqual(
-    PATH.filter((cell) => cell.q === REVISITED.q && cell.r === REVISITED.r).length,
+    PATH.filter((cell) => cell.q === REVISITED.q && cell.r === REVISITED.r)
+      .length,
     1,
     "the revisited hex is already a cell of this very track",
   );

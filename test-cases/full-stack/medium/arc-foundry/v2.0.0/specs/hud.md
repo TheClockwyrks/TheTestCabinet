@@ -15,17 +15,17 @@ values, and every control on them is inert except the mute control, as
 The status bar carries the run's state and the global controls, left to right in the
 order below.
 
-| Element | Shows |
-| --- | --- |
-| Charge | The current spendable Charge, with an icon. |
-| Grid Integrity | The remaining Grid Integrity, with an icon. It reads as an alert once it falls to `5` or below. |
-| Wave | `WAVE n / N`, with the current wave's progress during a wave and a `BUILD` read during a build phase. |
-| Maze length | The current maze length, in tiles, as `specs/pathing.md` defines it. |
-| Combos toggle | Opens and closes the recipe book, and reads its open state. |
-| Damage toggle | Opens and closes the damage leaderboard, and reads its open state. |
-| Speed | The current speed multiplier, one of `1`, `2`, `4`, `8`. |
-| Pause | The in-place pause, and whether it is engaged. |
-| Mute | Audio mute, and whether it is engaged. |
+| Element        | Shows                                                                                                 |
+| -------------- | ----------------------------------------------------------------------------------------------------- |
+| Charge         | The current spendable Charge, with an icon.                                                           |
+| Grid Integrity | The remaining Grid Integrity, with an icon. It reads as an alert once it falls to `5` or below.       |
+| Wave           | `WAVE n / N`, with the current wave's progress during a wave and a `BUILD` read during a build phase. |
+| Maze length    | The current maze length, in tiles, as `specs/pathing.md` defines it.                                  |
+| Combos toggle  | Opens and closes the recipe book, and reads its open state.                                           |
+| Damage toggle  | Opens and closes the damage leaderboard, and reads its open state.                                    |
+| Speed          | The current speed multiplier, one of `1`, `2`, `4`, `8`.                                              |
+| Pause          | The in-place pause, and whether it is engaged.                                                        |
+| Mute           | Audio mute, and whether it is engaged.                                                                |
 
 The speed, pause, and mute controls each read their own current value rather than merely
 being clickable, so what the bar draws changes when the value changes. Muting from the
@@ -67,12 +67,12 @@ There is no send control and no separate harvest button.
 
 The inspector shows what the selected structure is and the actions it offers.
 
-| Selected | Reads |
-| --- | --- |
+| Selected                      | Reads                                                                                                                                                                   |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | A base candidate or component | Its type, its quality tier, a one-line description, and its live damage, range, fire rate, and targeting priority, plus its kills and total damage dealt when it fires. |
-| A Regulator | Its type, its quality tier, and its aura radius and bonus in place of damage, range, and fire rate. It shows no targeting priority. |
-| A combination tower | Its name, its upgrade level, its one-line description, its live damage, range, fire rate, targeting priority, and abilities, and its kills and total damage dealt. |
-| A blocker | That it is inert, with no stats. |
+| A Regulator                   | Its type, its quality tier, and its aura radius and bonus in place of damage, range, and fire rate. It shows no targeting priority.                                     |
+| A combination tower           | Its name, its upgrade level, its one-line description, its live damage, range, fire rate, targeting priority, and abilities, and its kills and total damage dealt.      |
+| A blocker                     | That it is inert, with no stats.                                                                                                                                        |
 
 The actions the inspector offers are `KEEP`, `DOWNGRADE`, `COMBINE`, one
 `COMBINE SPECIAL` per reachable recipe, `UPGRADE`, the targeting cycle, and `DISMANTLE`.
@@ -113,11 +113,11 @@ on hover. It does not pause or alter the game, and toggling it again dismisses i
 
 Every ingredient of every recipe is drawn in one of three states, told apart at a glance:
 
-| State | When it applies |
-| --- | --- |
-| Selected | The current selection is a base structure at that ingredient's type and quality. |
-| Owned | The yard holds a base structure at that ingredient's type and quality that is not the current selection. |
-| Missing | Neither of the above. |
+| State    | When it applies                                                                                          |
+| -------- | -------------------------------------------------------------------------------------------------------- |
+| Selected | The current selection is a base structure at that ingredient's type and quality.                         |
+| Owned    | The yard holds a base structure at that ingredient's type and quality that is not the current selection. |
+| Missing  | Neither of the above.                                                                                    |
 
 Ownership counts as a multiset, so a recipe calling for two ingredients at the same type
 and quality reads as covered only when the yard holds two. Blockers and combination

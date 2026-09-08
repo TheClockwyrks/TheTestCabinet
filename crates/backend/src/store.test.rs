@@ -733,6 +733,49 @@ fn delete_run_media_removes_every_kind_and_is_idempotent() {
 }
 
 #[test]
+fn validation_files_round_trip_and_list_sorted() {
+    let (_dir, store) = temp_store();
+    store
+        .write_run_validation("r1", "spin__serve.json.gz", b"\x1f\x8bgz")
+        .unwrap();
+    // A recording's shared image store shares this flat namespace deliberately — one
+    // directory, one route, one resolver — and cannot collide with a declared output:
+    // a declared name always carries the `__` joining verdict to output, and a store
+    // name, derived from nothing but the bytes' digest, never can.
+    store
+        .write_run_validation("r1", "img.9f2c1ab4.png", b"png:sprite")
+        .unwrap();
+
+    assert_eq!(
+        store.read_run_validation("r1", "img.9f2c1ab4.png").unwrap(),
+        b"png:sprite"
+    );
+    // The listing is what lets the snapshot builder publish the store at all: those
+    // files back no verdict and are on no record, so the directory is the only place
+    // they can be found. Sorted, so a refresh publishes a stable set.
+    assert_eq!(
+        store.list_run_validation("r1").unwrap(),
+        vec![
+            "img.9f2c1ab4.png".to_string(),
+            "spin__serve.json.gz".to_string(),
+        ]
+    );
+    // A run with nothing stored lists empty rather than erroring — every run recorded
+    // before automated validation existed.
+    assert_eq!(
+        store.list_run_validation("r2").unwrap(),
+        Vec::<String>::new()
+    );
+    // Validation media is part of the per-run tree the delete sweeps.
+    store.delete_run_media("r1").unwrap();
+    assert!(store.read_run_validation("r1", "img.9f2c1ab4.png").is_err());
+    assert_eq!(
+        store.list_run_validation("r1").unwrap(),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
 fn showcase_files_round_trip_and_list_sorted() {
     let (_dir, store) = temp_store();
     store

@@ -24,11 +24,13 @@
 // `Delete`, and `Backspace` by their names, and the comma and period keys by the
 // character each types or by that character's name" (`specs/ui.md`). Nothing
 // beyond the spelling is fixed — `specs/ui.md` fixes no font and no layout — so
-// the frame's text runs are gathered onto the baselines they were drawn on,
-// exactly as the select-screen checks gather a row, and a letter key counts as
-// named when its CAP stands on its own among the words of the page: `A`, `W / S`,
-// `(G)` and `[T]` all count, and the `a` of "a tape" does not. A key whose name is
-// a word — `Delete`, `Backspace` — counts wherever that word appears, in any case.
+// the page is read as `drawing.ts`'s `textLines` — the shared harness's logical
+// runs gathered onto the baselines they share, exactly as the select-screen
+// checks read a row — and a letter key counts as named when its CAP stands on
+// its own among the words of the page: `A`, `W / S`, `(G)` and `[T]` all count,
+// and the `a` of "a tape" does not. A key whose name is a word — `Delete`,
+// `Backspace` — counts wherever the shared `drewText` finds that word, in any
+// case.
 //
 // THE POSE. A fresh session, the how-to, and its page moved to `2` with
 // `setHowtoPage`, the faculty gate `specs/instrumentation.md` names for the page.
@@ -40,15 +42,16 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength, assertTrue } from "../assert";
+import { drewText } from "../case-harness/text";
 import { BINDINGS, type ActionName } from "../constants";
 import {
   captureStill,
   createHarness,
   openHowto,
   openTitle,
-  textDraws,
+  textLines,
+  type DrawCall,
   type Harness,
-  type TextDraw,
 } from "../harness";
 
 /** The page of the how-to that `specs/ui.md` gives to the tape. */
@@ -84,24 +87,12 @@ function labelOf(code: string): string {
  * The page's text, one string per baseline the frame drew on.
  *
  * A build is free to draw a line as one run or as a run per word, and nothing in
- * `specs/` says which; what they share is the baseline, so the runs at one `y`
- * are joined in `x` order and read as that line.
+ * `specs/` says which; what they share is the baseline, so the page is read as
+ * `drawing.ts`'s `textLines` — the shared harness's logical runs gathered onto
+ * the baselines they share, each line its runs joined in reading order.
  */
-function linesOf(draws: readonly TextDraw[]): string[] {
-  const baselines = new Map<number, TextDraw[]>();
-  for (const draw of draws) {
-    const on = baselines.get(draw.y) ?? [];
-    on.push(draw);
-    baselines.set(draw.y, on);
-  }
-  return [...baselines.entries()]
-    .sort((a, b) => a[0] - b[0])
-    .map(([, on]) =>
-      [...on]
-        .sort((a, b) => a.x - b.x)
-        .map((draw) => draw.text)
-        .join(" "),
-    );
+function linesOf(calls: readonly DrawCall[]): string[] {
+  return textLines(calls).map((line) => line.text);
 }
 
 /** Every word-like run of characters the page drew, in the case it drew it. */
@@ -111,17 +102,24 @@ function wordsOf(lines: readonly string[]): string[] {
   );
 }
 
-/** Whether the page names the key `code`. */
-function namesKey(lines: readonly string[], code: string): boolean {
+/**
+ * Whether the page names the key `code`.
+ *
+ * A cap standing on its own is looked for among the words of the lines; a key
+ * whose name is a word is looked for with the shared harness's `drewText` —
+ * substring, ignoring case and whitespace, along each baseline.
+ */
+function namesKey(
+  calls: readonly DrawCall[],
+  lines: readonly string[],
+  code: string,
+): boolean {
   const label = labelOf(code);
   if (label.length === 1) {
     const words = wordsOf(lines);
     return words.includes(label) || words.includes(code);
   }
-  const wanted = label.toLowerCase();
-  return lines.some((line) =>
-    line.replace(/\s+/g, "").toLowerCase().includes(wanted),
-  );
+  return drewText(calls, label);
 }
 
 let h: Harness;
@@ -146,7 +144,8 @@ it("names every key BINDINGS gives the tape-focus actions", async () => {
   await h.debug.setHowtoPage(TAPE_PAGE);
   await h.advance(1);
 
-  const lines = linesOf(textDraws(await h.lastCalls()));
+  const calls = await h.lastCalls();
+  const lines = linesOf(calls);
   await captureStill(h, "page");
 
   const shown = await h.snapshot();
@@ -160,7 +159,7 @@ it("names every key BINDINGS gives the tape-focus actions", async () => {
   for (const action of TAPE_ACTIONS) {
     const code = BINDINGS[action][0] as string;
     assertTrue(
-      namesKey(lines, code),
+      namesKey(calls, lines, code),
       `the tape page names ${labelOf(code)}, the key BINDINGS gives ` +
         `${action}, and what it drew is ${JSON.stringify(lines)}`,
     );

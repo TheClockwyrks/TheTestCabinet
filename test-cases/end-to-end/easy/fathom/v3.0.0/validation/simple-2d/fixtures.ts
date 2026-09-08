@@ -19,6 +19,17 @@
 // engine's checks do not yet call every poser, because one file is what keeps
 // the fixtures one drawing.
 //
+// A HELPER THAT POSES ANYTHING A READING DERIVES FROM RECONCILES BEFORE IT
+// RETURNS. A body's `tx` and `ty`, `visionRadius`, `sonar.range`,
+// `sonar.ready`, `ink.ready`, `planktonRemaining` and a predator's `speed`,
+// `detectRange` and `hearingRange` are all functions of the world as it stands
+// (`specs/state.md`), and a build is free to keep any of them as a stored copy
+// — so a pose that writes a center, a layer or a state can leave one of them
+// answering for the world as it was. `reconcile()` is what brings them back
+// into agreement, and it costs no simulation time, so every poser below ends
+// with it and a check posed through them never calls it itself. A check that
+// poses with `h.debug.set…` directly calls it once before its first read.
+///
 // WHY A CHECK POSES THE GEOMETRY IT IS ABOUT. The maze is the build's own design
 // (`specs/maze.md` fixes its rules and nothing else), so a scenario that needs a
 // shape — a straight run of a given length, a corner to turn, a corridor ending
@@ -169,6 +180,8 @@ export type PosedPredatorState = "den" | "wander" | "chase";
 
 /** The operations a fixture drives, exactly as `specs/instrumentation.md` fixes them. */
 export interface FixtureOps {
+  /** Brings every reported reading into agreement with the dive as it stands. */
+  reconcile(): Awaitable<void>;
   setMaze(rows: readonly string[]): Awaitable<void>;
   clearPredators(): Awaitable<void>;
   clearDrifters(): Awaitable<void>;
@@ -305,6 +318,9 @@ export async function clearWorld(h: FixtureHost): Promise<void> {
   await h.debug.clearDrifters();
   await h.debug.clearPlankton();
   await h.debug.clearFog();
+  // `planktonRemaining` counts the layer these calls emptied, so the readings
+  // are brought into agreement before a caller reads any of them back.
+  await h.debug.reconcile();
 }
 
 /**
@@ -360,6 +376,8 @@ export async function placeForager(
 ): Promise<void> {
   await h.debug.setForagerTile(tile.tx, tile.ty);
   if (dir !== undefined) await h.debug.setForagerDir(dir);
+  // `tx` and `ty` follow from the center this just wrote.
+  await h.debug.reconcile();
 }
 
 /** Place one predator on a tile, and face it and state it where asked. */
@@ -376,6 +394,8 @@ export async function placePredator(
   if (options.state !== undefined) {
     await h.debug.setPredatorState(index, options.state);
   }
+  // `tx`, `ty` and the `speed` a state carries all follow from what this wrote.
+  await h.debug.reconcile();
 }
 
 /** How a scenario asks for one hunter of its own. */
@@ -427,6 +447,9 @@ export async function spawnPredator(
   }
   if (options.mind === false) await h.debug.setPredatorMind(index, false);
   if (options.travel === false) await h.debug.setPredatorTravel(index, false);
+  // `tx`, `ty` and the `speed` a state carries all follow from what this wrote,
+  // and the read-back below is of the world as posed.
+  await h.debug.reconcile();
   if (options.mind === false || options.travel === false) {
     const posed = (await h.snapshot()).predators[index];
     if (options.mind === false) {
@@ -554,6 +577,8 @@ export async function spawnDrifter(
   const index = (await h.snapshot()).drifters.length - 1;
   if (options.mind === false) await h.debug.setDrifterMind(index, false);
   if (options.travel === false) await h.debug.setDrifterTravel(index, false);
+  // `tx` and `ty` follow from the center the spawn wrote.
+  await h.debug.reconcile();
   if (options.mind === false || options.travel === false) {
     const posed = (await h.snapshot()).drifters[index];
     if (options.mind === false) {
@@ -593,6 +618,8 @@ export async function stockPlankton(
       placed += 1;
     }
   }
+  // `planktonRemaining` counts the layer these calls filled.
+  await h.debug.reconcile();
   return placed;
 }
 

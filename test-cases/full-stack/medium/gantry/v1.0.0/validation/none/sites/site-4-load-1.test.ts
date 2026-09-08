@@ -51,10 +51,7 @@ it("carries Site 4's load 1 as the specification authored it", async () => {
 
   const { site } = await h.snapshot();
   const load = site.loads[INDEX];
-  assertDefined(
-    load,
-    "Site 4's load 1 (specs/sites.md § Site 4 — Long Reach)",
-  );
+  assertDefined(load, "Site 4's load 1 (specs/sites.md § Site 4 — Long Reach)");
   const where = "(specs/sites.md § Site 4 — Long Reach, load 1)";
 
   assertEqual(load?.class, CLASS, `the load's class ${where}`);

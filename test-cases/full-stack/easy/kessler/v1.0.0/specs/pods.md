@@ -19,13 +19,13 @@ independent of every other.
 A shed pod's kind is drawn with the probabilities below, independently of
 everything else.
 
-| Kind | Probability |
-| --- | --- |
-| `widen` | `0.25` |
-| `multiball` | `0.20` |
-| `shield` | `0.20` |
-| `pierce` | `0.15` |
-| `narrow` | `0.20` |
+| Kind        | Probability |
+| ----------- | ----------- |
+| `widen`     | `0.25`      |
+| `multiball` | `0.20`      |
+| `shield`    | `0.20`      |
+| `pierce`    | `0.15`      |
+| `narrow`    | `0.20`      |
 
 The debug surface `specs/instrumentation.md` fixes poses the outcome of one
 draw through `setNextPod`, and performs a draw on its own through `drawPod`.
@@ -35,11 +35,11 @@ draw through `setNextPod`, and performs a draw on its own through `drawPod`.
 A shed pod spawns at its ring's mid radius, at the destroyed target's
 arc-center angle as the ring stands posed on the destruction tick.
 
-| Ring | Spawn radius |
-| --- | --- |
-| Ring 1 | `302` |
-| Ring 2 | `372` |
-| Ring 3 | `442` |
+| Ring   | Spawn radius |
+| ------ | ------------ |
+| Ring 1 | `302`        |
+| Ring 2 | `372`        |
+| Ring 3 | `442`        |
 
 The pod falls radially inward at `120` units per second, its center angle
 constant. In flight it passes through the shield ring, every target, and every
@@ -60,13 +60,13 @@ up: it is removed, the burn-up particle system plays at the pod, and the
 
 ## The five kinds
 
-| Kind | On catch | Duration |
-| --- | --- | --- |
-| `widen` | The deflector's span becomes `72` degrees. | `600` ticks |
-| `narrow` | The deflector's span becomes `30` degrees. | `600` ticks |
-| `multiball` | Up to two balls launch. | Instant |
-| `shield` | The shield ring appears. | Until it reflects a ball |
-| `pierce` | Every ball pierces. | `360` ticks |
+| Kind        | On catch                                   | Duration                 |
+| ----------- | ------------------------------------------ | ------------------------ |
+| `widen`     | The deflector's span becomes `72` degrees. | `600` ticks              |
+| `narrow`    | The deflector's span becomes `30` degrees. | `600` ticks              |
+| `multiball` | Up to two balls launch.                    | Instant                  |
+| `shield`    | The shield ring appears.                   | Until it reflects a ball |
+| `pierce`    | Every ball pierces.                        | `360` ticks              |
 
 ### Timed effects
 

@@ -27,10 +27,10 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
+import { drewText } from "../case-harness/index";
 import {
   captureStill,
   createHarness,
-  drewText,
   openTable,
   type Harness,
 } from "../harness";

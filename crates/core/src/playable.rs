@@ -206,6 +206,15 @@ const LEGACY_VENDOR_DIR: &str = ".tcab";
 /// file is missing or the name would escape the directory — the caller maps that to
 /// a 404.
 ///
+/// The same directory also holds a recording's **shared image store** —
+/// `img.<id>.png` and `img.<id>.bin`, the deduplicated bitmaps and pixel buffers a
+/// recording's entries name rather than carry (see
+/// [`crate::VALIDATION_IMAGE_PREFIX`]). Those names are flat single segments like
+/// every other one here, so they are served by this function and its route with no
+/// change: that a store file resolves through exactly the lookup the recording it
+/// belongs to resolved through is the whole reason the reference on an entry is a
+/// file name and not a URL.
+///
 /// Trees collected before the host namespace was renamed carry the same media under
 /// `.tcab/validation/`. Those runs are immutable and are still served, so a miss in
 /// the current directory falls back to the legacy one rather than 404ing history.
@@ -489,6 +498,13 @@ fn proof_labels(file: &str) -> ContentLabels {
         Some("gif") => ContentLabels::plain("image/gif"),
         Some("webm") => ContentLabels::plain("video/webm"),
         Some("mp4") => ContentLabels::plain("video/mp4"),
+        // The raw RGBA bytes of a `pixels` entry a recording keeps beside itself
+        // (`img.<id>.bin` — see [`crate::VALIDATION_IMAGE_PREFIX`]): four bytes per
+        // pixel in row order and no header of its own, because the entry that names
+        // it carries the dimensions. The fallback arm below would already label it
+        // this way; it is named explicitly so a reader of this match knows the store
+        // is served from here and does not "tidy" the arm away.
+        Some("bin") => ContentLabels::plain("application/octet-stream"),
         // A draw-command recording, stored gzipped (`<name>.json.gz`), is a JSON
         // document that travels compressed — so it is labelled as the JSON it is,
         // with the gzip declared as the body's framing.

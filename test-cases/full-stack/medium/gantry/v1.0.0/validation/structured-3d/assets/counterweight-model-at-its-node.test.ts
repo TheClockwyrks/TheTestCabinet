@@ -43,7 +43,15 @@ it("draws a counterweight model on each carrying node", async () => {
   await clearAll(h);
   await h.debug.setScreen("build");
   await h.debug.setRing(4, 2, 0);
-  await h.debug.addMember(FOOT.x, FOOT.y, FOOT.z, HEAD.x, HEAD.y, HEAD.z, "strut");
+  await h.debug.addMember(
+    FOOT.x,
+    FOOT.y,
+    FOOT.z,
+    HEAD.x,
+    HEAD.y,
+    HEAD.z,
+    "strut",
+  );
   await h.debug.addCounterweight(FOOT.x, FOOT.y, FOOT.z);
   await h.debug.addCounterweight(HEAD.x, HEAD.y, HEAD.z);
   await h.advance(1);
@@ -53,7 +61,11 @@ it("draws a counterweight model on each carrying node", async () => {
 
   await h.capture("counterweights", "The counterweights on their nodes");
 
-  assertEqual(blocks.length, 2, "counterweight models drawn against the two placed");
+  assertEqual(
+    blocks.length,
+    2,
+    "counterweight models drawn against the two placed",
+  );
   for (const node of [FOOT, HEAD]) {
     assertTrue(
       entriesNear(drawn, node, REACH, "model", "counterweight").length > 0,

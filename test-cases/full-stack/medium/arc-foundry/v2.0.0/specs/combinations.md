@@ -28,20 +28,20 @@ Ability notation is `splash(radius)`, `chain(leaps, leapRange, falloff)`,
 `multishot(N)`, and `aura(radius, bonus)`. Each ability behaves exactly as
 `specs/components.md` defines it.
 
-| # | Tower | Identifier | Recipe | Range | Rate /s | Damage | Abilities |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Fuse Cluster | `fusecluster` | `regulator@1` + `rectifier@1` + `arcnode@1` | `108` | `1.0` | `40` | `splash(55)`, `burn(0.4, 2.0)` |
-| 2 | Static Web | `staticweb` | `coil@1` + `capacitor@1` + `choke@1` | `120` | `1.2` | `34` | `chain(3, 80, 0.75)`, `slow(0.25, 1.2)` |
-| 3 | Slag Driver | `slagdriver` | `discharge@2` + `discharge@1` + `emitter@1` | `175` | `0.6` | `120` | `crit(0.25, 2.0)` |
-| 4 | Corroder | `corroder` | `rectifier@3` + `regulator@3` + `choke@2` | `110` | `1.1` | `40` | `burn(0.6, 3.0)`, `slow(0.2, 1.0)`, `aura(80, 0.10)` |
-| 5 | Ion Prism | `ionprism` | `discharge@3` + `rectifier@4` + `emitter@2` | `140` | `0.9` | `220` | `splash(50)`, `burn(0.5, 2.0)`, `crit(0.2, 1.8)` |
-| 6 | Fork Array | `forkarray` | `emitter@3` + `capacitor@3` + `coil@2` | `118` | `1.8` | `100` | `multishot(3)` |
-| 7 | Null Core | `nullcore` | `regulator@5` + `capacitor@4` + `arcnode@3` | `120` | `1.0` | `420` | `splash(55)`, `aura(100, 0.20)` |
-| 8 | Rupture Node | `rupturenode` | `discharge@5` + `arcnode@4` + `emitter@3` | `150` | `0.7` | `1770` | `splash(60)`, `burn(0.5, 2.0)` |
-| 9 | Blight Coil | `blightcoil` | `rectifier@5` + `choke@4` + `coil@2` | `128` | `1.1` | `375` | `chain(3, 80, 0.7)`, `burn(0.6, 3.0)`, `slow(0.3, 1.5)` |
-| 10 | Reactor Pile | `reactorpile` | `coil@5` + `choke@3` + `regulator@2` | `130` | `1.4` | `420` | `chain(4, 85, 0.75)`, `multishot(2)` |
-| 11 | Aurora Lance | `auroralance` | `choke@5` + `coil@4` + `discharge@4` | `190` | `0.7` | `1980` | `chain(2, 75, 0.6)`, `slow(0.4, 1.8)` |
-| 12 | Singularity | `singularity` | `arcnode@5` + `regulator@4` + `rectifier@2` + `arcnode@2` | `150` | `1.0` | `490` | `splash(65)`, `burn(0.6, 2.5)`, `crit(0.3, 2.2)`, `aura(90, 0.15)` |
+| #   | Tower        | Identifier    | Recipe                                                    | Range | Rate /s | Damage | Abilities                                                          |
+| --- | ------------ | ------------- | --------------------------------------------------------- | ----- | ------- | ------ | ------------------------------------------------------------------ |
+| 1   | Fuse Cluster | `fusecluster` | `regulator@1` + `rectifier@1` + `arcnode@1`               | `108` | `1.0`   | `40`   | `splash(55)`, `burn(0.4, 2.0)`                                     |
+| 2   | Static Web   | `staticweb`   | `coil@1` + `capacitor@1` + `choke@1`                      | `120` | `1.2`   | `34`   | `chain(3, 80, 0.75)`, `slow(0.25, 1.2)`                            |
+| 3   | Slag Driver  | `slagdriver`  | `discharge@2` + `discharge@1` + `emitter@1`               | `175` | `0.6`   | `120`  | `crit(0.25, 2.0)`                                                  |
+| 4   | Corroder     | `corroder`    | `rectifier@3` + `regulator@3` + `choke@2`                 | `110` | `1.1`   | `40`   | `burn(0.6, 3.0)`, `slow(0.2, 1.0)`, `aura(80, 0.10)`               |
+| 5   | Ion Prism    | `ionprism`    | `discharge@3` + `rectifier@4` + `emitter@2`               | `140` | `0.9`   | `220`  | `splash(50)`, `burn(0.5, 2.0)`, `crit(0.2, 1.8)`                   |
+| 6   | Fork Array   | `forkarray`   | `emitter@3` + `capacitor@3` + `coil@2`                    | `118` | `1.8`   | `100`  | `multishot(3)`                                                     |
+| 7   | Null Core    | `nullcore`    | `regulator@5` + `capacitor@4` + `arcnode@3`               | `120` | `1.0`   | `420`  | `splash(55)`, `aura(100, 0.20)`                                    |
+| 8   | Rupture Node | `rupturenode` | `discharge@5` + `arcnode@4` + `emitter@3`                 | `150` | `0.7`   | `1770` | `splash(60)`, `burn(0.5, 2.0)`                                     |
+| 9   | Blight Coil  | `blightcoil`  | `rectifier@5` + `choke@4` + `coil@2`                      | `128` | `1.1`   | `375`  | `chain(3, 80, 0.7)`, `burn(0.6, 3.0)`, `slow(0.3, 1.5)`            |
+| 10  | Reactor Pile | `reactorpile` | `coil@5` + `choke@3` + `regulator@2`                      | `130` | `1.4`   | `420`  | `chain(4, 85, 0.75)`, `multishot(2)`                               |
+| 11  | Aurora Lance | `auroralance` | `choke@5` + `coil@4` + `discharge@4`                      | `190` | `0.7`   | `1980` | `chain(2, 75, 0.6)`, `slow(0.4, 1.8)`                              |
+| 12  | Singularity  | `singularity` | `arcnode@5` + `regulator@4` + `rectifier@2` + `arcnode@2` | `150` | `1.0`   | `490`  | `splash(65)`, `burn(0.6, 2.5)`, `crit(0.3, 2.2)`, `aura(90, 0.15)` |
 
 A recipe is an exact multiset of base `(type, tier)` ingredients. The Singularity's recipe
 calls for two Arc-Nodes at different tiers, and a recipe is satisfied only when the yard
@@ -53,10 +53,10 @@ A landed tower's live stats derive from its reference block and its level. Fire 
 every ability parameter are flat across level, so a tower scales through its damage
 alone.
 
-| Stat | Rule |
-| --- | --- |
+| Stat   | Rule                                                                                                  |
+| ------ | ----------------------------------------------------------------------------------------------------- |
 | Damage | `referenceDamage * COMBO_DAMAGE_MULT[level]`, where `COMBO_DAMAGE_MULT` is `[0.5, 0.63, 0.78, 1.02]`. |
-| Range | `referenceRange + COMBO_RANGE_BONUS[level]`, where `COMBO_RANGE_BONUS` is `[0, 4, 8, 12]`. |
+| Range  | `referenceRange + COMBO_RANGE_BONUS[level]`, where `COMBO_RANGE_BONUS` is `[0, 4, 8, 12]`.            |
 
 A tower therefore lands at half its reference damage and reaches slightly past it at
 level `3`.
@@ -68,10 +68,10 @@ the nearest integer with an exact half rounding up. `COMBO_UPGRADE_COST_FRAC` ho
 three fractions.
 
 | Reaching level | Fraction of reference damage |
-| --- | --- |
-| `1` | `0.8` |
-| `2` | `1.5` |
-| `3` | `2.8` |
+| -------------- | ---------------------------- |
+| `1`            | `0.8`                        |
+| `2`            | `1.5`                        |
+| `3`            | `2.8`                        |
 
 Upgrading is allowed in any phase, including during a live wave. It is refused at level
 `3` and when the player cannot afford the next level.
@@ -80,20 +80,20 @@ Upgrading is allowed in any phase, including during a live wave. It is refused a
 
 The inspector shows a one-line description of the selected tower. These are the twelve:
 
-| Tower | Description |
-| --- | --- |
-| Fuse Cluster | A splash bolt that also burns what it hits. |
-| Static Web | A chaining bolt that slows every unit it forks through. |
-| Slag Driver | A long-range heavy bolt that can land a critical hit. |
-| Corroder | Burns and slows what it hits, and projects a damage aura over nearby towers. |
-| Ion Prism | A splash bolt that burns on impact and can crit. |
-| Fork Array | Fires at three separate targets at once. |
-| Null Core | A splash core wrapped in a strong damage aura. |
-| Rupture Node | A heavy shot that detonates a large burning splash. |
-| Blight Coil | A chaining bolt that both slows and burns everything it forks through. |
-| Reactor Pile | Fires two heavy chain-lightning bolts at once. |
-| Aurora Lance | Enormous reach and per-hit damage, a hard slow, and a chaining strike. |
-| Singularity | Splash, burn, critical hits, and a damage aura in one tower. |
+| Tower        | Description                                                                  |
+| ------------ | ---------------------------------------------------------------------------- |
+| Fuse Cluster | A splash bolt that also burns what it hits.                                  |
+| Static Web   | A chaining bolt that slows every unit it forks through.                      |
+| Slag Driver  | A long-range heavy bolt that can land a critical hit.                        |
+| Corroder     | Burns and slows what it hits, and projects a damage aura over nearby towers. |
+| Ion Prism    | A splash bolt that burns on impact and can crit.                             |
+| Fork Array   | Fires at three separate targets at once.                                     |
+| Null Core    | A splash core wrapped in a strong damage aura.                               |
+| Rupture Node | A heavy shot that detonates a large burning splash.                          |
+| Blight Coil  | A chaining bolt that both slows and burns everything it forks through.       |
+| Reactor Pile | Fires two heavy chain-lightning bolts at once.                               |
+| Aurora Lance | Enormous reach and per-hit damage, a hard slow, and a chaining strike.       |
+| Singularity  | Splash, burn, critical hits, and a damage aura in one tower.                 |
 
 ## Appearance
 

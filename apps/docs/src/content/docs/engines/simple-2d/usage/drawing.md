@@ -28,7 +28,9 @@ const game: Game<State, null> = {
     const vp = api.viewport();
     const y = state.ball.y + state.ball.vy * dt;
     const vy = y < 0 || y > vp.height ? -state.ball.vy : state.ball.vy;
-    return { ball: { ...state.ball, x: state.ball.x + state.ball.vx * dt, y, vy } };
+    return {
+      ball: { ...state.ball, x: state.ball.x + state.ball.vx * dt, y, vy },
+    };
   },
   render(state, api) {
     const { ctx } = api;
@@ -160,7 +162,9 @@ const game: Game<Aiming, null> = {
   initialize: () => [{ aim: { x: 320, y: 180 } }, null],
   update: (state, api, dt) => {
     const pointer = api.input.pointer();
-    const aimed = pointer.down ? { ...state, aim: { x: pointer.x, y: pointer.y } } : state;
+    const aimed = pointer.down
+      ? { ...state, aim: { x: pointer.x, y: pointer.y } }
+      : state;
     return stepTowards(aimed, dt);
   },
   render: (state, api) => drawCrosshair(api.ctx, state.aim),

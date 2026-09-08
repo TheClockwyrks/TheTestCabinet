@@ -14,7 +14,12 @@ come from the same specifier.
 
 ```ts
 import { createEngine, PacedClock, TOUCH_LAYOUTS } from "@clockwyrks/simple-2d";
-import type { CueSpec, Engine, EngineOptions, Game } from "@clockwyrks/simple-2d";
+import type {
+  CueSpec,
+  Engine,
+  EngineOptions,
+  Game,
+} from "@clockwyrks/simple-2d";
 ```
 
 ## Pick a logical design size
@@ -69,12 +74,12 @@ const opening = await engine.initialize();
 
 ## The remaining options
 
-| Option | Effect |
-| --- | --- |
+| Option       | Effect                                                                                                                                                 |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `background` | A CSS color the whole canvas is filled with before every frame. Left out, the frame clears to transparency and the page shows through behind the game. |
-| `layout` | Selects a touch layout from `TOUCH_LAYOUTS`, whose vocabulary the game then registers as actions. |
-| `assetRoot` | The root every asset path resolves under. Defaults to `assets/`. |
-| `surface` | Where the engine reads element size and device pixel ratio and attaches its listeners. Defaults to the canvas and its owning document. |
+| `layout`     | Selects a touch layout from `TOUCH_LAYOUTS`, whose vocabulary the game then registers as actions.                                                      |
+| `assetRoot`  | The root every asset path resolves under. Defaults to `assets/`.                                                                                       |
+| `surface`    | Where the engine reads element size and device pixel ratio and attaches its listeners. Defaults to the canvas and its owning document.                 |
 
 ```ts
 const engine = createEngine({

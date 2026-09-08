@@ -33,7 +33,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 
-import { textDraws, toDrawCall } from "../case-harness/index";
+import { drawnTextRuns } from "../case-harness/index";
 import { assertEqual, fail } from "../assert";
 import { GRIP_MAX_RATE, RESULTS_ITEMS } from "../constants";
 import {
@@ -83,10 +83,20 @@ afterEach(async () => {
   await h.dispose();
 });
 
-/** The frame's drawn text, top to bottom and left to right, as one string. */
+/**
+ * The frame's drawn text, top to bottom and left to right, as one string.
+ *
+ * The runs are the LOGICAL ones the frame spells, each placed where its first
+ * draw was, never the `fillText` split: a build that letter-spaces a label or
+ * a figure draws a glyph per call, which is the only portable way to
+ * letter-space canvas text, and a line assembled from those glyphs reads `1 2`
+ * where the screen says `12`. `screenCalls` carries the measured geometry the
+ * shared merge rule (`case-harness/text.ts`) needs to put side-by-side glyphs
+ * on one baseline back together, and every raw string is a substring of its
+ * run, so coalescing can only add a match.
+ */
 async function readingOrder(harness: Harness): Promise<string> {
-  const ops = await harness.screenOps();
-  return textDraws(ops.map(toDrawCall))
+  return drawnTextRuns(await harness.screenCalls())
     .map((draw) => ({ ...draw, line: Math.round(draw.y / LINE_SLOP) }))
     .sort((one, two) => one.line - two.line || one.x - two.x)
     .map((draw) => draw.text)

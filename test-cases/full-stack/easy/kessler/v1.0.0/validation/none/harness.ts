@@ -48,13 +48,21 @@
 // ONCE, in the scenario section at the foot of this file, and every suite that
 // needs part of one calls the operations it needs instead of restating the
 // whole.
+//
+// RECONCILING AFTER A POSE. `reconcile()` brings every reading the surface
+// reports into agreement with the field a pose has just arranged, without
+// advancing anything, so a build that keeps a derived reading as a stored copy
+// answers for the field as posed rather than as it was. A helper below that
+// poses anything a reading derives from — a ball, a pod, a target, an effect
+// timer — reconciles before it returns, so a check posing through the helpers
+// never calls it itself. A check that poses with `h.debug.set…` directly calls
+// it once before its first read or sweep.
 
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Page } from "playwright";
 import {
   createCaseHarness,
-  drawnText,
   type CaseConfig,
   type DrawCall,
   type Harness as BaseHarness,
@@ -175,6 +183,11 @@ const KESSLER: CaseConfig<KesslerSnapshot> = {
   // moment the harness arranged nothing about.
   arm: { kind: "key", code: UNBOUND_KEY },
   surfaceTimeoutMs: SURFACE_TIMEOUT_MS,
+  // Measure every text call the harness reads, in the page under the build's
+  // own fonts, so the package's readers over LOGICAL runs of text can coalesce
+  // a heading drawn a glyph per `fillText` back into the words it spells.
+  // The package's `drewText` reads copy off those runs.
+  measureText: true,
   extraInitScripts: ["audio-init.js", "image-init.js"],
   projectRoot: PROJECT_ROOT,
 };
@@ -632,31 +645,6 @@ export async function hold(
 }
 
 /* -------------------------------------------------------------------------- */
-/* Reading one frame's render                                                 */
-/* -------------------------------------------------------------------------- */
-
-/**
- * Whether the frame drew `text` as part of some RAW run of text, ignoring case.
- *
- * Substring rather than equality on purpose: the copy a check asserts is the
- * case's own, but how a build presents it is the build's, and a menu entry is
- * commonly drawn with a selection marker or padding around it. Requiring the
- * exact run would fail a screen that shows precisely the right words.
- *
- * KESSLER'S OWN, over the package's `drawnText`. The package ships a `drewText`
- * of its own and it is a different reading: it matches against the LOGICAL runs
- * a frame spells (`drawnTextLines`), which is what a case whose build
- * letter-spaces a heading a glyph per `fillText` needs. Kessler's copy points
- * were all decided against the raw calls, and the two answers coincide only
- * while nothing merges — so this composes the package's raw reading rather than
- * binding a name whose meaning would be the other one.
- */
-export function drewText(calls: readonly DrawCall[], text: string): boolean {
-  const wanted = text.trim().toLowerCase();
-  return drawnText(calls).some((drawn) => drawn.toLowerCase().includes(wanted));
-}
-
-/* -------------------------------------------------------------------------- */
 /* Cues                                                                       */
 /* -------------------------------------------------------------------------- */
 
@@ -826,6 +814,7 @@ export async function isolate(h: Harness): Promise<KesslerSnapshot> {
   await h.debug.clearPods();
   await h.debug.setWaveAdvance(false);
   await h.debug.setPodSpawn(false);
+  await h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -892,6 +881,7 @@ export async function spawnBallPolar(
   const at = pointAt(r, thetaDeg);
   const v = outwardVelocity(speed, thetaDeg, offDeg);
   await h.debug.spawnBall(at.x, at.y, v.vx, v.vy);
+  await h.debug.reconcile();
 }
 
 /**
@@ -907,6 +897,7 @@ export async function spawnPodPolar(
 ): Promise<void> {
   const at = pointAt(r, thetaDeg);
   await h.debug.spawnPod(kind, at.x, at.y);
+  await h.debug.reconcile();
 }
 
 /**
@@ -952,6 +943,7 @@ export async function startFreshSession(h: Harness): Promise<KesslerSnapshot> {
   await h.debug.reset();
   await h.debug.setScreen("playing");
   await h.debug.parkBall();
+  await h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -977,6 +969,7 @@ export async function poseInterstitial(
   await h.debug.setShield(false);
   await h.debug.setInterstitialTicks(ticks);
   await h.debug.setScreen("waveclear");
+  await h.debug.reconcile();
   return h.snapshot();
 }
 

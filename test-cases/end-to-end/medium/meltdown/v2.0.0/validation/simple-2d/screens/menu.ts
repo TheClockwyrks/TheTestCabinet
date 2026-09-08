@@ -34,7 +34,9 @@ import {
 } from "../constants";
 import type { Point } from "../geometry";
 import {
-  drawnTextSpans,
+  drawnText,
+  drawnTextLines,
+  spelledRuns,
   startRun,
   type DrawCall,
   type Harness,
@@ -136,14 +138,19 @@ const GROUPS = new RegExp(GROUP, "g");
  * one being a piece of it. How the number is dressed — a currency mark, a label
  * either side of it, the separators a long figure is grouped by — is the build's,
  * and none of it survives the tokenizing.
+ *
+ * Read off the logical runs the frame spells AND off the `fillText` split,
+ * because the spacing of a figure is the build's as well and each reading can
+ * lose a figure where the other keeps it: a screen that letter-spaces its rows
+ * draws `1350` a digit per call, and read call by call that is four figures none
+ * of which is the one the row reports; a screen that draws two figures tight
+ * together in two calls has them merged, verbatim, into one figure neither is,
+ * and only the split keeps them. A caller asks whether a figure is AMONG these, so
+ * the union costs nothing and only ever adds a match.
  */
 export function numbersDrawn(calls: readonly DrawCall[]): string[] {
   const found: string[] = [];
-  for (const call of calls) {
-    if (call.kind !== "call") continue;
-    if (call.method !== "fillText" && call.method !== "strokeText") continue;
-    const [text] = call.args;
-    if (typeof text !== "string") continue;
+  for (const text of [...drawnTextLines(calls), ...drawnText(calls)]) {
     for (const match of text.matchAll(DRAWN)) {
       found.push(match[0].replace(GROUPS, ""));
     }
@@ -161,6 +168,16 @@ export function numbersDrawn(calls: readonly DrawCall[]): string[] {
  * asks only that the rows be a vertical list. A row that was never drawn is the
  * build having lost it, which is a verdict rather than an absent value, so this
  * fails by assertion.
+ *
+ * The rows are the LOGICAL runs the frame spells first, and the `fillText`
+ * split behind them. A build that letter-spaces its menu draws each row a glyph
+ * per call, and a label looked for call by call would be missing from a screen
+ * that drew exactly the right words; the coalesced run spans the whole row,
+ * which is what the band a check samples across it wants anyway. But the merge
+ * concatenates verbatim inside the run's own tracking, so a row that draws its
+ * label and a figure tight together in two calls is one run reading `EASY500`,
+ * which IS no label — and the label is then the span it was drawn as, which the run
+ * still names. Either way a row found call by call is still found.
  */
 export function rowSpan(
   h: Harness,
@@ -168,8 +185,12 @@ export function rowSpan(
   label: string,
 ): TextSpan {
   const wanted = normalize(label);
-  const spans = drawnTextSpans(h, calls);
-  const found = spans.find((span) => normalize(span.text) === wanted);
+  const spans = spelledRuns(h, calls);
+  const found =
+    spans.find((span) => normalize(span.text) === wanted) ??
+    spans
+      .flatMap((span) => span.parts)
+      .find((part) => normalize(part.text) === wanted);
   if (found === undefined) {
     fail(
       `a run of text reading ${JSON.stringify(label)} among the rows the ` +

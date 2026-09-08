@@ -13,11 +13,11 @@ the Fuel Depot.
 What the driver touches on the debug surface is input and readings, and nothing
 else:
 
-| Call | Why it is not a pose |
-| --- | --- |
-| `reset()` | Leaves the game on its title screen, exactly as a launched build opens; the mine the expedition then generates is the game's own. |
-| `snapshot()`, `tileAt()`, `buildings()` | Readings. They change nothing. |
-| `sell()`, `fillFuel()` | The named counterparts of the two panel controls a player clicks. Each runs the game's own rule for that control on the game as it stands. |
+| Call                                    | Why it is not a pose                                                                                                                       |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `reset()`                               | Leaves the game on its title screen, exactly as a launched build opens; the mine the expedition then generates is the game's own.          |
+| `snapshot()`, `tileAt()`, `buildings()` | Readings. They change nothing.                                                                                                             |
+| `sell()`, `fillFuel()`                  | The named counterparts of the two panel controls a player clicks. Each runs the game's own rule for that control on the game as it stands. |
 
 Everything else is keys, held and released through the engine's own input. No
 cell is posed, no ore is placed, and no fuel, hull or Credit is set: the mine is
@@ -62,10 +62,10 @@ The outputs land under
 line of the log names the winning take and what each of its files is committed
 as:
 
-| Take file | Committed as |
-| --- | --- |
-| `take-NN.json.gz` | `showcase/base/expedition.json.gz` |
-| `take-NN-shaft.png` | `showcase/base/loaded-at-depth.png` |
+| Take file            | Committed as                        |
+| -------------------- | ----------------------------------- |
+| `take-NN.json.gz`    | `showcase/base/expedition.json.gz`  |
+| `take-NN-shaft.png`  | `showcase/base/loaded-at-depth.png` |
 | `take-NN-market.png` | `showcase/base/the-haul-priced.png` |
 
 Delete `$WORK` afterwards. It is a copy, so nothing in the case or the reference
@@ -89,16 +89,16 @@ another name and is punished as one.
 
 ## The knobs
 
-| Variable | Default | What it does |
-| --- | --- | --- |
-| `TCAB_SHOWCASE_MAX_REPLAY_FRAMES` | `300` | The harness's replay cap, patched above to read it. |
-| `TCAB_SHOWCASE_TAKES` | `24` | How many takes are auditioned. One take is one generated mine and one expedition. |
-| `TCAB_SHOWCASE_DEPTH` | `44` | How far down the plan looks. The turnaround is decided by the bay and the gauge, not by this. |
-| `TCAB_SHOWCASE_RESERVE_PER_ROW` | `1.25` | Fuel per row held back for the climb home. |
-| `TCAB_SHOWCASE_RESERVE_FLOOR` | `6` | Fuel held back on top of that, for the drift off the shaft. |
-| `TCAB_SHOWCASE_EXIT_Y` | `-20` | The height the climb's thrust is cut at, in world units above the camp ground line. |
-| `TCAB_SHOWCASE_MIN_SECONDS` | `24` | Clips shorter than this are judged unwatchable. |
-| `TCAB_SHOWCASE_MAX_SECONDS` | `40` | And longer than this. |
+| Variable                          | Default | What it does                                                                                  |
+| --------------------------------- | ------- | --------------------------------------------------------------------------------------------- |
+| `TCAB_SHOWCASE_MAX_REPLAY_FRAMES` | `300`   | The harness's replay cap, patched above to read it.                                           |
+| `TCAB_SHOWCASE_TAKES`             | `24`    | How many takes are auditioned. One take is one generated mine and one expedition.             |
+| `TCAB_SHOWCASE_DEPTH`             | `44`    | How far down the plan looks. The turnaround is decided by the bay and the gauge, not by this. |
+| `TCAB_SHOWCASE_RESERVE_PER_ROW`   | `1.25`  | Fuel per row held back for the climb home.                                                    |
+| `TCAB_SHOWCASE_RESERVE_FLOOR`     | `6`     | Fuel held back on top of that, for the drift off the shaft.                                   |
+| `TCAB_SHOWCASE_EXIT_Y`            | `-20`   | The height the climb's thrust is cut at, in world units above the camp ground line.           |
+| `TCAB_SHOWCASE_MIN_SECONDS`       | `24`    | Clips shorter than this are judged unwatchable.                                               |
+| `TCAB_SHOWCASE_MAX_SECONDS`       | `40`    | And longer than this.                                                                         |
 
 ## Two traps this driver is written around
 

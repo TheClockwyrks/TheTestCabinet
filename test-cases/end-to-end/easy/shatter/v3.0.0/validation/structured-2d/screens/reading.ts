@@ -1,6 +1,9 @@
 // Shatter — how the `screens/*` points READ a screen: where a menu's entries
-// were drawn, whether a row's drawing changed between two frames, and whether a
-// number reached the canvas at all.
+// were drawn, whether a row's drawing changed between two frames, whether a
+// number reached the canvas at all, and whether a key was named as a standalone
+// word. Whether a PHRASE of copy was drawn — the title, a menu entry — is the
+// shared harness's own `drewText` (`case-harness/text.ts`), which the points
+// that want it import directly; nothing here re-reads it.
 //
 // `specs/ui.md` leaves "the palette, the type, and the layout of each screen" to
 // the build and fixes only the COPY and the ORDER. So every reading here is
@@ -16,12 +19,7 @@
 // the reading those points share.
 
 import { fail } from "../assert";
-import {
-  colorDistance,
-  drawnText,
-  drawnTextSpans,
-  type Harness,
-} from "../harness";
+import { colorDistance, spelledTextRuns, type Harness } from "../harness";
 
 /** Where one menu entry was drawn, in the field's own logical units. */
 export interface MenuRow {
@@ -72,13 +70,22 @@ function itemShownBy(
  * outline over them — so every run filed under an entry contributes: the row's
  * `y` is the mean of their anchors and its extent is their union.
  *
+ * THE RUNS ARE THE LOGICAL ONES, not the `fillText` calls. A build that
+ * letter-spaces its menu draws one glyph per call — the only portable way to
+ * letter-space canvas text — and `specs/ui.md` fixes the words while leaving
+ * their spacing to the build, so a call-by-call reading would find `P`, `L`,
+ * `A`, `Y` and no entry. `harness.ts`'s `spelledTextRuns` coalesces the glyphs
+ * back into the string they spell, placed as one extent, which is exactly the
+ * row a highlight check wants to band. Matching by containment, coalescing can
+ * only add a match: every raw string is a substring of its run.
+ *
  * An entry no run showed is a FAILURE here rather than a gap in the answer,
  * naming the entry the specification fixes and the runs the frame actually
  * drew. The points that call this go on to compare rows, and a missing row has
  * no comparison to be part of.
  */
 export function menuRows(h: Harness, items: readonly string[]): MenuRow[] {
-  const spans = drawnTextSpans(h);
+  const spans = spelledTextRuns(h);
   return items.map((item) => {
     const mine = spans.filter((span) => itemShownBy(span.text, items) === item);
     if (mine.length === 0) {
@@ -138,21 +145,51 @@ export function bandChanged(
 }
 
 /**
- * Every run of text the frame drew, lower-cased and joined by ` | `.
+ * Every run of text the frame spelled, and — after them — every call of a run
+ * that was drawn in more than one call.
  *
- * The container a presence check runs against, and the value its failure prints
- * — so a build that drew the wrong copy is reported as the copy it DID draw
- * rather than as the word `false`. The separator is one no piece of screen copy
- * carries, so a match can never straddle two runs, and the case is dropped
- * because `specs/ui.md` fixes the words a screen shows and leaves how they are
- * set to the build.
+ * THE RUNS, NOT THE CALLS. A build that letter-spaces its title or its how-to
+ * copy draws one glyph per `fillText`, which is the only portable way to
+ * letter-space canvas text, and `specs/ui.md` fixes the words while leaving
+ * their spacing to the build; read a call at a time, such a screen shows `S`,
+ * `H`, `A`… and never the title. `harness.ts`'s `spelledTextRuns` coalesces the
+ * glyphs back into the string they spell.
+ *
+ * AND THE CALLS BEHIND THEM. Coalescing can only add a match by containment,
+ * but the how-to check wants each key as a standalone word, and the merge can
+ * glue two runs the build set a bare space apart, in two calls, into one. So a
+ * run drawn in several calls is followed by those calls, and a word found in
+ * either is found. A run drawn whole is not repeated.
  */
-export function drawnRuns(h: Harness): string {
-  return drawnText(h.calls).join(" | ").toLowerCase();
+function spelledRuns(h: Harness): string[] {
+  const runs = spelledTextRuns(h);
+  return [
+    ...runs.map((run) => run.text),
+    ...runs
+      .filter((run) => run.parts.length > 1)
+      .flatMap((run) => run.parts.map((part) => part.text)),
+  ];
 }
 
 /**
- * Whether some run of text the frame drew carries `digits` as a run of digits.
+ * Every run of text the frame spelled, lower-cased and joined by ` | `.
+ *
+ * The container a standalone-WORD check runs against, and the value a figure
+ * check's failure prints — so a build that drew the wrong copy is reported as
+ * the copy it DID draw rather than as the word `false`. The separator is one no
+ * piece of screen copy carries, so a match can never straddle two runs, and the
+ * case is dropped because `specs/ui.md` fixes the words a screen shows and
+ * leaves how they are set to the build. The runs are {@link spelledRuns}: the
+ * logical runs, with the calls of any run drawn a call at a time laid out after
+ * them.
+ */
+export function drawnRuns(h: Harness): string {
+  return spelledRuns(h).join(" | ").toLowerCase();
+}
+
+/**
+ * Whether some run of text the frame spelled carries `digits` as a run of
+ * digits.
  *
  * Every non-digit is dropped from each run before the comparison, so the reading
  * is the NUMBER a run showed rather than the way it was written.
@@ -160,10 +197,9 @@ export function drawnRuns(h: Harness): string {
  * wave the game reached" and fixes nothing about the presentation, so a build
  * that labels its figure (`SCORE 47320`), groups it (`47,320`), or does both
  * has shown the number the specification asked for and a check that demanded
- * the bare run would fail it for its formatting.
+ * the bare run would fail it for its formatting. And one that letter-spaces
+ * its figure, a digit per call, has too — the runs are {@link spelledRuns}.
  */
 export function drewDigits(h: Harness, digits: string): boolean {
-  return drawnText(h.calls).some((run) =>
-    run.replace(/\D/g, "").includes(digits),
-  );
+  return spelledRuns(h).some((run) => run.replace(/\D/g, "").includes(digits));
 }

@@ -1,12 +1,12 @@
 # Foray Royal Jelly — drawing brief
 
-You are drawing the **royal jelly** node, a **sprite sheet** for *Foray*, a
+You are drawing the **royal jelly** node, a **sprite sheet** for _Foray_, a
 top-down ant-colony raiding game. Two colonies raid each other's territory for
 seeds and royal jelly; a **jelly node is a bonus resource** that sits on the
 board in **two states** — **active** (a glowing node, there to be eaten) and
 **spent** (a dimmed husk, left behind once it has been consumed). You are drawing
 both states. Royal jelly belongs to **neither colony** — it is a shared prize, so
-it is *not* recolored (see **Palette**).
+it is _not_ recolored (see **Palette**).
 
 ## The frames
 
@@ -17,10 +17,10 @@ it is *not* recolored (see **Palette**).
 - You choose which frame an operation draws into with `--frame <index>`. The
   sheet has **2 frames, numbered 0–1**:
 
-  | Frame | State |
-  | --- | --- |
-  | 0 | **active** — a glowing royal-jelly node |
-  | 1 | **spent** — the dimmed husk left after it is eaten |
+  | Frame | State                                              |
+  | ----- | -------------------------------------------------- |
+  | 0     | **active** — a glowing royal-jelly node            |
+  | 1     | **spent** — the dimmed husk left after it is eaten |
 
 - The two frames are the **same node** in two states: frame 1 is what frame 0
   becomes once consumed — same size and place, drained of its glow. A viewer
@@ -37,7 +37,7 @@ Reads, at a glance, as a **glowing blob of royal jelly**:
 - **Body:** a rounded, slightly irregular blob of green jelly filling most of the
   tile — soft and organic, not a hard geometric shape.
 - **Glow core:** a **bright pale core** at the center, so it reads as
-  *luminous* — lit from within, the freshest, most valuable thing on the board.
+  _luminous_ — lit from within, the freshest, most valuable thing on the board.
 - **Sheen:** a lighter highlight on the body suggesting a wet, gel surface.
 
 ### Frame 1 — spent
@@ -46,19 +46,19 @@ Reads, at a glance, as the **same node drained and dimmed**:
 
 - The same rounded shape and position, but in the **dull spent color** — no
   bright core, no luminous sheen. It is a flatter, darker husk: clearly the
-  *leftover* of frame 0, obviously dead next to the glowing active node.
+  _leftover_ of frame 0, obviously dead next to the glowing active node.
 
 ## Palette
 
 Royal jelly is **shared and never recolored** — the same colors for both
 colonies. Use only these colors:
 
-| Role | Hex | Used in |
-| --- | --- | --- |
-| Jelly green (active body) | `#7be0a0` | frame 0 |
-| Glow core / sheen (bright) | `#ffffff` | frame 0 |
-| Spent husk (dull green-grey) | `#3c5a47` | frame 1 |
-| Outline | `#0a0806` | both frames |
+| Role                         | Hex       | Used in     |
+| ---------------------------- | --------- | ----------- |
+| Jelly green (active body)    | `#7be0a0` | frame 0     |
+| Glow core / sheen (bright)   | `#ffffff` | frame 0     |
+| Spent husk (dull green-grey) | `#3c5a47` | frame 1     |
+| Outline                      | `#0a0806` | both frames |
 
 The active node is the green `#7be0a0` lit by a bright `#ffffff` core; the spent
 node is the dull `#3c5a47` husk with no bright core. The `#0a0806` outline

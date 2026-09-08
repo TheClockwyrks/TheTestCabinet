@@ -34,7 +34,11 @@ import {
   OVERVIEW_DASHBOARD,
   OVERVIEW_DASHBOARD_ID,
 } from "./dashboards/overviewDashboard";
-import { DEFAULT_RANGE, TimeRangePicker, rangeById } from "./discover/TimeRangePicker";
+import {
+  DEFAULT_RANGE,
+  TimeRangePicker,
+  rangeById,
+} from "./discover/TimeRangePicker";
 import { GG_CHROME } from "./ggChrome";
 import styles from "./dashboards/GgDashboards.module.scss";
 import discover from "./discover/GgDiscover.module.scss";
@@ -55,7 +59,9 @@ export function GgDashboardViewPage() {
 
   // The board's own saved range is the default; a `?range=` in the URL overrides it, so a
   // board can be *shared* over a window without being *edited* to it.
-  const range = rangeById(params.get("range") ?? board?.rangeId ?? DEFAULT_RANGE.id);
+  const range = rangeById(
+    params.get("range") ?? board?.rangeId ?? DEFAULT_RANGE.id,
+  );
 
   const fetchBoard = backend?.getGgDashboard;
   useEffect(() => {
@@ -121,7 +127,9 @@ export function GgDashboardViewPage() {
     <PageLayout chrome={GG_CHROME}>
       <PromptHeader
         command={`--gg dashboard ${board?.name ?? dashboardId}`}
-        comment={<>// {board?.description || "one range, one request, N panels"}</>}
+        comment={
+          <>// {board?.description || "one range, one request, N panels"}</>
+        }
       />
 
       {loadError && <p className={discover.error}>{loadError}</p>}
@@ -130,7 +138,10 @@ export function GgDashboardViewPage() {
         <>
           {/* One filter row above everything it scopes — never a picker inside a card. */}
           <div className={styles.controls}>
-            <TimeRangePicker value={range} onChange={(next) => setRange(next.id)} />
+            <TimeRangePicker
+              value={range}
+              onChange={(next) => setRange(next.id)}
+            />
             <span className={styles.spacer} />
             {error ? (
               <span className={discover.error} role="status">

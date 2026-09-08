@@ -1,4 +1,4 @@
-**Spectra Prism** is the two-band boss drone from *Spectra*, a two-band formation
+**Spectra Prism** is the two-band boss drone from _Spectra_, a two-band formation
 shooter. It is the large anchor of a wave: an outer shell of one band around an
 inner core of the opposite band.
 

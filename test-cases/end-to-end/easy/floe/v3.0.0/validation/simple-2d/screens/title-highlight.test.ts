@@ -41,7 +41,7 @@ import {
   colorDistance,
   createHarness,
   drawFrame,
-  drawnTextSpans,
+  drawnTextRuns,
   type Harness,
   type Rgb,
   type TextSpan,
@@ -115,8 +115,10 @@ it("draws the highlighted title item apart from the same item unhighlighted", as
   captureStill(h, "title");
 
   // The line the first entry sits on, and the step to the second, read off the
-  // frame that drew both, so the band follows the build's own layout.
-  const spans = drawnTextSpans(h, litCalls);
+  // frame that drew both, so the band follows the build's own layout. The
+  // LOGICAL runs, so an entry letter-spaced a glyph per `fillText` is found by
+  // what it spells; a merged run keeps the line its glyphs share.
+  const spans = drawnTextRuns(h, litCalls);
   const first = spanFor(spans, TITLE_ITEMS[0]);
   const second = spanFor(spans, TITLE_ITEMS[1]);
   const step = Math.abs(second.y - first.y);

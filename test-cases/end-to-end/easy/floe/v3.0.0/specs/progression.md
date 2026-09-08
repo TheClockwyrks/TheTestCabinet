@@ -18,11 +18,11 @@ reads `3`.
 `phase` says what a crossing is doing, and `phaseTimer` is the seconds left in
 the hold currently running, `0` whenever none is.
 
-| `phase` | The game is | Its hold |
-| --- | --- | --- |
+| `phase`    | The game is                                                                                  | Its hold                                         |
+| ---------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------ |
 | `crossing` | Playing the crossing, or holding after a bay was filled and before the next crossing begins. | `BAYFILL_PAUSE` (`0.5` s), after a bay is filled |
-| `dying` | Holding after a life was lost. | `DEATH_PAUSE` (`0.9` s) |
-| `clearing` | Holding after the level's last bay was filled. | `CLEAR_PAUSE` (`1.6` s) |
+| `dying`    | Holding after a life was lost.                                                               | `DEATH_PAUSE` (`0.9` s)                          |
+| `clearing` | Holding after the level's last bay was filled.                                               | `CLEAR_PAUSE` (`1.6` s)                          |
 
 The strait keeps running through every hold: the lanes advance, the bonus catch
 keeps its cadence, and any bear still on the strait travels.
@@ -53,13 +53,13 @@ tick it reaches `0` the critter loses a life.
 
 Five things cost a life, each fixed by the file that owns it:
 
-| Cost | Fixed by |
-| --- | --- |
-| A bear catches the critter | `specs/hunter.md` |
-| A vehicle in a moving lane covers the critter's center | `specs/ice.md` |
-| The critter stands on open water | `specs/water.md` |
-| A floe carries the critter past a side edge | `specs/water.md` |
-| The crossing timer reaches `0` | Above |
+| Cost                                                   | Fixed by          |
+| ------------------------------------------------------ | ----------------- |
+| A bear catches the critter                             | `specs/hunter.md` |
+| A vehicle in a moving lane covers the critter's center | `specs/ice.md`    |
+| The critter stands on open water                       | `specs/water.md`  |
+| A floe carries the critter past a side edge            | `specs/water.md`  |
+| The crossing timer reaches `0`                         | Above             |
 
 On the tick a life is lost: `lives` drops by exactly one, `phase` becomes
 `dying`, `phaseTimer` becomes `DEATH_PAUSE`, the critter leaves the strait, and

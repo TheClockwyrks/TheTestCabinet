@@ -20,10 +20,14 @@
 //
 // THE COPY IS READ AS RUNS. A build may letter-space its headings and canvas
 // carries no portable property for it, so tracked copy is drawn a glyph per
-// `fillText` call; the frame's COALESCED runs are what carry the words, and the
-// count is matched as one of the numbers a run spells rather than as its
+// `fillText` call; the frame's COALESCED runs are what carry the words. The
+// title and each menu entry are matched by the package's `drewText` — ignoring
+// case, with the whitespace folded out of both sides along a baseline — and
+// the count is matched as one of the numbers a run spells rather than as its
 // digits run together, and a figure the build groups with a thousands
-// separator spells the one figure it reads as.
+// separator spells the one figure it reads as. The menu's ORDER is then read
+// off the placed runs, each entry taken from a run that spells it under the
+// same fold.
 //
 // THE BOARD STAYS DRAWN BEHIND — AND ONLY THAT. The item's description asks for
 // the finished board still visible; the spec's own words are that it "stays
@@ -62,7 +66,6 @@ import {
   colorDistance,
   createHarness,
   drawnTextRuns,
-  drewText,
   loadBoard,
   sampleColor,
   startCascade,
@@ -72,6 +75,7 @@ import {
   type Rgb,
   type TextDraw,
 } from "../harness";
+import { drewText } from "../case-harness/index";
 
 /** The forced GEO_3X3 solve: T(0,0) — t(1,1) — T(2,2) (fixtures.ts). */
 const GEO_3X3_ROUTE: readonly (readonly [number, number])[] = [
@@ -159,6 +163,11 @@ function numbersIn(text: string): number[] {
   );
 }
 
+/** Copy as the package's `drewText` reads it: upper case, whitespace out. */
+function fold(text: string): string {
+  return text.replace(/\s+/g, "").toUpperCase();
+}
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -209,14 +218,33 @@ it("draws the title, the count, and the menu in order over the finished board", 
     `the frame draws the boards-solved count, ${SOLVES}`,
   );
 
-  // The vertical menu, in SOLVED_ITEMS order: NEXT BOARD above RESTART.
-  const anchorOf = (item: string): TextDraw | null =>
-    runs.find((run) => run.text.toLowerCase().includes(item.toLowerCase())) ??
-    null;
+  // The vertical menu: each entry is drawn…
+  for (const item of SOLVED_ITEMS) {
+    if (!drewText(calls, item)) {
+      fail(
+        `the frame draws ${JSON.stringify(item)} (SOLVED_ITEMS, ` +
+          "specs/modes/cascade.md: the solved screen's menu)",
+        runs.map((run) => run.text),
+      );
+    }
+  }
+
+  // …in SOLVED_ITEMS order: NEXT BOARD above RESTART, each read off the
+  // placed run that spells it.
+  const anchorOf = (item: string): TextDraw | null => {
+    const wanted = fold(item);
+    return runs.find((run) => fold(run.text).includes(wanted)) ?? null;
+  };
   const nextBoard = anchorOf(SOLVED_ITEMS[0]);
   const restart = anchorOf(SOLVED_ITEMS[1]);
-  assertNotNull(nextBoard, `a ${SOLVED_ITEMS[0]} menu entry`);
-  assertNotNull(restart, `a ${SOLVED_ITEMS[1]} menu entry`);
+  assertNotNull(
+    nextBoard,
+    `a placed draw of ${JSON.stringify(SOLVED_ITEMS[0])}, to read the menu's order`,
+  );
+  assertNotNull(
+    restart,
+    `a placed draw of ${JSON.stringify(SOLVED_ITEMS[1])}, to read the menu's order`,
+  );
   if (nextBoard !== null && restart !== null) {
     assertGreaterThan(
       restart.y,

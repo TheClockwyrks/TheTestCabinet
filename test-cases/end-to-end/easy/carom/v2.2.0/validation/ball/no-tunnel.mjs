@@ -61,6 +61,7 @@ async function arrangeBankOff(api, obstacle, speed) {
     vy: 0,
     spin: 0,
   });
+  await api.call("reconcile");
 }
 
 // Pose the next probe's ball at rest, hold there for a beat, then launch it at `v`
@@ -70,8 +71,10 @@ async function arrangeBankOff(api, obstacle, speed) {
 async function placeThenLaunch(api, { x, y }, v) {
   const at = { x, y, spin: 0 };
   await api.call("setBall", 0, { ...at, vx: 0, vy: 0 });
+  await api.call("reconcile");
   await api.advance(GAP);
   await api.call("setBall", 0, { ...at, vx: 0, vy: 0, ...v });
+  await api.call("reconcile");
 }
 
 export default function item() {

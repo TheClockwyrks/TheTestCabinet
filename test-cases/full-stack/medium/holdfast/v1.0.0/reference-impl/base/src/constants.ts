@@ -64,7 +64,14 @@ export const STRUCTURE_ORDER: StructureKind[] = [
   "farm",
   "turret",
 ];
-export const WORK_ORDER: WorkType[] = ["gather", "haul", "build", "cook", "farm", "fight"];
+export const WORK_ORDER: WorkType[] = [
+  "gather",
+  "haul",
+  "build",
+  "cook",
+  "farm",
+  "fight",
+];
 export const WORK_LABEL: Record<WorkType, string> = {
   gather: "Gather",
   haul: "Haul",
@@ -73,7 +80,14 @@ export const WORK_LABEL: Record<WorkType, string> = {
   farm: "Farm",
   fight: "Fight",
 };
-export const SKILL_ORDER: Skill[] = ["chop", "mine", "build", "cook", "shoot", "farm"];
+export const SKILL_ORDER: Skill[] = [
+  "chop",
+  "mine",
+  "build",
+  "cook",
+  "shoot",
+  "farm",
+];
 export const RESOURCE_ORDER: ResourceKind[] = ["wood", "ore", "crops", "meals"];
 
 // ---- 3.1 Stage, grid, camera (specs/overview.md, world.md, controls.md) --------
@@ -178,7 +192,9 @@ export interface SettlerArchetype {
   skills: Record<Skill, number>;
 }
 // Build a full skill sheet from the default, overriding the standouts / weaknesses.
-function skills(overrides: Partial<Record<Skill, number>>): Record<Skill, number> {
+function skills(
+  overrides: Partial<Record<Skill, number>>,
+): Record<Skill, number> {
   const out = {} as Record<Skill, number>;
   for (const s of SKILL_ORDER) out[s] = overrides[s] ?? SKILL_DEFAULT;
   return out;
@@ -220,13 +236,76 @@ export interface StructureDef {
   hp: number; // 0 = not damageable (raiders don't attack walls/doors in base)
 }
 export const STRUCTURES: Record<StructureKind, StructureDef> = {
-  wall: { kind: "wall", name: "WALL", cost: { wood: 5, ore: 0 }, buildTime: 2.0, blocksMove: true, cover: true, blocksSight: true, hp: 120 },
-  door: { kind: "door", name: "DOOR", cost: { wood: 8, ore: 0 }, buildTime: 2.0, blocksMove: false, cover: true, blocksSight: true, hp: 80 },
-  floor: { kind: "floor", name: "FLOOR", cost: { wood: 2, ore: 0 }, buildTime: 1.0, blocksMove: false, cover: false, blocksSight: false, hp: 0 },
-  bed: { kind: "bed", name: "BED", cost: { wood: 15, ore: 0 }, buildTime: 3.0, blocksMove: false, cover: false, blocksSight: false, hp: 0 },
-  stove: { kind: "stove", name: "STOVE", cost: { wood: 25, ore: 5 }, buildTime: 5.0, blocksMove: true, cover: false, blocksSight: false, hp: 0 },
-  farm: { kind: "farm", name: "FARM", cost: { wood: 6, ore: 0 }, buildTime: 2.0, blocksMove: false, cover: false, blocksSight: false, hp: 0 },
-  turret: { kind: "turret", name: "TURRET", cost: { wood: 35, ore: 25 }, buildTime: 6.0, blocksMove: true, cover: true, blocksSight: true, hp: 140 },
+  wall: {
+    kind: "wall",
+    name: "WALL",
+    cost: { wood: 5, ore: 0 },
+    buildTime: 2.0,
+    blocksMove: true,
+    cover: true,
+    blocksSight: true,
+    hp: 120,
+  },
+  door: {
+    kind: "door",
+    name: "DOOR",
+    cost: { wood: 8, ore: 0 },
+    buildTime: 2.0,
+    blocksMove: false,
+    cover: true,
+    blocksSight: true,
+    hp: 80,
+  },
+  floor: {
+    kind: "floor",
+    name: "FLOOR",
+    cost: { wood: 2, ore: 0 },
+    buildTime: 1.0,
+    blocksMove: false,
+    cover: false,
+    blocksSight: false,
+    hp: 0,
+  },
+  bed: {
+    kind: "bed",
+    name: "BED",
+    cost: { wood: 15, ore: 0 },
+    buildTime: 3.0,
+    blocksMove: false,
+    cover: false,
+    blocksSight: false,
+    hp: 0,
+  },
+  stove: {
+    kind: "stove",
+    name: "STOVE",
+    cost: { wood: 25, ore: 5 },
+    buildTime: 5.0,
+    blocksMove: true,
+    cover: false,
+    blocksSight: false,
+    hp: 0,
+  },
+  farm: {
+    kind: "farm",
+    name: "FARM",
+    cost: { wood: 6, ore: 0 },
+    buildTime: 2.0,
+    blocksMove: false,
+    cover: false,
+    blocksSight: false,
+    hp: 0,
+  },
+  turret: {
+    kind: "turret",
+    name: "TURRET",
+    cost: { wood: 35, ore: 25 },
+    buildTime: 6.0,
+    blocksMove: true,
+    cover: true,
+    blocksSight: true,
+    hp: 140,
+  },
 };
 
 export const FLOOR_MOVE_MUL = 1.15; // settlers move faster crossing a built floor
@@ -271,10 +350,17 @@ export function raiderHp(day: number): number {
   return RAIDER_HP_BASE + RAIDER_HP_PER_DAY * day;
 }
 // Hit chance: base × range-falloff × cover, clamped. Shooting skill adds a flat bonus.
-export function hitChance(base: number, dist: number, range: number, inCover: boolean, shootLevel = 0): number {
+export function hitChance(
+  base: number,
+  dist: number,
+  range: number,
+  inCover: boolean,
+  shootLevel = 0,
+): number {
   const near = range * FALLOFF_NEAR;
   let falloff = 1;
-  if (dist > near) falloff = 1 - (1 - FALLOFF_FAR) * ((dist - near) / (range - near));
+  if (dist > near)
+    falloff = 1 - (1 - FALLOFF_FAR) * ((dist - near) / (range - near));
   let p = base + SHOOT_HIT_PER_LEVEL * clampSkill(shootLevel);
   p *= falloff;
   if (inCover) p *= COVER_MULT;

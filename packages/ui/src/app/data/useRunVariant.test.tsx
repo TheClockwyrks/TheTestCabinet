@@ -165,7 +165,12 @@ describe("useReviewModel", () => {
       { id: "menus", validation: { engines: ["none", "simple-2d"] } },
     ];
     const { wrapper } = hostResolving(
-      () => ({ slug: "base", reviewItems: items, domains: [] }) as unknown as VariantSummary,
+      () =>
+        ({
+          slug: "base",
+          reviewItems: items,
+          domains: [],
+        }) as unknown as VariantSummary,
     );
 
     const { result } = renderHook(
@@ -188,7 +193,12 @@ describe("useReviewModel", () => {
       { id: "overlay", validation: { engines: ["none"] } },
     ];
     const { wrapper } = hostResolving(
-      () => ({ slug: "base", reviewItems: items, domains: [] }) as unknown as VariantSummary,
+      () =>
+        ({
+          slug: "base",
+          reviewItems: items,
+          domains: [],
+        }) as unknown as VariantSummary,
     );
 
     const { result } = renderHook(

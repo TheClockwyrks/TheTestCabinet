@@ -15,8 +15,8 @@ finite pocket of breathable **oxygen**; every delver breathes it in and exhales
 sours — oxygen thins, CO2 pools in the low tunnels — and the delvers suffocate. So
 survival is a race: dig, refine, and build oxygen generation and a food source
 before the starting air runs out, then hold the colony steady against its own
-consumption. It is a small-scale simulation game in the spirit of *Oxygen Not
-Included*, entirely its own, with layered systems — a dig-able tile world, a
+consumption. It is a small-scale simulation game in the spirit of _Oxygen Not
+Included_, entirely its own, with layered systems — a dig-able tile world, a
 diffusing gas simulation, a power network, needs-driven delvers, and a build
 economy — that interact.
 
@@ -141,25 +141,25 @@ against cold packed earth, with the two gases — breathable oxygen and waste CO
 the colored life of the scene, tinting the air you have opened up. The canonical
 palette and type are below; match them.
 
-| Element | Color |
-| --- | --- |
-| Deep rock / void (background) | `#12100c` |
-| Dirt tile | `#4a3524` |
-| Ore vein (in ore tiles) | `#d9a441` |
-| Rock / bedrock | `#2b2620` |
-| Open (dug) space | `#191410` |
+| Element                         | Color     |
+| ------------------------------- | --------- |
+| Deep rock / void (background)   | `#12100c` |
+| Dirt tile                       | `#4a3524` |
+| Ore vein (in ore tiles)         | `#d9a441` |
+| Rock / bedrock                  | `#2b2620` |
+| Open (dug) space                | `#191410` |
 | Built structure (walls, floors) | `#566073` |
-| Ladder / wire | `#c9862f` |
-| Oxygen (breathable air) | `#47e0c8` |
-| CO2 (waste gas) | `#b6c24a` |
-| Power / energy | `#ffcb52` |
-| Food / fungus | `#7cd45a` |
-| Delver suit | `#e08a3c` |
-| Alert / danger | `#ff5a52` |
-| Panels / overlays | `#1b1712` |
-| Primary text | `#ece6db` |
-| Secondary text | `#a89e8d` |
-| Tertiary text / hints | `#6b6355` |
+| Ladder / wire                   | `#c9862f` |
+| Oxygen (breathable air)         | `#47e0c8` |
+| CO2 (waste gas)                 | `#b6c24a` |
+| Power / energy                  | `#ffcb52` |
+| Food / fungus                   | `#7cd45a` |
+| Delver suit                     | `#e08a3c` |
+| Alert / danger                  | `#ff5a52` |
+| Panels / overlays               | `#1b1712` |
+| Primary text                    | `#ece6db` |
+| Secondary text                  | `#a89e8d` |
+| Tertiary text / hints           | `#6b6355` |
 
 - Use a **monospace** type family for all text (title, menus, HUD, labels). Do not
   depend on a web font that must be downloaded; a system monospace stack is required

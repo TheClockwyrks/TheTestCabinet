@@ -2,12 +2,12 @@
 
 This is the **implementation contract** for the authored, ground-truth build of the
 `hollowdeep` full-stack case — the analogue of the committed `valence` reference
-implementation, and the *correct* build the case is judged against. It mirrors
+implementation, and the _correct_ build the case is judged against. It mirrors
 valence's shape: plain **TypeScript** rendering to a single **Canvas 2D** stage,
 bundled with **Vite** (`base: "./"`), no backend, and every sprite / animation /
 particle system / sound **produced during the build** with the six on-`PATH` tools
 and committed under `assets/` (see [`ASSETS.md`](ASSETS.md), derived from
-`specs/assets.md`). The runtime only *loads* those files; the particle overlays play
+`specs/assets.md`). The runtime only _loads_ those files; the particle overlays play
 live through **`@clockwyrks/particle-runtime`** (vendored under `vendor/` so a plain
 `npm ci` resolves it outside the monorepo).
 
@@ -19,8 +19,8 @@ number here and a spec disagree, the spec wins and this doc is corrected.
 
 ## 1. Game summary, win/lose, and the mode base
 
-**Hollowdeep** is a side-view sealed-colony survival sim in the spirit of *Oxygen Not
-Included*. You look at a cross-section of a sealed underground and keep a small crew of
+**Hollowdeep** is a side-view sealed-colony survival sim in the spirit of _Oxygen Not
+Included_. You look at a cross-section of a sealed underground and keep a small crew of
 **delvers** alive. You **dig** into dirt/ore/rock to open living space and mine ore,
 **refine** ore into build **material**, and place **build orders** that delvers
 construct — walls, floors, ladders, wires, machines, a fungus farm. The defining
@@ -91,30 +91,45 @@ integers `(tx, ty)` in `[0,64)×[0,44)`; **world-pixel** coords are `tile * TILE
 ```ts
 // ---- Tiles & the world ----------------------------------------------------------
 export type TileKind =
-  | "dirt" | "ore" | "rock" | "bedrock"     // solid natural (bedrock indestructible)
-  | "open"                                   // dug / naturally-hollow space (holds gas)
-  | "wall" | "floor" | "ladder" | "wire"     // built structure
-  | "generator" | "diffuser" | "pump" | "refinery" | "farm"; // built machines/farm
+  | "dirt"
+  | "ore"
+  | "rock"
+  | "bedrock" // solid natural (bedrock indestructible)
+  | "open" // dug / naturally-hollow space (holds gas)
+  | "wall"
+  | "floor"
+  | "ladder"
+  | "wire" // built structure
+  | "generator"
+  | "diffuser"
+  | "pump"
+  | "refinery"
+  | "farm"; // built machines/farm
 
 export interface Tile {
   kind: TileKind;
-  oxygen: number;   // gas amount, 0..GAS_CAPACITY (open-to-gas tiles only)
-  co2: number;      // gas amount, 0..GAS_CAPACITY
-  designated: boolean;        // marked for digging (dig job pending)
-  ghost: BuildKind | null;    // pending build order on this tile (blueprint)
-  ghostPaid: boolean;         // material has been committed to the ghost
-  machineId: number;          // -1, or index into World.machines / farms
-  oreRich: number;            // ore tiles: units of ore this tile yields (>=1); else 0
+  oxygen: number; // gas amount, 0..GAS_CAPACITY (open-to-gas tiles only)
+  co2: number; // gas amount, 0..GAS_CAPACITY
+  designated: boolean; // marked for digging (dig job pending)
+  ghost: BuildKind | null; // pending build order on this tile (blueprint)
+  ghostPaid: boolean; // material has been committed to the ghost
+  machineId: number; // -1, or index into World.machines / farms
+  oreRich: number; // ore tiles: units of ore this tile yields (>=1); else 0
 }
 
 // world-pixel top-left + zoom
-export interface Camera { x: number; y: number; zoom: number; }
+export interface Camera {
+  x: number;
+  y: number;
+  zoom: number;
+}
 
 export interface World {
-  w: number; h: number;               // WORLD_W, WORLD_H (tiles)
-  tiles: Tile[];                       // flat, index = ty*w + tx
-  machines: Machine[];                 // placed generators/diffusers/pumps
-  farms: Farm[];                       // placed fungus farms
+  w: number;
+  h: number; // WORLD_W, WORLD_H (tiles)
+  tiles: Tile[]; // flat, index = ty*w + tx
+  machines: Machine[]; // placed generators/diffusers/pumps
+  farms: Farm[]; // placed fungus farms
   refineries: { tx: number; ty: number }[];
   camera: Camera;
 }
@@ -122,53 +137,84 @@ export interface World {
 // ---- Power ----------------------------------------------------------------------
 export type MachineKind = "generator" | "diffuser" | "pump";
 export interface Machine {
-  id: number; kind: MachineKind; tx: number; ty: number;
-  network: number;      // power-network id this machine attaches to (-1 = unattached)
-  powered: boolean;     // its network met demand this tick
-  running: boolean;     // powered AND has what it needs (fuel for a generator)
-  fuel: number;         // generator only: ore-units buffered (burns over time)
-  ventPhase: number;    // exhaust/steam animation accumulator
+  id: number;
+  kind: MachineKind;
+  tx: number;
+  ty: number;
+  network: number; // power-network id this machine attaches to (-1 = unattached)
+  powered: boolean; // its network met demand this tick
+  running: boolean; // powered AND has what it needs (fuel for a generator)
+  fuel: number; // generator only: ore-units buffered (burns over time)
+  ventPhase: number; // exhaust/steam animation accumulator
 }
 
-export interface Farm { tx: number; ty: number; growth: number; ripe: boolean; }
+export interface Farm {
+  tx: number;
+  ty: number;
+  growth: number;
+  ripe: boolean;
+}
 
 // ---- Delvers --------------------------------------------------------------------
 export type DelverAct =
-  | "idle" | "walk" | "dig" | "build" | "haul" | "refine" | "harvest"
-  | "eat" | "rest" | "flee";
+  | "idle"
+  | "walk"
+  | "dig"
+  | "build"
+  | "haul"
+  | "refine"
+  | "harvest"
+  | "eat"
+  | "rest"
+  | "flee";
 export type Anim = "walk" | "dig" | "carry" | "idle"; // which produced sheet plays
 export type CarryKind = "ore" | "material" | "food" | null;
 
 export interface Delver {
-  id: number; name: string;
-  px: number; py: number;      // continuous world-pixel position (smooth movement)
-  tx: number; ty: number;      // current tile (floor of px/py)
-  facing: 1 | -1;              // sprite mirror
-  health: number;              // 0..HEALTH_MAX; suffocation lowers, good air recovers
-  stamina: number;             // 0..STAMINA_MAX; work drains, rest recovers
-  hunger: number;              // 0..HUNGER_MAX; rises over time; MAX = starving
-  act: DelverAct; anim: Anim; animT: number;
+  id: number;
+  name: string;
+  px: number;
+  py: number; // continuous world-pixel position (smooth movement)
+  tx: number;
+  ty: number; // current tile (floor of px/py)
+  facing: 1 | -1; // sprite mirror
+  health: number; // 0..HEALTH_MAX; suffocation lowers, good air recovers
+  stamina: number; // 0..STAMINA_MAX; work drains, rest recovers
+  hunger: number; // 0..HUNGER_MAX; rises over time; MAX = starving
+  act: DelverAct;
+  anim: Anim;
+  animT: number;
   job: Job | null;
-  path: { tx: number; ty: number }[]; pathI: number;
+  path: { tx: number; ty: number }[];
+  pathI: number;
   carrying: CarryKind;
-  workTimer: number;           // seconds of progress into the current action
+  workTimer: number; // seconds of progress into the current action
   dead: boolean;
 }
 
 // ---- Jobs -----------------------------------------------------------------------
 export type JobKind = "dig" | "build" | "haul" | "refine" | "harvest";
 export interface Job {
-  id: number; kind: JobKind;
-  tx: number; ty: number;          // the tile the work is at
-  building?: BuildKind;            // build jobs
+  id: number;
+  kind: JobKind;
+  tx: number;
+  ty: number; // the tile the work is at
+  building?: BuildKind; // build jobs
   haul?: { what: CarryKind; toTx: number; toTy: number }; // haul jobs
-  claimedBy: number | null;        // delver id, or null
-  priorityBoost: boolean;          // player raised this designation ("do this now")
+  claimedBy: number | null; // delver id, or null
+  priorityBoost: boolean; // player raised this designation ("do this now")
 }
 
 export type BuildKind =
-  | "wall" | "floor" | "ladder" | "wire"
-  | "generator" | "diffuser" | "pump" | "refinery" | "farm";
+  | "wall"
+  | "floor"
+  | "ladder"
+  | "wire"
+  | "generator"
+  | "diffuser"
+  | "pump"
+  | "refinery"
+  | "farm";
 
 // ---- Game shell -----------------------------------------------------------------
 export type GameState = "title" | "howto" | "playing" | "paused" | "gameover";
@@ -176,13 +222,25 @@ export type Tool = "dig" | "build" | "cancel";
 
 export type FxKind = "dust" | "steam" | "oxygen" | "co2";
 // one-shot/loop world-px
-export interface FxEvent { kind: "dust" | "steam"; x: number; y: number; }
+export interface FxEvent {
+  kind: "dust" | "steam";
+  x: number;
+  y: number;
+}
 export type Cue = "dig" | "build" | "alarm" | "machine";
-export interface Milestone { text: string; life: number; } // non-blocking toast
+export interface Milestone {
+  text: string;
+  life: number;
+} // non-blocking toast
 
 export interface Clickable {
-  x: number; y: number; w: number; h: number; action: string;
-  payload?: string; disabled?: boolean;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  action: string;
+  payload?: string;
+  disabled?: boolean;
 }
 ```
 
@@ -197,28 +255,28 @@ Every file, its responsibility, and its key exports. The dependency order is rou
 `constants → types → rng → world → worldgen/gas/power/pathfind → jobs/economy/delvers →
 sim → assets/audio/particles → render/input/menus/mode → main`.
 
-| File | Responsibility | Key exports |
-| --- | --- | --- |
-| `constants.ts` | Stage geometry, palette, and **every tuning number** (§5); `TileKind`/`BuildKind` and tile-property predicates. | `STAGE_W/H`, `TOP_HUD_H`, `BOTTOM_HUD_Y`, `TILE`, `WORLD_W/H`, `FIXED_STEP`, `SPEEDS`, `CYCLE_SECONDS`, `COL`, `FONT`, all `GAS_*`/`POWER_*`/`DELVER_*`/`ECON_*` constants, `BUILD_COST`, `DIG_TIME`, `isSolid()`, `isOpenToGas()`, `blocksGas()`, `isWalkSurface()`, `canDig()`, `isBuilt()` |
-| `types.ts` | The core data model (§3). | all interfaces/types above |
-| `rng.ts` | mulberry32 PRNG (worldgen + jitter). Copy valence `rng.ts` verbatim. | `Rng` |
-| `world.ts` | The grid container + accessors + tile-property queries + the **camera** (clamp to world bounds, tile↔pixel↔screen transforms, `centerOn`). No sim logic. | `idx()`, `tileAt()`, `inBounds()`, `neighbors4()`, `clampCamera()`, `worldToScreen()`, `screenToTile()`, `centerCameraOn()` |
-| `worldgen.ts` | Build the starting `World` from the mode: bedrock border (cols 0/`w-1`, bottom row, top 2 cap rows), a dirt/rock body, **ore seams** as contiguous runs, a carved **opening cavern** whose open tiles are seeded with the oxygen pocket, and the 3 delver spawn tiles. Deterministic from a seed. | `generateWorld(mode, seed)`, `CAVERN` params |
-| `gas.ts` | The **signature** system. `stepGas(world, dt)`: 4-connected diffusion of oxygen and CO2 independently (move `DIFFUSE_FRACTION` of each edge difference, capped at `GAS_CAPACITY`, conserving total), plus gentle **buoyancy** (bias vertical transfer: CO2 down, oxygen up by `BUOYANCY`). `breathe(delver, tile, dt)`: consume oxygen / exhale CO2. `breathableAt(tile)`: `oxygen >= O2_BREATHE_MIN && co2 <= CO2_TOXIC_MAX`. Machine emission/pumping is applied here via `emitOxygen()`/`pumpGas()` called by `power.ts`/`sim.ts`. | `stepGas`, `breathe`, `breathableAt`, `emitOxygen`, `pumpGas`, `avgOxygen`, `lowestOxygen`, `avgCo2` |
-| `power.ts` | `rebuildNetworks(world)`: flood-fill maximal edge-connected **wire** components into networks, attach each generator/machine adjacent-to-or-on a wire; sum **supply** (running generators) vs **demand** (diffusers/pumps); set each machine `powered`/`running`; flag **brownout** (demand > supply → every machine on that network stops). `stepPower(world, dt)`: burn generator fuel, apply diffuser oxygen output and pump transfer for running machines. | `rebuildNetworks`, `stepPower`, `NetworkStat[]` (supply/demand/brownout for the HUD) |
-| `pathfind.ts` | BFS/A* over the **walkable + climbable** graph: a node is a floor/ladder tile or an open tile standing on a solid/floor/wall below; edges are horizontal steps between adjacent stand tiles, up/down through a ladder, single-tile terrain step-ups, and falls through open space. `findPath(world, from, to)`, and `reachableAdjacent(world, tile, from)` (the stand tile a delver digs a marked tile from — delvers dig **inward from open space**). | `findPath`, `reachableAdjacent`, `nearestBreathable(world, from)`, `isWalkable(world, tx, ty)` |
-| `jobs.ts` | The **priority queue**: enqueue/cancel/claim/release/dedupe jobs; the per-kind `PRIORITY` order (need-driven states preempt in `delvers.ts`) and the "builds before digs" toggle + `priorityBoost`. | `JobBoard` (add/cancel/claimBest/release), `PRIORITY`, `orderJobs()` |
-| `economy.ts` | Resource stocks (`ore`/`material`/`food`), the ore→material **refine** rule, build-order **placement legality** + material cost + construction completion (ghost → finished tile, updates gas/power/walk graph), **farm** growth + harvest, generator refuel accounting. | `Stocks`, `canPlace()`, `placeGhost()`, `completeBuild()`, `refineStep()`, `growFarms()`, `harvest()`, `BUILD_COST` re-export |
-| `sim.ts` | The **`Game` class** — the spine. Owns `world`, `delvers`, `stocks`, `jobs`, gas/power state, `state`/`speed`/`paused`, `cycle`/`cycleClock`, `score`, selection + active `tool`/`buildKind`, and the drained event queues. `fixedStep(dt)` order: **gas → power → economy (refine/grow) → delvers (needs, jobs, movement, actions) → suffocation/starvation → cycle clock → loss check → milestones**. Tools: `markDig`/`dragDig`, `placeBuild`, `cancelAt`, `cyclePriority`. Speed/pause, `startColony(mode)`, `restart()`, dev hooks for the proof script. | `Game`, `Game.fixedStep`, tool + control methods, `fxQueue`/`sndQueue`/`milestones` |
-| `assets.ts` | Load the **produced** files via Vite import globs (page-relative under any base). Sprites (`../assets/**/*.png`), fx systems (`../assets/fx/*.system.json`), audio (`../assets/audio/*.wav`). Copies valence's loader shape: `sprite(name)`, delver frame arrays, `fx`, `audioUrl`. | `loadAssets()`, `Assets` (`sprite`, `delver: Record<Anim, HTMLImageElement[]>`, `fx`, `audioUrl`) |
-| `audio.ts` | Web Audio playback — copy valence `audio.ts` structure: resume on first gesture, decode clips, `play(cue)` for dig/build/alarm, loop the **machine hum** and the **music bed**, `toggleMute()`. No autostart before a gesture. | `Audio` |
-| `particles.ts` | Plays the produced particle systems through `@clockwyrks/particle-runtime`'s canvas binding. Two parts: (a) **`GasOverlay`** — tiles the `oxygen_haze` and `co2_plume` systems over the visible open tiles, spawning/scaling each by that tile's concentration (dense haze in breathable rooms, thick plume in low CO2 tunnels), driven from `world` each frame; (b) **`Bursts`** — one-shot `dig_dust` at a mined tile and looping `machine_steam` at each running machine's vent (mirror valence `particles.ts`). | `GasOverlay` (update/draw from world+camera), `Bursts` (spawn/update/draw) |
-| `render.ts` | **All drawing**, in the palette: the camera'd tile world (produced tile sprites, flush tiling), dig designations / build ghosts / hovered-tile cursor / priority marks, machines (produced sprites + glow when running), the gas overlay composite, delvers from the **produced sheets** (pick the `Anim` for the `DelverAct`, advance frames on a timer, mirror by `facing`), the full **HUD dashboard** (top vitals strip + bottom roster & palette, §6), milestone toasts, and every menu/state screen. Returns the frame's `Clickable[]`. | `render()`, `setRenderTime`, `setMenuIndex`, `setMuted` |
-| `input.ts` | Mouse + keyboard capture; pointer→logical mapping via the live fit transform; drag state for the **dig rectangle** and **camera pan**; **wheel zoom**; optional **edge-scroll**. Copy valence `input.ts` and add drag-rect + wheel. | `Input` (`attach`, `clicks`, `keys`, `drag`, `wheel`, `pointerLogical`, `setViewport`, `drain`) |
-| `menus.ts` | The item list per menu state (title/howto/paused/gameover), single source for renderer + keyboard nav. | `menuItems(state, game)`, `MenuItem` |
-| `mode.ts` | The `NEW COLONY` start config (§1) — the one file the start is isolated to. | `MODE`, `ColonyMode` |
-| `main.ts` | Bootstrap: load assets, construct `Audio`/`GasOverlay`/`Bursts`/`Game`/`Input`, `resize()` letterbox, the **fixed-step loop** (`acc += dt*speed; while(acc>=FIXED_STEP) game.fixedStep()`), input routing, drain `sndQueue`→audio and `fxQueue`→bursts, expose `window.__hollowdeep` dev API for the proof script. | (entry) |
-| `vite-env.d.ts` | `/// <reference types="vite/client" />`. | — |
+| File            | Responsibility                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Key exports                                                                                                                                                                                                                                                                                   |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `constants.ts`  | Stage geometry, palette, and **every tuning number** (§5); `TileKind`/`BuildKind` and tile-property predicates.                                                                                                                                                                                                                                                                                                                                                                                                                                               | `STAGE_W/H`, `TOP_HUD_H`, `BOTTOM_HUD_Y`, `TILE`, `WORLD_W/H`, `FIXED_STEP`, `SPEEDS`, `CYCLE_SECONDS`, `COL`, `FONT`, all `GAS_*`/`POWER_*`/`DELVER_*`/`ECON_*` constants, `BUILD_COST`, `DIG_TIME`, `isSolid()`, `isOpenToGas()`, `blocksGas()`, `isWalkSurface()`, `canDig()`, `isBuilt()` |
+| `types.ts`      | The core data model (§3).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | all interfaces/types above                                                                                                                                                                                                                                                                    |
+| `rng.ts`        | mulberry32 PRNG (worldgen + jitter). Copy valence `rng.ts` verbatim.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | `Rng`                                                                                                                                                                                                                                                                                         |
+| `world.ts`      | The grid container + accessors + tile-property queries + the **camera** (clamp to world bounds, tile↔pixel↔screen transforms, `centerOn`). No sim logic.                                                                                                                                                                                                                                                                                                                                                                                                      | `idx()`, `tileAt()`, `inBounds()`, `neighbors4()`, `clampCamera()`, `worldToScreen()`, `screenToTile()`, `centerCameraOn()`                                                                                                                                                                   |
+| `worldgen.ts`   | Build the starting `World` from the mode: bedrock border (cols 0/`w-1`, bottom row, top 2 cap rows), a dirt/rock body, **ore seams** as contiguous runs, a carved **opening cavern** whose open tiles are seeded with the oxygen pocket, and the 3 delver spawn tiles. Deterministic from a seed.                                                                                                                                                                                                                                                             | `generateWorld(mode, seed)`, `CAVERN` params                                                                                                                                                                                                                                                  |
+| `gas.ts`        | The **signature** system. `stepGas(world, dt)`: 4-connected diffusion of oxygen and CO2 independently (move `DIFFUSE_FRACTION` of each edge difference, capped at `GAS_CAPACITY`, conserving total), plus gentle **buoyancy** (bias vertical transfer: CO2 down, oxygen up by `BUOYANCY`). `breathe(delver, tile, dt)`: consume oxygen / exhale CO2. `breathableAt(tile)`: `oxygen >= O2_BREATHE_MIN && co2 <= CO2_TOXIC_MAX`. Machine emission/pumping is applied here via `emitOxygen()`/`pumpGas()` called by `power.ts`/`sim.ts`.                         | `stepGas`, `breathe`, `breathableAt`, `emitOxygen`, `pumpGas`, `avgOxygen`, `lowestOxygen`, `avgCo2`                                                                                                                                                                                          |
+| `power.ts`      | `rebuildNetworks(world)`: flood-fill maximal edge-connected **wire** components into networks, attach each generator/machine adjacent-to-or-on a wire; sum **supply** (running generators) vs **demand** (diffusers/pumps); set each machine `powered`/`running`; flag **brownout** (demand > supply → every machine on that network stops). `stepPower(world, dt)`: burn generator fuel, apply diffuser oxygen output and pump transfer for running machines.                                                                                                | `rebuildNetworks`, `stepPower`, `NetworkStat[]` (supply/demand/brownout for the HUD)                                                                                                                                                                                                          |
+| `pathfind.ts`   | BFS/A\* over the **walkable + climbable** graph: a node is a floor/ladder tile or an open tile standing on a solid/floor/wall below; edges are horizontal steps between adjacent stand tiles, up/down through a ladder, single-tile terrain step-ups, and falls through open space. `findPath(world, from, to)`, and `reachableAdjacent(world, tile, from)` (the stand tile a delver digs a marked tile from — delvers dig **inward from open space**).                                                                                                       | `findPath`, `reachableAdjacent`, `nearestBreathable(world, from)`, `isWalkable(world, tx, ty)`                                                                                                                                                                                                |
+| `jobs.ts`       | The **priority queue**: enqueue/cancel/claim/release/dedupe jobs; the per-kind `PRIORITY` order (need-driven states preempt in `delvers.ts`) and the "builds before digs" toggle + `priorityBoost`.                                                                                                                                                                                                                                                                                                                                                           | `JobBoard` (add/cancel/claimBest/release), `PRIORITY`, `orderJobs()`                                                                                                                                                                                                                          |
+| `economy.ts`    | Resource stocks (`ore`/`material`/`food`), the ore→material **refine** rule, build-order **placement legality** + material cost + construction completion (ghost → finished tile, updates gas/power/walk graph), **farm** growth + harvest, generator refuel accounting.                                                                                                                                                                                                                                                                                      | `Stocks`, `canPlace()`, `placeGhost()`, `completeBuild()`, `refineStep()`, `growFarms()`, `harvest()`, `BUILD_COST` re-export                                                                                                                                                                 |
+| `sim.ts`        | The **`Game` class** — the spine. Owns `world`, `delvers`, `stocks`, `jobs`, gas/power state, `state`/`speed`/`paused`, `cycle`/`cycleClock`, `score`, selection + active `tool`/`buildKind`, and the drained event queues. `fixedStep(dt)` order: **gas → power → economy (refine/grow) → delvers (needs, jobs, movement, actions) → suffocation/starvation → cycle clock → loss check → milestones**. Tools: `markDig`/`dragDig`, `placeBuild`, `cancelAt`, `cyclePriority`. Speed/pause, `startColony(mode)`, `restart()`, dev hooks for the proof script. | `Game`, `Game.fixedStep`, tool + control methods, `fxQueue`/`sndQueue`/`milestones`                                                                                                                                                                                                           |
+| `assets.ts`     | Load the **produced** files via Vite import globs (page-relative under any base). Sprites (`../assets/**/*.png`), fx systems (`../assets/fx/*.system.json`), audio (`../assets/audio/*.wav`). Copies valence's loader shape: `sprite(name)`, delver frame arrays, `fx`, `audioUrl`.                                                                                                                                                                                                                                                                           | `loadAssets()`, `Assets` (`sprite`, `delver: Record<Anim, HTMLImageElement[]>`, `fx`, `audioUrl`)                                                                                                                                                                                             |
+| `audio.ts`      | Web Audio playback — copy valence `audio.ts` structure: resume on first gesture, decode clips, `play(cue)` for dig/build/alarm, loop the **machine hum** and the **music bed**, `toggleMute()`. No autostart before a gesture.                                                                                                                                                                                                                                                                                                                                | `Audio`                                                                                                                                                                                                                                                                                       |
+| `particles.ts`  | Plays the produced particle systems through `@clockwyrks/particle-runtime`'s canvas binding. Two parts: (a) **`GasOverlay`** — tiles the `oxygen_haze` and `co2_plume` systems over the visible open tiles, spawning/scaling each by that tile's concentration (dense haze in breathable rooms, thick plume in low CO2 tunnels), driven from `world` each frame; (b) **`Bursts`** — one-shot `dig_dust` at a mined tile and looping `machine_steam` at each running machine's vent (mirror valence `particles.ts`).                                           | `GasOverlay` (update/draw from world+camera), `Bursts` (spawn/update/draw)                                                                                                                                                                                                                    |
+| `render.ts`     | **All drawing**, in the palette: the camera'd tile world (produced tile sprites, flush tiling), dig designations / build ghosts / hovered-tile cursor / priority marks, machines (produced sprites + glow when running), the gas overlay composite, delvers from the **produced sheets** (pick the `Anim` for the `DelverAct`, advance frames on a timer, mirror by `facing`), the full **HUD dashboard** (top vitals strip + bottom roster & palette, §6), milestone toasts, and every menu/state screen. Returns the frame's `Clickable[]`.                 | `render()`, `setRenderTime`, `setMenuIndex`, `setMuted`                                                                                                                                                                                                                                       |
+| `input.ts`      | Mouse + keyboard capture; pointer→logical mapping via the live fit transform; drag state for the **dig rectangle** and **camera pan**; **wheel zoom**; optional **edge-scroll**. Copy valence `input.ts` and add drag-rect + wheel.                                                                                                                                                                                                                                                                                                                           | `Input` (`attach`, `clicks`, `keys`, `drag`, `wheel`, `pointerLogical`, `setViewport`, `drain`)                                                                                                                                                                                               |
+| `menus.ts`      | The item list per menu state (title/howto/paused/gameover), single source for renderer + keyboard nav.                                                                                                                                                                                                                                                                                                                                                                                                                                                        | `menuItems(state, game)`, `MenuItem`                                                                                                                                                                                                                                                          |
+| `mode.ts`       | The `NEW COLONY` start config (§1) — the one file the start is isolated to.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | `MODE`, `ColonyMode`                                                                                                                                                                                                                                                                          |
+| `main.ts`       | Bootstrap: load assets, construct `Audio`/`GasOverlay`/`Bursts`/`Game`/`Input`, `resize()` letterbox, the **fixed-step loop** (`acc += dt*speed; while(acc>=FIXED_STEP) game.fixedStep()`), input routing, drain `sndQueue`→audio and `fxQueue`→bursts, expose `window.__hollowdeep` dev API for the proof script.                                                                                                                                                                                                                                            | (entry)                                                                                                                                                                                                                                                                                       |
+| `vite-env.d.ts` | `/// <reference types="vite/client" />`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | —                                                                                                                                                                                                                                                                                             |
 
 ---
 
@@ -229,18 +287,18 @@ the `sim/` harness (§7). Palette is **exactly** `specs/overview.md`.
 
 ### Stage / world / time
 
-| Const | Value | Note |
-| --- | --- | --- |
-| `STAGE_W`,`STAGE_H` | 1280, 720 | fixed 16:9 stage |
-| `TOP_HUD_H` | 64 | top vitals strip `y∈[0,64]` |
-| `BOTTOM_HUD_Y` | 656 | bottom strip `y∈[656,720]`; colony view `y∈[64,656]` |
-| `TILE` | 24 | logical px per tile |
-| `WORLD_W`,`WORLD_H` | 64, 44 | tiles → world px 1536×1056 (larger than the view → camera) |
-| bedrock border | cols 0 & 63, row 43, rows 0–1 cap | indestructible seal |
-| `FIXED_STEP` | 1/20 s | 20 Hz fixed tick, render interpolates delver `px/py` |
-| `SPEEDS` | [1, 2, 3] | speed multipliers; pause = ticks halt |
-| `CYCLE_SECONDS` | 30 | sim-seconds per **cycle** (the colony "day") |
-| camera `zoom` | default 1.4, min 1.0, max 2.2 | wheel zoom; whole stage stays fitted |
+| Const               | Value                             | Note                                                       |
+| ------------------- | --------------------------------- | ---------------------------------------------------------- |
+| `STAGE_W`,`STAGE_H` | 1280, 720                         | fixed 16:9 stage                                           |
+| `TOP_HUD_H`         | 64                                | top vitals strip `y∈[0,64]`                                |
+| `BOTTOM_HUD_Y`      | 656                               | bottom strip `y∈[656,720]`; colony view `y∈[64,656]`       |
+| `TILE`              | 24                                | logical px per tile                                        |
+| `WORLD_W`,`WORLD_H` | 64, 44                            | tiles → world px 1536×1056 (larger than the view → camera) |
+| bedrock border      | cols 0 & 63, row 43, rows 0–1 cap | indestructible seal                                        |
+| `FIXED_STEP`        | 1/20 s                            | 20 Hz fixed tick, render interpolates delver `px/py`       |
+| `SPEEDS`            | [1, 2, 3]                         | speed multipliers; pause = ticks halt                      |
+| `CYCLE_SECONDS`     | 30                                | sim-seconds per **cycle** (the colony "day")               |
+| camera `zoom`       | default 1.4, min 1.0, max 2.2     | wheel zoom; whole stage stays fitted                       |
 
 ### Palette (`COL`) — from `specs/overview.md`
 
@@ -251,29 +309,29 @@ the `sim/` harness (§7). Palette is **exactly** `specs/overview.md`.
 
 ### Gas (`specs/gas.md`)
 
-| Const | Value | Note |
-| --- | --- | --- |
-| `GAS_CAPACITY` | 100 | per-tile soft cap, each gas |
-| `START_OXYGEN` | 82 | oxygen in each cavern open tile at start |
-| `START_CO2` | 3 | trace CO2 at start |
-| `DIFFUSE_FRACTION` | 0.12 | fraction of an edge difference moved per tick (stable, no overshoot) |
-| `BUOYANCY` | 0.05 | extra vertical bias: CO2 down, oxygen up (gentle) |
-| `O2_BREATHE_MIN` | 22 | below this oxygen → cannot breathe |
-| `CO2_TOXIC_MAX` | 55 | above this CO2 → cannot breathe |
-| `DELVER_O2_RATE` | 1.4 /s | oxygen a delver consumes from its tile |
-| `DELVER_CO2_RATE` | 1.1 /s | CO2 a delver exhales into its tile |
-| `DIFFUSER_O2_OUT` | 16 /s | oxygen a running diffuser adds (its tile + open 4-neighbors, split) |
-| `PUMP_RATE` | 22 /s | gas a running pump moves intake→output tile |
+| Const              | Value  | Note                                                                 |
+| ------------------ | ------ | -------------------------------------------------------------------- |
+| `GAS_CAPACITY`     | 100    | per-tile soft cap, each gas                                          |
+| `START_OXYGEN`     | 82     | oxygen in each cavern open tile at start                             |
+| `START_CO2`        | 3      | trace CO2 at start                                                   |
+| `DIFFUSE_FRACTION` | 0.12   | fraction of an edge difference moved per tick (stable, no overshoot) |
+| `BUOYANCY`         | 0.05   | extra vertical bias: CO2 down, oxygen up (gentle)                    |
+| `O2_BREATHE_MIN`   | 22     | below this oxygen → cannot breathe                                   |
+| `CO2_TOXIC_MAX`    | 55     | above this CO2 → cannot breathe                                      |
+| `DELVER_O2_RATE`   | 1.4 /s | oxygen a delver consumes from its tile                               |
+| `DELVER_CO2_RATE`  | 1.1 /s | CO2 a delver exhales into its tile                                   |
+| `DIFFUSER_O2_OUT`  | 16 /s  | oxygen a running diffuser adds (its tile + open 4-neighbors, split)  |
+| `PUMP_RATE`        | 22 /s  | gas a running pump moves intake→output tile                          |
 
 ### Power (`specs/power.md`)
 
-| Const | Value | Note |
-| --- | --- | --- |
-| `GEN_SUPPLY` | 20 W | a fueled, running generator's output |
-| `GEN_FUEL_BURN` | 1 ore / 12 s | generator burns hauled **ore** as fuel |
-| `GEN_FUEL_MAX` | 6 | ore-units the generator buffers |
-| `DIFFUSER_DEMAND` | 12 W | |
-| `PUMP_DEMAND` | 6 W | one generator (20W) runs a diffuser+pump; a 2nd machine browns out → build a 2nd generator |
+| Const             | Value        | Note                                                                                       |
+| ----------------- | ------------ | ------------------------------------------------------------------------------------------ |
+| `GEN_SUPPLY`      | 20 W         | a fueled, running generator's output                                                       |
+| `GEN_FUEL_BURN`   | 1 ore / 12 s | generator burns hauled **ore** as fuel                                                     |
+| `GEN_FUEL_MAX`    | 6            | ore-units the generator buffers                                                            |
+| `DIFFUSER_DEMAND` | 12 W         |                                                                                            |
+| `PUMP_DEMAND`     | 6 W          | one generator (20W) runs a diffuser+pump; a 2nd machine browns out → build a 2nd generator |
 
 The **refinery is operated, not powered** (a delver runs it — this realizes the
 "operate a machine" job) so first refining works before power is up; the sequence is
@@ -282,36 +340,36 @@ State this in the README.
 
 ### Delvers (`specs/delvers.md`)
 
-| Const | Value | Note |
-| --- | --- | --- |
-| `DELVER_COUNT` | 3 | starting crew |
-| `HEALTH_MAX` | 100 | |
-| `SUFFOCATE_DMG` | 9 /s | health lost while unbreathable |
-| `O2_RECOVER` | 6 /s | health regained in breathable air |
-| `STAMINA_MAX` | 100 | |
-| `WORK_DRAIN` | 3.5 /s | stamina lost while working |
-| `REST_RECOVER` | 14 /s | stamina regained while resting |
-| `REST_BELOW`,`REST_UNTIL` | 15, 75 | rest when stamina < 15, until 75 |
-| `HUNGER_MAX` | 100 | MAX = starving |
-| `HUNGER_RATE` | 0.85 /s | ~65 in ≈2.5 cycles, MAX in ≈4 cycles |
-| `EAT_ABOVE` | 65 | eat when hunger > 65 and food in stock (consumes 1 food, resets hunger) |
-| `STARVE_DMG` | 4 /s | health lost while hunger = MAX and no food |
-| `WALK_SPEED` | 2.4 tiles/s | |
-| `CLIMB_SPEED` | 1.8 tiles/s | vertical on ladders |
+| Const                     | Value       | Note                                                                    |
+| ------------------------- | ----------- | ----------------------------------------------------------------------- |
+| `DELVER_COUNT`            | 3           | starting crew                                                           |
+| `HEALTH_MAX`              | 100         |                                                                         |
+| `SUFFOCATE_DMG`           | 9 /s        | health lost while unbreathable                                          |
+| `O2_RECOVER`              | 6 /s        | health regained in breathable air                                       |
+| `STAMINA_MAX`             | 100         |                                                                         |
+| `WORK_DRAIN`              | 3.5 /s      | stamina lost while working                                              |
+| `REST_RECOVER`            | 14 /s       | stamina regained while resting                                          |
+| `REST_BELOW`,`REST_UNTIL` | 15, 75      | rest when stamina < 15, until 75                                        |
+| `HUNGER_MAX`              | 100         | MAX = starving                                                          |
+| `HUNGER_RATE`             | 0.85 /s     | ~65 in ≈2.5 cycles, MAX in ≈4 cycles                                    |
+| `EAT_ABOVE`               | 65          | eat when hunger > 65 and food in stock (consumes 1 food, resets hunger) |
+| `STARVE_DMG`              | 4 /s        | health lost while hunger = MAX and no food                              |
+| `WALK_SPEED`              | 2.4 tiles/s |                                                                         |
+| `CLIMB_SPEED`             | 1.8 tiles/s | vertical on ladders                                                     |
 
 ### Economy (`specs/economy.md`) & digging (`specs/world.md`)
 
-| Const | Value | Note |
-| --- | --- | --- |
-| start `stocks` | material 30, ore 0, food 8 | from `MODE` |
-| `DIG_TIME` | dirt 1.5 s, ore 3.0 s, rock 6.0 s | bedrock: cannot dig |
-| dig yield | dirt 0, ore 1 ore, rock 0 | ore added to stock (hauled model optional; state in README) |
-| `REFINE_RATIO` | 2 ore → 1 material | |
-| `REFINE_TIME` | 4 s | operated refinery job |
-| `BUILD_TIME` | 2.5 s | per placed order |
+| Const                   | Value                                                                                   | Note                                                             |
+| ----------------------- | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| start `stocks`          | material 30, ore 0, food 8                                                              | from `MODE`                                                      |
+| `DIG_TIME`              | dirt 1.5 s, ore 3.0 s, rock 6.0 s                                                       | bedrock: cannot dig                                              |
+| dig yield               | dirt 0, ore 1 ore, rock 0                                                               | ore added to stock (hauled model optional; state in README)      |
+| `REFINE_RATIO`          | 2 ore → 1 material                                                                      |                                                                  |
+| `REFINE_TIME`           | 4 s                                                                                     | operated refinery job                                            |
+| `BUILD_TIME`            | 2.5 s                                                                                   | per placed order                                                 |
 | `BUILD_COST` (material) | wall 2, floor 1, ladder 1, wire 1, generator 8, diffuser 10, pump 8, refinery 6, farm 5 | ghost waits if unaffordable; no partial refund (state in README) |
-| `FARM_GROW_TIME` | 22 s | time to ripen |
-| `HARVEST_YIELD` | 3 food | per harvest; plot resets to grow again |
+| `FARM_GROW_TIME`        | 22 s                                                                                    | time to ripen                                                    |
+| `HARVEST_YIELD`         | 3 food                                                                                  | per harvest; plot resets to grow again                           |
 
 Numbers are tuned so a **competent** player just gets life support up in time and a
 **careless** one loses (§7 goal checks).

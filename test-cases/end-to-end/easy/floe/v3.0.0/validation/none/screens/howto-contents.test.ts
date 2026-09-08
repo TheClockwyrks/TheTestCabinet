@@ -24,8 +24,9 @@
 // THE HUD IS NOT PART OF THE SCREEN'S COPY. This matters more here than anywhere
 // else: `specs/ui.md`'s HUD carries a timer readout and a level label, so a check
 // that read the whole frame would find "the crossing timer" in a HUD drawn behind
-// the how-to screen and pass a build that never mentioned it. `screenCopy` reads
-// only what was drawn over the strait, where `specs/ui.md` puts the screens.
+// the how-to screen and pass a build that never mentioned it. `screenTokens`
+// reads only what was drawn over the strait, where `specs/ui.md` puts the
+// screens.
 //
 // THE SCREEN IS POSED. `setScreen("howto")` reaches the subject directly, so a
 // build whose title menu cannot get here loses `screens.howto-opens` and still
@@ -34,7 +35,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan, assertMatches } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
-import { screenCopy, screenRuns } from "./screens";
+import { screenRuns, screenTokens } from "./screens";
 
 /**
  * The six subjects `specs/ui.md` requires, each as the words that name it.
@@ -94,7 +95,7 @@ it("names the bays, the hop keys, the bear, the vehicles, the floes and the time
   const calls = await h.frameCalls();
   await captureStill(h, "howto");
 
-  const copy = screenCopy(calls);
+  const copy = screenTokens(calls);
   assertGreaterThan(
     screenRuns(calls).length,
     0,

@@ -1,4 +1,4 @@
-**Spectra Fighter** is the player's resonator-fighter from *Spectra*, a two-band
+**Spectra Fighter** is the player's resonator-fighter from _Spectra_, a two-band
 formation shooter.
 
 This asset-generation case asks a model to draw it as a 64×64 sprite using only

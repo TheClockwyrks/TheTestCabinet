@@ -11,12 +11,12 @@ api.assets.load(path: string): Promise<Blob>;
 api.assets.resolve(path: string): string;
 ```
 
-| Member | Behavior |
-| --- | --- |
+| Member      | Behavior                                                                               |
+| ----------- | -------------------------------------------------------------------------------------- |
 | `loadImage` | Resolves the path, fetches it, and decodes the body to an `ImageBitmap` ready to draw. |
 | `loadAudio` | Resolves the path, fetches it, and decodes the body to an `AudioBuffer` ready to play. |
-| `load` | Resolves the path, fetches it, and resolves to the response body as a `Blob`. |
-| `resolve` | Returns the URL `path` loads from. Pure: it neither fetches nor emits. |
+| `load`      | Resolves the path, fetches it, and resolves to the response body as a `Blob`.          |
+| `resolve`   | Returns the URL `path` loads from. Pure: it neither fetches nor emits.                 |
 
 ## The asset root
 
@@ -71,13 +71,13 @@ async initialize(api) {
 `resolve` accepts a non-empty relative path with no `..` segment and no URI
 scheme, so every request a build makes lands under the root.
 
-| Path | Result |
-| --- | --- |
-| `"sprites/ship.png"` | `"assets/sprites/ship.png"` |
-| `"audio/theme.ogg"` | `"assets/audio/theme.ogg"` |
-| `""` | Throws: the path is empty. |
-| `"/sprites/ship.png"` | Throws: a leading `/` leaves the root. |
-| `"../secrets.txt"` | Throws: a `..` segment leaves the root. |
+| Path                             | Result                                        |
+| -------------------------------- | --------------------------------------------- |
+| `"sprites/ship.png"`             | `"assets/sprites/ship.png"`                   |
+| `"audio/theme.ogg"`              | `"assets/audio/theme.ogg"`                    |
+| `""`                             | Throws: the path is empty.                    |
+| `"/sprites/ship.png"`            | Throws: a leading `/` leaves the root.        |
+| `"../secrets.txt"`               | Throws: a `..` segment leaves the root.       |
 | `"https://example.com/ship.png"` | Throws: an absolute URL is not an asset path. |
 
 `resolve` is the shared first step of all three loaders, so a path any one of
@@ -93,10 +93,10 @@ Loading reports itself through the engine's event broadcaster, subscribed with
 "asset:failed": { path: string; url: string; reason: string };
 ```
 
-| Field | Meaning |
-| --- | --- |
-| `path` | The path the game passed to the loader. |
-| `url` | The URL it resolved to, or `""` for a refused path. |
+| Field    | Meaning                                                                                    |
+| -------- | ------------------------------------------------------------------------------------------ |
+| `path`   | The path the game passed to the loader.                                                    |
+| `url`    | The URL it resolved to, or `""` for a refused path.                                        |
 | `reason` | Why the load failed: the refusal, the HTTP status, the network error, or the decode error. |
 
 Each of the three loaders emits exactly one event per call. Subscribing to
@@ -120,13 +120,13 @@ exactly what it needs.
 Every loader announces the attempt in every case, and rejects whenever the value
 did not arrive. The rejection carries the original cause unchanged.
 
-| Condition | Event | Promise |
-| --- | --- | --- |
-| The value arrives | `asset:loaded` with the resolved `url` | Resolves to the value. |
-| The path is refused | `asset:failed` with `url: ""` | Rejects with the `resolve` error. |
-| The response status is not `2xx` | `asset:failed` with the resolved `url` | Rejects, naming the status. |
-| The fetch fails | `asset:failed` with the resolved `url` | Rejects with the fetch error. |
-| The body fails to decode | `asset:failed` with the resolved `url` | Rejects with the decode error. |
+| Condition                        | Event                                  | Promise                           |
+| -------------------------------- | -------------------------------------- | --------------------------------- |
+| The value arrives                | `asset:loaded` with the resolved `url` | Resolves to the value.            |
+| The path is refused              | `asset:failed` with `url: ""`          | Rejects with the `resolve` error. |
+| The response status is not `2xx` | `asset:failed` with the resolved `url` | Rejects, naming the status.       |
+| The fetch fails                  | `asset:failed` with the resolved `url` | Rejects with the fetch error.     |
+| The body fails to decode         | `asset:failed` with the resolved `url` | Rejects with the decode error.    |
 
 A game that treats a missing file as fatal lets the rejection escape its
 `initialize`, which rejects `engine.initialize` with the cause and runs no

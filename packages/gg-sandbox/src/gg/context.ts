@@ -94,27 +94,29 @@ export function evictFileView(path?: string): ReclaimReport {
  * and for a span that ends before it starts.
  */
 export function archiveThread(ranges: TurnRange[]): ReclaimReport {
-  const spans = arrayArg<TurnRange>("archiveThread", "ranges", ranges).map((range) => {
-    if (typeof range !== "object" || range === null) {
-      throw new ApiError(
-        "archiveThread",
-        "invalid-argument",
-        `every entry of \`ranges\` must be a { from, to } turn span, got ${typeName(range)}`,
-      );
-    }
-    const from = uint("archiveThread", "ranges[].from", range.from, U32_MAX);
-    const to = uint("archiveThread", "ranges[].to", range.to, U32_MAX);
-    if (from === undefined || to === undefined) {
-      throw new ApiError(
-        "archiveThread",
-        "invalid-argument",
-        "every entry of `ranges` needs both `from` and `to`",
-      );
-    }
-    // `from`/`to` on the way in, `start`/`end` across the membrane — `from` is a WIT keyword, and
-    // the model-facing spelling is the one worth keeping.
-    return { start: from, end: to };
-  });
+  const spans = arrayArg<TurnRange>("archiveThread", "ranges", ranges).map(
+    (range) => {
+      if (typeof range !== "object" || range === null) {
+        throw new ApiError(
+          "archiveThread",
+          "invalid-argument",
+          `every entry of \`ranges\` must be a { from, to } turn span, got ${typeName(range)}`,
+        );
+      }
+      const from = uint("archiveThread", "ranges[].from", range.from, U32_MAX);
+      const to = uint("archiveThread", "ranges[].to", range.to, U32_MAX);
+      if (from === undefined || to === undefined) {
+        throw new ApiError(
+          "archiveThread",
+          "invalid-argument",
+          "every entry of `ranges` needs both `from` and `to`",
+        );
+      }
+      // `from`/`to` on the way in, `start`/`end` across the membrane — `from` is a WIT keyword, and
+      // the model-facing spelling is the one worth keeping.
+      return { start: from, end: to };
+    },
+  );
   return call(() => raw.archiveThread(spans));
 }
 

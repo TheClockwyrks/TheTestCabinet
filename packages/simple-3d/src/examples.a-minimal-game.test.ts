@@ -1,7 +1,12 @@
 import * as THREE from "three";
 import type { DeepReadonly } from "ts-essentials";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ConstantClock, JitterClock, SequenceClock, createEngine } from "./index";
+import {
+  ConstantClock,
+  JitterClock,
+  SequenceClock,
+  createEngine,
+} from "./index";
 import type {
   Clock,
   Engine,
@@ -237,7 +242,9 @@ function boot(clock: Clock | null = new ConstantClock(1000 / 60)): Booted {
   const gl = contexts.glFor(canvas);
   const screen = contexts.context2dFor(screenCanvas);
   if (gl === undefined || screen === undefined) {
-    throw new Error("a canvas was never asked for the context it draws through");
+    throw new Error(
+      "a canvas was never asked for the context it draws through",
+    );
   }
   return { engine, canvas, gl, screen, resize };
 }
@@ -274,7 +281,10 @@ function expectedX(t: number): number {
 }
 
 /** Steps in whole frames until at least `ms` of simulated time has passed. */
-async function advanceMs(engine: Engine<State, null>, ms: number): Promise<void> {
+async function advanceMs(
+  engine: Engine<State, null>,
+  ms: number,
+): Promise<void> {
   const until = engine.frame().timeMs + ms;
   while (engine.frame().timeMs < until) await engine.advance(1);
 }
@@ -411,10 +421,18 @@ describe("examples/a-minimal-game", () => {
       expect(2 * halfWidth).toBeCloseTo(20.5, 1);
 
       // The extent is where visibility turns over, to a hundredth of a unit.
-      expect(view.project({ x: 0, y: halfHeight - 0.01, z: 0 }).visible).toBe(true);
-      expect(view.project({ x: 0, y: halfHeight + 0.01, z: 0 }).visible).toBe(false);
-      expect(view.project({ x: halfWidth - 0.01, y: 0, z: 0 }).visible).toBe(true);
-      expect(view.project({ x: halfWidth + 0.01, y: 0, z: 0 }).visible).toBe(false);
+      expect(view.project({ x: 0, y: halfHeight - 0.01, z: 0 }).visible).toBe(
+        true,
+      );
+      expect(view.project({ x: 0, y: halfHeight + 0.01, z: 0 }).visible).toBe(
+        false,
+      );
+      expect(view.project({ x: halfWidth - 0.01, y: 0, z: 0 }).visible).toBe(
+        true,
+      );
+      expect(view.project({ x: halfWidth + 0.01, y: 0, z: 0 }).visible).toBe(
+        false,
+      );
     });
 
     it("keeps a run of -8..8 in view, cube and all", async () => {
@@ -552,7 +570,10 @@ describe("examples/a-minimal-game", () => {
         expect(engine.state.x).toBeLessThanOrEqual(LIMIT);
       }
       expect(engine.frame().count).toBe(481);
-      expect(engine.state.x).toBeCloseTo(expectedX(engine.frame().timeMs / 1000), 6);
+      expect(engine.state.x).toBeCloseTo(
+        expectedX(engine.frame().timeMs / 1000),
+        6,
+      );
       expect(engine.state.vx).toBe(SPEED);
 
       // And it agrees with the continuous fold at every sample along the way.

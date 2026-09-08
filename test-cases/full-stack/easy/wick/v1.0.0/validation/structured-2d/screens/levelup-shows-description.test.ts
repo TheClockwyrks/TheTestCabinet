@@ -57,12 +57,12 @@ import {
 import {
   captureStill,
   createHarness,
-  drewText,
   isolate,
   openLevelUp,
-  textDraws,
+  placedRuns,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 import { anchorY, fillEverySlot, lowestAnchorY } from "./stage";
 
 /** Three candidates of the pool over an empty loadout, the weapon first. */
@@ -108,7 +108,7 @@ it("draws a weapon's, a passive's, and lamp oil's line beneath the offers", asyn
     `the overlay drew the highlighted weapon's line ${JSON.stringify(line)} (specs/ui.md, levelup)`,
   );
 
-  const draws = textDraws(calls);
+  const draws = placedRuns(calls);
   const listBottom = NAMES.map((name) => {
     const at = lowestAnchorY(draws, name);
     assertNotNull(at, `where the offer ${name} was drawn`);

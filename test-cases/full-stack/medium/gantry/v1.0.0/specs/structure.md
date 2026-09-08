@@ -12,11 +12,11 @@ whose segments cross in space are not joined there and pass through one another
 freely. Each member carries a material, and its length `L` is the distance
 between its ends.
 
-| Material | Cost per unit | Mass per unit | Axial stiffness `EA` | Tension capacity | Compression capacity | Max length |
-| --- | --- | --- | --- | --- | --- | --- |
-| `strut` | `STRUT_COST_PER_UNIT` (`10`) | `STRUT_MASS_PER_UNIT` (`0.8`) | `STRUT_EA` (`300000`) | `STRUT_CAP_TENSION` (`2400`) | `STRUT_CAP_COMPRESSION` (`2400`), buckling-reduced | `STRUT_MAX_LEN` (`6`) |
-| `cable` | `CABLE_COST_PER_UNIT` (`4`) | `CABLE_MASS_PER_UNIT` (`0.15`) | `CABLE_EA` (`60000`) | `CABLE_CAP_TENSION` (`3600`) | none: a cable goes slack | `CABLE_MAX_LEN` (`24`) |
-| `rail` | `RAIL_COST_PER_UNIT` (`18`) | `RAIL_MASS_PER_UNIT` (`1.2`) | `RAIL_EA` (`300000`) | `RAIL_CAP_TENSION` (`2400`) | `RAIL_CAP_COMPRESSION` (`2400`), buckling-reduced | `RAIL_MAX_LEN` (`6`) |
+| Material | Cost per unit                | Mass per unit                  | Axial stiffness `EA`  | Tension capacity             | Compression capacity                               | Max length             |
+| -------- | ---------------------------- | ------------------------------ | --------------------- | ---------------------------- | -------------------------------------------------- | ---------------------- |
+| `strut`  | `STRUT_COST_PER_UNIT` (`10`) | `STRUT_MASS_PER_UNIT` (`0.8`)  | `STRUT_EA` (`300000`) | `STRUT_CAP_TENSION` (`2400`) | `STRUT_CAP_COMPRESSION` (`2400`), buckling-reduced | `STRUT_MAX_LEN` (`6`)  |
+| `cable`  | `CABLE_COST_PER_UNIT` (`4`)  | `CABLE_MASS_PER_UNIT` (`0.15`) | `CABLE_EA` (`60000`)  | `CABLE_CAP_TENSION` (`3600`) | none: a cable goes slack                           | `CABLE_MAX_LEN` (`24`) |
+| `rail`   | `RAIL_COST_PER_UNIT` (`18`)  | `RAIL_MASS_PER_UNIT` (`1.2`)   | `RAIL_EA` (`300000`)  | `RAIL_CAP_TENSION` (`2400`)  | `RAIL_CAP_COMPRESSION` (`2400`), buckling-reduced  | `RAIL_MAX_LEN` (`6`)   |
 
 A strut and a rail resist both tension and compression. Their compression
 capacity falls with length: a member of length `L` bears compression up to its
@@ -171,11 +171,11 @@ structure is readied rather than on each edit: by the static check below and
 when a run starts (`specs/program.md`). Each readiness issue has a stable
 identifier, reported wherever readiness is reported:
 
-| Issue | Meaning |
-| --- | --- |
-| `no-ring` | The crane has no slew ring. |
-| `no-rail` | The crane has no rail members. |
-| `invalid-rail` | The crane has a ring and rail members, and they break one of the track rules above. |
+| Issue                  | Meaning                                                                                                       |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `no-ring`              | The crane has no slew ring.                                                                                   |
+| `no-rail`              | The crane has no rail members.                                                                                |
+| `invalid-rail`         | The crane has a ring and rail members, and they break one of the track rules above.                           |
 | `disconnected-members` | Some member belongs to neither the tower nor the arm: it has no member path to an anchor or to a flange node. |
 
 A structure with no readiness issues is ready to run. Whether it stands is the
@@ -187,12 +187,12 @@ or collapse under its first load, as `specs/statics.md` states.
 The `check` action on the build screen (`specs/ui.md`) reads the structure as
 it stands, without starting a run. It reports:
 
-| What it reports | Changes with |
-| --- | --- |
+| What it reports                                                                                                            | Changes with               |
+| -------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
 | The issues that would refuse a run: the readiness issues above, and `empty-program` for an empty tape (`specs/program.md`) | The structure and the tape |
-| The crane's cost, and the site's budget it is measured against | The structure |
-| Whether the structure stands | The structure |
-| Each intact member's force and utilization, in member-id order (`specs/state.md`) | The structure |
+| The crane's cost, and the site's budget it is measured against                                                             | The structure              |
+| Whether the structure stands                                                                                               | The structure              |
+| Each intact member's force and utilization, in member-id order (`specs/state.md`)                                          | The structure              |
 
 The result the action leaves stands until the structure or the tape changes,
 when it goes back to none. The build screen shows it until then, so what is

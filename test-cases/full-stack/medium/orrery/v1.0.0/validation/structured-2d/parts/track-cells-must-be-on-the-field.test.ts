@@ -40,7 +40,9 @@ import {
  * the placement rules of `specs/parts.md` alone, and throws an `Error` naming
  * the first rule it breaks" (`specs/instrumentation.md`, The machine).
  */
-async function refusesPlacement(place: () => Promise<unknown>): Promise<boolean> {
+async function refusesPlacement(
+  place: () => Promise<unknown>,
+): Promise<boolean> {
   try {
     await place();
     return false;
@@ -55,7 +57,11 @@ function pathOf(cells: readonly Hex[] | null | undefined): string {
 }
 
 /** The path laid, running east to the field's boundary. */
-const LAID: readonly Hex[] = [at(FIELD_R - 2, 0), at(FIELD_R - 1, 0), at(FIELD_R, 0)];
+const LAID: readonly Hex[] = [
+  at(FIELD_R - 2, 0),
+  at(FIELD_R - 1, 0),
+  at(FIELD_R, 0),
+];
 
 /** One cell further east, which is off the field. */
 const BEYOND: Hex = at(FIELD_R + 1, 0);
@@ -81,7 +87,11 @@ it("refuses a track cell off the field and leaves the path as it was", async () 
       `the laid cell (${cell.q}, ${cell.r}) is on the field`,
     );
   }
-  assertEqual(onField(BEYOND), false, "the cell offered beyond the end is off the field");
+  assertEqual(
+    onField(BEYOND),
+    false,
+    "the cell offered beyond the end is off the field",
+  );
   assertEqual(
     adjacent(LAID[LAID.length - 1] as Hex, BEYOND),
     true,
@@ -128,5 +138,9 @@ it("refuses a track cell off the field and leaves the path as it was", async () 
     true,
     `a one-cell track on (${BEYOND.q}, ${BEYOND.r}) is refused: the cell is off the field`,
   );
-  assertEqual(parts, 1, "the refused track added no part: the machine holds the one path");
+  assertEqual(
+    parts,
+    1,
+    "the refused track added no part: the machine holds the one path",
+  );
 });

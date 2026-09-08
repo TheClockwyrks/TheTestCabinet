@@ -10,11 +10,11 @@ fixes, and every position is a center.
 The stage is `STAGE_W x STAGE_H` (`1280 x 720`) and is divided into three
 full-width horizontal regions.
 
-| Region | Extent | Carries |
-| --- | --- | --- |
-| Top HUD strip | `y` in `[0, HUD_TOP_H]` (`[0, 64]`) | The score and the stage readout |
-| Play field | `y` in `[FIELD_TOP, FIELD_BOTTOM]` (`[64, 656]`), `x` in `[FIELD_LEFT, FIELD_RIGHT]` (`[0, 1280]`) | Everything that moves |
-| Bottom HUD strip | `y` in `[HUD_BOTTOM_TOP, STAGE_H]` (`[656, 720]`) | The lives, the resonance meter, the polarity indicator, and the mute indicator |
+| Region           | Extent                                                                                             | Carries                                                                        |
+| ---------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Top HUD strip    | `y` in `[0, HUD_TOP_H]` (`[0, 64]`)                                                                | The score and the stage readout                                                |
+| Play field       | `y` in `[FIELD_TOP, FIELD_BOTTOM]` (`[64, 656]`), `x` in `[FIELD_LEFT, FIELD_RIGHT]` (`[0, 1280]`) | Everything that moves                                                          |
+| Bottom HUD strip | `y` in `[HUD_BOTTOM_TOP, STAGE_H]` (`[656, 720]`)                                                  | The lives, the resonance meter, the polarity indicator, and the mute indicator |
 
 The ship, the drones, and the bullets are drawn inside the play field. A drone
 crossing a HUD strip purely in transit is the one exception: a drone flying in from
@@ -38,10 +38,10 @@ grid `FORM_COLS` (`9`) columns across by `FORM_ROWS` (`5`) rows down, spaced
 is centered horizontally on `FORM_CENTER_X` (`640`), and its top row sits at
 `FORM_ROW0_Y` (`140`).
 
-| Function | Value |
-| --- | --- |
+| Function     | Value                                                                                    |
+| ------------ | ---------------------------------------------------------------------------------------- |
 | `slotX(col)` | `FORM_CENTER_X + SLOT_DX * (col - (FORM_COLS - 1) / 2)`, for `col` in `0..FORM_COLS - 1` |
-| `slotY(row)` | `FORM_ROW0_Y + SLOT_DY * row`, for `row` in `0..FORM_ROWS - 1` |
+| `slotY(row)` | `FORM_ROW0_Y + SLOT_DY * row`, for `row` in `0..FORM_ROWS - 1`                           |
 
 The filled grid therefore spans `x` in `[384, 896]` and `y` in `[140, 332]`.
 
@@ -75,13 +75,13 @@ if it has any, and how a mark is drawn are yours.
 
 ## Where the readouts sit
 
-| Readout | Region |
-| --- | --- |
-| Score | Top HUD strip |
-| Stage | Top HUD strip |
-| Lives | Bottom HUD strip |
-| Resonance meter | Bottom HUD strip |
+| Readout            | Region           |
+| ------------------ | ---------------- |
+| Score              | Top HUD strip    |
+| Stage              | Top HUD strip    |
+| Lives              | Bottom HUD strip |
+| Resonance meter    | Bottom HUD strip |
 | Polarity indicator | Bottom HUD strip |
-| Mute indicator | Bottom HUD strip |
+| Mute indicator     | Bottom HUD strip |
 
 How each is composed and placed within its strip is yours.

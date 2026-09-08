@@ -74,11 +74,11 @@ A class fixes the load's dimensions, as width by height by depth (`x` by `y` by
 `z` at yaw `0`), and names the produced model that draws it
 (`specs/assets.md`):
 
-| Class | Dimensions | Reads as |
-| --- | --- | --- |
-| `crate` | `2 x 2 x 2` | a packing crate |
-| `container` | `4 x 2 x 2` | a shipping container |
-| `drum` | `2 x 3 x 2` | an upright storage drum |
+| Class       | Dimensions  | Reads as                |
+| ----------- | ----------- | ----------------------- |
+| `crate`     | `2 x 2 x 2` | a packing crate         |
+| `container` | `4 x 2 x 2` | a shipping container    |
+| `drum`      | `2 x 3 x 2` | an upright storage drum |
 
 Every load pose in this specification is the pose of the load's lift point: the
 center of its top face. A load resting on the ground therefore has its lift

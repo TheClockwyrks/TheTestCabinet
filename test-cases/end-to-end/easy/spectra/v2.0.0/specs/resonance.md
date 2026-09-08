@@ -10,10 +10,10 @@ with it at `0`, and the bottom HUD strip shows it as `specs/ui.md` states.
 
 Exactly two events fill it.
 
-| Event | Adds |
-| --- | --- |
-| The hull absorbs an enemy bullet of the ship's own band | `RESONANCE_ABSORB` (`6`) |
-| One of the player's bullets destroys a drone by matching its band | `RESONANCE_KILL` (`4`) |
+| Event                                                             | Adds                     |
+| ----------------------------------------------------------------- | ------------------------ |
+| The hull absorbs an enemy bullet of the ship's own band           | `RESONANCE_ABSORB` (`6`) |
+| One of the player's bullets destroys a drone by matching its band | `RESONANCE_KILL` (`4`)   |
 
 Breaking a Prism's shell adds nothing; destroying a Prism's exposed core is a
 matching kill and adds `RESONANCE_KILL`.
@@ -33,9 +33,9 @@ point below.
 
 The discharge action, which `specs/controls.md` binds, does one of two things.
 
-| The meter | The action |
-| --- | --- |
-| At `RESONANCE_MAX` | Sets the meter to `0` and starts the wave below |
+| The meter             | The action                                              |
+| --------------------- | ------------------------------------------------------- |
+| At `RESONANCE_MAX`    | Sets the meter to `0` and starts the wave below         |
 | Below `RESONANCE_MAX` | Does nothing: the meter is unchanged and no wave starts |
 
 ## The wave
@@ -48,13 +48,13 @@ center lies inside the wave's current radius.
 The wave is band-blind: what band the ship holds, and what band a thing carries,
 change nothing about what it takes.
 
-| What the wave reaches | What happens |
-| --- | --- |
-| A drone in phase `entering`, `diving`, or `returning` | It is destroyed |
-| A Prism in one of those phases | It is destroyed whole, shell and core together, in one step |
-| An enemy bullet | It leaves the roster |
-| A drone in phase `formation` | Nothing |
-| One of the player's bullets | Nothing |
+| What the wave reaches                                 | What happens                                                |
+| ----------------------------------------------------- | ----------------------------------------------------------- |
+| A drone in phase `entering`, `diving`, or `returning` | It is destroyed                                             |
+| A Prism in one of those phases                        | It is destroyed whole, shell and core together, in one step |
+| An enemy bullet                                       | It leaves the roster                                        |
+| A drone in phase `formation`                          | Nothing                                                     |
+| One of the player's bullets                           | Nothing                                                     |
 
 Each drone the wave destroys pops as `specs/assets.md` states and scores as
 `specs/scoring.md` states. When the wave's time runs out it stops, and the game

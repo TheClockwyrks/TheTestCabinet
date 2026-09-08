@@ -1896,9 +1896,18 @@ describe("close", () => {
     const { world } = openWorld({
       mode: GameMode,
       actors: [
-        { type: Logged, configure: (a: Logged): void => void (a.name = "first") },
-        { type: Logged, configure: (a: Logged): void => void (a.name = "second") },
-        { type: Logged, configure: (a: Logged): void => void (a.name = "third") },
+        {
+          type: Logged,
+          configure: (a: Logged): void => void (a.name = "first"),
+        },
+        {
+          type: Logged,
+          configure: (a: Logged): void => void (a.name = "second"),
+        },
+        {
+          type: Logged,
+          configure: (a: Logged): void => void (a.name = "third"),
+        },
       ],
     });
     world.simulate(0.016);

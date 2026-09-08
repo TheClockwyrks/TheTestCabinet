@@ -72,13 +72,13 @@ enemy and deforms convincingly.
 
 Use only these opaque colors (there is no transparency):
 
-| Role | Hex |
-| --- | --- |
-| Flesh (ashen grey-green) | `#7e8a68` |
+| Role                                      | Hex       |
+| ----------------------------------------- | --------- |
+| Flesh (ashen grey-green)                  | `#7e8a68` |
 | Flesh, deep (recessed, hollowed, bruised) | `#515a3c` |
-| Cloth (tattered dark) | `#2c2824` |
-| Cloth, worn (frayed, weathered rag) | `#4b4238` |
-| Bone (exposed bone, teeth, nails) | `#d8ccac` |
+| Cloth (tattered dark)                     | `#2c2824` |
+| Cloth, worn (frayed, weathered rag)       | `#4b4238` |
+| Bone (exposed bone, teeth, nails)         | `#d8ccac` |
 
 Let the exposed bone read clearly against the flesh from many angles so the decay
 shows.

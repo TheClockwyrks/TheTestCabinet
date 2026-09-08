@@ -46,7 +46,7 @@ import { renderGame } from "./render";
 import { COLOR } from "./theme";
 import { pointerDown, pointerMove, pointerUp } from "./game-pointer";
 import {
-  clearBeams,
+  tryClearBeams,
   mergeEvents,
   NO_EVENTS,
   type TraceEvents,
@@ -68,7 +68,12 @@ export const BACKGROUND: string = COLOR.bg;
 // ---- The state contract (specs/state.md) ---------------------------------
 
 export type Screen =
-  "title" | "howto" | "select" | "playing" | "solved" | "complete";
+  | "title"
+  | "howto"
+  | "select"
+  | "playing"
+  | "solved"
+  | "complete";
 
 export type Mode = "campaign" | "cascade";
 
@@ -232,7 +237,7 @@ function handleInput(
       const clearNow = clearPressed(api);
       if (leave) return goBack(state);
       if (clearNow) {
-        const { state: next, cleared } = clearBeams(state);
+        const { state: next, cleared } = tryClearBeams(state);
         events.clear = events.clear || cleared;
         return next;
       }

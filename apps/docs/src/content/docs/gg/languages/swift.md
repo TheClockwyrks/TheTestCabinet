@@ -54,12 +54,12 @@ lives in the gg toolchain image rather than inside the `tcab` binary.
 and publishes four files, none of them committed. The arm reaches them through
 `GG_ARTIFACTS_SWIFT` and embeds them in the gg binary.
 
-| Artifact | What it carries |
-| --- | --- |
-| `swift.guest.tar.gz` | The shell's header and the clang module map that names it, the C bindings generated from `crates/gg/wit` compiled to a wasm object, the component-type object, the shell prebuilt as `shell.o`, and this arm's SDK prebuilt as `gg.swiftmodule` plus `gg.o` |
-| `swift.libraries.tar.gz` | The curated library set as one static archive, plus the `.swiftmodule` files a program's `import` resolves against |
-| `swift.adapter.wasm` | The pinned `wasi_snapshot_preview1` reactor adapter |
-| `swift.toolchain.json` | What built the above, and what is in it |
+| Artifact                 | What it carries                                                                                                                                                                                                                                             |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `swift.guest.tar.gz`     | The shell's header and the clang module map that names it, the C bindings generated from `crates/gg/wit` compiled to a wasm object, the component-type object, the shell prebuilt as `shell.o`, and this arm's SDK prebuilt as `gg.swiftmodule` plus `gg.o` |
+| `swift.libraries.tar.gz` | The curated library set as one static archive, plus the `.swiftmodule` files a program's `import` resolves against                                                                                                                                          |
+| `swift.adapter.wasm`     | The pinned `wasi_snapshot_preview1` reactor adapter                                                                                                                                                                                                         |
+| `swift.toolchain.json`   | What built the above, and what is in it                                                                                                                                                                                                                     |
 
 The SDK and the library set are prebuilt so that no turn re-typechecks them.
 Warm-up unpacks both archives into shared content-keyed directories, placed by

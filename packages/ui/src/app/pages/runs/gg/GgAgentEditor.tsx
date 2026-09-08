@@ -955,7 +955,9 @@ export function GgAgentEditor({
                 and the only entry that is not a module or one of a module's functions. */}
             <div
               className={`${gg.capRow}${
-                agent.openingTurn.tree.include && treeHeld ? "" : ` ${gg.capOff}`
+                agent.openingTurn.tree.include && treeHeld
+                  ? ""
+                  : ` ${gg.capOff}`
               }`}
               role="group"
               aria-label="Workspace tree"
@@ -970,9 +972,9 @@ export function GgAgentEditor({
                 <span className={gg.capId}>{OPENING_TREE_OPERATION}</span>
               </label>
               <p className={gg.capPurpose}>
-                Opens the window on the shape of the workspace, so the first turn
-                does not spend itself guessing at paths. Ignored directories are
-                left out.
+                Opens the window on the shape of the workspace, so the first
+                turn does not spend itself guessing at paths. Ignored
+                directories are left out.
               </p>
               {!treeHeld ? (
                 <p className={gg.capPurpose}>

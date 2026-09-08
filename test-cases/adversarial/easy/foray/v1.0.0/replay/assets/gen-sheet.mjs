@@ -76,9 +76,12 @@ const STEPS = [0, 1, 2, 3]; // a 4-pose walk cycle per facing.
 
 // We size the canvas to fit every planned frame on the 16-wide grid.
 const FRAME_PLAN = [];
-for (const f of FACINGS) for (const i of STEPS) FRAME_PLAN.push(`soldier_${f}_${i}`);
-for (const f of FACINGS) for (const i of STEPS) FRAME_PLAN.push(`raider_${f}_${i}`);
-for (const f of FACINGS) for (const i of STEPS) FRAME_PLAN.push(`raider_laden_${f}_${i}`);
+for (const f of FACINGS)
+  for (const i of STEPS) FRAME_PLAN.push(`soldier_${f}_${i}`);
+for (const f of FACINGS)
+  for (const i of STEPS) FRAME_PLAN.push(`raider_${f}_${i}`);
+for (const f of FACINGS)
+  for (const i of STEPS) FRAME_PLAN.push(`raider_laden_${f}_${i}`);
 // Note: the immune (royal-jelly) aura is NOT a sheet frame — the renderer draws
 // it procedurally as a breathing additive glow over an immune agent.
 FRAME_PLAN.push("seed", "large_seed", "jelly_active", "jelly_spent", "nest");
@@ -104,12 +107,14 @@ function put(px, py, col) {
 
 // Cell-local draw helpers (coordinates 0..15 within the cell at origin cx,cy).
 function fillCell(cx, cy, col) {
-  for (let y = 0; y < CELL; y++) for (let x = 0; x < CELL; x++) put(cx * CELL + x, cy * CELL + y, col);
+  for (let y = 0; y < CELL; y++)
+    for (let x = 0; x < CELL; x++) put(cx * CELL + x, cy * CELL + y, col);
 }
 function rect(cx, cy, x0, y0, x1, y1, col) {
   const ox = cx * CELL;
   const oy = cy * CELL;
-  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) put(ox + x, oy + y, col);
+  for (let y = y0; y <= y1; y++)
+    for (let x = x0; x <= x1; x++) put(ox + x, oy + y, col);
 }
 
 // Blit a decoded 16x16 RGBA source image into the cell at cx,cy.
@@ -119,7 +124,12 @@ function blit(cx, cy, img) {
   for (let y = 0; y < CELL; y++) {
     for (let x = 0; x < CELL; x++) {
       const s = (y * img.width + x) * 4;
-      put(ox + x, oy + y, [img.data[s], img.data[s + 1], img.data[s + 2], img.data[s + 3]]);
+      put(ox + x, oy + y, [
+        img.data[s],
+        img.data[s + 1],
+        img.data[s + 2],
+        img.data[s + 3],
+      ]);
     }
   }
 }
@@ -239,7 +249,9 @@ function placeholderFor(name) {
     const mask = Number(name.slice(5));
     return (cx, cy) => wallGlyph(cx, cy, mask);
   }
-  return PLACEHOLDER[name] || ((cx, cy) => rect(cx, cy, 6, 6, 9, 9, COL.outline));
+  return (
+    PLACEHOLDER[name] || ((cx, cy) => rect(cx, cy, 6, 6, 9, 9, COL.outline))
+  );
 }
 
 // --- Place every planned frame: source art if present, else placeholder ------
@@ -255,7 +267,9 @@ FRAME_PLAN.forEach((name, slot) => {
   if (existsSync(srcPath)) {
     const img = decodePng(readFileSync(srcPath));
     if (img.width !== CELL || img.height !== CELL) {
-      throw new Error(`source/${name}.png is ${img.width}x${img.height}, expected ${CELL}x${CELL}`);
+      throw new Error(
+        `source/${name}.png is ${img.width}x${img.height}, expected ${CELL}x${CELL}`,
+      );
     }
     blit(cx, cy, img);
     usedSource++;
@@ -272,9 +286,18 @@ FRAME_PLAN.forEach((name, slot) => {
 const WALK_FPS = 8;
 atlas.anims = {};
 for (const f of FACINGS) {
-  atlas.anims[`soldier_walk_${f}`] = { frames: STEPS.map((i) => `soldier_${f}_${i}`), fps: WALK_FPS };
-  atlas.anims[`raider_walk_${f}`] = { frames: STEPS.map((i) => `raider_${f}_${i}`), fps: WALK_FPS };
-  atlas.anims[`raider_laden_walk_${f}`] = { frames: STEPS.map((i) => `raider_laden_${f}_${i}`), fps: WALK_FPS };
+  atlas.anims[`soldier_walk_${f}`] = {
+    frames: STEPS.map((i) => `soldier_${f}_${i}`),
+    fps: WALK_FPS,
+  };
+  atlas.anims[`raider_walk_${f}`] = {
+    frames: STEPS.map((i) => `raider_${f}_${i}`),
+    fps: WALK_FPS,
+  };
+  atlas.anims[`raider_laden_walk_${f}`] = {
+    frames: STEPS.map((i) => `raider_laden_${f}_${i}`),
+    fps: WALK_FPS,
+  };
 }
 
 // Wall autotile map: 4-neighbor bitmask (N=1,E=2,S=4,W=8) -> frame name.
@@ -328,7 +351,9 @@ function decodePng(buf) {
     }
   }
   if (colorType !== 6 || bitDepth !== 8 || interlace !== 0) {
-    throw new Error(`unsupported PNG (colorType ${colorType}, bitDepth ${bitDepth}, interlace ${interlace}); expected RGBA8 non-interlaced`);
+    throw new Error(
+      `unsupported PNG (colorType ${colorType}, bitDepth ${bitDepth}, interlace ${interlace}); expected RGBA8 non-interlaced`,
+    );
   }
   const raw = inflateSync(Buffer.concat(idat));
   const stride = width * 4; // bytes per row, excluding the per-row filter byte
@@ -347,7 +372,8 @@ function decodePng(buf) {
       else if (filter === 2) v = (v + b) & 0xff;
       else if (filter === 3) v = (v + ((a + b) >> 1)) & 0xff;
       else if (filter === 4) v = (v + paeth(a, b, c)) & 0xff;
-      else if (filter !== 0) throw new Error(`unsupported PNG filter ${filter}`);
+      else if (filter !== 0)
+        throw new Error(`unsupported PNG filter ${filter}`);
       cur[x] = v;
     }
     out.set(cur, y * stride);

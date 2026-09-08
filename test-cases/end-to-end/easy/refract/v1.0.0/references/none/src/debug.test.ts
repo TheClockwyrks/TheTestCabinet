@@ -285,8 +285,65 @@ describe("a route drawn through the pointer poses", () => {
   });
 });
 
+describe("reconcile", () => {
+  it("re-derives a stored reading from a posed board", () => {
+    // `loadBoard` writes the very thing five readings are functions of: the
+    // board's dimensions (a node's `x`/`y`), the drawn beams (a crystal's
+    // `spent`, a beam's `complete`, `solved`), and the screen (`targets`).
+    let state = debug.loadBoard(fresh(), ["TtT"]);
+    state = debug.reconcile(state);
+    let read = debug.snapshot(state);
+    for (const node of read.board.nodes) {
+      const [x, y] = cellCenter(node, state.board);
+      expect([node.x, node.y]).toEqual([x, y]);
+    }
+    expect(read.solved).toBe(false);
+    expect(read.beams.triangle?.complete).toBe(false);
+
+    // Draw the route the board is solved by, then reconcile and read again.
+    state = trace(state, [
+      { col: 0, row: 0 },
+      { col: 1, row: 0 },
+      { col: 2, row: 0 },
+    ]);
+    state = debug.reconcile(state);
+    read = debug.snapshot(state);
+    expect(read.solved).toBe(true);
+    expect(read.beams.triangle?.complete).toBe(true);
+
+    // A larger board: the cell centres move with the dimensions, so a stored
+    // copy of them would still answer for the board before this pose.
+    state = debug.reconcile(debug.loadBoard(state, ["T.S", "1.s", "T.S"]));
+    read = debug.snapshot(state);
+    expect(read.board.cols).toBe(3);
+    expect(read.board.rows).toBe(3);
+    for (const node of read.board.nodes) {
+      const [x, y] = cellCenter(node, state.board);
+      expect([node.x, node.y]).toEqual([x, y]);
+    }
+  });
+
+  it("advances nothing, and reconciling twice matches reconciling once", () => {
+    let state = debug.loadBoard(fresh(), ["TtT"]);
+    state = trace(state, [
+      { col: 0, row: 0 },
+      { col: 1, row: 0 },
+    ]);
+    const before = debug.snapshot(state);
+    const once = debug.reconcile(state);
+    expect(debug.snapshot(once)).toEqual(before);
+    expect(debug.snapshot(debug.reconcile(once))).toEqual(before);
+    // Named explicitly, because "equal snapshots" is only as strong as the
+    // clock and the live trace being in it.
+    expect(once.simTime).toBe(state.simTime);
+    expect(once.screen).toBe(state.screen);
+    expect(once.tracing).toEqual(state.tracing);
+    expect(once.board).toBe(state.board);
+  });
+});
+
 describe("clear", () => {
-  it("empties every beam on the playing screen alone", () => {
+  it("empties every beam, from wherever the game stands", () => {
     let state = debug.loadBoard(fresh(), ["TtT"]);
     state = trace(state, [
       { col: 0, row: 0 },
@@ -295,8 +352,19 @@ describe("clear", () => {
     const cleared = debug.clear(state);
     expect(cleared.beams[0].cells).toEqual([]);
 
-    const title = fresh();
-    expect(debug.clear(title)).toBe(title);
+    // The screen is how a PLAYER reaches the clear action, not a condition of
+    // the operation: the beams go from the title screen too, and the screen is
+    // left exactly where it was (specs/instrumentation.md, "The operations").
+    let drawn = debug.loadBoard(fresh(), ["TtT"]);
+    drawn = trace(drawn, [
+      { col: 0, row: 0 },
+      { col: 1, row: 0 },
+    ]);
+    const titled = debug.setScreen(drawn, "title");
+    const off = debug.clear(titled);
+    expect(off.beams[0].cells).toEqual([]);
+    expect(off.tracing).toBeNull();
+    expect(off.screen).toBe("title");
   });
 });
 
@@ -370,6 +438,17 @@ describe("the installed surface", () => {
     ]);
     expect(host.state.solvedCount).toBe(6);
     expect(host.state.tier).toBe(3);
+  });
+
+  it("forwards reconcile through apply, changing nothing this build holds", () => {
+    const host = fakeHost();
+    const api = createWindowApi(host, debug);
+    api.loadBoard(["TtT"]);
+    const before = api.snapshot();
+    api.reconcile();
+    expect(api.snapshot()).toEqual(before);
+    expect(host.state.simTime).toBe(before.simTime);
+    expect(host.clock.advanced).toEqual([]);
   });
 
   it("draws a route through the immediate pointer operations", () => {

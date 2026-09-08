@@ -21,9 +21,9 @@
 // frame is drawn and its runs of text are read; no key is pressed, so the menu
 // is read as the screen arrives with it.
 //
-// THE TOLERANCE. Each name is matched as its words in order through
-// `drewPhrase`, case ignored, which admits any font, layout, line wrap, or
-// selection marker a build draws around it. The stacking is read as a strict
+// THE TOLERANCE. Each name is matched as a substring of a run of drawn text
+// through the shared harness's `drewText`, ignoring case and whitespace, which
+// admits any font, layout, or selection marker a build draws around it. The stacking is read as a strict
 // inequality between the topmost anchor of each name, which admits any spacing
 // and alignment the build chose.
 
@@ -33,12 +33,12 @@ import { PAUSE_ITEMS } from "../constants";
 import {
   captureStill,
   createHarness,
-  drewPhrase,
   isolate,
   present,
   topAnchorOf,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 
 let h: Harness;
 
@@ -60,7 +60,7 @@ it("draws RESUME and MAIN MENU stacked in PAUSE_ITEMS order", async () => {
   captureStill(h, "menu");
 
   assertDeepEqual(
-    PAUSE_ITEMS.filter((item) => !drewPhrase(calls, item)),
+    PAUSE_ITEMS.filter((item) => !drewText(calls, item)),
     [],
     "the items specs/ui.md gives the pause menu, missing from its frame",
   );

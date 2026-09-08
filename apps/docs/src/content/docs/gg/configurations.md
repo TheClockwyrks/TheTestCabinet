@@ -188,7 +188,7 @@ an operation id is never callable as a tool, so a name written under the wrong
 field, or one gg does not have at all, refuses the launch — and the refusal says
 which of the two lists the name does belong in, when it belongs in one. It cannot
 be resolved to the other list's spelling, and an agent narrowed by a typo reads
-exactly like one narrowed on purpose. A name that *is* in the right vocabulary but
+exactly like one narrowed on purpose. A name that _is_ in the right vocabulary but
 that this agent's capabilities do not offer is silently fine: it grants nothing,
 and one shared configuration document naming a call only some of its agents hold
 is ordinary.
@@ -509,8 +509,8 @@ value, and each of them is a declaration gg would otherwise read past:
 - A run-level param that **diverges** from the one in force. The subagent
   recursion bound is read once for the whole run, off the first profile, and the
   [board](/gg/project-management/)'s three ceilings once off the first profile
-  with that capability on. Writing the *same* value on every profile is fine and
-  is what the editor does; writing a *different* one is a document that says two
+  with that capability on. Writing the _same_ value on every profile is fine and
+  is what the editor does; writing a _different_ one is a document that says two
   things.
 - Two agents naming two different merge agents, or one naming something gg
   cannot read as a name. The board is the run's, so it has one merge agent.

@@ -29,7 +29,12 @@
 // total grip count of six settles that not one of the inner ring was taken.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertLength, assertNotNull, assertNull } from "../assert";
+import {
+  assertEqual,
+  assertLength,
+  assertNotNull,
+  assertNull,
+} from "../assert";
 import { armPart, solution } from "../formats";
 import { BARE, ORIGIN } from "../fixtures";
 import { gripperHex } from "../parts";
@@ -86,7 +91,11 @@ it("stands all six grippers two hexes out and leaves the inner ring untouched", 
   assertNotNull(sim, "the run is live through the cycle that grabbed");
   assertEqual(sim?.status, "running", "the grab cycle reaches its boundary");
   assertNull(sim?.fault ?? null, "no fault was raised by the grab");
-  assertEqual(sim?.cycle, 1, "the cycle ran to its boundary rather than freezing");
+  assertEqual(
+    sim?.cycle,
+    1,
+    "the cycle ran to its boundary rather than freezing",
+  );
   assertEqual(
     poseOf(snapshot, hexarm)?.length,
     LENGTH,

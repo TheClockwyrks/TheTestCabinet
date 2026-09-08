@@ -76,9 +76,10 @@ describe("AxisPicker", () => {
   it("shows the current axis as the row's value and offers the other", () => {
     render(<AxisPicker value="case" onChange={vi.fn()} />);
     expect(order().value).toBe("case");
-    expect(
-      Array.from(order().options).map((o) => o.textContent),
-    ).toEqual(["One case at a time", "One model at a time"]);
+    expect(Array.from(order().options).map((o) => o.textContent)).toEqual([
+      "One case at a time",
+      "One model at a time",
+    ]);
   });
 
   it("reports the axis that was picked", () => {
@@ -89,9 +90,7 @@ describe("AxisPicker", () => {
   });
 
   it("describes what the selected order does, not the one beside it", () => {
-    const { rerender } = render(
-      <AxisPicker value="case" onChange={vi.fn()} />,
-    );
+    const { rerender } = render(<AxisPicker value="case" onChange={vi.fn()} />);
     expect(screen.getByText(/before the next case starts/i)).toBeTruthy();
     rerender(<AxisPicker value="combination" onChange={vi.fn()} />);
     expect(screen.getByText(/climbs the whole case list/i)).toBeTruthy();
@@ -104,7 +103,9 @@ describe("AxisPicker", () => {
     const { rerender } = render(
       <AxisPicker value="case" onChange={onChange} />,
     );
-    expect(screen.queryByRole("button", { name: "Reset Run order" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Reset Run order" }),
+    ).toBeNull();
     rerender(<AxisPicker value="combination" onChange={onChange} />);
     fireEvent.click(screen.getByRole("button", { name: "Reset Run order" }));
     expect(onChange).toHaveBeenCalledWith("case");

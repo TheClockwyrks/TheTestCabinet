@@ -6,8 +6,9 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertTrue } from "../assert";
+import { drewText } from "../case-harness/text";
 import { TITLE_COPY, TITLE_MENU } from "../constants";
-import { captureStill, drewText, openHarness, type Harness } from "../harness";
+import { captureStill, openHarness, type Harness } from "../harness";
 
 let h: Harness;
 

@@ -11,18 +11,10 @@
     {
       "name": "rise",
       "shape": "disc",
-      "position": [
-        64.0,
-        54.0,
-        0.0
-      ],
+      "position": [64.0, 54.0, 0.0],
       "extent": {
         "radius": 12.0,
-        "size": [
-          1.0,
-          1.0,
-          0.0
-        ]
+        "size": [1.0, 1.0, 0.0]
       },
       "emission": {
         "mode": "burst",
@@ -33,11 +25,7 @@
       "lifetimeSpread": 160.0,
       "speed": 95.0,
       "speedSpread": 25.0,
-      "direction": [
-        0.0,
-        1.0,
-        0.0
-      ],
+      "direction": [0.0, 1.0, 0.0],
       "coneAngle": 26.0,
       "seed": 41,
       "forces": {
@@ -75,18 +63,10 @@
     {
       "name": "spark",
       "shape": "point",
-      "position": [
-        64.0,
-        52.0,
-        0.0
-      ],
+      "position": [64.0, 52.0, 0.0],
       "extent": {
         "radius": 1.0,
-        "size": [
-          1.0,
-          1.0,
-          0.0
-        ]
+        "size": [1.0, 1.0, 0.0]
       },
       "emission": {
         "mode": "burst",
@@ -97,11 +77,7 @@
       "lifetimeSpread": 120.0,
       "speed": 160.0,
       "speedSpread": 50.0,
-      "direction": [
-        1.0,
-        0.0,
-        0.0
-      ],
+      "direction": [1.0, 0.0, 0.0],
       "coneAngle": 360.0,
       "seed": 42,
       "forces": {
@@ -134,18 +110,10 @@
     {
       "name": "motes",
       "shape": "disc",
-      "position": [
-        64.0,
-        58.0,
-        0.0
-      ],
+      "position": [64.0, 58.0, 0.0],
       "extent": {
         "radius": 18.0,
-        "size": [
-          1.0,
-          1.0,
-          0.0
-        ]
+        "size": [1.0, 1.0, 0.0]
       },
       "emission": {
         "mode": "burst",
@@ -156,11 +124,7 @@
       "lifetimeSpread": 200.0,
       "speed": 30.0,
       "speedSpread": 14.0,
-      "direction": [
-        0.0,
-        1.0,
-        0.0
-      ],
+      "direction": [0.0, 1.0, 0.0],
       "coneAngle": 45.0,
       "seed": 43,
       "forces": {

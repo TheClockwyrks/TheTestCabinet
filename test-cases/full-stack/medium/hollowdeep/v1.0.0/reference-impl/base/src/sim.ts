@@ -45,9 +45,22 @@ import type {
 import { MODE, type ColonyMode } from "./mode";
 import { generateWorld } from "./worldgen";
 import { centerCameraOn, idx, tileAt } from "./world";
-import { avgCo2, avgOxygen, breathableAt, breathe, lowestOxygen, stepGas } from "./gas";
+import {
+  avgCo2,
+  avgOxygen,
+  breathableAt,
+  breathe,
+  lowestOxygen,
+  stepGas,
+} from "./gas";
 import { rebuildNetworks, stepPower, type NetworkStat } from "./power";
-import { bfsFrom, nearestBreathable, pathTo, standable, type Flood } from "./pathfind";
+import {
+  bfsFrom,
+  nearestBreathable,
+  pathTo,
+  standable,
+  type Flood,
+} from "./pathfind";
 import { JobBoard, orderJobs } from "./jobs";
 import {
   canAfford,
@@ -73,7 +86,16 @@ const ALARM_INTERVAL = 1.6; // min seconds between low-oxygen alarm cues
 const DUST_INTERVAL = 0.4; // seconds between dig-dust puffs while mining
 const FALL_SPEED = 9; // tiles/s a delver falls through open space (no ladder needed down)
 
-const DELVER_NAMES = ["VESK", "MARLOWE", "TULLY", "BRAND", "OKON", "PYE", "SERRA", "HOLT"];
+const DELVER_NAMES = [
+  "VESK",
+  "MARLOWE",
+  "TULLY",
+  "BRAND",
+  "OKON",
+  "PYE",
+  "SERRA",
+  "HOLT",
+];
 
 export class Game {
   mode: ColonyMode;
@@ -145,7 +167,11 @@ export class Game {
     this.fxQueue = [];
     this.sndQueue = [];
     this.milestones = [];
-    centerCameraOn(this.world, Math.floor((CAVERN.x0 + CAVERN.x1) / 2), Math.floor((CAVERN.y0 + CAVERN.y1) / 2));
+    centerCameraOn(
+      this.world,
+      Math.floor((CAVERN.x0 + CAVERN.x1) / 2),
+      Math.floor((CAVERN.y0 + CAVERN.y1) / 2),
+    );
   }
 
   restart(): void {
@@ -206,17 +232,20 @@ export class Game {
     if (this.delvers.every((d) => d.dead)) this.lose();
 
     for (const m of this.milestones) m.life -= dt;
-    if (this.milestones.some((m) => m.life <= 0)) this.milestones = this.milestones.filter((m) => m.life > 0);
+    if (this.milestones.some((m) => m.life <= 0))
+      this.milestones = this.milestones.filter((m) => m.life > 0);
   }
 
   // Keep standing refine jobs (per refinery, while ore is available) and harvest jobs (per
   // ripe farm) enqueued, so the delvers pick them up like any other work.
   private syncStandingJobs(): void {
     for (const r of this.world.refineries) {
-      if (canRefine(this.stocks) && !this.jobs.has(r.tx, r.ty, "refine")) this.jobs.add("refine", r.tx, r.ty);
+      if (canRefine(this.stocks) && !this.jobs.has(r.tx, r.ty, "refine"))
+        this.jobs.add("refine", r.tx, r.ty);
     }
     for (const f of this.world.farms) {
-      if (f.ripe && !this.jobs.has(f.tx, f.ty, "harvest")) this.jobs.add("harvest", f.tx, f.ty);
+      if (f.ripe && !this.jobs.has(f.tx, f.ty, "harvest"))
+        this.jobs.add("harvest", f.tx, f.ty);
     }
   }
 
@@ -243,7 +272,13 @@ export class Game {
     const breathable = tile ? breathableAt(tile) : false;
 
     // Breathe: consume oxygen / exhale CO2 into the current tile.
-    if (tile && (tile.kind === "open" || tile.kind === "floor" || tile.kind === "ladder" || tile.kind === "wire")) {
+    if (
+      tile &&
+      (tile.kind === "open" ||
+        tile.kind === "floor" ||
+        tile.kind === "ladder" ||
+        tile.kind === "wire")
+    ) {
       breathe(tile, dt);
     }
     // Health: suffocate in bad air, recover in good air.
@@ -252,7 +287,8 @@ export class Game {
 
     // Hunger: rises over time; starve (extra health loss) at max with no food to eat.
     d.hunger = Math.min(HUNGER_MAX, d.hunger + HUNGER_RATE * dt);
-    if (d.hunger >= HUNGER_MAX && this.stocks.food <= 0) d.health -= STARVE_DMG * dt;
+    if (d.hunger >= HUNGER_MAX && this.stocks.food <= 0)
+      d.health -= STARVE_DMG * dt;
 
     if (d.health <= 0) {
       this.killDelver(d);
@@ -373,7 +409,8 @@ export class Game {
   }
 
   private jobAffordable(job: Job): boolean {
-    if (job.kind === "build") return job.building ? canAfford(this.stocks, job.building) : false;
+    if (job.kind === "build")
+      return job.building ? canAfford(this.stocks, job.building) : false;
     if (job.kind === "refine") return canRefine(this.stocks);
     return true;
   }
@@ -383,8 +420,13 @@ export class Game {
   // dig/build inward from open space, specs/world.md).
   private standTileFor(job: Job, flood: Flood): number | null {
     const cands = new Set<number>();
-    const onTile = job.kind === "build" && (job.building === "floor" || job.building === "ladder" || job.building === "wire");
-    if (onTile && standable(this.world, job.tx, job.ty)) cands.add(idx(this.world.w, job.tx, job.ty));
+    const onTile =
+      job.kind === "build" &&
+      (job.building === "floor" ||
+        job.building === "ladder" ||
+        job.building === "wire");
+    if (onTile && standable(this.world, job.tx, job.ty))
+      cands.add(idx(this.world.w, job.tx, job.ty));
     for (const [nx, ny] of [
       [job.tx - 1, job.ty],
       [job.tx + 1, job.ty],
@@ -422,7 +464,10 @@ export class Game {
           return;
         }
         // Dig dust puffs while mining (specs/assets.md).
-        if (Math.floor((d.workTimer - dt) / DUST_INTERVAL) !== Math.floor(d.workTimer / DUST_INTERVAL)) {
+        if (
+          Math.floor((d.workTimer - dt) / DUST_INTERVAL) !==
+          Math.floor(d.workTimer / DUST_INTERVAL)
+        ) {
           this.pushFx("dust", job.tx, job.ty);
         }
         const need = DIG_TIME[tile.kind as "dirt" | "ore" | "rock"];
@@ -577,7 +622,9 @@ export class Game {
       const t = tileAt(this.world, d.tx, d.ty);
       return !t || !breathableAt(t);
     });
-    const starving = this.stocks.food <= 0 && this.delvers.some((d) => !d.dead && d.hunger >= HUNGER_MAX);
+    const starving =
+      this.stocks.food <= 0 &&
+      this.delvers.some((d) => !d.dead && d.hunger >= HUNGER_MAX);
     if ((suffocating || starving) && this.alarmTimer <= 0) {
       this.pushSnd("alarm");
       this.alarmTimer = ALARM_INTERVAL;
@@ -616,7 +663,8 @@ export class Game {
     const x1 = Math.max(tx0, tx1);
     const y0 = Math.min(ty0, ty1);
     const y1 = Math.max(ty0, ty1);
-    for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) this.markDig(tx, ty);
+    for (let ty = y0; ty <= y1; ty++)
+      for (let tx = x0; tx <= x1; tx++) this.markDig(tx, ty);
   }
 
   // Place a build ghost + enqueue its build job (refused if the placement is illegal).
@@ -654,7 +702,8 @@ export class Game {
 
   // Raise a specific designation's priority ("do this now", specs/controls.md).
   boostAt(tx: number, ty: number): void {
-    for (const j of this.jobs.list) if (j.tx === tx && j.ty === ty) j.priorityBoost = true;
+    for (const j of this.jobs.list)
+      if (j.tx === tx && j.ty === ty) j.priorityBoost = true;
   }
 
   // ---- Tool / speed / pause / menu controls -----------------------------------
@@ -712,7 +761,8 @@ export class Game {
   runningVents(): { id: number; x: number; y: number }[] {
     const out: { id: number; x: number; y: number }[] = [];
     for (const m of this.world.machines) {
-      if (m.running) out.push({ id: m.id, x: (m.tx + 0.5) * TILE, y: (m.ty + 0.5) * TILE });
+      if (m.running)
+        out.push({ id: m.id, x: (m.tx + 0.5) * TILE, y: (m.ty + 0.5) * TILE });
     }
     return out;
   }
@@ -730,7 +780,13 @@ export class Game {
   // Flood every open tile with a given oxygen level (proof: a breathable colony).
   fillCavern(o2: number): void {
     for (const t of this.world.tiles) {
-      if (t.kind === "open" || t.kind === "floor" || t.kind === "ladder" || t.kind === "wire" || (isMachine(t.kind) && t.kind !== "wall")) {
+      if (
+        t.kind === "open" ||
+        t.kind === "floor" ||
+        t.kind === "ladder" ||
+        t.kind === "wire" ||
+        (isMachine(t.kind) && t.kind !== "wall")
+      ) {
         t.oxygen = o2;
         t.co2 = 0;
       }
@@ -740,7 +796,12 @@ export class Game {
   // fast and suffocates (proof: reach the colony-lost screen quickly).
   sealAndSpend(): void {
     for (const t of this.world.tiles) {
-      if (t.kind === "open" || t.kind === "floor" || t.kind === "ladder" || t.kind === "wire") {
+      if (
+        t.kind === "open" ||
+        t.kind === "floor" ||
+        t.kind === "ladder" ||
+        t.kind === "wire"
+      ) {
         t.oxygen = Math.min(t.oxygen, 28);
         t.co2 = 0;
       }

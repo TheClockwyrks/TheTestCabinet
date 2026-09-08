@@ -85,12 +85,14 @@ it("joins every molecule of the course into one constellation", async () => {
 
     const at = `campaign challenge ${index + 1}`;
     const molecules: [string, Molecule][] = [
-      ...view.reagents.map(
-        (molecule, n): [string, Molecule] => [`${at}'s reagent ${n}`, molecule],
-      ),
-      ...view.products.map(
-        (molecule, n): [string, Molecule] => [`${at}'s product ${n}`, molecule],
-      ),
+      ...view.reagents.map((molecule, n): [string, Molecule] => [
+        `${at}'s reagent ${n}`,
+        molecule,
+      ]),
+      ...view.products.map((molecule, n): [string, Molecule] => [
+        `${at}'s product ${n}`,
+        molecule,
+      ]),
     ];
 
     for (const [where, molecule] of molecules) {

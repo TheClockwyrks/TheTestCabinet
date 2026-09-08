@@ -21,40 +21,87 @@
 // screen is showing: only what a build drew over the strait counts as that
 // screen's copy.
 //
-// A RUN IS MATCHED LOOSELY IN CASE AND IN ITS APOSTROPHE, AND IN NOTHING ELSE.
-// `specs/ui.md` names the copy as constants (`TITLE_TEXT`, `TAGLINE_TEXT`, the
-// three menu lists) but fixes no font, no casing and no typography — those are the
-// build's — so the text is folded to upper case and the three apostrophes a text
-// engine might substitute are folded to the plain one, which is what
-// `TAGLINE_TEXT` ("DON'T LOOK BACK") is written with. Nothing else is normalized:
-// a build that drew a different word drew a different word.
+// THE COPY IS READ BY THE SHARED HARNESS; ONLY WHERE IT WAS DRAWN IS THIS
+// FILE'S. `specs/ui.md` names the copy as constants (`TITLE_TEXT`,
+// `TAGLINE_TEXT`, the three menu lists) but fixes no font, no casing and no
+// typography — those are the build's — and the one reading of that which ships
+// is the shared harness's `drewTextAnywhere` (`case-harness/text.ts`): a
+// substring of every run of the frame joined, ignoring case, with the
+// whitespace folded out of both sides. The checks read it over the strait's
+// runs alone, handed back to it through `screenText`, and nothing else is
+// normalized: the copy is matched as the constants spell it, apostrophe
+// included, and a build that drew a different word drew a different word.
+//
+// TWO READINGS ARE NOT COPY, AND STAY HERE. A figure an end screen reports is
+// matched as a WHOLE token (`standsAlone`), and the how-to screen's six subjects
+// as bounded words; neither is a substring a reader with the spaces folded out
+// can express, so both run over the strait's runs joined into one upper-cased
+// string (`screenTokens`).
 
 import { HUD_H } from "../constants";
-import { drawnTextSpans, type DrawCall, type Harness } from "../harness";
-
-/** The apostrophes a build might set `TAGLINE_TEXT`'s with, folded to the plain one. */
-const APOSTROPHES = /[‘’ʼ´`]/g;
+import {
+  drawnTextRuns,
+  type DrawCall,
+  type Harness,
+  type TextSpan,
+} from "../harness";
 
 /**
- * Every run of text the frame drew over the strait, in the order it drew them.
+ * Every logical run of text the frame spelled over the strait, placed, in
+ * reading order.
  *
  * Anchored at or below `HUD_H`, which is where `specs/strait.md` puts the strait
  * and `specs/ui.md` puts the screens. The anchor is mapped back to logical units
- * by {@link drawnTextSpans}, so a build that laid its screen out through any
- * transform it liked is read where the glyphs actually landed.
+ * by {@link drawnTextRuns}, so a build that laid its screen out through any
+ * transform it liked is read where the glyphs actually landed. The one fact this
+ * file adds to the shared harness's reading of text; everything below is built
+ * on it.
+ *
+ * THE RUNS ARE THE LOGICAL ONES, NOT THE `fillText` CALLS. A build that
+ * letter-spaces its title draws a glyph per call, which is the only portable way
+ * to letter-space canvas text, and `specs/ui.md` fixes the copy while leaving
+ * its typography to the build; {@link drawnTextRuns} coalesces side-by-side
+ * draws on one baseline back into the string they spell, so `F L O E` a glyph
+ * at a time reads as the title it is.
  */
-export function screenRuns(h: Harness, calls: readonly DrawCall[]): string[] {
-  return drawnTextSpans(h, calls)
-    .filter((span) => span.y >= HUD_H)
-    .map((span) => span.text);
+function straitRuns(h: Harness, calls: readonly DrawCall[]): TextSpan[] {
+  return drawnTextRuns(h, calls).filter((span) => span.y >= HUD_H);
 }
 
-/** {@link screenRuns}, joined and folded, as one string a check matches against. */
-export function screenCopy(h: Harness, calls: readonly DrawCall[]): string {
-  return screenRuns(h, calls)
-    .join("  ")
-    .replace(APOSTROPHES, "'")
-    .toUpperCase();
+/** {@link straitRuns}, as the strings they spell. */
+export function screenRuns(h: Harness, calls: readonly DrawCall[]): string[] {
+  return straitRuns(h, calls).map((span) => span.text);
+}
+
+/**
+ * The frame's text over the strait, as the calls the shared harness's copy
+ * readers read.
+ *
+ * `drewText` and `drewTextAnywhere` read a frame's CALLS, and what this case
+ * adds to their reading is only WHERE: the HUD bar is not a screen's copy. So
+ * the strait's runs go back to them as one `fillText` each, at the anchor the
+ * run landed on in logical units, and the comparison — substring, ignoring case, whitespace
+ * folded out of both sides — is the package's own rather than a fold of this
+ * file's. A run already spells what its glyphs spell, and whether the readers
+ * join two of them again changes nothing they answer: both join a baseline's
+ * runs before they compare, and `drewTextAnywhere` the whole frame's.
+ */
+export function screenText(h: Harness, calls: readonly DrawCall[]): DrawCall[] {
+  return straitRuns(h, calls).map((span) => ({
+    kind: "call",
+    method: "fillText",
+    args: [span.text, span.x, span.y],
+  }));
+}
+
+/**
+ * {@link screenRuns} joined into one upper-cased string, for the two readings
+ * that match a TOKEN rather than a piece of copy: a figure matched whole by
+ * {@link standsAlone}, and the how-to screen's subjects matched as bounded
+ * words. The copy constants are not read off this — see {@link screenText}.
+ */
+export function screenTokens(h: Harness, calls: readonly DrawCall[]): string {
+  return screenRuns(h, calls).join("  ").toUpperCase();
 }
 
 /**
@@ -64,7 +111,7 @@ export function screenCopy(h: Harness, calls: readonly DrawCall[]): string {
  * it reports a score of `1240` as `1,240`, and another locale's grouping gives
  * `1'240` or `1\u202F240`. Every one of those reports the one figure.
  *
- * THE ASCII SPACE IS DELIBERATELY NOT ONE OF THEM. {@link screenCopy} joins
+ * THE ASCII SPACE IS DELIBERATELY NOT ONE OF THEM. {@link screenTokens} joins
  * separate draw runs with one, so accepting it would read the `40` of one run and
  * the `130` of the next as the single figure `40130`. `.` is left out for its own
  * reason: it is the decimal point, and a build drawing `1.5` means one and a half.
@@ -91,7 +138,13 @@ function settings(text: string): string[] {
 }
 
 /**
- * `text` matched as a whole word: with no letter or digit against either end.
+ * `text` matched as a whole figure: with no digit against either end.
+ *
+ * THE BOUNDARY IS A DIGIT, NOT A LETTER OR A DIGIT. The runs a check reads are
+ * coalesced by the shared `drawnTextRuns`, which concatenates side-by-side draws
+ * verbatim, so a build that draws `SCORE` and then `1250` a measured space apart
+ * spells the one run `SCORE1250`; a letter boundary would refuse the figure it
+ * plainly reports. A digit boundary keeps every protection this reader is for.
  *
  * What the end screens' FIGURES are read with, so the `8` of "LEVELS CLEARED 8"
  * counts and the `8` of a score of `1834` does not, and so a level reached of `6`
@@ -110,7 +163,7 @@ export function standsAlone(text: string): RegExp {
   const wanted = settings(String(text))
     .map((setting) => setting.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
     .join("|");
-  return new RegExp(`(^|[^A-Z0-9])(?:${wanted})([^A-Z0-9]|$)`, "i");
+  return new RegExp(`(^|[^0-9])(?:${wanted})([^0-9]|$)`, "i");
 }
 
 /**

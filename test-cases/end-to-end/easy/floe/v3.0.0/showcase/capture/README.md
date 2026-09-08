@@ -75,11 +75,11 @@ removed.
 
 ## What was committed
 
-| File                             | How                                                                                                                                                                                                                                                                    |
-| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `showcase/base/crossing.json.gz` | Cap `1650`, patience `0.34`, lean `+1`: 25.6 s, four bays filled, no lives lost, 451 frames with a bear inside five tiles, ended on the hold after the fourth bay. 1,537 frames after thinning — exactly 60 fps — and 1.4 MB.                                          |
-| `showcase/base/mid-crossing.png` | The best frame of that same take by the driver's own still score: the critter on the top water row on a floe, three bays filled, and a bear swimming a hundred units behind it.                                                                                        |
-| `showcase/base/title.png`        | The title screen, drawn by the same reference: the driver resets the game and runs one frame once the audition is over.                                                                                                                                                |
+| File                             | How                                                                                                                                                                                                                           |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `showcase/base/crossing.json.gz` | Cap `1650`, patience `0.34`, lean `+1`: 25.6 s, four bays filled, no lives lost, 451 frames with a bear inside five tiles, ended on the hold after the fourth bay. 1,537 frames after thinning — exactly 60 fps — and 1.4 MB. |
+| `showcase/base/mid-crossing.png` | The best frame of that same take by the driver's own still score: the critter on the top water row on a floe, three bays filled, and a bear swimming a hundred units behind it.                                               |
+| `showcase/base/title.png`        | The title screen, drawn by the same reference: the driver resets the game and runs one frame once the audition is over.                                                                                                       |
 
 That take was chosen by auditioning eight takes of each of the five styles,
 forty in all, and keeping the winner.

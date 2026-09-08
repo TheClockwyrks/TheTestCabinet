@@ -29,10 +29,10 @@ import { TAGLINE_TEXT, TITLE_ITEMS, TITLE_TEXT } from "../constants";
 import {
   captureStill,
   createHarness,
-  drewText,
-  textDraws,
+  placedRuns,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 import { anchorY } from "./stage";
 
 let h: Harness;
@@ -58,7 +58,7 @@ it("draws the title, the tagline, and the three menu items in order", async () =
     );
   }
 
-  const draws = textDraws(calls);
+  const draws = placedRuns(calls);
   for (let index = 0; index + 1 < TITLE_ITEMS.length; index += 1) {
     const above = anchorY(draws, TITLE_ITEMS[index]);
     const below = anchorY(draws, TITLE_ITEMS[index + 1]);

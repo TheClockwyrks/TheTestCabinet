@@ -526,6 +526,7 @@ export const VOLUTE_DEBUG_VERSION = 1;
  */
 export const REQUIRED_OPS = [
   "reset",
+  "reconcile",
   "snapshot",
   "setScreen",
   "setLevel",

@@ -20,13 +20,8 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
-import {
-  captureStill,
-  createHarness,
-  drewText,
-  resetTo,
-  type Harness,
-} from "../harness";
+import { drewText } from "../case-harness/text";
+import { captureStill, createHarness, resetTo, type Harness } from "../harness";
 
 let h: Harness;
 

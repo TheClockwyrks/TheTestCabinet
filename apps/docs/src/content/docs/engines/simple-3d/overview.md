@@ -43,13 +43,13 @@ the game, so a case that measures those measures them directly.
 
 ## The sections
 
-| Section | Covers |
-| --- | --- |
-| [APIs](/engines/simple-3d/apis/overview/) | The types and functions the engine exposes, as the specification its implementation satisfies. |
-| [Concepts](/engines/simple-3d/concepts/overview/) | How each subsystem works and why it is shaped that way. |
-| [Usage](/engines/simple-3d/usage/overview/) | How a build is expected to write its code against the engine. |
-| [Examples](/engines/simple-3d/examples/overview/) | Complete games written against the engine, read as working reference. |
-| [Validators](/engines/simple-3d/validators/overview/) | How a test case checks a build through the engine. |
+| Section                                               | Covers                                                                                         |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| [APIs](/engines/simple-3d/apis/overview/)             | The types and functions the engine exposes, as the specification its implementation satisfies. |
+| [Concepts](/engines/simple-3d/concepts/overview/)     | How each subsystem works and why it is shaped that way.                                        |
+| [Usage](/engines/simple-3d/usage/overview/)           | How a build is expected to write its code against the engine.                                  |
+| [Examples](/engines/simple-3d/examples/overview/)     | Complete games written against the engine, read as working reference.                          |
+| [Validators](/engines/simple-3d/validators/overview/) | How a test case checks a build through the engine.                                             |
 
 ## What dimensionality changes
 

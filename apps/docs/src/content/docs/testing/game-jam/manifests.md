@@ -27,24 +27,24 @@ mark a case as a jam; there is no `type` field.
 A jam declares only these keys. All paths resolve relative to the version
 folder.
 
-| Key | Required | Meaning |
-| --- | --- | --- |
-| `slug` | ✅ | Stable identity (the definition-store key). Identical on every version of the folder. |
-| `name` | ✅ | Human-readable display name. |
-| `changelog` | ✅ | Per-version changelog entry (a Markdown file). Not seeded. |
-| `prompt` | ✅ | The theme brief (a Handlebars template). See below. |
-| `[build]` | ✅ | The fixed build interface: `install` and `build`, both stated, neither empty, no `build.module`. Same as a full-stack case. |
-| `tags` | — | Free-form tags for browsing and search. |
-| `summary` | — | One- or two-sentence abstract on the jam card. Not seeded. |
-| `description` | — | Site-facing prose (a Markdown file). Not seeded. |
-| `max_runtime_hours` | — | Wall-clock cap for the session and for each setup step, defaulted when omitted. Also the model's stated time budget. |
-| `experimental` | — | Hide the version until a deployment opts in. |
-| `workspace` | — | Starter workspace directory seeded into the run root. |
-| `init` | — | Command run once after the workspace is seeded, before the harness starts. |
-| `packages` | — | The `@clockwyrks/*` runtime libraries the build imports, as on a full-stack case. |
-| `engines` | — | The [engines](/components/core/engines/) a run of this jam may select, as on a test case. Defaults to `["none"]`. |
-| `[audio]` | — | The audio packs a run may reach. See below. |
-| `[[review_item]]` | — | Graded review categories. See below. |
+| Key                 | Required | Meaning                                                                                                                     |
+| ------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `slug`              | ✅       | Stable identity (the definition-store key). Identical on every version of the folder.                                       |
+| `name`              | ✅       | Human-readable display name.                                                                                                |
+| `changelog`         | ✅       | Per-version changelog entry (a Markdown file). Not seeded.                                                                  |
+| `prompt`            | ✅       | The theme brief (a Handlebars template). See below.                                                                         |
+| `[build]`           | ✅       | The fixed build interface: `install` and `build`, both stated, neither empty, no `build.module`. Same as a full-stack case. |
+| `tags`              | —        | Free-form tags for browsing and search.                                                                                     |
+| `summary`           | —        | One- or two-sentence abstract on the jam card. Not seeded.                                                                  |
+| `description`       | —        | Site-facing prose (a Markdown file). Not seeded.                                                                            |
+| `max_runtime_hours` | —        | Wall-clock cap for the session and for each setup step, defaulted when omitted. Also the model's stated time budget.        |
+| `experimental`      | —        | Hide the version until a deployment opts in.                                                                                |
+| `workspace`         | —        | Starter workspace directory seeded into the run root.                                                                       |
+| `init`              | —        | Command run once after the workspace is seeded, before the harness starts.                                                  |
+| `packages`          | —        | The `@clockwyrks/*` runtime libraries the build imports, as on a full-stack case.                                           |
+| `engines`           | —        | The [engines](/components/core/engines/) a run of this jam may select, as on a test case. Defaults to `["none"]`.           |
+| `[audio]`           | —        | The audio packs a run may reach. See below.                                                                                 |
+| `[[review_item]]`   | —        | Graded review categories. See below.                                                                                        |
 
 ### No `difficulty`, no `variants`
 

@@ -20,5 +20,5 @@ during the run with the six asset-generation tools on the run image's `PATH`:
 the guest and ride sprite sheets, the path/ride/stall/scenery sprites, the
 fireworks and steam and sparkle particle effects, and the sound and a carnival
 music bed. It then builds the game around them. The case is inspired by
-park-management sims, notably *RollerCoaster Tycoon*; its name, look, system
+park-management sims, notably _RollerCoaster Tycoon_; its name, look, system
 set, and scope are original.

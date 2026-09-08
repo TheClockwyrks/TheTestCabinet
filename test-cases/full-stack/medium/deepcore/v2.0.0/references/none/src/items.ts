@@ -57,12 +57,15 @@ export function buyItem(game: Game, id: ItemId): boolean {
 }
 
 /**
- * Use one supply. Holding none of it, or using one that would change nothing, shows a
- * note and consumes nothing.
+ * Use one supply, from wherever the game stands.
+ *
+ * This is the transaction the hotkey and the inventory's `USE` control name, and
+ * it is what the debug surface calls. Holding none of it, or using one that would
+ * change nothing, shows a note and consumes nothing — those are the supply's own
+ * rules. Whether the game is in live play is the player's route and lives in
+ * `tryUseItem` (`specs/instrumentation.md`, The controls).
  */
-export function useItem(game: Game, id: ItemId): boolean {
-  if (game.screen !== "in-mine" || game.dying || game.launchAnim !== null)
-    return false;
+export function performUseItem(game: Game, id: ItemId): boolean {
   if ((game.items[id] ?? 0) <= 0) {
     game.note(`NO ${ITEM_BY_ID[id].label.toUpperCase()}`);
     return false;
@@ -70,6 +73,13 @@ export function useItem(game: Game, id: ItemId): boolean {
   const applied = applyItem(game, id);
   if (applied) game.items[id]--;
   return applied;
+}
+
+/** The player's route to a supply: live play, then the transaction. */
+export function useItem(game: Game, id: ItemId): boolean {
+  if (game.screen !== "in-mine" || game.dying || game.launchAnim !== null)
+    return false;
+  return performUseItem(game, id);
 }
 
 function applyItem(game: Game, id: ItemId): boolean {

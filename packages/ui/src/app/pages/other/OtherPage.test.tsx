@@ -105,9 +105,7 @@ describe("OtherPage", () => {
 
     const nav = tabBar();
     within(nav).getByRole("link", { name: "Game Jams" });
-    expect(
-      within(nav).queryByRole("link", { name: "Tournaments" }),
-    ).toBeNull();
+    expect(within(nav).queryByRole("link", { name: "Tournaments" })).toBeNull();
   });
 
   it("on the static gallery, drops the game-jams tab when the catalog holds no jam", () => {

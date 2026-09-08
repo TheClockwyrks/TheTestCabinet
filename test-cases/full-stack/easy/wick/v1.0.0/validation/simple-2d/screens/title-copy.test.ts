@@ -18,9 +18,11 @@
 // beyond the reset is made, so a build with a broken menu fails the navigation
 // points and passes this one.
 //
-// THE TOLERANCE. The copy is compared as words in order, through `drewPhrase`,
-// so a build that wraps a line, draws a shadow under its text, or marks the
-// highlighted item passes while a build showing other words fails. The stacking
+// THE TOLERANCE. The copy is matched as a substring of the frame's text
+// through the shared harness's `drewTextAnywhere`, ignoring case and whitespace
+// across every run the frame drew, so a build that wraps a line, draws a
+// shadow under its text, or marks the highlighted item passes while a build
+// showing other words fails. The stacking
 // is read as a strict inequality between the topmost anchor of each item and
 // the one after it, which admits any spacing, font, and alignment the build
 // chose.
@@ -31,11 +33,11 @@ import { TAGLINE_TEXT, TITLE_ITEMS, TITLE_TEXT } from "../constants";
 import {
   captureStill,
   createHarness,
-  drewPhrase,
   present,
   topAnchorOf,
   type Harness,
 } from "../harness";
+import { drewTextAnywhere } from "../case-harness/text";
 
 let h: Harness;
 
@@ -54,7 +56,7 @@ it("draws WICK, the tagline, and the three menu items stacked", async () => {
 
   const copy = [TITLE_TEXT, TAGLINE_TEXT, ...TITLE_ITEMS];
   assertDeepEqual(
-    copy.filter((text) => !drewPhrase(calls, text)),
+    copy.filter((text) => !drewTextAnywhere(calls, text)),
     [],
     "the copy specs/ui.md gives the title screen, missing from its frame",
   );

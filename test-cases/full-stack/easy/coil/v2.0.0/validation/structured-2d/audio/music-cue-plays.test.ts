@@ -21,8 +21,10 @@
 // to its produced file through the engine's cue bus and the build plays each by
 // the name `specs/ui.md` fixes, so a build that plays one of the three event cues
 // at the start of a round does not pass this by making a noise. What is read is
-// the ask the cue bus announces rather than a sound: this process has no Web
-// Audio context, so no produced file is decoded here.
+// the ask the cue bus announces rather than a sound: nothing in this process is
+// audible, and the produced file bound under the name — which the harness's
+// stand-in `AudioContext` really does decode, so the binding happens — is graded
+// off disk by `audio/music-file-produced`.
 //
 // WHAT IS ASSERTED, IN ONE DIRECTION. That no music sounded over a stretch of
 // frames on the title, and that music sounded once the round had begun. It is not

@@ -103,7 +103,10 @@ const require = createRequire(import.meta.url);
 /** @type {import("typescript")} */
 const ts = require("typescript");
 
-const PACKAGE_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const PACKAGE_DIR = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+);
 const SRC_DIR = path.join(PACKAGE_DIR, "src");
 const HEADERS_DIR = path.join(PACKAGE_DIR, "dist", "headers", "gg");
 
@@ -236,11 +239,17 @@ const THROWS_SUBJECT_PATTERN = /^`([^`]+)`/;
  * written for a developer reading the source, while this output is read by a model — the declaration
  * has to arrive as a declaration, not as a paragraph.
  */
-const printer = ts.createPrinter({ removeComments: true, newLine: ts.NewLineKind.LineFeed });
+const printer = ts.createPrinter({
+  removeComments: true,
+  newLine: ts.NewLineKind.LineFeed,
+});
 
 /** @param {import("typescript").Node} node @param {import("typescript").SourceFile} sourceFile */
 function print(node, sourceFile) {
-  return printer.printNode(ts.EmitHint.Unspecified, node, sourceFile).replace(/\s+/g, " ").trim();
+  return printer
+    .printNode(ts.EmitHint.Unspecified, node, sourceFile)
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 /** The declaration text as a documentation view shows it: no `export`/`declare`, no trailing `;`. */
@@ -316,7 +325,9 @@ function proseOf(text, where) {
   const lines = text.replace(/\r/g, "").replace(/^\n+/, "").split("\n");
   const brief = (lines[0] ?? "").trim();
   if (brief === "") {
-    throw new Error(`${where}'s doc comment opens with a blank line rather than with a brief.`);
+    throw new Error(
+      `${where}'s doc comment opens with a blank line rather than with a brief.`,
+    );
   }
   const rest = lines.slice(1);
   if (rest.length > 0 && rest[0].trim() !== "") {
@@ -340,7 +351,10 @@ function proseOf(text, where) {
 function blocks(node, sourceFile) {
   return ts
     .getJSDocCommentsAndTags(node)
-    .filter((block) => ts.isJSDoc(block) && sourceFile.text.slice(0, block.pos).trim() !== "");
+    .filter(
+      (block) =>
+        ts.isJSDoc(block) && sourceFile.text.slice(0, block.pos).trim() !== "",
+    );
 }
 
 /**
@@ -358,7 +372,10 @@ function ownBlock(node, sourceFile) {
 /** One declaration's own documentation, split into a brief and a detail. */
 function documentation(node, sourceFile, where) {
   const own = ownBlock(node, sourceFile);
-  return proseOf(own ? (ts.getTextOfJSDocComment(own.comment) ?? "") : "", where);
+  return proseOf(
+    own ? (ts.getTextOfJSDocComment(own.comment) ?? "") : "",
+    where,
+  );
 }
 
 /**
@@ -511,7 +528,10 @@ function paramDocs(node, sourceFile) {
   const docs = new Map();
   for (const tag of own?.tags ?? []) {
     if (!ts.isJSDocParameterTag(tag)) continue;
-    docs.set(tag.name.getText(sourceFile), flatten(ts.getTextOfJSDocComment(tag.comment) ?? ""));
+    docs.set(
+      tag.name.getText(sourceFile),
+      flatten(ts.getTextOfJSDocComment(tag.comment) ?? ""),
+    );
   }
   return docs;
 }
@@ -534,7 +554,12 @@ function armDoc(union, index, sourceFile) {
   return block
     .slice(3, -2)
     .split("\n")
-    .map((line) => line.replace(/^\s*\*/, "").replace(/^ /, "").trimEnd())
+    .map((line) =>
+      line
+        .replace(/^\s*\*/, "")
+        .replace(/^ /, "")
+        .trimEnd(),
+    )
     .join("\n")
     .trim();
 }
@@ -553,7 +578,10 @@ async function loadCatalogue() {
   const source = await readFile(file, "utf8");
   const { outputText } = ts.transpileModule(source, {
     fileName: file,
-    compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
+    compilerOptions: {
+      module: ts.ModuleKind.ESNext,
+      target: ts.ScriptTarget.ES2022,
+    },
   });
   const url = `data:text/javascript;base64,${Buffer.from(outputText, "utf8").toString("base64")}`;
   return import(url);
@@ -568,21 +596,36 @@ async function loadModule(id) {
         "npm script does).",
     );
   });
-  return ts.createSourceFile(file, text, ts.ScriptTarget.ES2022, /* setParentNodes */ true);
+  return ts.createSourceFile(
+    file,
+    text,
+    ts.ScriptTarget.ES2022,
+    /* setParentNodes */ true,
+  );
 }
 
 /** Whether a statement is exported, which is the whole of what makes a declaration model-facing. */
 function exported(statement) {
-  return (statement.modifiers ?? []).some((m) => m.kind === ts.SyntaxKind.ExportKeyword);
+  return (statement.modifiers ?? []).some(
+    (m) => m.kind === ts.SyntaxKind.ExportKeyword,
+  );
 }
 
 /** The module's own header documentation: the file's leading JSDoc block. */
 function moduleProse(sourceFile, where) {
   const match = /^\s*\/\*\*([\s\S]*?)\*\//.exec(sourceFile.text);
-  if (!match) throw new Error(`${where} has no module header, and the header is what introduces it.`);
+  if (!match)
+    throw new Error(
+      `${where} has no module header, and the header is what introduces it.`,
+    );
   const text = match[1]
     .split("\n")
-    .map((line) => line.replace(/^\s*\*/, "").replace(/^ /, "").trimEnd())
+    .map((line) =>
+      line
+        .replace(/^\s*\*/, "")
+        .replace(/^ /, "")
+        .trimEnd(),
+    )
     .join("\n")
     .trim();
   return proseOf(text, where);
@@ -599,7 +642,10 @@ function moduleProse(sourceFile, where) {
  * contributes every arm's properties in order.
  */
 function typeMembers(statement, sourceFile, where) {
-  if (ts.isInterfaceDeclaration(statement) || ts.isClassDeclaration(statement)) {
+  if (
+    ts.isInterfaceDeclaration(statement) ||
+    ts.isClassDeclaration(statement)
+  ) {
     return propertyMembers(statement.members, sourceFile, where);
   }
   return ts.isTypeAliasDeclaration(statement)
@@ -609,14 +655,28 @@ function typeMembers(statement, sourceFile, where) {
 
 /** {@link typeMembers}, for one type *node* — the recursive half. */
 function typeNodeMembers(node, sourceFile, where) {
-  if (ts.isParenthesizedTypeNode(node)) return typeNodeMembers(node.type, sourceFile, where);
-  if (ts.isTypeLiteralNode(node)) return propertyMembers(node.members, sourceFile, where);
+  if (ts.isParenthesizedTypeNode(node))
+    return typeNodeMembers(node.type, sourceFile, where);
+  if (ts.isTypeLiteralNode(node))
+    return propertyMembers(node.members, sourceFile, where);
   if (ts.isUnionTypeNode(node)) {
     return node.types.flatMap((arm, index) => {
-      if (!ts.isLiteralTypeNode(arm)) return typeNodeMembers(arm, sourceFile, where);
+      if (!ts.isLiteralTypeNode(arm))
+        return typeNodeMembers(arm, sourceFile, where);
       const name = print(arm, sourceFile);
-      const prose = proseOf(armDoc(node, index, sourceFile), `${where}.${name}`);
-      return [{ name, type: null, kind: "variant", brief: prose.brief, detail: prose.detail }];
+      const prose = proseOf(
+        armDoc(node, index, sourceFile),
+        `${where}.${name}`,
+      );
+      return [
+        {
+          name,
+          type: null,
+          kind: "variant",
+          brief: prose.brief,
+          detail: prose.detail,
+        },
+      ];
     });
   }
   return [];
@@ -625,7 +685,10 @@ function typeNodeMembers(node, sourceFile, where) {
 /** The named, typed members of a member list — properties, and nothing a program cannot read. */
 function propertyMembers(members, sourceFile, where) {
   return members
-    .filter((m) => (ts.isPropertySignature(m) || ts.isPropertyDeclaration(m)) && m.name)
+    .filter(
+      (m) =>
+        (ts.isPropertySignature(m) || ts.isPropertyDeclaration(m)) && m.name,
+    )
     .map((member) => {
       const name = member.name.getText(sourceFile);
       const prose = documentation(member, sourceFile, `${where}.${name}`);
@@ -659,7 +722,10 @@ function propertyMembers(members, sourceFile, where) {
 function methodMembers(statement, sourceFile) {
   if (!ts.isInterfaceDeclaration(statement)) return [];
   return statement.members.filter(
-    (member) => ts.isMethodSignature(member) && member.name && !internal(member, sourceFile),
+    (member) =>
+      ts.isMethodSignature(member) &&
+      member.name &&
+      !internal(member, sourceFile),
   );
 }
 
@@ -686,7 +752,10 @@ class Resolver {
             "reasonably type, so it has to name one declaration.",
         );
       }
-      this.byName.set(type.name, { fqn: type.fqn, declaration: type.declaration });
+      this.byName.set(type.name, {
+        fqn: type.fqn,
+        declaration: type.declaration,
+      });
     }
   }
 
@@ -753,7 +822,12 @@ function parametersOf(node, sourceFile, where) {
         ...field,
         kind: "positional",
         default: null,
-        doc: required(docs.get(address), where, `the field \`${address}\``, `@param ${address}`),
+        doc: required(
+          docs.get(address),
+          where,
+          `the field \`${address}\``,
+          `@param ${address}`,
+        ),
         fields: [],
       };
     });
@@ -762,8 +836,15 @@ function parametersOf(node, sourceFile, where) {
       type: parameter.type ? print(parameter.type, sourceFile) : "unknown",
       optional: Boolean(parameter.questionToken || parameter.initializer),
       kind: "positional",
-      default: parameter.initializer ? print(parameter.initializer, sourceFile) : null,
-      doc: required(docs.get(name), where, `the parameter \`${name}\``, `@param ${name}`),
+      default: parameter.initializer
+        ? print(parameter.initializer, sourceFile)
+        : null,
+      doc: required(
+        docs.get(name),
+        where,
+        `the parameter \`${name}\``,
+        `@param ${name}`,
+      ),
       fields,
     };
   });
@@ -801,7 +882,8 @@ function required(text, subject, what, how) {
  */
 function inlineFields(node, sourceFile) {
   if (!node) return [];
-  if (ts.isParenthesizedTypeNode(node)) return inlineFields(node.type, sourceFile);
+  if (ts.isParenthesizedTypeNode(node))
+    return inlineFields(node.type, sourceFile);
   if (ts.isTypeLiteralNode(node)) {
     return node.members
       .filter((member) => ts.isPropertySignature(member) && member.name)
@@ -829,7 +911,9 @@ function inlineFields(node, sourceFile) {
 /** One overload group's shapes, each with its own parameters. */
 function signaturesOf(nodes, sourceFile, name, where) {
   return nodes.map((node) => {
-    const rendered = node.parameters.map((p) => print(p, sourceFile)).join(", ");
+    const rendered = node.parameters
+      .map((p) => print(p, sourceFile))
+      .join(", ");
     const returnType = node.type ? print(node.type, sourceFile) : "void";
     return {
       signature: `${name}(${rendered}): ${returnType}`,
@@ -843,7 +927,8 @@ function signaturesOf(nodes, sourceFile, name, where) {
 /** Build the whole catalogue, for the language whose id is `language`. */
 async function build(language) {
   const catalogue = await loadCatalogue();
-  const { MODULE_ORDER, OPERATIONS, SURFACE, exportedName, keyOf, moduleOf } = catalogue;
+  const { MODULE_ORDER, OPERATIONS, SURFACE, exportedName, keyOf, moduleOf } =
+    catalogue;
 
   // Every operation this SDK says it implements. It is the *other* direction of the `@ggop` check: a
   // declaration that names no operation is caught below, and an operation nothing declares is caught
@@ -918,7 +1003,11 @@ async function build(language) {
         ts.isClassDeclaration(statement)
       ) {
         const fqn = `${path}.${name}`;
-        const prose = documentation(statement, sourceFile, `the type \`${fqn}\``);
+        const prose = documentation(
+          statement,
+          sourceFile,
+          `the type \`${fqn}\``,
+        );
         const type = {
           module: id,
           name,
@@ -972,10 +1061,19 @@ async function build(language) {
           "table, so the two have to be one transformation apart.",
       );
     }
-    const returned = entry.nodes[0].type ? print(entry.nodes[0].type, entry.sourceFile) : NO_RETURN;
+    const returned = entry.nodes[0].type
+      ? print(entry.nodes[0].type, entry.sourceFile)
+      : NO_RETURN;
     const prose = callProse(entry.nodes[0], entry.sourceFile, where, returned);
-    const signatures = signaturesOf(entry.nodes, entry.sourceFile, entry.name, where);
-    const written = signatures.flatMap((shape) => shape.parameters.map((p) => p.type));
+    const signatures = signaturesOf(
+      entry.nodes,
+      entry.sourceFile,
+      entry.name,
+      where,
+    );
+    const written = signatures.flatMap((shape) =>
+      shape.parameters.map((p) => p.type),
+    );
     const types = resolver.closure(returned, ...written, ALWAYS_REFERENCED);
     for (const reference of types) reached.add(reference.fqn);
     functions.push({
@@ -1038,13 +1136,27 @@ async function build(language) {
           "An alias is a shorter way to reach a call, never the only way to reach one.",
       );
     }
-    const returned = helper.node.type ? print(helper.node.type, helper.sourceFile) : NO_RETURN;
+    const returned = helper.node.type
+      ? print(helper.node.type, helper.sourceFile)
+      : NO_RETURN;
     const prose = callProse(helper.node, helper.sourceFile, where, returned);
-    const signatures = signaturesOf([helper.node], helper.sourceFile, name, where);
-    const written = signatures.flatMap((shape) => shape.parameters.map((p) => p.type));
+    const signatures = signaturesOf(
+      [helper.node],
+      helper.sourceFile,
+      name,
+      where,
+    );
+    const written = signatures.flatMap((shape) =>
+      shape.parameters.map((p) => p.type),
+    );
     const types = resolver.closure(returned, ...written, ALWAYS_REFERENCED);
     for (const reference of types) reached.add(reference.fqn);
-    helper.type.memberFunctions.push({ operation, name, fqn, brief: prose.brief });
+    helper.type.memberFunctions.push({
+      operation,
+      name,
+      fqn,
+      brief: prose.brief,
+    });
     functions.push({
       operation,
       aliasOf: operation,
@@ -1067,7 +1179,9 @@ async function build(language) {
     });
   }
 
-  const unreached = declared.filter((type) => !reached.has(type.fqn)).map((type) => type.fqn);
+  const unreached = declared
+    .filter((type) => !reached.has(type.fqn))
+    .map((type) => type.fqn);
   if (unreached.length > 0) {
     throw new Error(
       `${JSON.stringify(unreached)} are declared and nothing refers to them, so no documentation ` +

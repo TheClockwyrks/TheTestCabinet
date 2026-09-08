@@ -73,6 +73,7 @@ export default function item() {
         vy: 0,
         spin: 0,
       });
+      await api.call("reconcile");
       // 180 ticks = 1.5 s, far longer than the ~0.2 s the ball needs to cross the
       // goal edge; poll 2, because a finer sweep can only sharpen the instant the
       // respawn is caught, never miss one a coarser sweep would find.
@@ -90,6 +91,7 @@ export default function item() {
         vy: 0,
         spin: 0,
       });
+      await api.call("reconcile");
     },
 
     // The shot, the contact, and the rebound — the whole of what the item claims, and

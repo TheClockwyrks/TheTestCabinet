@@ -104,7 +104,10 @@ export interface SiteState {
 
 /** A structure's readiness issue (specs/structure.md). */
 export type ReadinessIssue =
-  "no-ring" | "no-rail" | "invalid-rail" | "disconnected-members";
+  | "no-ring"
+  | "no-rail"
+  | "invalid-rail"
+  | "disconnected-members";
 
 /** What would refuse a run: a readiness issue, or an empty tape. */
 export type StartIssue = ReadinessIssue | "empty-program";
@@ -249,10 +252,21 @@ export interface PointerState {
 }
 
 export type Screen =
-  "title" | "howto" | "select" | "build" | "program" | "run" | "results";
+  | "title"
+  | "howto"
+  | "select"
+  | "build"
+  | "program"
+  | "run"
+  | "results";
 
 export type Tool =
-  "strut" | "cable" | "rail" | "ring" | "counterweight" | "delete";
+  | "strut"
+  | "cable"
+  | "rail"
+  | "ring"
+  | "counterweight"
+  | "delete";
 
 /**
  * One sound a transition asked for, and where it is heard from.
@@ -484,6 +498,8 @@ export interface GantryDebugApi {
   // ---- The run and the screens -------------------------------------------
 
   reset(state: ReadonlyGantryState): GantryState;
+  /** Bring every reported reading into agreement with the world as it stands. */
+  reconcile(state: ReadonlyGantryState): GantryState;
   setScreen(state: ReadonlyGantryState, screen: string): GantryState;
   setMenuIndex(state: ReadonlyGantryState, index: number): GantryState;
   openSite(state: ReadonlyGantryState, index: number): GantryState;

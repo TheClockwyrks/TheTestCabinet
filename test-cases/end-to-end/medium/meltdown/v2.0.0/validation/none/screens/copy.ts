@@ -4,8 +4,9 @@
 // Meltdown's debug surface carries no operation that reports a screen's copy:
 // `specs/instrumentation.md` reports the game's STATE, so what a screen SAYS can
 // only be read off the frame it drew. The harness already gives that as
-// `drawnText`, `drewText`, `drewWord` and `textDraws`; the three helpers here are
-// the two readings those do not cover, both of which more than one point in this
+// `drawnText`, `drewWord` and `spelledRuns`, and the package as `drewText`;
+// the helpers here are
+// the readings those do not cover, each of which more than one point in this
 // group needs.
 //
 // WHY THE REACTOR REGION IS SEPARABLE, AND WHY ANY POINT WOULD WANT IT.
@@ -31,19 +32,35 @@
 // that uses it, beside the figure the specification gives it.
 
 import { PANEL_X } from "../constants";
-import { textDraws, type DrawCall } from "../harness";
+import { spelledRuns, type DrawCall } from "../harness";
 
 /**
- * Every run of text the frame drew whose glyphs fall in the REACTOR region.
+ * Every string of text the frame drew whose glyphs fall in the REACTOR region:
+ * each logical run the region spells, and each raw draw it was spelled from.
  *
  * A run is placed by its own midpoint, so a right-aligned run — whose anchor sits
  * at its right-hand end — is placed where its glyphs are rather than where its
  * anchor is. The complement of `hud/panel`'s `panelRuns`, over the same boundary.
+ * A run's midpoint is that of the whole run, which is where its glyphs are, and
+ * the draws it was spelled from go with it.
+ *
+ * The LOGICAL runs AND the `fillText` split, because a figure is a whole token
+ * and each reading can lose it where the other keeps it: a build that
+ * letter-spaces an end screen draws its score a digit per call, and only the
+ * run spells the score; a build that draws two figures tight together in two
+ * calls has them merged, verbatim, into a figure neither is — `875` and `12`
+ * as `87512` — and only the split keeps them. Every reader over this asks
+ * whether some entry carries a figure or how many letters the lot hold, so the
+ * union costs nothing and only ever adds a match. A run drawn in one call
+ * spells itself and is listed once.
  */
 export function reactorTexts(calls: readonly DrawCall[]): string[] {
-  return textDraws(calls)
+  return spelledRuns(calls)
     .filter((run) => (run.left + run.right) / 2 < PANEL_X)
-    .map((run) => run.text);
+    .flatMap((run) => {
+      const texts = [run.text, ...run.parts.map((part) => part.text)];
+      return texts.filter((text, i) => texts.indexOf(text) === i);
+    });
 }
 
 /**

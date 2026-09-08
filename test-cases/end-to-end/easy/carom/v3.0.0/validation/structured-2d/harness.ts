@@ -95,6 +95,20 @@
 // unit a suite's frame-counted tolerance is stated in. A check that is
 // specifically about the step size (gameplay/delta-time-independent) builds its
 // own harnesses with clocks of its own.
+//
+// RECONCILING AFTER A POSE. A specification says what a build REPORTS, not how
+// it HOLDS it, so a reading this case calls derived — a ball's `speed`, and
+// under `gyre` an obstacle's pose beneath the obstacle clock — may be worked out
+// at the read in one build and kept as a stored copy in another. Both are
+// conformant, and they part company the moment a pose writes what that reading
+// depends on: the computing build answers for the world as posed, the storing
+// build for the world before it. So a helper below that poses anything a reading
+// derives from calls `reconcile` before it returns, and a check that reaches its
+// scenario through the helpers never calls it itself. A check that poses with
+// `h.debug.set…` directly calls it once, before its first read or sweep.
+// Advancing a frame is no substitute: a frame moves the very thing the pose just
+// placed, so a measurement taken from a posed rest state comes out wrong by the
+// frame that was meant to refresh the reading.
 
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -137,7 +151,7 @@ import {
 } from "./case-harness/draw-calls";
 import {
   drawnText as rawDrawnText,
-  drewText as spelledText,
+  drawnTextLines,
   textDraws,
   type TextDraw,
 } from "./case-harness/text";
@@ -343,6 +357,29 @@ export function isMultiBall(h: Harness): boolean {
  * argument.
  */
 export function ballOps(h: Harness, index = 0): SharedBallOps {
+  const one = resolveBallOps(h, index);
+  // `spawnBall` and `setBallVelocity` are the two that write what a reading is
+  // derived from — a ball's `speed` is a function of its velocity — so those two
+  // reconcile and the other four do not. A build that works `speed` out at the
+  // read has nothing to do and the call costs it nothing.
+  return {
+    spawnBall: () => {
+      one.spawnBall();
+      h.debug.reconcile();
+    },
+    setBallPosition: (x, y) => one.setBallPosition(x, y),
+    setBallVelocity: (vx, vy) => {
+      one.setBallVelocity(vx, vy);
+      h.debug.reconcile();
+    },
+    setBallSpin: (spin) => one.setBallSpin(spin),
+    setBallHeld: (held) => one.setBallHeld(held),
+    setBallHoldTimer: (seconds) => one.setBallHoldTimer(seconds),
+  };
+}
+
+/** The variant's own six ball operations, before {@link ballOps} reconciles. */
+function resolveBallOps(h: Harness, index: number): SharedBallOps {
   if (!isMultiBall(h)) {
     assertEqual(
       index,
@@ -955,6 +992,7 @@ export function spawnObstacles(
   indices: readonly number[] = ALL_OBSTACLES,
 ): void {
   for (const index of indices) h.debug.spawnObstacle(index);
+  h.debug.reconcile();
 }
 
 /** What a scenario leaves on the field. */
@@ -1095,14 +1133,17 @@ export function gateAi(
  * "reduces to the upright case" (specs/playfield.md) and a shared check about an
  * obstacle face means the same thing in every variant.
  *
- * The clock is the only thing this sets: the POSES are the build's own,
- * recomputed from it on the next frame, so a caller advances one frame before it
- * reads or aims at a face. Both operations are gyre's alone and the other two
- * variants' obstacles never move, so this does nothing there.
+ * The clock is the only thing this sets, and the POSES are the build's own,
+ * derived from it. A build that keeps them as stored values answers for the
+ * clock it had BEFORE this call until it is reconciled, so this reconciles
+ * before it returns and a caller reads the poses the clock it just set names.
+ * Both operations are gyre's alone and the other two variants' obstacles never
+ * move, so this does nothing there.
  */
 export function holdObstacleClock(h: Harness, t = 0): void {
   h.debug.setObstacleClockRunning?.(false);
   h.debug.setObstacleClock?.(t);
+  h.debug.reconcile();
 }
 
 /* ---- Opening a match ------------------------------------------------------ */
@@ -2215,19 +2256,16 @@ export function drawnText(calls: readonly DrawCall[]): string[] {
 }
 
 /**
- * Whether the frame spelled `text` inside some run of text, ignoring case.
+ * Every LOGICAL run of text the frame spelled, as the strings it spells.
  *
- * Substring rather than equality on purpose: the copy a check asserts is the
- * case's own, but how a build presents it is the build's, and a menu entry is
- * commonly drawn with a selection marker or padding around it. Requiring the
- * exact run would fail a screen that shows precisely the right words. Read off
- * the LOGICAL runs rather than off the raw calls, so a heading letter-spaced a
- * glyph per `fillText` is found by the words it spells — which is the same
- * reading the engineless sibling of this project takes.
+ * The reading a check joining the frame's text takes beside {@link drawnText}:
+ * a build that letter-spaces its copy draws one glyph per `fillText`, and only
+ * the coalesced run spells the word those calls make. Every raw string is a
+ * substring of its run, so reading the runs beside the calls can only add a
+ * match — which is what keeps a pattern anchored on a word boundary honest
+ * when two draws close together coalesce across it.
  */
-export function drewText(calls: readonly DrawCall[], text: string): boolean {
-  return spelledText(calls, text);
-}
+export { drawnTextLines };
 
 /**
  * The geometry calls a frame made, by name, and how many of them a frame issued.

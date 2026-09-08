@@ -29,12 +29,12 @@ npm install -g @openai/codex && npm cache clean --force
 
 A session runs `codex exec` with these flags:
 
-| Flag | Purpose |
-| ---- | ------- |
-| `--json` | Emit the line-delimited JSON event stream consumed for [events](/harnesses/codex/events/) and [usage](/harnesses/codex/metrics/). |
-| `--skip-git-repo-check` | Run outside a git repository without prompting. |
-| `--dangerously-bypass-approvals-and-sandbox` | Run unattended, without per-action approval prompts. |
-| `--model <id>` | The model to run. |
+| Flag                                         | Purpose                                                                                                                           |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `--json`                                     | Emit the line-delimited JSON event stream consumed for [events](/harnesses/codex/events/) and [usage](/harnesses/codex/metrics/). |
+| `--skip-git-repo-check`                      | Run outside a git repository without prompting.                                                                                   |
+| `--dangerously-bypass-approvals-and-sandbox` | Run unattended, without per-action approval prompts.                                                                              |
+| `--model <id>`                               | The model to run.                                                                                                                 |
 
 The prompt is the final positional argument.
 

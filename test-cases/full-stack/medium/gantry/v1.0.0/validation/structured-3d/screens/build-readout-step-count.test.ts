@@ -19,7 +19,7 @@
 // tape editor still fails or passes this on its readout alone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { textDraws, toDrawCall, type RecordedOp } from "../case-harness/index";
+import { drawnFigures, inRun, type DrawnFigures } from "./figures";
 import { fail } from "../assert";
 import {
   clearAll,
@@ -39,39 +39,27 @@ const STEP: TapeStepSpec = {
   commands: [{ axis: "slew", target: 30, rate: 10 }],
 };
 
-/** Every run of text the last closed frame drew, with where it landed. */
-async function frameDraws(harness: Harness) {
-  const ops = (await harness.screenOps()) as RecordedOp[];
-  return textDraws(ops.map(toDrawCall));
-}
-
 /**
- * The separators a build may set between a figure's digit triples.
+ * The figures the last closed frame's text carries, and the runs it spelled,
+ * each with where it landed.
  *
- * ASCII space is deliberately absent: a frame's text is assembled by joining
- * separate draw runs with one, so accepting it would read the two figures in
- * `40 130` as the single number 40130. `.` is absent for the same sort of
- * reason — it is the decimal point, and a build drawing `1.5` means one and a
- * half.
- */
-const GROUP = "[,'\\u00A0\\u202F\\u2009]";
-
-/** One drawn number: a grouped figure, or a plain one. */
-const DRAWN = new RegExp(
-  `\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|\\d+(?:\\.\\d+)?`,
-  "g",
-);
-
-/**
- * Every number a run carries.
+ * The runs are the LOGICAL ones the frame spells, each placed where its first
+ * draw was, never the `fillText` split: a build that letter-spaces a label or
+ * a figure draws a glyph per call, which is the only portable way to
+ * letter-space canvas text, and a line assembled from those glyphs reads `1 2`
+ * where the screen says `12`. `screenCalls` carries the measured geometry the
+ * shared merge rule (`case-harness/text.ts`) needs to put side-by-side glyphs
+ * on one baseline back together.
  *
- * A grouped figure reads as the one figure it is, so `1,234` and `1234` both
- * come back as 1234 and a build is free to group the figure it draws.
+ * The figures come from `./figures`, this project's one reading of a number on
+ * the screen, which reads those runs together with the RAW draws underneath
+ * them. The runs alone cannot be read for a figure a space groups, because the
+ * merge writes an ASCII space of its own wherever it crosses a word gap and a
+ * run's spaces are therefore not all the build's; the raw draws alone cannot be
+ * read for the letter-spaced figure above.
  */
-function numbersIn(text: string): number[] {
-  return (text.match(DRAWN) ?? []).map((one) =>
-    Number(one.replace(new RegExp(GROUP, "g"), "")),
-  );
+async function frameFigures(harness: Harness): Promise<DrawnFigures> {
+  return drawnFigures(await harness.screenCalls());
 }
 
 let h: Harness;
@@ -89,20 +77,24 @@ it("draws the tape's step count on the build screen", async () => {
   await clearAll(h);
   await poseTape(h, [STEP, STEP]);
   await h.advance(1);
-  const atTwo = await frameDraws(h);
+  const atTwo = await frameFigures(h);
   await h.capture("build-steps", "The step-count readout");
 
   await poseTape(h, [STEP]);
   await h.advance(1);
-  const atThree = await frameDraws(h);
+  const atThree = await frameFigures(h);
 
-  const readout = atTwo.find((two) =>
-    atThree.some(
+  // Each candidate readout is read on its own — the run, and the draws that
+  // spelled it — rather than the whole frame, because what identifies the step
+  // count is that ONE readout says two and then three. `inRun` is what scopes a
+  // reading to a single readout.
+  const readout = atTwo.runs.find((two) =>
+    atThree.runs.some(
       (three) =>
         Math.abs(three.x - two.x) <= ANCHOR_TOL &&
         Math.abs(three.y - two.y) <= ANCHOR_TOL &&
-        numbersIn(two.text).includes(2) &&
-        numbersIn(three.text).includes(3),
+        atTwo.where(inRun(two)).includes(2) &&
+        atThree.where(inRun(three)).includes(3),
     ),
   );
 
@@ -111,8 +103,9 @@ it("draws the tape's step count on the build screen", async () => {
       "the build screen to draw the tape's step count, so one readout says " +
         "two while the tape holds two steps and three while it holds three " +
         "(specs/ui.md § Build)",
-      `with two steps it drew ${JSON.stringify(atTwo.map((d) => d.text))} ` +
-        `and with three ${JSON.stringify(atThree.map((d) => d.text))}`,
+      `with two steps it drew ` +
+        `${JSON.stringify(atTwo.runs.map((run) => run.text))} and with three ` +
+        `${JSON.stringify(atThree.runs.map((run) => run.text))}`,
     );
   }
 });

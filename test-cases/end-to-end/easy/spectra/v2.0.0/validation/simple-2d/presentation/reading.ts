@@ -1,8 +1,11 @@
 // presentation/reading — how this group reads what one frame painted.
 //
-// Only the `presentation` group reads a frame this way, so these live beside the
-// checks that use them rather than in the shared harness next door. Like
-// everything there they fix a READING alone — which places of a region a thing
+// These live beside the checks that use them rather than in the shared harness
+// next door, because this group is where reading a frame this way belongs and
+// where nearly every caller is. `field/ship-lane` is the one caller outside it:
+// it identifies the ship's blit by shape for the same reason every check here
+// does, and borrowing the reading is what keeps the two from drifting apart. Like
+// everything else in this group they fix a READING alone — which places of a region a thing
 // painted, and what shape a build blitted — and never a threshold: every share,
 // agreement and bound a check asserts is stated in that check, derived from the
 // figure `specs/` fixes for it.

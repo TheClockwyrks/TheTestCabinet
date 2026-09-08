@@ -1,7 +1,7 @@
 // Shatter — touch/drag-cancels: a contact lifted on a different entry confirms
 // nothing.
 //
-// THE RULE. `specs/ui.md`, "Pointer and touch": "A confirm takes both of its edges
+// THE RULE. `specs/ui.md`, "Pointer and touch": "A confirm requires both of its edges
 // inside one entry's region... Two edges that fall in different regions, and an
 // edge that falls outside every region, confirm no entry." On a touchscreen that
 // is the whole of how a player takes a press back: slide the finger off the thing

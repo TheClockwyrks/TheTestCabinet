@@ -29,11 +29,11 @@ npm install -g opencode-ai && npm cache clean --force
 A session runs the `run` subcommand with these flags, followed by the prompt as
 the final positional argument:
 
-| Flag | Purpose |
-| ---- | ------- |
-| `--format json` | Emit the line-delimited JSON stream consumed for [events](/harnesses/opencode/events/) and [usage](/harnesses/opencode/metrics/). |
-| `--dangerously-skip-permissions` | Run unattended, without per-action approval prompts. |
-| `--model <id>` | The model to run. |
+| Flag                             | Purpose                                                                                                                           |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `--format json`                  | Emit the line-delimited JSON stream consumed for [events](/harnesses/opencode/events/) and [usage](/harnesses/opencode/metrics/). |
+| `--dangerously-skip-permissions` | Run unattended, without per-action approval prompts.                                                                              |
+| `--model <id>`                   | The model to run.                                                                                                                 |
 
 ## Authentication
 

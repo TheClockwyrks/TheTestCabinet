@@ -182,9 +182,9 @@ scripts/ci/specs-lint.sh      # markdownlint + cspell over the authored prose
 
 `scripts/setup-hooks.sh` installs the pre-commit hooks, which run the formatting,
 clippy, and doc gates, the front-end test suite, the
-[frozen-version](/development/frozen-versions/) check, and the audio-pack lint on
-each commit. The front-end suite is a commit gate because it completes in
-seconds; the Rust test suite runs in CI.
+[frozen-version](/development/frozen-versions/) check, the audio-pack lint, and the
+seeded-spec vocabulary check on each commit. The front-end suite is a commit gate
+because it completes in seconds; the Rust test suite runs in CI.
 
 ```sh
 node scripts/ci/audio-packs-check.mjs
@@ -196,6 +196,18 @@ full-stack and game-jam version that is not frozen, resolves every declared ref
 against `containers/sample-packs/` for name, version, kind, and published clips,
 and prints the defaults each version's pack order resolves to. It reads the
 committed manifests only, so it needs no credentials.
+
+```sh
+scripts/ci/spec-vocabulary-check.sh
+```
+
+The seeded-spec vocabulary gate also runs on both the commit hook and CI. It reads
+every non-frozen version's `prompt.hbs` and `specs/**`, plus the shared prompt
+preambles in `crates/core/src/prompt.rs`, and fails on any word that would tell a
+model it is being evaluated or that this project exists; the list is in
+[Keeping evaluation out of the seeded set](/guides/authoring/writing-case-specifications/#keeping-evaluation-out-of-the-seeded-set).
+Hits in frozen versions are reported, not failed. It is dependency-free and
+finishes in under a second.
 
 ### `gg` and its eleven toolchains
 
@@ -302,14 +314,14 @@ container installs the musl target for its own architecture, which is what
 Then build with the aliases defined in `.cargo/config.toml`, each of which
 writes to `target/x86_64-unknown-linux-musl/release/`:
 
-| Alias | Binary |
-| --- | --- |
-| `cargo build-portable` | `tcab` |
-| `cargo build-portable-backend` | `tcab-backend` |
+| Alias                             | Binary            |
+| --------------------------------- | ----------------- |
+| `cargo build-portable`            | `tcab`            |
+| `cargo build-portable-backend`    | `tcab-backend`    |
 | `cargo build-portable-dispatcher` | `tcab-dispatcher` |
-| `cargo build-portable-driver` | `tcab-driver` |
-| `cargo build-portable-artifacts` | `tcab-artifacts` |
-| `cargo build-portable-gg` | `gg` |
+| `cargo build-portable-driver`     | `tcab-driver`     |
+| `cargo build-portable-artifacts`  | `tcab-artifacts`  |
+| `cargo build-portable-gg`         | `gg`              |
 
 The backend links statically too: its SeaORM SQLite driver compiles SQLite from
 vendored C source with the same musl toolchain, and its PostgreSQL driver is pure
@@ -359,7 +371,8 @@ npm run build
 
 The other root scripts delegate to each workspace that defines them:
 `npm run dev`, `npm run lint`, `npm run test`, and `npm run typecheck`.
-`npm run lint` also runs `lint:specs` after the per-workspace linters.
+`npm run lint` also runs `lint:specs` and `lint:format` after the per-workspace
+linters.
 
 `npm run test` runs `vitest` in each workspace and is one of the pre-commit
 gates. Iterate on the gallery's own suite with `npm run test -w
@@ -414,6 +427,22 @@ Markdown, HTML, CSS, TOML, and Handlebars under `test-cases/**` and
 `game-jams/**` that a case or jam ships to a model. Add a legitimate domain term to
 `.cspell/project-words.txt` when `cspell` flags it. This is the linter the
 test-case authoring and variant guides refer to under "Validate your work".
+
+Check formatting over the whole checkout with:
+
+```sh
+npm run lint:format   # check
+npm run format        # rewrite
+```
+
+It runs `prettier --check` over every file in the repository: the packages, the
+front ends, the documentation, and every test case's specs, validators, seeded
+workspaces and reference implementations. A formatting warning anywhere fails
+the check. Two things are left out: what `.prettierignore` names (build trees,
+vendored copies, and the Handlebars templates prettier does not parse), and the
+frozen test-case versions, which `scripts/format-check.mjs` derives from their
+`.frozen` markers on each run. Azure DevOps runs it through
+`scripts/ci/format-check.sh`.
 
 ## Generating the data contract
 

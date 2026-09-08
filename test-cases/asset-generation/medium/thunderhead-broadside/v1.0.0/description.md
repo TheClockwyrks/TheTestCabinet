@@ -1,4 +1,4 @@
-**Thunderhead Broadside** is the capital-ship main-gun report from *Thunderhead*,
+**Thunderhead Broadside** is the capital-ship main-gun report from _Thunderhead_,
 a naval fleet-command game. It is the heavy sound a player's battleship fires when
 its main battery salvos a target.
 

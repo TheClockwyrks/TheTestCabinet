@@ -59,7 +59,12 @@ export const CAROM_DEBUG_VERSION = 1;
 
 /** The screens the state machine moves between. */
 export type Screen =
-  "title" | "howto" | "countdown" | "playing" | "paused" | "matchover";
+  | "title"
+  | "howto"
+  | "countdown"
+  | "playing"
+  | "paused"
+  | "matchover";
 
 /** The two screens a pause can resume to, which `resumeScreen` holds. */
 export type ResumeScreen = "countdown" | "playing";
@@ -279,6 +284,19 @@ export interface CaromDebugApi<B extends BallOps = SingleBallOps> {
   spawnObstacle(index: number): void;
   /** Returns the game to its title-screen state. Leaves `muted` alone. */
   reset(): void;
+  /**
+   * Brings every reading the surface reports into agreement with the world as it
+   * stands, advancing nothing.
+   *
+   * A specification says what a build REPORTS, not how it HOLDS it, so a value
+   * this case calls derived — a ball's `speed`, an obstacle's pose under the
+   * obstacle clock — may be worked out at the read in one build and kept as a
+   * stored copy in another. Both are conformant, and they part company the
+   * moment a pose writes what the derived value depends on. This is the call
+   * that closes the gap, and it costs no simulation time, so a measurement taken
+   * from a posed rest state starts exactly where it was posed.
+   */
+  reconcile(): void;
 
   /* Screens and menus. */
 
@@ -382,6 +400,7 @@ export const REQUIRED_OPS = [
   "spawnBall",
   "spawnObstacle",
   "reset",
+  "reconcile",
   "setScreen",
   "setMode",
   "setMenuIndex",

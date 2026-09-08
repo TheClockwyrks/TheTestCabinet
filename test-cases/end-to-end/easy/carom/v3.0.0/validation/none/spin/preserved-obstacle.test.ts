@@ -23,6 +23,7 @@ import { OBSTACLES, OBSTACLE_CENTERS, SPIN_HALFLIFE } from "../constants";
 import {
   arrangeFaceShot,
   ball0,
+  ballOps,
   captureReplay,
   createHarness,
   driveFaceBounce,
@@ -55,7 +56,8 @@ afterEach(async () => {
 it("keeps the spin, less the decay, through an obstacle bounce", async () => {
   await startPlaying(harness);
   await arrangeFaceShot(harness, OBSTACLE, "left");
-  await harness.debug.setBallSpin(SPIN);
+  await (await ballOps(harness)).setSpin(SPIN);
+  await harness.debug.reconcile();
   const posed = ball0(await harness.snapshot()).spin;
 
   const bounce = await captureReplay(harness, "bounce", async () => {

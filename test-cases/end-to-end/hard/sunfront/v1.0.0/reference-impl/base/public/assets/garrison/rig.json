@@ -2,56 +2,32 @@
   "parts": [
     {
       "name": "blockhouse",
-      "pivot": [
-        30,
-        0,
-        22
-      ]
+      "pivot": [30, 0, 22]
     },
     {
       "name": "gatehouse",
       "parent": "blockhouse",
-      "pivot": [
-        30,
-        0,
-        45
-      ]
+      "pivot": [30, 0, 45]
     },
     {
       "name": "belfry",
       "parent": "gatehouse",
-      "pivot": [
-        30,
-        35,
-        45
-      ]
+      "pivot": [30, 35, 45]
     },
     {
       "name": "bell",
       "parent": "belfry",
-      "pivot": [
-        29,
-        45,
-        43
-      ]
+      "pivot": [29, 45, 43]
     },
     {
       "name": "clapper",
       "parent": "bell",
-      "pivot": [
-        29,
-        41,
-        43
-      ]
+      "pivot": [29, 41, 43]
     },
     {
       "name": "ramp",
       "parent": "gatehouse",
-      "pivot": [
-        30,
-        5,
-        51
-      ]
+      "pivot": [30, 5, 51]
     }
   ],
   "joints": [
@@ -60,11 +36,7 @@
       "part": "ramp",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        30,
-        5,
-        51
-      ],
+      "pivot": [30, 5, 51],
       "min": -2.1,
       "max": 0.05,
       "rest": 0.0,
@@ -75,11 +47,7 @@
       "part": "bell",
       "kind": "rotation",
       "axis": "z",
-      "pivot": [
-        29,
-        45,
-        43
-      ],
+      "pivot": [29, 45, 43],
       "min": -0.32,
       "max": 0.32,
       "rest": 0.0,
@@ -90,11 +58,7 @@
       "part": "clapper",
       "kind": "rotation",
       "axis": "z",
-      "pivot": [
-        29,
-        41,
-        43
-      ],
+      "pivot": [29, 41, 43],
       "min": -0.36,
       "max": 0.36,
       "rest": 0.0,

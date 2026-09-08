@@ -40,15 +40,15 @@ name as declared.
 
 ## Contents
 
-| Path             | Seeded to run? | Purpose                                                    |
-| ---------------- | -------------- | ---------------------------------------------------------- |
-| `specs/brief.md` | Yes            | The self-contained sculpting-and-rigging brief.            |
-| `prompt.hbs`     | No             | Rendered into the model's prompt; not seeded.              |
-| `test-case.toml` | No             | Manifest: voxel volume, tool, output, animations, review.  |
-| `variants/`      | No             | One TOML file per variant (listed in `variants`).          |
-| `description.md` | No             | Site blurb.                                                |
-| `README.md`      | No             | This overview.                                             |
-| `changelog.md`   | No             | Per-version changelog entry.                               |
+| Path             | Seeded to run? | Purpose                                                   |
+| ---------------- | -------------- | --------------------------------------------------------- |
+| `specs/brief.md` | Yes            | The self-contained sculpting-and-rigging brief.           |
+| `prompt.hbs`     | No             | Rendered into the model's prompt; not seeded.             |
+| `test-case.toml` | No             | Manifest: voxel volume, tool, output, animations, review. |
+| `variants/`      | No             | One TOML file per variant (listed in `variants`).         |
+| `description.md` | No             | Site blurb.                                               |
+| `README.md`      | No             | This overview.                                            |
+| `changelog.md`   | No             | Per-version changelog entry.                              |
 
 A run receives the seeded brief, the `voxel-anim` binary, and a pre-seeded
 `rig.json` holding the required animation declarations, so the contract exists

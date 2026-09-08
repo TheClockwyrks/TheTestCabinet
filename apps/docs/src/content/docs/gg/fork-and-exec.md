@@ -21,7 +21,7 @@ rather than a declared machine.
 ```jsonc
 {
   "id": "exec",
-  "enabled": true
+  "enabled": true,
 }
 ```
 
@@ -35,11 +35,11 @@ tool refusal listing the ones that are.
 
 Keyed on capability presence, per [module](/gg/modules/):
 
-| | |
-| --- | --- |
-| Present in both | Transferred. The live module, with its contents, re-resolved against the successor's profile. `history` is in every set, which is why an exec'd successor opens on its predecessor's whole conversation. |
-| Held, but the successor's profile turns it off | Dropped. Its backing store is deleted. |
-| Enabled on the successor and not held before | Initialized fresh: an empty task list, an empty notebook. |
+|                                                |                                                                                                                                                                                                          |
+| ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Present in both                                | Transferred. The live module, with its contents, re-resolved against the successor's profile. `history` is in every set, which is why an exec'd successor opens on its predecessor's whole conversation. |
+| Held, but the successor's profile turns it off | Dropped. Its backing store is deleted.                                                                                                                                                                   |
+| Enabled on the successor and not held before   | Initialized fresh: an empty task list, an empty notebook.                                                                                                                                                |
 
 The successor is told all three in an opening note at the tail of the window it
 inherited, along with whatever the `prompt` said. An agent left to discover an
@@ -102,7 +102,7 @@ driver of the machine.
 ```jsonc
 {
   "id": "fork",
-  "enabled": true
+  "enabled": true,
 }
 ```
 
@@ -131,11 +131,11 @@ later `archive_thread` from either copy names the same turns.
 
 Memories follow the forker's [scope](/gg/memories/):
 
-| Scope | The copy's memories |
-| --- | --- |
-| `isolated` | An independent copy; the two diverge |
-| `shared` | The same profile-bound instance |
-| `inherited` | Linked to the forker's instance, read/write; both are holders and both get notices |
+| Scope       | The copy's memories                                                                         |
+| ----------- | ------------------------------------------------------------------------------------------- |
+| `isolated`  | An independent copy; the two diverge                                                        |
+| `shared`    | The same profile-bound instance                                                             |
+| `inherited` | Linked to the forker's instance, read/write; both are holders and both get notices          |
 | `read-only` | Linked to the forker's instance; the copy may not write it, because its own profile says so |
 
 Every scope that links agents at all stays linked across a fork.

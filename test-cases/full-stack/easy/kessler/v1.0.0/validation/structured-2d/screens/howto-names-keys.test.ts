@@ -12,6 +12,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertMatches } from "../assert";
+import { drawnTextLines } from "../case-harness/text";
 import {
   captureStill,
   drawnText,
@@ -49,7 +50,14 @@ it("names a key for every action on the how-to frame", async () => {
   const { calls } = await h.frameDraw();
   captureStill(h, "howto");
 
-  const text = drawnText(calls).join(" ").toLowerCase();
+  // Both the raw strings and the logical runs they spell
+  // (`case-harness/text.ts`): a build that letter-spaces this screen draws one
+  // glyph per call, and only the coalesced run reads as the key it names —
+  // while a run that fuses a key with the label beside it could hide a
+  // `\b`-bounded key the raw call still shows. Together they only add matches.
+  const text = [...drawnText(calls), ...drawnTextLines(calls)]
+    .join(" ")
+    .toLowerCase();
   for (const [action, key] of NAMED) {
     assertMatches(text, key, `the how-to copy naming a key for ${action}`);
   }

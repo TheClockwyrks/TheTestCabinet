@@ -134,7 +134,12 @@ describe("globs", () => {
 describe("the field catalog", () => {
   it("orders field names by code point", () => {
     const catalog = fieldCatalog([doc({ "😀": 1, "！": 1, Z: 1, a: 1 })]);
-    expect(catalog.fields.map((field) => field.name)).toEqual(["Z", "a", "！", "😀"]);
+    expect(catalog.fields.map((field) => field.name)).toEqual([
+      "Z",
+      "a",
+      "！",
+      "😀",
+    ]);
   });
 
   it("omits topValues entirely for a field with none, matching the wire form", () => {

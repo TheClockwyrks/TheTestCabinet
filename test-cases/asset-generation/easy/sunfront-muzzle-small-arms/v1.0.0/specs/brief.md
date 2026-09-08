@@ -1,11 +1,11 @@
 # Sunfront Small-Arms Muzzle Flash — particle brief
 
-You are authoring the **small-arms muzzle flash** for *Sunfront*, a real-time
+You are authoring the **small-arms muzzle flash** for _Sunfront_, a real-time
 tug-of-war of solar-powered war automatons — the hot flash that spits from the
 barrel of a **rifle or light autocannon** as one of the game's infantry and
 light-gunner units fires. It is a **one-shot** effect: **one flash per shot**. The
 game plays a fresh instance each time a unit fires, in sync with its firing cadence,
-so the flash rate matches how fast the unit shoots. You are authoring the *effect* as
+so the flash rate matches how fast the unit shoots. You are authoring the _effect_ as
 a **system**, not a single frozen frame.
 
 ## The field
@@ -109,14 +109,14 @@ Use only these colors — stated as gradient stops over each particle's life, an
 the only hues allowed in the flash (no blues, greens, or purples; this is neutral
 gunfire, not team-tinted):
 
-| Role | Hex |
-| --- | --- |
-| White-hot flash | `#fff3d0` |
+| Role                | Hex       |
+| ------------------- | --------- |
+| White-hot flash     | `#fff3d0` |
 | Flash edge (yellow) | `#ffd873` |
-| Hot spark (orange) | `#ff8a3a` |
-| Spark ember (deep) | `#c24a12` |
-| Smoke wisp (grey) | `#6a6660` |
-| Smoke (thin, dark) | `#2a2824` |
+| Hot spark (orange)  | `#ff8a3a` |
+| Spark ember (deep)  | `#c24a12` |
+| Smoke wisp (grey)   | `#6a6660` |
+| Smoke (thin, dark)  | `#2a2824` |
 
 A natural read: the **flash** runs `#fff3d0` → `#ffd873`; the **sparks** run
 `#ff8a3a` → `#c24a12`; the **smoke** runs `#6a6660` → `#2a2824` as it fades.
@@ -125,19 +125,19 @@ A natural read: the **flash** runs `#fff3d0` → `#ffd873`; the **sparks** run
 
 The `particle-3d` binary on your `PATH` is the only way to shape the effect, and
 you **author a system**, not individual particles — emitters, forces, and
-per-particle size/opacity/color curves that the review UI and the game **simulate
-live**. Build it up in sensible layers: add the flash-core, forward-spark, and
-smoke-wisp emitters (as timed bursts at the shot instant); set the forces (forward
-projection via emission, drag, light gravity, and the smoke's buoyancy); then set
-each emitter's color gradient, opacity curve, and size curve. Keep the timeline a
-**one-shot** so the effect fires once and decays to empty (the game replays it per
-shot).
+per-particle size/opacity/color curves that the game, or any viewer that plays
+it, **simulates live**. Build it up in sensible layers: add the flash-core,
+forward-spark, and smoke-wisp emitters (as timed bursts at the shot instant);
+set the forces (forward projection via emission, drag, light gravity, and the
+smoke's buoyancy); then set each emitter's color gradient, opacity curve, and
+size curve. Keep the timeline a **one-shot** so the effect fires once and decays
+to empty (the game replays it per shot).
 
 Rendering is **on request**: run `particle-3d render` to simulate the whole system
 over its duration, write the preview `effect.gif`, and **emit the `system.json`
 your result is built from** — you **must** render before you finish or the system
 is empty. Because the simulation is **live and stochastic**, the effect **varies
-slightly from play to play**; judge its *character* — the read, the single bright
+slightly from play to play**; judge its _character_ — the read, the single bright
 flash, the forward spit — across replays and from multiple orbit angles, not any
 single frame. The field size, duration, and fps are already seeded in a config
 beside your workspace, so no operation needs those flags. Run `particle-3d --help`

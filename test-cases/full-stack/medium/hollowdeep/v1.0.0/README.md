@@ -9,7 +9,7 @@ refine→build→farm loop, all racing a finite starting pocket of air.
 
 `hollowdeep` is the catalog slug for this lineage of colony-survival cases, and
 the game's in-fiction title. The case is inspired by colony survival sims,
-notably *Oxygen Not Included*; its name, look, system set, and scope are
+notably _Oxygen Not Included_; its name, look, system set, and scope are
 original to The Test Cabinet.
 
 ## What "full-stack" means
@@ -53,13 +53,13 @@ both simulate and produce well.
 
 ## Contents
 
-| Path                  | Seeded to run? | Purpose                                                |
-| --------------------- | -------------- | ------------------------------------------------------ |
-| `specs/`              | Yes            | The spec handed to the model, by concern.              |
-| `prompt.hbs`          | No             | Rendered into the model's prompt; not seeded.          |
-| `workspaces/base/`    | Yes            | Starter project seeded to the run root.                |
-| `test-case.toml`      | No             | Manifest: type, specs, variants, review items.         |
-| `README.md`           | No             | This overview.                                         |
+| Path               | Seeded to run? | Purpose                                        |
+| ------------------ | -------------- | ---------------------------------------------- |
+| `specs/`           | Yes            | The spec handed to the model, by concern.      |
+| `prompt.hbs`       | No             | Rendered into the model's prompt; not seeded.  |
+| `workspaces/base/` | Yes            | Starter project seeded to the run root.        |
+| `test-case.toml`   | No             | Manifest: type, specs, variants, review items. |
+| `README.md`        | No             | This overview.                                 |
 
 The specification is split across `specs/` by concern: `overview.md`,
 `world.md`, `gas.md`, `power.md`, `delvers.md`, `economy.md`, `controls.md`,

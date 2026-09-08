@@ -1,21 +1,23 @@
 // building/preview-invalid-off-the-grid — a footprint that would run past the
 // floor's edge is never committed clipped.
 //
-// specs/building.md fixes two rules that meet here. The held preview is "clamped
-// so that the whole footprint stays on the grid", and a footprint is valid only
-// when "every tile of the footprint is on the grid" (condition 1); specs/floor.md
-// adds that the casing is not part of the tile grid and that no tower footprint
-// ever covers any part of it. specs/instrumentation.md says the same of the
-// operation used here: `setPreview` moves the footprint's top-left to the tile
-// asked for, "clamped so the footprint stays fully on the grid".
+// specs/building.md fixes two rules that meet here. The preview a POINTER carries
+// is "clamped so that the whole footprint stays on the grid", and a footprint is
+// valid only when "every tile of the footprint is on the grid" (condition 1);
+// specs/floor.md adds that the casing is not part of the tile grid and that no
+// tower footprint ever covers any part of it. specs/instrumentation.md separates
+// the two: `setPreview` is a POSE and moves the footprint's top-left "exactly
+// where the call names it", and "a footprint hanging off the grid is one the
+// placement check answers `false` for".
 //
-// SO A BUILD HANDED A TOP-LEFT WHOSE BLOCK WOULD RUN PAST THE FAR EDGE HAS EXACTLY
-// TWO CONFORMANT ANSWERS, and this check accepts either: clamp the footprint back
-// onto the grid, which is what the preview rule says, or hold the footprint as
-// asked and report it INVALID, which is what condition 1 says. What no build may
-// do is COMMIT it — a tower standing partly off the grid, out over the casing, is
-// the defect this item exists to catch — and that is asserted directly against the
-// roster after the placement is attempted.
+// SO A BUILD HANDED A TOP-LEFT WHOSE BLOCK WOULD RUN PAST THE FAR EDGE HOLDS THE
+// FOOTPRINT AS ASKED AND REPORTS IT INVALID. This check still accepts a clamp as
+// well, because a build that clamped would be wrong about `setPreview` rather
+// than about this requirement, and `instrumentation/poses-read-back-the-build` is
+// where that is decided. What no build may do is COMMIT it — a tower standing
+// partly off the grid, out over the casing, is the defect this item exists to
+// catch — and that is asserted directly against the roster after the placement is
+// attempted.
 //
 // A 4x4 Lance is used because it is the largest footprint, so the anchor asked for
 // below runs three columns and three rows past the last tile.

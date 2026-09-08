@@ -26,12 +26,14 @@
 // Nothing here settles a chain, so the round stays on `playing` even though the
 // quiet filler carries no legal swap of its own.
 //
-// The copy is read through `frameText`, which gathers a frame's canvas text and
-// the page's own DOM text alike, because specs/assets.md has an engineless
-// build draw its chrome "in code (canvas or DOM)" and this point is not about
-// which of the two it chose. `showsText` then decides whether a string is on
-// screen across every shape specs/ui.md leaves open — one call per line, one
-// per word, one per glyph, or a figure drawn beside its label in a single run.
+// The copy is read through `frameText`, which hands back a frame's draw calls
+// and the page's own rendered DOM text alike, because specs/assets.md has an
+// engineless build draw its chrome "in code (canvas or DOM)" and this point is
+// not about which of the two it chose. `frameShows` then decides whether a
+// string is on screen — the calls through the shared harness's
+// `drewTextAnywhere`, the document by the same reading — across every shape
+// specs/ui.md leaves open: one call per line, one per word, one per glyph, or a
+// figure drawn beside its label in a single run.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, fail } from "../assert";
@@ -40,8 +42,10 @@ import { HUD_LEVEL_LABEL } from "../constants";
 import {
   captureStill,
   createHarness,
+  frameShows,
   loadBoard,
-  showsText,
+  shownText,
+  type FrameText,
   type Harness,
 } from "../harness";
 
@@ -50,10 +54,13 @@ const POSED_LEVEL = 7;
 
 let h: Harness;
 
-/** The frame showed `wanted`, or the failure names it beside what it drew. */
-function requireCopy(drawn: readonly string[], wanted: string): void {
-  if (!showsText(drawn, wanted)) {
-    fail(`the playing screen to show ${JSON.stringify(wanted)}`, drawn);
+/** The frame showed `wanted`, or the failure names it beside what it showed. */
+function requireCopy(frame: FrameText, wanted: string): void {
+  if (!frameShows(frame, wanted)) {
+    fail(
+      `the playing screen to show ${JSON.stringify(wanted)}`,
+      shownText(frame),
+    );
   }
 }
 
@@ -83,9 +90,9 @@ it("draws the level label and the level the state holds", async () => {
   assertEqual(posed.levelScore, 0, "the posed level score");
 
   // One frame, and everything it put on screen. The still is that same frame.
-  const drawn = await h.frameText();
+  const frame = await h.frameText();
   await captureStill(h, "hud");
 
-  requireCopy(drawn, HUD_LEVEL_LABEL);
-  requireCopy(drawn, String(POSED_LEVEL));
+  requireCopy(frame, HUD_LEVEL_LABEL);
+  requireCopy(frame, String(POSED_LEVEL));
 });

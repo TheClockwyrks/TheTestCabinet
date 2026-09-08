@@ -179,7 +179,7 @@ function stepMenuScreen(sim: Sim, input: FrameInput, ev: FrameEvents): void {
 /**
  * Drop the presses in flight when the frame changed the screen.
  *
- * A confirm takes both of its edges on ONE menu (specs/ui.md), so a release
+ * A confirm requires both of its edges on ONE menu (specs/ui.md), so a release
  * still to come belongs to a screen that is no longer shown.
  */
 function forgetPresses(sim: Sim, opening: Screen): void {

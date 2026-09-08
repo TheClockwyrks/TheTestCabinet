@@ -58,7 +58,6 @@ import {
   captureStill,
   colorDistance,
   createHarness,
-  drewText,
   poseTower,
   requireTower,
   sampleColor,
@@ -68,6 +67,7 @@ import {
   type Harness,
   type Rgb,
 } from "../harness";
+import { drewText } from "../case-harness/index";
 
 /**
  * How far apart, out of the 441 the RGB cube spans, the strongest probe inside the

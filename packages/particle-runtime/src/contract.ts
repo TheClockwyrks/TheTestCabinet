@@ -20,7 +20,13 @@ export type { InterpSpec } from "@clockwyrks/asset-contract";
 export type Vec3 = [number, number, number];
 
 /** The emission-source shape a particle is born on. */
-export type EmitterShape = "point" | "disc" | "sphere" | "cone" | "box" | "edge";
+export type EmitterShape =
+  | "point"
+  | "disc"
+  | "sphere"
+  | "cone"
+  | "box"
+  | "edge";
 
 /**
  * The size of an emitter's {@link EmitterShape}: `radius` for the round shapes,

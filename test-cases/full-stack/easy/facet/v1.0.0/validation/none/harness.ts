@@ -107,6 +107,8 @@ import {
   closeWorkerBrowser,
   createCaseHarness,
   drawnText,
+  drawnTextLines,
+  drewTextAnywhere,
   mediaDestination as mediaPath,
   setsOf,
   type Clock,
@@ -505,22 +507,22 @@ export interface Harness {
   /** Run exactly one frame and hand back every operation its render issued. */
   frameCalls(): Promise<DrawCall[]>;
   /**
-   * Run one frame and hand back every string that frame put on screen.
+   * Run one frame and hand back what that frame put on screen: its draw calls,
+   * and the page's own RENDERED DOM text beside them.
    *
-   * The union of the frame's canvas text and the page's own RENDERED DOM text,
-   * because `specs/assets.md` says the chrome is "drawn in code (canvas or DOM)"
-   * and an engineless build is entitled to either. The canvas strings come first,
-   * in the order the frame drew them, and the DOM strings after. A DOM string
-   * counts only where it is on screen: an element hidden by `display`,
+   * Both halves, because `specs/assets.md` says the chrome is "drawn in code
+   * (canvas or DOM)" and an engineless build is entitled to either. A DOM
+   * string counts only where it is on screen: an element hidden by `display`,
    * `visibility`, a zero `opacity` or a zero-sized box has drawn nothing, so a
    * check that reads an ABSENCE reads the frame rather than the document.
    *
-   * The pieces are as the build drew them, which is not always a word: a build
-   * that letter-spaces a title issues one `fillText` per GLYPH, and the array then
-   * holds `"F", "A", "C", "E", "T"`. So a check asks {@link showsText} whether the
-   * copy is on screen rather than looking for it in the array itself.
+   * A check asks {@link frameShows} whether the copy is on screen rather than
+   * looking for it in either half itself: a build that letter-spaces a title
+   * issues one `fillText` per GLYPH, and only the shared harness's reading over
+   * the logical runs those measured glyphs coalesce into spells `"FACET"` out of
+   * `"F", "A", "C", "E", "T"`.
    */
-  frameText(): Promise<string[]>;
+  frameText(): Promise<FrameText>;
   /**
    * Reflect the surface WITHOUT invoking it: the `typeof` of each name.
    *
@@ -661,6 +663,12 @@ const kit = createCaseHarness<FacetSnapshot, FacetSurface>({
   step: { kind: "seconds-frames", op: "advance" },
   stage: { width: STAGE_W, height: STAGE_H },
   tickHz: TICK_HZ,
+  // Measure every text call a frame made, in the page and under the build's own
+  // loaded fonts, so the shared harness's readers over LOGICAL RUNS of text can
+  // coalesce a heading drawn a glyph at a time back into the word it spells;
+  // without a width every draw is a point and nothing merges. `frameShows`
+  // reads those runs.
+  measureText: true,
   // A GENUINE browser gesture, so the build's audio context can open: a build is
   // free to open its audio from a real DOM event alone, so a gesture delivered
   // any other way would leave a perfectly good build silent. A KEY rather than a
@@ -1078,7 +1086,7 @@ export async function createHarness(
     frameCalls,
 
     async frameText() {
-      const drawn = await frameCalls();
+      const calls = await frameCalls();
       const dom = await base.page.evaluate(() => {
         const found: string[] = [];
         const skip = new Set([
@@ -1128,7 +1136,7 @@ export async function createHarness(
         }
         return found;
       });
-      return [...drawnText(drawn), ...dom];
+      return { calls, dom };
     },
 
     probe: async (names) => (await base.probe(names)).ops,
@@ -1252,55 +1260,83 @@ export { callsTo, setsOf };
 export { drawnText };
 
 /**
- * Whether `wanted` is among the words a frame put on screen.
+ * What one frame put on screen, as {@link Harness.frameText} hands it back.
  *
- * FACET'S OWN, and not the shared harness's `drewText`. That one reads the
- * LOGICAL runs a frame's text calls spell and asks whether one of them contains
- * the copy; this reads four ways, from the most local to the most permissive, so
- * that a build which drew the copy in ONE call is decided by that call alone. The
- * two agree on a build that draws a line at a time and disagree on every other,
- * and this project's items were written against this one.
- *
- * `specs/ui.md` fixes the COPY — `FACET`, `PRESSURE FINDS THE FLAW`, `SCORE`,
- * `PLAY AGAIN` — and fixes nothing about how many draw calls a build spends on
- * it. All four of these are conformant renderings of the same screen, and this
- * reads all four the same way:
- *
- *   one call per line     `"FACET"`
- *   one call per word     `"HOW"`, `"TO"`, `"PLAY"`
- *   one call per glyph    `"F"`, `"A"`, `"C"`, `"E"`, `"T"`
- *   a decorated entry     `"> PLAY <"`, or `"SCORE 120"` for a check about
- *                         the label alone
- *
- * Four readings, tried from the most local to the most permissive, so a build
- * that drew the copy in ONE call is decided by that call alone: a piece that IS
- * the copy; a piece that CONTAINS it; the frame's whole run of text; and that
- * run with all whitespace taken out of both sides, which is the only reading
- * that finds a line a build drew one word at a time.
- *
- * What the last two readings buy is bounded, and the bound is the rule for
- * using this: a search over the joined run can find a phrase that spans two
- * adjacent draws, so this decides that copy IS on screen and NEVER that two
- * pieces of copy are separate. An item about two readouts asks about each of
- * them; an item that asserts copy is ABSENT asserts the absence of that one
- * string and pairs it with a frame that does show it, so an accidental join
- * shows up as the two frames agreeing rather than as a verdict.
+ * TWO HALVES, because `specs/assets.md` says the chrome is "drawn in code
+ * (canvas or DOM)" and an engineless build is entitled to either: the
+ * operations the frame's render issued, and the strings the page's own RENDERED
+ * document shows beside the canvas. They are kept apart rather than folded into
+ * one list because they are read differently — the calls by the shared
+ * harness's readers over the logical runs they spell, the document by the same
+ * comparison over its strings — and a check reads them together through
+ * {@link frameShows}.
  */
-export function showsText(pieces: readonly string[], wanted: string): boolean {
-  const needle = wanted.trim().toLowerCase();
-  if (needle === "") return true;
-  const lower = pieces.map((piece) => piece.toLowerCase());
-  if (lower.some((piece) => piece.trim() === needle)) return true;
-  if (lower.some((piece) => piece.includes(needle))) return true;
-  const joined = lower.join("");
-  if (joined.includes(needle)) return true;
-  const bare = (value: string): string => value.replace(/\s+/gu, "");
-  return bare(joined).includes(bare(needle));
+export interface FrameText {
+  /** Every operation the frame's render issued, as {@link Harness.frameCalls}. */
+  calls: DrawCall[];
+  /**
+   * Every text node the document shows, trimmed, in document order.
+   *
+   * WHAT IS RENDERED, NOT WHAT IS IN THE DOCUMENT: a text node whose nearest
+   * rendered ancestor is hidden — by `display`, by `visibility`, by a zero
+   * `opacity`, or by carrying no box at all — has drawn nothing and is not here,
+   * so a check that reads an ABSENCE reads the frame rather than the document.
+   */
+  dom: string[];
 }
 
-/** Whether the frame's own draw calls put `wanted` on screen. */
-export function drewText(calls: readonly DrawCall[], wanted: string): boolean {
-  return showsText(drawnText(calls), wanted);
+/**
+ * Whether `wanted` is on screen: spelled by the frame's draw calls, or shown by
+ * the rendered document.
+ *
+ * THE CANVAS HALF IS THE SHARED HARNESS'S `drewTextAnywhere`, and it is what
+ * decides every build that draws its chrome on the canvas. `specs/ui.md` fixes
+ * the COPY — `FACET`, `PRESSURE FINDS THE FLAW`, `SCORE`, `PLAY AGAIN` — and
+ * fixes nothing about how many draw calls a build spends on it, and that reading
+ * finds one call per line, one per word, one per glyph, an entry decorated with
+ * a marker, and a title letter-spaced under a drop shadow alike: the measured
+ * glyphs are coalesced into the logical runs they spell, every run of the frame
+ * is joined, and `wanted` is matched as a substring of that, ignoring case and
+ * whitespace.
+ *
+ * THE DOCUMENT HALF IS THE SAME COMPARISON over the strings the rendered page
+ * shows, so a build that keeps its HUD in the DOM is read by the rule the canvas
+ * is. It is the one thing Facet reads that the shared harness does not, and it
+ * is the whole reason this reader exists beside the package's.
+ *
+ * BOUNDED THE WAY ANY READING OVER A JOINED FRAME IS: a search over the joined
+ * text can find a phrase that spans two adjacent runs, so this decides that copy
+ * IS on screen and NEVER that two pieces of copy are separate. An item about two
+ * readouts asks about each of them; an item that asserts copy is ABSENT asserts
+ * the absence of that one string and pairs it with a frame that does show it, so
+ * an accidental join shows up as the two frames agreeing rather than as a
+ * verdict.
+ */
+export function frameShows(frame: FrameText, wanted: string): boolean {
+  return (
+    drewTextAnywhere(frame.calls, wanted) || documentShows(frame.dom, wanted)
+  );
+}
+
+/**
+ * Whether the rendered document shows `wanted`: the comparison
+ * `drewTextAnywhere` makes, over the document's strings rather than a frame's
+ * runs — joined, whitespace folded out of both sides, matched ignoring case.
+ */
+function documentShows(dom: readonly string[], wanted: string): boolean {
+  const fold = (value: string): string =>
+    value.replace(/\s+/gu, "").toLowerCase();
+  return fold(dom.join(" ")).includes(fold(wanted));
+}
+
+/**
+ * The text a frame shows, as the strings a failure is worded with: the logical
+ * runs its calls spell (the shared harness's `drawnTextLines`), then the
+ * document's. For reading a frame's copy, {@link frameShows} is the reader;
+ * this is what a check prints beside the copy the screen owed.
+ */
+export function shownText(frame: FrameText): string[] {
+  return [...drawnTextLines(frame.calls), ...frame.dom];
 }
 
 /**
@@ -1634,6 +1670,17 @@ export function framesPast(seconds: number): number {
 // working the menu the way a player does and reading what the build did. Every
 // other check reaches its scenario through here instead, so a build with a
 // broken title menu fails those items rather than every item in the project.
+//
+// RECONCILING AFTER A POSE. specs/instrumentation.md's `reconcile()` brings
+// every reading the surface reports into agreement with the game as it stands,
+// without advancing anything — so a build that keeps one of the seven derived
+// fields as a stored copy (`legalSwap` above all, which follows from the whole
+// board) answers for the board and the screen the helper just posed rather than
+// for the ones before it. A helper here that writes a board, takes one out of
+// play, shows a screen, or plays a swap calls it before it returns, so a check
+// that poses through the helpers never calls it itself. A check that poses with
+// `h.debug.set…` directly and then reads calls it once, before its first read.
+//
 
 /**
  * Write a board onto the game and change NOTHING else.
@@ -1658,6 +1705,7 @@ export async function writeBoard(
 ): Promise<FacetSnapshot> {
   parseRows(rows);
   await h.debug.loadBoard(rows);
+  await h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -1688,6 +1736,7 @@ export async function loadBoard(
   await h.debug.loadBoard(rows);
   await h.debug.setMenuIndex(0);
   await h.debug.setScreen("playing");
+  await h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -1731,6 +1780,7 @@ export async function startRound(h: Harness): Promise<FacetSnapshot> {
   await h.debug.dealBoard();
   await h.debug.setMenuIndex(0);
   await h.debug.setScreen("playing");
+  await h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -1758,6 +1808,7 @@ export async function openNextLevel(h: Harness): Promise<FacetSnapshot> {
   await h.debug.dealBoard();
   await h.debug.setMenuIndex(0);
   await h.debug.setScreen("playing");
+  await h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -1779,6 +1830,7 @@ export async function quitToTitle(h: Harness): Promise<FacetSnapshot> {
   await h.debug.clearBoard();
   await h.debug.setMenuIndex(0);
   await h.debug.setScreen("title");
+  await h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -1791,6 +1843,7 @@ export async function quitToTitle(h: Harness): Promise<FacetSnapshot> {
 export async function openHowTo(h: Harness): Promise<FacetSnapshot> {
   await h.debug.setMenuIndex(0);
   await h.debug.setScreen("howto");
+  await h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -1803,6 +1856,7 @@ export async function openHowTo(h: Harness): Promise<FacetSnapshot> {
 export async function pauseGame(h: Harness): Promise<FacetSnapshot> {
   await h.debug.setMenuIndex(0);
   await h.debug.setScreen("paused");
+  await h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -1815,6 +1869,7 @@ export async function pauseGame(h: Harness): Promise<FacetSnapshot> {
 export async function resumeGame(h: Harness): Promise<FacetSnapshot> {
   await h.debug.setMenuIndex(0);
   await h.debug.setScreen("playing");
+  await h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -1845,6 +1900,7 @@ export async function reachScreen(
     await h.debug.setMenuIndex(0);
     await h.debug.setScreen(screen);
   }
+  await h.debug.reconcile();
   const reading = await h.snapshot();
   if (reading.screen !== screen) {
     fail(`the ${screen} screen these poses ask for`, reading.screen);
@@ -1946,6 +2002,7 @@ export async function requestSwap(
   b: CellRef,
 ): Promise<FacetSnapshot> {
   await h.debug.requestSwap(a.col, a.row, b.col, b.row);
+  await h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -2129,6 +2186,7 @@ export async function releasePointer(
 ): Promise<FacetSnapshot> {
   if (device === undefined) await h.debug.pointerUp();
   else await h.debug.pointerUp(device);
+  await h.debug.reconcile();
   return h.snapshot();
 }
 

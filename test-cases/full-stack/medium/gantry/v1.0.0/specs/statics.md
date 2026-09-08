@@ -231,12 +231,12 @@ its top are both clear of it:
 
 Those three are the whole of it. Body by body:
 
-| Body | Tested against |
-| --- | --- |
-| A member | Obstacles |
-| An attached load | Obstacles and the ground |
-| The hook | The ground, and only while no load is attached |
-| The cable, the trolley, the slew ring, the counterweights, the anchor mounts, waiting loads, and placed loads | Nothing |
+| Body                                                                                                          | Tested against                                 |
+| ------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| A member                                                                                                      | Obstacles                                      |
+| An attached load                                                                                              | Obstacles and the ground                       |
+| The hook                                                                                                      | The ground, and only while no load is attached |
+| The cable, the trolley, the slew ring, the counterweights, the anchor mounts, waiting loads, and placed loads | Nothing                                        |
 
 The structure never collides with itself or with a load.
 
@@ -245,13 +245,13 @@ The structure never collides with itself or with a load.
 Every failed run carries exactly one cause, the first the tick pipeline
 reached, from this fixed vocabulary. The causes in this file:
 
-| Cause | Meaning |
-| --- | --- |
-| `collapse` | A solve went singular, or the trolley's track broke under it. |
-| `ring-overload` | A ring connection exceeded `RING_CAP`. |
-| `structure-struck-obstacle` | A member swept into an obstacle. |
-| `load-struck-obstacle` | The carried load hit an obstacle. |
-| `load-struck-ground` | The carried load, or the empty hook, hit the ground. |
+| Cause                       | Meaning                                                       |
+| --------------------------- | ------------------------------------------------------------- |
+| `collapse`                  | A solve went singular, or the trolley's track broke under it. |
+| `ring-overload`             | A ring connection exceeded `RING_CAP`.                        |
+| `structure-struck-obstacle` | A member swept into an obstacle.                              |
+| `load-struck-obstacle`      | The carried load hit an obstacle.                             |
+| `load-struck-ground`        | The carried load, or the empty hook, hit the ground.          |
 
 `specs/rigging.md` and `specs/program.md` contribute the rest: `cable-snap`,
 `attach-missed`, `release-misplaced`, `command-out-of-range`, and

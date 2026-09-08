@@ -126,7 +126,7 @@ Each of those is now one gate: `setBearEmergence`, `setCatchTest`,
 `setFishCadence` and `setTimerRunning`, each gating one faculty and nothing else,
 each on by default, each restored to on by `reset`, and each reported by
 `snapshot()`. The shared fixture turns all four off, and exactly the items whose
-requirement *is* one of those faculties turn the one they need back on.
+requirement _is_ one of those faculties turn the one they need back on.
 
 `setBearAI(enabled)` is gone with them. It was one switch over the whole
 creature and over every hunter slot at once, so a check that wanted to measure
@@ -213,19 +213,19 @@ Every correction `v2.0.0` made survives this rewrite, carried by an item or by
 the specs' own wording rather than by the operation or sentence that carried it
 before.
 
-| What `v2.0.0` fixed | What carries it now |
-| --- | --- |
-| A scene can be built around a bear that stays put without making it immune to the world | The three per-bear gates, decided by `instrumentation.bear-sense-gate`, `instrumentation.bear-routing-gate` and `instrumentation.bear-travel-gate` |
-| A lane's motion changes without disturbing its contents | `setLaneSpeed` and `setLaneDirection`, neither of which repopulates a lane; `instrumentation.poses-read-back` |
-| A bear is driven a tile without consulting its route | `setBearStep`, exercised by `hunter.refuses-vehicle-tile`, `hunter.never-enters-far-shore` and `hunter.reset-on-entering-tile` |
-| A bear is placed mid-glide, between two tiles | `setBearPosition`, exercised by `hunter.glides-continuously` and `hunter.turns-at-tile-centres` |
-| A vehicle's tile is closed to the bear: the move is refused rather than taken and forgiven | `hunter.refuses-vehicle-tile` |
-| A completed crossing scores its last row, `10 + 50 + 2 * T` | `scoring.last-hop-total`, with `scoring.row-advance`, `scoring.bay-award` and `scoring.time-bonus` deciding the three parts separately |
-| The HUD's LIVES readout counts the run's lives, so a fresh run reads three | `presentation.hud-lives` |
-| Every death pauses before the respawn and the critter is out of play for its duration | `progression.death-pause`, `progression.critter-out-of-play` and `progression.strait-runs-during-death` |
-| The render-decoupling requirement states the one-way dependency and nothing about how the renderer presents state | The wording of `specs/instrumentation.md`, asserted by `instrumentation.tick-length` |
-| The reference draws between simulation steps rather than on the tick boundary | A requirement on all three reference implementations: the interpolation state is written by the step and read only by the renderer |
-| Mute is toggled during a live crossing, where the game is making the sound | `controls.mute-m` and `audio.mute-silences` |
-| A critter left on the near shore is not hunted at all | `hunter.no-emergence-on-near-shore`, beside `hunter.emerges-after-advance` |
-| The timer costing a life requires the clock to have actually run down | `progression.timer-costs-life`, which reads `timer` at `0` and the phase turning to `dying` in the same tick |
-| A clip that ends on an event keeps rolling, and one that begins on an event opens before it | Every recording is armed around the section its item is about, never around the arrangement that got there |
+| What `v2.0.0` fixed                                                                                               | What carries it now                                                                                                                                |
+| ----------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A scene can be built around a bear that stays put without making it immune to the world                           | The three per-bear gates, decided by `instrumentation.bear-sense-gate`, `instrumentation.bear-routing-gate` and `instrumentation.bear-travel-gate` |
+| A lane's motion changes without disturbing its contents                                                           | `setLaneSpeed` and `setLaneDirection`, neither of which repopulates a lane; `instrumentation.poses-read-back`                                      |
+| A bear is driven a tile without consulting its route                                                              | `setBearStep`, exercised by `hunter.refuses-vehicle-tile`, `hunter.never-enters-far-shore` and `hunter.reset-on-entering-tile`                     |
+| A bear is placed mid-glide, between two tiles                                                                     | `setBearPosition`, exercised by `hunter.glides-continuously` and `hunter.turns-at-tile-centres`                                                    |
+| A vehicle's tile is closed to the bear: the move is refused rather than taken and forgiven                        | `hunter.refuses-vehicle-tile`                                                                                                                      |
+| A completed crossing scores its last row, `10 + 50 + 2 * T`                                                       | `scoring.last-hop-total`, with `scoring.row-advance`, `scoring.bay-award` and `scoring.time-bonus` deciding the three parts separately             |
+| The HUD's LIVES readout counts the run's lives, so a fresh run reads three                                        | `presentation.hud-lives`                                                                                                                           |
+| Every death pauses before the respawn and the critter is out of play for its duration                             | `progression.death-pause`, `progression.critter-out-of-play` and `progression.strait-runs-during-death`                                            |
+| The render-decoupling requirement states the one-way dependency and nothing about how the renderer presents state | The wording of `specs/instrumentation.md`, asserted by `instrumentation.tick-length`                                                               |
+| The reference draws between simulation steps rather than on the tick boundary                                     | A requirement on all three reference implementations: the interpolation state is written by the step and read only by the renderer                 |
+| Mute is toggled during a live crossing, where the game is making the sound                                        | `controls.mute-m` and `audio.mute-silences`                                                                                                        |
+| A critter left on the near shore is not hunted at all                                                             | `hunter.no-emergence-on-near-shore`, beside `hunter.emerges-after-advance`                                                                         |
+| The timer costing a life requires the clock to have actually run down                                             | `progression.timer-costs-life`, which reads `timer` at `0` and the phase turning to `dying` in the same tick                                       |
+| A clip that ends on an event keeps rolling, and one that begins on an event opens before it                       | Every recording is armed around the section its item is about, never around the arrangement that got there                                         |

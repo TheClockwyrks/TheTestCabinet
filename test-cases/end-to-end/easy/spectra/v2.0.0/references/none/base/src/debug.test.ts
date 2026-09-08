@@ -10,6 +10,8 @@ import {
   SPECTRA_DEBUG_VERSION,
   START_LIVES,
   bulletSpeedScale,
+  fluxHold,
+  isChallengeStage,
 } from "./constants";
 import {
   createDebugApi,
@@ -298,10 +300,16 @@ describe("every pose reads back", () => {
   it("poses the ship and its cannon", () => {
     d.setShipX(300);
     expect(d.snapshot().ship.x).toBe(300);
-    // The lane's clamp applies, so the ship never lands outside it.
-    d.setShipX(-500);
+    // The lane's own bounds are the argument's DOMAIN, so both ends are reached
+    // exactly and a value outside them FAILS LOUDLY rather than snapping to the
+    // nearer end. A snap would leave the ship somewhere nobody asked for and
+    // report a pose that never happened as one that did.
+    d.setShipX(SHIP_X_MIN);
     expect(d.snapshot().ship.x).toBe(SHIP_X_MIN);
-    d.setShipX(9999);
+    d.setShipX(SHIP_X_MAX);
+    expect(d.snapshot().ship.x).toBe(SHIP_X_MAX);
+    expect(() => d.setShipX(-500)).toThrow(RangeError);
+    expect(() => d.setShipX(9999)).toThrow(RangeError);
     expect(d.snapshot().ship.x).toBe(SHIP_X_MAX);
     for (const band of ["magenta", "cyan"] as const) {
       d.setShipBand(band);
@@ -321,10 +329,10 @@ describe("every pose reads back", () => {
     expect(d.snapshot().dischargeReady).toBe(true);
     d.setResonance(0);
     expect(d.snapshot().dischargeReady).toBe(false);
-    // Out-of-range values are held inside the meter's own bounds.
-    d.setResonance(500);
-    expect(d.snapshot().resonance).toBe(RESONANCE_MAX);
-    d.setResonance(-5);
+    // `0` to `RESONANCE_MAX` is the argument's DOMAIN, so a figure outside it
+    // fails loudly rather than being held at the nearer end.
+    expect(() => d.setResonance(500)).toThrow(RangeError);
+    expect(() => d.setResonance(-5)).toThrow(RangeError);
     expect(d.snapshot().resonance).toBe(0);
     d.setInversion(2.5);
     expect(d.snapshot().inversion).toBe(2.5);
@@ -339,7 +347,8 @@ describe("every pose reads back", () => {
     d.setDroneSlot(id, 600, 300);
     d.setDroneBand(id, "magenta");
     d.setDroneBandClock(id, 0.75);
-    d.setDroneShell(id, false);
+    // `setDroneShell` is NOT called here: this drone is a Flux, which has no
+    // shell, so the call would fail loudly. It is posed on a Prism below.
     d.setDroneTravel(id, false);
     d.setDroneOscillation(id, false);
     d.setDroneFire(id, false);
@@ -353,8 +362,6 @@ describe("every pose reads back", () => {
       slotY: 300,
       band: "magenta",
       bandClock: 0.75,
-      // A Flux has no shell, so setDroneShell moves nothing on one
-      // (specs/instrumentation.md); it is posed on a Prism below.
       shellAlive: true,
       travel: false,
       oscillation: false,
@@ -371,22 +378,48 @@ describe("every pose reads back", () => {
     }
   });
 
-  it("poses a shell on a Prism and on no other kind", () => {
-    for (const kind of ["shard", "flux", "prism"] as const) {
+  // A SHELL BELONGS TO A PRISM. On a Shard or a Flux the call names no state to
+  // reach, so it FAILS LOUDLY rather than passing quietly with nothing written
+  // (`specs/instrumentation.md`): a call that vanished would grade a check that
+  // never posed what it meant to as one that did.
+  it("poses a shell on a Prism, and fails loudly on any other kind", () => {
+    d.clearDrones();
+    const prism = d.addDrone("prism", 400, 200);
+    d.setDroneShell(prism, false);
+    expect(d.snapshot().drones[0]?.shellAlive).toBe(false);
+
+    for (const kind of ["shard", "flux"] as const) {
       d.clearDrones();
       const id = d.addDrone(kind, 400, 200);
-      d.setDroneShell(id, false);
-      expect(d.snapshot().drones[0]?.shellAlive).toBe(kind !== "prism");
+      expect(() => d.setDroneShell(id, false)).toThrow(RangeError);
+      expect(d.snapshot().drones[0]?.shellAlive).toBe(true);
     }
   });
 
-  it("poses a band clock on a Flux and on no other kind", () => {
-    for (const kind of ["shard", "flux", "prism"] as const) {
+  // A BAND WINDOW BELONGS TO A FLUX, on the same terms as the shell above.
+  it("poses a band clock on a Flux, and fails loudly on any other kind", () => {
+    d.clearDrones();
+    const flux = d.addDrone("flux", 400, 200);
+    d.setDroneBandClock(flux, 0.5);
+    expect(d.snapshot().drones[0]?.bandClock).toBe(0.5);
+
+    for (const kind of ["shard", "prism"] as const) {
       d.clearDrones();
       const id = d.addDrone(kind, 400, 200);
-      d.setDroneBandClock(id, 0.5);
-      expect(d.snapshot().drones[0]?.bandClock).toBe(kind === "flux" ? 0.5 : 0);
+      expect(() => d.setDroneBandClock(id, 0.5)).toThrow(RangeError);
+      expect(d.snapshot().drones[0]?.bandClock).toBe(0);
     }
+  });
+
+  // THE WINDOW IS NOT THE ARGUMENT'S DOMAIN. `fluxWindow(stage)` is a live figure
+  // the stage moves, so it is a game rule rather than a bound on this pose: the
+  // clock takes the seconds it was handed and the oscillation is what carries it
+  // over (`specs/instrumentation.md`).
+  it("takes a band clock past the end of the window as given", () => {
+    d.clearDrones();
+    const flux = d.addDrone("flux", 400, 200);
+    d.setDroneBandClock(flux, 99);
+    expect(d.snapshot().drones[0]?.bandClock).toBe(99);
   });
 
   it("moves a drone's band and its band clock independently", () => {
@@ -422,7 +455,6 @@ describe("every pose reads back", () => {
     const flux = d.addDrone("flux", 100, 100);
     const shard = d.addDrone("shard", 200, 100);
     d.setDroneBandClock(flux, 0.5);
-    d.setDroneBandClock(shard, 0.5);
     const drones = d.snapshot().drones;
     expect(drones.find((entry) => entry.id === flux)?.bandClock).toBe(0.5);
     expect(drones.find((entry) => entry.id === shard)?.bandClock).toBe(0);
@@ -472,14 +504,68 @@ describe("every pose reads back", () => {
   });
 });
 
+// `reconcile` brings every reported reading into agreement with the game without
+// advancing anything. This build works every derived reading out at the READ, so
+// the call has nothing to rewrite; what these two cases pin is that it still
+// ANSWERS for a posed game and that it costs no simulation time, which is the
+// whole difference between it and advancing a frame.
+describe("reconcile", () => {
+  it("re-derives a reading from a posed source", () => {
+    d.setStage(5);
+    d.reconcile();
+    const staged = d.snapshot();
+    expect(staged.isChallenge).toBe(isChallengeStage(5));
+    expect(staged.fluxHold).toBe(fluxHold(5));
+
+    d.setResonance(RESONANCE_MAX);
+    d.reconcile();
+    expect(d.snapshot().dischargeReady).toBe(true);
+
+    d.setInversion(2);
+    d.reconcile();
+    expect(d.snapshot().inversionActive).toBe(true);
+
+    d.setPhase("ready");
+    d.reconcile();
+    expect(d.snapshot().ship.alive).toBe(false);
+  });
+
+  it("advances nothing, and twice matches once", () => {
+    d.setScreen("inWave");
+    d.setStage(3);
+    d.setPhaseTimer(1.25);
+    d.setDiveClock(0.4);
+    d.setInversion(2.5);
+    d.setFireLockout(0.24);
+    d.setFireCooldown(0.08);
+    d.setShipX(500);
+    const flux = d.addDrone("flux", 400, 200);
+    d.setDroneBandClock(flux, 0.5);
+    d.addDrone("prism", 600, 200);
+    d.addPlayerBullet(400, 500, "magenta");
+
+    const before = JSON.stringify(d.snapshot());
+    d.reconcile();
+    const once = JSON.stringify(d.snapshot());
+    d.reconcile();
+    const twice = JSON.stringify(d.snapshot());
+
+    // The clock, the positions and every timer are untouched, so the whole
+    // snapshot is byte-identical rather than merely close.
+    expect(once).toBe(before);
+    expect(twice).toBe(once);
+  });
+});
+
 describe("the removals", () => {
   it("removes one drone by id and leaves the rest", () => {
     const a = d.addDrone("shard", 100, 100);
     const b = d.addDrone("shard", 200, 100);
     d.removeDrone(a);
     expect(d.snapshot().drones.map((entry) => entry.id)).toEqual([b]);
-    // Removing an id that is already gone is harmless.
-    d.removeDrone(a);
+    // An id that is already gone names no live drone, so removing it again fails
+    // loudly rather than passing quietly with the roster as it was.
+    expect(() => d.removeDrone(a)).toThrow(RangeError);
     expect(d.snapshot().drones.length).toBe(1);
   });
 
@@ -559,7 +645,10 @@ describe("a caller error", () => {
     expect(() => d.setDronePosition(999, 1, 1)).toThrow(/no drone with id 999/);
     expect(() => d.setDroneBand(999, "cyan")).toThrow(/no drone with id 999/);
     expect(() => d.setDronePhase(999, "diving")).toThrow(/no drone/);
-    expect(() => d.setBulletVelocity(999, 0, 0)).toThrow(/no bullet with id/);
+    expect(() => d.setBulletVelocity(999, 0, 0)).toThrow(/id 999/);
+    expect(() => d.removeDrone(999)).toThrow(/id 999/);
+    expect(() => d.removeBullet(999)).toThrow(/id 999/);
+    expect(() => d.removeBurst(999)).toThrow(/id 999/);
   });
 
   it("names a value that is not a band", () => {
@@ -568,23 +657,29 @@ describe("a caller error", () => {
     );
   });
 
-  it("holds a stage at one or above, as a whole number", () => {
-    d.setStage(0);
-    expect(d.snapshot().stage).toBe(1);
-    d.setStage(-4);
-    expect(d.snapshot().stage).toBe(1);
+  // `1` and up is the stage argument's DOMAIN, so a figure below it — and an
+  // argument that is not a number at all — fails loudly rather than being held at
+  // the floor or quietly replaced by one the caller never asked for.
+  it("takes a stage of one or above, and fails loudly below it", () => {
     d.setStage(4.8);
     expect(d.snapshot().stage).toBe(4);
-    d.setStage(Number.NaN);
+    d.setStage(1);
+    expect(d.snapshot().stage).toBe(1);
+    expect(() => d.setStage(0)).toThrow(RangeError);
+    expect(() => d.setStage(-4)).toThrow(RangeError);
+    expect(() => d.setStage(Number.NaN)).toThrow(RangeError);
     expect(d.snapshot().stage).toBe(1);
   });
 
-  it("holds a posed duration at zero or above", () => {
-    d.setFireLockout(-1);
+  // Zero and up is a posed duration's DOMAIN, on the same terms as the stage.
+  it("takes a posed duration of zero or above, and fails loudly below it", () => {
+    d.setFireLockout(0);
     expect(d.snapshot().ship.lockout).toBe(0);
-    d.setInversion(-3);
+    expect(() => d.setFireLockout(-1)).toThrow(RangeError);
+    expect(() => d.setInversion(-3)).toThrow(RangeError);
+    expect(() => d.setDiveClock(-2)).toThrow(RangeError);
+    expect(d.snapshot().ship.lockout).toBe(0);
     expect(d.snapshot().inversion).toBe(0);
-    d.setDiveClock(-2);
     expect(d.snapshot().diveClock).toBe(0);
   });
 });

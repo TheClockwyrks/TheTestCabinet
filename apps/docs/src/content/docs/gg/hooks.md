@@ -57,8 +57,12 @@ which no field on the hook changes.
     {
       "event": "session-end",
       "name": "report",
-      "action": { "type": "command", "command": "./notify.sh", "timeoutSecs": 60 }
-    }
+      "action": {
+        "type": "command",
+        "command": "./notify.sh",
+        "timeoutSecs": 60,
+      },
+    },
   ],
   "agents": [
     {
@@ -71,21 +75,21 @@ which no field on the hook changes.
           "action": {
             "type": "command",
             "command": "npm run build",
-            "timeoutSecs": 900
-          }
+            "timeoutSecs": 900,
+          },
         },
         {
           "event": "pre-write",
-          "action": { "type": "built-in", "script": "refuse-empty-write" }
-        }
-      ]
+          "action": { "type": "built-in", "script": "refuse-empty-write" },
+        },
+      ],
     },
     {
       "id": "reviewer",
       "name": "Reviewer",
-      "hooks": []
-    }
-  ]
+      "hooks": [],
+    },
+  ],
 }
 ```
 
@@ -95,18 +99,18 @@ Ten events: four `pre`/`post` pairs and the session's two ends. A `pre-` event
 runs before its operation and is the only kind that can stop it; a `post-` event
 runs after and can only add to what the model is told.
 
-| Event | Fires | Can block | Can insert | Payload beyond the [agent facts](#the-event-payload) |
-| --- | --- | --- | --- | --- |
-| `pre-write` | Before a file write | yes | yes | `path` (absolute), `contents` |
-| `post-write` | After the file is updated | no | yes | `path`, `contents`, `ok` |
-| `pre-shell` | Before a shell command runs | yes | yes | `command` |
-| `post-shell` | After it has run | no | yes | `command`, `ok` |
-| `pre-compact` | Before a [compaction](/gg/compaction/) | no | no | `strategy` |
-| `post-compact` | After the window is rewritten | no | yes | `strategy` |
-| `agent-start` | When an agent instance starts | no | yes | — |
-| `agent-stop` | When an agent tries to end | yes | yes | `call` |
-| `session-start` | Once, before the root's first turn | no | yes | — |
-| `session-end` | Once, after the root finishes | no | no | `status` |
+| Event           | Fires                                  | Can block | Can insert | Payload beyond the [agent facts](#the-event-payload) |
+| --------------- | -------------------------------------- | --------- | ---------- | ---------------------------------------------------- |
+| `pre-write`     | Before a file write                    | yes       | yes        | `path` (absolute), `contents`                        |
+| `post-write`    | After the file is updated              | no        | yes        | `path`, `contents`, `ok`                             |
+| `pre-shell`     | Before a shell command runs            | yes       | yes        | `command`                                            |
+| `post-shell`    | After it has run                       | no        | yes        | `command`, `ok`                                      |
+| `pre-compact`   | Before a [compaction](/gg/compaction/) | no        | no         | `strategy`                                           |
+| `post-compact`  | After the window is rewritten          | no        | yes        | `strategy`                                           |
+| `agent-start`   | When an agent instance starts          | no        | yes        | —                                                    |
+| `agent-stop`    | When an agent tries to end             | yes       | yes        | `call`                                               |
+| `session-start` | Once, before the root's first turn     | no        | yes        | —                                                    |
+| `session-end`   | Once, after the root finishes          | no        | no         | `status`                                             |
 
 Two rows depart from what the `pre`/`post` prefix suggests, so both are stated
 rather than implied.
@@ -135,13 +139,13 @@ Whatever the event, the JSON a script is handed carries who it is firing for:
 ```jsonc
 {
   "event": "pre-write",
-  "agentId": "agent-3",          // the instance's id, its handle in the tree
-  "agent": "Implementer",        // the agent PROFILE's name
+  "agentId": "agent-3", // the instance's id, its handle in the tree
+  "agent": "Implementer", // the agent PROFILE's name
   // one of: root, issue-implementer, issue-reviewer, subagent
   "agentKind": "issue-implementer",
-  "worktree": { "branch": "gg/issue-1", "path": "/w/issue-1" },  // or null
-  "path": "/w/issue-1/src/main.rs",  // the event's own fields, beside the agent's
-  "contents": "…"
+  "worktree": { "branch": "gg/issue-1", "path": "/w/issue-1" }, // or null
+  "path": "/w/issue-1/src/main.rs", // the event's own fields, beside the agent's
+  "contents": "…",
 }
 ```
 
@@ -186,10 +190,10 @@ suite that prints a megabyte behaves the way a megabyte of `shell` output does.
   "action": {
     "type": "command",
     "command": "npm test",
-    "timeoutSecs": 600,    // required on a command hook
-    "cwd": "web",          // optional; relative to the agent's workspace, or absolute
-    "output": "inline"     // optional; absent follows the agent's own shell configuration
-  }
+    "timeoutSecs": 600, // required on a command hook
+    "cwd": "web", // optional; relative to the agent's workspace, or absolute
+    "output": "inline", // optional; absent follows the agent's own shell configuration
+  },
 }
 ```
 
@@ -200,11 +204,11 @@ Run one of gg's own hook scripts by id. A built-in follows the
 instead of the configuration. Each is a worked example to read, copy into a
 custom hook, and change.
 
-| Id | What it does |
-| --- | --- |
-| `trace` | Report every event it receives back as a message, and continue. The first hook to reach for, because "does this event fire, and with what?" is the question every other hook starts from. |
-| `refuse-empty-write` | Block a write whose contents are empty or whitespace, on the reasoning that a model which truncates a file to nothing has lost it rather than meant to empty it. Every other write, and every non-write event, passes. |
-| `guard-destructive-shell` | Block a shell command that would `git push`, `git reset --hard`, or recursively remove a path outside the workspace. A guard rail rather than a sandbox: it matches on the command text. |
+| Id                        | What it does                                                                                                                                                                                                           |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `trace`                   | Report every event it receives back as a message, and continue. The first hook to reach for, because "does this event fire, and with what?" is the question every other hook starts from.                              |
+| `refuse-empty-write`      | Block a write whose contents are empty or whitespace, on the reasoning that a model which truncates a file to nothing has lost it rather than meant to empty it. Every other write, and every non-write event, passes. |
+| `guard-destructive-shell` | Block a shell command that would `git push`, `git reset --hard`, or recursively remove a path outside the workspace. A guard rail rather than a sandbox: it matches on the command text.                               |
 
 ### Custom
 
@@ -278,8 +282,8 @@ agent's eight are declared on that agent's Hooks tab. Each list offers only the
 events its site can hold. Each row picks an event, a kind, and an optional
 name, and says under the event picker whether that event can be blocked.
 
-| Field | Meaning |
-| --- | --- |
-| `event` | One of the ten [events](#the-events). |
-| `action` | The tagged union above: `command`, `built-in`, or `custom`. |
-| `name` | An operator's label, shown wherever gg reports this hook running or blocking. Optional; an unlabelled hook is reported by what it runs. |
+| Field    | Meaning                                                                                                                                 |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `event`  | One of the ten [events](#the-events).                                                                                                   |
+| `action` | The tagged union above: `command`, `built-in`, or `custom`.                                                                             |
+| `name`   | An operator's label, shown wherever gg reports this hook running or blocking. Optional; an unlabelled hook is reported by what it runs. |

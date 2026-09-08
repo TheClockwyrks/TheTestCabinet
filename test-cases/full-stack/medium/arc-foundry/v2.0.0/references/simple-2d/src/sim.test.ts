@@ -22,15 +22,15 @@ import {
   clearUnits,
   combineFrom,
   createWorld,
-  downgrade,
-  keep,
+  tryDowngrade,
+  tryKeep,
   placeBlocker,
   placeCombo,
   placeComponent,
-  placeStamp,
+  tryPlaceStamp,
   pullPress,
   candidates,
-  removeStructure,
+  tryRemoveStructure,
   resetWorld,
   rollPress,
   select,
@@ -120,7 +120,7 @@ describe("the scrap-press", () => {
     const w = openRun();
     armNextRoll(w, "coil", 4);
     pullPress(w);
-    placeStamp(w, 10, 10);
+    tryPlaceStamp(w, 10, 10);
     const s = snapshot(w);
     const last = s.structures[s.structures.length - 1]!;
     expect(last.kind).toBe("candidate");
@@ -149,7 +149,7 @@ describe("the scrap-press", () => {
     const w = openRun();
     const wp = board(w).map.waypoints[0]!;
     pullPress(w);
-    placeStamp(w, wp.col, wp.row);
+    tryPlaceStamp(w, wp.col, wp.row);
     const s = snapshot(w);
     expect(s.structures).toHaveLength(0);
     expect(s.stampsLeft).toBe(5);
@@ -159,7 +159,7 @@ describe("the scrap-press", () => {
     const w = openRun();
     const blocker = placeBlocker(w, 10, 10)!;
     armNextRoll(w, "emitter", 2);
-    placeStamp(w, 10, 10);
+    tryPlaceStamp(w, 10, 10);
     const s = snapshot(w);
     expect(s.structures).toHaveLength(1);
     expect(s.structures[0]!.kind).toBe("candidate");
@@ -171,7 +171,7 @@ describe("the scrap-press", () => {
   it("biases the roll with refinement and nothing else", () => {
     const w = openRun();
     // At R0 the press rolls Scrap alone.
-    for (let i = 0; i < 5; i++) placeStamp(w, 4 + i * 3, 10);
+    for (let i = 0; i < 5; i++) tryPlaceStamp(w, 4 + i * 3, 10);
     for (const s of snapshot(w).structures) expect(s.quality).toBe(1);
     setRefinement(w, 8);
     const odds = snapshot(w).qualityOdds;
@@ -184,11 +184,11 @@ describe("the harvest", () => {
   it("hardens every other candidate into a blocker and starts the wave", () => {
     const w = openRun();
     armNextRoll(w, "capacitor", 1);
-    placeStamp(w, 4, 4);
+    tryPlaceStamp(w, 4, 4);
     armNextRoll(w, "capacitor", 1);
-    placeStamp(w, 8, 4);
+    tryPlaceStamp(w, 8, 4);
     const kept = snapshot(w).structures[0]!.id;
-    keep(w, kept);
+    tryKeep(w, kept);
     const s = snapshot(w);
     expect(s.phase).toBe("wave");
     expect(s.wave).toBe(1);
@@ -202,9 +202,9 @@ describe("the harvest", () => {
   it("drops a downgraded candidate one rung and starts the wave", () => {
     const w = openRun();
     armNextRoll(w, "capacitor", 4);
-    placeStamp(w, 4, 4);
+    tryPlaceStamp(w, 4, 4);
     const id = snapshot(w).structures[0]!.id;
-    downgrade(w, id);
+    tryDowngrade(w, id);
     const s = snapshot(w);
     expect(s.structures[0]!.kind).toBe("component");
     expect(s.structures[0]!.quality).toBe(3);
@@ -214,9 +214,9 @@ describe("the harvest", () => {
   it("refuses to downgrade a Scrap candidate", () => {
     const w = openRun();
     armNextRoll(w, "capacitor", 1);
-    placeStamp(w, 4, 4);
+    tryPlaceStamp(w, 4, 4);
     const id = snapshot(w).structures[0]!.id;
-    downgrade(w, id);
+    tryDowngrade(w, id);
     const s = snapshot(w);
     expect(s.structures[0]!.kind).toBe("candidate");
     expect(s.phase).toBe("build");
@@ -605,7 +605,7 @@ describe("the maze", () => {
     const w = openRun();
     const before = snapshot(w).mazeLength;
     const b = placeBlocker(w, 6, 8)!;
-    removeStructure(w, b.id);
+    tryRemoveStructure(w, b.id);
     expect(snapshot(w).mazeLength).toBeCloseTo(before, 9);
     expect(snapshot(w).structures).toHaveLength(0);
   });
@@ -672,12 +672,12 @@ describe("a whole run", () => {
       }
       for (let i = 0; i < 5; i++) {
         const at = freeAnchor(w);
-        if (at) placeStamp(w, at.col, at.row);
+        if (at) tryPlaceStamp(w, at.col, at.row);
       }
       const rolls = candidates(w);
       if (rolls.length === 0) break;
       // Committing the harvest is what sends the wave; there is no send control.
-      keep(w, rolls[0]!.id);
+      tryKeep(w, rolls[0]!.id);
       for (let t = 0; t < 600 && snapshot(w).phase !== "build"; t++) {
         advance(w, 1);
         if (snapshot(w).screen !== "playing") break;

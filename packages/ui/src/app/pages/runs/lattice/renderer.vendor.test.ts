@@ -181,7 +181,14 @@ describe("lattice atlas contract", () => {
     // Flat ground entities are drawn facing east and rotated by the renderer; the
     // assembler is a symmetric square machine with no facing.
     expect(entity("assembler").rotatable).toBe(false);
-    for (const name of ["belt", "splitter", "lane-splitter", "inserter", "source", "sink"]) {
+    for (const name of [
+      "belt",
+      "splitter",
+      "lane-splitter",
+      "inserter",
+      "source",
+      "sink",
+    ]) {
       expect(entity(name).rotatable).toBe(true);
     }
   });

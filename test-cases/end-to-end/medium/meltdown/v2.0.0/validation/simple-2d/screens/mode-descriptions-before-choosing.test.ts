@@ -47,7 +47,7 @@ import {
   captureStill,
   createHarness,
   drawFrame,
-  drawnText,
+  drawnTextLines,
   type Harness,
 } from "../harness";
 import { isRowLabel, normalize, poseMenu } from "./menu";
@@ -108,8 +108,11 @@ it("draws a different description for each mode, and starts nothing", async () =
         `(specs/screens.md)`,
     );
 
+    // The logical runs the row spells, not the `fillText` split: a build that
+    // letter-spaces its copy draws it a glyph per call, and a glyph is neither a
+    // row label to strike out nor text distinct to the row that drew it.
     bodies.push(
-      drawnText(calls)
+      drawnTextLines(calls)
         .filter((text) => !isRowLabel(text, MODE_ITEMS))
         .map(normalize)
         .filter((text) => text.length > 0),

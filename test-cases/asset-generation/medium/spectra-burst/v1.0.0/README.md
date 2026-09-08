@@ -2,7 +2,7 @@
 
 This is version `v1.0.0` of the **Spectra Burst** test case: an asset-generation
 case (`asset_kind = "particle-2d"`) that asks a model to author a screen-space
-enemy-drone explosion VFX for *Spectra*, a two-band formation shooter, as a
+enemy-drone explosion VFX for _Spectra_, a two-band formation shooter, as a
 128×128 planar particle effect using only the `particle-2d` tool, one recorded
 operation at a time.
 
@@ -38,14 +38,14 @@ burst in the two-band palette.
 
 ## Contents
 
-| Path             | Seeded to run? | Purpose                                                    |
-| ---------------- | -------------- | ---------------------------------------------------------- |
-| `specs/brief.md` | Yes            | The self-contained particle-effect brief.                  |
-| `prompt.hbs`     | No             | Rendered into the model's prompt.                          |
-| `test-case.toml` | No             | Manifest: particle field, tool, output, domain.            |
-| `variants/`      | No             | One TOML file per variant (listed in `variants`).          |
-| `description.md` | No             | Site blurb.                                                |
-| `README.md`      | No             | This overview.                                             |
+| Path             | Seeded to run? | Purpose                                           |
+| ---------------- | -------------- | ------------------------------------------------- |
+| `specs/brief.md` | Yes            | The self-contained particle-effect brief.         |
+| `prompt.hbs`     | No             | Rendered into the model's prompt.                 |
+| `test-case.toml` | No             | Manifest: particle field, tool, output, domain.   |
+| `variants/`      | No             | One TOML file per variant (listed in `variants`). |
+| `description.md` | No             | Site blurb.                                       |
+| `README.md`      | No             | This overview.                                    |
 
 A run receives the seeded brief, the `particle-2d` binary, and a seeded
 `particle-2d.config.json` alongside the workspace carrying the field dimensions,

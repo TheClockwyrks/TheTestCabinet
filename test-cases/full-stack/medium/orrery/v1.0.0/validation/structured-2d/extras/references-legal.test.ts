@@ -39,11 +39,7 @@
 // its own challenge under all three clauses.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertEqual,
-  assertNotNull,
-  assertTrue,
-} from "../assert";
+import { assertEqual, assertNotNull, assertTrue } from "../assert";
 import { EXTRA_COUNT } from "../constants";
 import { solutionFault, solutionLegalFor } from "../formats";
 import { placementFault } from "../parts";

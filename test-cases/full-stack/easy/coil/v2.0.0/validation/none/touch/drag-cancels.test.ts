@@ -1,7 +1,7 @@
 // touch/drag-cancels — a contact that lifts on a different item confirms
 // nothing.
 //
-// specs/ui.md, "Pointer and touch": "A confirm takes both of its edges inside one
+// specs/ui.md, "Pointer and touch": "A confirm requires both of its edges inside one
 // item's region: ... the landing and the lift for a touch contact. Two edges that
 // fall in different regions ... confirm no item." The same paragraph gives the
 // travel its own effect: a contact that "travels onto" an item's region makes

@@ -56,7 +56,11 @@ function pointerEvent(
   x: number,
   y: number,
 ): Event {
-  return Object.assign(new Event(type), { clientX: x, clientY: y, isPrimary: true });
+  return Object.assign(new Event(type), {
+    clientX: x,
+    clientY: y,
+    isPrimary: true,
+  });
 }
 
 export async function drag(h: Harness, path: Vec2[]): Promise<void> {
@@ -211,7 +215,9 @@ it at the paddle passes at every step size.
 import { VEC3_ZERO, distance, type Vec3 } from "@clockwyrks/structured-3d";
 
 const played: { cue: string; at: Vec3 | null }[] = [];
-const off = engine.events.on("cue:played", ({ cue, at }) => played.push({ cue, at }));
+const off = engine.events.on("cue:played", ({ cue, at }) =>
+  played.push({ cue, at }),
+);
 
 engine.debug.setBallVelocity(-20, 0, 0);
 await engine.advance(10);
@@ -220,7 +226,9 @@ off();
 const at = played.filter((p) => p.cue === CUES.paddleHit).map((p) => p.at);
 expect(at).toHaveLength(1);
 expect(at[0]).not.toBeNull();
-expect(distance(at[0] ?? VEC3_ZERO, paddle.transform.position)).toBeLessThan(BALL_R * 2);
+expect(distance(at[0] ?? VEC3_ZERO, paddle.transform.position)).toBeLessThan(
+  BALL_R * 2,
+);
 ```
 
 A cue name carries one source, and playing a cue that was never declared throws,

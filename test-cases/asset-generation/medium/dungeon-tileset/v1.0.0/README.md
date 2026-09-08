@@ -19,14 +19,14 @@ they hold together as one cohesive set.
 
 ## Layout
 
-| File | Purpose |
-| --- | --- |
-| `test-case.toml` | Manifest: metadata, `[canvas]`/`[tool]`/`[output]` tables, domain. |
-| `prompt.hbs` | Instruction handed to the harness. |
-| `specs/brief.md` | The self-contained drawing brief (seeded into the run). |
-| `variants/base.toml` | The single default variant. |
-| `description.md` | Site-facing blurb. |
-| `changelog.md` | Per-version changelog. |
+| File                 | Purpose                                                            |
+| -------------------- | ------------------------------------------------------------------ |
+| `test-case.toml`     | Manifest: metadata, `[canvas]`/`[tool]`/`[output]` tables, domain. |
+| `prompt.hbs`         | Instruction handed to the harness.                                 |
+| `specs/brief.md`     | The self-contained drawing brief (seeded into the run).            |
+| `variants/base.toml` | The single default variant.                                        |
+| `description.md`     | Site-facing blurb.                                                 |
+| `changelog.md`       | Per-version changelog.                                             |
 
 ## Validate
 

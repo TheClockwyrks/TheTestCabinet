@@ -25,20 +25,20 @@ The case is a collection arena. A runner pawn moves on the ground plane under a
 player controller, sweeps up orbs by overlapping them, and the match travels to
 a summary level once the last orb is gone.
 
-| Figure | Value |
-| --- | --- |
-| Logical design size | `640 × 360` |
-| Arena | `16 × 9` world units on the `y = 0` plane, centered on the origin, walled on four sides |
-| Camera | Perspective, at `(0, 12, 9)`, looking at the origin |
-| Levels | `arena`, then `summary` |
-| Tag vocabulary | `wall`, `orb`, `runner` |
-| Runner | The pawn player 0 possesses, a sphere of radius `0.5` centered on its transform, `4` units per second |
-| Dash | `12` units per second for `0.25` seconds, armed by one press |
-| Orbs | Six, radius `0.3`, worth `10` points each, destroyed on overlap |
-| HUD | A `140 × 28` panel centered at `(80, 24)` on the screen layer, and a `score N` readout over it |
-| Actions | `up`, `down`, `left`, `right`, `dash` |
-| Cues | `collect`, played at the collected orb's position; `dash`; `over` |
-| Diagnostics | `best` on the instance, `orbs` on the world |
+| Figure              | Value                                                                                                 |
+| ------------------- | ----------------------------------------------------------------------------------------------------- |
+| Logical design size | `640 × 360`                                                                                           |
+| Arena               | `16 × 9` world units on the `y = 0` plane, centered on the origin, walled on four sides               |
+| Camera              | Perspective, at `(0, 12, 9)`, looking at the origin                                                   |
+| Levels              | `arena`, then `summary`                                                                               |
+| Tag vocabulary      | `wall`, `orb`, `runner`                                                                               |
+| Runner              | The pawn player 0 possesses, a sphere of radius `0.5` centered on its transform, `4` units per second |
+| Dash                | `12` units per second for `0.25` seconds, armed by one press                                          |
+| Orbs                | Six, radius `0.3`, worth `10` points each, destroyed on overlap                                       |
+| HUD                 | A `140 × 28` panel centered at `(80, 24)` on the screen layer, and a `score N` readout over it        |
+| Actions             | `up`, `down`, `left`, `right`, `dash`                                                                 |
+| Cues                | `collect`, played at the collected orb's position; `dash`; `over`                                     |
+| Diagnostics         | `best` on the instance, `orbs` on the world                                                           |
 
 The case fixes the level names, the tag vocabulary, the action names with the
 keys they bind, the cue names, the camera's pose, and the HUD's place, so a
@@ -232,12 +232,14 @@ class Collector extends GameInstance<Debug> {
       },
       placeOrb: (index, at) => {
         const orb = this.orbs()[index];
-        if (orb === undefined) throw new Error(`the arena holds no orb ${index}`);
+        if (orb === undefined)
+          throw new Error(`the arena holds no orb ${index}`);
         orb.transform.position = copy(at);
       },
       keepOrbs: (count) => {
         const orbs = this.orbs();
-        if (orbs.length < count) throw new Error(`the arena holds ${orbs.length} orbs`);
+        if (orbs.length < count)
+          throw new Error(`the arena holds ${orbs.length} orbs`);
         for (const orb of orbs.slice(count)) orb.destroy();
       },
       snapshot: () => {
@@ -265,7 +267,12 @@ class Collector extends GameInstance<Debug> {
   }
 }
 
-function wall(x: number, z: number, width: number, depth: number): ActorSpec<Wall> {
+function wall(
+  x: number,
+  z: number,
+  width: number,
+  depth: number,
+): ActorSpec<Wall> {
   return {
     type: Wall,
     transform: { position: vec3(x, WALL_HEIGHT / 2, z) },
@@ -274,14 +281,19 @@ function wall(x: number, z: number, width: number, depth: number): ActorSpec<Wal
   };
 }
 
-const orbs: readonly ActorSpec<Orb>[] = Array.from({ length: ORB_COUNT }, (_, i) => {
-  const angle = (i / ORB_COUNT) * Math.PI * 2;
-  return {
-    type: Orb,
-    transform: { position: vec3(Math.cos(angle) * 5, 0, Math.sin(angle) * 3) },
-    tags: [TAGS.orb],
-  };
-});
+const orbs: readonly ActorSpec<Orb>[] = Array.from(
+  { length: ORB_COUNT },
+  (_, i) => {
+    const angle = (i / ORB_COUNT) * Math.PI * 2;
+    return {
+      type: Orb,
+      transform: {
+        position: vec3(Math.cos(angle) * 5, 0, Math.sin(angle) * 3),
+      },
+      tags: [TAGS.orb],
+    };
+  },
+);
 
 export const game: GameDefinition<Debug> = {
   instance: Collector,
@@ -291,8 +303,18 @@ export const game: GameDefinition<Debug> = {
       actors: [
         { type: Lights },
         { type: Hud, transform: { position: vec3(HUD.x, HUD.y, 0) } },
-        wall(0, -(ARENA_DEPTH / 2 + HALF), ARENA_WIDTH + 2 * WALL_THICKNESS, WALL_THICKNESS),
-        wall(0, ARENA_DEPTH / 2 + HALF, ARENA_WIDTH + 2 * WALL_THICKNESS, WALL_THICKNESS),
+        wall(
+          0,
+          -(ARENA_DEPTH / 2 + HALF),
+          ARENA_WIDTH + 2 * WALL_THICKNESS,
+          WALL_THICKNESS,
+        ),
+        wall(
+          0,
+          ARENA_DEPTH / 2 + HALF,
+          ARENA_WIDTH + 2 * WALL_THICKNESS,
+          WALL_THICKNESS,
+        ),
         wall(-(ARENA_WIDTH / 2 + HALF), 0, WALL_THICKNESS, ARENA_DEPTH),
         wall(ARENA_WIDTH / 2 + HALF, 0, WALL_THICKNESS, ARENA_DEPTH),
         ...orbs,
@@ -552,19 +574,27 @@ function recorder(
   });
 }
 
-export function callsTo(calls: readonly DrawCall[], method: string): unknown[][] {
+export function callsTo(
+  calls: readonly DrawCall[],
+  method: string,
+): unknown[][] {
   return calls.flatMap((call) =>
     call.kind === "call" && call.method === method ? [call.args] : [],
   );
 }
 
-export function setsOf(calls: readonly DrawCall[], property: string): unknown[] {
+export function setsOf(
+  calls: readonly DrawCall[],
+  property: string,
+): unknown[] {
   return calls.flatMap((call) =>
     call.kind === "set" && call.property === property ? [call.value] : [],
   );
 }
 
-export async function createHarness(options: HarnessOptions = {}): Promise<Harness> {
+export async function createHarness(
+  options: HarnessOptions = {},
+): Promise<Harness> {
   const cssWidth = options.cssWidth ?? DESIGN_WIDTH;
   const cssHeight = options.cssHeight ?? DESIGN_HEIGHT;
   const dpr = options.dpr ?? 1;
@@ -605,7 +635,9 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
   const instance = await engine.initialize();
 
   const dispatch = (type: "keydown" | "keyup", action: ActionName): void => {
-    events.dispatchEvent(new KeyboardEvent(type, { code: ACTIONS[action].keys[0] }));
+    events.dispatchEvent(
+      new KeyboardEvent(type, { code: ACTIONS[action].keys[0] }),
+    );
   };
 
   const picture = (): CanvasRenderingContext2D => {
@@ -849,7 +881,9 @@ it("removes a destroyed orb from the world at the end of the frame", async () =>
   await engine.advance(1);
 
   expect(destroyed).toHaveLength(ORB_COUNT - 1);
-  expect(world.actors().filter((actor) => actor.hasTag(TAGS.orb))).toEqual([kept]);
+  expect(world.actors().filter((actor) => actor.hasTag(TAGS.orb))).toEqual([
+    kept,
+  ]);
 });
 
 it("travels to the summary level when the last orb is collected", async () => {
@@ -857,8 +891,12 @@ it("travels to the summary level when the last orb is collected", async () => {
   const arena = harness.world();
 
   const travel: string[] = [];
-  engine.events.on("world:opening", ({ from, to }) => travel.push(`${from} -> ${to}`));
-  engine.events.on("world:opened", ({ level }) => travel.push(`opened ${level}`));
+  engine.events.on("world:opening", ({ from, to }) =>
+    travel.push(`${from} -> ${to}`),
+  );
+  engine.events.on("world:opened", ({ level }) =>
+    travel.push(`opened ${level}`),
+  );
 
   engine.debug.keepOrbs(1);
   await engine.advance(1);
@@ -1054,7 +1092,9 @@ it("draws the HUD panel on the screen layer in the color the case fixes", async 
   await engine.advance(1);
 
   expect(harness.device({ x: 0, y: 0 })).toEqual({ x: 160, y: 0 });
-  expect(harness.pixel({ x: HUD.x - HUD.width / 2 + 6, y: HUD.y })).toEqual(rgba(HUD_COLOR));
+  expect(harness.pixel({ x: HUD.x - HUD.width / 2 + 6, y: HUD.y })).toEqual(
+    rgba(HUD_COLOR),
+  );
   const corner = { x: DESIGN_WIDTH / 2, y: DESIGN_HEIGHT - 20 };
   expect(harness.pixel(corner)).toEqual([0, 0, 0, 0]);
 });
@@ -1171,7 +1211,8 @@ it("plays the dash cue once per press", async () => {
   const { engine } = harness;
   engine.debug.placeRunner(vec3(0, 0, 0));
 
-  const played: { cue: string; t: number; gain: number; at: Vec3 | null }[] = [];
+  const played: { cue: string; t: number; gain: number; at: Vec3 | null }[] =
+    [];
   const off = engine.events.on("cue:played", (event) => played.push(event));
 
   harness.hold("dash");
@@ -1272,7 +1313,10 @@ declare module "@vitest/browser/context" {
   }
 }
 
-export async function emitReplay(output: string, recording: Recording): Promise<void> {
+export async function emitReplay(
+  output: string,
+  recording: Recording,
+): Promise<void> {
   if (recording.frames.length === 0) return;
   await commands.emitReplay(output, toBase64(recording.video));
 }

@@ -32,6 +32,7 @@ import {
   assertGreaterThanOrEqual,
   assertLessThan,
 } from "../assert";
+import { drewText } from "../case-harness/text";
 import { PAUSE_ITEMS } from "../constants";
 import {
   captureStill,
@@ -39,7 +40,7 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
-import { assertDrew, drawnText, frameOps, opDiff } from "./screens";
+import { frameOps, opDiff, runOrder } from "./screens";
 
 /**
  * How much more of the frame must change when the selection moves than when it
@@ -87,31 +88,36 @@ it("draws RESUME, RESTART and QUIT TO MENU over the maze, one of them selected",
   const moved = await frameOps(h);
 
   for (const item of PAUSE_ITEMS) {
-    assertDrew(
-      selected,
-      item,
+    assertEqual(
+      drewText(selected, item),
+      true,
       `an item of the pause menu, which is ${PAUSE_ITEMS.join(", ")} ` +
         "(specs/ui.md)",
     );
+    // Placed before two placings are compared: `-1` would sort before anything.
+    assertGreaterThanOrEqual(
+      runOrder(selected, item),
+      0,
+      `where ${item} was drawn in the pause frame's reading order`,
+    );
   }
 
-  const drawn = drawnText(selected);
   assertLessThan(
-    drawn.indexOf(PAUSE_ITEMS[0]),
-    drawn.indexOf(PAUSE_ITEMS[1]),
+    runOrder(selected, PAUSE_ITEMS[0]),
+    runOrder(selected, PAUSE_ITEMS[1]),
     `where ${PAUSE_ITEMS[0]} was drawn against ${PAUSE_ITEMS[1]}, which the ` +
       "pause menu stacks in the order specs/ui.md gives",
   );
   assertLessThan(
-    drawn.indexOf(PAUSE_ITEMS[1]),
-    drawn.indexOf(PAUSE_ITEMS[2]),
+    runOrder(selected, PAUSE_ITEMS[1]),
+    runOrder(selected, PAUSE_ITEMS[2]),
     `where ${PAUSE_ITEMS[1]} was drawn against ${PAUSE_ITEMS[2]}, which the ` +
       "pause menu stacks in the order specs/ui.md gives",
   );
 
-  assertDrew(
-    selected,
-    `DEPTH ${String(paused.depth)}`,
+  assertEqual(
+    drewText(selected, `DEPTH ${String(paused.depth)}`),
+    true,
     "the HUD's depth readout, still drawn over the maze that stays visible " +
       "behind the pause menu (specs/ui.md)",
   );

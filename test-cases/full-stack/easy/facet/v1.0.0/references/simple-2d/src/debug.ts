@@ -51,6 +51,7 @@ import {
   pointerMove,
   pointerUp,
   poseSwap,
+  reconcile,
   reset,
   setBestChain,
   setBestMove,
@@ -83,6 +84,12 @@ type View = DeepReadonly<FacetState>;
 export interface FacetDebugApi {
   version: number;
   reset(state: View): FacetState;
+  /**
+   * Every reading this surface reports brought into agreement with the game as
+   * it stands, advancing nothing. It returns the next state, built from the one
+   * it was handed, which it leaves as it was.
+   */
+  reconcile(state: View): FacetState;
   snapshot(state: View): FacetSnapshot;
   setScreen(state: View, screen: Screen): FacetState;
   setMenuIndex(state: View, index: number): FacetState;
@@ -131,6 +138,15 @@ export function createDebugApi(): FacetDebugApi {
   return {
     version: FACET_DEBUG_VERSION,
     reset: (state) => fromCore(reset(toCore(state))),
+    // Every reading brought into agreement with the game as it stands, without
+    // advancing anything. This build works every derived reading out at the read
+    // — `src/core/`'s `snapshot` computes a cell's center, the level's target,
+    // the multiplier, the longest fall, the step's hold, whether a legal swap
+    // exists, and the screen's targets from the state each follows from — so it
+    // has nothing to rewrite and returns a state equal to the one it was handed.
+    // The core call is still what does it, so a build that kept one of those as
+    // a stored copy would rewrite it in exactly this place.
+    reconcile: (state) => fromCore(reconcile(toCore(state))),
     snapshot: (state) => snapshot(toCore(state)),
     setScreen: (state, screen) => fromCore(setScreen(toCore(state), screen)),
     setMenuIndex: (state, index) =>

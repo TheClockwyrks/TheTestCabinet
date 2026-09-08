@@ -134,7 +134,8 @@ describe("choosing a form", () => {
   it("gives dist() box plots, with no confidence interval", () => {
     const [chart] = viz("| stats dist(score) by preset");
     expect(chart?.kind).toBe("distribution");
-    if (chart?.kind !== "distribution") throw new Error("expected distribution");
+    if (chart?.kind !== "distribution")
+      throw new Error("expected distribution");
     // TCQ carries no bootstrap interval, which is why the chart's bounds are
     // optional — the honest rendering of "no interval" is no mark.
     expect(chart.groups.every((g) => g.ciLow === undefined)).toBe(true);
@@ -191,7 +192,9 @@ describe("a second group key", () => {
     const [chart] = viz("| stats avg(score) by preset, model");
     expect(chart?.kind).toBe("bars");
     if (chart?.kind !== "bars") throw new Error("expected bars");
-    expect(chart.points.map((p) => p.label)).toContain("planning · anthropic/opus");
+    expect(chart.points.map((p) => p.label)).toContain(
+      "planning · anthropic/opus",
+    );
   });
 
   it("splits a date histogram into one line per second-key value", () => {
@@ -215,8 +218,9 @@ describe("absent is dropped, never charted as zero", () => {
     const [chart] = viz("| stats avg(summary.ranOutOfContext) by model");
     if (chart?.kind !== "bars") throw new Error("expected bars");
     expect(chart.points.map((p) => p.label)).not.toContain("google/gemini");
-    expect(chart.points.every((p) => p.value !== 0 || p.label === "anthropic/opus"))
-      .toBe(true);
+    expect(
+      chart.points.every((p) => p.value !== 0 || p.label === "anthropic/opus"),
+    ).toBe(true);
     expect(chart.note.dropped).toBe(1);
   });
 

@@ -44,7 +44,9 @@ import { sigilHexes } from "../parts";
  * the placement rules of `specs/parts.md` alone, and throws an `Error` naming
  * the first rule it breaks" (`specs/instrumentation.md`, The machine).
  */
-async function refusesPlacement(place: () => Promise<unknown>): Promise<boolean> {
+async function refusesPlacement(
+  place: () => Promise<unknown>,
+): Promise<boolean> {
   try {
     await place();
     return false;
@@ -81,7 +83,11 @@ it("refuses a track cell on a sigil's footprint and leaves the path as it was", 
   const footprint = sigilHexes("bind", SIGIL, 0);
   assertEqual(onField(START), true, "the track's first cell is on the field");
   for (const hex of [ON_FIRST, ON_SECOND, CLEAR]) {
-    assertEqual(onField(hex), true, `the hex (${hex.q}, ${hex.r}) is on the field`);
+    assertEqual(
+      onField(hex),
+      true,
+      `the hex (${hex.q}, ${hex.r}) is on the field`,
+    );
     assertEqual(
       adjacent(START, hex),
       true,
@@ -123,11 +129,31 @@ it("refuses a track cell on a sigil's footprint and leaves the path as it was", 
   await h.advance(1);
   await captureStill(h, "refused");
 
-  assertEqual(ontoFirst, true, "extending onto the sigil's first hex is refused");
-  assertEqual(afterFirst, pathOf([START]), "that refusal left the path as it was");
-  assertEqual(ontoSecond, true, "extending onto the sigil's second hex is refused");
-  assertEqual(afterSecond, pathOf([START]), "that refusal left the path as it was too");
-  assertEqual(ontoClear, false, "extending onto a hex no footprint covers is taken");
+  assertEqual(
+    ontoFirst,
+    true,
+    "extending onto the sigil's first hex is refused",
+  );
+  assertEqual(
+    afterFirst,
+    pathOf([START]),
+    "that refusal left the path as it was",
+  );
+  assertEqual(
+    ontoSecond,
+    true,
+    "extending onto the sigil's second hex is refused",
+  );
+  assertEqual(
+    afterSecond,
+    pathOf([START]),
+    "that refusal left the path as it was too",
+  );
+  assertEqual(
+    ontoClear,
+    false,
+    "extending onto a hex no footprint covers is taken",
+  );
   assertEqual(
     afterClear,
     pathOf([START, CLEAR]),

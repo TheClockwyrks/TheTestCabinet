@@ -35,7 +35,11 @@ export const CUE = { collect: "collect", blip: "blip" } as const;
 export const COIN = {
   tag: "coin",
   frame: { width: 32, height: 32 },
-  spots: [{ x: 160, y: 200 }, { x: 320, y: 160 }, { x: 480, y: 200 }],
+  spots: [
+    { x: 160, y: 200 },
+    { x: 320, y: 160 },
+    { x: 480, y: 200 },
+  ],
 };
 ```
 

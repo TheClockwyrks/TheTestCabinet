@@ -46,8 +46,8 @@ import {
 } from "../constants";
 import {
   colorDistance,
-  drawnTextSpans,
   renderFrame,
+  spelledRuns,
   towerById,
   unitById,
   type ControlRect,
@@ -55,6 +55,7 @@ import {
   type Harness,
   type MeltdownSnapshot,
   type Rgb,
+  type TextRun,
   type TextSpan,
   type TowerSnapshot,
   type UnitSnapshot,
@@ -79,14 +80,55 @@ export const PANEL_STRIP: ControlRect = {
  * sits at the run's right-hand end, is placed where its glyphs are rather than
  * where its anchor is.
  */
-export function panelRuns(spans: readonly TextSpan[]): TextSpan[] {
+export function panelRuns<T extends TextSpan>(spans: readonly T[]): T[] {
   return spans.filter((run) => (run.left + run.right) / 2 >= PANEL_STRIP.x);
 }
 
-/** Run one frame and hand back the runs of text it drew in the panel. */
-export async function readPanel(h: Harness): Promise<TextSpan[]> {
+/**
+ * Run one frame and hand back the runs of text it drew in the panel.
+ *
+ * The LOGICAL runs the frame spells (`spelledRuns`), not the `fillText`
+ * split: a build that letter-spaces its readouts draws `WAVE 3/15` a glyph per
+ * call, and a figure read as a token or a pair read off one run wants the words
+ * the panel shows, not how the build spaced them. Each run also carries the
+ * spans it was spelled from, because the merge writes a space only at a gap
+ * past the run's own tracking and concatenates verbatim inside it: a label and
+ * its figure drawn as two calls set tight, or a letter-spaced label whose figure
+ * sits one tracking gap along, read as the one run `WAVE3/15`, and
+ * {@link saysWord} — a WHOLE-token reading — tests the parts beside the run so
+ * it keeps the match it had call by call. And two readouts a word space apart
+ * on one baseline are ONE run, `KILLS 0 DEALT 0`, so a reader that COUNTS
+ * readouts counts the parts.
+ * Coalescing only ever adds a match.
+ */
+export async function readPanel(h: Harness): Promise<TextRun[]> {
   await renderFrame(h);
-  return panelRuns(drawnTextSpans(h));
+  return panelRuns(spelledRuns(h));
+}
+
+/**
+ * A run of text that may name the spans it was spelled from: a {@link TextRun},
+ * or a bare span, which spells itself.
+ *
+ * What every reader of a figure or a token below takes, so a caller holding
+ * plain spans — one entry per call — reads them exactly as it always did.
+ */
+export type Spelled = TextSpan & { parts?: readonly TextSpan[] };
+
+/**
+ * Every string a run shows: the run itself, and each raw span it was spelled
+ * from, each once.
+ *
+ * What a reading on a TOKEN boundary — a whole word, or a FIGURE — or one
+ * comparing whole strings between frames, is made over, for the reason
+ * {@link readPanel} gives: the merge concatenates verbatim inside the run's
+ * tracking, so two bare figures drawn tight in two calls, `40` and `130`, come
+ * back as the one run `40130`, which is a figure neither of them is, and only the parts still carry the two
+ * the panel drew. A run drawn in one call spells itself and is read once.
+ */
+function spellings(run: Spelled): string[] {
+  const texts = [run.text, ...(run.parts ?? []).map((part) => part.text)];
+  return texts.filter((text, i) => texts.indexOf(text) === i);
 }
 
 /**
@@ -110,19 +152,27 @@ const DRAWN = new RegExp(
 /** Every group separator inside one figure, for dropping before it is read. */
 const GROUPS = new RegExp(GROUP, "g");
 
-/** Every number a run's text carries, in the order it carries them. */
-export function numbersIn(run: TextSpan): number[] {
-  return (run.text.match(DRAWN) ?? []).map((figure) =>
+/** Every number one string carries, in the order it carries them. */
+function figuresIn(text: string): number[] {
+  return (text.match(DRAWN) ?? []).map((figure) =>
     Number(figure.replace(GROUPS, "")),
   );
 }
 
+/**
+ * Every number a run carries: those its text carries, and those each span it
+ * was spelled from carries, for the reason {@link spellings} gives.
+ */
+export function numbersIn(run: Spelled): number[] {
+  return spellings(run).flatMap(figuresIn);
+}
+
 /** The runs carrying a number within `window` of `value`. */
-export function runsReading(
-  runs: readonly TextSpan[],
+export function runsReading<T extends Spelled>(
+  runs: readonly T[],
   value: number,
   window: number,
-): TextSpan[] {
+): T[] {
   return runs.filter((run) =>
     numbersIn(run).some((n) => Math.abs(n - value) <= window),
   );
@@ -130,7 +180,7 @@ export function runsReading(
 
 /** Whether some run carries a number within `window` of `value`. */
 export function reads(
-  runs: readonly TextSpan[],
+  runs: readonly Spelled[],
   value: number,
   window: number,
 ): boolean {
@@ -139,7 +189,7 @@ export function reads(
 
 /** Whether some run carries a number inside `[low, high]`, both ends in. */
 export function readsWithin(
-  runs: readonly TextSpan[],
+  runs: readonly Spelled[],
   low: number,
   high: number,
 ): boolean {
@@ -151,16 +201,30 @@ export function readsWithin(
  *
  * A readout label, a tower's name, a compass face. A panel reading `waveform`
  * carries no `WAVE` label, which is what a bare substring test would let past.
+ * Read over the run and the spans it was spelled from both, for the reason
+ * {@link readPanel} gives.
  */
-export function saysWord(runs: readonly TextSpan[], word: string): boolean {
+export function saysWord(runs: readonly TextRun[], word: string): boolean {
   const escaped = word.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const pattern = new RegExp(`(^|[^A-Za-z0-9])${escaped}([^A-Za-z0-9]|$)`, "i");
-  return runs.some((run) => pattern.test(run.text));
+  return runs.some((run) => spellings(run).some((text) => pattern.test(text)));
 }
 
-/** Every panel run's text, trimmed and upper-cased, as a set. */
-export function runTexts(runs: readonly TextSpan[]): Set<string> {
-  return new Set(runs.map((run) => run.text.trim().toUpperCase()));
+/**
+ * Every panel run's text, trimmed and upper-cased, as a set — the runs and the
+ * raw spans they were spelled from both.
+ *
+ * A set is compared with another frame's for equal members, which is a
+ * whole-string reading, so it holds both granularities for the reason
+ * {@link readPanel} gives: a read that merged into its label on one frame is
+ * still found as its own draw.
+ */
+export function runTexts(runs: readonly TextRun[]): Set<string> {
+  return new Set(
+    runs.flatMap((run) =>
+      spellings(run).map((text) => text.trim().toUpperCase()),
+    ),
+  );
 }
 
 /**
@@ -168,17 +232,22 @@ export function runTexts(runs: readonly TextSpan[]): Set<string> {
  *
  * The wave-over-total form `specs/hud.md` requires of the wave readout: "The
  * current wave number over the run's total", which is one read of a pair and not
- * two numbers that happen to be on the panel.
+ * two numbers that happen to be on the panel. Each spelling of a run is read on
+ * its own — the run, then each span it was spelled from — so a pair drawn as
+ * one call is still one read of a pair once its label merged onto it, and two
+ * figures the merge put side by side are never taken for one.
  */
 export function readsPair(
-  runs: readonly TextSpan[],
+  runs: readonly Spelled[],
   first: number,
   second: number,
 ): boolean {
-  return runs.some((run) => {
-    const numbers = numbersIn(run);
-    return numbers.some((n, i) => n === first && numbers[i + 1] === second);
-  });
+  return runs.some((run) =>
+    spellings(run).some((text) => {
+      const numbers = figuresIn(text);
+      return numbers.some((n, i) => n === first && numbers[i + 1] === second);
+    }),
+  );
 }
 
 /**
@@ -189,11 +258,11 @@ export function readsPair(
  * is the slack a glyph's baseline anchor takes outside the box it reads inside.
  * The point that calls this states its margin.
  */
-export function runsIn(
-  runs: readonly TextSpan[],
+export function runsIn<T extends TextSpan>(
+  runs: readonly T[],
   rect: ControlRect,
   margin: number,
-): TextSpan[] {
+): T[] {
   const x0 = rect.x - margin;
   const x1 = rect.x + rect.w + margin;
   const y0 = rect.y - margin;
@@ -219,7 +288,7 @@ const FACE_WORDS: Record<string, string> = {
  * own vocabulary; the compass word is accepted beside it because spelling a
  * letter out is a presentation choice no specification takes away.
  */
-export function saysFace(runs: readonly TextSpan[], side: string): boolean {
+export function saysFace(runs: readonly TextRun[], side: string): boolean {
   return saysWord(runs, side) || saysWord(runs, FACE_WORDS[side] ?? side);
 }
 
@@ -245,7 +314,7 @@ const TARGETING_WORDS = [
 ] as const;
 
 /** Whether the panel drew a targeting read at all, in any of those words. */
-export function saysTargeting(runs: readonly TextSpan[]): boolean {
+export function saysTargeting(runs: readonly TextRun[]): boolean {
   return TARGETING_WORDS.some((word) => saysWord(runs, word));
 }
 

@@ -9,13 +9,22 @@
 // teaches the game is the run-wide aesthetic rating's, not this point's. The word
 // boundary is what keeps `REFRACT`, `CRYSTAL`, or `CLEAR` from counting as
 // naming the key.
+//
+// The frame's text is read as its COALESCED RUNS (the harness's `drawnTextLines`),
+// never as the raw `fillText` split: a build that letter-spaces its copy draws
+// one glyph per call, which is the only portable way to letter-space canvas
+// text, and read call by call every glyph is a word of its own — the R inside a
+// letter-spaced REFRACT would name the key, and a standalone R could sit in no
+// run at all. The merge rule (`case-harness/text.ts`) folds side-by-side glyphs
+// on one baseline back into the string they spell, so the word boundary decides
+// what it is meant to.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan, assertMatches } from "../assert";
 import {
   captureStill,
   createHarness,
-  drawnText,
+  drawnTextLines,
   type Harness,
 } from "../harness";
 import { reachHowto } from "./screens";
@@ -39,7 +48,7 @@ it("draws its text and names the clear key as a standalone R", async () => {
   const calls = await h.frameCalls();
   await captureStill(h, "howto");
 
-  const runs = drawnText(calls);
+  const runs = drawnTextLines(calls);
   assertGreaterThan(runs.length, 0, "the howto frame draws text");
   assertMatches(
     runs.join(" ").toUpperCase(),

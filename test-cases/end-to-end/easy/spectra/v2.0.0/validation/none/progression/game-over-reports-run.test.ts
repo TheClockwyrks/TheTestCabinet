@@ -47,7 +47,7 @@ import {
   captureStill,
   createHarness,
   startPosed,
-  textDraws,
+  drawnTextRuns,
   type DrawCall,
   type Harness,
 } from "../harness";
@@ -133,7 +133,7 @@ function reported(calls: readonly DrawCall[], value: number): boolean {
   const patterns = renderings(value).map(
     (rendering) => new RegExp(`(?<![\\d.])0*${quoted(rendering)}(?![\\d.])`),
   );
-  return textDraws(calls).some(
+  return drawnTextRuns(calls).some(
     (draw) =>
       draw.y > BELOW_HUD && patterns.some((pattern) => pattern.test(draw.text)),
   );
@@ -141,7 +141,7 @@ function reported(calls: readonly DrawCall[], value: number): boolean {
 
 /** Every run of text the frame drew below the top HUD strip, for a failure to name. */
 function belowHud(calls: readonly DrawCall[]): string[] {
-  return textDraws(calls)
+  return drawnTextRuns(calls)
     .filter((draw) => draw.y > BELOW_HUD)
     .map((draw) => draw.text);
 }

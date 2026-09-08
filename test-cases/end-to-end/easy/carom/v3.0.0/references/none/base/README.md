@@ -105,7 +105,7 @@ asset loader, because Carom loads nothing — and it is six files:
   moved, what was pressed, and which press came up where, in logical units
   through the same fit the frame is drawn under. It listens to pointer events
   alone, which is the one stream both devices arrive on, and it holds a press
-  across frames because a confirm takes both of its edges.
+  across frames because a confirm requires both of its edges.
 - **`src/audio-bus.ts`** — cues declared by name and synthesized as one
   oscillator through one gain envelope, over a Web Audio context opened on the
   first user gesture. Nothing about audio can fail a frame.
@@ -139,7 +139,7 @@ The build exposes the surface `specs/instrumentation.md` specifies on
   `setScore(p1, p2)`, `setWinner`, `setReceiver` — the screens, the menus and the
   match, one field each.
 - `setPaddleCy(side, cy)`, `setPaddleVy(side, vy)`, `setPaddleDriven(side,
-  driven)` — the paddles, one side at a time. A driven paddle moves at that
+driven)` — the paddles, one side at a time. A driven paddle moves at that
   side's `drivenVy` and neither the keys nor the AI touch it; the other side goes
   on playing normally.
 - `setBallPosition`, `setBallVelocity`, `setBallSpin`, `setBallHeld`,

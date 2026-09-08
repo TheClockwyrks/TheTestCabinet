@@ -13,13 +13,13 @@ The editor divides the stage into five regions. The tray, the field, and the
 tape panel are interactive and carry the fixed geometry below. The heading and
 the readout are display only, and their internal layout is yours.
 
-| Region | Extent | Holds |
-| --- | --- | --- |
-| Heading | `x` `0` to `STAGE_W` (`1280`), `y` `0` to `HEADING_H` (`48`) | The challenge's name, the machine's current cost, and the editor's messages. |
-| Tray | `x` `0` to `TRAY_REGION_W` (`224`), `y` `HEADING_H` (`48`) to `STAGE_H` (`720`) | One slot per available part. |
-| Field | `x` `TRAY_REGION_W` (`224`) to `READOUT_X0` (`1008`), `y` `HEADING_H` (`48`) to `TAPE_Y0` (`560`) | The hex field of `specs/field.md`, drawn at its fixed geometry. |
-| Readout | `x` `READOUT_X0` (`1008`) to `STAGE_W` (`1280`), `y` `HEADING_H` (`48`) to `TAPE_Y0` (`560`) | The run's live figures. |
-| Tape panel | `x` `TRAY_REGION_W` (`224`) to `STAGE_W` (`1280`), `y` `TAPE_Y0` (`560`) to `STAGE_H` (`720`) | One row per arm and wheel. |
+| Region     | Extent                                                                                            | Holds                                                                        |
+| ---------- | ------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Heading    | `x` `0` to `STAGE_W` (`1280`), `y` `0` to `HEADING_H` (`48`)                                      | The challenge's name, the machine's current cost, and the editor's messages. |
+| Tray       | `x` `0` to `TRAY_REGION_W` (`224`), `y` `HEADING_H` (`48`) to `STAGE_H` (`720`)                   | One slot per available part.                                                 |
+| Field      | `x` `TRAY_REGION_W` (`224`) to `READOUT_X0` (`1008`), `y` `HEADING_H` (`48`) to `TAPE_Y0` (`560`) | The hex field of `specs/field.md`, drawn at its fixed geometry.              |
+| Readout    | `x` `READOUT_X0` (`1008`) to `STAGE_W` (`1280`), `y` `HEADING_H` (`48`) to `TAPE_Y0` (`560`)      | The run's live figures.                                                      |
+| Tape panel | `x` `TRAY_REGION_W` (`224`) to `STAGE_W` (`1280`), `y` `TAPE_Y0` (`560`) to `STAGE_H` (`720`)     | One row per arm and wheel.                                                   |
 
 Every extent above, and every rectangle this file fixes, includes its lower
 bound and excludes its upper, so a point on a shared edge belongs to the
@@ -125,14 +125,14 @@ A press on any cell of a closed track begins a move.
 The panel shows one row per arm and wheel, in placement order. Row heights
 and cell widths are fixed:
 
-| Constant | Value | Meaning |
-| --- | --- | --- |
-| `TAPE_ROW_H` | `28` | Height of a row. |
-| `TAPE_ROWS_VISIBLE` | `5` | Rows shown at once. |
-| `TAPE_LABEL_W` | `80` | Width of the label at a row's left edge. |
-| `TAPE_X0` | `88` | Offset from the panel's left edge to cell `0`'s column. |
-| `TAPE_CELL_W` | `24` | Width of a cell. |
-| `TAPE_COLS_VISIBLE` | `40` | Cell columns shown at once. |
+| Constant            | Value | Meaning                                                 |
+| ------------------- | ----- | ------------------------------------------------------- |
+| `TAPE_ROW_H`        | `28`  | Height of a row.                                        |
+| `TAPE_ROWS_VISIBLE` | `5`   | Rows shown at once.                                     |
+| `TAPE_LABEL_W`      | `80`  | Width of the label at a row's left edge.                |
+| `TAPE_X0`           | `88`  | Offset from the panel's left edge to cell `0`'s column. |
+| `TAPE_CELL_W`       | `24`  | Width of a cell.                                        |
+| `TAPE_COLS_VISIBLE` | `40`  | Cell columns shown at once.                             |
 
 A row's label spans `x` `TRAY_REGION_W` (`224`) to
 `TRAY_REGION_W + TAPE_LABEL_W` (`304`) across its row's full height, and the

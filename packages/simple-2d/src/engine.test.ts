@@ -216,7 +216,11 @@ function testGame(
         (returned instanceof Promise ? await returned : returned) ?? null;
       return [state, debug];
     },
-    update(state: DeepReadonly<TestState>, api: UpdateApi, dt: number): TestState {
+    update(
+      state: DeepReadonly<TestState>,
+      api: UpdateApi,
+      dt: number,
+    ): TestState {
       const updates = state.updates + 1;
       game.log.push(`update:${updates}`);
       const next: TestState = { updates, dts: [...state.dts, dt] };
@@ -716,9 +720,9 @@ describe("apply", () => {
     const { engine } = build({ game });
     const opening = await engine.initialize();
 
-    expect(() =>
-      engine.apply(() => undefined as unknown as TestState),
-    ).toThrow(/engine\.apply must return the next state/);
+    expect(() => engine.apply(() => undefined as unknown as TestState)).toThrow(
+      /engine\.apply must return the next state/,
+    );
     expect(engine.state).toBe(opening);
   });
 
@@ -842,7 +846,9 @@ describe("advance", () => {
     const { engine } = build({ game });
     const opening = await engine.initialize();
 
-    await expect(engine.advance(1)).rejects.toThrow(/update must return the next state/);
+    await expect(engine.advance(1)).rejects.toThrow(
+      /update must return the next state/,
+    );
 
     expect(engine.state).toBe(opening);
   });
@@ -1137,7 +1143,8 @@ describe("engine.diagnostics", () => {
 
   it("reads a hidden overlay, and reading draws nothing and advances nothing", async () => {
     const game = testGame({
-      initialize: (api) => api.diagnostics.register("updates", (state) => state.updates),
+      initialize: (api) =>
+        api.diagnostics.register("updates", (state) => state.updates),
     });
     const { engine, stub } = build({ game });
     await engine.initialize();

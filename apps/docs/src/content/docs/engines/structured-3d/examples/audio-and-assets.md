@@ -152,8 +152,12 @@ const lights = {
   type: Actor,
   transform: { rotation: quatLookAt(vec3(-0.5, -1, -0.3)) },
   configure: (actor: Actor) => {
-    actor.attach(new LightComponent({ light: { kind: "hemisphere", intensity: 0.5 } }));
-    actor.attach(new LightComponent({ light: { kind: "directional", intensity: 2 } }));
+    actor.attach(
+      new LightComponent({ light: { kind: "hemisphere", intensity: 0.5 } }),
+    );
+    actor.attach(
+      new LightComponent({ light: { kind: "directional", intensity: 2 } }),
+    );
   },
 };
 
@@ -207,7 +211,11 @@ async function load(api: LoadApi): Promise<void> {
 export const vault: GameDefinition<null> = {
   instance: VaultInstance,
   levels: {
-    [LEVEL]: { mode: VaultMode, load, actors: [lights, floor, ...coins, notice] },
+    [LEVEL]: {
+      mode: VaultMode,
+      load,
+      actors: [lights, floor, ...coins, notice],
+    },
   },
   startLevel: LEVEL,
 };

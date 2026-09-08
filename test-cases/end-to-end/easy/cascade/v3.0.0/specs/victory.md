@@ -46,11 +46,11 @@ cascade launches all fifty-two cards.
 
 A launched card leaves the foundation it came from and becomes a card in flight:
 
-| Quantity | Value |
-| --- | --- |
-| Its top-left | The anchor of the foundation it launched from, as `specs/table.md` fixes it |
-| `vy` | `LAUNCH_VY` (`-120`) |
-| `vx` | A magnitude drawn uniformly from `[LAUNCH_VX_MIN, LAUNCH_VX_MAX]` (`[180, 420]`), with a sign chosen with equal probability |
+| Quantity     | Value                                                                                                                       |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| Its top-left | The anchor of the foundation it launched from, as `specs/table.md` fixes it                                                 |
+| `vy`         | `LAUNCH_VY` (`-120`)                                                                                                        |
+| `vx`         | A magnitude drawn uniformly from `[LAUNCH_VX_MIN, LAUNCH_VX_MAX]` (`[180, 420]`), with a sign chosen with equal probability |
 
 The magnitude and the sign are drawn at the launch, independently of every
 other launch. A card launched in a frame takes no motion in that frame.

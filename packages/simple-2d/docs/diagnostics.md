@@ -94,13 +94,13 @@ metrics line, then the frame-time graph. It is drawn after the game's `render`,
 with the context transform reset to the identity, so debug text stays the same
 physical size however far the game's own coordinates are being scaled.
 
-| Reading | Drawn as |
-| --- | --- |
-| `string` value | The string itself. |
-| Integer `number` value | `String(value)`. |
-| Non-integer `number` value | `value.toFixed(3)`. |
-| `boolean` value | `"true"` or `"false"`. |
-| A source that threw | The `error` message, in the value's place. |
+| Reading                    | Drawn as                                   |
+| -------------------------- | ------------------------------------------ |
+| `string` value             | The string itself.                         |
+| Integer `number` value     | `String(value)`.                           |
+| Non-integer `number` value | `value.toFixed(3)`.                        |
+| `boolean` value            | `"true"` or `"false"`.                     |
+| A source that threw        | The `error` message, in the value's place. |
 
 A number that is not finite draws as `NaN`, `Infinity`, or `-Infinity`.
 
@@ -118,12 +118,12 @@ interface FrameMetrics {
 }
 ```
 
-| Field | Meaning |
-| --- | --- |
-| `samples` | How many frames the window holds. |
-| `meanMs` | The arithmetic mean of the window's samples, in milliseconds. |
-| `p95Ms` | The 95th percentile of the window's samples, in milliseconds. |
-| `p99Ms` | The 99th percentile of the window's samples, in milliseconds. |
+| Field     | Meaning                                                       |
+| --------- | ------------------------------------------------------------- |
+| `samples` | How many frames the window holds.                             |
+| `meanMs`  | The arithmetic mean of the window's samples, in milliseconds. |
+| `p95Ms`   | The 95th percentile of the window's samples, in milliseconds. |
+| `p99Ms`   | The 99th percentile of the window's samples, in milliseconds. |
 
 The metrics line reads `` `frame: ${meanMs} / ${p95Ms} / ${p99Ms} ms` ``.
 Percentiles are nearest-rank over the window's samples sorted ascending. An

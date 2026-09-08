@@ -963,6 +963,51 @@ pub fn validation_media_name(verdict_id: &str, output_id: &str, kind: MediaKind)
     format!("{verdict_id}__{output_id}.{ext}")
 }
 
+/// The prefix every file of a recording's **shared image store** carries:
+/// `img.<id>.png` for a bitmap and `img.<id>.bin` for a raw RGBA pixel buffer, where
+/// `<id>` is derived from the bytes themselves. Only the first is written today —
+/// see [`is_validation_image_name`].
+///
+/// A draw-command recording's images are the bulk of its weight — PNG payloads that
+/// gzip cannot compress — and the same sprite is drawn by dozens of a run's
+/// recordings. So the harness writes each *unique* image once as a flat file beside
+/// the recordings and the entry inside the document names that file instead of
+/// carrying base64 of it. The producer is `@clockwyrks/case-harness`'s
+/// `replay/store.ts`, which mirrors this constant as `IMAGE_STORE_PREFIX`; the two
+/// spellings must agree, and there is no negotiation between them — a name that does
+/// not match here simply does not travel.
+///
+/// A store file deliberately shares the flat namespace of
+/// [`validation_media_name`]'s `<verdict>__<output>.<ext>`, and can never collide
+/// with one: a declared output's name always carries `__`, and a store file's never
+/// does. That is what lets it route through the one-segment `/validation/{file}`
+/// endpoints, publish through the media paths, and resolve in every console through
+/// the very resolver the recording it belongs to came from — with no new route, key
+/// shape, or lookup anywhere.
+pub const VALIDATION_IMAGE_PREFIX: &str = "img.";
+
+/// Whether `file` names a file of a recording's shared image store rather than a
+/// declared output.
+///
+/// Both publish paths — the driver's mirror into the backend store and the snapshot
+/// builder's upload — are driven off the run record's *declared* outputs. A store
+/// file is on no record: it backs no verdict and is named by its own bytes, so it
+/// has to be recognized off the directory instead, and this is the one place that
+/// judgement is written down.
+///
+/// The extension is part of the check and not decoration. The namespace admits
+/// exactly two shapes of bytes — a PNG bitmap and a headerless RGBA buffer — so a
+/// name carrying neither extension is not something this side of the contract knows
+/// how to serve a content type for, and it is left where it is rather than published
+/// as an unlabelled blob. Today only the first is ever written: the harness leaves a
+/// pixel buffer inline, where the recording's own gzip compresses raw RGBA far
+/// better than a flat file could be served. `.bin` is recognized here because the
+/// recording format admits a stored buffer and a player resolves one, so the day
+/// that becomes worth writing it travels without this side changing.
+pub fn is_validation_image_name(file: &str) -> bool {
+    file.starts_with(VALIDATION_IMAGE_PREFIX) && (file.ends_with(".png") || file.ends_with(".bin"))
+}
+
 /// Move each declared output's produced file from `tmp` to its stable flat name
 /// under `media_dir`, returning the per-output presence record.
 ///

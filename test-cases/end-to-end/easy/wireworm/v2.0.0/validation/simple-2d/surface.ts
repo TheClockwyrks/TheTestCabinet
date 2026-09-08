@@ -44,7 +44,12 @@ export const WIREWORM_DEBUG_VERSION = 1;
 
 /** The six screens the game moves between. */
 export type Screen =
-  "title" | "howto" | "playing" | "paused" | "victory" | "gameover";
+  | "title"
+  | "howto"
+  | "playing"
+  | "paused"
+  | "victory"
+  | "gameover";
 
 /** The three sub-phases of the `playing` screen. */
 export type Phase = "banner" | "active" | "respawn";
@@ -215,6 +220,12 @@ export interface WirewormDebugApi<S = unknown> {
   reset(state: DeepReadonly<S>): S;
   /** A pure read of the state. It changes nothing. */
   snapshot(state: DeepReadonly<S>): WirewormSnapshot;
+  /**
+   * Bring every value the snapshot reports into agreement with the game as it
+   * now stands, without advancing anything. Written in the shape of a pose: it
+   * takes the current state, leaves it as it was, and returns the next one.
+   */
+  reconcile(state: DeepReadonly<S>): S;
 
   // ---- The screen and the run --------------------------------------------
 
@@ -321,6 +332,7 @@ export const READINGS = ["snapshot", "menuItemRect"] as const;
 export const REQUIRED_OPS = [
   "reset",
   "snapshot",
+  "reconcile",
 
   "setScreen",
   "setPhase",

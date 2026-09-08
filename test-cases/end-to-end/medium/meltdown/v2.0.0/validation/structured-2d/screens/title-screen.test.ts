@@ -6,11 +6,14 @@
 // `HOW TO PLAY`." And under Menus: "one row is highlighted, counted from `0`. The
 // highlighted row is drawn plainly apart from the others."
 //
-// FOUR RUNS OF TEXT AND ONE COMPARISON, because that is what the one item
+// FOUR PIECES OF COPY AND ONE COMPARISON, because that is what the one item
 // names: the title, the tagline, the two rows, and the mark that tells the
 // highlighted row from the other. Every string is read from `constants.ts`
 // rather than written out here, so the check asks for the copy the
-// specification fixes.
+// specification fixes, and each is asked of the package's `drewText`
+// (`../case-harness/text`) over the frame's calls. The two rows are then
+// PLACED — `screens/menu`'s `requireRun`, the one run of text that is each
+// row — because the comparison reads the pixels over them.
 //
 // WHERE ANY OF IT SITS IS THE BUILD'S. specs/screens.md fixes no layout beyond
 // "a vertical list of rows", so nothing here reads a position: a run is looked
@@ -40,8 +43,13 @@
 // requirement and where confirming a row leads is `screens.title-to-mode-select`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThanOrEqual, assertNotEqual } from "../assert";
+import {
+  assertGreaterThanOrEqual,
+  assertNotEqual,
+  assertTrue,
+} from "../assert";
 import { TAGLINE_TEXT, TITLE_ITEMS, TITLE_TEXT } from "../constants";
+import { drewText } from "../case-harness/text";
 import {
   captureStill,
   createHarness,
@@ -55,6 +63,7 @@ import {
   pixelsOver,
   readScreen,
   requireRun,
+  textOf,
 } from "./menu";
 
 /**
@@ -103,8 +112,24 @@ it("draws MELTDOWN, RUN IT HOT and its two rows, with the highlighted row apart"
   const runs = await readScreen(h);
   captureStill(h, "title");
 
-  requireRun(runs, TITLE_TEXT, "the title screen");
-  requireRun(runs, TAGLINE_TEXT, "the title screen");
+  const drawn = textOf(runs).join(" | ");
+  assertTrue(
+    drewText(h.calls, TITLE_TEXT),
+    `TITLE_TEXT (${JSON.stringify(TITLE_TEXT)}) drawn on the title screen ` +
+      `(specs/screens.md); it drew ${drawn}`,
+  );
+  assertTrue(
+    drewText(h.calls, TAGLINE_TEXT),
+    `TAGLINE_TEXT (${JSON.stringify(TAGLINE_TEXT)}) drawn on the title ` +
+      `screen (specs/screens.md); it drew ${drawn}`,
+  );
+  for (const item of TITLE_ITEMS) {
+    assertTrue(
+      drewText(h.calls, item),
+      `the ${JSON.stringify(item)} row of TITLE_ITEMS drawn on the title ` +
+        `screen (specs/screens.md); it drew ${drawn}`,
+    );
+  }
   const rows = TITLE_ITEMS.map((item) =>
     requireRun(runs, item, "the title screen's menu"),
   );

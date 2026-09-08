@@ -45,7 +45,9 @@ import { riseFootprint, setFootprint } from "../parts";
  * the placement rules of `specs/parts.md` alone, and throws an `Error` naming
  * the first rule it breaks" (`specs/instrumentation.md`, The machine).
  */
-async function refusesPlacement(place: () => Promise<unknown>): Promise<boolean> {
+async function refusesPlacement(
+  place: () => Promise<unknown>,
+): Promise<boolean> {
   try {
     await place();
     return false;
@@ -86,7 +88,11 @@ it("refuses a rise or a set whose pattern reaches outside the field", async () =
   await openChallengeDocument(h, LINES);
 
   // The geometry the check claims to be posing.
-  assertEqual(onField(OVER_THE_EDGE), true, "the refused anchor is itself on the field");
+  assertEqual(
+    onField(OVER_THE_EDGE),
+    true,
+    "the refused anchor is itself on the field",
+  );
   assertEqual(
     riseFootprint(LINE, OVER_THE_EDGE, 0).filter((hex) => !onField(hex)).length,
     1,
@@ -138,7 +144,11 @@ it("refuses a rise or a set whose pattern reaches outside the field", async () =
     true,
     `a rise at (${OVER_THE_EDGE.q}, ${OVER_THE_EDGE.r}) is refused: its pattern reaches off the field`,
   );
-  assertEqual(afterRiseOver, 0, "the refused rise added no part to the machine");
+  assertEqual(
+    afterRiseOver,
+    0,
+    "the refused rise added no part to the machine",
+  );
   assertEqual(
     riseInside,
     false,

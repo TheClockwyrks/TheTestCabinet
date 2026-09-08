@@ -15,11 +15,11 @@ Everything else gg sends back is plain `user` text. There the heading is the
 only thing telling the model what it is looking at, so the vocabulary is
 exactly three messages.
 
-| Heading | When | Body |
-| --- | --- | --- |
-| `Compiler error` | the program did not compile, so none of it ran | the language's diagnostic, verbatim, and a bounded amount of supporting material drawn from the library set it was measured against |
-| `Runtime error` | it compiled and then threw, or a sandbox limit stopped it | the error |
-| `Notice` | a fact about the session rather than about the program | the fact |
+| Heading          | When                                                      | Body                                                                                                                                |
+| ---------------- | --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `Compiler error` | the program did not compile, so none of it ran            | the language's diagnostic, verbatim, and a bounded amount of supporting material drawn from the library set it was measured against |
+| `Runtime error`  | it compiled and then threw, or a sandbox limit stopped it | the error                                                                                                                           |
+| `Notice`         | a fact about the session rather than about the program    | the fact                                                                                                                            |
 
 A turn that produces both a notice and an error pushes the notices first and the
 error last, so the error is the last thing the model reads before it writes its
@@ -174,13 +174,13 @@ Everything the program logged rides out on the turn's `code_execution`
 
 ## Caps on the operator's record
 
-| What | Cap |
-| --- | --- |
-| Calls described | 500 |
-| Refusals described | 100 |
-| View records described | 100 per kind (opened, closed, refused) |
-| Failure text kept per call | 512 bytes |
-| Log lines kept | 200 lines, 16 KiB in total, 2 KiB per line; the tail is what is kept |
+| What                       | Cap                                                                  |
+| -------------------------- | -------------------------------------------------------------------- |
+| Calls described            | 500                                                                  |
+| Refusals described         | 100                                                                  |
+| View records described     | 100 per kind (opened, closed, refused)                               |
+| Failure text kept per call | 512 bytes                                                            |
+| Log lines kept             | 200 lines, 16 KiB in total, 2 KiB per line; the tail is what is kept |
 
 Each cap counts what it discarded on the same `code_execution` event, so a
 capped list reads as a tail rather than as a program that stopped doing

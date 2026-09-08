@@ -7,11 +7,7 @@ import {
   canonicalModelId,
 } from "@clockwyrks/ui";
 import type { MyReview } from "../../client/types";
-import {
-  overallGradeOf,
-  reviewAesthetic,
-  worstRating,
-} from "../data/ratings";
+import { overallGradeOf, reviewAesthetic, worstRating } from "../data/ratings";
 import { useFindModel } from "../data/useModels";
 import { useTestCaseName } from "../data/useTestCaseName";
 import { formatReviewedAt } from "../pages/runs/[runId]/ReviewList";

@@ -9,11 +9,7 @@
         "height": 32
       },
       "ticks": 24000,
-      "snapshots": [
-        6000,
-        12000,
-        24000
-      ],
+      "snapshots": [6000, 12000, 24000],
       "entities": [
         {
           "type": "splitter",
@@ -2863,11 +2859,7 @@
         "height": 40
       },
       "ticks": 24000,
-      "snapshots": [
-        6000,
-        12000,
-        24000
-      ],
+      "snapshots": [6000, 12000, 24000],
       "entities": [
         {
           "type": "splitter",

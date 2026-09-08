@@ -49,7 +49,10 @@ afterEach(async () => {
 
 it("carries Site 5's load 2 as the specification authored it", async () => {
   await openSite(h, SITE);
-  await h.capture("state", "Site 5's crate, and the ground pad it is wanted on");
+  await h.capture(
+    "state",
+    "Site 5's crate, and the ground pad it is wanted on",
+  );
 
   const { site } = await h.snapshot();
   const load = site.loads[INDEX];

@@ -15,8 +15,9 @@
 // WHY THE READING IS IN TWO HALVES, AND HOW CLOSE THAT GETS. The two halves are
 // as near "the control is drawn inside its target" as this case can honestly get.
 //
-//   The copy — `PAUSE_LABEL` is looked for among the strings the frame drew, in
-//   whatever pieces the build drew them, which `showsText` reads.
+//   The copy — `PAUSE_LABEL` is looked for among the runs of text the frame
+//   spelled, in whatever pieces the build drew them, which the shared harness's
+//   `drewTextAnywhere` reads.
 //
 //   The rectangle — the pixels inside the `pause` target the same screen reports
 //   are read off the canvas and asked to carry more than one color. Something is
@@ -36,6 +37,7 @@
 // items decide off the reported targets.
 
 import { afterEach, beforeEach, it } from "vitest";
+import { drawnTextLines, drewTextAnywhere } from "../case-harness/text";
 import { quietRowsWithEscape, type TargetRect } from "../board";
 import { assertEqual, assertGreaterThan, assertTrue } from "../assert";
 import { PAUSE_LABEL } from "../constants";
@@ -43,7 +45,6 @@ import {
   captureStill,
   createHarness,
   loadBoard,
-  showsText,
   targetById,
   type Harness,
 } from "../harness";
@@ -108,16 +109,16 @@ it("draws the PAUSE label and puts something inside the pause target it reports"
   const posed = loadBoard(h, quietRowsWithEscape([]));
   assertEqual(posed.screen, "playing", "the screen a posed board stands on");
 
-  // One frame, and the strings it drew.
-  const drawn = await h.frameText();
+  // One frame, and everything it drew.
+  const frame = await h.frameCalls();
 
   // Evidence, and no part of the verdict: the control on the live board.
   captureStill(h, "control");
 
   assertTrue(
-    showsText(drawn, PAUSE_LABEL),
+    drewTextAnywhere(frame, PAUSE_LABEL),
     `the ${JSON.stringify(PAUSE_LABEL)} control drawn on the playing screen, ` +
-      `among ${JSON.stringify(drawn)}`,
+      `among ${JSON.stringify(drawnTextLines(frame))}`,
   );
 
   const target = targetById(h.snapshot(), TARGET_ID);

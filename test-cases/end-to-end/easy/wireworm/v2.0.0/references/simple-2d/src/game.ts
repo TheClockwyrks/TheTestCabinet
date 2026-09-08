@@ -66,7 +66,12 @@ export const BACKGROUND: string = COLOR.background;
 // ---- The declared state (specs/state.md) ---------------------------------
 
 export type Screen =
-  "title" | "howto" | "playing" | "paused" | "victory" | "gameover";
+  | "title"
+  | "howto"
+  | "playing"
+  | "paused"
+  | "victory"
+  | "gameover";
 
 export type Phase = "banner" | "active" | "respawn";
 

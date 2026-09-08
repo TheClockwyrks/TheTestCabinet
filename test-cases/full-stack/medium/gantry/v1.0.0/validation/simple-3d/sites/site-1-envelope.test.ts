@@ -19,12 +19,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import {
-  createHarness,
-  openSite,
-  type Harness,
-  type Vec3,
-} from "../harness";
+import { createHarness, openSite, type Harness, type Vec3 } from "../harness";
 
 const SITE = 0;
 

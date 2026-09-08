@@ -17,32 +17,24 @@
 // the miss this point is about. specs/overview.md § Units, ticks, and the stage
 // fixes where to look — "over it the screen-space readouts are drawn on a 2D
 // layer composited on top of the picture" — so the reading is the text the last
-// frame drew on that layer, which the harness's injected recorder holds.
+// frame drew on that layer, which `h.screenCalls()` answers with every text call
+// measured.
 //
-// MATCHING IGNORES CASE, SPACING AND PUNCTUATION. How a build sets its readouts
-// is its own — `LONG REACH`, `Long Reach`, `4 · Long Reach` — so the frame's runs
-// are joined in draw order and compared with everything but letters and digits
-// removed.
+// MATCHING IGNORES CASE AND SPACING. How a build sets its readouts is its own —
+// `LONG REACH`, `Long Reach`, `4 · Long Reach` — so the name is read with the
+// shared harness's `drewTextAnywhere`: the frame's logical runs joined in
+// reading order with the whitespace folded out, matched as a substring ignoring
+// case, so a name letter-spaced a glyph per call or set beside its number still
+// reads as the name.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { drawnText, toDrawCall, type RecordedOp } from "../case-harness/index";
+import { drawnTextLines, drewTextAnywhere } from "../case-harness/text";
 import { fail } from "../assert";
 import { SITE_NAMES } from "../constants";
 import { createHarness, openSite, type Harness } from "../harness";
 
 /** The site this check opens: `Long Reach` (specs/sites.md § Site 4). */
 const SITE = 3;
-
-/** Every run of text the last closed frame drew, in draw order. */
-async function frameText(harness: Harness): Promise<string[]> {
-  const ops = (await harness.screenOps()) as RecordedOp[];
-  return drawnText(ops.map(toDrawCall));
-}
-
-/** Letters and digits alone, lowercased: the form two runs are compared in. */
-function bare(text: string): string {
-  return text.toLowerCase().replace(/[^a-z0-9]+/g, "");
-}
 
 let h: Harness;
 
@@ -58,15 +50,14 @@ it("draws the open site's name on the build screen", async () => {
   await openSite(h, SITE);
   await h.advance(1);
 
-  const runs = await frameText(h);
+  const calls = await h.screenCalls();
   await h.capture("build-name", "The site name readout");
 
-  const wanted = bare(SITE_NAMES[SITE]);
-  if (!bare(runs.join(" ")).includes(wanted)) {
+  if (!drewTextAnywhere(calls, SITE_NAMES[SITE])) {
     fail(
       `the build screen to draw the open site's name, "${SITE_NAMES[SITE]}" ` +
         "(specs/ui.md § Build, specs/sites.md)",
-      `it drew ${JSON.stringify(runs)}`,
+      `it drew ${JSON.stringify(drawnTextLines(calls))}`,
     );
   }
 });

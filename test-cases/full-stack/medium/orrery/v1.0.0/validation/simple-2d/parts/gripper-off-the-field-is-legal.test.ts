@@ -42,7 +42,9 @@ import { gripperHexes } from "../parts";
  * the placement rules of `specs/parts.md` alone, and throws an `Error` naming
  * the first rule it breaks" (`specs/instrumentation.md`, The machine).
  */
-async function refusesPlacement(place: () => Promise<unknown>): Promise<boolean> {
+async function refusesPlacement(
+  place: () => Promise<unknown>,
+): Promise<boolean> {
   try {
     await place();
     return false;
@@ -74,14 +76,22 @@ it("places an arm at the field's edge whose gripper reaches beyond it", async ()
   // gripper at ARM_MAX_LEN is not.
   assertEqual(onField(ANCHOR), true, "the arm's anchor is on the field");
   const reach = gripperHexes("arm", ANCHOR, ROTATION, ARM_MAX_LEN);
-  assertEqual(reach.length, 1, "an arm carries one gripper, on the spoke its rotation names");
+  assertEqual(
+    reach.length,
+    1,
+    "an arm carries one gripper, on the spoke its rotation names",
+  );
   const gripper = reach[0] as Hex;
   assertEqual(
     `${gripper.q},${gripper.r}`,
     `${ANCHOR.q + ARM_MAX_LEN},${ANCHOR.r}`,
     "base + length * DIRS[0] puts the gripper three hexes east of the anchor",
   );
-  assertEqual(onField(gripper), false, "that gripper hex lies outside the field");
+  assertEqual(
+    onField(gripper),
+    false,
+    "that gripper hex lies outside the field",
+  );
 
   let arm = -1;
   const refusedPlacement = await refusesPlacement(async () => {
@@ -100,7 +110,11 @@ it("places an arm at the field's edge whose gripper reaches beyond it", async ()
     false,
     `an arm anchored on (${ANCHOR.q}, ${ANCHOR.r}) is placed: rule 1 names its anchor alone`,
   );
-  assertEqual(atRest, ARM_MIN_LEN, "placePart places an arm at ARM_MIN_LEN (1)");
+  assertEqual(
+    atRest,
+    ARM_MIN_LEN,
+    "placePart places an arm at ARM_MIN_LEN (1)",
+  );
   assertEqual(
     refusedGrowth,
     false,
@@ -108,7 +122,11 @@ it("places an arm at the field's edge whose gripper reaches beyond it", async ()
   );
 
   const snapshot = await h.snapshot();
-  assertEqual(partById(snapshot, arm)?.kind, "arm", "the arm stands on the machine");
+  assertEqual(
+    partById(snapshot, arm)?.kind,
+    "arm",
+    "the arm stands on the machine",
+  );
   assertEqual(
     `${partById(snapshot, arm)?.q},${partById(snapshot, arm)?.r}`,
     `${ANCHOR.q},${ANCHOR.r}`,

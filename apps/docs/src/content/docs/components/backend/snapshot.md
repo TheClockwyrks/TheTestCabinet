@@ -120,29 +120,33 @@ backend's own stored copy is left intact; only this public export is rewritten.
       "pictureKey": "pfp/acct_7yq…",
       "ratings": [
         { "domain": "single-player", "rating": "great" },
-        { "domain": "versus", "rating": "scuffed" }
+        { "domain": "versus", "rating": "scuffed" },
       ],
       "writeup": "Plays well, but the AI paddle…",
       "checklist": [],
-      "reviewedAt": "2026-06-21T18:00:00Z"
+      "reviewedAt": "2026-06-21T18:00:00Z",
     },
     {
       "reviewerId": "acct_3kd…",
       "reviewer": "Bao",
       "aesthetic": "amazing",
       "checklist": [
-        { "id": "controls.ai", "status": "fail", "note": "Precondition unmet." }
+        {
+          "id": "controls.ai",
+          "status": "fail",
+          "note": "Precondition unmet.",
+        },
       ],
       "writeup": "Gorgeous art; overrode one point whose precondition was unmet.",
-      "reviewedAt": "2026-08-24T09:00:00Z"
-    }
+      "reviewedAt": "2026-08-24T09:00:00Z",
+    },
   ],
   "links": {
     "sourceRepo": "https://github.com/…",
-    "playableBuild": "https://abc123.test-cabinet-runs.pages.dev"
+    "playableBuild": "https://abc123.test-cabinet-runs.pages.dev",
   },
   // Optional: the normalized event stream, a JSON array of HarnessEvents.
-  "events": [{ "timestamp": "…", "type": "agent", "message": "…" }]
+  "events": [{ "timestamp": "…", "type": "agent", "message": "…" }],
 }
 ```
 
@@ -172,6 +176,15 @@ the run id and written once:
 - Only media not yet in the bucket is read, from the backend store or the
   [artifact service](/components/artifacts/overview/), and uploaded.
 
+`validationMedia` covers two sets. The synthesized outputs come from the run
+record, which declares them. A recording's
+[shared image store](/components/core/validation/#the-shared-image-store) backs
+no verdict and so appears on no record, and the builder enumerates the run's
+stored validation media for it. A store file is published under the same flat
+name it is served under, so a console resolves it through the lookup that
+resolved the recording naming it — and, on the static gallery, by appending that
+name to a single per-run prefix rather than through an entry of its own.
+
 Two consequences follow. A publish stays cheap as asset-generation runs
 accumulate, because it uploads only new media. Media already in the bucket is
 referenced without needing its source bytes, so a publish keeps a run's media
@@ -193,6 +206,18 @@ showcase](/components/core/showcase/#the-case-showcase) media, under
 `media/cases/<slug>/<version>/`. A version with a published run is
 [frozen](/development/frozen-versions/), so re-uploading its baselines on every
 publish would be waste.
+
+`validationBaselines[]` covers every committed file of each engine and variant's
+baseline directory, which is what carries a baseline recording's
+[shared image store](/components/core/validation/#the-shared-image-store)
+alongside the recordings naming it. A store file is the one case-scoped object
+published under its bare name rather than under a content-addressed key: the
+name is a hash of its own bytes already, so a digest would add nothing a
+re-publish could change, and a key a consumer can compose is what lets the
+static gallery carry one URL prefix per subject instead of one entry per image.
+A reference's store runs to a file per unique image its whole baseline corpus
+drew, and the static site inlines those lookup tables into the chunk every
+visitor downloads.
 
 A reference image is rendered from a committed mockup at ingest rather than
 committed as bytes, so a re-ingest on a different browser build can legitimately

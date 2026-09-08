@@ -14,14 +14,17 @@ import type { Team } from "../types";
 
 /** A material collection with a single wireframe switch (specs/overview.md, F4). */
 export class MaterialRegistry {
-  private readonly materials = new Set<THREE.Material & { wireframe?: boolean }>();
+  private readonly materials = new Set<
+    THREE.Material & { wireframe?: boolean }
+  >();
   private readonly listeners = new Set<(on: boolean) => void>();
   private wire = false;
 
   /** Register a material so the wireframe toggle reaches it; returns it for chaining. */
   add<T extends THREE.Material>(material: T): T {
     this.materials.add(material as THREE.Material & { wireframe?: boolean });
-    if ("wireframe" in material) (material as { wireframe: boolean }).wireframe = this.wire;
+    if ("wireframe" in material)
+      (material as { wireframe: boolean }).wireframe = this.wire;
     return material;
   }
 
@@ -59,7 +62,9 @@ export class MaterialRegistry {
 }
 
 /** The shared lit material for the instanced units (team tint via `instanceColor`). */
-export function createUnitMaterial(registry: MaterialRegistry): THREE.MeshStandardMaterial {
+export function createUnitMaterial(
+  registry: MaterialRegistry,
+): THREE.MeshStandardMaterial {
   return registry.add(
     new THREE.MeshStandardMaterial({
       vertexColors: true,

@@ -50,13 +50,13 @@ import {
   blitsFrom,
   captureStill,
   createHarness,
-  drawnText,
-  drewText,
   holdWeapon,
   isolate,
   openChest,
+  textReadings,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 
 /** The one item held below a maximum, so the chest's level result is certain. */
 const ITEM = "ember";
@@ -97,7 +97,10 @@ it("draws the levelled item's icon, name, and new level", async () => {
   );
   const tag = new RegExp(`${LEVEL_LABEL}\\s*${BECAME}(?![\\w])`, "i");
   assertTrue(
-    drawnText(calls).some((line) => tag.test(line)),
+    // Both readings, so the tag is found whether the level was drawn a glyph
+    // at a time (the run) or a plain call the run rule merged into its
+    // neighbour (the raw call).
+    textReadings(calls).some((line) => tag.test(line)),
     `a run of text reading ${LEVEL_LABEL} ${BECAME}, the level the item became (specs/ui.md, chest)`,
   );
   assertGreaterThanOrEqual(

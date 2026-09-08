@@ -15,7 +15,7 @@ finished build: it earns a numeric score (the points its checklist earned out of
 those available) and a quality rating for each of the case's scoring domains, and
 every test case has a per-variant leaderboard ranking models by score.
 
-Test cases in this repository intentionally do *not* attempt to create exact
+Test cases in this repository intentionally do _not_ attempt to create exact
 copies of the games the tests are based on. This is both to avoid legal issues
 around copyright, and as a way to ensure that models have to adapt to the
 benchmarks. Adjustments to the original designs force models to follow the

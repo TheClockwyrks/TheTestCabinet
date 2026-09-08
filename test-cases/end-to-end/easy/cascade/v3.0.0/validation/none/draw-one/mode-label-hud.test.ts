@@ -22,11 +22,11 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { fail } from "../assert";
+import { drewText } from "../case-harness/index";
 import {
   captureStill,
   createHarness,
   drawnText,
-  drewText,
   openTable,
   type Harness,
 } from "../harness";

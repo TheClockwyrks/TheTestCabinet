@@ -1334,7 +1334,8 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     id: "list-dir",
     name: "List directory",
     group: "Filesystem",
-    purpose: "List a directory's entries, or the tree beneath one, in the run's workspace.",
+    purpose:
+      "List a directory's entries, or the tree beneath one, in the run's workspace.",
     defaultOn: true,
     tools: ["list_dir", "tree"],
     operations: ["files.list_dir", "files.tree"],

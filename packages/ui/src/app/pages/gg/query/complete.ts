@@ -10,14 +10,22 @@
 // It works off the token stream rather than the tree, because the input is by definition
 // half-typed: `cap.` is not a parseable predicate, but it is exactly the moment the
 // operator wants the capability fields listed.
-import type { GgFieldCatalog, GgFieldInfo } from "@clockwyrks/run-record/gg-query";
+import type {
+  GgFieldCatalog,
+  GgFieldInfo,
+} from "@clockwyrks/run-record/gg-query";
 import { AGG_FUNCS, STAGE_KEYWORDS } from "./ast";
 import { type Token, keywordOf, tokenize } from "./lex";
 import { asDisplay } from "./values";
 import { formatIdentifier, formatLiteral } from "./format";
 
 /** What a suggestion is offering, so the editor can group and ice-badge them. */
-export type CompletionKind = "field" | "value" | "keyword" | "function" | "interval";
+export type CompletionKind =
+  | "field"
+  | "value"
+  | "keyword"
+  | "function"
+  | "interval";
 
 /** One suggestion. */
 export interface Completion {
@@ -68,10 +76,16 @@ export function completeQuery(
   // the span the accepted suggestion replaces.
   const last = real[real.length - 1];
   const typing =
-    last && last.end === caret && (last.kind === "word" || last.kind === "string")
+    last &&
+    last.end === caret &&
+    (last.kind === "word" || last.kind === "string")
       ? last
       : null;
-  const prefix = typing ? (typing.kind === "string" ? typing.value : typing.text) : "";
+  const prefix = typing
+    ? typing.kind === "string"
+      ? typing.value
+      : typing.text
+    : "";
   const replace = typing
     ? { start: typing.start, end: typing.end }
     : { start: caret, end: caret };
@@ -231,7 +245,10 @@ function rank(suggestions: Completion[], prefix: string): Completion[] {
       if (label.includes(needle)) return { suggestion, score: 1 };
       return null;
     })
-    .filter((entry): entry is { suggestion: Completion; score: number } => entry !== null);
+    .filter(
+      (entry): entry is { suggestion: Completion; score: number } =>
+        entry !== null,
+    );
 
   scored.sort(
     (a, b) =>
@@ -243,7 +260,9 @@ function rank(suggestions: Completion[], prefix: string): Completion[] {
 
 /** Which stage the caret is in, or `null` for the filter. Found by walking back to the
  *  last `|`, which is cheaper and far more robust on half-typed text than re-parsing. */
-function enclosingStage(before: readonly Token[]): "stats" | "sort" | "limit" | null {
+function enclosingStage(
+  before: readonly Token[],
+): "stats" | "sort" | "limit" | null {
   for (let i = before.length - 1; i >= 0; i -= 1) {
     if (before[i]!.kind === "pipe") {
       const head = before[i + 1];
@@ -310,7 +329,8 @@ function fieldAwaitingValue(before: readonly Token[]): string | null {
   if (head?.kind === "lparen" || head?.kind === "lbracket") i -= 1;
   else if (head && (keywordOf(head) === "or" || keywordOf(head) === "to")) {
     // Inside a `(a or …)` or `[a to …]`, walk back to the opener.
-    while (i >= 0 && at(i)?.kind !== "lparen" && at(i)?.kind !== "lbracket") i -= 1;
+    while (i >= 0 && at(i)?.kind !== "lparen" && at(i)?.kind !== "lbracket")
+      i -= 1;
     i -= 1;
   }
   if (i < 0) return null;
@@ -329,7 +349,9 @@ function fieldAwaitingValue(before: readonly Token[]): string | null {
   }
   const parts = before.slice(i + 1, end + 1);
   if (parts.length === 0) return null;
-  return parts.map((token) => (token.kind === "string" ? token.value : token.text)).join("");
+  return parts
+    .map((token) => (token.kind === "string" ? token.value : token.text))
+    .join("");
 }
 
 /** The one-line role of each stage keyword, shown beside it in the list. */

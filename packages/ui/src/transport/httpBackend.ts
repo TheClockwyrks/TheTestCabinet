@@ -65,15 +65,8 @@ import type {
   VersionInfo,
   WorkerIdentity,
 } from "../client";
-import type {
-  AssetSheet,
-  ModelSpec,
-  RunRecord,
-} from "@clockwyrks/run-record";
-import type {
-  RunScoreOut,
-  RunSummary,
-} from "@clockwyrks/run-record/snapshot";
+import type { AssetSheet, ModelSpec, RunRecord } from "@clockwyrks/run-record";
+import type { RunScoreOut, RunSummary } from "@clockwyrks/run-record/snapshot";
 import type {
   CabinetStatsResponse,
   TestCaseGroupOut,

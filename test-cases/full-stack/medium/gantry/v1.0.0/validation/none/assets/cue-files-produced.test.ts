@@ -85,7 +85,11 @@ function tag(bytes: Buffer, at: number): string {
  * every chunk is padded to an even length.
  */
 function decodeWav(bytes: Buffer, what: string): Wav {
-  if (bytes.length < 12 || tag(bytes, 0) !== "RIFF" || tag(bytes, 8) !== "WAVE") {
+  if (
+    bytes.length < 12 ||
+    tag(bytes, 0) !== "RIFF" ||
+    tag(bytes, 8) !== "WAVE"
+  ) {
     fail(
       `${what} to be a RIFF/WAVE container, which is what the audio tools ` +
         "render (specs/assets.md)",
@@ -114,7 +118,8 @@ function decodeWav(bytes: Buffer, what: string): Wav {
       bits = bytes.readUInt16LE(body + 14);
       // WAVE_FORMAT_EXTENSIBLE carries the real tag in the first two bytes of
       // its sub-format GUID.
-      if (format === 0xfffe && size >= 40) format = bytes.readUInt16LE(body + 24);
+      if (format === 0xfffe && size >= 40)
+        format = bytes.readUInt16LE(body + 24);
     } else if (id === "data") {
       dataAt = body;
       dataBytes = Math.min(size, bytes.length - body);

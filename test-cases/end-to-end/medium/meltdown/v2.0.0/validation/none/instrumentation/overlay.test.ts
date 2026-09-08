@@ -71,7 +71,7 @@ import { freeSite, laneTile } from "../fixtures";
 import {
   captureStill,
   createHarness,
-  drawnText,
+  drawnTextLines,
   drewWord,
   poseTarget,
   poseTower,
@@ -155,9 +155,16 @@ async function poseAStillFloor(): Promise<{ tower: number; unit: number }> {
   return { tower, unit };
 }
 
-/** The runs of text one fresh frame drew, with the overlay in whatever state it is in. */
+/**
+ * The runs of text one fresh frame drew, with the overlay in whatever state it
+ * is in.
+ *
+ * The LOGICAL runs the frame spells, not the `fillText` split: under `none` the
+ * overlay is the build's own drawing, and a build that letter-spaces its lines
+ * draws them a glyph per call, which no line-by-line reading below could match.
+ */
 async function runsOfOneFrame(): Promise<string[]> {
-  return drawnText(await h.frameCalls());
+  return drawnTextLines(await h.frameCalls());
 }
 
 /**
@@ -302,7 +309,7 @@ it("draws the game's own facts once the backtick opens it", async () => {
   await toggleOverlay(h);
   const opened = await h.frameCalls();
   await captureStill(h, "overlay");
-  const openedRuns = drawnText(opened);
+  const openedRuns = drawnTextLines(opened);
   const bare = new Set(closedRuns);
   const added = openedRuns.filter((run) => !bare.has(run));
   assertGreaterThan(added.length, 0, "the text runs the backtick added");

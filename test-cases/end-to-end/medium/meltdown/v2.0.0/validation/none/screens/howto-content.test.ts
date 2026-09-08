@@ -38,6 +38,7 @@ import {
   captureStill,
   createHarness,
   drawnText,
+  drawnTextLines,
   type Harness,
 } from "../harness";
 
@@ -136,7 +137,14 @@ it("draws a body of text naming every subject the how-to screen covers", async (
   await debug.setScreen("howto");
 
   const calls = await h.frameCalls();
-  const copy = drawnText(calls);
+  // The logical runs the screen spells AND the `fillText` split, because a stem
+  // is a token and each reading can lose one where the other keeps it: a build
+  // that letter-spaces its copy draws it a glyph per call, and only the run
+  // spells the word; a build that draws a key and its caption a space apart in
+  // two calls merges them, verbatim, into one token, and only the split keeps
+  // the word whole. Together they only ever add a match.
+  const lines = drawnTextLines(calls);
+  const copy = [...lines, ...drawnText(calls)];
   await captureStill(h, "howto");
 
   assertEqual(
@@ -151,7 +159,7 @@ it("draws a body of text naming every subject the how-to screen covers", async (
         saysAnyStem(copy, alternatives),
         `the how-to screen to cover ${subject}, naming one of ` +
           `${alternatives.join(", ")} (specs/screens.md, \`howto\`); the ` +
-          `screen drew ${String(copy.length)} runs of text, none of them naming it`,
+          `screen drew ${String(lines.length)} runs of text, none of them naming it`,
       );
     }
   }

@@ -56,6 +56,20 @@ fn script(verdict_id: &str) -> DebugScriptResult {
     }
 }
 
+/// A gating script recorded inconclusive of the given kind for `reason`, in the shape
+/// the runner records one: it did not run and no verdict was synthesized. `None` is a
+/// record from before the kinds were told apart.
+fn inconclusive(verdict_id: &str, kind: Option<Inconclusive>, reason: &str) -> DebugScriptResult {
+    DebugScriptResult {
+        ran: false,
+        precondition_unmet: true,
+        inconclusive: kind,
+        detail: Some(reason.to_string()),
+        verdicts: Vec::new(),
+        ..script(verdict_id)
+    }
+}
+
 /// The faults an end-to-end summary yields, which is the shape every case but the
 /// adversarial and asset-generation ones takes.
 fn end_to_end(summary: &ValidationSummary) -> Vec<String> {
@@ -226,30 +240,200 @@ fn a_sub_item_driver_is_named_by_its_composite_verdict_id() {
 }
 
 #[test]
-fn an_inconclusive_script_is_not_a_fault() {
-    // An unmet precondition, a suite the project does not contain and a run the host
-    // stopped on time all say nothing about the build, so they leave the point for a
-    // human rather than failing the command.
+fn an_inconclusive_script_fails() {
+    // Scoring skips an inconclusive unit because it decided nothing about the build.
+    // This command asks whether the tree satisfied everything the case declares, and
+    // a unit that decided nothing did not, so it fails here: the alternative is a
+    // clean exit from a host that could not run anything.
     let mut summary = clean();
-    let mut skipped = script("ball.spin");
-    skipped.ran = false;
-    skipped.precondition_unmet = true;
-    skipped.verdicts.clear();
-    summary.debug_scripts = vec![skipped];
-    assert!(end_to_end(&summary).is_empty());
+    summary.debug_scripts = vec![inconclusive(
+        "ball.spin",
+        Some(Inconclusive::PreconditionUnmet),
+        "the board never spawned a gas pocket to pose the spin on",
+    )];
+    assert_eq!(
+        end_to_end(&summary),
+        vec![
+            "1 validator(s) inconclusive (precondition unmet): ball.spin — the board never \
+             spawned a gas pocket to pose the spin on"
+        ]
+    );
+}
+
+#[test]
+fn every_inconclusive_kind_fails_and_is_named_by_its_kind() {
+    // The kind is what tells an operator whether to fix the host, the tree or the
+    // validator, so each one is quoted in words rather than folded into one label. A
+    // record from before the kinds were told apart still fails; it just cannot say
+    // which kind it was.
+    for (kind, label) in [
+        (Some(Inconclusive::NotRun), "not run"),
+        (Some(Inconclusive::TimedOut), "timed out"),
+        (Some(Inconclusive::PreconditionUnmet), "precondition unmet"),
+        (None, "unknown kind"),
+    ] {
+        let mut summary = clean();
+        summary.debug_scripts = vec![inconclusive("ball.spin", kind, "reason")];
+        assert_eq!(
+            end_to_end(&summary),
+            vec![format!(
+                "1 validator(s) inconclusive ({label}): ball.spin — reason"
+            )],
+            "{kind:?}"
+        );
+    }
+}
+
+#[test]
+fn inconclusive_units_that_share_a_reason_are_reported_as_one_fault() {
+    // The symptom this rule exists for: the produced tree had no vitest binary, so
+    // the runner never started and every one of the case's 401 suites was recorded
+    // inconclusive with the same reason. That is one finding, named once with its
+    // count, not 401 repetitions of a reason the operator needs to read exactly once.
+    let reason = "`node_modules/.bin/vitest` is not present in the produced tree, so the validators \
+         could not be run";
+    let mut summary = clean();
+    summary.debug_scripts = (0..401)
+        .map(|n| inconclusive(&format!("unit{n}"), Some(Inconclusive::NotRun), reason))
+        .collect();
+    assert_eq!(
+        end_to_end(&summary),
+        vec![format!("401 validator(s) inconclusive (not run): {reason}")]
+    );
+}
+
+#[test]
+fn a_few_inconclusive_units_are_listed_by_id_and_many_are_counted() {
+    // Up to the cap the ids ride on the line; past it only the count does, and the
+    // per-script body above the verdict is where the ids are read.
+    let reason = "the runner was stopped at its wall-clock cap";
+    let units = |count: usize| {
+        (0..count)
+            .map(|n| inconclusive(&format!("unit{n}"), Some(Inconclusive::TimedOut), reason))
+            .collect::<Vec<_>>()
+    };
+
+    let mut summary = clean();
+    summary.debug_scripts = units(INCONCLUSIVE_IDS_LISTED);
+    let listed = end_to_end(&summary);
+    assert_eq!(listed.len(), 1, "{listed:?}");
+    assert!(
+        listed[0].starts_with(&format!(
+            "{INCONCLUSIVE_IDS_LISTED} validator(s) inconclusive (timed out): unit0, unit1"
+        )),
+        "{listed:?}"
+    );
+    assert!(listed[0].ends_with(&format!(" — {reason}")), "{listed:?}");
+
+    summary.debug_scripts = units(INCONCLUSIVE_IDS_LISTED + 1);
+    assert_eq!(
+        end_to_end(&summary),
+        vec![format!(
+            "{} validator(s) inconclusive (timed out): {reason}",
+            INCONCLUSIVE_IDS_LISTED + 1
+        )]
+    );
+}
+
+#[test]
+fn inconclusive_units_are_grouped_by_kind_and_reason() {
+    // Two units that went inconclusive for different reasons, or for the same reason
+    // of different kinds, are different findings and get a line each. Environment
+    // kinds come first, so a host problem is read before a check's own decision, and
+    // the order is stable regardless of the order the scripts were recorded in.
+    let mut summary = clean();
+    summary.debug_scripts = vec![
+        inconclusive(
+            "ball.spin",
+            Some(Inconclusive::PreconditionUnmet),
+            "no gas pocket spawned",
+        ),
+        inconclusive(
+            "ball.bounce",
+            Some(Inconclusive::NotRun),
+            "the report would not parse",
+        ),
+        inconclusive(
+            "paddle.move",
+            Some(Inconclusive::PreconditionUnmet),
+            "no gas pocket spawned",
+        ),
+        inconclusive(
+            "paddle.size",
+            Some(Inconclusive::PreconditionUnmet),
+            "the paddle never left the wall",
+        ),
+    ];
+    assert_eq!(
+        end_to_end(&summary),
+        vec![
+            "1 validator(s) inconclusive (not run): ball.bounce — the report would not parse",
+            "2 validator(s) inconclusive (precondition unmet): ball.spin, paddle.move — no gas \
+             pocket spawned",
+            "1 validator(s) inconclusive (precondition unmet): paddle.size — the paddle never \
+             left the wall",
+        ]
+    );
+}
+
+#[test]
+fn an_inconclusive_unit_with_no_detail_still_fails() {
+    // The reason is prose the runner records; a record without one is still a unit
+    // that decided nothing, and the line says the detail is missing rather than
+    // quoting an empty string.
+    let mut summary = clean();
+    let mut undetailed = inconclusive("ball.spin", Some(Inconclusive::NotRun), "");
+    undetailed.detail = None;
+    summary.debug_scripts = vec![undetailed];
+    assert_eq!(
+        end_to_end(&summary),
+        vec!["1 validator(s) inconclusive (not run): ball.spin — no detail recorded"]
+    );
+}
+
+#[test]
+fn a_contract_failure_and_an_inconclusive_unit_are_named_apart() {
+    // Both fail the command, but one is the build's fault and the other is the host's
+    // or the tree's, and the summary line has to let the operator tell which without
+    // reading the body.
+    let mut summary = clean();
+    let mut broken = script("ball.spin");
+    broken.ran = false;
+    broken.verdicts[0].pass = false;
+    summary.debug_scripts = vec![
+        broken,
+        inconclusive(
+            "ball.bounce",
+            Some(Inconclusive::NotRun),
+            "the report would not parse",
+        ),
+    ];
+    assert_eq!(
+        end_to_end(&summary),
+        vec![
+            "validator(s) did not run: ball.spin",
+            "1 validator(s) inconclusive (not run): ball.bounce — the report would not parse",
+        ]
+    );
 }
 
 #[test]
 fn an_erratum_excluded_point_is_not_a_fault() {
     // `gates == false` is the case's own erratum saying this point is not scored for
-    // the version, so neither a broken drive nor a failing verdict on it costs
-    // anything.
+    // the version, so neither a broken drive, a failing verdict nor an inconclusive
+    // drive on it costs anything.
     let mut summary = clean();
     let mut excluded = script("ball.spin");
     excluded.gates = false;
     excluded.ran = false;
     excluded.verdicts[0].pass = false;
-    summary.debug_scripts = vec![excluded];
+    let mut excluded_inconclusive = inconclusive(
+        "ball.bounce",
+        Some(Inconclusive::NotRun),
+        "the report would not parse",
+    );
+    excluded_inconclusive.gates = false;
+    summary.debug_scripts = vec![excluded, excluded_inconclusive];
     assert!(end_to_end(&summary).is_empty());
 }
 

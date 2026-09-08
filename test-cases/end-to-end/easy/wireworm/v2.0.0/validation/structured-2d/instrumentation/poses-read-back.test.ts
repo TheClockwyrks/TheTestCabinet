@@ -30,9 +30,10 @@
 //
 // WHAT THIS DOES NOT DECIDE. What any posed value MEANS to the simulation. That
 // a posed critical node detonates is `nodes/*`'s, that a gate held off keeps the
-// level's foes away is `instrumentation/foe-spawn-gate`'s, and that the band
-// clamps a cursor posed outside it is `cursor/band-clamp`'s — so every position
-// posed here is one the clamp leaves alone.
+// level's foes away is `instrumentation/foe-spawn-gate`'s, and that a held
+// movement rests the cursor on the band's bound is `cursor/clamped-*`'s — so
+// every position posed here is one inside the band, which is the domain
+// `setCursor` takes.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { COLS, tileCX, tileCY } from "../constants";
@@ -251,7 +252,9 @@ it("reports every posed field back through snapshot", async () => {
   for (const [kind, c, r] of FOE_ENTRIES) {
     h.debug.setNextFoeEntry(kind, c, r);
     const field = `next${kind[0].toUpperCase()}${kind.slice(1)}Entry` as
-      "nextGlitchEntry" | "nextDropperEntry" | "nextCorruptorEntry";
+      | "nextGlitchEntry"
+      | "nextDropperEntry"
+      | "nextCorruptorEntry";
     assertDeepEqual(
       h.snapshot()[field],
       { c, r },
@@ -270,8 +273,8 @@ it("reports every posed field back through snapshot", async () => {
 
   // ---- The cursor and its bolts -------------------------------------------
 
-  // A point well inside the band, so the clamp specs/cursor.md fixes has nothing
-  // to do here and the reading is of the pose alone.
+  // A point well inside the band, which is the domain `setCursor` takes, so the
+  // reading is of the pose alone.
   h.debug.setCursor(CURSOR_X, CURSOR_Y);
   const placed = h.snapshot();
   assertEqual(

@@ -25,8 +25,7 @@
 // one tick, no rigging, no loads, no collisions.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { RECORDER_GLOBAL } from "../case-harness/config";
-import { drawnText, toDrawCall, type RecordedOp } from "../case-harness/index";
+import { drawnTextLines } from "../case-harness/index";
 import { assertEqual, assertTrue, fail } from "../assert";
 import { HOIST_MAX, HOIST_MAX_RATE, RUN_SPEEDS } from "../constants";
 import {
@@ -41,6 +40,7 @@ import {
   type Harness,
   type TapeStepSpec,
 } from "../harness";
+import { drawnFigures, type DrawnFigure } from "./figures";
 
 /** A hoist target past `HOIST_MAX`, so the first tick ends the run. */
 const TAPE: readonly TapeStepSpec[] = [
@@ -66,45 +66,37 @@ afterEach(async () => {
   await h.dispose();
 });
 
-/** Every run of text the frame the page last drew put on its readout layer. */
-async function readoutText(harness: Harness): Promise<string[]> {
-  const ops = (await harness.page.evaluate(
-    (global) =>
-      (window as unknown as Record<string, { last(): unknown[] }>)[
-        global
-      ]!.last(),
-    RECORDER_GLOBAL,
-  )) as RecordedOp[];
-  return drawnText(ops.map(toDrawCall));
+/**
+ * What the frame the page last drew put on its readout layer: the words it
+ * spells, and the figures those words show, each figure carrying the run it was
+ * read inside.
+ *
+ * Read off the LOGICAL RUNS the frame spells, never off the `fillText` split:
+ * a build that letter-spaces its copy draws a glyph per call, which is the only
+ * portable way to letter-space canvas text, and the specification fixes the
+ * words a screen shows while leaving their spacing to the build. `screenCalls`
+ * carries the measured geometry the shared merge rule (`case-harness/text.ts`)
+ * needs to put side-by-side glyphs on one baseline back together, and every
+ * raw string is a substring of its run, so coalescing can only add a match.
+ *
+ * The FIGURES come off the same operations through `./figures`, which is this
+ * directory's one reading of a number and reads the merged runs and the raw
+ * draws they were coalesced from together — so a figure a build grouped with a
+ * plain space inside one `fillText` reads as the figure, while a space the
+ * merge itself wrote between two draws still separates two of them. Each figure
+ * keeps its run, which is what lets a figure be attributed to the run of text
+ * the frame it came from drew it in and no other.
+ */
+interface ReadoutReading {
+  /** Every logical run the frame spelled, in reading order. */
+  readonly lines: string[];
+  /** Every figure those runs show, placed at the run it was read inside. */
+  readonly figures: DrawnFigure[];
 }
 
-/**
- * The separators a build may set between a figure's digit triples.
- *
- * ASCII space is deliberately absent: a frame's text is assembled by joining
- * separate draw runs with one, so accepting it would read the two figures in
- * `40 130` as the single number 40130. `.` is absent for the same sort of
- * reason — it is the decimal point, and a build drawing `1.5` means one and a
- * half.
- */
-const GROUP = "[,'\\u00A0\\u202F\\u2009]";
-
-/** One drawn number: a grouped figure, or a plain one. */
-const DRAWN = new RegExp(
-  `-?\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|-?\\d+(?:\\.\\d+)?`,
-  "g",
-);
-
-/**
- * Every number a run of text carries.
- *
- * A grouped figure reads as the one figure it is, so `1,234` and `1234` both
- * come back as 1234 and a build is free to group the figure it draws.
- */
-function numbersIn(text: string): number[] {
-  return (text.match(DRAWN) ?? []).map((one) =>
-    Number(one.replace(new RegExp(GROUP, "g"), "")),
-  );
+async function readoutText(harness: Harness): Promise<ReadoutReading> {
+  const calls = await harness.screenCalls();
+  return { lines: drawnTextLines(calls), figures: drawnFigures(calls) };
 }
 
 it("draws the RUN_SPEEDS entry the run's speed index names", async () => {
@@ -129,7 +121,7 @@ it("draws the RUN_SPEEDS entry the run's speed index names", async () => {
   );
 
   // One frame per index, in order, with the frame each index was drawn on kept.
-  const frames: string[][] = [];
+  const frames: ReadoutReading[] = [];
   for (const [index] of RUN_SPEEDS.entries()) {
     await h.debug.setSpeedIndex(index);
     // The frame and the reading in one crossing: `runTicks` answers with the
@@ -146,18 +138,23 @@ it("draws the RUN_SPEEDS entry the run's speed index names", async () => {
   await h.capture("run-speed", "The watch-speed readout");
 
   for (const [index, speed] of RUN_SPEEDS.entries()) {
-    const other = frames[index === 0 ? 1 : index - 1] as string[];
-    const mine = frames[index] as string[];
-    const only = mine.filter((text) => !other.includes(text));
-    const shown = only.some((text) =>
-      numbersIn(text).some((figure) => Math.abs(figure - speed) <= FIGURE_TOL),
+    const other = frames[index === 0 ? 1 : index - 1] as ReadoutReading;
+    const mine = frames[index] as ReadoutReading;
+    const only = mine.lines.filter((text) => !other.lines.includes(text));
+    // A figure is this frame's own when the run it was read inside is one of
+    // the runs only this frame drew, whichever half of `./figures`' reading
+    // found it: both halves answer about the same run.
+    const shown = mine.figures.some(
+      (figure) =>
+        only.includes(figure.run.text) &&
+        Math.abs(figure.value - speed) <= FIGURE_TOL,
     );
     if (!shown) {
       fail(
         `the watch speed ${speed}, the RUN_SPEEDS entry index ${index} names, ` +
           "drawn on the run screen and nowhere in the frame the neighboring " +
           "index draws (specs/ui.md)",
-        `the frame at index ${index} draws [${mine
+        `the frame at index ${index} draws [${mine.lines
           .map((one) => one.trim())
           .join(" | ")}], of which only [${only
           .map((one) => one.trim())

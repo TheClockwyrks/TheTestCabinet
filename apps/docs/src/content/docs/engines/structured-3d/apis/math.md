@@ -105,11 +105,11 @@ interface Transform {
 }
 ```
 
-| Field | Identity | Meaning |
-| --- | --- | --- |
-| `position` | `{ x: 0, y: 0, z: 0 }` | Translation, in world units. |
+| Field      | Identity                     | Meaning                         |
+| ---------- | ---------------------------- | ------------------------------- |
+| `position` | `{ x: 0, y: 0, z: 0 }`       | Translation, in world units.    |
 | `rotation` | `{ x: 0, y: 0, z: 0, w: 1 }` | Orientation, a unit quaternion. |
-| `scale` | `{ x: 1, y: 1, z: 1 }` | Scale along each local axis. |
+| `scale`    | `{ x: 1, y: 1, z: 1 }`       | Scale along each local axis.    |
 
 A `Partial<Transform>` on an `ActorSpec` or a `SpawnSpec` fills its absent
 fields from the identity, and a field given is given whole. An
@@ -149,13 +149,13 @@ class Ship extends Pawn {
 
 ## Constants
 
-| Constant | Value |
-| --- | --- |
-| `VEC3_ZERO` | `{ x: 0, y: 0, z: 0 }` |
-| `VEC3_ONE` | `{ x: 1, y: 1, z: 1 }` |
-| `UP` | `{ x: 0, y: 1, z: 0 }` |
-| `FORWARD` | `{ x: 0, y: 0, z: -1 }` |
-| `RIGHT` | `{ x: 1, y: 0, z: 0 }` |
+| Constant        | Value                        |
+| --------------- | ---------------------------- |
+| `VEC3_ZERO`     | `{ x: 0, y: 0, z: 0 }`       |
+| `VEC3_ONE`      | `{ x: 1, y: 1, z: 1 }`       |
+| `UP`            | `{ x: 0, y: 1, z: 0 }`       |
+| `FORWARD`       | `{ x: 0, y: 0, z: -1 }`      |
+| `RIGHT`         | `{ x: 1, y: 0, z: 0 }`       |
 | `QUAT_IDENTITY` | `{ x: 0, y: 0, z: 0, w: 1 }` |
 
 Each constant is one frozen record shared by every reader. A field that is
@@ -176,18 +176,18 @@ function distance(a: Vec3, b: Vec3): number;
 function lerp(a: Vec3, b: Vec3, t: number): Vec3;
 ```
 
-| Helper | Result |
-| --- | --- |
-| `vec3(x, y, z)` | A fresh vector. |
-| `add(a, b)` | `a + b`, per component. |
-| `sub(a, b)` | `a - b`, per component. |
-| `scale(v, s)` | `v` with every component multiplied by `s`. |
-| `dot(a, b)` | The dot product. |
-| `cross(a, b)` | The cross product `a × b`, right-handed. |
-| `length(v)` | The Euclidean length. |
-| `normalize(v)` | `v` at unit length. The zero vector normalizes to the zero vector. |
-| `distance(a, b)` | `length(sub(b, a))`. |
-| `lerp(a, b, t)` | `a + (b - a) * t`, per component, with `t` unclamped. |
+| Helper           | Result                                                             |
+| ---------------- | ------------------------------------------------------------------ |
+| `vec3(x, y, z)`  | A fresh vector.                                                    |
+| `add(a, b)`      | `a + b`, per component.                                            |
+| `sub(a, b)`      | `a - b`, per component.                                            |
+| `scale(v, s)`    | `v` with every component multiplied by `s`.                        |
+| `dot(a, b)`      | The dot product.                                                   |
+| `cross(a, b)`    | The cross product `a × b`, right-handed.                           |
+| `length(v)`      | The Euclidean length.                                              |
+| `normalize(v)`   | `v` at unit length. The zero vector normalizes to the zero vector. |
+| `distance(a, b)` | `length(sub(b, a))`.                                               |
+| `lerp(a, b, t)`  | `a + (b - a) * t`, per component, with `t` unclamped.              |
 
 ## Quaternion helpers
 
@@ -203,17 +203,17 @@ function quatSlerp(a: Quat, b: Quat, t: number): Quat;
 function quatLookAt(forward: Vec3, up?: Vec3): Quat;
 ```
 
-| Helper | Result |
-| --- | --- |
-| `quat(x, y, z, w)` | A fresh quaternion from its components. |
-| `quatFromEuler(x, y, z)` | The rotation of `x` radians about X, `y` about Y, and `z` about Z, applied in the YXZ order below. |
-| `quatToEuler(q)` | The Euler angles, `{ x: pitch, y: yaw, z: roll }`, that `quatFromEuler` turns back into `q`, with pitch in `-π/2..π/2`. |
-| `quatFromAxisAngle(axis, angle)` | The rotation of `angle` radians about the unit vector `axis`, counterclockwise when looking down the axis toward the origin. |
-| `quatMultiply(a, b)` | The Hamilton product `a · b`. |
-| `quatInverse(q)` | The rotation undoing `q`; for a unit quaternion, its conjugate. |
-| `quatRotate(q, v)` | `v` turned by `q`. |
-| `quatSlerp(a, b, t)` | The spherical interpolation from `a` at `t = 0` to `b` at `t = 1`, along the shorter arc. |
-| `quatLookAt(forward, up)` | The rotation taking `FORWARD` onto `normalize(forward)`, rolled so its local `+Y` lies as near `up` as the direction allows. `up` defaults to `UP`, and a zero `forward` yields the identity. |
+| Helper                           | Result                                                                                                                                                                                        |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `quat(x, y, z, w)`               | A fresh quaternion from its components.                                                                                                                                                       |
+| `quatFromEuler(x, y, z)`         | The rotation of `x` radians about X, `y` about Y, and `z` about Z, applied in the YXZ order below.                                                                                            |
+| `quatToEuler(q)`                 | The Euler angles, `{ x: pitch, y: yaw, z: roll }`, that `quatFromEuler` turns back into `q`, with pitch in `-π/2..π/2`.                                                                       |
+| `quatFromAxisAngle(axis, angle)` | The rotation of `angle` radians about the unit vector `axis`, counterclockwise when looking down the axis toward the origin.                                                                  |
+| `quatMultiply(a, b)`             | The Hamilton product `a · b`.                                                                                                                                                                 |
+| `quatInverse(q)`                 | The rotation undoing `q`; for a unit quaternion, its conjugate.                                                                                                                               |
+| `quatRotate(q, v)`               | `v` turned by `q`.                                                                                                                                                                            |
+| `quatSlerp(a, b, t)`             | The spherical interpolation from `a` at `t = 0` to `b` at `t = 1`, along the shorter arc.                                                                                                     |
+| `quatLookAt(forward, up)`        | The rotation taking `FORWARD` onto `normalize(forward)`, rolled so its local `+Y` lies as near `up` as the direction allows. `up` defaults to `UP`, and a zero `forward` yields the identity. |
 
 ### Euler angles
 
@@ -254,11 +254,11 @@ function transformPoint(t: Transform, p: Vec3): Vec3;
 function transformToMatrix(t: Transform): Mat4;
 ```
 
-| Helper | Result |
-| --- | --- |
+| Helper                             | Result                                                                                                                                                                                                                              |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `composeTransforms(parent, child)` | The transform of `child` placed inside `parent`: `position` is `transformPoint(parent, child.position)`, `rotation` is `quatMultiply(parent.rotation, child.rotation)`, and `scale` is the per-component product of the two scales. |
-| `transformPoint(t, p)` | `p` scaled by `t.scale` per component, then rotated by `t.rotation`, then translated by `t.position`. |
-| `transformToMatrix(t)` | The column-major matrix three's `Matrix4.compose(position, quaternion, scale)` builds from the same three parts. Applying it to a point gives `transformPoint(t, p)`. |
+| `transformPoint(t, p)`             | `p` scaled by `t.scale` per component, then rotated by `t.rotation`, then translated by `t.position`.                                                                                                                               |
+| `transformToMatrix(t)`             | The column-major matrix three's `Matrix4.compose(position, quaternion, scale)` builds from the same three parts. Applying it to a point gives `transformPoint(t, p)`.                                                               |
 
 `composeTransforms` is the composition `worldTransform()` performs, with the
 actor's transform as `parent` and the component's `offset` as `child`. A

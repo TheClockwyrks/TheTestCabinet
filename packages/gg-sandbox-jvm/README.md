@@ -3,13 +3,13 @@
 **What both JVM program languages compile.** Not a package with a build of its own: each arm's
 `build.sh` reads these two trees and compiles them into its own SDK jar.
 
-| | |
-| --- | --- |
-| [`src/gg/internal/Abi.java`](src/gg/internal/Abi.java) | the canonical ABI for `test-cabinet:gg/wire`, and the arena rule that makes it safe under a compacting collector |
-| [`src/gg/internal/Value.java`](src/gg/internal/Value.java) | one value on the wire: the small alphabet records, variants, enums, options and lists are written in |
-| [`src/gg/internal/Frames.java`](src/gg/internal/Frames.java) | the request and response frames, and the encoding that travels inside them |
-| [`src/gg/internal/MathImports.java`](src/gg/internal/MathImports.java) | the TeaVM transformer that points `java.lang.Math` at gg's own host |
-| [`vendor/`](vendor/) | one TeaVM runtime class, kept under its own licence, changed so an uncaught exception prints what was thrown as well as where |
+|                                                                        |                                                                                                                               |
+| ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| [`src/gg/internal/Abi.java`](src/gg/internal/Abi.java)                 | the canonical ABI for `test-cabinet:gg/wire`, and the arena rule that makes it safe under a compacting collector              |
+| [`src/gg/internal/Value.java`](src/gg/internal/Value.java)             | one value on the wire: the small alphabet records, variants, enums, options and lists are written in                          |
+| [`src/gg/internal/Frames.java`](src/gg/internal/Frames.java)           | the request and response frames, and the encoding that travels inside them                                                    |
+| [`src/gg/internal/MathImports.java`](src/gg/internal/MathImports.java) | the TeaVM transformer that points `java.lang.Math` at gg's own host                                                           |
+| [`vendor/`](vendor/)                                                   | one TeaVM runtime class, kept under its own licence, changed so an uncaught exception prints what was thrown as well as where |
 
 ## Why it is shared rather than translated
 

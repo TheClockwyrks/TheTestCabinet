@@ -41,10 +41,10 @@ import {
   captureStill,
   colorDistance,
   createHarness,
-  drewText,
-  textDraws,
+  drawnTextRuns,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/index";
 
 /** The row whose band is read: `HOW TO PLAY`, the second of `TITLE_ITEMS`. */
 const READ_ROW = TITLE_ITEMS.length - 1;
@@ -117,9 +117,11 @@ it("draws the title, the tagline and both menu entries, with the highlighted row
     );
   }
 
-  // The band the second row's own text run fills, as the build drew it.
+  // The band the second row's own text run fills, as the build drew it — the
+  // logical run, so a row letter-spaced a glyph per call is found and spans
+  // the whole of it.
   const label = TITLE_ITEMS[READ_ROW];
-  const run = textDraws(highlighted).find((draw) =>
+  const run = drawnTextRuns(highlighted).find((draw) =>
     draw.text.toLowerCase().includes(label.toLowerCase()),
   );
   if (run === undefined) {

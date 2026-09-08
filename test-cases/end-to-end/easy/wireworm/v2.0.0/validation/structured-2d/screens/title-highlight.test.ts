@@ -34,7 +34,7 @@ import { assertEqual, assertGreaterThan, fail } from "../assert";
 import {
   captureStill,
   createHarness,
-  drawnTextSpans,
+  drawnTextSpanForms,
   type Harness,
   resetTo,
 } from "../harness";
@@ -67,10 +67,17 @@ async function drawFrame(): Promise<void> {
   await h.advance(1);
 }
 
-/** The baseline of the run of text carrying `item`, in logical units. */
+/**
+ * The baseline of the run of text carrying `item`, in logical units.
+ *
+ * Read over the spans AND the runs they spell (`drawnTextSpanForms`): a build
+ * that letter-spaces its menu draws a glyph per call, and no single call then
+ * carries the item, while the run those calls coalesce into does — at the
+ * baseline every one of its glyphs shares, which is all this takes from it.
+ */
 function baselineOf(item: string): number {
   const wanted = item.trim().toLowerCase();
-  const span = drawnTextSpans(h).find((run) =>
+  const span = drawnTextSpanForms(h).find((run) =>
     run.text.toLowerCase().includes(wanted),
   );
   if (span === undefined) {

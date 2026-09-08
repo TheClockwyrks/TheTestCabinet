@@ -30,7 +30,9 @@
 // it does, which is exactly what "shows the evolved weapon's icon" asks.
 //
 // THE TOLERANCE. None on identity: a blit either painted the produced file for
-// `pyre` or it did not, and the name is matched as its word in the frame's text.
+// `pyre` or it did not, and the name is matched as a substring of a run of
+// drawn text through the shared harness's `drewText`, ignoring case and
+// whitespace.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
@@ -39,13 +41,13 @@ import {
   blitsOfFile,
   captureStill,
   createHarness,
-  drewPhrase,
   holdPassive,
   holdWeapon,
   isolate,
   openChest,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 
 let h: Harness;
 
@@ -82,7 +84,7 @@ it("shows the evolved weapon's icon and name", async () => {
   const { calls } = await h.frameDraw();
   captureStill(h, "evolve");
   assertEqual(
-    drewPhrase(calls, WEAPON_NAMES[EVOLVED]),
+    drewText(calls, WEAPON_NAMES[EVOLVED]),
     true,
     `the evolve result draws ${WEAPON_NAMES[EVOLVED]}, its name in WEAPON_NAMES`,
   );

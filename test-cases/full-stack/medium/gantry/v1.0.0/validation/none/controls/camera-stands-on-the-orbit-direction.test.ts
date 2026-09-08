@@ -199,6 +199,9 @@ it("draws every point on the orbit direction where it draws the target", async (
   } finally {
     // In a `finally`, so a check that fails inside the sweep still leaves
     // the picture that shows why.
-    await h.capture("state", "the yard from the second of the two camera poses");
+    await h.capture(
+      "state",
+      "the yard from the second of the two camera poses",
+    );
   }
 });

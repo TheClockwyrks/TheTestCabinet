@@ -25,7 +25,7 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
-import { textDraws } from "../text";
+import { textRuns } from "../text";
 import { frameOps } from "../states/screens";
 import { BOTTOM_STRIP, LEGIBLE_MIN, legibility, readoutOf } from "./readouts";
 
@@ -55,7 +55,7 @@ it("draws DEPTH n in the bottom strip, legibly, at every depth", async () => {
     await h.debug.setDepth(depth);
     await h.debug.clearPredators();
     const posed = await h.snapshot();
-    const drawn = textDraws(await frameOps(h));
+    const drawn = textRuns(await frameOps(h));
     if (at === 0) {
       // Before the assertions, so a failing check still leaves the HUD it read.
       await captureStill(h, "hud");

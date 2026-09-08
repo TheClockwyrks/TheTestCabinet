@@ -10,8 +10,12 @@ challenge format `specs/formats.md` defines. The shelf itself is defined in
 ```json
 {
   "name": "First Light",
-  "reagents": [{ "motes": [{ "q": 0, "r": 0, "type": "sol" }], "filaments": [] }],
-  "products": [{ "motes": [{ "q": 0, "r": 0, "type": "sol" }], "filaments": [] }],
+  "reagents": [
+    { "motes": [{ "q": 0, "r": 0, "type": "sol" }], "filaments": [] }
+  ],
+  "products": [
+    { "motes": [{ "q": 0, "r": 0, "type": "sol" }], "filaments": [] }
+  ],
   "permitted": ["arm"],
   "target": 6
 }
@@ -22,14 +26,18 @@ challenge format `specs/formats.md` defines. The shelf itself is defined in
 ```json
 {
   "name": "Twin Moons",
-  "reagents": [{ "motes": [{ "q": 0, "r": 0, "type": "luna" }], "filaments": [] }],
+  "reagents": [
+    { "motes": [{ "q": 0, "r": 0, "type": "luna" }], "filaments": [] }
+  ],
   "products": [
     {
       "motes": [
         { "q": 0, "r": 0, "type": "luna" },
         { "q": 1, "r": 0, "type": "luna" }
       ],
-      "filaments": [{ "a": { "q": 0, "r": 0 }, "b": { "q": 1, "r": 0 }, "weight": 1 }]
+      "filaments": [
+        { "a": { "q": 0, "r": 0 }, "b": { "q": 1, "r": 0 }, "weight": 1 }
+      ]
     }
   ],
   "permitted": ["arm", "bind"],
@@ -42,14 +50,18 @@ challenge format `specs/formats.md` defines. The shelf itself is defined in
 ```json
 {
   "name": "Waning Crescent",
-  "reagents": [{ "motes": [{ "q": 0, "r": 0, "type": "comet" }], "filaments": [] }],
+  "reagents": [
+    { "motes": [{ "q": 0, "r": 0, "type": "comet" }], "filaments": [] }
+  ],
   "products": [
     {
       "motes": [
         { "q": 0, "r": 0, "type": "dust" },
         { "q": 1, "r": 0, "type": "dust" }
       ],
-      "filaments": [{ "a": { "q": 0, "r": 0 }, "b": { "q": 1, "r": 0 }, "weight": 1 }]
+      "filaments": [
+        { "a": { "q": 0, "r": 0 }, "b": { "q": 1, "r": 0 }, "weight": 1 }
+      ]
     }
   ],
   "permitted": ["arm", "wane", "bind"],
@@ -62,14 +74,18 @@ challenge format `specs/formats.md` defines. The shelf itself is defined in
 ```json
 {
   "name": "Mirrorwright",
-  "reagents": [{ "motes": [{ "q": 0, "r": 0, "type": "dust" }], "filaments": [] }],
+  "reagents": [
+    { "motes": [{ "q": 0, "r": 0, "type": "dust" }], "filaments": [] }
+  ],
   "products": [
     {
       "motes": [
         { "q": 0, "r": 0, "type": "nova" },
         { "q": 1, "r": 0, "type": "comet" }
       ],
-      "filaments": [{ "a": { "q": 0, "r": 0 }, "b": { "q": 1, "r": 0 }, "weight": 1 }]
+      "filaments": [
+        { "a": { "q": 0, "r": 0 }, "b": { "q": 1, "r": 0 }, "weight": 1 }
+      ]
     }
   ],
   "permitted": ["arm", "wheel", "mirror", "bind"],
@@ -86,7 +102,9 @@ challenge format `specs/formats.md` defines. The shelf itself is defined in
     { "motes": [{ "q": 0, "r": 0, "type": "mercury" }], "filaments": [] },
     { "motes": [{ "q": 0, "r": 0, "type": "saturn" }], "filaments": [] }
   ],
-  "products": [{ "motes": [{ "q": 0, "r": 0, "type": "jupiter" }], "filaments": [] }],
+  "products": [
+    { "motes": [{ "q": 0, "r": 0, "type": "jupiter" }], "filaments": [] }
+  ],
   "permitted": ["arm", "ascend"],
   "target": 6
 }
@@ -97,8 +115,12 @@ challenge format `specs/formats.md` defines. The shelf itself is defined in
 ```json
 {
   "name": "Great Conjunction",
-  "reagents": [{ "motes": [{ "q": 0, "r": 0, "type": "venus" }], "filaments": [] }],
-  "products": [{ "motes": [{ "q": 0, "r": 0, "type": "luna" }], "filaments": [] }],
+  "reagents": [
+    { "motes": [{ "q": 0, "r": 0, "type": "venus" }], "filaments": [] }
+  ],
+  "products": [
+    { "motes": [{ "q": 0, "r": 0, "type": "luna" }], "filaments": [] }
+  ],
   "permitted": ["arm", "conjoin"],
   "target": 6
 }
@@ -109,14 +131,18 @@ challenge format `specs/formats.md` defines. The shelf itself is defined in
 ```json
 {
   "name": "Syzygy",
-  "reagents": [{ "motes": [{ "q": 0, "r": 0, "type": "dust" }], "filaments": [] }],
+  "reagents": [
+    { "motes": [{ "q": 0, "r": 0, "type": "dust" }], "filaments": [] }
+  ],
   "products": [
     {
       "motes": [
         { "q": 0, "r": 0, "type": "umbra" },
         { "q": 1, "r": 0, "type": "lumen" }
       ],
-      "filaments": [{ "a": { "q": 0, "r": 0 }, "b": { "q": 1, "r": 0 }, "weight": 1 }]
+      "filaments": [
+        { "a": { "q": 0, "r": 0 }, "b": { "q": 1, "r": 0 }, "weight": 1 }
+      ]
     }
   ],
   "permitted": ["arm", "eclipse", "bind"],
@@ -135,7 +161,9 @@ challenge format `specs/formats.md` defines. The shelf itself is defined in
     { "motes": [{ "q": 0, "r": 0, "type": "nova" }], "filaments": [] },
     { "motes": [{ "q": 0, "r": 0, "type": "meteor" }], "filaments": [] }
   ],
-  "products": [{ "motes": [{ "q": 0, "r": 0, "type": "aether" }], "filaments": [] }],
+  "products": [
+    { "motes": [{ "q": 0, "r": 0, "type": "aether" }], "filaments": [] }
+  ],
   "permitted": ["arm", "biarm", "confluence"],
   "target": 6
 }
@@ -146,14 +174,18 @@ challenge format `specs/formats.md` defines. The shelf itself is defined in
 ```json
 {
   "name": "Trine",
-  "reagents": [{ "motes": [{ "q": 0, "r": 0, "type": "nova" }], "filaments": [] }],
+  "reagents": [
+    { "motes": [{ "q": 0, "r": 0, "type": "nova" }], "filaments": [] }
+  ],
   "products": [
     {
       "motes": [
         { "q": 0, "r": 0, "type": "nova" },
         { "q": 1, "r": 0, "type": "nova" }
       ],
-      "filaments": [{ "a": { "q": 0, "r": 0 }, "b": { "q": 1, "r": 0 }, "weight": 3 }]
+      "filaments": [
+        { "a": { "q": 0, "r": 0 }, "b": { "q": 1, "r": 0 }, "weight": 3 }
+      ]
     }
   ],
   "permitted": ["arm", "triune"],
@@ -166,14 +198,20 @@ challenge format `specs/formats.md` defines. The shelf itself is defined in
 ```json
 {
   "name": "Procession",
-  "reagents": [{ "motes": [{ "q": 0, "r": 0, "type": "luna" }], "filaments": [] }],
+  "reagents": [
+    { "motes": [{ "q": 0, "r": 0, "type": "luna" }], "filaments": [] }
+  ],
   "products": [
     {
       "motes": [{ "q": 0, "r": 0, "type": "luna" }],
       "filaments": [],
       "repeat": {
         "vector": { "q": 1, "r": 0 },
-        "link": { "a": { "q": 0, "r": 0 }, "b": { "q": 1, "r": 0 }, "weight": 1 }
+        "link": {
+          "a": { "q": 0, "r": 0 },
+          "b": { "q": 1, "r": 0 },
+          "weight": 1
+        }
       }
     }
   ],

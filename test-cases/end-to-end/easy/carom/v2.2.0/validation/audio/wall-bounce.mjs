@@ -28,6 +28,7 @@ export default function item() {
       await clearPaddles(api);
       // Straight up into the top wall.
       await api.call("setBall", 0, { x: 640, y: 80, vx: 0, vy: -500, spin: 0 });
+      await api.call("reconcile");
     },
 
     async act(api) {

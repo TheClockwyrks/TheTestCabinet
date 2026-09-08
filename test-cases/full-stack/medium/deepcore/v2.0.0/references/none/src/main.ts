@@ -176,7 +176,7 @@ async function main(): Promise<void> {
         game.toggleInventory();
         break;
       case "jettison":
-        game.jettisonCoreSample();
+        game.tryJettison();
         break;
       case "sys:mute":
         game.muted = !game.muted;
@@ -207,7 +207,7 @@ async function main(): Promise<void> {
   /**
    * Route one completed contact: both edges have to land in the same region.
    *
-   * specs/controls.md: "A choice takes both of its edges inside one region... Two
+   * specs/controls.md: "A choice requires both of its edges inside one region... Two
    * edges falling in different regions, and an edge falling outside every region,
    * choose nothing."
    */
@@ -252,7 +252,7 @@ async function main(): Promise<void> {
         return;
       }
       if (actions.includes("jettison")) {
-        game.jettisonCoreSample();
+        game.tryJettison();
         return;
       }
       if (actions.includes("pause")) openPauseMenu();

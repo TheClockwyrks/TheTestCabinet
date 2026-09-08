@@ -20,11 +20,11 @@ A footprint has four faces, N, E, S, and W, and a face is one edge-tile long per
 tile of the footprint's side, so a 2x2 face is two edge-tiles and a 4x4 face is
 four. Each perimeter edge-tile is classified by what lies immediately outside it:
 
-| Outside the edge-tile | What that edge-tile does |
-| --- | --- |
-| Open floor, an opening, or the casing | It sheds heat to air. |
-| Another emitter | It conducts with that emitter. |
-| A Forge or a Sink | It exchanges with that mover. |
+| Outside the edge-tile                 | What that edge-tile does       |
+| ------------------------------------- | ------------------------------ |
+| Open floor, an opening, or the casing | It sheds heat to air.          |
+| Another emitter                       | It conducts with that emitter. |
+| A Forge or a Sink                     | It exchanges with that mover.  |
 
 An edge-tile facing another tower sheds nothing to air. `sharedEdges(T, U)` is
 the number of edge-tiles along which towers `T` and `U` abut; two towers touching
@@ -61,11 +61,11 @@ level.
 
 ## The four flows
 
-| Constant | Value | What it governs |
-| --- | --- | --- |
-| `RAD_K` | `3.6` | Air cooling per radiator edge-tile per second, at heat `100`. |
-| `BASE_K` | `1.1` | Air cooling per plain edge-tile per second, at heat `100`. |
-| `COND_K` | `3.5` | Conduction across one shared edge-tile, per degree of difference, per second. |
+| Constant  | Value | What it governs                                                                   |
+| --------- | ----- | --------------------------------------------------------------------------------- |
+| `RAD_K`   | `3.6` | Air cooling per radiator edge-tile per second, at heat `100`.                     |
+| `BASE_K`  | `1.1` | Air cooling per plain edge-tile per second, at heat `100`.                        |
+| `COND_K`  | `3.5` | Conduction across one shared edge-tile, per degree of difference, per second.     |
 | `FORGE_K` | `0.9` | The Forge's flow per shared edge-tile, per degree below its setpoint, per second. |
 
 Air cooling and the Sink's drain are both proportional to `H / 100`, so a tower

@@ -22,7 +22,6 @@ import { OVERLOAD } from "../constants";
 import {
   captureStill,
   createHarness,
-  drewText,
   layCamp,
   loadToFraction,
   openScene,
@@ -31,6 +30,7 @@ import {
   standAtCamp,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/index";
 
 /** Where the two poses sit, either side of the limit. */
 const UNDER = 0.85;

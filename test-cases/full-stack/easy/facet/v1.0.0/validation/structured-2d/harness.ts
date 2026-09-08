@@ -60,12 +60,12 @@
 // is held by value and each pose runs through `engine.apply`.
 //
 // POSES DO NOT ADVANCE. No helper here advances a frame implicitly except the
-// nine that are named for it: `swapAndStep`, `advanceStep`, `resolveChain`,
-// `swapAndResolve`, `frameCalls`, `frameText`, `tap`, `tapAction` and
-// `warmAudio`. The pointer verbs are not among them — `press`, `moveTo` and
-// `lift` ARM an event and return, and the frame that delivers it is the caller's
-// own next `advance`, which is what lets a check put its frame boundary where
-// the question is. The gesture helpers below are not among them either: a press,
+// eight that are named for it: `swapAndStep`, `advanceStep`, `resolveChain`,
+// `swapAndResolve`, `frameCalls`, `tap`, `tapAction` and `warmAudio`. The
+// pointer verbs are not among them — `press`, `moveTo` and `lift` ARM an event
+// and return, and the frame that delivers it is the caller's own next
+// `advance`, which is what lets a check put its frame boundary where the
+// question is. The gesture helpers below are not among them either: a press,
 // the moves that carry it and the release all take effect at their calls, so a
 // whole move is posed without the game advancing at all.
 // Facet runs in ONE level (specs/overview.md), so no pose is a level
@@ -121,7 +121,7 @@ import {
   type DrawCall,
   type TextGeometry,
 } from "./case-harness/draw-calls";
-import { drawnText as drawnTextRuns } from "./case-harness/text";
+import { drawnText } from "./case-harness/text";
 import type { Pixel } from "./case-harness/pixels";
 import { BACKGROUND as buildBackground, game as buildGame } from "../src/game";
 import { fail } from "./assert";
@@ -272,58 +272,22 @@ export { callsTo, setsOf };
  * read `F F A A C C E E T T` — a run that spells nothing. Listed by channel,
  * each channel spells the copy on its own.
  */
-export const drawnText = drawnTextRuns;
+export { drawnText };
 
-/**
- * Whether `wanted` is among the words a frame put on screen.
- *
- * FACET'S OWN READING, and not the package's `drewText`, which spells the copy
- * out of the merged runs `drawnTextLines` finds by geometry. This one asks four
- * questions of the raw strings instead, and the difference decides points: a
- * build that draws a line one glyph at a time is read here by the joined run and
- * there by whether the glyphs happened to merge into one run.
- *
- * specs/ui.md fixes the COPY — `FACET`, `PRESSURE FINDS THE FLAW`, `SCORE`,
- * `PLAY AGAIN` — and fixes nothing about how many draw calls a build spends on
- * it. All four of these are conformant renderings of the same screen, and this
- * reads all four the same way:
- *
- *   one call per line     `"FACET"`
- *   one call per word     `"HOW"`, `"TO"`, `"PLAY"`
- *   one call per glyph    `"F"`, `"A"`, `"C"`, `"E"`, `"T"`
- *   a decorated entry     `"> PLAY <"`, or `"SCORE 120"` for a check about
- *                         the label alone
- *
- * Four readings, tried from the most local to the most permissive, so a build
- * that drew the copy in ONE call is decided by that call alone: a piece that IS
- * the copy; a piece that CONTAINS it; the frame's whole run of text; and that
- * run with all whitespace taken out of both sides, which is the only reading
- * that finds a line a build drew one word at a time.
- *
- * What the last two readings buy is bounded, and the bound is the rule for
- * using this: a search over the joined run can find a phrase that spans two
- * adjacent draws, so this decides that copy IS on screen and NEVER that two
- * pieces of copy are separate. An item about two readouts asks about each of
- * them; an item that asserts copy is ABSENT asserts the absence of that one
- * string and pairs it with a frame that does show it, so an accidental join
- * shows up as the two frames agreeing rather than as a verdict.
+/*
+ * COPY IS READ BY THE PACKAGE, NOT HERE. specs/ui.md fixes the COPY — `FACET`,
+ * `PRESSURE FINDS THE FLAW`, `SCORE`, `PLAY AGAIN` — and fixes nothing about how
+ * many draw calls a build spends on it, so a suite reads a frame's calls
+ * (`frameCalls`) through `drewTextAnywhere` from `./case-harness/text`: the
+ * logical runs the measured glyphs coalesce into, joined across every baseline,
+ * matched as a substring ignoring case and whitespace. That finds one call per
+ * line, one per word, one per glyph, an entry decorated with a marker, and a
+ * title letter-spaced under a drop shadow alike, and it is bounded the way any
+ * reading over the joined frame is: it decides that copy IS on screen and NEVER
+ * that two pieces of copy are separate, so an item about two readouts asks about
+ * each of them. `drawnTextLines` from the same module words a failure with the
+ * runs the frame spelled.
  */
-export function showsText(pieces: readonly string[], wanted: string): boolean {
-  const needle = wanted.trim().toLowerCase();
-  if (needle === "") return true;
-  const lower = pieces.map((piece) => piece.toLowerCase());
-  if (lower.some((piece) => piece.trim() === needle)) return true;
-  if (lower.some((piece) => piece.includes(needle))) return true;
-  const joined = lower.join("");
-  if (joined.includes(needle)) return true;
-  const bare = (value: string): string => value.replace(/\s+/gu, "");
-  return bare(joined).includes(bare(needle));
-}
-
-/** Whether the frame's own draw calls put `wanted` on screen. */
-export function drewText(calls: readonly DrawCall[], wanted: string): boolean {
-  return showsText(drawnText(calls), wanted);
-}
 
 /**
  * The geometry calls a frame made, by name.
@@ -982,10 +946,15 @@ export interface FacetModel {
    */
   client(x: number, y: number): { x: number; y: number };
 
-  /** Clear the call log, run one frame, and hand back what that frame drew. */
+  /**
+   * Clear the call log, run one frame, and hand back what that frame drew.
+   *
+   * What a copy check reads, through the package's `drewTextAnywhere`: every
+   * text call is measured, so a heading a build letter-spaces one `fillText`
+   * per glyph is read as the word its glyphs coalesce into rather than as
+   * `"F", "A", "C", "E", "T"`.
+   */
   frameCalls(): Promise<DrawCall[]>;
-  /** Every string one frame drew. */
-  frameText(): Promise<string[]>;
   /**
    * Reflect over the surface WITHOUT invoking it: the `typeof` of each name.
    *
@@ -1115,8 +1084,9 @@ const kit = createEngineCaseHarness<
   tickHz: TICK_HZ,
   surfaceRequirement: SURFACE_REQUIREMENT,
   // Every text call is measured and the transform in force at it recorded, which
-  // is what the recorder this replaces always did. Nothing in this directory
-  // reads the measurement; it is kept so `h.calls` holds what it has always held.
+  // is what the recorder this replaces always did, and what lets the package's
+  // copy readings coalesce a heading drawn a glyph at a time back into the word
+  // it spells; without a width every draw is a point and nothing merges.
   recorder: { measureText: true },
   defaultClock: () => new HarnessClock(new ConstantClock(TICK_MS)),
 
@@ -1297,9 +1267,6 @@ const kit = createEngineCaseHarness<
         base.calls.length = 0;
         await whole.advance(1);
         return [...base.calls];
-      },
-      async frameText() {
-        return drawnText(await whole.frameCalls());
       },
       probe(names) {
         const reflected: Record<string, string> = {};
@@ -1556,6 +1523,17 @@ export function framesPast(seconds: number): number {
 // working the menu the way a player does and reading what the build did. Every
 // other check reaches its scenario through here instead, so a build with a
 // broken title menu fails those items rather than every item in the project.
+//
+// RECONCILING AFTER A POSE. specs/instrumentation.md's `reconcile()` brings
+// every reading the surface reports into agreement with the game as it stands,
+// without advancing anything — so a build that keeps one of the seven derived
+// fields as a stored copy (`legalSwap` above all, which follows from the whole
+// board) answers for the board and the screen the helper just posed rather than
+// for the ones before it. A helper here that writes a board, takes one out of
+// play, shows a screen, or plays a swap calls it before it returns, so a check
+// that poses through the helpers never calls it itself. A check that poses with
+// `h.debug.set…` directly and then reads calls it once, before its first read.
+//
 
 /**
  * Write a board onto the game and change NOTHING else.
@@ -1577,6 +1555,7 @@ export function framesPast(seconds: number): number {
 export function writeBoard(h: Harness, rows: BoardRows): FacetSnapshot {
   parseRows(rows);
   h.debug.loadBoard(rows);
+  h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -1604,6 +1583,7 @@ export function loadBoard(h: Harness, rows: BoardRows): FacetSnapshot {
   h.debug.loadBoard(rows);
   h.debug.setMenuIndex(0);
   h.debug.setScreen("playing");
+  h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -1647,6 +1627,7 @@ export function startRound(h: Harness): FacetSnapshot {
   h.debug.dealBoard();
   h.debug.setMenuIndex(0);
   h.debug.setScreen("playing");
+  h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -1674,6 +1655,7 @@ export function openNextLevel(h: Harness): FacetSnapshot {
   h.debug.dealBoard();
   h.debug.setMenuIndex(0);
   h.debug.setScreen("playing");
+  h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -1695,6 +1677,7 @@ export function quitToTitle(h: Harness): FacetSnapshot {
   h.debug.clearBoard();
   h.debug.setMenuIndex(0);
   h.debug.setScreen("title");
+  h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -1707,6 +1690,7 @@ export function quitToTitle(h: Harness): FacetSnapshot {
 export function openHowTo(h: Harness): FacetSnapshot {
   h.debug.setMenuIndex(0);
   h.debug.setScreen("howto");
+  h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -1719,6 +1703,7 @@ export function openHowTo(h: Harness): FacetSnapshot {
 export function pauseGame(h: Harness): FacetSnapshot {
   h.debug.setMenuIndex(0);
   h.debug.setScreen("paused");
+  h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -1731,6 +1716,7 @@ export function pauseGame(h: Harness): FacetSnapshot {
 export function resumeGame(h: Harness): FacetSnapshot {
   h.debug.setMenuIndex(0);
   h.debug.setScreen("playing");
+  h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -1758,6 +1744,7 @@ export function reachScreen(h: Harness, screen: Screen): FacetSnapshot {
     h.debug.setMenuIndex(0);
     h.debug.setScreen(screen);
   }
+  h.debug.reconcile();
   const reading = h.snapshot();
   if (reading.screen !== screen) {
     fail(`the ${screen} screen these poses ask for`, reading.screen);
@@ -1852,6 +1839,7 @@ export function poseBoardWithEscape(
  */
 export function requestSwap(h: Harness, a: CellRef, b: CellRef): FacetSnapshot {
   h.debug.requestSwap(a.col, a.row, b.col, b.row);
+  h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -2035,6 +2023,7 @@ export function releasePointer(
 ): FacetSnapshot {
   if (device === undefined) h.debug.pointerUp();
   else h.debug.pointerUp(device);
+  h.debug.reconcile();
   return h.snapshot();
 }
 

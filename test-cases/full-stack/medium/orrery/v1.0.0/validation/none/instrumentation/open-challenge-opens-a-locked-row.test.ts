@@ -83,7 +83,13 @@ it("opens a campaign row above the unlocked count, and unlocks nothing", async (
   );
 
   const entry = derivedTray(
-    opened.challenge ?? { name: "", reagents: [], products: [], permitted: [], target: 1 },
+    opened.challenge ?? {
+      name: "",
+      reagents: [],
+      products: [],
+      permitted: [],
+      target: 1,
+    },
   )[0];
   assertNotNull(entry, "the open challenge derives a tray with a first entry");
   await pressAt(h, centerOf(traySlot(0)));

@@ -9,7 +9,9 @@ visible render components are collected by the rendering pipeline every frame.
 ## `Component`
 
 ```ts
-type ComponentClass<C extends Component = Component> = new (...args: never[]) => C;
+type ComponentClass<C extends Component = Component> = new (
+  ...args: never[]
+) => C;
 
 class Component {
   readonly actor: Actor;
@@ -24,16 +26,16 @@ class Component {
 }
 ```
 
-| Member | Semantics |
-| --- | --- |
-| `actor` | The actor the component is attached to. Assigned by `attach`, before `beginPlay`. |
-| `world` | The world the owning actor belongs to. |
-| `offset` | The component's transform relative to its actor's. Defaults to the identity. |
-| `enabled` | Defaults to `true`. A disabled component skips its tick, draws nothing, and takes no part in collision. |
-| `beginPlay` | Runs once, after `actor` is assigned. |
-| `tick` | Runs once per frame with the frame's delta in seconds, after the owning actor's tick. |
-| `endPlay` | Runs once, when the component is detached, when its actor is destroyed, or when the world closes. |
-| `worldTransform` | The actor's transform composed with `offset`, as a snapshot the caller owns. |
+| Member           | Semantics                                                                                               |
+| ---------------- | ------------------------------------------------------------------------------------------------------- |
+| `actor`          | The actor the component is attached to. Assigned by `attach`, before `beginPlay`.                       |
+| `world`          | The world the owning actor belongs to.                                                                  |
+| `offset`         | The component's transform relative to its actor's. Defaults to the identity.                            |
+| `enabled`        | Defaults to `true`. A disabled component skips its tick, draws nothing, and takes no part in collision. |
+| `beginPlay`      | Runs once, after `actor` is assigned.                                                                   |
+| `tick`           | Runs once per frame with the frame's delta in seconds, after the owning actor's tick.                   |
+| `endPlay`        | Runs once, when the component is detached, when its actor is destroyed, or when the world closes.       |
+| `worldTransform` | The actor's transform composed with `offset`, as a snapshot the caller owns.                            |
 
 The identity offset is `{ x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 }`, so a
 component drawn without touching `offset` sits exactly on its actor. The base
@@ -84,12 +86,12 @@ class RenderComponent extends Component {
 }
 ```
 
-| Field | Default | Meaning |
-| --- | --- | --- |
-| `layer` | `0` | Orders the pipeline. Lower layers draw first. |
-| `visible` | `true` | Whether the pipeline collects the component. |
-| `opacity` | `1` | Clamped to `0..1`. |
-| `space` | `"world"` | The space the component draws in. `"screen"` draws through the viewport alone, in logical units. |
+| Field     | Default   | Meaning                                                                                          |
+| --------- | --------- | ------------------------------------------------------------------------------------------------ |
+| `layer`   | `0`       | Orders the pipeline. Lower layers draw first.                                                    |
+| `visible` | `true`    | Whether the pipeline collects the component.                                                     |
+| `opacity` | `1`       | Clamped to `0..1`.                                                                               |
+| `space`   | `"world"` | The space the component draws in. `"screen"` draws through the viewport alone, in logical units. |
 
 `RenderComponent` is the base every drawing component extends. The pipeline
 sorts the collection by `layer` ascending, then by the owning actor's spawn
@@ -133,15 +135,15 @@ class SpriteComponent extends RenderComponent {
 }
 ```
 
-| Field | Default | Meaning |
-| --- | --- | --- |
-| `image` | — | The decoded bitmap the component draws. |
-| `source` | `null` | A region of a sprite sheet. `null` selects the whole image. |
-| `width` | The source region's pixel width | The drawn width, in world units. |
-| `height` | The source region's pixel height | The drawn height, in world units. |
-| `anchorX` | `0.5` | The horizontal anchor, as a fraction of the drawn size. |
-| `anchorY` | `0.5` | The vertical anchor, as a fraction of the drawn size. |
-| `tint` | `null` | A CSS color the image is tinted with. |
+| Field     | Default                          | Meaning                                                     |
+| --------- | -------------------------------- | ----------------------------------------------------------- |
+| `image`   | —                                | The decoded bitmap the component draws.                     |
+| `source`  | `null`                           | A region of a sprite sheet. `null` selects the whole image. |
+| `width`   | The source region's pixel width  | The drawn width, in world units.                            |
+| `height`  | The source region's pixel height | The drawn height, in world units.                           |
+| `anchorX` | `0.5`                            | The horizontal anchor, as a fraction of the drawn size.     |
+| `anchorY` | `0.5`                            | The vertical anchor, as a fraction of the drawn size.       |
+| `tint`    | `null`                           | A CSS color the image is tinted with.                       |
 
 The anchor defaults center the sprite on its transform. An image is loaded
 through the asset loader before the component is constructed — a level's `load`
@@ -196,12 +198,12 @@ class ShapeComponent extends RenderComponent {
 }
 ```
 
-| Field | Default | Meaning |
-| --- | --- | --- |
-| `shape` | — | The geometry drawn. |
-| `fill` | `null` | A CSS color filled inside the shape. |
-| `stroke` | `null` | A CSS color stroked around the outline. |
-| `strokeWidth` | `1` | The stroke width, in world units. |
+| Field         | Default | Meaning                                 |
+| ------------- | ------- | --------------------------------------- |
+| `shape`       | —       | The geometry drawn.                     |
+| `fill`        | `null`  | A CSS color filled inside the shape.    |
+| `stroke`      | `null`  | A CSS color stroked around the outline. |
+| `strokeWidth` | `1`     | The stroke width, in world units.       |
 
 A component with neither a fill nor a stroke draws nothing, so set at least one.
 
@@ -226,13 +228,13 @@ class TextComponent extends RenderComponent {
 }
 ```
 
-| Field | Default | Meaning |
-| --- | --- | --- |
-| `text` | — | The string drawn. |
-| `font` | `"16px sans-serif"` | A CSS font shorthand. |
-| `fill` | `"#ffffff"` | The fill color. |
-| `align` | `"center"` | Horizontal alignment against the component's transform. |
-| `baseline` | `"middle"` | Vertical alignment against the component's transform. |
+| Field      | Default             | Meaning                                                 |
+| ---------- | ------------------- | ------------------------------------------------------- |
+| `text`     | —                   | The string drawn.                                       |
+| `font`     | `"16px sans-serif"` | A CSS font shorthand.                                   |
+| `fill`     | `"#ffffff"`         | The fill color.                                         |
+| `align`    | `"center"`          | Horizontal alignment against the component's transform. |
+| `baseline` | `"middle"`          | Vertical alignment against the component's transform.   |
 
 The font size is in the component's space: world units under `world`, scaled
 by the camera like every other drawn quantity, and logical units under
@@ -305,8 +307,8 @@ collision world are specified in `collision.md`.
 
 ## Errors
 
-| Condition | Result |
-| --- | --- |
-| A `beginPlay` throws while the start level is built | `engine.initialize` rejects with the cause |
-| A `tick` or a `draw` throws under `run` | The error propagates to the host, and the loop schedules the next frame |
-| A `tick` or a `draw` throws under `advance` | `advance` rejects with the cause, and the remaining frames do not run |
+| Condition                                           | Result                                                                  |
+| --------------------------------------------------- | ----------------------------------------------------------------------- |
+| A `beginPlay` throws while the start level is built | `engine.initialize` rejects with the cause                              |
+| A `tick` or a `draw` throws under `run`             | The error propagates to the host, and the loop schedules the next frame |
+| A `tick` or a `draw` throws under `advance`         | `advance` rejects with the cause, and the remaining frames do not run   |

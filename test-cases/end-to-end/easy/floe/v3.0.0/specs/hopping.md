@@ -46,13 +46,13 @@ critter hops whenever a direction is being requested and the cooldown has reache
 A hop is refused when any of the following holds of its target tile. `specs/ice.md`
 fixes when a vehicle covers a tile.
 
-| Refused when the target tile |
-| --- |
-| Is outside the grid: `inBounds(col, row)` is false. |
-| Is on row `0`, the solid cap of the far shore. |
-| Is on row `1` at a column no bay covers. |
+| Refused when the target tile                               |
+| ---------------------------------------------------------- |
+| Is outside the grid: `inBounds(col, row)` is false.        |
+| Is on row `0`, the solid cap of the far shore.             |
+| Is on row `1` at a column no bay covers.                   |
 | Is on row `1` at a column of a bay that is already filled. |
-| Is covered by a vehicle. |
+| Is covered by a vehicle.                                   |
 
 A refused hop leaves everything as it was: the critter stays where it stands with
 the same facing, the cooldown is untouched, no life is lost, and nothing is

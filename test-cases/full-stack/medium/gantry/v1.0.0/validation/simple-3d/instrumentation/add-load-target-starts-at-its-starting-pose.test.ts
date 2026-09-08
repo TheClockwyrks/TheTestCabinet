@@ -36,7 +36,10 @@ it("gives an added load a target pose equal to its starting pose", async () => {
   await h.debug.addLoad("crate", 40, POSE.x, POSE.y, POSE.z, POSE.yaw);
 
   const { site } = await h.snapshot();
-  await h.capture("state", "the load addLoad appended, standing on its own pad");
+  await h.capture(
+    "state",
+    "the load addLoad appended, standing on its own pad",
+  );
 
   assertLength(site.loads, 1, "the load addLoad appends");
   assertDeepEqual(

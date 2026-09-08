@@ -163,7 +163,7 @@ The build exposes the surface `specs/instrumentation.md` specifies on
 Every operation but the two clock calls is a read or a pose of `CaromState`: each
 sets **one** field, places or removes **one** entity, or reads. They arrange the
 world, and the game's own `update` is what runs from there on the next frame. So
-starting a match or staging a rally is a *sequence* of these rather than a verb
+starting a match or staging a rally is a _sequence_ of these rather than a verb
 of its own. The two clock calls take nothing from the player — a scenario that
 takes the game off real time to watch the **keyboard** move a paddle is exactly
 what the control checks are — so there is deliberately no `keyDown`, `keyUp` or

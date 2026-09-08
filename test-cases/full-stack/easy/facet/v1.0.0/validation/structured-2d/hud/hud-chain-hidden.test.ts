@@ -16,17 +16,19 @@
 // snapshot taken beside it says the phase it was drawn at.
 //
 // THE READING IS AN ABSENCE, so it is guarded against answering `false` for the
-// wrong reason. `showsText` searches a frame's whole run of text, and a run
-// with nothing in it finds nothing — which would make a build that drew no
+// wrong reason. `drewTextAnywhere` searches a frame's whole run of text, and
+// a run with nothing in it finds nothing — which would make a build that drew no
 // frame at all look like a build that correctly hid one label. The frame is
 // therefore required to have put text on screen before the absence is read, so
 // a silent render fails as the empty frame it is rather than passing as a
 // hidden readout.
 //
-// The copy is read through `frameText`, which hands back every string one frame
-// put on screen.
+// The copy is read off the frame's draw calls through the shared harness's
+// `drewTextAnywhere`, and the text the frame spelled through its
+// `drawnTextLines`.
 
 import { afterEach, beforeEach, it } from "vitest";
+import { drawnTextLines, drewTextAnywhere } from "../case-harness/text";
 import { assertEqual, fail } from "../assert";
 import { quietBoard } from "../board";
 import { HUD_CHAIN_LABEL } from "../constants";
@@ -34,7 +36,6 @@ import {
   captureStill,
   createHarness,
   loadBoard,
-  showsText,
   type Harness,
 } from "../harness";
 
@@ -58,17 +59,18 @@ it("draws no chain label while the board is idle", async () => {
   assertEqual(posed.chainStep, 0, "the chain step of a settled board");
 
   // One frame, and everything it put on screen. The still is that same frame.
-  const drawn = await h.frameText();
+  const frame = await h.frameCalls();
   captureStill(h, "hud");
   assertEqual(h.snapshot().phase, "idle", "the phase it was read at");
 
   // The frame drew something, so the absence below is a reading of the screen
   // rather than a reading of nothing.
+  const drawn = drawnTextLines(frame);
   if (drawn.length === 0) {
     fail("the playing screen to put text on the frame", drawn);
   }
 
-  if (showsText(drawn, HUD_CHAIN_LABEL)) {
+  if (drewTextAnywhere(frame, HUD_CHAIN_LABEL)) {
     fail(
       `the idle playing screen not to show ${JSON.stringify(HUD_CHAIN_LABEL)}`,
       drawn,

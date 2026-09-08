@@ -5,9 +5,9 @@ title: Ladders
 A **ladder** is an ordered series of test cases that
 [combinations](/components/backend/coverage/#combinations) climb one step at a
 time, stopping at the first step they cannot clear. Where a
-[coverage plan](/components/backend/coverage/) asks *"have I run this yet?"* and
-treats its cells as an unordered set, a ladder asks *"how far does this model
-get?"* and treats its steps as a sequence with a meaning: rung three is harder
+[coverage plan](/components/backend/coverage/) asks _"have I run this yet?"_ and
+treats its cells as an unordered set, a ladder asks _"how far does this model
+get?"_ and treats its steps as a sequence with a meaning: rung three is harder
 than rung two, so the rung a model stops at **is** the result.
 
 A ladder is a sibling of the coverage plan, not a mode of it. It shares the
@@ -26,7 +26,7 @@ the difference.
 A **rung** is exactly one [pinned
 case](/components/backend/coverage/#pinned-cases): a slug, an exact version, a
 variant, and the engine the rung's runs are built on, with an absent engine
-meaning `none`. The rungs' order, low to high, *is* the climb.
+meaning `none`. The rungs' order, low to high, _is_ the climb.
 
 A rung's pin is its identity within the climb, so one ladder holds the same case
 at the same version and variant twice when the two pins name different engines.
@@ -56,7 +56,7 @@ being allowed to stall a climb weeks later:
 
 - **[Performance](/testing/performance/overview/)** cases are graded automatically
   and are excluded from every reviewer worklist. Nobody can ever clear one, so its
-  runs would stay unjudged permanently — occupying the review buffer *and* leaving
+  runs would stay unjudged permanently — occupying the review buffer _and_ leaving
   the gate undecided forever.
 - **[Game jam](/testing/game-jam/overview/)** cases are reviewed on a graded
   category scale (💩→💎) and record no domain ratings at all, so even a fully
@@ -68,7 +68,7 @@ compare, and the error says so. Silently stalling would be the genuinely hard
 failure to diagnose: a ladder that looks healthy and never moves.
 
 A rung pinned to a version the backend has not ingested, or to an engine the
-pinned version does not declare, is *allowed* — the driver reports that far better
+pinned version does not declare, is _allowed_ — the driver reports that far better
 than an author-time check can.
 
 ## Climbers
@@ -98,7 +98,7 @@ Each climber also carries steering, set through `POST /ladders/{id}/climbers`:
 
 - **`priority`** — climb-order weight, higher first. It pushes one model to the
   front of the feed **without reordering the ladder**, which would change what every
-  *other* climber is measured against.
+  _other_ climber is measured against.
 - **`focused`** — a "watch this one" flag, and the tiebreak between equal
   priorities.
 - **`held`** — stop this climber where it stands (see
@@ -114,13 +114,13 @@ for it.
 three genuinely different causes and conflating them makes a ladder impossible to
 act on:
 
-| status | meaning | whose move |
-| --- | --- | --- |
-| `climbing` | runs are still to complete on the current rung | the ladder's |
-| `awaitingReview` | the rung ran everything it was going to; it is waiting on *your* review | yours |
-| `walled` | the current rung was failed | yours, if you disagree |
-| `held` | stopped by hand | yours |
-| `toppedOut` | every rung cleared | nobody's — it is done |
+| status           | meaning                                                                 | whose move             |
+| ---------------- | ----------------------------------------------------------------------- | ---------------------- |
+| `climbing`       | runs are still to complete on the current rung                          | the ladder's           |
+| `awaitingReview` | the rung ran everything it was going to; it is waiting on _your_ review | yours                  |
+| `walled`         | the current rung was failed                                             | yours, if you disagree |
+| `held`           | stopped by hand                                                         | yours                  |
+| `toppedOut`      | every rung cleared                                                      | nobody's — it is done  |
 
 `awaitingReview` is the state a full review buffer is made of, and separating it
 from `climbing` is what lets a dashboard say "nothing will move until you look"
@@ -157,14 +157,14 @@ how many runs it takes to answer.
 Two parameters cover the shapes reviewers actually ask for without any of them
 being a special case in the code. At five runs per rung:
 
-| what you mean | `floor` | `threshold` | what happens |
-| --- | --- | --- | --- |
-| stop when over half are broken | `scuffed` | fraction `0.5` | 2.5 runs must be scuffed-or-better, so three must be — a climber walls once three of the five are broken |
-| stop when all are broken | `scuffed` | count `1` | one playable run is enough to advance; the wall needs every run broken |
-| pass if any run is passable+ | `passable` | count `1` | a single genuinely decent run carries the rung, however bad the rest are |
+| what you mean                  | `floor`    | `threshold`    | what happens                                                                                             |
+| ------------------------------ | ---------- | -------------- | -------------------------------------------------------------------------------------------------------- |
+| stop when over half are broken | `scuffed`  | fraction `0.5` | 2.5 runs must be scuffed-or-better, so three must be — a climber walls once three of the five are broken |
+| stop when all are broken       | `scuffed`  | count `1`      | one playable run is enough to advance; the wall needs every run broken                                   |
+| pass if any run is passable+   | `passable` | count `1`      | a single genuinely decent run carries the rung, however bad the rest are                                 |
 
 The second row is the **default gate**: the gentlest rule that still stops a
-hopeless climb. A fractional bar is measured against the run count the rung *will*
+hopeless climb. A fractional bar is measured against the run count the rung _will_
 finish with, not the count it has so far, so the bar does not drift as runs land one
 by one.
 
@@ -172,7 +172,7 @@ by one.
 
 Only the **requesting account's own** judgement — the worst domain within that one
 account's single review of the run. A run's stored `rating` is the worst domain
-across *every* reviewer, so gating on it would let a stranger's harsh review wall
+across _every_ reviewer, so gating on it would let a stranger's harsh review wall
 someone else's ladder. See
 [counts are global, judgement is yours](/components/backend/coverage/#counts-are-global-judgement-is-yours).
 
@@ -184,7 +184,7 @@ Two things are decided without waiting for a review:
   holds a review-buffer slot hostage. The unloaded verdict overrides a recorded
   review rather than being averaged with it: it is the harshest rating there is, and
   a review of a build that never loaded cannot be describing something that ran.
-- **A failed or canceled *job* is never a wall at all**, and never reaches the gate.
+- **A failed or canceled _job_ is never a wall at all**, and never reaches the gate.
   Infrastructure failures are retried (`job.attempt`); a node eviction is not
   evidence about a model. Only **completed runs** feed the gate.
 
@@ -195,7 +195,7 @@ wrong at first glance.
 
 With it off, a rung **completes all of its runs** even when the outcome is already
 certain — the gate answers "not decided yet" while runs remain, however obvious the
-verdict is. That is deliberate: the runs are *evidence* as much as they are a gate.
+verdict is. That is deliberate: the runs are _evidence_ as much as they are a gate.
 Five runs of a case on a model are worth having in full, and a ladder that stops at
 run two leaves a permanently thinner record of the exact model everyone will want
 to look at hardest.
@@ -213,7 +213,7 @@ and the answer would not change), **wall** only when they cannot possibly clear 
 
 The evidence behind any of those answers is reported as a `tally` —
 completed, judged, unjudged, passing, pending, and the number of passing runs
-required — so a dashboard can say *why* a climber is walled or waiting without
+required — so a dashboard can say _why_ a climber is walled or waiting without
 re-deriving the floor and unloaded-run rules a second time and getting them subtly
 different.
 
@@ -239,7 +239,7 @@ consequences follow, and all three are the point:
    worth keeping.
 
 Overriding a rung that is not decided yet is a `409`: there is nothing to promote
-*past*, and the control for "stop here regardless" is a hold, which does not pretend
+_past_, and the control for "stop here regardless" is a hold, which does not pretend
 a rung was decided.
 
 ## Version pins and honest history
@@ -259,14 +259,14 @@ behind, so bumping is an informed choice rather than something noticed months la
 
 ## A ladder starts disabled
 
-**Creating a ladder enqueues nothing.** A new ladder is created *disabled*, and stays
+**Creating a ladder enqueues nothing.** A new ladder is created _disabled_, and stays
 that way until its reviewer enables it from the dashboard — the one gesture that says
 "start spending on this climb".
 
 This is the one place a ladder deliberately departs from the
 [coverage plan](/components/backend/coverage/#topping-up), and the reason is what a
 ladder is for. A plan is a declaration of runs that ought to exist, so filling its
-buffer as soon as someone looks at it is doing what was asked. A ladder is a *question*
+buffer as soon as someone looks at it is doing what was asked. A ladder is a _question_
 — how far does each of these models get? — and the act of writing the question down is
 not the act of paying for the answer. A climb is also the easy thing to get wrong on
 the first save: the wrong variant, a version nobody has ingested, thirty models where
@@ -281,7 +281,7 @@ Three consequences follow, and all three are the point:
   enqueued, and runs already queued or in flight carry on to completion. Cancelling
   those is [halt](/components/backend/coverage/#pausing-and-halting), which is a
   separate, louder control precisely because it throws work away.
-- **`autoTopUp` is on by default**, and that is safe *because* of the above: it can only
+- **`autoTopUp` is on by default**, and that is safe _because_ of the above: it can only
   ever feed a ladder somebody has already enabled. Once a ladder is climbing, the review
   that decides a rung is the natural moment to ask for the next one's runs, and a ladder
   that needed a button pressed after every review would look broken.
@@ -304,7 +304,7 @@ order mechanism a plan uses:
   The board advances as a row, which is what makes a ladder comparable across
   models. The console calls it **"Rung by rung"**.
 - **`combination`** — take one climber as far as it gets before starting the next.
-  The board advances as a column, and answers "how far does *this* model get?"
+  The board advances as a column, and answers "how far does _this_ model get?"
   soonest. The console calls it **"Model by model"**.
 
 Everything else is shared: whole cells, the
@@ -316,7 +316,7 @@ per-ladder override, the per-ladder claim that serializes concurrent top-ups,
 differs — when it is on by default, and what it cannot start), and
 `GET /ladders/{id}/queue` returning the unreviewed-by-you runs **in the ladder's own
 order**. On a ladder that last one matters more than it does on a plan: the review
-*is* the verdict, so reviewing in the order the buffer was filled is what decides
+_is_ the verdict, so reviewing in the order the buffer was filled is what decides
 climbers in the order the ladder meant to decide them.
 
 ### Feeding and reviewing are different sets of rungs

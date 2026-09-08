@@ -18,10 +18,10 @@ in `test-case.toml`'s `[model]` table. The parts, joints, pivots, and ranges
 that realize them are the model's to invent. The two required animations supply
 their motion as F-curves at run time:
 
-| Animation | `auto_play` | Loop | What it does |
-| --- | --- | --- | --- |
-| `halo_ring_spin` | yes | yes | Turns the halo ring a full, continuous revolution about the spire's vertical axis. |
-| `lens_pulse` | yes | yes | Bobs the solar lens up off its seat and back down. |
+| Animation        | `auto_play` | Loop | What it does                                                                       |
+| ---------------- | ----------- | ---- | ---------------------------------------------------------------------------------- |
+| `halo_ring_spin` | yes         | yes  | Turns the halo ring a full, continuous revolution about the spire's vertical axis. |
+| `lens_pulse`     | yes         | yes  | Bobs the solar lens up off its seat and back down.                                 |
 
 Both animations are self-playing idles (`auto_play = true`): the spire cycles on
 its own with no caller, while the tower stays fixed. The model invents whatever
@@ -31,14 +31,14 @@ contradict them.
 
 ## Contents
 
-| Path             | Seeded to run? | Purpose                                                    |
-| ---------------- | -------------- | ---------------------------------------------------------- |
-| `specs/brief.md` | Yes            | The self-contained sculpting-and-rigging brief.            |
-| `prompt.hbs`     | No             | Rendered into the model's prompt; not seeded.              |
-| `test-case.toml` | No             | Manifest: voxel volume, tool, output, animations, review.  |
-| `variants/`      | No             | One TOML file per variant (listed in `variants`).          |
-| `description.md` | No             | Site blurb.                                                |
-| `README.md`      | No             | This overview.                                             |
+| Path             | Seeded to run? | Purpose                                                   |
+| ---------------- | -------------- | --------------------------------------------------------- |
+| `specs/brief.md` | Yes            | The self-contained sculpting-and-rigging brief.           |
+| `prompt.hbs`     | No             | Rendered into the model's prompt; not seeded.             |
+| `test-case.toml` | No             | Manifest: voxel volume, tool, output, animations, review. |
+| `variants/`      | No             | One TOML file per variant (listed in `variants`).         |
+| `description.md` | No             | Site blurb.                                               |
+| `README.md`      | No             | This overview.                                            |
 
 A run receives the seeded brief, the `voxel-anim` binary, and a pre-seeded
 `rig.json` holding the required animation declarations, so the contract exists

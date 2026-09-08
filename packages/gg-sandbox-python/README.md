@@ -16,14 +16,14 @@ never published. Its outputs are two artifacts the Rust host embeds, and **neith
 each is generated into the `OUT_DIR` of a crate that builds it, on every build of
 `test-cabinet-gg` whose declared inputs moved.
 
-| Artifact | What it is | Made by |
-| --- | --- | --- |
-| `python.component.wasm` | The baked component — a whole CPython 3.14, this shim, the SDK and the curated library set. **~24 MiB**; a test holds it to a 22–28 MiB band. | `build.sh`, run by `crates/gg-sandbox-artifacts/python` into that crate's `OUT_DIR`. |
+| Artifact                 | What it is                                                                                                                                         | Made by                                                                                  |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `python.component.wasm`  | The baked component — a whole CPython 3.14, this shim, the SDK and the curated library set. **~24 MiB**; a test holds it to a 22–28 MiB band.      | `build.sh`, run by `crates/gg-sandbox-artifacts/python` into that crate's `OUT_DIR`.     |
 | `python.signatures.json` | The signature catalogue: every module, signature, argument, type and type member a model is told about, reflected out of the SDK's own docstrings. | `signatures.sh`, run by `crates/gg/build.rs` into that build's `OUT_DIR`. Not committed. |
 
 ## The strategy, in one paragraph
 
-CPython is *inside* the component. `componentize-py` links a real CPython against
+CPython is _inside_ the component. `componentize-py` links a real CPython against
 gg's WIT world, so a model's program crosses the membrane as an ordinary string and
 is `exec`'d by an interpreter that is already there, in a namespace of its own that
 holds nothing until the program's own `import` lines fill it. Nothing is installed in the run
@@ -39,28 +39,28 @@ transliterated. Underneath it sit the bindings `componentize-py` generates from 
 WIT, which are exactly where a generator belongs — a mechanical lowering nobody
 reads. Every difference above them is deliberate:
 
-* **Module-level functions in capability packages**, which is how Python has always
+- **Module-level functions in capability packages**, which is how Python has always
   divided a library — `os.path.join`, `shutil.copy` — rather than a `Files` class of
   `@staticmethod`s nobody would write. `gg.files.read_file` is both the key a
   documentation view is opened by and a path a program can write, and the module a
   function lives in is the module its `def` is in rather than a label attached to it.
-* **Required arguments positional, optional ones keyword arguments with real
+- **Required arguments positional, optional ones keyword arguments with real
   defaults.** `gg.files.read_file(path, limit=200)`, not a trailing options object. A
   membrane record's fields are the function's own arguments, so
   `gg.memories.create_memory(name, description, body, code=...)` never asks a model to
   construct a value before it can make a call.
-* **Frozen dataclasses for results, enums for fixed choices.** `entry.kind is
-  gg.files.EntryKind.FILE`, never a string comparison a misspelling would turn into a branch
+- **Frozen dataclasses for results, enums for fixed choices.** `entry.kind is
+gg.files.EntryKind.FILE`, never a string comparison a misspelling would turn into a branch
   that quietly never runs.
-* **A union of two classes for a read**, narrowed with `isinstance` or a `match`,
+- **A union of two classes for a read**, narrowed with `isinstance` or a `match`,
   rather than the wire's tagged wrapper.
-* **A raised `gg.core.ApiError`** carrying a typed `code`, because that is where a
+- **A raised `gg.core.ApiError`** carrying a typed `code`, because that is where a
   Python programmer expects a failure to be handled.
-* **`UNCHANGED` for a patch field that can also be cleared** — leave the argument
+- **`UNCHANGED` for a patch field that can also be cleared** — leave the argument
   out to keep it, pass `None` to empty it — because Python already spells "absent"
   as `None` and the third state needs a name.
 
-What must *not* differ from any other arm is the **capability**: which gg operations
+What must _not_ differ from any other arm is the **capability**: which gg operations
 this SDK offers. The shape is free — Java may hang a call off an object where this
 one declares a function — and the identity is not: every model-facing function
 carries the gg operation it binds, written on the declaration as
@@ -92,20 +92,20 @@ to it, because CPython is inside the component and is the first thing to read it
 
 ## Layout
 
-| Path | What it holds |
-| --- | --- |
-| `src/shim.py` | The component's entry point: it rebinds `print` to gg's feedback channel, defuses the interpreter's one store-killing landmine, registers the agent's code modules as the `lib` package, evaluates the program in a namespace of its own, and reports every failure at the program's own coordinates. |
-| `src/gg/` | The SDK: one module per capability (`files.py`, `board.py`, `views.py`, …) holding that capability's functions **and the types it produces**, plus `core.py` for the types they all speak in. `_registry.py` is the `@operation` decorator, the answer to the `bound-operations` export and the message a module gives for a name it does not declare; `catalogue.py` is the module vocabulary and the operation-to-tool table, and nothing a model reads. |
-| `tools/signatures.py` | The reflector: reads the SDK statically with `griffe` and emits the catalogue. It refuses to emit one with a blank in it. |
-| `signatures.sh` | The pinned-`griffe` wrapper the build runs, and a developer runs to read the result. |
-| `src/library.py` | Every library a program may reach for, imported for its side effect. Its docstring is the authority on what this arm offers, what it deliberately does not, and why the list has to exist at all. |
-| `requirements.txt` | The pinned pure-Python wheels, with the rule anything added must meet. |
-| `build.sh` | The build that bakes the component, run by `crates/gg-sandbox-artifacts/python` into that crate's `OUT_DIR`. It writes no catalogue. |
-| `.build/` | Generated, `.gitignore`d: the vendored wheels and the generated WIT bindings. |
+| Path                  | What it holds                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/shim.py`         | The component's entry point: it rebinds `print` to gg's feedback channel, defuses the interpreter's one store-killing landmine, registers the agent's code modules as the `lib` package, evaluates the program in a namespace of its own, and reports every failure at the program's own coordinates.                                                                                                                                                      |
+| `src/gg/`             | The SDK: one module per capability (`files.py`, `board.py`, `views.py`, …) holding that capability's functions **and the types it produces**, plus `core.py` for the types they all speak in. `_registry.py` is the `@operation` decorator, the answer to the `bound-operations` export and the message a module gives for a name it does not declare; `catalogue.py` is the module vocabulary and the operation-to-tool table, and nothing a model reads. |
+| `tools/signatures.py` | The reflector: reads the SDK statically with `griffe` and emits the catalogue. It refuses to emit one with a blank in it.                                                                                                                                                                                                                                                                                                                                  |
+| `signatures.sh`       | The pinned-`griffe` wrapper the build runs, and a developer runs to read the result.                                                                                                                                                                                                                                                                                                                                                                       |
+| `src/library.py`      | Every library a program may reach for, imported for its side effect. Its docstring is the authority on what this arm offers, what it deliberately does not, and why the list has to exist at all.                                                                                                                                                                                                                                                          |
+| `requirements.txt`    | The pinned pure-Python wheels, with the rule anything added must meet.                                                                                                                                                                                                                                                                                                                                                                                     |
+| `build.sh`            | The build that bakes the component, run by `crates/gg-sandbox-artifacts/python` into that crate's `OUT_DIR`. It writes no catalogue.                                                                                                                                                                                                                                                                                                                       |
+| `.build/`             | Generated, `.gitignore`d: the vendored wheels and the generated WIT bindings.                                                                                                                                                                                                                                                                                                                                                                              |
 
 ## What a program can reach
 
-* **The gg surface**, reached by writing `import gg` — `gg.docs`, `gg.files`,
+- **The gg surface**, reached by writing `import gg` — `gg.docs`, `gg.files`,
   `gg.shell`, `gg.board`, `gg.tasks`, `gg.memories`, `gg.views`, `gg.context`,
   `gg.delegation`, `gg.skills`, `gg.programs`, `gg.session`, and `gg.core` for the
   types they speak in. The fully-qualified name is what a program writes and what the
@@ -113,10 +113,10 @@ to it, because CPython is inside the component and is the first thing to read it
   program that writes no import has no such name, which is Python's own `NameError`.
   Every function is in the package whatever the run enabled, and the **host** is what
   refuses a call outside the run's enabled set.
-* **The agent's own code**, reached by writing `import lib`: each code skill or code
+- **The agent's own code**, reached by writing `import lib`: each code skill or code
   memory this session has read is a module at `lib.<key>`, carrying the public names
   its own body left behind.
-* **Everything in `src/library.py`** — around ninety modules, a *curated subset* of
+- **Everything in `src/library.py`** — around ninety modules, a _curated subset_ of
   the standard library rather than all of it, plus `PyYAML` and `tomli-w`. That list
   is a **bake-time fact about the artifact**, not a policy: `componentize-py` bundles
   only the modules the entry module's import closure reached, so a module nobody
@@ -134,25 +134,26 @@ to it, because CPython is inside the component and is the first thing to read it
   component cannot import fails `the_embedded_guest_carries_every_library_its_catalogue_declares`,
   which is the direction that can still go wrong: the catalogue moves the moment the source
   does, and the component is the half that has to be rebuilt by hand to catch up.
-* **The whole WASI p2 surface** gg's host links: the clock, the RNG, the container
+
+- **The whole WASI p2 surface** gg's host links: the clock, the RNG, the container
   filesystem preopened at `/`, the network, and the process environment. The
   component imports all of it — filesystem and sockets included — which is exactly
   why gg's linker defines the whole surface for every guest.
-* **Not `ssl`**, and not `bz2`, `lzma`, `ctypes` or `curses`: `componentize-py`'s
+- **Not `ssl`**, and not `bz2`, `lzma`, `ctypes` or `curses`: `componentize-py`'s
   CPython is not built with them. The visible consequence is that `urllib.request`
   reaches `http://` and not `https://`.
-* **Not stdout.** gg's telemetry stream *is* the host process's stdout, so the host
+- **Not stdout.** gg's telemetry stream _is_ the host process's stdout, so the host
   builds its WASI context without it. `print` is rebound to the feedback channel
   instead — which is also the only channel a program has for showing gg a value.
 
 ## Two things measured here that are worth knowing
 
-* **Building with `--stub-wasi` is what once made this arm look expensive.** That
+- **Building with `--stub-wasi` is what once made this arm look expensive.** That
   flag replaces every WASI import with a trapping stub, and under it `datetime.now()`,
   `SystemRandom()`, `uuid4()`, `tempfile` and `threading` all trap — unshimmably,
   because they are C-implemented immutable types. Built against gg's ambient WASI they
-  are ordinary calls again, and `threading` raises a *catchable* `RuntimeError`.
-* **`sys.setrecursionlimit` is a store-killer.** Raised past what the wasm stack holds,
+  are ordinary calls again, and `threading` raises a _catchable_ `RuntimeError`.
+- **`sys.setrecursionlimit` is a store-killer.** Raised past what the wasm stack holds,
   a `RecursionError` the program **already caught** kills the store while CPython
   unwinds its traceback, so `except BaseException` gives no protection at all. The shim
   clamps the limit; both facts have tests.
@@ -166,7 +167,7 @@ shadowed and it has no filesystem or socket API); this one can, because `time.sl
 ordinary Python. Measured: `time.sleep(8)` against a **2 s** budget was stopped at 2.5, 2.7,
 4.3, 7.0 and 9.4 seconds across five runs of the same program. It is always stopped
 eventually and the elapsed figure is honest, but the deadline bounds nothing — a long enough
-sleep would sit until the run-level idle watchdog fires. A runaway that *computes* traps on
+sleep would sit until the run-level idle watchdog fires. A runaway that _computes_ traps on
 the deadline every time, and that case has a test.
 
 **Settled with the registration, as an acceptance:** gg does not extend the timeout to a
@@ -192,7 +193,7 @@ commit as the change that motivated it.
 The **catalogue** is never rebuilt by hand for correctness — every build of
 `test-cabinet-gg` reflects it out of `src/gg/` afresh, so a docstring edit reaches the
 model on the next `cargo build` and there is nothing to commit and nothing to gate. The
-reason to run `signatures.sh` yourself is to *read* what it emitted: a dropped `Returns:`
+reason to run `signatures.sh` yourself is to _read_ what it emitted: a dropped `Returns:`
 paragraph or a truncated `Args:` entry is invisible in the docstring and obvious in the
 JSON. It takes its destination from `GG_SIGNATURES_OUT_DIR` and fails if that is unset.
 
@@ -205,7 +206,7 @@ interpreter's memory, so two builds of identical sources differ (24,601,343 and
 24,671,910 bytes were measured minutes apart, with `PYTHONHASHSEED` and
 `SOURCE_DATE_EPOCH` pinned). The practical rule: **do not rebuild to check** — a rebuild
 always produces a multi-megabyte diff, so run it only when something the component is
-made of actually changed. What is checkable is what the artifact *does*, and that is what
+made of actually changed. What is checkable is what the artifact _does_, and that is what
 the substrate tests assert.
 
 ## Another language

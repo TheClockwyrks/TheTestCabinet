@@ -38,16 +38,16 @@ store as an internal detail without touching the backend or the console.
 Each run's tree lives at `<root>/<run-id>/`, and the path `{id}` on every route
 is the run record's id.
 
-| Route | Caller |
-| --- | --- |
-| `POST /runs/{id}/artifacts` | The driver, uploading a finished run's tree as a tar |
-| `DELETE /runs/{id}/artifacts` | The backend, pruning a deleted run's tree |
-| `GET /runs` | The backend, listing every stored tree for its reclamation sweep |
-| `GET /runs/{id}/tree.tar` | The publisher Job, pulling the source tree to release |
-| `GET /runs/{id}/build[/{path}]` | A console, loading the playable build |
+| Route                                                                                    | Caller                                                                                          |
+| ---------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `POST /runs/{id}/artifacts`                                                              | The driver, uploading a finished run's tree as a tar                                            |
+| `DELETE /runs/{id}/artifacts`                                                            | The backend, pruning a deleted run's tree                                                       |
+| `GET /runs`                                                                              | The backend, listing every stored tree for its reclamation sweep                                |
+| `GET /runs/{id}/tree.tar`                                                                | The publisher Job, pulling the source tree to release                                           |
+| `GET /runs/{id}/build[/{path}]`                                                          | A console, loading the playable build                                                           |
 | `GET /runs/{id}/proof/{file}`, `/asset/{file}`, `/validation/{file}`, `/showcase/{file}` | A console, loading a run's media; the backend, baking a published run's media into the snapshot |
-| `GET /runs/{id}/events.jsonl`, `/raw.jsonl` | A console, reading the recorded logs |
-| `GET /runs/{id}/archive.tar.gz` | A reviewer, downloading the whole run |
+| `GET /runs/{id}/events.jsonl`, `/raw.jsonl`                                              | A console, reading the recorded logs                                                            |
+| `GET /runs/{id}/archive.tar.gz`                                                          | A reviewer, downloading the whole run                                                           |
 
 Both `/runs/{id}/build` and `/runs/{id}/build/` serve the build's `index.html`,
 because the build link the driver emits carries a trailing slash and doubles as
@@ -60,6 +60,13 @@ for a name ending `.gz` the compound suffix decides both. A validation recording
 is a JSON document travelling compressed, so the media routes serve
 `<verdict>__<output>.json.gz` as `application/json` with a gzip content
 encoding, and the browser inflates the body before any script reads it.
+
+A recording's images travel beside it as flat files of the same directory,
+`img.<id>.png` for a bitmap and `img.<id>.bin` for a raw RGBA pixel buffer,
+served by the validation media route as `image/png` and
+`application/octet-stream`. An entry inside a recording names one by file name,
+so a console resolves it through the lookup it resolved the recording with. See
+[the shared image store](/components/core/validation/#the-shared-image-store).
 
 ## Auth
 
@@ -80,6 +87,7 @@ The artifact service has no Kubernetes API access. It only talks HTTP.
   tree's last-modified time, which is when the driver uploaded it. An upload in
   flight is spooled to an unnamed scratch file, so it is listed only once it has
   been unpacked into a run directory.
+
 - The publisher's `tree.tar` pull presents its per-publish-job token, verified
   the same way against the backend's publish-job endpoint, with the publish job
   id in the `x-tcab-publish-job-id` header. This is the one gated read. It is a
@@ -103,6 +111,29 @@ Here the gzip is the resource the reviewer asked for, so the archive is served
 as `application/gzip` with no content encoding and lands on disk as the file it
 names.
 
+Both whole-tree downloads, this one and the publisher's `tree.tar` pull, are
+written to the response as the archive is built. A stored tree can be gigabytes
+and the archive route is ungated, so the size a caller asks for must not decide
+the service's peak allocation. That peak is a small fixed buffer plus the
+compressor's window, independent of the tree, and a client on a slow link slows
+the walk down rather than making the service hold a whole tree for it. Both
+responses are chunked and carry no `Content-Length`, and the archive's
+`Content-Disposition` still names the file.
+
+The run is checked to exist, and its id checked to be a single safe path
+segment, before the first byte is written, since the status code is spent once
+the body has begun. A failure raised part-way through the walk is logged and
+aborts the response body: the buffered tail is dropped and the stream ends with
+an error, so the client sees a failed transfer.
+
+The abort is deliberate and the archive's own framing cannot replace it. A tar
+builder writes the two zero blocks that terminate an archive from its clean-up
+path, and a gzip encoder writes its trailer the same way, so an archive that
+stopped half way through the tree is a perfectly well-formed archive: it unpacks
+without complaint and `tar -tzf` exits 0. Were the stream simply closed, the
+publisher would release a partial source tree and deploy a partial build with
+nothing reported anywhere.
+
 The web and Tauri consoles surface this as a Download link on the run detail
 page's control strip. It is gated on the same `canExecute` flag as the rest of
 the internal-only affordances, so the public gallery never shows it.
@@ -123,8 +154,9 @@ The artifact service is the `test-cabinet-artifacts` crate (`crates/artifacts`),
 an [Axum](https://github.com/tokio-rs/axum) server backed by a local-filesystem
 store rooted at `TCAB_ARTIFACTS_ROOT`, a `PersistentVolumeClaim` in a
 deployment. Its configuration is entirely environment variables, documented in
-`crates/artifacts/src/config.rs`. An upload's body is buffered before it is
-unpacked, so the upload route carries a 2 GiB limit.
+`crates/artifacts/src/config.rs`. An upload's body is spooled to the store's
+volume as it arrives rather than buffered, so the route's 2 GiB limit bounds
+disk rather than memory.
 
 It binds all interfaces by default (`0.0.0.0:8790`), because the driver and
 console both reach it over the cluster network, and the deployment fronts it

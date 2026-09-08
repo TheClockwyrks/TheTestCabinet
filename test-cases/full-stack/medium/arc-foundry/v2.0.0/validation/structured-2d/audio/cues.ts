@@ -12,12 +12,17 @@
 // requirement the specification actually states, rather than only that some sound
 // was emitted: a build that plays its leak blip on every kill fails here.
 //
-// THE PRODUCED `.wav` FILES DO NOT DECODE IN THIS HOST, because decoding audio
-// needs a Web Audio context and a node process has none. That costs nothing here:
-// `specs/ui.md` has the twelve cues DEFINED from `initialize`, so the names are
-// declared whatever arrives, the engine plays them by name and announces each play,
-// and the files themselves are read straight off disk by the two points that are
-// about the files (`./wav.ts`).
+// THE PRODUCED `.wav` FILES REALLY DO BIND HERE. Decoding audio needs a Web Audio
+// context and a node process has none, so the harness installs one (see the
+// `installAudioContext` note in `../harness.ts`). That matters to every point below
+// even though none of them listens to a sound: `specs/ui.md` has a build bind each
+// of the twelve cue names to the file `specs/assets.md` produces for it, and the
+// engine's bus binds a name ONLY once its decode has succeeded and throws
+// `unknown audio cue` for a name nothing declared — so without the context a
+// conformant build would fail every point here for the host rather than for itself.
+// With it, the names bind, the engine plays them by name and announces each play,
+// and the two points that are about the FILES still read them straight off disk
+// (`./wav.ts`), where the bytes rather than the bus decide.
 //
 // TWO KINDS OF EVENT, AND BOTH LAND ON A FRAME.
 //

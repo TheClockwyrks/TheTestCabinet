@@ -38,6 +38,7 @@ async function shootHorizontalAtObstacleA(api) {
     vy: 0,
     spin: 0,
   });
+  await api.call("reconcile");
   const r = await api.until(
     (s) => ball0(s).vx < 300 || Math.abs(ball0(s).vy) > 80,
     { max: 96 }, // 96 ticks = the old 0.8 s cap
@@ -62,6 +63,7 @@ export default function item() {
       await api.call("startMatch", "versus");
       await api.call("serve");
       await api.call("setObstacleClock", 0); // seconds, not ticks
+      await api.call("reconcile");
     },
 
     async act(api) {
@@ -79,6 +81,7 @@ export default function item() {
       await api.call("startMatch", "versus");
       await api.call("serve");
       await api.call("setObstacleClock", 0.75); // seconds, not ticks
+      await api.call("reconcile");
       tilted = await shootHorizontalAtObstacleA(api);
       // Hold on the deflected return so the clip shows the oriented angle — the
       // second half of the contrast the item is built on.

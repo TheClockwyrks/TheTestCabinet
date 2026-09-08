@@ -20,10 +20,10 @@ import {
   ACTION_KEY,
   captureStill,
   createHarness,
-  drewText,
   openScene,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 import { menuLength } from "./expedition";
 
 /** The main menu with no save banked: `TITLE_ITEMS` without its first entry. */

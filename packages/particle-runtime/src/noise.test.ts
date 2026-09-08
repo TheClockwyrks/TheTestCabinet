@@ -12,15 +12,28 @@ import { CurlNoise, hash3 } from "./noise";
 function referenceCurlNoise(pos: Vec3, scaleFreq: number): Vec3 {
   const p: Vec3 = [pos[0] * scaleFreq, pos[1] * scaleFreq, pos[2] * scaleFreq];
   const e = 0.1;
-  const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  const sub = (a: Vec3, b: Vec3): Vec3 => [
+    a[0] - b[0],
+    a[1] - b[1],
+    a[2] - b[2],
+  ];
   const potential = (q: Vec3): Vec3 => [
     valueNoise(q),
     valueNoise([q[0] + 31.4, q[1] + 17.2, q[2] + 4.7]),
     valueNoise([q[0] + 7.1, q[1] + 23.9, q[2] + 55.3]),
   ];
-  const dx = sub(potential([p[0] + e, p[1], p[2]]), potential([p[0] - e, p[1], p[2]]));
-  const dy = sub(potential([p[0], p[1] + e, p[2]]), potential([p[0], p[1] - e, p[2]]));
-  const dz = sub(potential([p[0], p[1], p[2] + e]), potential([p[0], p[1], p[2] - e]));
+  const dx = sub(
+    potential([p[0] + e, p[1], p[2]]),
+    potential([p[0] - e, p[1], p[2]]),
+  );
+  const dy = sub(
+    potential([p[0], p[1] + e, p[2]]),
+    potential([p[0], p[1] - e, p[2]]),
+  );
+  const dz = sub(
+    potential([p[0], p[1], p[2] + e]),
+    potential([p[0], p[1], p[2] - e]),
+  );
   const inv = 1 / (2 * e);
   return [(dy[2] - dz[1]) * inv, (dz[0] - dx[2]) * inv, (dx[1] - dy[0]) * inv];
 }
@@ -61,7 +74,9 @@ describe("CurlNoise", () => {
     const noise = new CurlNoise();
     for (const scale of SCALES) {
       for (const pos of POSITIONS) {
-        expect(noise.sample(pos, scale)).toEqual(referenceCurlNoise(pos, scale));
+        expect(noise.sample(pos, scale)).toEqual(
+          referenceCurlNoise(pos, scale),
+        );
       }
     }
   });
@@ -80,7 +95,9 @@ describe("CurlNoise", () => {
       expect(warm.sample(pos, 0.15)).toEqual(cold.sample(pos, 0.15));
     }
     // And a repeat read of an already-cached position is stable.
-    expect(warm.sample([24, 62, 16], 0.15)).toEqual(warm.sample([24, 62, 16], 0.15));
+    expect(warm.sample([24, 62, 16], 0.15)).toEqual(
+      warm.sample([24, 62, 16], 0.15),
+    );
   });
 
   it("stays exact at lattice coordinates too large to memoize", () => {

@@ -57,7 +57,13 @@ function cubic(p1: number, p2: number, u: number): number {
  * solve `bezierX(u) = x` by bisection (monotonic across a timing curve), then take
  * `bezierY(u)`.
  */
-function cubicBezierY(x1: number, y1: number, x2: number, y2: number, x: number): number {
+function cubicBezierY(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  x: number,
+): number {
   let lo = 0;
   let hi = 1;
   for (let i = 0; i < 40; i++) {
@@ -120,7 +126,10 @@ export function opacityAt(curve: Curve | undefined, t: number): number {
 }
 
 /** The color at normalized life `t` (default white when no gradient is set). */
-export function colorAt(gradient: readonly ColorStop[] | undefined, t: number): Vec3 {
+export function colorAt(
+  gradient: readonly ColorStop[] | undefined,
+  t: number,
+): Vec3 {
   if (!gradient) return [1, 1, 1];
   return sampleGradient(gradient, t);
 }

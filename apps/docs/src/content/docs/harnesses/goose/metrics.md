@@ -9,12 +9,12 @@ values are cumulative session totals, so the last event that carries them wins.
 
 ## Token classes
 
-| Normalized class | Goose JSON key |
-| ---------------- | -------------- |
-| Uncached input | `input_tokens` |
-| Cached input | not reported, so `null` |
-| Output | `output_tokens` |
-| Reasoning | not reported, so `null` |
+| Normalized class | Goose JSON key          |
+| ---------------- | ----------------------- |
+| Uncached input   | `input_tokens`          |
+| Cached input     | not reported, so `null` |
+| Output           | `output_tokens`         |
+| Reasoning        | not reported, so `null` |
 
 Goose's `complete` event carries `input_tokens`, `output_tokens`, and
 `total_tokens`, where the total is exactly input plus output. Input is treated

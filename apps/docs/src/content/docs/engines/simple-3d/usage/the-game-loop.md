@@ -12,8 +12,8 @@ each function only the part of itself that function may use.
 import * as THREE from "three";
 import type { Game } from "@clockwyrks/simple-3d";
 
-const TURN_RATE = 2.4;       // radians per second
-const THRUST = 6;            // world units per second squared
+const TURN_RATE = 2.4; // radians per second
+const THRUST = 6; // world units per second squared
 const DRAG_PER_SECOND = 0.6;
 
 interface State {
@@ -60,7 +60,8 @@ export const game: Game<State, null> = {
 
     const heading = state.rover.heading + turn * TURN_RATE * dt;
     const speed =
-      (state.rover.speed + (thrusting ? THRUST * dt : 0)) * Math.pow(DRAG_PER_SECOND, dt);
+      (state.rover.speed + (thrusting ? THRUST * dt : 0)) *
+      Math.pow(DRAG_PER_SECOND, dt);
     return {
       ...state,
       rover: {
@@ -225,12 +226,12 @@ engine is built. Every rate a build writes down is therefore per second, and
 every use of it is multiplied by `dt`, which is what gives the same behavior at
 every frame rate.
 
-| Quantity | Unit | Applied as |
-| --- | --- | --- |
-| Velocity | World units per second | `position + velocity * dt` |
-| Acceleration | World units per second squared | `velocity + accel * dt` |
-| Angular velocity | Radians per second | `angle + rate * dt` |
-| Decay | A per-second factor | `value * Math.pow(factor, dt)` |
+| Quantity         | Unit                           | Applied as                     |
+| ---------------- | ------------------------------ | ------------------------------ |
+| Velocity         | World units per second         | `position + velocity * dt`     |
+| Acceleration     | World units per second squared | `velocity + accel * dt`        |
+| Angular velocity | Radians per second             | `angle + rate * dt`            |
+| Decay            | A per-second factor            | `value * Math.pow(factor, dt)` |
 
 Timers, cooldowns, and animation clocks count in seconds the same way.
 

@@ -28,10 +28,10 @@ authoritative design lives at
 
 Each `test-case-group.toml` declares:
 
-| Field | Meaning |
-| --- | --- |
-| `slug` | Stable slug; must match the directory name. |
-| `name` | Human-readable name, heading the group's home-page leaderboard. |
-| `summary` | Optional one-line description. |
-| `rank` | Optional ordering key. Groups order by rank ascending, then by name; ranked groups precede unranked ones. |
-| `cases` | Ordered, non-empty list of member test-case or game-jam slugs, without duplicates. Every slug must resolve in the catalog. |
+| Field     | Meaning                                                                                                                    |
+| --------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `slug`    | Stable slug; must match the directory name.                                                                                |
+| `name`    | Human-readable name, heading the group's home-page leaderboard.                                                            |
+| `summary` | Optional one-line description.                                                                                             |
+| `rank`    | Optional ordering key. Groups order by rank ascending, then by name; ranked groups precede unranked ones.                  |
+| `cases`   | Ordered, non-empty list of member test-case or game-jam slugs, without duplicates. Every slug must resolve in the catalog. |

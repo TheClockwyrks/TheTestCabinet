@@ -40,7 +40,7 @@ import {
   captureStill,
   colorDistance,
   createHarness,
-  textDraws,
+  drawnTextRuns,
   type Harness,
   type Rgb,
   type TextDraw,
@@ -107,8 +107,10 @@ it("draws the highlighted title item apart from the same item unhighlighted", as
   await captureStill(h, "title");
 
   // The line the first entry sits on, and the step to the second, read off the
-  // frame that drew both, so the band follows the build's own layout.
-  const draws = textDraws(litCalls);
+  // frame that drew both, so the band follows the build's own layout. The
+  // LOGICAL runs, so an entry letter-spaced a glyph per `fillText` is found by
+  // what it spells; a merged run keeps the line its glyphs share.
+  const draws = drawnTextRuns(litCalls);
   const first = runFor(draws, TITLE_ITEMS[0]);
   const second = runFor(draws, TITLE_ITEMS[1]);
   const step = Math.abs(second.y - first.y);

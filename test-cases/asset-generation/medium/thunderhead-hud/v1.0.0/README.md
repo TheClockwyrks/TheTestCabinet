@@ -2,7 +2,7 @@
 
 This is version `v1.0.0` of the **Thunderhead HUD** test case: an
 asset-generation case (`asset_kind = "ui"`) that asks a model to paint a
-high-resolution fleet-command interface kit for *Thunderhead*, a naval strategy
+high-resolution fleet-command interface kit for _Thunderhead_, a naval strategy
 game, using the `paint` and `ui` binaries, one recorded operation at a time.
 
 `thunderhead-hud` is the catalog slug for this case. There is no target image:

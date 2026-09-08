@@ -12,29 +12,29 @@ The hex geometry every rule below leans on is in `specs/field.md`.
 `PARTS` holds the twenty-one part kinds in this order. The tray in
 `specs/editor.md` lists a challenge's permitted parts in it.
 
-| Kind | Class | What it is |
-| --- | --- | --- |
-| `arm` | mechanism | A single-gripper arm. |
-| `biarm` | mechanism | Two grippers, on opposite spokes. |
-| `triarm` | mechanism | Three grippers, on every second spoke. |
-| `hexarm` | mechanism | Six grippers, one per spoke. |
-| `piston` | mechanism | A single-gripper arm whose length changes at run time. |
-| `wheel` | mechanism | The zodiac wheel: six fixture motes on a rotating hub. |
-| `track` | mechanism | A path of hexes an arm rides along. |
-| `bind` | sigil | Joins two motes with a filament. |
-| `manifold` | sigil | Joins a center mote to up to three neighbors at once. |
-| `triune` | sigil | Joins two `nova` motes with a triune filament. |
-| `sunder` | sigil | Removes a filament. |
-| `wane` | sigil | An essence becomes `dust`. |
-| `mirror` | sigil | Copies an essence onto an adjacent `dust`. |
-| `ascend` | sigil | Spends `mercury` to raise a planet one rung. |
-| `conjoin` | sigil | Two of one planet become one of the next. |
-| `eclipse` | sigil | Two `dust` become `umbra` and `lumen`. |
-| `confluence` | sigil | The four essences become `aether`. |
-| `dispersion` | sigil | `aether` becomes the four essences. |
-| `void` | sigil | Consumes an unbonded, unheld mote. |
-| `rise` | sigil | Where a reagent enters the field. |
-| `set` | sigil | Where a finished constellation leaves it. |
+| Kind         | Class     | What it is                                             |
+| ------------ | --------- | ------------------------------------------------------ |
+| `arm`        | mechanism | A single-gripper arm.                                  |
+| `biarm`      | mechanism | Two grippers, on opposite spokes.                      |
+| `triarm`     | mechanism | Three grippers, on every second spoke.                 |
+| `hexarm`     | mechanism | Six grippers, one per spoke.                           |
+| `piston`     | mechanism | A single-gripper arm whose length changes at run time. |
+| `wheel`      | mechanism | The zodiac wheel: six fixture motes on a rotating hub. |
+| `track`      | mechanism | A path of hexes an arm rides along.                    |
+| `bind`       | sigil     | Joins two motes with a filament.                       |
+| `manifold`   | sigil     | Joins a center mote to up to three neighbors at once.  |
+| `triune`     | sigil     | Joins two `nova` motes with a triune filament.         |
+| `sunder`     | sigil     | Removes a filament.                                    |
+| `wane`       | sigil     | An essence becomes `dust`.                             |
+| `mirror`     | sigil     | Copies an essence onto an adjacent `dust`.             |
+| `ascend`     | sigil     | Spends `mercury` to raise a planet one rung.           |
+| `conjoin`    | sigil     | Two of one planet become one of the next.              |
+| `eclipse`    | sigil     | Two `dust` become `umbra` and `lumen`.                 |
+| `confluence` | sigil     | The four essences become `aether`.                     |
+| `dispersion` | sigil     | `aether` becomes the four essences.                    |
+| `void`       | sigil     | Consumes an unbonded, unheld mote.                     |
+| `rise`       | sigil     | Where a reagent enters the field.                      |
+| `set`        | sigil     | Where a finished constellation leaves it.              |
 
 `bind` through `void` are the twelve transforming sigils; `rise` and `set` are
 the other two.
@@ -50,12 +50,12 @@ fixed on the anchor hex, a length, and one gripper per spoke at
 `base + length * DIRS[d]` for each spoke direction `d`. The part's rotation
 names its first spoke, and the variant names the rest:
 
-| Kind | Spokes, relative to `rotation` |
-| --- | --- |
-| `arm`, `piston` | `rotation` |
-| `biarm` | `rotation`, `rotation + 3` |
-| `triarm` | `rotation`, `rotation + 2`, `rotation + 4` |
-| `hexarm` | all six |
+| Kind            | Spokes, relative to `rotation`             |
+| --------------- | ------------------------------------------ |
+| `arm`, `piston` | `rotation`                                 |
+| `biarm`         | `rotation`, `rotation + 3`                 |
+| `triarm`        | `rotation`, `rotation + 2`, `rotation + 4` |
+| `hexarm`        | all six                                    |
 
 Length is a whole number from `ARM_MIN_LEN` (`1`) to `ARM_MAX_LEN` (`3`),
 chosen in the editor. For a `piston` the chosen length is its rest length, and
@@ -75,14 +75,14 @@ pass over any hex, on or off the field, and over any part.
 A `wheel` is a hub on its anchor hex carrying six fixture motes, one on each
 adjacent hex. `WHEEL_MOTES` holds the ring at rotation `0`, by spoke:
 
-| Spoke `d` | Fixture |
-| --- | --- |
-| `0` | `nebula` |
-| `1` | `comet` |
-| `2` | `nova` |
-| `3` | `meteor` |
-| `4` | `dust` |
-| `5` | `dust` |
+| Spoke `d` | Fixture  |
+| --------- | -------- |
+| `0`       | `nebula` |
+| `1`       | `comet`  |
+| `2`       | `nova`   |
+| `3`       | `meteor` |
+| `4`       | `dust`   |
+| `5`       | `dust`   |
 
 The wheel's rotation turns the whole ring, so the fixture on spoke `d` is the
 entry above for `d - rotation` modulo `6`. `specs/simulation.md` states when a
@@ -150,29 +150,29 @@ the placement: by that number, or by the condition the rule states.
 A machine's cost is the sum of its placed parts' costs. `PART_COSTS` fixes
 them:
 
-| Part | Cost |
-| --- | --- |
-| `arm` | `20` |
-| `biarm` | `30` |
-| `triarm` | `40` |
-| `hexarm` | `60` |
-| `piston` | `40` |
-| `wheel` | `30` |
-| `track` | `5` per cell |
-| `bind` | `10` |
-| `manifold` | `30` |
-| `triune` | `20` |
-| `sunder` | `10` |
-| `wane` | `10` |
-| `mirror` | `20` |
-| `ascend` | `20` |
-| `conjoin` | `20` |
-| `eclipse` | `30` |
-| `confluence` | `20` |
-| `dispersion` | `20` |
-| `void` | `0` |
-| `rise` | `0` |
-| `set` | `0` |
+| Part         | Cost         |
+| ------------ | ------------ |
+| `arm`        | `20`         |
+| `biarm`      | `30`         |
+| `triarm`     | `40`         |
+| `hexarm`     | `60`         |
+| `piston`     | `40`         |
+| `wheel`      | `30`         |
+| `track`      | `5` per cell |
+| `bind`       | `10`         |
+| `manifold`   | `30`         |
+| `triune`     | `20`         |
+| `sunder`     | `10`         |
+| `wane`       | `10`         |
+| `mirror`     | `20`         |
+| `ascend`     | `20`         |
+| `conjoin`    | `20`         |
+| `eclipse`    | `30`         |
+| `confluence` | `20`         |
+| `dispersion` | `20`         |
+| `void`       | `0`          |
+| `rise`       | `0`          |
+| `set`        | `0`          |
 
 The finished machine's cost is one of the three metrics `specs/simulation.md`
 records.

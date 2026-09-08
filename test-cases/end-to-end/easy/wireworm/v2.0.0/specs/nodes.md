@@ -12,12 +12,12 @@ Every node occupies one tile of the board and carries one value: its charge, a
 whole number from `0` to `CHARGE_MAX` (`3`). Charge is the whole of a node's
 state, and a tile is either empty or holds exactly one node.
 
-| Charge | State |
-| --- | --- |
-| `0` | Inert |
-| `1` | Low |
-| `2` | Charged |
-| `3` | Critical |
+| Charge | State    |
+| ------ | -------- |
+| `0`    | Inert    |
+| `1`    | Low      |
+| `2`    | Charged  |
+| `3`    | Critical |
 
 A node at charge `1` or above is a charged node, and charge `3` is critical.
 `specs/assets.md` states which sprite frame is drawn for each state, and
@@ -49,12 +49,12 @@ A bolt travels up its column and resolves against the first node, worm segment,
 or foe in its path, as `specs/cursor.md` states. What it does to a node depends
 on that node's charge:
 
-| Charge struck | Result |
-| --- | --- |
-| `0` | The node is removed and its tile is left empty. |
-| `1` | The node is left standing at charge `0`. |
-| `2` | The node is left standing at charge `1`. |
-| `3` | The node detonates, as `specs/discharge.md` states. |
+| Charge struck | Result                                              |
+| ------------- | --------------------------------------------------- |
+| `0`           | The node is removed and its tile is left empty.     |
+| `1`           | The node is left standing at charge `0`.            |
+| `2`           | The node is left standing at charge `1`.            |
+| `3`           | The node detonates, as `specs/discharge.md` states. |
 
 A charged node is therefore cleared by knocking its charge down one bolt at a
 time and removing it once it is inert, and a critical node is cleared by
@@ -75,11 +75,11 @@ The dropper lays nodes as it falls, as `specs/foes.md` states.
 
 ## What removes a node
 
-| Route | Stated in |
-| --- | --- |
-| A bolt into an inert node. | This file. |
+| Route                                                 | Stated in            |
+| ----------------------------------------------------- | -------------------- |
+| A bolt into an inert node.                            | This file.           |
 | A detonation, including every node the chain reaches. | `specs/discharge.md` |
-| A glitch eating the node on its tile. | `specs/foes.md` |
+| A glitch eating the node on its tile.                 | `specs/foes.md`      |
 
 Nothing else removes a node.
 

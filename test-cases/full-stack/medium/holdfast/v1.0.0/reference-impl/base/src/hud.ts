@@ -50,7 +50,12 @@ import {
 } from "./render";
 
 // ---- top strip ----------------------------------------------------------------
-export function drawTopHud(ctx: CanvasRenderingContext2D, game: Game, A: Assets, _clicks: Clickable[]): void {
+export function drawTopHud(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  A: Assets,
+  _clicks: Clickable[],
+): void {
   ctx.fillStyle = COL.panel;
   ctx.fillRect(0, 0, STAGE_W, TOP_H);
   hairline(ctx, TOP_H - 0.5);
@@ -60,7 +65,16 @@ export function drawTopHud(ctx: CanvasRenderingContext2D, game: Game, A: Assets,
   for (const res of RESOURCE_ORDER) {
     blit(ctx, A.sprite(STOCK_ICON[res]), x + 9, 34, 18, 18, 0);
     text(ctx, res.toUpperCase(), x + 22, 20, 9, COL.text3, "left", "600", 1);
-    text(ctx, `${Math.floor(game.stock[res])}`, x + 22, 40, 16, COL.text, "left", "700");
+    text(
+      ctx,
+      `${Math.floor(game.stock[res])}`,
+      x + 22,
+      40,
+      16,
+      COL.text,
+      "left",
+      "700",
+    );
     x += 92;
   }
 
@@ -73,7 +87,17 @@ export function drawTopHud(ctx: CanvasRenderingContext2D, game: Game, A: Assets,
   text(ctx, `DAY ${game.day}`, rx, 22, 18, COL.text, "right", "800", 1);
   const speedLabel = game.paused ? "PAUSED" : `${game.speed}×`;
   const phaseName = phaseLabel(game.phase);
-  text(ctx, `${phaseName} · ${speedLabel}`, rx, 44, 11, game.paused ? COL.alert : COL.text2, "right", "600", 1);
+  text(
+    ctx,
+    `${phaseName} · ${speedLabel}`,
+    rx,
+    44,
+    11,
+    game.paused ? COL.alert : COL.text2,
+    "right",
+    "600",
+    1,
+  );
   // Phase dial: a small dot tinted by the time of day.
   const dotX = rx - ctx.measureText(`${phaseName} · ${speedLabel}`).width - 24;
   ctx.save();
@@ -87,11 +111,25 @@ export function drawTopHud(ctx: CanvasRenderingContext2D, game: Game, A: Assets,
   ctx.restore();
 }
 
-function drawColonyState(ctx: CanvasRenderingContext2D, game: Game, A: Assets): void {
+function drawColonyState(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  A: Assets,
+): void {
   const living = game.livingSettlers();
   let x = STAGE_W / 2 - 150;
   blit(ctx, A.sprite("icons/settler"), x + 9, 32, 18, 18, 0);
-  text(ctx, `${living.length} LIVING`, x + 22, 32, 15, COL.settler, "left", "700", 0.5);
+  text(
+    ctx,
+    `${living.length} LIVING`,
+    x + 22,
+    32,
+    15,
+    COL.settler,
+    "left",
+    "700",
+    0.5,
+  );
   x += 22 + ctx.measureText(`${living.length} LIVING`).width + 26;
 
   const hungry = living.some((s) => s.needs.hunger >= EAT_THRESHOLD);
@@ -112,7 +150,9 @@ function drawColonyState(ctx: CanvasRenderingContext2D, game: Game, A: Assets): 
 
 function drawRaidBanner(ctx: CanvasRenderingContext2D, game: Game): void {
   const pulse = 0.6 + 0.4 * Math.abs(Math.sin(renderTime() * 4));
-  const label = game.raidActive ? "RAID UNDERWAY" : `RAID INCOMING — ${Math.ceil(game.raidCountdown)}s`;
+  const label = game.raidActive
+    ? "RAID UNDERWAY"
+    : `RAID INCOMING — ${Math.ceil(game.raidCountdown)}s`;
   ctx.font = `800 16px ${FONT}`;
   const w = ctx.measureText(label).width + 56;
   const bx = STAGE_W / 2 - w / 2;
@@ -138,7 +178,12 @@ const PAL_X = 500;
 const PAL_PITCH = 50;
 const CTRL_X = 964;
 
-export function drawBottomHud(ctx: CanvasRenderingContext2D, game: Game, A: Assets, clicks: Clickable[]): void {
+export function drawBottomHud(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  A: Assets,
+  clicks: Clickable[],
+): void {
   const y0 = STAGE_H - 64;
   ctx.fillStyle = COL.panel;
   ctx.fillRect(0, y0, STAGE_W, 64);
@@ -148,7 +193,11 @@ export function drawBottomHud(ctx: CanvasRenderingContext2D, game: Game, A: Asse
   drawPalette(ctx, game, A, clicks);
 }
 
-function drawRoster(ctx: CanvasRenderingContext2D, game: Game, clicks: Clickable[]): void {
+function drawRoster(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  clicks: Clickable[],
+): void {
   const cy = STAGE_H - 62;
   const h = 52;
   const living = game.livingSettlers();
@@ -157,14 +206,36 @@ function drawRoster(ctx: CanvasRenderingContext2D, game: Game, clicks: Clickable
     const selected = game.selectedSettlerId === s.id;
     const hovered = inRect(ptr().x, ptr().y, x, cy, ROSTER_W, h);
     roundRect(ctx, x, cy, ROSTER_W, h, 6);
-    ctx.fillStyle = selected ? hexA(COL.settler, 0.16) : "rgba(255,255,255,0.03)";
+    ctx.fillStyle = selected
+      ? hexA(COL.settler, 0.16)
+      : "rgba(255,255,255,0.03)";
     ctx.fill();
     ctx.strokeStyle = selected ? COL.settler : "rgba(255,255,255,0.08)";
     ctx.lineWidth = selected ? 2 : 1;
     ctx.stroke();
 
-    text(ctx, s.name, x + 8, cy + 11, 12, selected ? COL.settler : COL.text, "left", "700", 0.5);
-    text(ctx, actLabel(s.activity), x + ROSTER_W - 8, cy + 11, 9, actColor(s.activity), "right", "600", 0.5);
+    text(
+      ctx,
+      s.name,
+      x + 8,
+      cy + 11,
+      12,
+      selected ? COL.settler : COL.text,
+      "left",
+      "700",
+      0.5,
+    );
+    text(
+      ctx,
+      actLabel(s.activity),
+      x + ROSTER_W - 8,
+      cy + 11,
+      9,
+      actColor(s.activity),
+      "right",
+      "600",
+      0.5,
+    );
 
     // four need/health bars: fullness (1-hunger), rest, mood, health.
     const bx = x + 20;
@@ -183,25 +254,71 @@ function drawRoster(ctx: CanvasRenderingContext2D, game: Game, clicks: Clickable
     }
 
     clicks.push({ x, y: cy, w: ROSTER_W, h, action: `select:${s.id}` });
-    if ((hovered || selected) && !isWorkGridOpen()) drawStandoutSkills(ctx, s, x + ROSTER_W / 2, cy);
+    if ((hovered || selected) && !isWorkGridOpen())
+      drawStandoutSkills(ctx, s, x + ROSTER_W / 2, cy);
   });
 }
 
-function drawStandoutSkills(ctx: CanvasRenderingContext2D, s: Settler, anchorX: number, cardTop: number): void {
+function drawStandoutSkills(
+  ctx: CanvasRenderingContext2D,
+  s: Settler,
+  anchorX: number,
+  cardTop: number,
+): void {
   const ranked = [...SKILL_ORDER].sort((a, b) => s.skills[b] - s.skills[a]);
-  const top = ranked.slice(0, 2).map((sk) => `${skillLabel(sk)} ${Math.round(s.skills[sk])}`);
-  drawTooltip(ctx, s.name, `Best at: ${top.join(", ")}.`, COL.settler, anchorX, cardTop - 8);
+  const top = ranked
+    .slice(0, 2)
+    .map((sk) => `${skillLabel(sk)} ${Math.round(s.skills[sk])}`);
+  drawTooltip(
+    ctx,
+    s.name,
+    `Best at: ${top.join(", ")}.`,
+    COL.settler,
+    anchorX,
+    cardTop - 8,
+  );
 }
 
 // ---- build palette / tool bar -------------------------------------------------
-function drawPalette(ctx: CanvasRenderingContext2D, game: Game, A: Assets, clicks: Clickable[]): void {
+function drawPalette(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  A: Assets,
+  clicks: Clickable[],
+): void {
   const y = STAGE_H - 62;
   const w = 46;
   const h = 50;
 
   // Designate + cancel tools.
-  paletteButton(ctx, clicks, PAL_X, y, w, h, A.sprite("icons/tool_designate"), "", game.tool === "designate", true, "tool:designate", COL.text);
-  paletteButton(ctx, clicks, PAL_X + PAL_PITCH, y, w, h, A.sprite("icons/tool_cancel"), "", game.tool === "cancel", true, "tool:cancel", COL.alert);
+  paletteButton(
+    ctx,
+    clicks,
+    PAL_X,
+    y,
+    w,
+    h,
+    A.sprite("icons/tool_designate"),
+    "",
+    game.tool === "designate",
+    true,
+    "tool:designate",
+    COL.text,
+  );
+  paletteButton(
+    ctx,
+    clicks,
+    PAL_X + PAL_PITCH,
+    y,
+    w,
+    h,
+    A.sprite("icons/tool_cancel"),
+    "",
+    game.tool === "cancel",
+    true,
+    "tool:cancel",
+    COL.alert,
+  );
 
   // The seven structures (produced glyph + cost; greyed when unaffordable).
   STRUCTURE_ORDER.forEach((kind, i) => {
@@ -209,25 +326,89 @@ function drawPalette(ctx: CanvasRenderingContext2D, game: Game, A: Assets, click
     const def = STRUCTURES[kind];
     const afford = game.canAfford(kind);
     const active = game.tool === "build" && game.buildKind === kind;
-    const cost = def.cost.ore > 0 ? `${def.cost.wood}·${def.cost.ore}` : `${def.cost.wood}`;
-    paletteButton(ctx, clicks, x, y, w, h, A.sprite(BUILD_ICON[kind]), cost, active, afford, `build:${kind}`, COL.wood);
+    const cost =
+      def.cost.ore > 0
+        ? `${def.cost.wood}·${def.cost.ore}`
+        : `${def.cost.wood}`;
+    paletteButton(
+      ctx,
+      clicks,
+      x,
+      y,
+      w,
+      h,
+      A.sprite(BUILD_ICON[kind]),
+      cost,
+      active,
+      afford,
+      `build:${kind}`,
+      COL.wood,
+    );
     if (inRect(ptr().x, ptr().y, x, y, w, h)) {
       const oreBit = def.cost.ore > 0 ? `, ${def.cost.ore} ore` : "";
-      drawTooltip(ctx, def.name, `${def.cost.wood} wood${oreBit}. ${structureBlurb(kind)}`, COL.wood, x + w / 2, y);
+      drawTooltip(
+        ctx,
+        def.name,
+        `${def.cost.wood} wood${oreBit}. ${structureBlurb(kind)}`,
+        COL.wood,
+        x + w / 2,
+        y,
+      );
     }
   });
 
   // Right controls: work grid toggle, speed, pause, mute.
-  button(ctx, clicks, CTRL_X, y, 80, h, "WORK GRID", "workgrid", isWorkGridOpen() ? COL.food : COL.text, true);
+  button(
+    ctx,
+    clicks,
+    CTRL_X,
+    y,
+    80,
+    h,
+    "WORK GRID",
+    "workgrid",
+    isWorkGridOpen() ? COL.food : COL.text,
+    true,
+  );
   if (isWorkGridOpen()) {
     roundRect(ctx, CTRL_X, y, 80, h, 6);
     ctx.strokeStyle = COL.food;
     ctx.lineWidth = 2;
     ctx.stroke();
   }
-  ctrlButton(ctx, clicks, CTRL_X + 88, y, 46, h, `${game.speed}×`, "speed", COL.text);
-  ctrlButton(ctx, clicks, CTRL_X + 138, y, 42, h, game.paused ? "▶" : "❚❚", "pause", game.paused ? COL.alert : COL.text);
-  ctrlButton(ctx, clicks, CTRL_X + 184, y, 42, h, isMuted() ? "♪̸" : "♪", "mute", isMuted() ? COL.text3 : COL.text);
+  ctrlButton(
+    ctx,
+    clicks,
+    CTRL_X + 88,
+    y,
+    46,
+    h,
+    `${game.speed}×`,
+    "speed",
+    COL.text,
+  );
+  ctrlButton(
+    ctx,
+    clicks,
+    CTRL_X + 138,
+    y,
+    42,
+    h,
+    game.paused ? "▶" : "❚❚",
+    "pause",
+    game.paused ? COL.alert : COL.text,
+  );
+  ctrlButton(
+    ctx,
+    clicks,
+    CTRL_X + 184,
+    y,
+    42,
+    h,
+    isMuted() ? "♪̸" : "♪",
+    "mute",
+    isMuted() ? COL.text3 : COL.text,
+  );
 }
 
 function paletteButton(
@@ -254,12 +435,32 @@ function paletteButton(
   ctx.globalAlpha = enabled ? 1 : 0.35;
   blit(ctx, icon, x + w / 2, y + (cost ? 18 : h / 2), 20, 20, 0);
   ctx.restore();
-  if (cost) text(ctx, cost, x + w / 2, y + h - 11, 9, enabled ? COL.text2 : COL.text3, "center", "700");
+  if (cost)
+    text(
+      ctx,
+      cost,
+      x + w / 2,
+      y + h - 11,
+      9,
+      enabled ? COL.text2 : COL.text3,
+      "center",
+      "700",
+    );
   // Always clickable (an unaffordable structure still selects — placement refuses it).
   clicks.push({ x, y, w, h, action });
 }
 
-function ctrlButton(ctx: CanvasRenderingContext2D, clicks: Clickable[], x: number, y: number, w: number, h: number, label: string, action: string, color: string): void {
+function ctrlButton(
+  ctx: CanvasRenderingContext2D,
+  clicks: Clickable[],
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  label: string,
+  action: string,
+  color: string,
+): void {
   roundRect(ctx, x, y, w, h, 6);
   ctx.fillStyle = "rgba(255,255,255,0.05)";
   ctx.fill();
@@ -271,7 +472,11 @@ function ctrlButton(ctx: CanvasRenderingContext2D, clicks: Clickable[], x: numbe
 }
 
 // ---- work-priority grid panel -------------------------------------------------
-export function drawWorkGrid(ctx: CanvasRenderingContext2D, game: Game, clicks: Clickable[]): void {
+export function drawWorkGrid(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  clicks: Clickable[],
+): void {
   const living = game.livingSettlers();
   const nameW = 130;
   const cellW = 64;
@@ -299,15 +504,45 @@ export function drawWorkGrid(ctx: CanvasRenderingContext2D, game: Game, clicks: 
   ctx.lineWidth = 1;
   ctx.stroke();
 
-  text(ctx, "WORK PRIORITIES", px + 20, py + 26, 16, COL.text, "left", "800", 1);
-  text(ctx, "CLICK A CELL TO CYCLE  0 OFF … 4 TOP", px + 20, py + 46, 10, COL.text3, "left", "600", 1);
+  text(
+    ctx,
+    "WORK PRIORITIES",
+    px + 20,
+    py + 26,
+    16,
+    COL.text,
+    "left",
+    "800",
+    1,
+  );
+  text(
+    ctx,
+    "CLICK A CELL TO CYCLE  0 OFF … 4 TOP",
+    px + 20,
+    py + 46,
+    10,
+    COL.text3,
+    "left",
+    "600",
+    1,
+  );
 
   const gx = px + 20;
   const gy = py + headerH;
   // column headers
   WORK_ORDER.forEach((w, c) => {
     const cx = gx + nameW + c * cellW + cellW / 2;
-    text(ctx, WORK_LABEL[w].toUpperCase(), cx, gy - 8, 10, COL.text2, "center", "700", 0.5);
+    text(
+      ctx,
+      WORK_LABEL[w].toUpperCase(),
+      cx,
+      gy - 8,
+      10,
+      COL.text2,
+      "center",
+      "700",
+      0.5,
+    );
   });
 
   living.forEach((s, r) => {
@@ -321,22 +556,57 @@ export function drawWorkGrid(ctx: CanvasRenderingContext2D, game: Game, clicks: 
       const cxx = cx + 4;
       const cyy = ry + 5;
       roundRect(ctx, cxx, cyy, cw, ch, 5);
-      ctx.fillStyle = p === 0 ? "rgba(255,255,255,0.03)" : hexA(COL.food, 0.08 + 0.06 * p);
+      ctx.fillStyle =
+        p === 0 ? "rgba(255,255,255,0.03)" : hexA(COL.food, 0.08 + 0.06 * p);
       ctx.fill();
-      ctx.strokeStyle = p === 0 ? "rgba(255,255,255,0.08)" : hexA(COL.food, 0.5);
+      ctx.strokeStyle =
+        p === 0 ? "rgba(255,255,255,0.08)" : hexA(COL.food, 0.5);
       ctx.lineWidth = 1;
       ctx.stroke();
-      text(ctx, p === 0 ? "—" : `${p}`, cxx + cw / 2, cyy + ch / 2 + 1, 13, p === 0 ? COL.text3 : COL.food, "center", "800");
-      clicks.push({ x: cxx, y: cyy, w: cw, h: ch, action: `prio:${s.id}:${w}` });
+      text(
+        ctx,
+        p === 0 ? "—" : `${p}`,
+        cxx + cw / 2,
+        cyy + ch / 2 + 1,
+        13,
+        p === 0 ? COL.text3 : COL.food,
+        "center",
+        "800",
+      );
+      clicks.push({
+        x: cxx,
+        y: cyy,
+        w: cw,
+        h: ch,
+        action: `prio:${s.id}:${w}`,
+      });
     });
   });
 
-  button(ctx, clicks, px + panelW / 2 - 70, py + panelH - 40, 140, 30, "CLOSE", "workgrid", COL.text, true);
+  button(
+    ctx,
+    clicks,
+    px + panelW / 2 - 70,
+    py + panelH - 40,
+    140,
+    30,
+    "CLOSE",
+    "workgrid",
+    COL.text,
+    true,
+  );
 }
 
 // ---- floating tooltip ---------------------------------------------------------
 // Anchored above `anchorX/anchorY`, clamped fully on-screen.
-export function drawTooltip(ctx: CanvasRenderingContext2D, title: string, body: string, accent: string, anchorX: number, anchorY: number): void {
+export function drawTooltip(
+  ctx: CanvasRenderingContext2D,
+  title: string,
+  body: string,
+  accent: string,
+  anchorX: number,
+  anchorY: number,
+): void {
   const tw = 220;
   const pad = 12;
   const innerW = tw - pad * 2;

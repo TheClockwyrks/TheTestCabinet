@@ -84,7 +84,9 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            autoComplete={mode === "login" ? "current-password" : "new-password"}
+            autoComplete={
+              mode === "login" ? "current-password" : "new-password"
+            }
           />
         </label>
       </div>

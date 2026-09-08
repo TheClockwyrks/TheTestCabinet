@@ -21,7 +21,10 @@ import {
   useRef,
   useState,
 } from "react";
-import type { GgFieldCatalog, GgInterval } from "@clockwyrks/run-record/gg-query";
+import type {
+  GgFieldCatalog,
+  GgInterval,
+} from "@clockwyrks/run-record/gg-query";
 import { type Completion, type ParseResult, completeQuery } from "../query";
 import { type QueryExample, queryExamples } from "./examples";
 import { highlightSpans } from "./highlight";
@@ -90,7 +93,10 @@ export function QueryEditor({
     [open, value, caret, catalog],
   );
 
-  const examples = useMemo<QueryExample[]>(() => queryExamples(interval), [interval]);
+  const examples = useMemo<QueryExample[]>(
+    () => queryExamples(interval),
+    [interval],
+  );
 
   // Keep the highlighted suggestion inside the list as it shrinks under a growing prefix.
   useEffect(() => {
@@ -174,7 +180,11 @@ export function QueryEditor({
         <div className={styles.editorBox}>
           {/* The painted layer. `aria-hidden` because the textarea above carries the real
               text — a screen reader must not hear the query twice. */}
-          <pre ref={highlightRef} className={styles.highlight} aria-hidden="true">
+          <pre
+            ref={highlightRef}
+            className={styles.highlight}
+            aria-hidden="true"
+          >
             {spans.map((span, index) => (
               <span
                 key={index}
@@ -205,7 +215,7 @@ export function QueryEditor({
             aria-expanded={open && completions.length > 0}
             aria-controls={listId}
             aria-autocomplete="list"
-            placeholder="state:completed and model:&quot;anthropic/*&quot; | stats avg(score) by preset"
+            placeholder='state:completed and model:"anthropic/*" | stats avg(score) by preset'
             onChange={(event) => {
               onChange(event.target.value);
               setCaret(event.target.selectionStart);
@@ -244,9 +254,13 @@ export function QueryEditor({
                     }}
                     onMouseEnter={() => setHighlight(index)}
                   >
-                    <span className={styles.completionLabel}>{completion.label}</span>
+                    <span className={styles.completionLabel}>
+                      {completion.label}
+                    </span>
                     {completion.detail && (
-                      <span className={styles.completionDetail}>{completion.detail}</span>
+                      <span className={styles.completionDetail}>
+                        {completion.detail}
+                      </span>
                     )}
                     {completion.documents !== undefined && (
                       <span className={styles.completionCount}>
@@ -305,7 +319,9 @@ export function QueryEditor({
                   setOpen(false);
                 }}
               >
-                <span className={styles.exampleQuestion}>{example.question}</span>
+                <span className={styles.exampleQuestion}>
+                  {example.question}
+                </span>
                 <code className={styles.exampleQuery}>{example.query}</code>
               </button>
             </li>

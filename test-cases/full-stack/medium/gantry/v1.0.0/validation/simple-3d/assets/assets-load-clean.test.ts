@@ -28,6 +28,18 @@
 // a favicon, and an engineless build's version of this point has to set that
 // request aside; nothing here asks for anything the build did not.
 //
+// AN OFF-ORIGIN REQUEST IS SET ASIDE, THOUGH, AND IT IS THE ONLY THING THAT IS.
+// `h.assetRequests()` carries the requests the build wrote as absolute URLs,
+// because where a build fetches from is the subject of
+// `assets/no-runtime-fetch-outside-dist` and half of
+// `assets/assets-work-from-a-sub-path`, and a reading that dropped them would
+// answer both of those with silence. This point is a narrower question — did the
+// SERVED OUTPUT answer what was asked of it — and a request the transport handed
+// to the platform was never asked of the output and carries no status of its own,
+// so counting one as unresolved would report a produced file missing that the
+// build never claimed to produce. It is dropped here, on this point's own line,
+// and nowhere upstream of it.
+//
 // EVERY SCREEN IS SHOWN AND EVERY PRODUCED FILE IS PUT ON SCREEN OR PLAYED,
 // because a build is free to fetch late and a missing file would then only show
 // up on the screen, the model, or the cue that wanted it. What that takes is a
@@ -235,14 +247,20 @@ it("shows every screen and draws every produced file with no asset request faili
 
   await h.capture("run", "The play-through with every asset loaded");
 
+  // The requests this point is about: the ones addressed to the site's own
+  // output, which is the only thing whose answers say whether a produced file is
+  // where the build put it. See the header for why the off-origin ones are in the
+  // reading at all and why they are dropped here rather than there.
+  const served = asked.filter((one) => !one.offOrigin);
+
   assertGreaterThan(
-    asked.length,
+    served.length,
     0,
-    "the files the played site fetched, which this point reads off every " +
-      "request the build made since it was initialized",
+    "the files the played site fetched from its own output, which this point " +
+      "reads off every request the build made since it was initialized",
   );
 
-  const failed = asked.filter((one) => !one.found).map((one) => one.path);
+  const failed = served.filter((one) => !one.found).map((one) => one.path);
   assertEqual(
     failed.join(", "),
     "",
@@ -261,7 +279,7 @@ it("shows every screen and draws every produced file with no asset request faili
 
   console.log(
     `gantry: the play-through with every asset loaded —\n  ` +
-      asked
+      served
         .map((one) => `${one.found ? "ok " : "404"} ${one.path}`)
         .join("\n  "),
   );

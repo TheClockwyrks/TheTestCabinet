@@ -115,10 +115,18 @@ function legUnder(
 ): number {
   const leg = members.find(
     (m) =>
-      (m.a.x === corner.x && m.a.z === corner.z && m.a.y === 0 &&
-        m.b.x === corner.x && m.b.y === corner.y && m.b.z === corner.z) ||
-      (m.b.x === corner.x && m.b.z === corner.z && m.b.y === 0 &&
-        m.a.x === corner.x && m.a.y === corner.y && m.a.z === corner.z),
+      (m.a.x === corner.x &&
+        m.a.z === corner.z &&
+        m.a.y === 0 &&
+        m.b.x === corner.x &&
+        m.b.y === corner.y &&
+        m.b.z === corner.z) ||
+      (m.b.x === corner.x &&
+        m.b.z === corner.z &&
+        m.b.y === 0 &&
+        m.a.x === corner.x &&
+        m.a.y === corner.y &&
+        m.a.z === corner.z),
   );
   if (leg === undefined) {
     throw new Error(
@@ -139,7 +147,10 @@ it("adds COUNTERWEIGHT_MASS at the node the counterweight stands on", async () =
 
   const before = await h.check();
   assertTrue(before.stable, "the jib rig stands, so the check solves it");
-  const forceOf = (result: { members: { id: number; force: number }[] }, id: number) => {
+  const forceOf = (
+    result: { members: { id: number; force: number }[] },
+    id: number,
+  ) => {
     const reading = result.members.find((m) => m.id === id);
     if (reading === undefined) {
       throw new Error(`gantry: the check reported no force for member ${id}`);
@@ -157,7 +168,10 @@ it("adds COUNTERWEIGHT_MASS at the node the counterweight stands on", async () =
     "A counterweight on one bottom-flange corner of the jib rig",
   );
 
-  assertTrue(after.stable, "the jib rig still stands with the counterweight on");
+  assertTrue(
+    after.stable,
+    "the jib rig still stands with the counterweight on",
+  );
 
   assertNear(
     forceOf(after, loadedLeg),

@@ -6,7 +6,8 @@ import { describe, expect, it } from "vitest";
 import { cellCenter, emptyBeams, parseBoard } from "./board";
 import { createInitialState } from "./flow";
 import {
-  clearBeams,
+  performClearBeams,
+  tryClearBeams,
   mergeEvents,
   NO_EVENTS,
   pointerDown,
@@ -266,7 +267,7 @@ describe("clearing", () => {
     let state = onBoard(["TtT", "S.S"]);
     state = press(state, { col: 0, row: 0 }).state;
     state = moveTo(state, { col: 1, row: 0 }).state;
-    const { state: cleared, cleared: hadSegments } = clearBeams(state);
+    const { state: cleared, cleared: hadSegments } = tryClearBeams(state);
     expect(hadSegments).toBe(true);
     expect(cleared.tracing).toBeNull();
     expect(cleared.beams.every((beam) => beam.cells.length === 0)).toBe(true);
@@ -274,14 +275,29 @@ describe("clearing", () => {
   });
 
   it("reports nothing to clear when no segment exists", () => {
-    const idle = clearBeams(onBoard(["TtT"]));
+    const idle = tryClearBeams(onBoard(["TtT"]));
     expect(idle.cleared).toBe(false);
   });
 
-  it("does nothing off the playing screen", () => {
+  it("does nothing off the playing screen, on the player's route", () => {
     const title = createInitialState();
-    expect(clearBeams(title).state).toBe(title);
-    expect(clearBeams(title).cleared).toBe(false);
+    expect(tryClearBeams(title).state).toBe(title);
+    expect(tryClearBeams(title).cleared).toBe(false);
+  });
+
+  // The transaction itself carries no screen check, because the screen is how a
+  // PLAYER reaches the action rather than a condition of the effect. The debug
+  // surface's `clear()` calls this one (specs/instrumentation.md).
+  it("empties the beams off the playing screen when the transaction is run", () => {
+    let state = onBoard(["TtT", "S.S"]);
+    state = press(state, { col: 0, row: 0 }).state;
+    state = moveTo(state, { col: 1, row: 0 }).state;
+    const titled = { ...state, screen: "title" as const };
+    const { state: cleared, cleared: hadSegments } = performClearBeams(titled);
+    expect(hadSegments).toBe(true);
+    expect(cleared.tracing).toBeNull();
+    expect(cleared.beams.every((beam) => beam.cells.length === 0)).toBe(true);
+    expect(cleared.screen).toBe("title");
   });
 });
 

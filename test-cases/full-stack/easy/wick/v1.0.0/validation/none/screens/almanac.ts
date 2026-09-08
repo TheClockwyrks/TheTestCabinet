@@ -51,7 +51,14 @@ import {
   type WickSnapshot,
 } from "../harness";
 import { drawsOf } from "../presentation/readouts";
-import { assertNames, assertShows, textOn, type Shown } from "./stage";
+import {
+  assertNames,
+  assertShows,
+  MAX_RUN_SPAN,
+  rowsSpelling,
+  textOn,
+  type Shown,
+} from "./stage";
 
 /* -------------------------------------------------------------------------- */
 /* Posing the screen                                                          */
@@ -147,39 +154,6 @@ export async function poseEntry(
 /* The list                                                                   */
 /* -------------------------------------------------------------------------- */
 
-/** How many consecutive runs of text may be joined to spell one name. */
-const MAX_RUN_SPAN = 12;
-
-/**
- * Every anchor `y` at which the frame spelled `text`, in stage units.
- *
- * The counterpart of `screens/stage`'s `rowY` for a name that reaches the frame
- * more than once. A span of consecutive runs counts when it spells the text and
- * neither end of it can be dropped, so a name drawn as one run, as one run over
- * a shadow, or word by word answers the row it landed on, and a longer span that
- * merely contains a shorter one is not counted twice.
- */
-export function rowsSpelling(page: Shown, text: string): number[] {
-  const wanted = folded(text);
-  if (wanted === "") return [];
-  const draws = page.draws;
-  const rows: number[] = [];
-  for (let i = 0; i < draws.length; i += 1) {
-    let joined = "";
-    let top = Number.POSITIVE_INFINITY;
-    let tail = "";
-    for (let j = i; j < Math.min(draws.length, i + MAX_RUN_SPAN); j += 1) {
-      joined += folded(draws[j]!.text);
-      if (j > i) tail += folded(draws[j]!.text);
-      top = Math.min(top, draws[j]!.y);
-      if (!joined.includes(wanted)) continue;
-      if (!tail.includes(wanted)) rows.push(top);
-      break;
-    }
-  }
-  return rows;
-}
-
 /**
  * The frame lists `names` down the stage in that order, or the point fails.
  *
@@ -215,7 +189,9 @@ export function assertListedInOrder(
  *
  * The smallest anchor `x` among the shortest run of consecutive draws that
  * spells it, which is what a reading about the ORDER of a bar drawn across the
- * stage compares.
+ * stage compares. The draws are the logical runs `screens/stage`'s `shown`
+ * reads, so a tab name drawn a glyph at a time is one run at its own left edge,
+ * and `MAX_RUN_SPAN` is that module's, for the reason stated there.
  */
 export function columnX(page: Shown, text: string): number | null {
   const wanted = folded(text);

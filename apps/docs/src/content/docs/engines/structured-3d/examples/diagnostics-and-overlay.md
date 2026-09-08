@@ -79,8 +79,12 @@ const lights = {
   type: Actor,
   transform: { rotation: quatLookAt(vec3(-0.4, -1, -0.6)) },
   configure: (actor: Actor) => {
-    actor.attach(new LightComponent({ light: { kind: "hemisphere", intensity: 0.6 } }));
-    actor.attach(new LightComponent({ light: { kind: "directional", intensity: 2 } }));
+    actor.attach(
+      new LightComponent({ light: { kind: "hemisphere", intensity: 0.6 } }),
+    );
+    actor.attach(
+      new LightComponent({ light: { kind: "directional", intensity: 2 } }),
+    );
   },
 };
 

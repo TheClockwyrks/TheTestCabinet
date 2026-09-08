@@ -147,7 +147,13 @@ export interface Tracer {
 export type GameState = "title" | "howto" | "playing" | "paused" | "gameover";
 export type Phase = "day" | "dusk" | "night" | "dawn"; // time-of-day phase
 
-export type FxKind = "muzzle" | "blood" | "impact" | "fire" | "explosion" | "dust";
+export type FxKind =
+  | "muzzle"
+  | "blood"
+  | "impact"
+  | "fire"
+  | "explosion"
+  | "dust";
 export interface FxEvent {
   kind: FxKind;
   x: number; // world pixel position

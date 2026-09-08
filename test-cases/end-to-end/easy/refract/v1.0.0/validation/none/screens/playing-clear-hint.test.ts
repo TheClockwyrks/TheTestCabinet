@@ -7,6 +7,15 @@
 // `R`, matched at word boundaries; the boundary is what keeps `CRYSTAL`,
 // `CLEAR`, or `TIER` from counting as naming the key. How the hint is worded and
 // where it sits are the build's (the readouts' placement has its own point).
+//
+// The frame's text is read as its COALESCED RUNS (the harness's `drawnTextLines`),
+// never as the raw `fillText` split: a build that letter-spaces its copy draws
+// one glyph per call, which is the only portable way to letter-space canvas
+// text, and read call by call every glyph is a word of its own — the R inside a
+// letter-spaced REFRACT would name the key, and a standalone R could sit in no
+// run at all. The merge rule (`case-harness/text.ts`) folds side-by-side glyphs
+// on one baseline back into the string they spell, so the word boundary decides
+// what it is meant to.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertMatches } from "../assert";
@@ -14,7 +23,7 @@ import { GEO_3X3 } from "../fixtures";
 import {
   captureStill,
   createHarness,
-  drawnText,
+  drawnTextLines,
   loadBoard,
   type Harness,
 } from "../harness";
@@ -44,7 +53,7 @@ it("draws a standalone R naming the clear key on the playing frame", async () =>
   await captureStill(h, "playing");
 
   assertMatches(
-    drawnText(calls).join(" ").toUpperCase(),
+    drawnTextLines(calls).join(" ").toUpperCase(),
     NAMES_CLEAR_KEY,
     "the key bound to clear, named at word boundaries",
   );

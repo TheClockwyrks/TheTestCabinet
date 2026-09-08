@@ -13,25 +13,25 @@ Everything here is gated on the deployment exporting telemetry. See
 
 ## Exported signals
 
-| Signal | Exported | Notes |
-| ------ | -------- | ----- |
-| Traces | Yes | LLM calls, tool executions, and agent decisions. |
-| Metrics | Yes | |
-| Logs | Yes | |
+| Signal  | Exported | Notes                                            |
+| ------- | -------- | ------------------------------------------------ |
+| Traces  | Yes      | LLM calls, tool executions, and agent decisions. |
+| Metrics | Yes      |                                                  |
+| Logs    | Yes      |                                                  |
 
 ## Configuration
 
 A run sets these on the container before the session:
 
-| Variable | Value |
-| -------- | ----- |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | the collector, as a base URL |
-| `OTEL_EXPORTER_OTLP_PROTOCOL` | `http/protobuf` |
-| `OTEL_TRACES_EXPORTER` | `otlp` |
-| `OTEL_METRICS_EXPORTER` | `otlp` |
-| `OTEL_LOGS_EXPORTER` | `otlp` |
-| `OTEL_SERVICE_NAME` | `tcab-harness-goose` |
-| `OTEL_RESOURCE_ATTRIBUTES` | the run's `tcab.*` attributes |
+| Variable                      | Value                         |
+| ----------------------------- | ----------------------------- |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | the collector, as a base URL  |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | `http/protobuf`               |
+| `OTEL_TRACES_EXPORTER`        | `otlp`                        |
+| `OTEL_METRICS_EXPORTER`       | `otlp`                        |
+| `OTEL_LOGS_EXPORTER`          | `otlp`                        |
+| `OTEL_SERVICE_NAME`           | `tcab-harness-goose`          |
+| `OTEL_RESOURCE_ATTRIBUTES`    | the run's `tcab.*` attributes |
 
 Setting the endpoint is what turns export on; Goose has no separate enable
 switch. `OTEL_SDK_DISABLED=true` is the kill switch Goose documents.

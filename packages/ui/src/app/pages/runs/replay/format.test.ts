@@ -648,6 +648,59 @@ describe("refusing a recording", () => {
     ).toBe(false);
   });
 
+  it("accepts either kind of image kept beside the recording", () => {
+    // A writer with a directory to put them in stores an image's bytes in a flat
+    // file and leaves the entry naming it, so a sprite drawn in forty recordings
+    // moves once and as a PNG rather than forty times as base64 inside a gzip that
+    // cannot compress it. Both kinds may be stored, and the name is a FILE NAME —
+    // the same namespace every other piece of the run's validation media lives in,
+    // which is what lets the host resolve it with the function it already has.
+    expect(
+      parseRecording(
+        recording({
+          images: [
+            { kind: "bitmap", width: 8, height: 8, store: "img.0a1b.png" },
+            { kind: "pixels", width: 8, height: 8, store: "img.0a1b.bin" },
+          ],
+        }),
+      ).ok,
+    ).toBe(true);
+  });
+
+  it("accepts an entry that carries its pixels both ways", () => {
+    // Over-specified rather than damaged. The decoder prefers the stored bytes, so
+    // there is one picture either way, and refusing the document would cost a
+    // reviewer a whole replay over a redundancy.
+    expect(
+      parseRecording(
+        recording({
+          images: [
+            {
+              kind: "bitmap",
+              width: 1,
+              height: 1,
+              src: "data:image/png;base64,",
+              store: "img.0a1b.png",
+            },
+          ],
+        }),
+      ).ok,
+    ).toBe(true);
+  });
+
+  it("refuses an entry that names an empty file beside the recording", () => {
+    // An empty name resolves to the directory the media lives in, which either 404s
+    // or — worse — answers something that is not the picture the build drew.
+    const parsed = parseRecording(
+      recording({
+        images: [{ kind: "bitmap", width: 8, height: 8, store: "" }],
+      }),
+    );
+    expect(parsed.ok).toBe(false);
+    if (parsed.ok) return;
+    expect(parsed.message).toContain("image 0");
+  });
+
   it("refuses a malformed resource, naming which one it is", () => {
     const parsed = parseRecording(
       recording({

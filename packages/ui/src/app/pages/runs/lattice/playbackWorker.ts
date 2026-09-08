@@ -81,9 +81,12 @@ function messageOf(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-self.addEventListener("message", (event: MessageEvent<PlaybackWorkerRequest>) => {
-  const data = event.data;
-  if (data.type === "init") {
-    void run(data.wasm, data.scenario);
-  }
-});
+self.addEventListener(
+  "message",
+  (event: MessageEvent<PlaybackWorkerRequest>) => {
+    const data = event.data;
+    if (data.type === "init") {
+      void run(data.wasm, data.scenario);
+    }
+  },
+);

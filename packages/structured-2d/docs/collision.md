@@ -13,11 +13,11 @@ game's.
 type CollisionResponse = "ignore" | "overlap" | "block";
 ```
 
-| Response | Meaning |
-| --- | --- |
-| `ignore` | The pair is never tested. |
+| Response  | Meaning                                                                     |
+| --------- | --------------------------------------------------------------------------- |
+| `ignore`  | The pair is never tested.                                                   |
 | `overlap` | The pair is reported when its shapes begin intersecting and when they stop. |
-| `block` | The pair is reported with a manifold on every frame its shapes intersect. |
+| `block`   | The pair is reported with a manifold on every frame its shapes intersect.   |
 
 A channel is a name a collider is on and a name every other collider answers
 for. The channel vocabulary belongs to the game: a channel is any string, and
@@ -42,12 +42,12 @@ class ColliderComponent extends Component {
 }
 ```
 
-| Member | Default | Semantics |
-| --- | --- | --- |
-| `shape` | — | The shape tested, in world units relative to the component's world transform. See `components.md`. |
-| `channel` | `"default"` | The channel this collider is on. |
-| `responses` | Empty | Maps a channel name to how this collider answers a collider on it. An unlisted channel answers `"ignore"`. |
-| `bounds()` | — | The axis-aligned rectangle enclosing the shape at the component's world transform, in world units. |
+| Member      | Default     | Semantics                                                                                                  |
+| ----------- | ----------- | ---------------------------------------------------------------------------------------------------------- |
+| `shape`     | —           | The shape tested, in world units relative to the component's world transform. See `components.md`.         |
+| `channel`   | `"default"` | The channel this collider is on.                                                                           |
+| `responses` | Empty       | Maps a channel name to how this collider answers a collider on it. An unlisted channel answers `"ignore"`. |
+| `bounds()`  | —           | The axis-aligned rectangle enclosing the shape at the component's world transform, in world units.         |
 
 The shape is positioned by `worldTransform()`, the actor's transform composed
 with the component's `offset`, so one actor carries several colliders at
@@ -94,11 +94,11 @@ interface Manifold {
 }
 ```
 
-| Field | Meaning |
-| --- | --- |
+| Field    | Meaning                                                                                                 |
+| -------- | ------------------------------------------------------------------------------------------------------- |
 | `normal` | The unit direction separating the pair, pointing from the first collider of the pair toward the second. |
-| `depth` | How far the two shapes penetrate along `normal`, in world units. |
-| `point` | A point on the shared boundary. |
+| `depth`  | How far the two shapes penetrate along `normal`, in world units.                                        |
+| `point`  | A point on the shared boundary.                                                                         |
 
 The manifold is oriented by the reported order of the pair, so the first
 collider is moved out of the second along `-normal` and the second out of the
@@ -122,11 +122,11 @@ The pass emits three events on the engine's broadcaster, reachable as
 "hit":           { a: Actor; b: Actor; colliders: [ColliderComponent, ColliderComponent]; manifold: Manifold };
 ```
 
-| Event | Emitted |
-| --- | --- |
-| `overlap:begin` | On the first frame the pass finds an overlapping pair. |
-| `overlap:end` | On the first frame it stops finding it, and when either actor is destroyed or the world closes. |
-| `hit` | On every frame the pass finds a blocking pair, so a game applies its response each frame the pair persists. |
+| Event           | Emitted                                                                                                     |
+| --------------- | ----------------------------------------------------------------------------------------------------------- |
+| `overlap:begin` | On the first frame the pass finds an overlapping pair.                                                      |
+| `overlap:end`   | On the first frame it stops finding it, and when either actor is destroyed or the world closes.             |
+| `hit`           | On every frame the pass finds a blocking pair, so a game applies its response each frame the pair persists. |
 
 `a` is the actor with the lower `id` and `colliders` is in the same order, so a
 pair reports the same way whichever side moved — a handler that assumes `a` is
@@ -237,25 +237,35 @@ interface QueryOptions {
 interface CollisionWorld {
   overlaps(actor: Actor): readonly Overlap[];
   query(shape: Shape, at: Vec2, options?: QueryOptions): readonly Overlap[];
-  raycast(origin: Vec2, direction: Vec2, distance: number, options?: QueryOptions): Hit | null;
-  raycastAll(origin: Vec2, direction: Vec2, distance: number, options?: QueryOptions): readonly Hit[];
+  raycast(
+    origin: Vec2,
+    direction: Vec2,
+    distance: number,
+    options?: QueryOptions,
+  ): Hit | null;
+  raycastAll(
+    origin: Vec2,
+    direction: Vec2,
+    distance: number,
+    options?: QueryOptions,
+  ): readonly Hit[];
 }
 ```
 
-| Member | Result |
-| --- | --- |
-| `overlaps(actor)` | The colliders currently intersecting one of `actor`'s, each with the actor that owns it. |
-| `query(shape, at, options)` | The colliders `shape` intersects when it is placed at `at`. |
-| `raycast(origin, direction, distance, options)` | The nearest hit along the ray, or `null`. |
-| `raycastAll(origin, direction, distance, options)` | Every hit along the ray, in increasing `distance`. |
+| Member                                             | Result                                                                                   |
+| -------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `overlaps(actor)`                                  | The colliders currently intersecting one of `actor`'s, each with the actor that owns it. |
+| `query(shape, at, options)`                        | The colliders `shape` intersects when it is placed at `at`.                              |
+| `raycast(origin, direction, distance, options)`    | The nearest hit along the ray, or `null`.                                                |
+| `raycastAll(origin, direction, distance, options)` | Every hit along the ray, in increasing `distance`.                                       |
 
-| `Hit` field | Meaning |
-| --- | --- |
-| `actor` | The actor the ray met. |
-| `collider` | The collider on it the ray met. |
-| `point` | Where the ray meets the collider, in world units. |
-| `normal` | The unit surface normal at `point`. |
-| `distance` | How far along the ray `point` lies, from `origin`. |
+| `Hit` field | Meaning                                            |
+| ----------- | -------------------------------------------------- |
+| `actor`     | The actor the ray met.                             |
+| `collider`  | The collider on it the ray met.                    |
+| `point`     | Where the ray meets the collider, in world units.  |
+| `normal`    | The unit surface normal at `point`.                |
+| `distance`  | How far along the ray `point` lies, from `origin`. |
 
 `direction` is a unit vector and `distance` bounds the ray's length, in world
 units. `QueryOptions` puts the query on a channel and gives it a response map,
@@ -279,7 +289,11 @@ which is the blast radius, the melee arc, and the placement test:
 const caught = this.world.collision.query(
   { kind: "circle", radius: BLAST_RADIUS },
   { x: this.transform.x, y: this.transform.y },
-  { channel: CHANNELS.blast, responses: { [CHANNELS.enemy]: "overlap" }, ignore: [this] },
+  {
+    channel: CHANNELS.blast,
+    responses: { [CHANNELS.enemy]: "overlap" },
+    ignore: [this],
+  },
 );
 
 for (const { actor } of caught) actor.destroy();
@@ -306,7 +320,7 @@ which is the fastest way to see a shape that sits off its actor.
 
 ## Errors
 
-| Condition | Result |
-| --- | --- |
-| `engine.world`, and so `world.collision`, reached before `engine.initialize` resolves | `Error` naming the ordering |
-| A `hit`, `overlap:begin`, or `overlap:end` handler throws | The error reaches the console and the remaining handlers still run |
+| Condition                                                                             | Result                                                             |
+| ------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `engine.world`, and so `world.collision`, reached before `engine.initialize` resolves | `Error` naming the ordering                                        |
+| A `hit`, `overlap:begin`, or `overlap:end` handler throws                             | The error reaches the console and the remaining handlers still run |

@@ -48,7 +48,9 @@ import { wheelFixtureHexes } from "../parts";
  * the placement rules of `specs/parts.md` alone, and throws an `Error` naming
  * the first rule it breaks" (`specs/instrumentation.md`, The machine).
  */
-async function refusesPlacement(place: () => Promise<unknown>): Promise<boolean> {
+async function refusesPlacement(
+  place: () => Promise<unknown>,
+): Promise<boolean> {
   try {
     await place();
     return false;
@@ -77,9 +79,17 @@ it("places a wheel at the field's edge and rests its outside fixtures off the fi
   // whose six adjacent hexes are not.
   assertEqual(onField(ANCHOR), true, "the wheel's anchor is on the field");
   const ring = wheelFixtureHexes(ANCHOR);
-  assertEqual(ring.length, 6, "a wheel's ring is its anchor's six adjacent hexes");
+  assertEqual(
+    ring.length,
+    6,
+    "a wheel's ring is its anchor's six adjacent hexes",
+  );
   const beyond = ring.filter((hex) => !onField(hex));
-  assertEqual(beyond.length, 3, "three of those six hexes lie outside the field");
+  assertEqual(
+    beyond.length,
+    3,
+    "three of those six hexes lie outside the field",
+  );
 
   let wheel = -1;
   const refused = await refusesPlacement(async () => {
@@ -95,7 +105,11 @@ it("places a wheel at the field's edge and rests its outside fixtures off the fi
     `a wheel anchored on (${ANCHOR.q}, ${ANCHOR.r}) is placed: rule 1 names its anchor alone`,
   );
   const snapshot = await h.snapshot();
-  assertEqual(partById(snapshot, wheel)?.kind, "wheel", "the wheel stands on the machine");
+  assertEqual(
+    partById(snapshot, wheel)?.kind,
+    "wheel",
+    "the wheel stands on the machine",
+  );
   assertEqual(
     `${partById(snapshot, wheel)?.q},${partById(snapshot, wheel)?.r}`,
     `${ANCHOR.q},${ANCHOR.r}`,

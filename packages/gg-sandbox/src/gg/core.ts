@@ -77,8 +77,17 @@ export class ApiError extends Error {
   }
 
   /** The failure as a plain object, so that serializing one keeps its message. */
-  toJSON(): { name: string; operation: string; code: ApiErrorCode; message: string } {
-    return { name: this.name, operation: this.operation, code: this.code, message: this.message };
+  toJSON(): {
+    name: string;
+    operation: string;
+    code: ApiErrorCode;
+    message: string;
+  } {
+    return {
+      name: this.name,
+      operation: this.operation,
+      code: this.code,
+      message: this.message,
+    };
   }
 }
-

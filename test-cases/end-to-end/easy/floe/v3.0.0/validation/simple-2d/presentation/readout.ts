@@ -6,10 +6,12 @@
 // assert two things and no more — that the figure it must show is drawn, and
 // that it is drawn inside the bar specs/strait.md puts at `y` in `[0, HUD_H]`.
 //
-// WHICH RUNS ARE THE HUD'S. Every run of text the frame drew whose baseline
-// sits inside the bar. `strait/hud-above-strait` is the point that decides the
-// bar's boundary itself; here it is how a readout is told from the screen text
-// below it.
+// WHICH RUNS ARE THE HUD'S. Every logical run of text the frame spelled whose
+// baseline sits inside the bar. `strait/hud-above-strait` is the point that
+// decides the bar's boundary itself; here it is how a readout is told from the
+// screen text below it. The runs are the harness's `drawnTextRuns`, never the
+// raw `fillText` calls: a build that letter-spaces its readouts draws a glyph
+// per call, and a figure read a digit at a time is not the figure it sets.
 //
 // HOW A FIGURE IS RECOGNISED. A build may draw a readout as a bare figure, with
 // a label in the same run, zero-padded, or with a thousands separator, and
@@ -22,15 +24,18 @@
 
 import { HUD_H } from "../constants";
 import {
-  drawnTextSpans,
+  drawnTextRuns,
   type DrawCall,
   type Harness,
   type TextSpan,
 } from "../harness";
 
-/** Every run of text the frame drew with its baseline inside the HUD bar. */
+/**
+ * Every logical run of text the frame spelled with its baseline inside the HUD
+ * bar.
+ */
 export function hudRuns(h: Harness, calls: readonly DrawCall[]): TextSpan[] {
-  return drawnTextSpans(h, calls).filter(
+  return drawnTextRuns(h, calls).filter(
     (span) => span.y >= 0 && span.y <= HUD_H,
   );
 }

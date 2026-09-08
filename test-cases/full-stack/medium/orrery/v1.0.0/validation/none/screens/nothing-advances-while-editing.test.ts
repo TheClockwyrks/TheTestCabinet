@@ -114,14 +114,10 @@ it("holds the machine, the hands and both histories while the editor runs with n
   await loadMachine(
     h,
     solution([
-      armPart(
-        "arm",
-        ORIGIN.q,
-        ORIGIN.r,
-        REST_ROTATION,
-        REST_LENGTH,
-        ["grab", "rotate-cw"],
-      ),
+      armPart("arm", ORIGIN.q, ORIGIN.r, REST_ROTATION, REST_LENGTH, [
+        "grab",
+        "rotate-cw",
+      ]),
     ]),
   );
 

@@ -9,10 +9,10 @@ keeps its own budget.
 
 ## Execution limits
 
-| Limit | What it bounds |
-| --- | --- |
-| `timeoutSecs` | Guest-execution time for one program, measured from the call into the guest: the guest engine's own start-up, the program itself, and every value marshalled across the membrane. Instantiating the component is gg's own work and belongs to gg. |
-| `maxMemoryBytes` | Guest linear memory. A `memory.grow` past the cap is denied. |
+| Limit            | What it bounds                                                                                                                                                                                                                                    |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `timeoutSecs`    | Guest-execution time for one program, measured from the call into the guest: the guest engine's own start-up, the program itself, and every value marshalled across the membrane. Instantiating the component is gg's own work and belongs to gg. |
+| `maxMemoryBytes` | Guest linear memory. A `memory.grow` past the cap is denied.                                                                                                                                                                                      |
 
 Each profile writes both, on the terms in
 [Configuration](/gg/responses-as-code/overview/#configuration). Both are armed
@@ -159,10 +159,10 @@ status is reported with the number the program chose.
 Six globals cannot be honoured, and each is replaced with a thrower so it raises
 an ordinary, catchable program error naming what is missing and why.
 
-| Global | Reason given |
-| --- | --- |
+| Global                                                                                | Reason given                                                    |
+| ------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
 | `setTimeout`, `setInterval`, `clearTimeout`, `clearInterval`, `requestAnimationFrame` | there is no event loop, so a scheduled callback would never run |
-| `fetch` | this program's runtime is built without an HTTP client |
+| `fetch`                                                                               | this program's runtime is built without an HTTP client          |
 
 Both underlying failures are silent without a thrower. gg's `run` export is
 synchronous, so an unshadowed `setTimeout(() => { hit = 1 }, 0)` leaves `hit` at

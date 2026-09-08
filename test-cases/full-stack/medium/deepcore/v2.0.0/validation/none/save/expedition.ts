@@ -170,6 +170,7 @@ export async function driveDeath(
     await h.debug.setCoreCarried(true);
     await h.debug.setCoreTimer(CORE_FUSE);
   }
+  await h.debug.reconcile();
   return waitForGameOver(h);
 }
 

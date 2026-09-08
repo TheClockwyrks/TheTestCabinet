@@ -242,7 +242,11 @@ describe("reviewItemsForEngine", () => {
   it("drops a whole item its validator does not cover", () => {
     const items = [
       { id: "overlay", weight: 1, validation: { engines: ["none"] } },
-      { id: "serve", weight: 1, validation: { engines: ["none", "simple-2d"] } },
+      {
+        id: "serve",
+        weight: 1,
+        validation: { engines: ["none", "simple-2d"] },
+      },
     ];
     expect(reviewItemsForEngine(items, "simple-2d").map((i) => i.id)).toEqual([
       "serve",

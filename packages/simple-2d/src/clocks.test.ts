@@ -267,7 +267,9 @@ describe("ConstantClock", () => {
     expect(() => new ConstantClock(0)).toThrow(/stepMs, got 0/);
     expect(() => new ConstantClock(-16)).toThrow(/stepMs, got -16/);
     expect(() => new ConstantClock(Number.NaN)).toThrow(RangeError);
-    expect(() => new ConstantClock(Number.POSITIVE_INFINITY)).toThrow(RangeError);
+    expect(() => new ConstantClock(Number.POSITIVE_INFINITY)).toThrow(
+      RangeError,
+    );
   });
 });
 
@@ -388,9 +390,7 @@ describe("JitterClock", () => {
 
   it("rejects bounds that are not finite and positive, naming both", () => {
     expect(() => new JitterClock(0, 40, 1)).toThrow(RangeError);
-    expect(() => new JitterClock(0, 40, 1)).toThrow(
-      /minMs 0 and maxMs 40/,
-    );
+    expect(() => new JitterClock(0, 40, 1)).toThrow(/minMs 0 and maxMs 40/);
     expect(() => new JitterClock(4, 0, 1)).toThrow(/minMs 4 and maxMs 0/);
     expect(() => new JitterClock(-4, 40, 1)).toThrow(RangeError);
     expect(() => new JitterClock(4, Number.POSITIVE_INFINITY, 1)).toThrow(

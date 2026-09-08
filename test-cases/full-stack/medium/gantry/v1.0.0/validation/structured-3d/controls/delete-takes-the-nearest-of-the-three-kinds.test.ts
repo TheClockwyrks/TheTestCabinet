@@ -156,9 +156,12 @@ it("removes the nearer counterweight rather than the member in range", async () 
   // The ladder: distances spread geometrically across the range the camera
   // allows, because a gap in pixels falls with the distance rather than with the
   // difference between two distances.
+  // The last rung is the ceiling itself: raised to the power it comes out a
+  // rounding past `CAMERA_DIST_MAX`, which `setCamera` refuses as outside its
+  // domain, so every rung is held inside it.
   const ratio = (CAMERA_DIST_MAX / CAMERA_DIST_MIN) ** (1 / (LADDER_STEPS - 1));
   for (let step = 0; step < LADDER_STEPS; step += 1) {
-    await gapAt(CAMERA_DIST_MIN * ratio ** step);
+    await gapAt(Math.min(CAMERA_DIST_MAX, CAMERA_DIST_MIN * ratio ** step));
   }
 
   // And the bisection: where no rung was workable, the gap wanted lies between

@@ -28,10 +28,10 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { PAUSE_ITEMS } from "../constants";
 import { assertEqual } from "../assert";
+import { drewText } from "../case-harness/text";
 import {
   captureStill,
   createHarness,
-  drewText,
   enterPlaying,
   openPause,
   type Harness,

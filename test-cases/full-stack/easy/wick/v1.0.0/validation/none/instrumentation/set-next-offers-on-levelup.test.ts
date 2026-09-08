@@ -3,8 +3,8 @@
 // overlay that `choose` opens.
 //
 // WHERE THE THRESHOLD COMES FROM (specs/instrumentation.md —
-// `setNextOffers(ids)`): "Applies on a run screen and on `levelup`, where the
-// next overlay is the queued one." And `choose`: "either the next queued
+// `setNextOffers(ids)`): "Called on `levelup`, the overlay the list is checked
+// against is the queued one." And `choose`: "either the next queued
 // overlay opens with a fresh pool or `screen` returns to `playing`."
 //
 // WHY THE WORLD IS POSED AS IT IS. Two level-ups are queued and the first

@@ -14,161 +14,34 @@
 // A ROW IS FOUND BY ITS NAME, because that is the other thing the same sentence
 // says every row shows and `specs/sites.md` fixes the six names. Where a build
 // puts the rows is the build's, so the band a row owns is derived from the gap
-// between the names rather than assumed. Within a row the name is struck out
-// before the digits are read, so a name that carried a digit could not stand in
-// for the number, and the reading accepts any presentation of the figure — `1`,
-// `01`, `SITE 1` — because `specs/ui.md` fixes the number and not how it is set.
+// between the names rather than assumed. The row is then read WHOLE, as the
+// frame drew it: none of the six names `specs/sites.md` fixes carries a digit,
+// so striking a name out before reading the digits could only splice the text on
+// either side of it together into a figure the row never showed. The reading
+// accepts any presentation of the figure — `1`, `01`, `SITE 1` — because
+// `specs/ui.md` fixes the number and not how it is set, and `./figures` is where
+// this project's one reading of a figure lives.
 //
 // NOTHING IS CLEARED AND NO BEST IS RECORDED, so the only digits on a row are the
 // ones this item is about: a recorded score would put a cost and a time on the
 // row and neither is a site number.
 
 import { afterEach, beforeEach, it } from "vitest";
+import type { TextDraw } from "../case-harness/text";
+import { drawnFigures } from "./figures";
 import { assertTrue, fail } from "../assert";
 import { SITE_NAMES } from "../constants";
 import { createHarness, type Harness } from "../harness";
-/* -------------------------------------------------------------------------- */
-/* Reading the frame's text                                                   */
-/* -------------------------------------------------------------------------- */
-//
-// The clock, the projection and the input are the engine's under this build, and
-// so is the screen layer the readouts are drawn on, so this suite reads the
-// frame's drawing through `h.screenOps()` — the harness's record of every
-// operation the engine's screen pass made on that layer. It answers the last
-// CLOSED frame, so a frame is advanced before it is read.
-
-/** One operation the recorder wrote, in the order the render made it. */
-type RecordedOp =
-  | { op: "call"; method: string; args: unknown[] }
-  | { op: "set"; property: string; value: unknown };
-
-/** A 2D affine transform, in the order `setTransform` takes its arguments. */
-type Matrix = readonly [number, number, number, number, number, number];
-
-const IDENTITY: Matrix = [1, 0, 0, 1, 0, 0];
-
-/** `m` with `n` applied under it, as the canvas composes a transform. */
-function mul(m: Matrix, n: Matrix): Matrix {
-  return [
-    m[0] * n[0] + m[2] * n[1],
-    m[1] * n[0] + m[3] * n[1],
-    m[0] * n[2] + m[2] * n[3],
-    m[1] * n[2] + m[3] * n[3],
-    m[0] * n[4] + m[2] * n[5] + m[4],
-    m[1] * n[4] + m[3] * n[5] + m[5],
-  ];
-}
-
-/** Where `(x, y)` lands under `m`. */
-function at(m: Matrix, x: number, y: number): { x: number; y: number } {
-  return { x: m[0] * x + m[2] * y + m[4], y: m[1] * x + m[3] * y + m[5] };
-}
-
-/** `m` after the transform `method` names, or `null` when it names none. */
-function moved(m: Matrix, method: string, n: readonly number[]): Matrix | null {
-  if (method === "resetTransform") return IDENTITY;
-  if (method === "setTransform" && n.length >= 6) {
-    return [n[0], n[1], n[2], n[3], n[4], n[5]];
-  }
-  if (method === "transform" && n.length >= 6) {
-    return mul(m, [n[0], n[1], n[2], n[3], n[4], n[5]]);
-  }
-  if (method === "translate" && n.length >= 2) {
-    return mul(m, [1, 0, 0, 1, n[0], n[1]]);
-  }
-  if (method === "scale" && n.length >= 2) {
-    return mul(m, [n[0], 0, 0, n[1], 0, 0]);
-  }
-  if (method === "rotate" && n.length >= 1) {
-    const c = Math.cos(n[0]);
-    const s = Math.sin(n[0]);
-    return mul(m, [c, s, -s, c, 0, 0]);
-  }
-  return null;
-}
-
-/** One run of text a frame drew, at the point the transform in force put it. */
-interface TextDraw {
-  text: string;
-  x: number;
-  y: number;
-}
-
-/**
- * Every run of text the frame drew, with its anchor.
- *
- * A build is free to draw under a transform — to translate to a corner of the
- * stage and draw at the origin — so where a `fillText` landed is only the point
- * it names once the transform in force at that call is applied.
- */
-function textDraws(ops: readonly RecordedOp[]): TextDraw[] {
-  const out: TextDraw[] = [];
-  const stack: Matrix[] = [];
-  let m = IDENTITY;
-  for (const op of ops) {
-    if (op.op !== "call") continue;
-    const n = op.args.filter((a): a is number => typeof a === "number");
-    if (op.method === "save") {
-      stack.push(m);
-      continue;
-    }
-    if (op.method === "restore") {
-      m = stack.pop() ?? IDENTITY;
-      continue;
-    }
-    const next = moved(m, op.method, n);
-    if (next !== null) {
-      m = next;
-      continue;
-    }
-    if (
-      (op.method === "fillText" || op.method === "strokeText") &&
-      typeof op.args[0] === "string" &&
-      n.length >= 2
-    ) {
-      out.push({ text: op.args[0], ...at(m, n[0], n[1]) });
-    }
-  }
-  return out;
-}
-
-/** Two runs are on one line when their anchors sit this close in `y`. */
-const LINE_TOL = 4;
-
-/** The frame's runs of text in reading order: down the stage, then across. */
-function readingOrder(draws: readonly TextDraw[]): TextDraw[] {
-  return [...draws].sort((a, b) =>
-    Math.abs(a.y - b.y) > LINE_TOL ? a.y - b.y : a.x - b.x,
-  );
-}
-
-/**
- * Where `wanted` starts among the frame's runs, or `null` when it was not drawn.
- *
- * The frame's text is joined in reading order with every space removed, so copy
- * split across calls, letter-spaced, or padded matches the same as copy drawn in
- * one call; the answer is the index of the run the match starts in, which is what
- * puts two pieces of copy in order.
- */
-function findText(order: readonly TextDraw[], wanted: string): number | null {
-  const needle = wanted.replace(/\s+/g, "").toLowerCase();
-  let joined = "";
-  const owner: number[] = [];
-  order.forEach((draw, index) => {
-    const bare = draw.text.replace(/\s+/g, "").toLowerCase();
-    joined += bare;
-    for (let k = 0; k < bare.length; k += 1) owner.push(index);
-  });
-  const found = joined.indexOf(needle);
-  return found < 0 ? null : owner[found]!;
-}
-
-/** Every operation the last closed frame's render issued. */
-async function frameOps(harness: Harness): Promise<RecordedOp[]> {
-  return (await harness.screenOps()) as RecordedOp[];
-}
+import { runStarting } from "./reading";
 
 /* ---- The six rows of the site list ---------------------------------------- */
+//
+// The rows are read off `h.screenCalls()` — the last CLOSED frame's operations on
+// the screen layer, every text call measured — as the logical runs the shared
+// harness's `drawnTextRuns` spells, in the reading order it hands them over in:
+// down the stage, then across it. A row is found by the run its name starts in
+// (`./reading`), and the rest of the row is whatever else those runs put in its
+// band.
 
 /** One row of the list: the axis the rows run along, and the band it occupies. */
 interface Row {
@@ -189,7 +62,7 @@ interface Row {
  */
 function siteRows(order: readonly TextDraw[]): Row[] {
   const anchors = SITE_NAMES.map((name, index) => {
-    const found = findText(order, name);
+    const found = runStarting(order, name);
     if (found === null) {
       fail(
         `site ${index + 1}'s name, "${name}", drawn on the select screen ` +
@@ -232,32 +105,6 @@ function rowText(order: readonly TextDraw[], row: Row): string[] {
 
 /* -------------------------------------------------------------------------- */
 
-/**
- * The separators a build may set between a figure's digit triples.
- *
- * ASCII space is deliberately absent: a frame's text is assembled by joining
- * separate draw runs with one, so accepting it would read the two figures in
- * `40 130` as the single number 40130. `.` is absent for the same sort of
- * reason — it is the decimal point, and a build drawing `1.5` means one and a
- * half.
- */
-const GROUP = "[,'\\u00A0\\u202F\\u2009]";
-
-/** One drawn number: a grouped figure, or a plain one. */
-const DRAWN = new RegExp(`\\d{1,3}(?:${GROUP}\\d{3})+|\\d+`, "g");
-
-/**
- * The numbers a run of text carries.
- *
- * A grouped figure reads as the one figure it is, so `1,234` and `1234` both
- * come back as 1234 and a build is free to group the figure it draws.
- */
-function numbersIn(text: string): number[] {
-  return (text.match(DRAWN) ?? []).map((one) =>
-    Number(one.replace(new RegExp(GROUP, "g"), "")),
-  );
-}
-
 let h: Harness;
 
 beforeEach(async () => {
@@ -274,7 +121,8 @@ it("numbers each site row with its index plus one", async () => {
   await h.debug.setMenuIndex(0);
   await h.advance(1);
 
-  const order = readingOrder(textDraws(await frameOps(h)));
+  const frame = drawnFigures(await h.screenCalls());
+  const order = frame.runs;
   await h.capture("select-numbers", "The site numbers");
 
   assertTrue(
@@ -285,10 +133,10 @@ it("numbers each site row with its index plus one", async () => {
 
   for (const [index, row] of rows.entries()) {
     const name = SITE_NAMES[index]!;
-    const written = rowText(order, row)
-      .join("\n")
-      .replace(new RegExp(name.replace(/ /g, "\\s*"), "gi"), "");
-    if (!numbersIn(written).includes(index + 1)) {
+    // The row's figures are read by its BAND rather than out of a string
+    // assembled from the runs, which is what puts the raw draws under the row
+    // into the reading beside the runs over them (`./figures`).
+    if (!frame.where((placed) => inRow(row, placed)).includes(index + 1)) {
       fail(
         `site ${index + 1}'s row to show the number ${index + 1}, its index ` +
           `plus one (specs/ui.md)`,

@@ -882,21 +882,51 @@ describe("window.__carom", () => {
     expect(paddles.left.cy).toBe(FIELD_CY); // still the surface's
   });
 
-  it("has no effect from an operation naming a ball that is not there", () => {
+  // A ball that is not there is no ball to pose. A surface that quietly did
+  // nothing would let a caller read its own pose back off a field that never
+  // took it, so every one of these fails where the caller can see it.
+  it("fails loudly from an operation naming a ball that is not there", () => {
     openMatch(harness, "versus");
     harness.debug.clearWorld();
-    // Every one of the six, against a field with no balls on it at all.
-    harness.debug.setBallPosition(0, 10, 10);
-    harness.debug.setBallVelocity(0, 10, 10);
-    harness.debug.setBallSpin(0, 10);
-    harness.debug.setBallHeld(0, false);
-    harness.debug.setBallHoldTimer(0, 10);
+    // Every one of the five, against a field with no balls on it at all.
+    expect(() => harness.debug.setBallPosition(0, 10, 10)).toThrow();
+    expect(() => harness.debug.setBallVelocity(0, 10, 10)).toThrow();
+    expect(() => harness.debug.setBallSpin(0, 10)).toThrow();
+    expect(() => harness.debug.setBallHeld(0, false)).toThrow();
+    expect(() => harness.debug.setBallHoldTimer(0, 10)).toThrow();
     expect(harness.debug.snapshot().balls).toEqual([]);
 
     // And an index this variant simply does not have.
-    harness.debug.spawnBall(BALL_COUNT);
-    harness.debug.spawnBall(-1);
+    expect(() => harness.debug.spawnBall(BALL_COUNT)).toThrow();
+    expect(() => harness.debug.spawnBall(-1)).toThrow();
     expect(harness.debug.snapshot().balls).toEqual([]);
+  });
+
+  // `reconcile` is required of every build. This one works every derived
+  // reading out at the read, so the call has nothing to rewrite — which is
+  // exactly what these two assert: the readings agree with the pose, and
+  // nothing moved.
+  it("re-derives a reading from a posed velocity", () => {
+    openMatch(harness, "versus");
+    harness.debug.setBallVelocity(0, 30, 40);
+    harness.debug.reconcile();
+    expect(harness.debug.snapshot().balls[0].speed).toBeCloseTo(50, 10);
+  });
+
+  it("advances nothing", () => {
+    openMatch(harness, "versus");
+    place(harness, 0, { x: 400, y: 300, vx: 250, vy: -120 });
+    harness.debug.setPaddleCy("left", 240);
+    harness.debug.setBallHoldTimer(1, 0.4);
+
+    const before = harness.debug.snapshot();
+    harness.debug.reconcile();
+    const once = harness.debug.snapshot();
+    harness.debug.reconcile();
+    const twice = harness.debug.snapshot();
+
+    expect(once).toEqual(before);
+    expect(twice).toEqual(once);
   });
 
   it("takes a posed ball into live play", () => {

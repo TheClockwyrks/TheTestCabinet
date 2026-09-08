@@ -70,7 +70,12 @@ a fill is asserted on directly.
 
 ```ts
 const paddle = world.byTag(TAGS.paddleP1)[0];
-expect(sample(h, paddle.transform)).toEqual({ r: 0xf2, g: 0xf5, b: 0xf7, a: 255 });
+expect(sample(h, paddle.transform)).toEqual({
+  r: 0xf2,
+  g: 0xf5,
+  b: 0xf7,
+  a: 255,
+});
 ```
 
 Reach for pixels when the claim is about the picture: the background color, a

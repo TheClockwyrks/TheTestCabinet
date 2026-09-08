@@ -169,7 +169,9 @@ export class MatchMode extends GameMode {
 
   override beginPlay(): void {
     this.player = this.addPlayer({ name: "player" });
-    this.readout = this.world.spawn(Readout, { transform: { position: CENTER } });
+    this.readout = this.world.spawn(Readout, {
+      transform: { position: CENTER },
+    });
     this.setPhase("playing");
     this.world.after(MATCH_SECONDS, () => this.finish());
   }
@@ -249,13 +251,13 @@ frame while one is in flight.
 
 ## What crossed
 
-| Survives | Is rebuilt |
-| --- | --- |
-| `RelayInstance` and its `bestScore` | The world, `ResultsMode`, and the game state |
-| The action bindings registered from `InitApi` | Every actor, component, and controller |
-| The instance's diagnostic source | The player states |
-| Subscriptions on `engine.events` | World timers and world-level diagnostic sources |
-| The frame counter and accumulated simulated time | `world.time`, which restarts at zero |
+| Survives                                         | Is rebuilt                                      |
+| ------------------------------------------------ | ----------------------------------------------- |
+| `RelayInstance` and its `bestScore`              | The world, `ResultsMode`, and the game state    |
+| The action bindings registered from `InitApi`    | Every actor, component, and controller          |
+| The instance's diagnostic source                 | The player states                               |
+| Subscriptions on `engine.events`                 | World timers and world-level diagnostic sources |
+| The frame counter and accumulated simulated time | `world.time`, which restarts at zero            |
 
 The camera is part of the world, so the results world starts with a camera at
 the defaults, and the scene the pipeline maintains is emptied of the match

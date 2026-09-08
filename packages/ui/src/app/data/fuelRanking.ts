@@ -64,7 +64,12 @@ export interface RunPlacement {
 function correctFuel(run: RunSummary): number | null {
   if (run.state !== "completed") return null;
   const perf = run.performance;
-  if (!perf || !perf.correct || perf.totalFuel === null || perf.totalFuel === undefined) {
+  if (
+    !perf ||
+    !perf.correct ||
+    perf.totalFuel === null ||
+    perf.totalFuel === undefined
+  ) {
     return null;
   }
   return perf.totalFuel;
@@ -92,7 +97,10 @@ export function perModelBestFuel(
     }
     const fuel = correctFuel(run);
     if (fuel === null) continue;
-    const modelId = canonicalModelId(run.subject.modelId, run.subject.harnessSlug);
+    const modelId = canonicalModelId(
+      run.subject.modelId,
+      run.subject.harnessSlug,
+    );
     const existing = best.get(modelId);
     if (!existing) {
       best.set(modelId, {
@@ -116,7 +124,8 @@ export function perModelBestFuel(
   }
   return [...best.values()].sort(
     (a, b) =>
-      a.bestFuel - b.bestFuel || a.latestStartedAt.localeCompare(b.latestStartedAt),
+      a.bestFuel - b.bestFuel ||
+      a.latestStartedAt.localeCompare(b.latestStartedAt),
   );
 }
 

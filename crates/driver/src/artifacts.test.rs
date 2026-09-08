@@ -574,6 +574,72 @@ async fn uploads_a_sub_item_output_under_its_composite_verdict_name() {
 }
 
 #[tokio::test]
+async fn mirrors_the_recordings_shared_image_store_alongside_the_declared_outputs() {
+    let (backend_url, received) = stub_backend().await;
+    let out = TempDir::new().unwrap();
+
+    // A recording's image entries name flat `img.<id>.<ext>` files beside it rather
+    // than carrying base64 of their pixels. Those files back no verdict and are named
+    // by their own bytes, so they are on no output declaration — this mirror has to
+    // find them by looking at the directory, and a published replay whose store did
+    // not travel resolves nothing and draws holes.
+    write_impl_file(
+        out.path(),
+        ".vendor/validation/spin__serve.json.gz",
+        b"\x1f\x8bgz",
+    );
+    write_impl_file(
+        out.path(),
+        ".vendor/validation/img.9f2c1ab4.png",
+        b"png:sprite",
+    );
+    write_impl_file(out.path(), ".vendor/validation/img.7ee01d33.bin", b"rgba");
+    // Not a store file and not on the record: neither loop names it, so it stays put.
+    write_impl_file(out.path(), ".vendor/validation/notes.txt", b"scratch");
+
+    let rec = record_with_debug_scripts(vec![DebugScriptOutput {
+        id: "serve".to_string(),
+        name: "Serve".to_string(),
+        kind: MediaKind::Replay,
+        actual_present: true,
+    }]);
+
+    upload_validation_to_backend(&backend_url, &rec, out.path())
+        .await
+        .expect("upload succeeds");
+
+    let mut paths: Vec<String> = received
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|u| u.path.clone())
+        .collect();
+    paths.sort();
+    assert_eq!(
+        paths,
+        vec![
+            "/runs/run-1/validation/img.7ee01d33.bin".to_string(),
+            "/runs/run-1/validation/img.9f2c1ab4.png".to_string(),
+            "/runs/run-1/validation/spin__serve.json.gz".to_string(),
+        ],
+        "the store travels with the recording that names it, and nothing else does; \
+         got {paths:?}",
+    );
+    let sprite = received
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|u| u.path == "/runs/run-1/validation/img.9f2c1ab4.png")
+        .map(|u| u.body_len);
+    assert_eq!(
+        sprite,
+        Some(b"png:sprite".len()),
+        "the store file uploads its bytes verbatim, under the very name the entry \
+         inside the recording spells",
+    );
+}
+
+#[tokio::test]
 async fn skips_validation_outputs_the_build_did_not_produce() {
     let (backend_url, received) = stub_backend().await;
     let out = TempDir::new().unwrap();

@@ -9,7 +9,7 @@ economy that can go bankrupt.
 
 `midway` is the catalog slug for this lineage of park-management cases, and the
 game's in-fiction title. The case is inspired by park-management sims, notably
-*RollerCoaster Tycoon*; its name, look, system set, and scope are original to
+_RollerCoaster Tycoon_; its name, look, system set, and scope are original to
 The Test Cabinet.
 
 ## What "full-stack" means
@@ -53,13 +53,13 @@ the two, so a strong build must both simulate and produce well.
 
 ## Contents
 
-| Path                  | Seeded to run? | Purpose                                                |
-| --------------------- | -------------- | ------------------------------------------------------ |
-| `specs/`              | Yes            | The spec handed to the model, by concern.              |
-| `prompt.hbs`          | No             | Rendered into the model's prompt; not seeded.          |
-| `workspaces/base/`    | Yes            | Starter project seeded to the run root.                |
-| `test-case.toml`      | No             | Manifest: type, specs, variants, review items.         |
-| `README.md`           | No             | This overview.                                         |
+| Path               | Seeded to run? | Purpose                                        |
+| ------------------ | -------------- | ---------------------------------------------- |
+| `specs/`           | Yes            | The spec handed to the model, by concern.      |
+| `prompt.hbs`       | No             | Rendered into the model's prompt; not seeded.  |
+| `workspaces/base/` | Yes            | Starter project seeded to the run root.        |
+| `test-case.toml`   | No             | Manifest: type, specs, variants, review items. |
+| `README.md`        | No             | This overview.                                 |
 
 The specification is split across `specs/` by concern: `overview.md`,
 `park.md`, `guests.md`, `rides.md`, `economy.md`, `staff.md`, `controls.md`,

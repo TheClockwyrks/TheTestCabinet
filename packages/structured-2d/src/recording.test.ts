@@ -887,7 +887,7 @@ describe("captured images", () => {
     const image = recording.images[0];
     expect(image?.kind).toBe("pixels");
     expect(image).toMatchObject({ width: 2, height: 2 });
-    const data = image?.kind === "pixels" ? image.data : "";
+    const data = image?.kind === "pixels" && "data" in image ? image.data : "";
     const bytes = [...Buffer.from(data, "base64")];
     expect(bytes).toHaveLength(16);
     expect(bytes.slice(0, 4)).toEqual([1, 2, 3, 4]);

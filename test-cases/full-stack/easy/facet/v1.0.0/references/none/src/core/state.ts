@@ -22,7 +22,12 @@ export type Cut = (typeof CUTS)[number];
 
 /** The screens in `specs/ui.md`. */
 export type Screen =
-  "title" | "howto" | "playing" | "paused" | "levelclear" | "gameover";
+  | "title"
+  | "howto"
+  | "playing"
+  | "paused"
+  | "levelclear"
+  | "gameover";
 
 /**
  * Where resolution stands (specs/rules.md, `## A chain step`): the board is

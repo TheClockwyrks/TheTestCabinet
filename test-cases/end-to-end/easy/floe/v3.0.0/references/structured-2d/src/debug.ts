@@ -68,6 +68,8 @@ export interface FloeDebugApi {
   // The core.
   reset(): void;
   snapshot(): FloeSnapshotShape;
+  /** Bring every reported reading into agreement with the strait as it stands. */
+  reconcile(): void;
   menuItemRect(index: number): MenuRect | null;
 
   // The screen and the run.
@@ -148,6 +150,26 @@ function requireLevel(level: number): number {
   return level;
 }
 
+/** A lane speed the specification allows: a number at or above `0`. */
+function requireSpeed(speed: number): number {
+  if (!Number.isFinite(speed) || speed < 0) {
+    throw new RangeError(
+      `Floe: setLaneSpeed speed ${speed} — a lane's speed is a number at or above 0`,
+    );
+  }
+  return speed;
+}
+
+/** A lane direction the specification allows: `1` rightward, `-1` leftward. */
+function requireDir(dir: number): LaneDir {
+  if (dir !== 1 && dir !== -1) {
+    throw new RangeError(
+      `Floe: setLaneDirection dir ${dir} — a lane runs 1 rightward or -1 leftward`,
+    );
+  }
+  return dir;
+}
+
 /**
  * Give the hunt the slots the level has, without touching a bear.
  *
@@ -176,9 +198,54 @@ function reshapeSlots(state: FloeState, level: number): void {
  * (engine/debug.md).
  */
 export function createDebugApi(open: () => World): FloeDebugApi {
-  const withBear = (id: number, act: (bear: Bear) => void): void => {
+  // AN OPERATION NEVER REFUSES IN SILENCE (specs/instrumentation.md, "The
+  // operations"). A call naming a subject the strait does not hold has no state
+  // to reach, so it throws where it stands rather than returning with the game
+  // unchanged and leaving the caller to guess.
+
+  /** The bear that id names, or a loud failure. */
+  const requireBear = (op: string, id: number): Bear => {
     const bear = bearById(open(), id);
-    if (bear !== null) act(bear);
+    if (bear === null) {
+      throw new RangeError(
+        `Floe: ${op} id ${id} — no bear on the strait carries that id`,
+      );
+    }
+    return bear;
+  };
+
+  const withBear = (
+    op: string,
+    id: number,
+    act: (bear: Bear) => void,
+  ): void => {
+    act(requireBear(op, id));
+  };
+
+  /** The lane item that id names on its roster, or a loud failure. */
+  const requireItem = <T extends { id: number }>(
+    op: string,
+    what: string,
+    id: number,
+    roster: Iterable<T>,
+  ): T => {
+    for (const item of roster) {
+      if (item.id === id) return item;
+    }
+    throw new RangeError(
+      `Floe: ${op} id ${id} — no ${what} on the strait carries that id`,
+    );
+  };
+
+  /** The lane on strait `row`, or a loud failure: the shores and the median carry none. */
+  const requireLane = (op: string, row: number) => {
+    const lane = laneAt(floeState(open()), row);
+    if (lane === null) {
+      throw new RangeError(
+        `Floe: ${op} row ${row} — that strait row carries no lane`,
+      );
+    }
+    return lane;
   };
 
   return {
@@ -194,6 +261,25 @@ export function createDebugApi(open: () => World): FloeDebugApi {
     snapshot() {
       return snapshot(open());
     },
+
+    /**
+     * Bring every reported reading into agreement with the strait as it stands.
+     *
+     * Every derived reading this build reports — `timerMax`, the critter's
+     * `col`, `row` and `footing`, and a bear's `swimming` — is worked out at the
+     * read in `src/snapshot.ts`, from the level, the critter's transform, the
+     * floes and the tile each bear is travelling into. Nothing is held that a
+     * pose can leave behind, so there is nothing here to rewrite. The operation
+     * is required of every build, including one that keeps those readings as
+     * stored copies, and an empty body is what it comes to in a build that does
+     * not.
+     *
+     * It advances nothing and it corrects nothing either way: no clock moves, no
+     * lane carries its items, no bear travels, and a critter posed over open
+     * water reads as standing on water rather than being moved somewhere it
+     * would not drown.
+     */
+    reconcile() {},
 
     /**
      * The region item `index` is picked from on the menu the current screen
@@ -323,9 +409,7 @@ export function createDebugApi(open: () => World): FloeDebugApi {
     },
 
     removeBear(id) {
-      const world = open();
-      const bear = bearById(world, id);
-      if (bear !== null) dropBear(floeState(world), bear);
+      dropBear(floeState(open()), requireBear("removeBear", id));
     },
 
     clearBears() {
@@ -334,12 +418,12 @@ export function createDebugApi(open: () => World): FloeDebugApi {
     },
 
     setBearTile(id, col, row) {
-      withBear(id, (bear) => settleBear(bear, col, row));
+      withBear("setBearTile", id, (bear) => settleBear(bear, col, row));
     },
 
     /** The mid-glide pose: the two tiles it occupies are left exactly as they stand. */
     setBearPosition(id, x, y) {
-      withBear(id, (bear) => placeCenter(bear, x, y));
+      withBear("setBearPosition", id, (bear) => placeCenter(bear, x, y));
     },
 
     /**
@@ -349,31 +433,31 @@ export function createDebugApi(open: () => World): FloeDebugApi {
      */
     setBearStep(id, direction) {
       const world = open();
-      withBear(id, (bear) => {
+      withBear("setBearStep", id, (bear) => {
         commitStep(world, bear, direction);
       });
     },
 
     setBearTarget(id, col, row) {
-      withBear(id, (bear) => {
+      withBear("setBearTarget", id, (bear) => {
         bear.target = { col, row };
       });
     },
 
     setBearSense(id, enabled) {
-      withBear(id, (bear) => {
+      withBear("setBearSense", id, (bear) => {
         bear.sense = Boolean(enabled);
       });
     },
 
     setBearRouting(id, enabled) {
-      withBear(id, (bear) => {
+      withBear("setBearRouting", id, (bear) => {
         bear.routing = Boolean(enabled);
       });
     },
 
     setBearTravel(id, enabled) {
-      withBear(id, (bear) => {
+      withBear("setBearTravel", id, (bear) => {
         bear.travel = Boolean(enabled);
       });
     },
@@ -386,9 +470,7 @@ export function createDebugApi(open: () => World): FloeDebugApi {
     },
 
     removeVehicle(id) {
-      for (const item of vehiclesOf(open())) {
-        if (item.id === id) item.destroy();
-      }
+      requireItem("removeVehicle", "vehicle", id, vehiclesOf(open())).destroy();
     },
 
     clearVehicles() {
@@ -396,11 +478,14 @@ export function createDebugApi(open: () => World): FloeDebugApi {
     },
 
     setVehicleX(id, x) {
-      for (const item of vehiclesOf(open())) {
-        if (item.id !== id) continue;
-        item.transform.x = x;
-        item.prevX = x;
-      }
+      const item = requireItem(
+        "setVehicleX",
+        "vehicle",
+        id,
+        vehiclesOf(open()),
+      );
+      item.transform.x = x;
+      item.prevX = x;
     },
 
     addFloe(row, kind, x) {
@@ -409,9 +494,7 @@ export function createDebugApi(open: () => World): FloeDebugApi {
     },
 
     removeFloe(id) {
-      for (const item of floesOf(open())) {
-        if (item.id === id) item.destroy();
-      }
+      requireItem("removeFloe", "floe", id, floesOf(open())).destroy();
     },
 
     clearFloes() {
@@ -419,24 +502,24 @@ export function createDebugApi(open: () => World): FloeDebugApi {
     },
 
     setFloeX(id, x) {
-      for (const item of floesOf(open())) {
-        if (item.id !== id) continue;
-        item.transform.x = x;
-        item.prevX = x;
-      }
+      const item = requireItem("setFloeX", "floe", id, floesOf(open()));
+      item.transform.x = x;
+      item.prevX = x;
     },
 
-    /** A speed of `0` holds the lane where it stands; every item keeps its position. */
+    /**
+     * A speed of `0` holds the lane where it stands; every item keeps its
+     * position. The speed is taken as given rather than clamped: the
+     * specification fixes the domain at a number at or above `0`, so a call
+     * outside it is a caller's mistake and says so.
+     */
     setLaneSpeed(row, speed) {
-      const lane = laneAt(floeState(open()), row);
-      if (lane === null) return;
-      lane.speed = Math.max(0, speed);
+      requireLane("setLaneSpeed", row).speed = requireSpeed(speed);
     },
 
+    /** `1` rightward, `-1` leftward — an enumerated domain, so anything else throws. */
     setLaneDirection(row, dir) {
-      const lane = laneAt(floeState(open()), row);
-      if (lane === null) return;
-      lane.dir = dir < 0 ? -1 : 1;
+      requireLane("setLaneDirection", row).dir = requireDir(dir);
     },
 
     /** Relays one lane at a phase; its speed and direction are untouched. */

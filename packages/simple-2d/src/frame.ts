@@ -163,7 +163,10 @@ class SampleWindow {
       this.size += 1;
     }
 
-    while (this.size > 0 && atMs - at(this.atMs, this.oldest) > SAMPLE_WINDOW_MS) {
+    while (
+      this.size > 0 &&
+      atMs - at(this.atMs, this.oldest) > SAMPLE_WINDOW_MS
+    ) {
       this.oldest = (this.oldest + 1) % SAMPLE_CAPACITY;
       this.size -= 1;
     }
@@ -352,7 +355,9 @@ export class FrameLoop {
    */
   advance(frames: number): void {
     if (!isFrameCount(frames)) {
-      throw new RangeError(`advance() needs a whole, non-negative frame count, got ${frames}`);
+      throw new RangeError(
+        `advance() needs a whole, non-negative frame count, got ${frames}`,
+      );
     }
     for (let i = 0; i < frames; i++) this.tick(this.nowFn());
   }

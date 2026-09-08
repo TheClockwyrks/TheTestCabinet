@@ -1,8 +1,5 @@
 import { useMemo, type ReactNode } from "react";
-import type {
-  GgAgentStatus,
-  GgCapabilitySet,
-} from "@clockwyrks/run-record/gg";
+import type { GgAgentStatus, GgCapabilitySet } from "@clockwyrks/run-record/gg";
 import type {
   AgentTreeNode,
   DerivedGgState,

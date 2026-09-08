@@ -32,6 +32,7 @@ import { CAROM_DEBUG_VERSION } from "./constants";
 import { ballSpeed, createBall } from "./entities";
 import {
   toTitle,
+  type BallState,
   type CaromState,
   type Mode,
   type ResumeScreen,
@@ -156,6 +157,8 @@ export interface CaromDebugApi {
   spawnBall(): void;
   spawnObstacle(index: number): void;
   reset(): void;
+  /** Bring every reported reading into agreement with the world as it stands. */
+  reconcile(): void;
 
   /* Screens and menus. */
   setScreen(screen: Screen): void;
@@ -224,6 +227,24 @@ export function createDebugApi(
   state: CaromState,
   clock: DebugClock,
 ): CaromDebugApi {
+  /**
+   * The ball on the field, or a thrown error naming the operation that wanted it.
+   *
+   * An absent ball is no ball to pose. An operation that quietly did nothing
+   * would leave a caller reading its own pose back off a field that never took
+   * it, and every check driving that operation would grade a world it did not
+   * arrange, so this fails where the caller can see it instead
+   * (specs/instrumentation.md). `spawnBall` is how a field of one is posed.
+   */
+  const requireBall = (op: string): BallState => {
+    if (state.ball === null) {
+      throw new Error(
+        `Carom: ${op} — no ball is on the field; spawnBall places one`,
+      );
+    }
+    return state.ball;
+  };
+
   return {
     version: CAROM_DEBUG_VERSION,
 
@@ -293,6 +314,24 @@ export function createDebugApi(
      */
     reset() {
       poseTitle(state);
+    },
+
+    /**
+     * Bring every reported reading into agreement with the world as it stands,
+     * without advancing anything.
+     *
+     * One reading here is a stored copy of something else: an obstacle's `cx`,
+     * `cy` and `theta` are a function of the obstacle clock alone, kept on the
+     * field so the collision and the renderer read one pose rather than
+     * recomputing it. `poseObstacles` is the same helper the update calls, so
+     * this re-derives them exactly as a frame would — and, unlike a frame, moves
+     * the clock not at all.
+     *
+     * A ball's `speed` is worked out at the read, in `ballView`, so it already
+     * agrees and there is nothing here for it.
+     */
+    reconcile() {
+      poseObstacles(state.obstacles, state.obstacleClock);
     },
 
     /* ---- Screens and menus ---------------------------------------------- */
@@ -370,29 +409,30 @@ export function createDebugApi(
 
     /* ---- The ball ------------------------------------------------------- */
     //
-    // Each sets its own field alone, and every one of them has no effect while
-    // the ball is absent.
+    // Each sets its own field alone, and each reaches the value it is given
+    // whatever the game would make of it: the screen, the hold, and where the
+    // paddles are decide none of them. An absent ball is the one thing there is
+    // nothing to set, and that fails loudly through `requireBall` rather than
+    // passing quietly; posing a field of one is what `spawnBall` is for.
 
     setBallPosition(x, y) {
-      const ball = state.ball;
-      if (ball === null) return;
+      const ball = requireBall("setBallPosition");
       ball.x = x;
       ball.y = y;
     },
 
     setBallVelocity(vx, vy) {
-      const ball = state.ball;
-      if (ball === null) return;
+      const ball = requireBall("setBallVelocity");
       ball.vx = vx;
       ball.vy = vy;
     },
 
     setBallSpin(spin) {
-      if (state.ball !== null) state.ball.spin = spin;
+      requireBall("setBallSpin").spin = spin;
     },
 
     setBallHeld(held) {
-      if (state.ball !== null) state.ball.held = Boolean(held);
+      requireBall("setBallHeld").held = Boolean(held);
     },
 
     /**
@@ -400,17 +440,17 @@ export function createDebugApi(
      * then served on the next advanced frame, through the game's own rule.
      */
     setBallHoldTimer(seconds) {
-      if (state.ball !== null) state.ball.holdTimer = seconds;
+      requireBall("setBallHoldTimer").holdTimer = seconds;
     },
 
     /** The vertical sign the ball's serve takes, `1` or `-1`. */
     setBallServeSign(sign) {
-      if (state.ball !== null) state.ball.serveSign = sign < 0 ? -1 : 1;
+      requireBall("setBallServeSign").serveSign = sign < 0 ? -1 : 1;
     },
 
     /** The one draw parking makes, made again on its own (specs/balls.md). */
     drawBallServeSign() {
-      if (state.ball !== null) state.ball.serveSign = drawServeSign();
+      requireBall("drawBallServeSign").serveSign = drawServeSign();
     },
 
     /* ---- The AI opponent ------------------------------------------------ */

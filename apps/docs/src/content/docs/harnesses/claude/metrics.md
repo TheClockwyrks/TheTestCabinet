@@ -12,12 +12,12 @@ carries the run's cumulative totals rather than a per-turn delta.
 Usage is read from the Anthropic-native field names and folded into the
 normalized [token classes](/components/core/metrics/#tokens):
 
-| Normalized class | Claude Code field |
-| ---------------- | ----------------- |
-| Uncached input | `input_tokens` plus `cache_creation_input_tokens` |
-| Cached input | `cache_read_input_tokens` |
-| Output | `output_tokens` |
-| Reasoning | not reported, so `null` |
+| Normalized class | Claude Code field                                 |
+| ---------------- | ------------------------------------------------- |
+| Uncached input   | `input_tokens` plus `cache_creation_input_tokens` |
+| Cached input     | `cache_read_input_tokens`                         |
+| Output           | `output_tokens`                                   |
+| Reasoning        | not reported, so `null`                           |
 
 Claude Code reports input that already excludes cached reads, so `input_tokens`
 is taken as uncached input with no subtraction. Cache-creation tokens are billed

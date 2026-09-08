@@ -1,6 +1,8 @@
 // The debug and automation surface: that every operation is there, that a
-// snapshot reports the whole documented shape, and that a pose clamps rather than
-// declines.
+// snapshot reports the whole documented shape, that a pose applies the value it
+// is given rather than declining, and that a call naming nothing the game holds a
+// state for — a value outside a range the specification fixes as a constant
+// included — fails loudly rather than passing quietly.
 
 import { describe, expect, it } from "vitest";
 import {
@@ -9,7 +11,9 @@ import {
   LEVELS,
   MACHINERY_KINDS,
   PATH_LENGTH,
+  SCREENS,
   SEED_CORES,
+  SPACING,
   VOLUTE_DEBUG_VERSION,
 } from "./constants";
 import { harness, last, startRun, type Harness } from "./harness.test";
@@ -18,6 +22,7 @@ const OPERATIONS = [
   "setAutoStep",
   "step",
   "reset",
+  "reconcile",
   "snapshot",
   "setScreen",
   "setLevel",
@@ -195,11 +200,11 @@ describe("setNextEmitted", () => {
     expect(last(hall.api.snapshot().train).charge).toBe("halide");
   });
 
-  it("takes a charge outside the five as no pose", () => {
+  it("fails loudly on a charge outside the five, leaving the pose standing", () => {
     const hall = halideHall();
     hall.api.setNextEmitted("garnet");
-    hall.api.setNextEmitted("quartz");
-    expect(hall.api.snapshot().nextEmitted).toBeNull();
+    expect(() => hall.api.setNextEmitted("quartz")).toThrow();
+    expect(hall.api.snapshot().nextEmitted).toBe("garnet");
   });
 
   it("replaces a standing pose with the later call", () => {
@@ -260,15 +265,29 @@ describe("poses", () => {
     ]);
   });
 
-  it("clamps a posed arc position to the channel's end", () => {
+  it("fails loudly on a posed arc position past the channel's end", () => {
     const hall = harness();
-    hall.api.poseTrain([[9999, "halide", null]]);
+    hall.api.poseTrain([[PATH_LENGTH, "halide", null]]);
+    expect(hall.api.snapshot().train[0].s).toBe(PATH_LENGTH);
+    expect(() => hall.api.poseTrain([[9999, "halide", null]])).toThrow();
+    // There is no floor: an insertion's shift can carry a core below zero, so a
+    // negative position names a state the hall has.
+    hall.api.poseTrain([[-20, "halide", null]]);
+    expect(hall.api.snapshot().train[0].s).toBe(-20);
+    hall.api.poseTrain([[PATH_LENGTH, "halide", null]]);
+    // Nothing was half-applied: the train the last legal pose left still stands.
     expect(hall.api.snapshot().train[0].s).toBe(PATH_LENGTH);
   });
 
-  it("normalizes a charge and a mark it does not know", () => {
+  it("fails loudly on a charge or a mark it does not know", () => {
     const hall = harness();
-    hall.api.poseTrain([[100, "quartz", "spanner"]]);
+    expect(() => hall.api.poseTrain([[100, "quartz", null]])).toThrow();
+    expect(() => hall.api.poseTrain([[100, "halide", "spanner"]])).toThrow();
+    expect(() =>
+      hall.api.poseTrain([["here" as unknown as number, "halide", null]]),
+    ).toThrow();
+    expect(hall.api.snapshot().train).toEqual([]);
+    hall.api.poseTrain([[100, "halide", null]]);
     const core = hall.api.snapshot().train[0];
     expect(core.charge).toBe("halide");
     expect(core.mark).toBeNull();
@@ -299,17 +318,22 @@ describe("poses", () => {
     expect(shot.cells).toBe(CELLS);
   });
 
-  it("clamps the pressure and the quota into their ranges", () => {
+  it("holds the pressure to its fixed domain, and takes the quota as given", () => {
     const hall = harness();
     startRun(hall);
-    hall.api.setPressure(500);
+    hall.api.setPressure(100);
     expect(hall.api.snapshot().pressure).toBe(100);
-    hall.api.setPressure(-5);
-    expect(hall.api.snapshot().pressure).toBe(0);
+    // The range is fixed as a constant, so it is the argument's domain and a
+    // value outside it fails rather than being brought back inside.
+    expect(() => hall.api.setPressure(500)).toThrow();
+    expect(() => hall.api.setPressure(-5)).toThrow();
+    expect(hall.api.snapshot().pressure).toBe(100);
+    // The level's quota is a live figure of the run, not a domain of the
+    // argument, so a count above it is applied rather than refused.
     hall.api.setQuotaRemaining(9999);
+    expect(hall.api.snapshot().quotaRemaining).toBe(9999);
+    hall.api.setQuotaRemaining(LEVELS[0].quota);
     expect(hall.api.snapshot().quotaRemaining).toBe(LEVELS[0].quota);
-    hall.api.setQuotaRemaining(-2);
-    expect(hall.api.snapshot().quotaRemaining).toBe(0);
   });
 
   it("moves the mark cadence with the quota", () => {
@@ -421,8 +445,8 @@ describe("the single-field poses", () => {
     expect(shot.screen).toBe("gameover");
     expect(shot.train.length).toBe(SEED_CORES);
     expect(shot.interlude).toBe(0);
-    hall.api.setScreen("nowhere");
-    expect(hall.api.snapshot().screen).toBe("title");
+    expect(() => hall.api.setScreen("nowhere")).toThrow();
+    expect(hall.api.snapshot().screen).toBe("gameover");
   });
 
   it("sets the level, and the feed speed follows it", () => {
@@ -434,8 +458,9 @@ describe("the single-field poses", () => {
     expect(shot.level).toBe(5);
     expect(shot.feedSpeed).toBeGreaterThan(opened.feedSpeed);
     expect(shot.train).toHaveLength(opened.train.length);
-    hall.api.setLevel(99);
-    expect(hall.api.snapshot().level).toBe(LEVELS.length);
+    expect(() => hall.api.setLevel(99)).toThrow();
+    expect(() => hall.api.setLevel(0)).toThrow();
+    expect(hall.api.snapshot().level).toBe(5);
   });
 
   it("sets the score and the cells, and ends no run", () => {
@@ -451,10 +476,11 @@ describe("the single-field poses", () => {
     shot = hall.api.snapshot();
     expect(shot.cells).toBe(0);
     expect(shot.screen).toBe("playing");
-    hall.api.setCells(99);
-    expect(hall.api.snapshot().cells).toBe(CELLS);
-    hall.api.setScore(-5);
-    expect(hall.api.snapshot().score).toBe(0);
+    expect(() => hall.api.setCells(99)).toThrow();
+    expect(() => hall.api.setScore(-5)).toThrow();
+    shot = hall.api.snapshot();
+    expect(shot.cells).toBe(0);
+    expect(shot.score).toBe(1234);
   });
 
   it("sets the chain step and restarts the window that resets it", () => {
@@ -464,8 +490,8 @@ describe("the single-field poses", () => {
     const shot = hall.api.snapshot();
     expect(shot.chainStep).toBe(4);
     expect(shot.chainTimer).toBe(CHAIN_RESET);
-    hall.api.setChainStep(0);
-    expect(hall.api.snapshot().chainStep).toBe(1);
+    expect(() => hall.api.setChainStep(0)).toThrow();
+    expect(hall.api.snapshot().chainStep).toBe(4);
   });
 
   it("sets the aim and releases nothing", () => {
@@ -528,5 +554,55 @@ describe("the single-field poses", () => {
     expect(shot.emission).toBe(false);
     expect(shot.feed).toBe(false);
     expect(shot.screen).toBe("title");
+  });
+});
+
+describe("reconcile", () => {
+  it("re-derives the kept segments from the cores as they stand", () => {
+    const hall = harness();
+    startRun(hall);
+    hall.api.poseTrain([
+      [1000, "halide", null],
+      [1000 - SPACING, "halide", null],
+      [200, "halide", null],
+    ]);
+    const before = hall.api.snapshot();
+    hall.api.reconcile();
+    const after = hall.api.snapshot();
+    // Two segments: the spaced pair, then the core standing apart.
+    expect(after.segments.map((entry) => entry.count)).toEqual([2, 1]);
+    expect(after.segments).toEqual(before.segments);
+  });
+
+  it("advances nothing, and twice matches once", () => {
+    const hall = harness();
+    startRun(hall);
+    hall.api.setPressure(40);
+    hall.api.setAim(90);
+    hall.api.fire();
+    hall.step();
+
+    const before = hall.api.snapshot();
+    hall.api.reconcile();
+    const once = hall.api.snapshot();
+    hall.api.reconcile();
+    const twice = hall.api.snapshot();
+
+    expect(once).toEqual(before);
+    expect(twice).toEqual(once);
+    expect(once.simTime).toBe(before.simTime);
+    expect(once.train).toEqual(before.train);
+    expect(once.projectiles).toEqual(before.projectiles);
+    expect(once.pressure).toBe(before.pressure);
+    expect(once.chainTimer).toBe(before.chainTimer);
+    expect(once.injector.cooldown).toBe(before.injector.cooldown);
+  });
+
+  it("is legal on every screen", () => {
+    const hall = harness();
+    for (const screen of SCREENS) {
+      hall.api.setScreen(screen);
+      expect(() => hall.api.reconcile()).not.toThrow();
+    }
   });
 });

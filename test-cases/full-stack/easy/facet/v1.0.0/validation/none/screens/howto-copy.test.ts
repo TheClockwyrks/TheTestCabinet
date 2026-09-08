@@ -38,9 +38,9 @@
 //
 // THE MATCH IS ON A WORD BOUNDARY, which is what stops `PLAY` from answering for
 // the `P` of `KeyP` and `HOW TO PLAY` from answering for the `M` of `KeyM`. A
-// build is read whichever way it drew the copy: a piece that is the spelling by
-// itself, a phrase carrying it, or the frame's pieces joined in draw order, so a
-// line drawn one word or one glyph per call reads like any other.
+// build is read whichever way it drew the copy: a run that is the spelling by
+// itself, a phrase carrying it, or the frame's runs joined in reading order, so
+// a line drawn one word or one glyph per call reads like any other.
 //
 // THE SCREEN IS POSED, NOT TAKEN INTO. That the title's `HOW TO PLAY` entry
 // reaches this screen is `screens/howto-screen`'s point, and taking a menu item
@@ -52,7 +52,14 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, fail } from "../assert";
 import { type ActionName, ACTIONS, BINDINGS } from "../constants";
-import { captureStill, createHarness, type Harness } from "../harness";
+import {
+  captureStill,
+  createHarness,
+  frameShows,
+  shownText,
+  type FrameText,
+  type Harness,
+} from "../harness";
 
 /**
  * How each `KeyboardEvent.code` specs/controls.md binds may be written on a
@@ -86,29 +93,39 @@ const POINTER_WORDS: readonly string[] = ["mouse", "pen", "finger", "touch"];
 let h: Harness;
 
 /**
- * Whether `token` stands as a word of its own among the copy a frame drew.
+ * Whether `token` stands as a word of its own among the copy a frame showed.
  *
- * Four readings, and the boundary is what makes them safe. A spelling is looked
- * for in each drawn piece, then in the pieces joined by a space and joined by
- * nothing, so a build that drew a line in one call, one call per word, or one
- * call per glyph is read the same way. A spelling of four characters or more —
- * `KeyP`, `Escape`, `mouse` — is also read as a plain run of characters inside
- * the joined pieces, because a build that draws every glyph separately leaves no
- * boundary anywhere in that run, and because a longer word carries its own
- * meaning inside a compound like `touchscreen`. The one- and three-character
- * spellings keep the boundary, which is what stops `PLAY` from answering for
- * `P`.
+ * THE WORD BOUNDARY IS THIS CHECK'S OWN FACT, and it is the one thing here the
+ * harness's `frameShows` cannot express: that reading is a plain substring,
+ * and would let `PLAY` answer for the `P` of `KeyP`. What the boundary is read
+ * over is the harness's `shownText` — the logical runs the shared harness's
+ * `drawnTextLines` coalesces a frame's measured calls into, so a heading drawn
+ * a glyph at a time is one run rather than a glyph apiece, and the rendered
+ * document's strings after them.
+ *
+ * Three boundary readings, then the harness's own. A spelling is looked for as
+ * a word in each run, then in the runs joined by a space and joined by nothing,
+ * so a build that drew a line in one call, one call per word, or one call per
+ * glyph is read the same way. A spelling of four characters or more — `KeyP`,
+ * `Escape`, `mouse` — is also read the way every other copy check in this
+ * project reads its copy, by `frameShows`: the shared harness's
+ * `drewTextAnywhere` over the frame's calls, and the same comparison over the
+ * document's strings — a substring of the whole, ignoring case and whitespace.
+ * That is because a build that draws every glyph separately leaves no boundary
+ * anywhere in that run, and because a longer word carries its own meaning
+ * inside a compound like `touchscreen`. The one- and three-character spellings
+ * keep the boundary, which is what stops `PLAY` from answering for `P`.
  *
  * Every spelling is a letter, a digit or an arrow glyph, none of which carries
  * any meaning in a pattern, so each goes in as it stands.
  */
-function namesToken(pieces: readonly string[], token: string): boolean {
+function namesToken(frame: FrameText, token: string): boolean {
+  const pieces = shownText(frame);
   const word = new RegExp(`(?<![0-9A-Za-z])${token}(?![0-9A-Za-z])`, "iu");
   if (pieces.some((piece) => word.test(piece))) return true;
   if (word.test(pieces.join(" "))) return true;
   if (word.test(pieces.join(""))) return true;
-  if (token.length < 4) return false;
-  return pieces.join("").toLowerCase().includes(token.toLowerCase());
+  return token.length >= 4 && frameShows(frame, token);
 }
 
 /** Every spelling that names any key bound to `action`. */
@@ -151,12 +168,14 @@ it("names the pointer and the key of every action", async () => {
     "the screen the pose reaches",
   );
 
-  // One frame, and everything it put on screen. The still is that same frame.
-  const drawn = await h.frameText();
+  // One frame, and everything it put on screen; `drawn` is that as the strings
+  // a failure is worded with. The still is that same frame.
+  const frame = await h.frameText();
+  const drawn = shownText(frame);
   await captureStill(h, "howto");
 
   // The pointer the board is played with: any one of the four wordings.
-  if (!POINTER_WORDS.some((word) => namesToken(drawn, word))) {
+  if (!POINTER_WORDS.some((word) => namesToken(frame, word))) {
     fail(
       `the how-to screen to say the board is played with a pointer, ` +
         `written as one of ${POINTER_WORDS.join(" or ")}`,
@@ -167,7 +186,7 @@ it("names the pointer and the key of every action", async () => {
   // And the key of each of the six actions, one action at a time so the
   // failure names which of them the screen left unsaid.
   for (const { action, spellings } of wanted) {
-    if (spellings.some((spelling) => namesToken(drawn, spelling))) continue;
+    if (spellings.some((spelling) => namesToken(frame, spelling))) continue;
     fail(
       `the how-to screen to name the key bound to the ${action} action, ` +
         `written as one of ${spellings.join(" or ")}`,

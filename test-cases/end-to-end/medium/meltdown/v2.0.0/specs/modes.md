@@ -15,15 +15,15 @@ Starting money, the wave count, the starting lives, whether interest is paid,
 whether there are build phases between waves, and the build zone all follow the
 mode and difficulty and nothing else.
 
-| Mode | Starting money | Waves | Lives | Interest | Build phases | Build zone |
-| --- | --- | --- | --- | --- | --- | --- |
-| Containment, Easy | 350 | 15 | 20 | yes | yes | The whole floor |
-| Containment, Medium | 250 | 20 | 20 | yes | yes | The whole floor |
-| Containment, Hard | 200 | 26 | 20 | yes | yes | The whole floor |
-| The Hundred | 600 | 1 | 20 | no | no | The whole floor |
-| Deep Pockets | 10000 | 20 | 20 | no | yes | The whole floor |
-| Bottleneck | 300 | 20 | 20 | yes | yes | Columns 13 to 36, rows 8 to 27 |
-| Sudden Death | 300 | 20 | 1 | yes | yes | The whole floor |
+| Mode                | Starting money | Waves | Lives | Interest | Build phases | Build zone                     |
+| ------------------- | -------------- | ----- | ----- | -------- | ------------ | ------------------------------ |
+| Containment, Easy   | 350            | 15    | 20    | yes      | yes          | The whole floor                |
+| Containment, Medium | 250            | 20    | 20    | yes      | yes          | The whole floor                |
+| Containment, Hard   | 200            | 26    | 20    | yes      | yes          | The whole floor                |
+| The Hundred         | 600            | 1     | 20    | no       | no           | The whole floor                |
+| Deep Pockets        | 10000          | 20    | 20    | no       | yes          | The whole floor                |
+| Bottleneck          | 300            | 20    | 20    | yes      | yes          | Columns 13 to 36, rows 8 to 27 |
+| Sudden Death        | 300            | 20    | 1     | yes      | yes          | The whole floor                |
 
 The table is `MODE_TABLE`, over the three Containment rows of
 `DIFFICULTY_TABLE`. The starting lives are `START_LIVES` (`20`) on every mode but

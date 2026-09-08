@@ -9,15 +9,15 @@ in `specs/controls.md`. What the train does once a core is seated is in
 
 ## Figures
 
-| Figure | Value |
-| --- | --- |
-| Injector center | `(420, 330)`, fixed for the whole run |
-| Injector radius | 22 units |
-| Opening aim | 270 degrees |
-| `FIRE_COOLDOWN` | 0.18 s |
-| `PROJECTILE_SPEED` | 620 units/s |
-| Projectile radius | 14 units |
-| Strike distance | 28 units |
+| Figure             | Value                                 |
+| ------------------ | ------------------------------------- |
+| Injector center    | `(420, 330)`, fixed for the whole run |
+| Injector radius    | 22 units                              |
+| Opening aim        | 270 degrees                           |
+| `FIRE_COOLDOWN`    | 0.18 s                                |
+| `PROJECTILE_SPEED` | 620 units/s                           |
+| Projectile radius  | 14 units                              |
+| Strike distance    | 28 units                              |
 
 The injector is drawn as a base centered on `(420, 330)` and a barrel that points
 along the current aim angle. The injector never moves.

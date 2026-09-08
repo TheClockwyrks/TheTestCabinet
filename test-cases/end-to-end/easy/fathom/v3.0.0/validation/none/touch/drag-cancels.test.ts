@@ -1,6 +1,6 @@
 // touch/drag-cancels — a contact that lifts on another item confirms nothing.
 //
-// specs/ui.md: a confirm takes both of its edges inside ONE item's region, and
+// specs/ui.md: a confirm requires both of its edges inside ONE item's region, and
 // "two edges that fall in different regions ... confirm no item". So the gesture
 // this point fixes is a finger that lands on one entry, slides onto another and
 // lifts: the selection follows to where it lifted, and nothing is confirmed. That

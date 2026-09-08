@@ -18,7 +18,7 @@ tiles and walls hold no gas and **block** it: gas moves only between open tiles 
 share an edge (4-connectivity — up, down, left, right; not diagonally).
 
 - A tile's **pressure** is its total gas (oxygen + CO2); its **oxygen fraction** is
-  oxygen over that total. Both matter: a delver needs enough oxygen *and* not too
+  oxygen over that total. Both matter: a delver needs enough oxygen _and_ not too
   much CO2 (below).
 - **Sealed pockets stay sealed.** Two open regions separated by solid tiles or walls
   do not exchange gas until a dig or an opening connects them. This is why digging

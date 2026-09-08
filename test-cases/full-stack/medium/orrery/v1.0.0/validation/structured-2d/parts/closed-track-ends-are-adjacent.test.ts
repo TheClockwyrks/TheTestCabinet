@@ -44,7 +44,9 @@ import {
  * the placement rules of `specs/parts.md` alone, and throws an `Error` naming
  * the first rule it breaks" (`specs/instrumentation.md`, The machine).
  */
-async function refusesPlacement(place: () => Promise<unknown>): Promise<boolean> {
+async function refusesPlacement(
+  place: () => Promise<unknown>,
+): Promise<boolean> {
   try {
     await place();
     return false;
@@ -86,7 +88,11 @@ it("refuses to close a path whose last cell is not adjacent to its first", async
   // length, differing only in whether their ends meet.
   for (const path of [STRAIGHT, RING]) {
     for (const cell of path) {
-      assertEqual(onField(cell), true, `the cell (${cell.q}, ${cell.r}) is on the field`);
+      assertEqual(
+        onField(cell),
+        true,
+        `the cell (${cell.q}, ${cell.r}) is on the field`,
+      );
     }
     assertEqual(
       consecutivelyAdjacent(path),
@@ -109,7 +115,9 @@ it("refuses to close a path whose last cell is not adjacent to its first", async
   const straight = await placeTrack(h, STRAIGHT);
   const ring = await placeTrack(h, RING);
 
-  const straightClosed = await refusesPlacement(() => h.debug.closeTrack(straight));
+  const straightClosed = await refusesPlacement(() =>
+    h.debug.closeTrack(straight),
+  );
   const straightState = partById(await h.snapshot(), straight);
   const ringClosed = await refusesPlacement(() => h.debug.closeTrack(ring));
   const ringState = partById(await h.snapshot(), ring);
@@ -128,7 +136,11 @@ it("refuses to close a path whose last cell is not adjacent to its first", async
     pathOf(STRAIGHT),
     "and it still holds the cells it was laid as",
   );
-  assertEqual(ringClosed, false, "closing a path whose ends are adjacent is taken");
+  assertEqual(
+    ringClosed,
+    false,
+    "closing a path whose ends are adjacent is taken",
+  );
   assertEqual(ringState?.closed, true, "that track reads back closed");
   assertEqual(
     pathOf(ringState?.cells),

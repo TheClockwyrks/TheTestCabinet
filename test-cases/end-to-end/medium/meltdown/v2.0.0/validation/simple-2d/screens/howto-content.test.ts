@@ -39,6 +39,7 @@ import {
   createHarness,
   drawFrame,
   drawnText,
+  drawnTextLines,
   type Harness,
 } from "../harness";
 import { poseMenu } from "./menu";
@@ -143,7 +144,14 @@ it("covers every subject the how-to screen is required to cover", async () => {
     "posing: the screen the copy is read from (specs/screens.md)",
   );
 
-  const copy = drawnText(calls);
+  // The logical runs the screen spells AND the `fillText` split, because a stem
+  // is a token and each reading can lose one where the other keeps it: a build
+  // that letter-spaces its copy draws it a glyph per call, and only the run
+  // spells the word; a build that draws a key and its caption a space apart in
+  // two calls merges them, verbatim, into one token, and only the split keeps
+  // the word whole. Together they only ever add a match.
+  const lines = drawnTextLines(calls);
+  const copy = [...lines, ...drawnText(calls)];
 
   for (const { subject, needs } of SUBJECTS) {
     for (const alternatives of needs) {
@@ -151,7 +159,7 @@ it("covers every subject the how-to screen is required to cover", async () => {
         saysAnyStem(copy, alternatives),
         `the how-to screen to cover ${subject}, naming one of ` +
           `${alternatives.join(", ")} (specs/screens.md, \`howto\`); the text ` +
-          `drawn was ${JSON.stringify(copy.join(" "))}`,
+          `drawn was ${JSON.stringify(lines.join(" "))}`,
       );
     }
   }

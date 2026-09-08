@@ -116,12 +116,12 @@ that draws an image.
 type RenderMode = "shaded" | "wireframe" | "unlit" | "silhouette";
 ```
 
-| Mode | Draws |
-| --- | --- |
-| `shaded` | The full picture: fills, strokes, images, text, tint, and opacity. The default. |
-| `wireframe` | Each component's outline alone, at one stroke width, with images reduced to their bounds. |
-| `unlit` | Fills and images at full opacity with every tint dropped. |
-| `silhouette` | Each component filled flat in its layer's color, in layer order. |
+| Mode         | Draws                                                                                     |
+| ------------ | ----------------------------------------------------------------------------------------- |
+| `shaded`     | The full picture: fills, strokes, images, text, tint, and opacity. The default.           |
+| `wireframe`  | Each component's outline alone, at one stroke width, with images reduced to their bounds. |
+| `unlit`      | Fills and images at full opacity with every tint dropped.                                 |
+| `silhouette` | Each component filled flat in its layer's color, in layer order.                          |
 
 The mode belongs to the pipeline and applies to every component it draws, so
 every game has all four modes available without writing anything. Wireframe
@@ -139,12 +139,12 @@ interface Renderer {
 }
 ```
 
-| Member | Effect |
-| --- | --- |
-| `mode` | The mode in force, `shaded` until it is set. |
-| `setMode` | Sets the mode. The next frame the pipeline runs draws under it. |
-| `collisionOverlay` | Whether the collision overlay draws. |
-| `setCollisionOverlay` | Turns the collision overlay on or off. |
+| Member                | Effect                                                          |
+| --------------------- | --------------------------------------------------------------- |
+| `mode`                | The mode in force, `shaded` until it is set.                    |
+| `setMode`             | Sets the mode. The next frame the pipeline runs draws under it. |
+| `collisionOverlay`    | Whether the collision overlay draws.                            |
+| `setCollisionOverlay` | Turns the collision overlay on or off.                          |
 
 The renderer is reached as `engine.renderer` and is available from
 construction, so whoever holds the engine drives both switches:
@@ -168,7 +168,11 @@ Render modes belong to the declarative pipeline, so a `DrawComponent` reads
 `api.mode` and supplies its own.
 
 ```ts
-import { DrawComponent, type DrawApi, type Vec2 } from "@clockwyrks/structured-2d";
+import {
+  DrawComponent,
+  type DrawApi,
+  type Vec2,
+} from "@clockwyrks/structured-2d";
 import { PALETTE } from "./constants";
 
 export class Trail extends DrawComponent {

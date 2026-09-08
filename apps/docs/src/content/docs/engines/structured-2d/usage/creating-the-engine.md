@@ -174,13 +174,13 @@ the start level rather than a poll.
 
 ## The remaining options
 
-| Option | Effect |
-| --- | --- |
-| `background` | A CSS color the whole canvas is filled with before every frame. Left out, the frame clears to transparency and the page shows through behind the game. |
-| `imageSmoothing` | Whether an image the fit scales is resampled bilinearly. Defaults to `true`; `false` samples nearest-neighbor, which is the setting for pixel art. |
-| `layout` | Selects a touch layout from `TOUCH_LAYOUTS`, whose vocabulary the game then registers as actions. |
-| `assetRoot` | The root every asset path resolves under. Defaults to `assets/`. |
-| `surface` | Where the engine reads element size and device pixel ratio and attaches its listeners. Defaults to the canvas and its owning document. |
+| Option           | Effect                                                                                                                                                 |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `background`     | A CSS color the whole canvas is filled with before every frame. Left out, the frame clears to transparency and the page shows through behind the game. |
+| `imageSmoothing` | Whether an image the fit scales is resampled bilinearly. Defaults to `true`; `false` samples nearest-neighbor, which is the setting for pixel art.     |
+| `layout`         | Selects a touch layout from `TOUCH_LAYOUTS`, whose vocabulary the game then registers as actions.                                                      |
+| `assetRoot`      | The root every asset path resolves under. Defaults to `assets/`.                                                                                       |
+| `surface`        | Where the engine reads element size and device pixel ratio and attaches its listeners. Defaults to the canvas and its owning document.                 |
 
 ```ts
 const engine = createEngine({

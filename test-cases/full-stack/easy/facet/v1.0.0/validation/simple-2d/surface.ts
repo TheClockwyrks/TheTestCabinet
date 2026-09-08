@@ -166,6 +166,12 @@ export interface FacetSnapshot {
 export interface FacetDebugApi<S = unknown> {
   version: number;
   reset(state: DeepReadonly<S>): S;
+  /**
+   * Every reading the surface reports brought into agreement with the game as it
+   * stands, without advancing anything. A build that works its readings out at
+   * the read returns a state equal to the one it was handed.
+   */
+  reconcile(state: DeepReadonly<S>): S;
   snapshot(state: DeepReadonly<S>): FacetSnapshot;
   setScreen(state: DeepReadonly<S>, screen: Screen): S;
   setMenuIndex(state: DeepReadonly<S>, index: number): S;
@@ -226,16 +232,18 @@ export const READINGS = ["snapshot"] as const;
 /**
  * Every operation the surface must carry under this engine.
  *
- * Twenty-six: the twenty-eight of specs/instrumentation.md less `setAutoStep`
+ * Twenty-seven: the twenty-nine of specs/instrumentation.md less `setAutoStep`
  * and `advance`, which are the runtime's here and are not on the surface at all.
  *
- * EVERY ONE OF THEM WRITES ONE ELEMENT OF THE STATE or reads it. Reaching a
+ * EVERY ONE OF THEM WRITES ONE ELEMENT OF THE STATE, reads it, or brings the
+ * readings into agreement with it. Reaching a
  * screen, opening a round, and quitting to the title are sequences of these, and
  * those sequences live in `harness.ts` where all three projects' suites share
  * them.
  */
 export const REQUIRED_OPS = [
   "reset",
+  "reconcile",
   "snapshot",
   "setScreen",
   "setMenuIndex",

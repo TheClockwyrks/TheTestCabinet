@@ -1050,3 +1050,90 @@ describe("the board poses", () => {
     harness.dispose();
   });
 });
+
+describe("reconcile", () => {
+  it("re-derives a stored reading from a posed state", async () => {
+    const harness = await alone();
+    const fixture = pose(harness.debug, HALL);
+    const hunter = at(fixture, "P");
+    harness.debug.addPredator("gloamfin", hunter.tx, hunter.ty);
+    harness.debug.setPlankton(hunter.tx - 1, hunter.ty, true);
+    const planted = harness.debug.snapshot().planktonRemaining;
+    expect(planted).toBe(1);
+
+    // Both readings are already in step: this build keeps them so, because
+    // every pose that writes what they follow from writes them too.
+    harness.debug.setPredatorState(0, "chase");
+    expect(harness.debug.snapshot().predators[0].speed).toBe(
+      GLOAMFIN_CHASE_SPEED,
+    );
+
+    // What `reconcile` owes is the state a build that DID let them drift would
+    // be in, so the two stored copies are knocked out of agreement here and
+    // read back after the call.
+    harness.state.predators[0].speed = 0;
+    harness.state.planktonRemaining = planted + 7;
+    expect(harness.debug.snapshot().predators[0].speed).toBe(0);
+
+    harness.debug.reconcile();
+    const read = harness.debug.snapshot();
+    expect(read.predators[0].speed).toBe(GLOAMFIN_CHASE_SPEED);
+    expect(read.planktonRemaining).toBe(planted);
+    // And the tile the predator was posed on is untouched: nothing was moved to
+    // make a reading agree.
+    expect(read.predators[0].tx).toBe(hunter.tx);
+    expect(read.predators[0].ty).toBe(hunter.ty);
+    harness.dispose();
+  });
+
+  it("advances nothing", async () => {
+    const harness = await alone();
+    const fixture = pose(harness.debug, HALL);
+    const hunter = at(fixture, "P");
+    harness.debug.addPredator("lanternjaw", hunter.tx, hunter.ty);
+    harness.debug.setBrightness(0.5);
+    harness.debug.setBrightHold(BRIGHT_HOLD);
+    harness.debug.setSonarCooldown(1.5);
+    harness.debug.setInkCooldown(2.5);
+    harness.debug.setDrifterIn(9);
+
+    harness.debug.reconcile();
+    const before = harness.debug.snapshot();
+    harness.debug.reconcile();
+    const once = harness.debug.snapshot();
+    harness.debug.reconcile();
+    const twice = harness.debug.snapshot();
+
+    // The clock, every timer and every body stand exactly where they were, and
+    // a second call is worth no more than the first.
+    expect(once).toEqual(before);
+    expect(twice).toEqual(once);
+    expect(once.simTime).toBe(before.simTime);
+    expect(once.brightHold).toBe(before.brightHold);
+    expect(once.drifterIn).toBe(before.drifterIn);
+    expect(once.sonar.cooldown).toBe(before.sonar.cooldown);
+    expect(once.ink.cooldown).toBe(before.ink.cooldown);
+    expect(once.visibility).toEqual(before.visibility);
+    expect(once.forager).toEqual(before.forager);
+    expect(once.predators).toEqual(before.predators);
+    harness.dispose();
+  });
+
+  it("is legal on every screen", async () => {
+    const harness = await createHarness();
+    for (const screen of [
+      "title",
+      "howto",
+      "countdown",
+      "playing",
+      "paused",
+      "cleared",
+      "gameover",
+    ] as const) {
+      harness.debug.setScreen(screen);
+      harness.debug.reconcile();
+      expect(harness.debug.snapshot().screen).toBe(screen);
+    }
+    harness.dispose();
+  });
+});

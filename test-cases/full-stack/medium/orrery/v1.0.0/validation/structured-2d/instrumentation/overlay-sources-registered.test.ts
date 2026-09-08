@@ -15,7 +15,10 @@
 // with it hidden — the multiset difference, so a value the game's own readout
 // already draws is still counted when the panel draws it a second time. Nothing
 // here reads a LABEL: the specification names the facts, never the words a build
-// prints beside them, so every reading below is of a VALUE.
+// prints beside them, so every reading below is of a VALUE. The lines are the
+// LOGICAL runs each frame spells (`drawnTextLines`), not its `fillText` calls,
+// so a panel that letter-spaces a line still reports the value that line
+// carries rather than one character of it per line.
 //
 // THE FIGURES ARE READ OFF THE SNAPSHOT, not written down here. The world is posed
 // so that every one of them is distinctive — a cost of `165`, a period of `12`, a
@@ -55,7 +58,7 @@ import {
   advanceFraction,
   captureStill,
   createHarness,
-  drawnText,
+  drawnTextLines,
   openBareRun,
   placePart,
   placeTrack,
@@ -127,9 +130,9 @@ function addedTexts(
  * frame in: the text the next frame gained, or, failing that, the text it lost.
  */
 async function panelLines(): Promise<string[]> {
-  const before = drawnText(await h.frameCalls());
+  const before = drawnTextLines(await h.frameCalls());
   await toggleOverlay(h);
-  const after = drawnText(await h.frameCalls());
+  const after = drawnTextLines(await h.frameCalls());
   const gained = addedTexts(after, before);
   const lost = addedTexts(before, after);
   assertTrue(

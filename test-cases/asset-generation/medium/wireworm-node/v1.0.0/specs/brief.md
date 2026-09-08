@@ -52,13 +52,13 @@ its **core** and **glow** change from frame to frame. Its geometry:
 
 The node across its charge states:
 
-| Frame | State | Core & glow |
-| --- | --- | --- |
-| 0 | **inert** (charge 0) | Core is the dark unlit color. No glow, no halo. Dead component. |
-| 1 | **charging** (charge 1) | Core lit from the bottom in the low charge color, roughly its lower half; still no halo. |
-| 2 | **charged** (charge 2) | Core filled in the mid charge color; a faint 1 px glow halo appears hugging the can's outline. |
-| 3 | **critical** (charge 3) | Core white-hot; a bright glow halo rings the can; a few amber overcharge sparks flick off the top cap and leads — it reads as loaded and dangerous. |
-| 4 | **critical — pulse peak** | The critical frame at its peak: the same white-hot core, but the halo swells one ring wider and the amber sparks are brighter and more numerous — the top of the pulse. |
+| Frame | State                     | Core & glow                                                                                                                                                             |
+| ----- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0     | **inert** (charge 0)      | Core is the dark unlit color. No glow, no halo. Dead component.                                                                                                         |
+| 1     | **charging** (charge 1)   | Core lit from the bottom in the low charge color, roughly its lower half; still no halo.                                                                                |
+| 2     | **charged** (charge 2)    | Core filled in the mid charge color; a faint 1 px glow halo appears hugging the can's outline.                                                                          |
+| 3     | **critical** (charge 3)   | Core white-hot; a bright glow halo rings the can; a few amber overcharge sparks flick off the top cap and leads — it reads as loaded and dangerous.                     |
+| 4     | **critical — pulse peak** | The critical frame at its peak: the same white-hot core, but the halo swells one ring wider and the amber sparks are brighter and more numerous — the top of the pulse. |
 
 Make the ramp read as a component **filling with charge**, not five unrelated
 pictures:
@@ -81,14 +81,14 @@ pictures:
 Use only these colors (the drawing is regenerated pixel-for-pixel, so stray or
 off-palette colors and anti-aliased fringes count against you):
 
-| Role | Hex |
-| --- | --- |
-| Casing (can body) | `#25303a` |
-| Metal rim / top cap / leads | `#5a7183` |
-| Core — inert (unlit) | `#20343d` |
-| Charge glow — low | `#2f9e86` |
-| Charge glow — mid | `#54e6bd` |
-| Core — critical (white-hot) | `#e6fff7` |
+| Role                                    | Hex       |
+| --------------------------------------- | --------- |
+| Casing (can body)                       | `#25303a` |
+| Metal rim / top cap / leads             | `#5a7183` |
+| Core — inert (unlit)                    | `#20343d` |
+| Charge glow — low                       | `#2f9e86` |
+| Charge glow — mid                       | `#54e6bd` |
+| Core — critical (white-hot)             | `#e6fff7` |
 | Overcharge spark (amber, critical only) | `#ffb43a` |
 
 ## Working the tool

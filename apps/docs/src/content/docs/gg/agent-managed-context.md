@@ -261,16 +261,16 @@ search result quoting an entry is unambiguous about which thread it came from.
 
 Two sliders sit in the capability's Features box, and each is per agent.
 
-| Feature | Default | What switching it changes |
-| --- | --- | --- |
-| Evict file views | on | Off withholds `evict_file_view`, leaving the signal and the archive. |
-| Archive & search the thread | on | Off withholds `archive_thread` and `search_archive`. The two move together, since an archive the agent cannot search back is unreadable. |
+| Feature                     | Default | What switching it changes                                                                                                                |
+| --------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Evict file views            | on      | Off withholds `evict_file_view`, leaving the signal and the archive.                                                                     |
+| Archive & search the thread | on      | Off withholds `archive_thread` and `search_archive`. The two move together, since an archive the agent cannot search back is unreadable. |
 
 ## Parameters
 
-| Param | Meaning |
-| --- | --- |
-| `topFileViews` | Files named under Top File Views, largest first. |
+| Param                    | Meaning                                                                  |
+| ------------------------ | ------------------------------------------------------------------------ |
+| `topFileViews`           | Files named under Top File Views, largest first.                         |
 | `signalThresholdPercent` | How full the window must be, `0` to `100`, before the block is rendered. |
 
 Both are set per agent. An enabled capability writes `topFileViews`; how many

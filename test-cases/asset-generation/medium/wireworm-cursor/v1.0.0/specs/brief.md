@@ -3,7 +3,7 @@
 You are drawing the **defrag cursor**, a **single sprite** for a circuit-board
 arcade game. It is the **player**: a small craft that patrols a shallow band at
 the bottom of the board and fires **upward** at the data-worm descending toward
-it. It has to read instantly as *the player's own ship* — clean, friendly, and
+it. It has to read instantly as _the player's own ship_ — clean, friendly, and
 clearly pointing up — never as one of the hostile bugs on the board.
 
 ## The canvas
@@ -33,7 +33,7 @@ small ship:
   (near **(16, 5)**), where its shots emerge upward.
 - **Caret ticks:** two short diagonal ticks in the trim color at the lower-left
   and lower-right corners of the base (like the corner marks of a selection
-  cursor), so it reads as a defrag *cursor*, not just a jet.
+  cursor), so it reads as a defrag _cursor_, not just a jet.
 - **Thruster glow:** a faint core-glow underglow along the bottom edge beneath the
   base bar.
 
@@ -45,13 +45,13 @@ Keep it **symmetric** about the vertical center line (`x = 16`) and unmistakably
 Use only these colors (the drawing is regenerated pixel-for-pixel, so stray or
 off-palette colors and anti-aliased fringes count against you):
 
-| Role | Hex |
-| --- | --- |
-| Chassis — light (hull fill) | `#3f8ba3` |
-| Chassis — dark (base shade) | `#163743` |
+| Role                         | Hex       |
+| ---------------------------- | --------- |
+| Chassis — light (hull fill)  | `#3f8ba3` |
+| Chassis — dark (base shade)  | `#163743` |
 | Reactor core / thruster glow | `#57e0ff` |
-| Highlight / muzzle | `#eafcff` |
-| Trim (outline, caret ticks) | `#9ff0ff` |
+| Highlight / muzzle           | `#eafcff` |
+| Trim (outline, caret ticks)  | `#9ff0ff` |
 
 ## Working the tool
 

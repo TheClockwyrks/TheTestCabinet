@@ -239,24 +239,24 @@ did not happen:
 
 Three sliders sit in the capability's Features box, and each is per agent.
 
-| Feature | Default | What switching it changes |
-| --- | --- | --- |
-| Issue creation | on | Off withholds `create_epic`/`create_issue`, leaving that agent read-only access to the board: it still sees the whole board and can wait on issues. |
-| Reviewers required | off | On, `create_issue` requires one or more `reviewers`. Off, naming them is optional. Either way, every reviewer an issue names must approve it before it is accepted. |
-| Revise the board | on | Off withholds `update_issue`/`remove_epic`/`remove_issue`, so the board is append-only. |
+| Feature            | Default | What switching it changes                                                                                                                                           |
+| ------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Issue creation     | on      | Off withholds `create_epic`/`create_issue`, leaving that agent read-only access to the board: it still sees the whole board and can wait on issues.                 |
+| Reviewers required | off     | On, `create_issue` requires one or more `reviewers`. Off, naming them is optional. Either way, every reviewer an issue names must approve it before it is accepted. |
+| Revise the board   | on      | Off withholds `update_issue`/`remove_epic`/`remove_issue`, so the board is append-only.                                                                             |
 
 ## Tools and parameters
 
 Board tools: `create_epic`, `create_issue`, `update_issue`,
 `set_issue_blocked_by`, `remove_epic`, `remove_issue`, and `wait_for_issue`.
 
-| Param | Meaning |
-| --- | --- |
-| `mergeAgentId` | The id of the shell-capable agent gg dispatches to resolve a conflicted merge of an accepted issue's worktree. |
-| `maxEpics` | Maximum epics on the board. |
-| `maxIssues` | Maximum issues on the board. |
-| `maxRetries` | Re-dispatches of a failed assignment before the issue is marked failed; may be 0 for one attempt only. A review round is not a retry. |
-| `reviewers` | The Reviewers required feature above. Optional: absent, an issue names reviewers or leaves them out as its author chooses. |
+| Param          | Meaning                                                                                                                               |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `mergeAgentId` | The id of the shell-capable agent gg dispatches to resolve a conflicted merge of an accepted issue's worktree.                        |
+| `maxEpics`     | Maximum epics on the board.                                                                                                           |
+| `maxIssues`    | Maximum issues on the board.                                                                                                          |
+| `maxRetries`   | Re-dispatches of a failed assignment before the issue is marked failed; may be 0 for one attempt only. A review round is not a retry. |
+| `reviewers`    | The Reviewers required feature above. Optional: absent, an issue names reviewers or leaves them out as its author chooses.            |
 
 An enabled project-management capability writes every param but `reviewers`. An
 absent one of those five, and any param carrying a value gg cannot honour exactly
@@ -266,9 +266,9 @@ set.
 A run keeps **one** board, so four of those params configure the run rather than
 the agent that wrote them: `mergeAgentId` and the three ceilings. gg reads them
 off the first profile with the capability switched on, and a second
-board-carrying profile that declares a *different* figure refuses the launch —
+board-carrying profile that declares a _different_ figure refuses the launch —
 the document would say two things and the run can only do one. Every such profile
-writing the *same* figure is the ordinary shape, and is what an editor offering
+writing the _same_ figure is the ordinary shape, and is what an editor offering
 the params per agent produces. `reviewers` is genuinely per-agent: it decides
 what each filer must name.
 

@@ -29,14 +29,27 @@ export class PlacementGhost {
       depthWrite: false,
       side: THREE.DoubleSide,
     });
-    const fill = new THREE.Mesh(new THREE.PlaneGeometry(BUILD_CELL_SIZE, BUILD_CELL_SIZE), this.fillMat);
+    const fill = new THREE.Mesh(
+      new THREE.PlaneGeometry(BUILD_CELL_SIZE, BUILD_CELL_SIZE),
+      this.fillMat,
+    );
     fill.rotation.x = -Math.PI / 2;
     fill.position.y = 0.6;
     this.group.add(fill);
 
-    this.lineMat = new THREE.LineBasicMaterial({ color: this.valid, transparent: true, opacity: 0.9 });
+    this.lineMat = new THREE.LineBasicMaterial({
+      color: this.valid,
+      transparent: true,
+      opacity: 0.9,
+    });
     const box = new THREE.LineSegments(
-      new THREE.EdgesGeometry(new THREE.BoxGeometry(BUILD_CELL_SIZE * 0.7, GHOST_HEIGHT, BUILD_CELL_SIZE * 0.7)),
+      new THREE.EdgesGeometry(
+        new THREE.BoxGeometry(
+          BUILD_CELL_SIZE * 0.7,
+          GHOST_HEIGHT,
+          BUILD_CELL_SIZE * 0.7,
+        ),
+      ),
       this.lineMat,
     );
     box.position.y = GHOST_HEIGHT / 2;

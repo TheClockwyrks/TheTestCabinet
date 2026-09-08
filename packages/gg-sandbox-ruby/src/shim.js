@@ -100,7 +100,8 @@ globalThis.__ggWire = {
  * @returns {{ operation: string, code: string, message: string }} the failure `GG::Wire` raises
  */
 globalThis.__ggFailure = function (operation, thrown) {
-  const nested = thrown === null || thrown === undefined ? undefined : thrown.payload;
+  const nested =
+    thrown === null || thrown === undefined ? undefined : thrown.payload;
   for (const candidate of [thrown, nested]) {
     if (candidate === null || typeof candidate !== "object") continue;
     if (
@@ -155,7 +156,8 @@ function describe(thrown) {
   // from another realm, so `instanceof` answers false and the message — the only line that says
   // what went wrong — is lost.
   const name = typeof thrown.name === "string" ? thrown.name : undefined;
-  const message = typeof thrown.message === "string" ? thrown.message : undefined;
+  const message =
+    typeof thrown.message === "string" ? thrown.message : undefined;
   if (name !== undefined && message !== undefined) return `${name}: ${message}`;
   if (message !== undefined) return message;
   try {
@@ -203,7 +205,10 @@ function attachStreams() {
 
   for (const name of ["STDOUT", "STDERR"]) {
     try {
-      const stream = Opal.const_get_qualified(Opal.const_get_relative([], "Object"), name);
+      const stream = Opal.const_get_qualified(
+        Opal.const_get_relative([], "Object"),
+        name,
+      );
       stream["$write_proc="](write);
     } catch {
       // Deliberately empty. A runtime that has renamed its streams is one whose programs log
@@ -234,12 +239,27 @@ function attachStreams() {
  * execution deadline reaches it like any other runaway — which is what a ceiling is for.
  */
 const DENIED_GLOBALS = [
-  ["setTimeout", "there is no event loop, so a scheduled callback would never run"],
-  ["setInterval", "there is no event loop, so a scheduled callback would never run"],
-  ["clearTimeout", "there is no event loop, so a scheduled callback would never run"],
-  ["clearInterval", "there is no event loop, so a scheduled callback would never run"],
+  [
+    "setTimeout",
+    "there is no event loop, so a scheduled callback would never run",
+  ],
+  [
+    "setInterval",
+    "there is no event loop, so a scheduled callback would never run",
+  ],
+  [
+    "clearTimeout",
+    "there is no event loop, so a scheduled callback would never run",
+  ],
+  [
+    "clearInterval",
+    "there is no event loop, so a scheduled callback would never run",
+  ],
   ["queueMicrotask", "deferred work is not part of your program's result"],
-  ["requestAnimationFrame", "there is no event loop, so a scheduled callback would never run"],
+  [
+    "requestAnimationFrame",
+    "there is no event loop, so a scheduled callback would never run",
+  ],
   ["fetch", "this program's runtime is built without an HTTP client"],
 ];
 
@@ -252,7 +272,11 @@ const DENIED_GLOBALS = [
  */
 function replaceGlobal(name, value) {
   try {
-    Object.defineProperty(globalThis, name, { value, writable: true, configurable: true });
+    Object.defineProperty(globalThis, name, {
+      value,
+      writable: true,
+      configurable: true,
+    });
   } catch {
     // Deliberately empty: one unreplaceable name must not take the whole turn down.
   }
@@ -308,7 +332,8 @@ function installEnvironment() {
       throw new Error(`${name} is not available in the sandbox: ${why}`);
     });
   }
-  const emit = (args) => feedback.log(args.map((arg) => renderLog(arg)).join(" "));
+  const emit = (args) =>
+    feedback.log(args.map((arg) => renderLog(arg)).join(" "));
   const sink = {
     log: (...args) => emit(args),
     info: (...args) => emit(args),
@@ -391,7 +416,8 @@ function evaluateUnit(source, unit) {
  * through is not the map it was compiled with.
  */
 function firstFrameIn(thrown, unit) {
-  const stack = thrown === null || thrown === undefined ? undefined : thrown.stack;
+  const stack =
+    thrown === null || thrown === undefined ? undefined : thrown.stack;
   if (typeof stack !== "string") return undefined;
   // `unit` is one of this file's own constants, so it carries no regular-expression syntax.
   const marker = new RegExp(`${unit}:(\\d+):(\\d+)`);
@@ -404,7 +430,9 @@ function firstFrameIn(thrown, unit) {
 
 /** Base64 alphabet positions, for the VLQ decoder below. */
 const BASE64 = new Map(
-  [..."ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"].map((c, i) => [c, i]),
+  [..."ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"].map(
+    (c, i) => [c, i],
+  ),
 );
 
 /**
@@ -453,11 +481,16 @@ function decodeMappings(mappings) {
 
 /** The `//# sourceMappingURL=data:…;base64,…` the compile driver appended, decoded, or undefined. */
 function sourceMap(program) {
-  const match = /\/\/# sourceMappingURL=data:[^,]*;base64,([A-Za-z0-9+/=]+)\s*$/.exec(program);
+  const match =
+    /\/\/# sourceMappingURL=data:[^,]*;base64,([A-Za-z0-9+/=]+)\s*$/.exec(
+      program,
+    );
   if (!match) return undefined;
   try {
     const json = JSON.parse(atob(match[1]));
-    return typeof json.mappings === "string" ? decodeMappings(json.mappings) : undefined;
+    return typeof json.mappings === "string"
+      ? decodeMappings(json.mappings)
+      : undefined;
   } catch {
     return undefined;
   }
@@ -507,8 +540,12 @@ function locate(thrown, program) {
  */
 function report(thrown, program, lib) {
   const location = locate(thrown, program);
-  const klass = thrown && thrown.$$class ? String(thrown.$$class.$$name) : undefined;
-  const message = klass === undefined ? describe(thrown) : String(Opal.send(thrown, "message"));
+  const klass =
+    thrown && thrown.$$class ? String(thrown.$$class.$$name) : undefined;
+  const message =
+    klass === undefined
+      ? describe(thrown)
+      : String(Opal.send(thrown, "message"));
 
   if (klass === "ApiError") {
     const code = String(Opal.send(thrown, "code")).replace(/_/g, "-");
@@ -527,7 +564,9 @@ function report(thrown, program, lib) {
     // that cannot fix its program — which is tokens spent to say something untrue.
     const missing = missingName(thrown);
     if ((missing === "GG" || missing === "lib") && !alreadyLoaded(missing)) {
-      const lend = lib ? ", and `require \"lib\"` for the code you have read" : "";
+      const lend = lib
+        ? ', and `require "lib"` for the code you have read'
+        : "";
       return {
         kind: "unknown-name",
         code: undefined,
@@ -584,10 +623,12 @@ globalThis.__ggBindModules = function () {
       namespace = evaluateUnit(module.source, moduleUnit(module.name));
       Opal.send(namespace, "extend", [namespace]);
     } catch (thrown) {
-      const klass = thrown && thrown.$$class ? `${String(thrown.$$class.$$name)}: ` : "";
-      const message = thrown && thrown.$$class
-        ? String(Opal.send(thrown, "message"))
-        : describe(thrown);
+      const klass =
+        thrown && thrown.$$class ? `${String(thrown.$$class.$$name)}: ` : "";
+      const message =
+        thrown && thrown.$$class
+          ? String(Opal.send(thrown, "message"))
+          : describe(thrown);
       feedback.reportModuleError(module.name, `${klass}${message}`);
       namespace = Opal.send(Opal.const_get_relative([], "Module"), "new");
     }

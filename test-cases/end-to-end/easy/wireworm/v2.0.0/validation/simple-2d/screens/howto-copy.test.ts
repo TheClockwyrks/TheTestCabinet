@@ -24,7 +24,7 @@ import {
   captureStill,
   createHarness,
   drawFrame,
-  drawnText,
+  drawnTextForms,
   type Harness,
 } from "../harness";
 
@@ -56,7 +56,9 @@ it("names SPACE, ARROWS and WASD as standalone words", async () => {
   const drawn = await drawFrame(h);
   captureStill(h, "howto");
 
-  const texts = drawnText(drawn);
+  // Both as the calls split the copy and as the runs it spells, because each
+  // key is held to a boundary on both sides (`drawnTextForms`).
+  const texts = drawnTextForms(drawn);
   assertGreaterThan(texts.length, 0, "the how-to screen draws text");
   for (const word of KEY_WORDS) {
     const standalone = new RegExp(`\\b${word}\\b`, "i");

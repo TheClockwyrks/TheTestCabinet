@@ -13,12 +13,12 @@ import { assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,
-  drewText,
   driveCourse,
   resetTo,
   startCampaign,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 import { CAMPAIGN_LENGTH } from "../notation";
 
 let h: Harness;

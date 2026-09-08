@@ -30,12 +30,7 @@
           "type": "integer"
         }
       },
-      "required": [
-        "width",
-        "height",
-        "border_x",
-        "walls"
-      ],
+      "required": ["width", "height", "border_x", "walls"],
       "type": "object"
     },
     "EnemyAgentView": {
@@ -109,11 +104,7 @@
           "type": "integer"
         }
       },
-      "required": [
-        "x",
-        "y",
-        "active"
-      ],
+      "required": ["x", "y", "active"],
       "type": "object"
     },
     "LargeSeedView": {
@@ -254,10 +245,7 @@
           "type": "integer"
         }
       },
-      "required": [
-        "red",
-        "blue"
-      ],
+      "required": ["red", "blue"],
       "type": "object"
     },
     "SeedsRemaining": {
@@ -276,10 +264,7 @@
           "type": "integer"
         }
       },
-      "required": [
-        "red_half",
-        "blue_half"
-      ],
+      "required": ["red_half", "blue_half"],
       "type": "object"
     },
     "Team": {

@@ -19,23 +19,23 @@ the window a run is measured against.
 Every contribution to the window is tagged with one source. The console draws
 one band per source, in this fixed order.
 
-| Band | What it holds |
-| --- | --- |
-| System | The system prompt and gg's own notices. |
-| User prompt | The build prompt the agent was given. |
-| Assistant | The agent's own turns: its text, its tool calls, its programs. |
-| Tool output | The results of tools a tool-calling agent requested. |
-| Compiler errors | A program that failed to compile, carrying the compiler's error. |
-| Runtime errors | A program that compiled and then threw, or that the sandbox stopped. |
-| File views | The contents of files read into the window. |
-| Agent views | Material a program composed and opened for itself, keyed by label. |
-| Documentation | The documentation views an agent opened, keyed by name, and the ones using a code skill or memory opened from its module. |
-| Doc search | The agent's last documentation search, and the opening turn's listing of the modules its configuration names. |
-| Skills | The [skills](/gg/skills/) shown and used. |
-| Memories | The [memories](/gg/memories/) in play. |
-| Task list | The [task](/gg/tasks/) list. |
-| Board | The [project board](/gg/project-management/). |
-| History | Prior-turn material attributable to no more specific source. |
+| Band            | What it holds                                                                                                             |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| System          | The system prompt and gg's own notices.                                                                                   |
+| User prompt     | The build prompt the agent was given.                                                                                     |
+| Assistant       | The agent's own turns: its text, its tool calls, its programs.                                                            |
+| Tool output     | The results of tools a tool-calling agent requested.                                                                      |
+| Compiler errors | A program that failed to compile, carrying the compiler's error.                                                          |
+| Runtime errors  | A program that compiled and then threw, or that the sandbox stopped.                                                      |
+| File views      | The contents of files read into the window.                                                                               |
+| Agent views     | Material a program composed and opened for itself, keyed by label.                                                        |
+| Documentation   | The documentation views an agent opened, keyed by name, and the ones using a code skill or memory opened from its module. |
+| Doc search      | The agent's last documentation search, and the opening turn's listing of the modules its configuration names.             |
+| Skills          | The [skills](/gg/skills/) shown and used.                                                                                 |
+| Memories        | The [memories](/gg/memories/) in play.                                                                                    |
+| Task list       | The [task](/gg/tasks/) list.                                                                                              |
+| Board           | The [project board](/gg/project-management/).                                                                             |
+| History         | Prior-turn material attributable to no more specific source.                                                              |
 
 Token counts are estimates. Exact per-provider counts are unavailable across
 providers, so every item is counted with one BPE tokenizer as a documented

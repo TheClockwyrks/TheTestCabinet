@@ -80,9 +80,10 @@ describe("the TCQ conformance fixture", () => {
     expect(fixture.cases.length).toBeGreaterThan(0);
     for (const testCase of fixture.cases) {
       for (const key of Object.keys(testCase)) {
-        expect(CASE_KEYS.has(key), `unknown key ${key} on case ${testCase.name}`).toBe(
-          true,
-        );
+        expect(
+          CASE_KEYS.has(key),
+          `unknown key ${key} on case ${testCase.name}`,
+        ).toBe(true);
       }
       for (const key of Object.keys(testCase.expect)) {
         expect(
@@ -98,7 +99,10 @@ describe("the TCQ conformance fixture", () => {
           testCase.expect.columns !== undefined,
         `${testCase.name}: a case must assert documents, buckets or columns`,
       ).toBe(true);
-      expect(testCase.why.length, `${testCase.name}: every case states why`).toBeGreaterThan(0);
+      expect(
+        testCase.why.length,
+        `${testCase.name}: every case states why`,
+      ).toBeGreaterThan(0);
     }
   });
 

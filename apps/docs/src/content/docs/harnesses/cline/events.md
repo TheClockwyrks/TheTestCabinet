@@ -36,19 +36,19 @@ reasoning reported as part of the agent message.
 
 ## Normalized mapping
 
-| Raw record | Normalized event |
-| --- | --- |
-| `hook_event` | consumed |
-| `run_result` | consumed; carries the session usage totals read for [metrics](/harnesses/cline/metrics/) |
-| `agent_event` → `iteration_start`, `iteration_end`, `usage`, `done` | consumed |
-| `agent_event` → `content_start` | consumed; records the tool input or the streaming delta |
-| `agent_event` → `content_end` (`text`) | [agent](/components/core/events/#agent-message) message, from `text` or `content` |
-| `agent_event` → `content_end` (`reasoning`, `thinking`) | [reasoning](/components/core/events/#reasoning), from `text` or `content` |
-| `agent_event` → `content_end` (`tool`) | the events its tool classifies to (see [Tool mapping](#tool-mapping)) |
-| `say` `text`, `say` `completion_result`, `ask` `followup` | [agent](/components/core/events/#agent-message) message when it carries text |
-| `say` `reasoning` | [reasoning](/components/core/events/#reasoning) |
-| `say` `error`, `say` `api_req_failed` | [error](/components/core/events/#harness-error) |
-| an `agent_event` with no nested `event`, an unrecognized `contentType`, say/ask tool activity, anything else | [unknown](/components/core/events/#unknown) |
+| Raw record                                                                                                   | Normalized event                                                                         |
+| ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- |
+| `hook_event`                                                                                                 | consumed                                                                                 |
+| `run_result`                                                                                                 | consumed; carries the session usage totals read for [metrics](/harnesses/cline/metrics/) |
+| `agent_event` → `iteration_start`, `iteration_end`, `usage`, `done`                                          | consumed                                                                                 |
+| `agent_event` → `content_start`                                                                              | consumed; records the tool input or the streaming delta                                  |
+| `agent_event` → `content_end` (`text`)                                                                       | [agent](/components/core/events/#agent-message) message, from `text` or `content`        |
+| `agent_event` → `content_end` (`reasoning`, `thinking`)                                                      | [reasoning](/components/core/events/#reasoning), from `text` or `content`                |
+| `agent_event` → `content_end` (`tool`)                                                                       | the events its tool classifies to (see [Tool mapping](#tool-mapping))                    |
+| `say` `text`, `say` `completion_result`, `ask` `followup`                                                    | [agent](/components/core/events/#agent-message) message when it carries text             |
+| `say` `reasoning`                                                                                            | [reasoning](/components/core/events/#reasoning)                                          |
+| `say` `error`, `say` `api_req_failed`                                                                        | [error](/components/core/events/#harness-error)                                          |
+| an `agent_event` with no nested `event`, an unrecognized `contentType`, say/ask tool activity, anything else | [unknown](/components/core/events/#unknown)                                              |
 
 A `content_end` whose text is empty emits nothing. A line that fails to parse as
 JSON becomes a [warning](/components/core/events/#warning), so the stream stays
@@ -58,13 +58,13 @@ lossless.
 
 A `tool` `content_end` is classified by its `toolName`:
 
-| Cline tool | Event |
-| --- | --- |
-| `run_commands`, `execute_command`, `bash` | [command](/components/core/events/#command), one per command in a `commands` array or one for a single command string |
-| `read_files`, `read_file` | [read](/components/core/events/#file-read), one per file in a `files` array or one for a single path |
-| `editor`, `write_to_file`, `replace_in_file`, `new_rule` | [write](/components/core/events/#file-write) |
-| `apply_patch` | one [write](/components/core/events/#file-write) per file named by the patch markers |
-| `search_files`, `search_codebase` | [search](/components/core/events/#file-search), one per pattern in a `queries` array or one for a single query |
-| `list_files` | [list](/components/core/events/#directory-list) |
-| `skills`, `use_skill` | [skill](/components/core/events/#skill) |
-| any other tool | [unknown](/components/core/events/#unknown) |
+| Cline tool                                               | Event                                                                                                                 |
+| -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `run_commands`, `execute_command`, `bash`                | [command](/components/core/events/#command), one per command in a `commands` array or one for a single command string |
+| `read_files`, `read_file`                                | [read](/components/core/events/#file-read), one per file in a `files` array or one for a single path                  |
+| `editor`, `write_to_file`, `replace_in_file`, `new_rule` | [write](/components/core/events/#file-write)                                                                          |
+| `apply_patch`                                            | one [write](/components/core/events/#file-write) per file named by the patch markers                                  |
+| `search_files`, `search_codebase`                        | [search](/components/core/events/#file-search), one per pattern in a `queries` array or one for a single query        |
+| `list_files`                                             | [list](/components/core/events/#directory-list)                                                                       |
+| `skills`, `use_skill`                                    | [skill](/components/core/events/#skill)                                                                               |
+| any other tool                                           | [unknown](/components/core/events/#unknown)                                                                           |

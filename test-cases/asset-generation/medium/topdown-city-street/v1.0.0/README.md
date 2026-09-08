@@ -13,17 +13,17 @@ reviewed subjectively against it.
 The 96×96 image is a 3×3 grid of nine 32×32 tiles a top-down game slices apart
 and repeats:
 
-| Cell | Tile |
-| --- | --- |
-| Top-left | Plain asphalt road |
-| Top-center | Road with a dashed center line |
-| Top-right | Zebra crosswalk |
-| Mid-left | Concrete sidewalk |
-| Mid-center | Grass verge |
-| Mid-right | Flat rooftop with a small AC unit |
-| Bottom-left | Parking-lot patch with a painted stall line |
-| Bottom-center | Manhole-cover road tile |
-| Bottom-right | Curb / sidewalk-to-road transition |
+| Cell          | Tile                                        |
+| ------------- | ------------------------------------------- |
+| Top-left      | Plain asphalt road                          |
+| Top-center    | Road with a dashed center line              |
+| Top-right     | Zebra crosswalk                             |
+| Mid-left      | Concrete sidewalk                           |
+| Mid-center    | Grass verge                                 |
+| Mid-right     | Flat rooftop with a small AC unit           |
+| Bottom-left   | Parking-lot patch with a painted stall line |
+| Bottom-center | Manhole-cover road tile                     |
+| Bottom-right  | Curb / sidewalk-to-road transition          |
 
 The medium difficulty comes from the tileset demands. Every tile is strictly
 top-down, flat markings on flat ground with no perspective, height, or side
@@ -44,15 +44,15 @@ schema; the binary's `--help` is the contract.
 
 ## Contents
 
-| Path | Seeded to run? | Purpose |
-| --- | --- | --- |
-| `specs/brief.md` | Yes | The self-contained drawing brief (grid, tiles, palette). |
-| `prompt.hbs` | No | Rendered into the model's prompt. |
-| `test-case.toml` | No | Manifest: canvas, tool, output, domain. |
-| `variants/` | No | One TOML file per variant, listed in `variants`. |
-| `description.md` | No | Site blurb. |
-| `changelog.md` | No | This version's changelog entry. |
-| `README.md` | No | This overview. |
+| Path             | Seeded to run? | Purpose                                                  |
+| ---------------- | -------------- | -------------------------------------------------------- |
+| `specs/brief.md` | Yes            | The self-contained drawing brief (grid, tiles, palette). |
+| `prompt.hbs`     | No             | Rendered into the model's prompt.                        |
+| `test-case.toml` | No             | Manifest: canvas, tool, output, domain.                  |
+| `variants/`      | No             | One TOML file per variant, listed in `variants`.         |
+| `description.md` | No             | Site blurb.                                              |
+| `changelog.md`   | No             | This version's changelog entry.                          |
+| `README.md`      | No             | This overview.                                           |
 
 A run receives the seeded brief, the `draw` binary, and a blank 96×96 canvas
 with an empty action log. Core regenerates the recorded operations into

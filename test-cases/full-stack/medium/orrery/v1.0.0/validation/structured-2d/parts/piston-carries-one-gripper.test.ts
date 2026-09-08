@@ -34,7 +34,12 @@
 // other spoke holds nothing, though a mote was waiting on each of them.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertLength, assertNotNull, assertNull } from "../assert";
+import {
+  assertEqual,
+  assertLength,
+  assertNotNull,
+  assertNull,
+} from "../assert";
 import { ARM_MAX_LEN, ARM_MIN_LEN } from "../constants";
 import { armPart, solution } from "../formats";
 import { BARE, ORIGIN } from "../fixtures";

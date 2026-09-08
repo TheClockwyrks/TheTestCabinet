@@ -64,10 +64,10 @@ a few minutes of wall clock. The outputs land under
 files per take, and the last line of the log names the winner. Copy that take's
 files into `showcase/base/`:
 
-| Take file | Committed as |
-| --- | --- |
-| `take-NN.json.gz` | `gameplay.json.gz` |
-| `take-NN-crowd.png` | `the-crowd-closes-in.png` |
+| Take file             | Committed as                  |
+| --------------------- | ----------------------------- |
+| `take-NN.json.gz`     | `gameplay.json.gz`            |
+| `take-NN-crowd.png`   | `the-crowd-closes-in.png`     |
 | `take-NN-levelup.png` | `the-lamp-burns-brighter.png` |
 
 ## Why every take is recorded
@@ -112,13 +112,13 @@ should carry a `$opaque` argument.
 
 ## The knobs
 
-| Variable | Default | What it does |
-| --- | --- | --- |
-| `TCAB_SHOWCASE_MAX_REPLAY_FRAMES` | `300` | The harness's replay cap, patched above to read it. At `2500` a take of this length is kept whole, at 60 fps, with no thinning. |
-| `TCAB_SHOWCASE_TAKES` | `8` | How many nights to play and judge. |
-| `TCAB_SHOWCASE_LEAD_SECONDS` | `105` | Run-clock seconds played before the recorder starts. |
-| `TCAB_SHOWCASE_MIN_SECONDS` | `24` | The clip ends at the first kill past this. |
-| `TCAB_SHOWCASE_MAX_SECONDS` | `30` | The take is abandoned here, wherever it had got to. |
+| Variable                          | Default | What it does                                                                                                                    |
+| --------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `TCAB_SHOWCASE_MAX_REPLAY_FRAMES` | `300`   | The harness's replay cap, patched above to read it. At `2500` a take of this length is kept whole, at 60 fps, with no thinning. |
+| `TCAB_SHOWCASE_TAKES`             | `8`     | How many nights to play and judge.                                                                                              |
+| `TCAB_SHOWCASE_LEAD_SECONDS`      | `105`   | Run-clock seconds played before the recorder starts.                                                                            |
+| `TCAB_SHOWCASE_MIN_SECONDS`       | `24`    | The clip ends at the first kill past this.                                                                                      |
+| `TCAB_SHOWCASE_MAX_SECONDS`       | `30`    | The take is abandoned here, wherever it had got to.                                                                             |
 
 A take is judged on what makes a watchable clip of this game: how much of the
 crowd is on screen at once, kills taken out of it, level-ups taken and the
@@ -130,9 +130,9 @@ ending on the beat a kill gives.
 The take ran at `TCAB_SHOWCASE_TAKES=10`, at the default bounds and a
 `2500`-frame cap, so the replay is whole and unthinned: 1538 frames at 60 fps.
 
-| Winning take | What it plays |
-| --- | --- |
-| 1 | 25.6 s from `1:45`, 45 killed, two level-ups taken to level 7 and a sixth tool on the HUD, 19 enemies on screen at the peak, and 92 of 100 health left at the end |
+| Winning take | What it plays                                                                                                                                                     |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1            | 25.6 s from `1:45`, 45 killed, two level-ups taken to level 7 and a sixth tool on the HUD, 19 enemies on screen at the peak, and 92 of 100 health left at the end |
 
 Seven of the ten takes survived the lead-in; the three that did not fell
 between `0:47` and `1:21` and scored far below every take that reached the

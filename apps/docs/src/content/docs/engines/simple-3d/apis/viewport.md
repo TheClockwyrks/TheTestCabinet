@@ -21,13 +21,13 @@ interface Viewport {
 }
 ```
 
-| Field | Meaning |
-| --- | --- |
-| `width` | The logical design width. A game draws in `0..width`. |
-| `height` | The logical design height. A game draws in `0..height`. |
-| `scale` | Device pixels per logical unit, with the device pixel ratio folded in. |
-| `offsetX` | The left letterbox bar, in device pixels. |
-| `offsetY` | The top letterbox bar, in device pixels. |
+| Field     | Meaning                                                                |
+| --------- | ---------------------------------------------------------------------- |
+| `width`   | The logical design width. A game draws in `0..width`.                  |
+| `height`  | The logical design height. A game draws in `0..height`.                |
+| `scale`   | Device pixels per logical unit, with the device pixel ratio folded in. |
+| `offsetX` | The left letterbox bar, in device pixels.                              |
+| `offsetY` | The top letterbox bar, in device pixels.                               |
 
 `scale` and both offsets are device pixels. The CSS-pixel figure is `scale`
 divided by the device pixel ratio.
@@ -154,10 +154,10 @@ the backing store then feeds into the next measurement, and the element grows by
 the device pixel ratio on every frame. Pinning the measured size breaks that
 loop.
 
-| Measurement | The engine writes |
-| --- | --- |
+| Measurement                                                              | The engine writes                                                                                 |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
 | The reported CSS size equals the size the backing-store attributes imply | `style.width` and `style.height` in pixels, equal to the measurement, alongside the backing store |
-| The page sized the element, inline or through a stylesheet | The backing store alone |
+| The page sized the element, inline or through a stylesheet               | The backing store alone                                                                           |
 
 A canvas styled to follow its container therefore keeps following it at whatever
 size the container currently has, and a canvas dropped into a page that styles

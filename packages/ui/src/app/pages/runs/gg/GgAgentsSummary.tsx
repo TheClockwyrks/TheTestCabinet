@@ -6,10 +6,7 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { SegmentedControl, type SegmentedOption } from "@clockwyrks/ui";
-import type {
-  GgAgentStatus,
-  GgCapabilitySet,
-} from "@clockwyrks/run-record/gg";
+import type { GgAgentStatus, GgCapabilitySet } from "@clockwyrks/run-record/gg";
 import dash from "./GgDashboard.module.scss";
 import styles from "./GgAgentsSummary.module.scss";
 import {

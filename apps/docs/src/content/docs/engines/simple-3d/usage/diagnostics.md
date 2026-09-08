@@ -31,9 +31,12 @@ const game: Game<State, null> = {
     api.diagnostics.register("placed", (s) => s.placed);
     api.diagnostics.register(
       "hook",
-      (s) => `${s.hook.x.toFixed(1)}, ${s.hook.y.toFixed(1)}, ${s.hook.z.toFixed(1)}`,
+      (s) =>
+        `${s.hook.x.toFixed(1)}, ${s.hook.y.toFixed(1)}, ${s.hook.z.toFixed(1)}`,
     );
-    api.diagnostics.register("speed", (s) => Math.hypot(s.hook.vx, s.hook.vy, s.hook.vz));
+    api.diagnostics.register("speed", (s) =>
+      Math.hypot(s.hook.vx, s.hook.vy, s.hook.vz),
+    );
     api.diagnostics.register("running", (s) => s.phase === "run");
 
     return [
@@ -82,7 +85,10 @@ reduced to one of the three inside the source, so a position is formatted and a
 collection is counted.
 
 ```ts
-api.diagnostics.register("hud", (s) => `${s.placed} placed, budget ${s.budget}`);
+api.diagnostics.register(
+  "hud",
+  (s) => `${s.placed} placed, budget ${s.budget}`,
+);
 api.diagnostics.register("over", (s) => s.phase === "over");
 ```
 
@@ -97,7 +103,11 @@ interface Timing {
   readonly fps: number;
 }
 
-function update(state: DeepReadonly<Timing>, api: UpdateApi, dt: number): Timing {
+function update(
+  state: DeepReadonly<Timing>,
+  api: UpdateApi,
+  dt: number,
+): Timing {
   return { ...state, fps: Math.round(1000 / api.frame().lastDeltaMs) };
 }
 ```

@@ -9,13 +9,13 @@ below carries the name this specification gives it.
 The Launch Pad panel shows the rocket as a checklist of five components, built in
 order. Each becomes available once the one before it is installed.
 
-| Order | Component | Id | Credits | Material |
-| --- | --- | --- | --- | --- |
-| 1 | Hull Frame | `hull-frame` | `4000` | — |
-| 2 | Fuel Cells | `fuel-cells` | `7500` | — |
-| 3 | Guidance Unit | `guidance` | `3000` | one Resonite |
-| 4 | Thruster Assembly | `thruster` | `6000` | one Cryenite |
-| 5 | Ignition Core | `ignition` | `5000` | one Core Sample |
+| Order | Component         | Id           | Credits | Material        |
+| ----- | ----------------- | ------------ | ------- | --------------- |
+| 1     | Hull Frame        | `hull-frame` | `4000`  | —               |
+| 2     | Fuel Cells        | `fuel-cells` | `7500`  | —               |
+| 3     | Guidance Unit     | `guidance`   | `3000`  | one Resonite    |
+| 4     | Thruster Assembly | `thruster`   | `6000`  | one Cryenite    |
+| 5     | Ignition Core     | `ignition`   | `5000`  | one Core Sample |
 
 `ROCKET_TOTAL_CREDITS` is `25500`, the sum of the five prices.
 

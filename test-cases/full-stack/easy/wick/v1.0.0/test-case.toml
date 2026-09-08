@@ -215,7 +215,7 @@ build = "npm run build"
 # the build's own files alone.
 [toolchain]
 typecheck = "npx tsc --noEmit"
-lint = "npx eslint ."
+lint = "npx eslint . --max-warnings 0"
 format = "npx prettier --check ."
 test = "npx vitest run --coverage"
 
@@ -1049,12 +1049,12 @@ failure_cap = "passable"
 validation = { script = "instrumentation/choose-opens-queued-overlay.test.ts", outputs = [ { id = "queued", name = "The second overlay opened by choose", kind = "image" } ] }
 
 [[review.categories.items]]
-id = "choose-out-of-range-inert"
-title = "choose outside the offers changes nothing"
-description = "On levelup with three offers, choose(3) and choose(-1) each leave the state exactly as it was, the overlay open with its offers and pendingLevelUps unchanged."
+id = "choose-out-of-range-invalid"
+title = "choose outside the offers throws"
+description = "On levelup with three offers, choose(3) and choose(-1) each throw, because an index outside offers names nothing to accept, and each leaves the overlay open with its offers and pendingLevelUps unchanged."
 domains = ["progression"]
 failure_cap = "passable"
-validation = { script = "instrumentation/choose-out-of-range-inert.test.ts", outputs = [ { id = "inert", name = "The overlay untouched by an out-of-range choose", kind = "image" } ] }
+validation = { script = "instrumentation/choose-out-of-range-invalid.test.ts", outputs = [ { id = "refused", name = "The overlay across an out-of-range choose", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "switch-spawning"
@@ -1185,12 +1185,12 @@ failure_cap = "passable"
 validation = { script = "instrumentation/set-hp.test.ts", outputs = [ { id = "posed", name = "Health posed and read back", kind = "image" } ] }
 
 [[review.categories.items]]
-id = "set-hp-above-max-invalid"
-title = "setHp above maxHp throws"
-description = "With maxHp 100, setHp(101) throws and leaves hp as it was, because a value above maxHp is outside the operation's domain."
+id = "set-hp-above-max-applies"
+title = "setHp above maxHp applies the value it was given"
+description = "With maxHp 100, setHp(101) reads back hp 101 and maxHp still 100, maxHp being a live figure ordinary play holds the health under rather than a bound on the pose."
 domains = ["survival"]
 failure_cap = "passable"
-validation = { script = "instrumentation/set-hp-above-max-invalid.test.ts", outputs = [ { id = "refused", name = "The refused pose", kind = "image" } ] }
+validation = { script = "instrumentation/set-hp-above-max-applies.test.ts", outputs = [ { id = "posed", name = "The health posed past the live maximum", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "set-level"
@@ -1473,12 +1473,12 @@ failure_cap = "passable"
 validation = { script = "instrumentation/set-enemy-hp-rejects-zero.test.ts", outputs = [ { id = "refused", name = "The state across the refused call", kind = "image" } ] }
 
 [[review.categories.items]]
-id = "set-enemy-hp-rejects-above-max"
-title = "setEnemyHp throws above maxHp"
-description = "On a hound with maxHp 120, setEnemyHp(id, 121) throws and leaves hp as it was."
+id = "set-enemy-hp-above-max-applies"
+title = "setEnemyHp above maxHp applies the value it was given"
+description = "On a hound with maxHp 120, setEnemyHp(id, 121) reads back hp 121 with maxHp still 120, and setEnemyHp(id, 0) still throws, the lower bound being a figure the specification fixes."
 domains = ["survival"]
 failure_cap = "passable"
-validation = { script = "instrumentation/set-enemy-hp-rejects-above-max.test.ts", outputs = [ { id = "refused", name = "The state across the refused call", kind = "image" } ] }
+validation = { script = "instrumentation/set-enemy-hp-above-max-applies.test.ts", outputs = [ { id = "posed", name = "The enemy health posed past the live maximum", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "set-enemy-heading"
@@ -1857,44 +1857,44 @@ failure_cap = "passable"
 validation = { script = "instrumentation/advance-not-above-zero.test.ts", engines = ["none"], outputs = [ { id = "refused", name = "The state across the refused call", kind = "image" } ] }
 
 [[review.categories.items]]
-id = "set-hp-off-a-run-screen-inert"
-title = "setHp called off a run screen changes nothing"
-description = "setHp(10) issued on title leaves the state exactly as it was, setHp applying on a run screen alone."
+id = "set-hp-off-a-run-screen-applies"
+title = "setHp called off a run screen sets the health anyway"
+description = "setHp(10) issued on title reads back hp 10 with the screen still title, no operation asking how the caller got to it."
 domains = ["survival"]
 failure_cap = "passable"
-validation = { script = "instrumentation/set-hp-off-a-run-screen-inert.test.ts", outputs = [ { id = "inert", name = "The state untouched by the off-screen call", kind = "image" } ] }
+validation = { script = "instrumentation/set-hp-off-a-run-screen-applies.test.ts", outputs = [ { id = "posed", name = "The health posed from the title", kind = "image" } ] }
 
 [[review.categories.items]]
-id = "spawn-enemy-off-a-run-screen-inert"
-title = "spawnEnemy called off a run screen changes nothing"
-description = "spawnEnemy('moth', 0, 0) issued on title leaves the state exactly as it was, spawnEnemy applying on playing and paused alone."
+id = "spawn-enemy-off-a-run-screen-applies"
+title = "spawnEnemy called off a run screen puts the enemy on the field anyway"
+description = "spawnEnemy('moth', 0, 0) issued on title reads back one moth on the field with the screen still title, no operation asking how the caller got to it."
 domains = ["survival"]
 failure_cap = "passable"
-validation = { script = "instrumentation/spawn-enemy-off-a-run-screen-inert.test.ts", outputs = [ { id = "inert", name = "The state untouched by the off-screen call", kind = "image" } ] }
+validation = { script = "instrumentation/spawn-enemy-off-a-run-screen-applies.test.ts", outputs = [ { id = "posed", name = "The enemy posed from the title", kind = "image" } ] }
 
 [[review.categories.items]]
-id = "set-tick-off-a-run-screen-inert"
-title = "setTick called off a run screen changes nothing"
-description = "setTick(100) issued on title leaves the state exactly as it was, setTick applying on a run screen alone."
+id = "set-tick-off-a-run-screen-applies"
+title = "setTick called off a run screen moves the run clock anyway"
+description = "setTick(100) issued on title reads back tick 100 and time 100 / TICK_HZ with the screen still title, no operation asking how the caller got to it."
 domains = ["survival"]
 failure_cap = "passable"
-validation = { script = "instrumentation/set-tick-off-a-run-screen-inert.test.ts", outputs = [ { id = "inert", name = "The state untouched by the off-screen call", kind = "image" } ] }
+validation = { script = "instrumentation/set-tick-off-a-run-screen-applies.test.ts", outputs = [ { id = "posed", name = "The clock posed from the title", kind = "image" } ] }
 
 [[review.categories.items]]
-id = "set-weapon-off-a-run-screen-inert"
-title = "setWeapon called off a run screen changes nothing"
-description = "setWeapon(0, 'pin', 1) issued on title leaves the state exactly as it was, setWeapon applying on a run screen alone."
+id = "set-weapon-off-a-run-screen-applies"
+title = "setWeapon called off a run screen fills the slot anyway"
+description = "setWeapon(0, 'pin', 1) issued on title reads back Pin at level 1 in slot 0 with the screen still title, no operation asking how the caller got to it."
 domains = ["arsenal"]
 failure_cap = "passable"
-validation = { script = "instrumentation/set-weapon-off-a-run-screen-inert.test.ts", outputs = [ { id = "inert", name = "The state untouched by the off-screen call", kind = "image" } ] }
+validation = { script = "instrumentation/set-weapon-off-a-run-screen-applies.test.ts", outputs = [ { id = "posed", name = "The weapon posed from the title", kind = "image" } ] }
 
 [[review.categories.items]]
-id = "set-player-position-off-a-run-screen-inert"
-title = "setPlayerPosition called off a run screen changes nothing"
-description = "setPlayerPosition(5, 5) issued on levelup leaves the state exactly as it was, setPlayerPosition applying on a run screen alone."
+id = "set-player-position-off-a-run-screen-applies"
+title = "setPlayerPosition called off a run screen moves the lamplighter anyway"
+description = "setPlayerPosition(5, 5) issued over the level-up overlay reads back the lamplighter at (5, 5) with the screen still levelup, no operation asking how the caller got to it."
 domains = ["survival"]
 failure_cap = "passable"
-validation = { script = "instrumentation/set-player-position-off-a-run-screen-inert.test.ts", outputs = [ { id = "inert", name = "The state untouched by the off-screen call", kind = "image" } ] }
+validation = { script = "instrumentation/set-player-position-off-a-run-screen-applies.test.ts", outputs = [ { id = "posed", name = "The position posed from the overlay", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "poses-sound-nothing"

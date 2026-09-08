@@ -41,11 +41,11 @@ A shot is a player bullet, and it leaves the ship's nose.
 Firing is allowed only when all three of the following hold. Otherwise the fire
 action adds nothing.
 
-| Gate | Rule |
-| --- | --- |
+| Gate    | Rule                                                                                                                 |
+| ------- | -------------------------------------------------------------------------------------------------------------------- |
 | Cadence | The fire cooldown is at zero. A shot sets it to `FIRE_INTERVAL` (`0.16`) seconds, and it counts down with game time. |
-| Cap | Fewer than `MAX_PLAYER_BULLETS` (`3`) of the player's bullets are in flight. |
-| Lockout | The fire lockout is at zero. A flip sets it to `FLIP_LOCKOUT` (`0.30`) seconds, and it counts down with game time. |
+| Cap     | Fewer than `MAX_PLAYER_BULLETS` (`3`) of the player's bullets are in flight.                                         |
+| Lockout | The fire lockout is at zero. A flip sets it to `FLIP_LOCKOUT` (`0.30`) seconds, and it counts down with game time.   |
 
 Holding the fire action repeats it at the cadence: a shot leaves every
 `FIRE_INTERVAL` for as long as the action is held and the cap and the lockout allow

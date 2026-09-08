@@ -14,18 +14,18 @@ Every figure below carries the name this specification gives it.
 `PASSIVE_IDS` lists the ten in this order, and `PASSIVES` gives each one its
 display name and its max level.
 
-| Passive | Id | Max level | Per level held |
-| --- | --- | --- | --- |
-| Wick | `wick` | `5` | `+10%` weapon damage |
-| Oil | `oil` | `5` | `−8%` weapon cooldown |
-| Glass | `glass` | `5` | `+10%` area |
-| Brass | `brass` | `3` | `+1` armor |
-| Mirror | `mirror` | `2` | `+1` amount |
-| Bellows | `bellows` | `5` | `+10%` move speed |
-| Tallow | `tallow` | `5` | `+15` max health, and `+15` health when gained |
-| Tinder | `tinder` | `5` | `+0.5` health per second recovery |
-| Soot | `soot` | `5` | `+10%` experience from gems |
-| Lure | `lure` | `5` | `+25%` pickup radius |
+| Passive | Id        | Max level | Per level held                                 |
+| ------- | --------- | --------- | ---------------------------------------------- |
+| Wick    | `wick`    | `5`       | `+10%` weapon damage                           |
+| Oil     | `oil`     | `5`       | `−8%` weapon cooldown                          |
+| Glass   | `glass`   | `5`       | `+10%` area                                    |
+| Brass   | `brass`   | `3`       | `+1` armor                                     |
+| Mirror  | `mirror`  | `2`       | `+1` amount                                    |
+| Bellows | `bellows` | `5`       | `+10%` move speed                              |
+| Tallow  | `tallow`  | `5`       | `+15` max health, and `+15` health when gained |
+| Tinder  | `tinder`  | `5`       | `+0.5` health per second recovery              |
+| Soot    | `soot`    | `5`       | `+10%` experience from gems                    |
+| Lure    | `lure`    | `5`       | `+25%` pickup radius                           |
 
 ## Holding a passive
 
@@ -46,18 +46,18 @@ The ten derived stats are the only place a passive acts. Each is a single
 formula over the levels held, written here with the constants that fix each
 per-level term:
 
-| Term | Constant | Value |
-| --- | --- | --- |
-| Wick damage | `WICK_DAMAGE_PER_LEVEL` | `0.1` |
-| Oil cooldown | `OIL_COOLDOWN_PER_LEVEL` | `0.08` |
-| Glass area | `GLASS_AREA_PER_LEVEL` | `0.1` |
-| Brass armor | `BRASS_ARMOR_PER_LEVEL` | `1` |
-| Mirror amount | `MIRROR_AMOUNT_PER_LEVEL` | `1` |
-| Bellows speed | `BELLOWS_SPEED_PER_LEVEL` | `0.1` |
-| Tallow health | `TALLOW_HP_PER_LEVEL` | `15` |
-| Tinder recovery | `TINDER_RECOVERY_PER_LEVEL` | `0.5` |
-| Soot experience | `SOOT_XP_PER_LEVEL` | `0.1` |
-| Lure pickup | `LURE_PICKUP_PER_LEVEL` | `0.25` |
+| Term            | Constant                    | Value  |
+| --------------- | --------------------------- | ------ |
+| Wick damage     | `WICK_DAMAGE_PER_LEVEL`     | `0.1`  |
+| Oil cooldown    | `OIL_COOLDOWN_PER_LEVEL`    | `0.08` |
+| Glass area      | `GLASS_AREA_PER_LEVEL`      | `0.1`  |
+| Brass armor     | `BRASS_ARMOR_PER_LEVEL`     | `1`    |
+| Mirror amount   | `MIRROR_AMOUNT_PER_LEVEL`   | `1`    |
+| Bellows speed   | `BELLOWS_SPEED_PER_LEVEL`   | `0.1`  |
+| Tallow health   | `TALLOW_HP_PER_LEVEL`       | `15`   |
+| Tinder recovery | `TINDER_RECOVERY_PER_LEVEL` | `0.5`  |
+| Soot experience | `SOOT_XP_PER_LEVEL`         | `0.1`  |
+| Lure pickup     | `LURE_PICKUP_PER_LEVEL`     | `0.25` |
 
 ```
 damageMul   = 1 + WICK_DAMAGE_PER_LEVEL × wick
@@ -116,16 +116,16 @@ lengths are fixed when it is created, with one exception: the Halo and Corona
 aura's radius and a Chandelier lantern's orbit and radius are recomputed on
 every tick from the level and `areaMul` in force on that tick.
 
-| Weapon | Lengths scaled by `areaMul` |
-| --- | --- |
-| Taper, Pyre | slash `width`, slash `height` |
-| Ember, Pin, Beacon, Hail | bolt `radius` |
-| Lantern, Chandelier | `orbit`, lantern `radius` |
-| Halo, Corona | aura `radius` |
-| Oil Splash, Blaze | puddle `radius` |
-| Spark | strike `area` |
-| Shard, Sconce | bolt `radius` |
-| Flare | burst `radius` |
+| Weapon                   | Lengths scaled by `areaMul`   |
+| ------------------------ | ----------------------------- |
+| Taper, Pyre              | slash `width`, slash `height` |
+| Ember, Pin, Beacon, Hail | bolt `radius`                 |
+| Lantern, Chandelier      | `orbit`, lantern `radius`     |
+| Halo, Corona             | aura `radius`                 |
+| Oil Splash, Blaze        | puddle `radius`               |
+| Spark                    | strike `area`                 |
+| Shard, Sconce            | bolt `radius`                 |
+| Flare                    | burst `radius`                |
 
 Every other length a weapon uses is used as written: `SPARK_RANGE`,
 `OIL_SCATTER`, `PIN_SPREAD`, `SHARD_SPREAD`, and `SCONCE_SPREAD`. The

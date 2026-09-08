@@ -32,7 +32,7 @@
 // WHY 561, AND WHY THE OTHER FIGURES ARE POSED TOO. Three digits, so no
 // thousands separator a build is free to write can fall inside the figure and
 // hide it from the reading. specs/ui.md fixes each readout's label and the field
-// it shows and fixes no numeric format, and `showsText` searches the frame's
+// it shows and fixes no numeric format, and `drewTextAnywhere` reads the frame's
 // whole run of text, so the figure under test has to be one no other readout on
 // the screen could be built from: the score is posed to `0`, the level to `4`
 // with its target and level score at `8000`, and the longest chain beside it to
@@ -48,6 +48,7 @@
 // point, and this check keeps clear of it.
 
 import { afterEach, beforeEach, it } from "vitest";
+import { drawnTextLines, drewTextAnywhere } from "../case-harness/text";
 import {
   assertEqual,
   assertGreaterThan,
@@ -72,9 +73,9 @@ import {
   captureStill,
   createHarness,
   loadBoard,
-  showsText,
   swapAndStep,
   writeBoard,
+  type DrawCall,
   type Harness,
 } from "../harness";
 
@@ -109,11 +110,14 @@ let h: Harness;
 
 /**
  * The frame put `wanted` on screen, or the failure names the copy the screen
- * owes beside every string the frame actually drew.
+ * owes beside every run of text the frame actually spelled.
  */
-function requireCopy(drawn: readonly string[], wanted: string): void {
-  if (!showsText(drawn, wanted)) {
-    fail(`the level-clear screen to show ${JSON.stringify(wanted)}`, drawn);
+function requireCopy(frame: readonly DrawCall[], wanted: string): void {
+  if (!drewTextAnywhere(frame, wanted)) {
+    fail(
+      `the level-clear screen to show ${JSON.stringify(wanted)}`,
+      drawnTextLines(frame),
+    );
   }
 }
 
@@ -178,9 +182,9 @@ it("draws the best-move label and the level's best move", async () => {
   );
 
   // One frame, and everything it put on screen. The still is that same frame.
-  const drawn = await h.frameText();
+  const frame = await h.frameCalls();
   captureStill(h, "levelclear");
 
-  requireCopy(drawn, BEST_MOVE_LABEL);
-  requireCopy(drawn, String(POSED_BEST_MOVE));
+  requireCopy(frame, BEST_MOVE_LABEL);
+  requireCopy(frame, String(POSED_BEST_MOVE));
 });

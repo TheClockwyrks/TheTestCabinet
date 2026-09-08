@@ -1,4 +1,4 @@
-**Thunderhead Flak Burst** is the anti-air flak burst from *Thunderhead*, a naval
+**Thunderhead Flak Burst** is the anti-air flak burst from _Thunderhead_, a naval
 fleet-command game. It is the mid-air puff a proximity shell makes when it
 detonates near an aircraft.
 

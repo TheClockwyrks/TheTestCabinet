@@ -30,10 +30,7 @@ import type {
   VerdictStatus,
   WriteupChange,
 } from "@clockwyrks/run-record/review";
-import {
-  GRADE_POINTS,
-  type GradeStatus,
-} from "@clockwyrks/run-stats/scoring";
+import { GRADE_POINTS, type GradeStatus } from "@clockwyrks/run-stats/scoring";
 
 export type {
   AestheticChange,

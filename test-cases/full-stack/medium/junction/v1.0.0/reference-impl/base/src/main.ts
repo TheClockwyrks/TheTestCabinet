@@ -10,14 +10,29 @@
 // `window.__junction` test hook so headless / dev drivers exercise the real core. The
 // simulation is the wasm core; this file owns only presentation and I/O (specs/simulation.md).
 
-import { EDGE_MARGIN, FIXED_STEP, PAN_SPEED, STAGE_H, STAGE_W, VIEW_Y0, VIEW_Y1 } from "./constants";
+import {
+  EDGE_MARGIN,
+  FIXED_STEP,
+  PAN_SPEED,
+  STAGE_H,
+  STAGE_W,
+  VIEW_Y0,
+  VIEW_Y1,
+} from "./constants";
 import { loadAssets } from "./assets";
 import { Audio } from "./audio";
 import { Bursts, Haze } from "./particles";
 import { createGame } from "./sim";
 import { Input } from "./input";
 import { idx, inBounds } from "./grid";
-import { render, setDragAnchor, setMenuIndex, setMuted, setPointer, setRenderTime } from "./render";
+import {
+  render,
+  setDragAnchor,
+  setMenuIndex,
+  setMuted,
+  setPointer,
+  setRenderTime,
+} from "./render";
 import type { Clickable, Overlay, Tool } from "./types";
 
 const ZOOM_STEP = 2; // on-screen px per tile added/removed per wheel notch
@@ -30,7 +45,10 @@ if (!ctx) throw new Error("Junction: 2D canvas context unavailable");
 // ratio. Called before the first frame (and on every resize) so the view is correct on load.
 function resize(): void {
   const dpr = window.devicePixelRatio || 1;
-  const scale = Math.min(window.innerWidth / STAGE_W, window.innerHeight / STAGE_H);
+  const scale = Math.min(
+    window.innerWidth / STAGE_W,
+    window.innerHeight / STAGE_H,
+  );
   const cssW = Math.max(1, Math.round(STAGE_W * scale));
   const cssH = Math.max(1, Math.round(STAGE_H * scale));
   canvas.style.width = `${cssW}px`;
@@ -56,7 +74,12 @@ async function main(): Promise<void> {
   // An in-progress tool drag (zone rectangle / carrier run) — the anchor tile it began on.
   let toolDrag: { tool: Tool; col: number; row: number } | null = null;
   // An in-progress camera drag-pan — the mouse button held and the last pointer position.
-  let pan: { button: number; lastX: number; lastY: number; dist: number } | null = null;
+  let pan: {
+    button: number;
+    lastX: number;
+    lastY: number;
+    dist: number;
+  } | null = null;
 
   // ---- The scripted control surface for headless / dev driving --------
   // Every helper drives the real wasm core through the front-end binding — no fake state.
@@ -64,15 +87,26 @@ async function main(): Promise<void> {
     game,
     audio,
     newCity: (seed?: number) => game.newCity(seed),
-    zoneRect: (kind: "res" | "com" | "ind", c0: number, r0: number, c1: number, r1: number) => game.zoneRect(kind, c0, r0, c1, r1),
-    road: (c0: number, r0: number, c1: number, r1: number) => game.road(c0, r0, c1, r1),
-    rail: (c0: number, r0: number, c1: number, r1: number) => game.rail(c0, r0, c1, r1),
-    wire: (c0: number, r0: number, c1: number, r1: number) => game.wire(c0, r0, c1, r1),
-    pipe: (c0: number, r0: number, c1: number, r1: number) => game.pipe(c0, r0, c1, r1),
+    zoneRect: (
+      kind: "res" | "com" | "ind",
+      c0: number,
+      r0: number,
+      c1: number,
+      r1: number,
+    ) => game.zoneRect(kind, c0, r0, c1, r1),
+    road: (c0: number, r0: number, c1: number, r1: number) =>
+      game.road(c0, r0, c1, r1),
+    rail: (c0: number, r0: number, c1: number, r1: number) =>
+      game.rail(c0, r0, c1, r1),
+    wire: (c0: number, r0: number, c1: number, r1: number) =>
+      game.wire(c0, r0, c1, r1),
+    pipe: (c0: number, r0: number, c1: number, r1: number) =>
+      game.pipe(c0, r0, c1, r1),
     station: (c: number, r: number) => game.station(c, r),
     plant: (c: number, r: number) => game.plant(c, r),
     source: (c: number, r: number) => game.source(c, r),
-    bulldozeRect: (c0: number, r0: number, c1: number, r1: number) => game.bulldozeRect(c0, r0, c1, r1),
+    bulldozeRect: (c0: number, r0: number, c1: number, r1: number) =>
+      game.bulldozeRect(c0, r0, c1, r1),
     setTax: (rate: number) => game.setTax(rate),
     setTreasury: (v: number) => game.setTreasury(v),
     setSpeed: (n: number) => game.setSpeed(n),
@@ -81,7 +115,8 @@ async function main(): Promise<void> {
     advance: (months: number) => game.advance(months),
     snapshot: () => game.snapshot(),
     forceBankruptcy: () => game.forceBankruptcy(),
-    setState: (s: "title" | "howto" | "playing" | "paused" | "bankrupt") => game.setState(s),
+    setState: (s: "title" | "howto" | "playing" | "paused" | "bankrupt") =>
+      game.setState(s),
   };
 
   const gesture = (): void => {
@@ -121,7 +156,8 @@ async function main(): Promise<void> {
     if (button === 2) {
       // Right button: cancel a held tool, and drag to pan the camera.
       if (game.state === "playing" && game.activeTool) game.selectTool(null);
-      if (game.state === "playing") pan = { button: 2, lastX: x, lastY: y, dist: 0 };
+      if (game.state === "playing")
+        pan = { button: 2, lastX: x, lastY: y, dist: 0 };
       return;
     }
 
@@ -164,7 +200,9 @@ async function main(): Promise<void> {
       if (pan.dist < 5) {
         // A still left click with no tool selects (or deselects) the tile under it.
         const hit = game.camera.screenToTile(x, y);
-        game.setSelected(hit.inView && inBounds(hit.col, hit.row) ? idx(hit.col, hit.row) : -1);
+        game.setSelected(
+          hit.inView && inBounds(hit.col, hit.row) ? idx(hit.col, hit.row) : -1,
+        );
       }
       pan = null;
     }
@@ -217,9 +255,19 @@ async function main(): Promise<void> {
     // Menu states — pointer + keyboard navigate the core-owned menu list.
     const items = game.menuItems();
     if (items.length === 0) return;
-    if (k === "ArrowUp" || k === "ArrowLeft" || lower === "w" || lower === "a") {
+    if (
+      k === "ArrowUp" ||
+      k === "ArrowLeft" ||
+      lower === "w" ||
+      lower === "a"
+    ) {
       game.menuMove(-1);
-    } else if (k === "ArrowDown" || k === "ArrowRight" || lower === "s" || lower === "d") {
+    } else if (
+      k === "ArrowDown" ||
+      k === "ArrowRight" ||
+      lower === "s" ||
+      lower === "d"
+    ) {
       game.menuMove(1);
     } else if (k === "Enter" || k === " ") {
       game.menuConfirm();
@@ -237,7 +285,13 @@ async function main(): Promise<void> {
     const pl = input.pointerLogical;
     for (let i = 0; i < items.length; i++) {
       const c = clickables.find((cl) => cl.action === items[i]!.action);
-      if (c && pl.x >= c.x && pl.x <= c.x + c.w && pl.y >= c.y && pl.y <= c.y + c.h) {
+      if (
+        c &&
+        pl.x >= c.x &&
+        pl.x <= c.x + c.w &&
+        pl.y >= c.y &&
+        pl.y <= c.y + c.h
+      ) {
         game.menuSetIndex(i);
         return;
       }
@@ -245,7 +299,13 @@ async function main(): Promise<void> {
   }
 
   function handleInput(pl: { x: number; y: number }): void {
-    if (input.downs.length || input.ups.length || input.keys.length || input.wheel) gesture();
+    if (
+      input.downs.length ||
+      input.ups.length ||
+      input.keys.length ||
+      input.wheel
+    )
+      gesture();
     for (const d of input.downs) routeDown(d.x, d.y, d.button);
     for (const u of input.ups) routeUp(u.x, u.y, u.button);
     if (input.wheel !== 0 && game.state === "playing") {
@@ -279,7 +339,13 @@ async function main(): Promise<void> {
     if (h.has("ArrowUp") || h.has("w")) dy -= 1;
     if (h.has("ArrowDown") || h.has("s")) dy += 1;
     // Edge-scroll near the view band's borders (suppressed while a mouse drag-pan is active).
-    if (!pan && pl.y >= VIEW_Y0 && pl.y <= VIEW_Y1 && pl.x >= 0 && pl.x <= STAGE_W) {
+    if (
+      !pan &&
+      pl.y >= VIEW_Y0 &&
+      pl.y <= VIEW_Y1 &&
+      pl.x >= 0 &&
+      pl.x <= STAGE_W
+    ) {
       if (pl.x < EDGE_MARGIN) dx -= 1;
       else if (pl.x > STAGE_W - EDGE_MARGIN) dx += 1;
       if (pl.y < VIEW_Y0 + EDGE_MARGIN) dy -= 1;
@@ -287,7 +353,10 @@ async function main(): Promise<void> {
     }
     if (dx !== 0 || dy !== 0) {
       const len = Math.hypot(dx, dy) || 1;
-      game.camera.panBy((dx / len) * PAN_SPEED * dt, (dy / len) * PAN_SPEED * dt);
+      game.camera.panBy(
+        (dx / len) * PAN_SPEED * dt,
+        (dy / len) * PAN_SPEED * dt,
+      );
     }
   }
 
@@ -308,7 +377,9 @@ async function main(): Promise<void> {
     // Hover tile drives the tool ghost / inspector highlight (only meaningful in play).
     if (game.state === "playing") {
       const hit = game.camera.screenToTile(pl.x, pl.y);
-      game.setHover(hit.inView && inBounds(hit.col, hit.row) ? idx(hit.col, hit.row) : -1);
+      game.setHover(
+        hit.inView && inBounds(hit.col, hit.row) ? idx(hit.col, hit.row) : -1,
+      );
     } else {
       game.setHover(-1);
     }
@@ -336,7 +407,13 @@ async function main(): Promise<void> {
       // The core emits a milestone's fireworks with a placeholder position; the front end
       // places it at the current view centre so the flourish is on-screen (the camera is a
       // front-end concern).
-      if (fx.kind === "fireworks") bursts.spawn({ kind: "fireworks", x: game.camera.cx, y: game.camera.cy, strength: fx.strength });
+      if (fx.kind === "fireworks")
+        bursts.spawn({
+          kind: "fireworks",
+          x: game.camera.cx,
+          y: game.camera.cy,
+          strength: fx.strength,
+        });
       else bursts.spawn(fx);
     }
     haze.update(dt);

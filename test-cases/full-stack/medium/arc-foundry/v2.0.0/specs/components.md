@@ -11,16 +11,16 @@ unitless. Every stat table below is fixed; implement it exactly.
 
 ## The eight base types
 
-| Type | Identifier | What it does |
-| --- | --- | --- |
-| Capacitor | `capacitor` | A balanced single-target bolt. |
-| Coil | `coil` | A bolt that chains to nearby further targets. |
-| Emitter | `emitter` | A rapid, very low-damage single-target spark. |
-| Arc-Node | `arcnode` | A shot that discharges over an area at its impact point. |
-| Discharge Rig | `discharge` | A slow, long-range, heavy single-target bolt. |
-| Choke | `choke` | A low-damage single-target bolt that slows the unit it strikes. |
-| Rectifier | `rectifier` | A low-damage single-target bolt that sets a burn on the unit it strikes. |
-| Regulator | `regulator` | A support node that never fires and projects a damage aura. |
+| Type          | Identifier  | What it does                                                             |
+| ------------- | ----------- | ------------------------------------------------------------------------ |
+| Capacitor     | `capacitor` | A balanced single-target bolt.                                           |
+| Coil          | `coil`      | A bolt that chains to nearby further targets.                            |
+| Emitter       | `emitter`   | A rapid, very low-damage single-target spark.                            |
+| Arc-Node      | `arcnode`   | A shot that discharges over an area at its impact point.                 |
+| Discharge Rig | `discharge` | A slow, long-range, heavy single-target bolt.                            |
+| Choke         | `choke`     | A low-damage single-target bolt that slows the unit it strikes.          |
+| Rectifier     | `rectifier` | A low-damage single-target bolt that sets a burn on the unit it strikes. |
+| Regulator     | `regulator` | A support node that never fires and projects a damage aura.              |
 
 Seven of the eight fire. The Regulator never fires: it has no range, no damage, no firing
 head, no projectile, and no targeting priority, and its aura is its whole reach. It still
@@ -32,13 +32,13 @@ ingredient.
 Beyond raw damage a structure may carry abilities. `specs/enemies.md` fixes what a slow
 and a burn do to the unit that carries them; this section fixes what applies them.
 
-| Ability | Effect |
-| --- | --- |
-| slow | On impact, applies a slow of the stated amount for the stated duration to the struck unit. |
-| burn | On impact, applies a burn of `shotDamage * frac` per second for the stated duration to the struck unit. |
-| crit | Each shot has the stated chance to deal `critMult` times its damage instead of its damage. The chance is rolled independently on every shot. |
+| Ability   | Effect                                                                                                                                                            |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| slow      | On impact, applies a slow of the stated amount for the stated duration to the struck unit.                                                                        |
+| burn      | On impact, applies a burn of `shotDamage * frac` per second for the stated duration to the struck unit.                                                           |
+| crit      | Each shot has the stated chance to deal `critMult` times its damage instead of its damage. The chance is rolled independently on every shot.                      |
 | multishot | Each cadence the structure fires at up to `N` distinct in-range units instead of one, choosing the top `N` by its targeting priority, each as its own projectile. |
-| aura | Every firing structure whose center lies within `auraRadius` of the source deals `1 + auraBonus` times its damage. |
+| aura      | Every firing structure whose center lies within `auraRadius` of the source deals `1 + auraBonus` times its damage.                                                |
 
 - `crit` and `multishot` are carried by combination towers only. No base component crits
   or multishots.
@@ -57,25 +57,25 @@ and a burn do to the unit that carries them; this section fixes what applies the
 Every base component carries a quality tier on a five-rung ladder. `QUALITY_TIERS` holds
 the five in order.
 
-| Tier | Name | Identifier | Reads as |
-| --- | --- | --- | --- |
-| `1` | Scrap | `scrap` | Pitted, rusted, a dim flicker |
-| `2` | Tuned | `tuned` | Cleaned, a steady glow |
-| `3` | Charged | `charged` | Polished, bright, humming |
-| `4` | Primed | `primed` | Machined, arcing at rest |
-| `5` | Tesla-Prime | `teslaprime` | Mirror-chromed, wreathed in continuous arcs |
+| Tier | Name        | Identifier   | Reads as                                    |
+| ---- | ----------- | ------------ | ------------------------------------------- |
+| `1`  | Scrap       | `scrap`      | Pitted, rusted, a dim flicker               |
+| `2`  | Tuned       | `tuned`      | Cleaned, a steady glow                      |
+| `3`  | Charged     | `charged`    | Polished, bright, humming                   |
+| `4`  | Primed      | `primed`     | Machined, arcing at rest                    |
+| `5`  | Tesla-Prime | `teslaprime` | Mirror-chromed, wreathed in continuous arcs |
 
 A base component is always a type at a quality. A combination tower has no quality tier.
 
 ## How quality scales a component
 
-| Stat | Rule |
-| --- | --- |
-| Damage | `baseDamage * QUALITY_MULT[tier]`, where `QUALITY_MULT` is `[1, 3, 9, 40, 110]`. |
-| Range | `baseRange + RANGE_PER_TIER * (tier - 1)`, where `RANGE_PER_TIER` is `8`. |
-| Fire rate | Flat. A type's cadence is the same at every tier. |
-| Footprint | Flat, `2` by `2` tiles at every tier. |
-| Signature numbers | Step up with tier per type, in the tables below. |
+| Stat              | Rule                                                                             |
+| ----------------- | -------------------------------------------------------------------------------- |
+| Damage            | `baseDamage * QUALITY_MULT[tier]`, where `QUALITY_MULT` is `[1, 3, 9, 40, 110]`. |
+| Range             | `baseRange + RANGE_PER_TIER * (tier - 1)`, where `RANGE_PER_TIER` is `8`.        |
+| Fire rate         | Flat. A type's cadence is the same at every tier.                                |
+| Footprint         | Flat, `2` by `2` tiles at every tier.                                            |
+| Signature numbers | Step up with tier per type, in the tables below.                                 |
 
 The Regulator has neither damage nor range, so the first two rules do not apply to it.
 Quality scales its aura radius and bonus instead.
@@ -93,13 +93,13 @@ combination towers.
   at any time. `TARGETING_PRIORITIES` holds the five, and every firing structure defaults
   to `first`.
 
-| Priority | Selects the in-range unit that is |
-| --- | --- |
-| `first` | Furthest along the chain, by the progress ordering of `specs/pathing.md`. |
-| `last` | Least far along the chain, by the same ordering. |
-| `nearest` | At the shortest straight-line distance from the structure's center. |
-| `strongest` | Carrying the most remaining health. |
-| `weakest` | Carrying the least remaining health. |
+| Priority    | Selects the in-range unit that is                                         |
+| ----------- | ------------------------------------------------------------------------- |
+| `first`     | Furthest along the chain, by the progress ordering of `specs/pathing.md`. |
+| `last`      | Least far along the chain, by the same ordering.                          |
+| `nearest`   | At the shortest straight-line distance from the structure's center.       |
+| `strongest` | Carrying the most remaining health.                                       |
+| `weakest`   | Carrying the least remaining health.                                      |
 
 Ties resolve toward the unit further along the chain.
 Changing a priority costs nothing and takes effect on the next shot.
@@ -119,16 +119,16 @@ Changing a priority costs nothing and takes effect on the next shot.
 
 `BASE_STATS` holds each type's Scrap-tier stats, which every higher tier scales from.
 
-| Type | Range | Fire rate | Damage | Firing behavior |
-| --- | --- | --- | --- | --- |
-| Capacitor | `100` | `1.6` /s | `6` | Single target |
-| Coil | `110` | `1.0` /s | `5` | Chains from the impact point |
-| Emitter | `88` | `4.5` /s | `2` | Single target |
-| Arc-Node | `96` | `0.85` /s | `5` | Splash at the impact point |
-| Discharge Rig | `160` | `0.5` /s | `18` | Single target |
-| Choke | `104` | `1.3` /s | `3` | Single target, applies slow |
-| Rectifier | `96` | `1.1` /s | `2` | Single target, applies burn |
-| Regulator | — | — | `0` | Does not fire |
+| Type          | Range | Fire rate | Damage | Firing behavior              |
+| ------------- | ----- | --------- | ------ | ---------------------------- |
+| Capacitor     | `100` | `1.6` /s  | `6`    | Single target                |
+| Coil          | `110` | `1.0` /s  | `5`    | Chains from the impact point |
+| Emitter       | `88`  | `4.5` /s  | `2`    | Single target                |
+| Arc-Node      | `96`  | `0.85` /s | `5`    | Splash at the impact point   |
+| Discharge Rig | `160` | `0.5` /s  | `18`   | Single target                |
+| Choke         | `104` | `1.3` /s  | `3`    | Single target, applies slow  |
+| Rectifier     | `96`  | `1.1` /s  | `2`    | Single target, applies burn  |
+| Regulator     | —     | —         | `0`    | Does not fire                |
 
 ### The Coil's chain
 
@@ -140,8 +140,8 @@ on. A leap that finds no unit in range it has not already struck ends the chain.
 
 `COIL_LEAPS` holds the maximum number of additional leaps by tier:
 
-| Tier | `1` | `2` | `3` | `4` | `5` |
-| --- | --- | --- | --- | --- | --- |
+| Tier             | `1` | `2` | `3` | `4` | `5` |
+| ---------------- | --- | --- | --- | --- | --- |
 | Additional leaps | `2` | `2` | `3` | `3` | `4` |
 
 ### The Arc-Node's splash
@@ -152,8 +152,8 @@ point. Damage is flat inside the radius, with no falloff.
 
 `ARCNODE_SPLASH` holds the radius by tier, `42` at Scrap and `5` more per tier:
 
-| Tier | `1` | `2` | `3` | `4` | `5` |
-| --- | --- | --- | --- | --- | --- |
+| Tier          | `1`  | `2`  | `3`  | `4`  | `5`  |
+| ------------- | ---- | ---- | ---- | ---- | ---- |
 | Splash radius | `42` | `47` | `52` | `57` | `62` |
 
 ### The Choke's slow
@@ -161,9 +161,9 @@ point. Damage is flat inside the radius, with no falloff.
 The Choke's hit applies a slow for `CHOKE_SLOW_DUR` (`1.2`) seconds. `CHOKE_SLOW` holds
 the amount by tier, `0.22 + 0.03 * (tier - 1)`:
 
-| Tier | `1` | `2` | `3` | `4` | `5` |
-| --- | --- | --- | --- | --- | --- |
-| Slow amount | `0.22` | `0.25` | `0.28` | `0.31` | `0.34` |
+| Tier               | `1`    | `2`    | `3`    | `4`    | `5`    |
+| ------------------ | ------ | ------ | ------ | ------ | ------ |
+| Slow amount        | `0.22` | `0.25` | `0.28` | `0.31` | `0.34` |
 | Speed while slowed | `0.78` | `0.75` | `0.72` | `0.69` | `0.66` |
 
 ### The Rectifier's burn
@@ -178,24 +178,24 @@ The Regulator projects an aura over every firing structure whose center lies wit
 radius. `REGULATOR_AURA` holds the radius and bonus by tier,
 `radius = 90 + 6 * (tier - 1)` and `bonus = 0.10 + 0.03 * (tier - 1)`:
 
-| Tier | `1` | `2` | `3` | `4` | `5` |
-| --- | --- | --- | --- | --- | --- |
-| Aura radius | `90` | `96` | `102` | `108` | `114` |
+| Tier         | `1`    | `2`    | `3`    | `4`    | `5`    |
+| ------------ | ------ | ------ | ------ | ------ | ------ |
+| Aura radius  | `90`   | `96`   | `102`  | `108`  | `114`  |
 | Damage bonus | `+10%` | `+13%` | `+16%` | `+19%` | `+22%` |
 
 ## Damage by type and tier
 
 Damage per shot, `baseDamage * QUALITY_MULT[tier]`. The Regulator has no damage row.
 
-| Type | `1` | `2` | `3` | `4` | `5` |
-| --- | --- | --- | --- | --- | --- |
-| Capacitor | `6` | `18` | `54` | `240` | `660` |
-| Coil | `5` | `15` | `45` | `200` | `550` |
-| Emitter | `2` | `6` | `18` | `80` | `220` |
-| Arc-Node | `5` | `15` | `45` | `200` | `550` |
+| Type          | `1`  | `2`  | `3`   | `4`   | `5`    |
+| ------------- | ---- | ---- | ----- | ----- | ------ |
+| Capacitor     | `6`  | `18` | `54`  | `240` | `660`  |
+| Coil          | `5`  | `15` | `45`  | `200` | `550`  |
+| Emitter       | `2`  | `6`  | `18`  | `80`  | `220`  |
+| Arc-Node      | `5`  | `15` | `45`  | `200` | `550`  |
 | Discharge Rig | `18` | `54` | `162` | `720` | `1980` |
-| Choke | `3` | `9` | `27` | `120` | `330` |
-| Rectifier | `2` | `6` | `18` | `80` | `220` |
+| Choke         | `3`  | `9`  | `27`  | `120` | `330`  |
+| Rectifier     | `2`  | `6`  | `18`  | `80`  | `220`  |
 
 For the Coil this is the primary hit's damage, and each leap scales from it. For the
 Arc-Node it is dealt to every unit inside the splash radius. For the Choke and the
@@ -206,15 +206,15 @@ Rectifier it is the direct hit, with the slow or the burn applied on top.
 Range, `baseRange + 8 * (tier - 1)`. The Regulator has no range row; its reach is its
 aura radius.
 
-| Type | `1` | `2` | `3` | `4` | `5` |
-| --- | --- | --- | --- | --- | --- |
-| Capacitor | `100` | `108` | `116` | `124` | `132` |
-| Coil | `110` | `118` | `126` | `134` | `142` |
-| Emitter | `88` | `96` | `104` | `112` | `120` |
-| Arc-Node | `96` | `104` | `112` | `120` | `128` |
+| Type          | `1`   | `2`   | `3`   | `4`   | `5`   |
+| ------------- | ----- | ----- | ----- | ----- | ----- |
+| Capacitor     | `100` | `108` | `116` | `124` | `132` |
+| Coil          | `110` | `118` | `126` | `134` | `142` |
+| Emitter       | `88`  | `96`  | `104` | `112` | `120` |
+| Arc-Node      | `96`  | `104` | `112` | `120` | `128` |
 | Discharge Rig | `160` | `168` | `176` | `184` | `192` |
-| Choke | `104` | `112` | `120` | `128` | `136` |
-| Rectifier | `96` | `104` | `112` | `120` | `128` |
+| Choke         | `104` | `112` | `120` | `128` | `136` |
+| Rectifier     | `96`  | `104` | `112` | `120` | `128` |
 
 ## Tallies
 

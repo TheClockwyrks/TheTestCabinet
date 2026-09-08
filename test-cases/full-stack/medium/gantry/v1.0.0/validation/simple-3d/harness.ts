@@ -74,6 +74,16 @@
 // onto the stage. So `toLogical` is left at the identity, which is what a logical
 // stage point already is here.
 //
+// AND A POSED WORLD IS RECONCILED BEFORE IT IS READ. A build is free to work a
+// derived reading out at the read or to keep it as a stored copy, and a stored
+// copy answers for the world as it was until `reconcile` rewrites it. So a
+// helper below that poses anything a reading derives from — the structure, the
+// tape, the yard, the run — ends with `reconcile`, and a check that reaches its
+// scenario through the helpers never calls it itself. A check that poses with
+// `h.debug.*` directly calls it once before its first read. Where a helper
+// batches its calls into one crossing, `reconcile` is the batch's last entry, so
+// the crossing count does not grow.
+//
 // AND THIS FILE OWNS EVERY COMPOUND SEQUENCE. The surface is atomic by design:
 // one operation sets one field, and `specs/instrumentation.md` says so in as many
 // words ("a caller that wants several things arranged makes several calls"). So
@@ -149,7 +159,7 @@ import {
   type TimedCue,
 } from "./case-harness/engine/index";
 import { createGlStub, defineSelfForThree } from "./case-harness/engine/3d";
-import type { DrawCall } from "./case-harness/draw-calls";
+import type { DrawCall, RecordedOp } from "./case-harness/draw-calls";
 import {
   ASSET_ROOT,
   LAYOUT,
@@ -197,6 +207,7 @@ export const REQUIRED_OPS = [
   "drawn",
   "menuItemRect",
   "reset",
+  "reconcile",
   "setScreen",
   "setMenuIndex",
   "openSite",
@@ -370,12 +381,10 @@ export interface AssetFailure {
  * The two projects read a build's drawing the same way — "what was called, what
  * was set" — so a check that asks what the build wrote on its readouts reads the
  * same list here as it does there, and `toDrawCall`, `drawnText` and `textDraws`
- * work over it unchanged. It is spelled here rather than imported because it is
- * the shape the SUITES declare and cast to, in all three directories.
+ * work over it unchanged. It is the package's own type, re-exported, because it
+ * is the shape the SUITES declare and cast to, in all three directories.
  */
-export type RecordedOp =
-  | { op: "call"; method: string; args: unknown[] }
-  | { op: "set"; property: string; value: unknown };
+export type { RecordedOp };
 
 /**
  * One call the package's recorder wrote, as the engineless recorder would have
@@ -384,13 +393,18 @@ export type RecordedOp =
  * The two records hold the same facts under two spellings — `kind` here, `op`
  * there — because the engineless recorder is injected into a page and writes the
  * console player's replay format. Renaming the discriminant is the whole of the
- * difference; the `text` geometry an engine recorder can also take is dropped,
- * because this project never asks for it (see `recorder` in the kit below).
+ * difference: the `text` geometry the package's recorder attached to a measured
+ * text call travels with it, and `toDrawCall` carries it back, so a check reads
+ * the same measured calls whether it asked for {@link Harness.screenOps} or
+ * {@link Harness.screenCalls}.
  */
 function recordedOp(call: DrawCall): RecordedOp {
-  return call.kind === "call"
-    ? { op: "call", method: call.method, args: call.args }
-    : { op: "set", property: call.property, value: call.value };
+  if (call.kind === "set") {
+    return { op: "set", property: call.property, value: call.value };
+  }
+  const op: RecordedOp = { op: "call", method: call.method, args: call.args };
+  if (call.text !== undefined) op.text = call.text;
+  return op;
 }
 
 /** How a harness's engine is built, where a check wants something other than the default. */
@@ -569,14 +583,26 @@ export interface Harness {
   /** Every asset the build asked for and did not get, oldest first. */
   readonly assetFailures: readonly AssetFailure[];
   /**
-   * Every path this build fetched, in order, and whether the workspace carried
-   * it.
+   * Every request this build made, in order: the path exactly as it asked for
+   * it, whether the workspace carried it, and whether it left the origin.
    *
-   * The paths are exactly as the build asked for them — relative to the page, as
-   * `specs/assets.md` requires — so a check reads both which files a build
-   * consumes and how it addresses them.
+   * THE PATHS ARE UNTOUCHED AND NOTHING IS DROPPED, which is the whole of what
+   * makes this reading worth taking here. A check reads both which files a build
+   * consumes and HOW IT ADDRESSES THEM, and `specs/assets.md` and
+   * `specs/overview.md` between them require the second as squarely as the
+   * first — so a request the build wrote as an absolute URL, a CDN or a font
+   * host or a model fetched from the web at play time, arrives here with
+   * `offOrigin` set rather than not arriving at all. Dropping those on the way
+   * out would leave the two points that exist to catch them reading a record
+   * they had already been removed from.
+   *
+   * `found` is a request the workspace answered with the file. An off-origin one
+   * is never `found`: nothing in this process serves the network, so the
+   * transport hands it to the platform and records no status of its own for it.
+   * A point about the served output therefore drops the off-origin requests on
+   * its own line, and says why.
    */
-  assetRequests(): { path: string; found: boolean }[];
+  assetRequests(): { path: string; found: boolean; offOrigin: boolean }[];
   /**
    * Draw the game as it stands into the engine's scene, advancing nothing.
    *
@@ -603,6 +629,21 @@ export interface Harness {
    * reads, exactly as it does there.
    */
   screenOps(): Promise<RecordedOp[]>;
+  /**
+   * The same frame's operations as the draw calls the package's recorder wrote,
+   * each text call carrying the width and alignment it was measured at.
+   *
+   * THE READING A CHECK TAKES COPY AND FIGURES OFF, on all three engines. The
+   * measurement — `recorder: { measureText: true }` in the kit below — is what
+   * lets `drawnTextLines` and `drawnTextRuns` (`case-harness/text.ts`) fold a
+   * heading a build letter-spaced, one glyph per `fillText`, back into the run
+   * it spells; the specification fixes the words and leaves their spacing to
+   * the build, so a check reads the runs and never the call split.
+   * {@link screenOps} answers the same calls, measurement and all, in the
+   * engineless recorder's document; a check that reads copy reads this one
+   * because the readers take draw calls.
+   */
+  screenCalls(): Promise<DrawCall[]>;
   /** The ticks this harness has driven, 1-based, as the engine's frame counter reports. */
   tick(): number;
   /**
@@ -902,10 +943,13 @@ const kit: EngineCaseKit<GantrySnapshot, GantryDriver, GantryEngine, unknown> =
     stage: { width: STAGE_W, height: STAGE_H },
     tickHz: TICK_HZ,
     surfaceRequirement: SURFACE_REQUIREMENT,
-    // No `measureText`: every check that reads the frame's copy walks the
-    // operation list and composes the transforms itself, exactly as it does under
-    // `none`, where the injected recorder carries no measurement either.
-    recorder: {},
+    // Measure every text call, so the calls `h.screenCalls()` answers carry the
+    // width and alignment the shared merge rule needs to put a letter-spaced run
+    // — one glyph per `fillText` — back together into the copy it spells, as the
+    // `none` project asks with `measureText: true`. Without it no two text draws
+    // ever coalesce, and a check reading copy off `drawnTextLines` would be
+    // reading the raw call split after all.
+    recorder: { measureText: true },
     cueEvents: ["cue:played", "cue:looped"],
     defaultClock: () => new ConstantClock(1000 / TICK_HZ),
     createEngine: ({ canvas, clock, surface, shape }) => {
@@ -1379,19 +1423,28 @@ export async function createHarness(
     openingSnapshot,
     playedCues: base.cues,
     assetFailures: base.assetFailures,
-    // OFF-ORIGIN REQUESTS ARE LEFT OUT, and that is what this reading has always
-    // meant: it answers the paths the build asked the SITE for, and `found` says
-    // whether the workspace carried one. The package's transport also records what
-    // it handed to the platform's own `fetch`, which is a different question and
-    // one no point here asks.
+    // OFF-ORIGIN REQUESTS COME THROUGH, and they have to. The package's transport
+    // answers a page-relative URL out of the workspace and hands anything carrying
+    // a scheme to the platform's own `fetch`, recording both — and where the build
+    // fetches FROM is the subject of `assets/no-runtime-fetch-outside-dist` and
+    // half of `assets/assets-work-from-a-sub-path`. Filtering the off-origin
+    // requests out here left both of those grading a record that could not hold
+    // the thing they look for, so a build fetching its models from a CDN passed
+    // them for having asked for nothing. The whole log since this harness was
+    // built is handed over instead, `offOrigin` and all, and the one point whose
+    // subject is the served output alone sets them aside itself.
     assetRequests: () =>
-      assets
-        .requestsSince(requestsFrom)
-        .filter((one) => !one.offOrigin)
-        .map((one) => ({ path: one.url, found: one.status === 200 })),
+      assets.requestsSince(requestsFrom).map((one) => ({
+        path: one.url,
+        found: one.status === 200,
+        offOrigin: one.offOrigin,
+      })),
     screen: base.canvas,
     async screenOps() {
       return base.calls.map(recordedOp);
+    },
+    async screenCalls() {
+      return [...base.calls];
     },
     tick: () => base.tick(),
 
@@ -1775,6 +1828,7 @@ export async function offEveryMenuItem(
 export async function openSite(h: Harness, index: number): Promise<void> {
   await h.debug.openSite(index);
   await h.debug.setScreen("build");
+  await h.debug.reconcile();
 }
 
 /**
@@ -1794,6 +1848,7 @@ export async function emptyYard(h: Harness): Promise<void> {
     await h.debug.clearLoads();
     await h.debug.clearObstacles();
   });
+  await h.debug.reconcile();
 }
 
 /**
@@ -1810,6 +1865,7 @@ export async function clearAll(h: Harness): Promise<void> {
     await h.debug.clearStructure();
   });
   await onScreen(h, "program", () => h.debug.clearProgram());
+  await h.debug.reconcile();
 }
 
 /**
@@ -1853,6 +1909,7 @@ export async function poseCrane(
       await h.debug.addCounterweight(node[0], node[1], node[2]);
     }
   });
+  await h.debug.reconcile();
 
   const { structure } = await h.snapshot();
   const placed = new Set(structure.members.map((m) => edgeKey(m.a, m.b)));
@@ -1940,6 +1997,7 @@ export async function poseTape(
       }
     }
   });
+  await h.debug.reconcile();
 
   const program = (await h.snapshot()).program;
   if (program.length !== before + steps.length) {
@@ -2061,6 +2119,7 @@ export async function addOneLoad(
     await h.debug.addLoad(cls, mass, from.x, from.y, from.z, from.yaw);
     await h.debug.setLoadTarget(0, to.x, to.y, to.z, to.yaw);
   });
+  await h.debug.reconcile();
 }
 
 /** The yard holding exactly one obstacle: the box with that corner and size. */
@@ -2073,6 +2132,7 @@ export async function addOneObstacle(
     await h.debug.clearObstacles();
     await h.debug.addObstacle(min.x, min.y, min.z, size.x, size.y, size.z);
   });
+  await h.debug.reconcile();
 }
 
 /* -------------------------------------------------------------------------- */

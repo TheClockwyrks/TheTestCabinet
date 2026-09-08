@@ -253,7 +253,10 @@ export class PointerInput {
    */
   readonly #onWheel = (event: Event): void => {
     const candidate = event as Partial<WheelEvent>;
-    if (typeof candidate.deltaX !== "number" || typeof candidate.deltaY !== "number") {
+    if (
+      typeof candidate.deltaX !== "number" ||
+      typeof candidate.deltaY !== "number"
+    ) {
       return;
     }
     const viewport = this.#viewport();
@@ -381,7 +384,8 @@ export class PointerInput {
     this.#target.removeEventListener("pointerup", this.#onUp);
     this.#target.removeEventListener("pointercancel", this.#onCancel);
     this.#target.removeEventListener("wheel", this.#onWheel);
-    for (const id of this.#contacts.keys()) this.#surface.releasePointerCapture?.(id);
+    for (const id of this.#contacts.keys())
+      this.#surface.releasePointerCapture?.(id);
     this.#contacts.clear();
     this.#releaseGestures?.();
   }
@@ -477,7 +481,10 @@ export class PointerInput {
    */
   #read(event: Event): Reading | null {
     const candidate = event as Partial<PointerEvent>;
-    if (typeof candidate.clientX !== "number" || typeof candidate.clientY !== "number") {
+    if (
+      typeof candidate.clientX !== "number" ||
+      typeof candidate.clientY !== "number"
+    ) {
       return null;
     }
     const common = {
@@ -494,8 +501,12 @@ export class PointerInput {
     const ratio = Number.isFinite(dpr) && dpr > 0 ? dpr : 1;
     return {
       ...common,
-      x: ((candidate.clientX - origin.x) * ratio - viewport.offsetX) / viewport.scale,
-      y: ((candidate.clientY - origin.y) * ratio - viewport.offsetY) / viewport.scale,
+      x:
+        ((candidate.clientX - origin.x) * ratio - viewport.offsetX) /
+        viewport.scale,
+      y:
+        ((candidate.clientY - origin.y) * ratio - viewport.offsetY) /
+        viewport.scale,
       placed: true,
     };
   }

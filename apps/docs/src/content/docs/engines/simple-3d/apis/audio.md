@@ -17,10 +17,10 @@ readonly audio: {
 };
 ```
 
-| Member | Behavior |
-| --- | --- |
-| `define` | Binds `cue` to a synthesized `spec`. |
-| `load` | Fetches and decodes the audio at `path` and binds the result to `cue`. Resolves once the cue is playable. |
+| Member   | Behavior                                                                                                  |
+| -------- | --------------------------------------------------------------------------------------------------------- |
+| `define` | Binds `cue` to a synthesized `spec`.                                                                      |
+| `load`   | Fetches and decodes the audio at `path` and binds the result to `cue`. Resolves once the cue is playable. |
 
 A cue name carries one source. Declaring a name that already exists replaces
 what it plays, whichever of the two declared it.
@@ -44,13 +44,13 @@ interface CueSpec {
 }
 ```
 
-| Field | Unit | Default | Meaning |
-| --- | --- | --- | --- |
-| `wave` | — | `"sine"` | The oscillator waveform. |
-| `freq` | hertz | required | The starting frequency. A loop holds it. |
-| `freqTo` | hertz | `freq` | The frequency swept to linearly across the duration. A loop ignores it. |
-| `gain` | `0`–`1` | `0.2` | The peak gain the envelope decays from. A loop holds it. |
-| `durationMs` | milliseconds | required | How long the cue sounds. A loop ignores it. |
+| Field        | Unit         | Default  | Meaning                                                                 |
+| ------------ | ------------ | -------- | ----------------------------------------------------------------------- |
+| `wave`       | —            | `"sine"` | The oscillator waveform.                                                |
+| `freq`       | hertz        | required | The starting frequency. A loop holds it.                                |
+| `freqTo`     | hertz        | `freq`   | The frequency swept to linearly across the duration. A loop ignores it. |
+| `gain`       | `0`–`1`      | `0.2`    | The peak gain the envelope decays from. A loop holds it.                |
+| `durationMs` | milliseconds | required | How long the cue sounds. A loop ignores it.                             |
 
 `durationMs` is milliseconds, and the delta time an update receives is seconds.
 
@@ -72,15 +72,15 @@ readonly audio: {
 };
 ```
 
-| Member | Behavior |
-| --- | --- |
-| `play` | Emits `cue:played` and, when audible, sounds the cue, at `options.at` when given. Returns immediately. |
-| `loop` | Starts the cue looping if it is not already: emits `cue:looped` once and, when audible, sounds the cue continuously until stopped, at `options.at` when given. Does nothing for a cue already looping. |
-| `stop` | Stops the cue's loop if it is looping and emits `cue:stopped`. Does nothing for a cue that is not looping. |
-| `place` | Moves a running loop to `at`. Does nothing for a cue that is not looping. |
-| `looping` | Whether the cue is looping. `false` for an undeclared cue. |
-| `setMuted` | Sets the mute bit. A muted cue still emits its event, and every running loop follows the bit live. |
-| `muted` | The mute bit. |
+| Member     | Behavior                                                                                                                                                                                               |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `play`     | Emits `cue:played` and, when audible, sounds the cue, at `options.at` when given. Returns immediately.                                                                                                 |
+| `loop`     | Starts the cue looping if it is not already: emits `cue:looped` once and, when audible, sounds the cue continuously until stopped, at `options.at` when given. Does nothing for a cue already looping. |
+| `stop`     | Stops the cue's loop if it is looping and emits `cue:stopped`. Does nothing for a cue that is not looping.                                                                                             |
+| `place`    | Moves a running loop to `at`. Does nothing for a cue that is not looping.                                                                                                                              |
+| `looping`  | Whether the cue is looping. `false` for an undeclared cue.                                                                                                                                             |
+| `setMuted` | Sets the mute bit. A muted cue still emits its event, and every running loop follows the bit live.                                                                                                     |
+| `muted`    | The mute bit.                                                                                                                                                                                          |
 
 Playback belongs to `update`, so what a frame sounds is decided by the same
 function that advanced the simulation.
@@ -92,13 +92,13 @@ at that world point and the listener hears it from where the camera stands. A
 cue played without `at` is unpositioned and plays as it does in 2D, at the
 bus's gain with no panning.
 
-| Panner setting | Value |
-| --- | --- |
-| Distance model | `inverse` |
-| Reference distance | `1` |
-| Rolloff factor | `1` |
-| Maximum distance | `10000` |
-| Panning model | HRTF |
+| Panner setting     | Value     |
+| ------------------ | --------- |
+| Distance model     | `inverse` |
+| Reference distance | `1`       |
+| Rolloff factor     | `1`       |
+| Maximum distance   | `10000`   |
+| Panning model      | HRTF      |
 
 The listener is the [camera as it stood at the most recent
 render](/engines/simple-3d/apis/view/), and the engine updates the listener's
@@ -137,9 +137,9 @@ interface AudioState {
 }
 ```
 
-| Field | Meaning |
-| --- | --- |
-| `muted` | Whether the bus is muted. |
+| Field      | Meaning                                              |
+| ---------- | ---------------------------------------------------- |
+| `muted`    | Whether the bus is muted.                            |
 | `unlocked` | Whether a user gesture has opened the audio context. |
 
 The engine opens the audio context on the first pointer or key event it sees and
@@ -159,12 +159,12 @@ broadcaster](/engines/simple-3d/apis/game/), subscribed with
 "audio:unlocked": Record<string, never>;
 ```
 
-| Field | Meaning |
-| --- | --- |
-| `cue` | The name that was played, started looping, or stopped. |
-| `t` | The frame loop's simulated time in milliseconds at that moment. |
-| `gain` | The gain it played or started looping at. |
-| `at` | The world point it was placed at, as a copy, or `null` for an unpositioned cue. |
+| Field  | Meaning                                                                         |
+| ------ | ------------------------------------------------------------------------------- |
+| `cue`  | The name that was played, started looping, or stopped.                          |
+| `t`    | The frame loop's simulated time in milliseconds at that moment.                 |
+| `gain` | The gain it played or started looping at.                                       |
+| `at`   | The world point it was placed at, as a copy, or `null` for an unpositioned cue. |
 
 A play or a loop on a muted bus reports `gain: 0`. On an unmuted bus it reports
 the spec's `gain` for a synthesized cue and `1` for a file-backed cue, before
@@ -178,14 +178,14 @@ plays from its own initialization onward.
 
 ## Errors
 
-| Condition | Result |
-| --- | --- |
-| `play`, `loop`, `stop`, or `place` names a cue that was never declared | Throws, naming the cue |
-| `looping` names a cue that was never declared | Returns `false` |
-| `load` is given a path the asset loader refuses | Rejects with the `resolve` error, and the cue stays undeclared |
-| `load` cannot fetch or decode the audio | Rejects with the cause, and the cue stays undeclared |
-| No audio context is available | `play` and `loop` emit their events and nothing sounds |
-| The audio graph throws during synthesis, a loop, or a placement | The event is emitted and the frame continues |
+| Condition                                                              | Result                                                         |
+| ---------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `play`, `loop`, `stop`, or `place` names a cue that was never declared | Throws, naming the cue                                         |
+| `looping` names a cue that was never declared                          | Returns `false`                                                |
+| `load` is given a path the asset loader refuses                        | Rejects with the `resolve` error, and the cue stays undeclared |
+| `load` cannot fetch or decode the audio                                | Rejects with the cause, and the cue stays undeclared           |
+| No audio context is available                                          | `play` and `loop` emit their events and nothing sounds         |
+| The audio graph throws during synthesis, a loop, or a placement        | The event is emitted and the frame continues                   |
 
 ## Exports
 

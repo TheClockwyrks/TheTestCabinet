@@ -105,11 +105,11 @@ A unit carries at most one live slow, held as a factor and the seconds it has
 left. An incoming slow of factor `f` resolves against the live one in three flat
 cases:
 
-| The incoming slow | The result |
-| --- | --- |
-| Stronger than the live one | The factor becomes `f` and the timer is set to `SLOW_TIME`. |
-| Equal to the live one | The factor is unchanged and the timer is set to `SLOW_TIME`. |
-| Weaker than the live one | Neither the factor nor the timer changes. |
+| The incoming slow          | The result                                                   |
+| -------------------------- | ------------------------------------------------------------ |
+| Stronger than the live one | The factor becomes `f` and the timer is set to `SLOW_TIME`.  |
+| Equal to the live one      | The factor is unchanged and the timer is set to `SLOW_TIME`. |
+| Weaker than the live one   | Neither the factor nor the timer changes.                    |
 
 A unit carrying no slow takes an incoming one with its timer at `SLOW_TIME`. A
 shot whose `slowFactor(H)` is `0` applies no slow at all.

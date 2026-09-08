@@ -19,7 +19,10 @@ asset.
     <title>Drifter</title>
   </head>
   <body style="margin: 0; background: #05060a">
-    <canvas id="game" style="display: block; width: 100vw; height: 100vh"></canvas>
+    <canvas
+      id="game"
+      style="display: block; width: 100vw; height: 100vh"
+    ></canvas>
     <script type="module" src="./src/main.ts"></script>
   </body>
 </html>
@@ -86,7 +89,11 @@ units.
 ## src/actors/lamp.ts
 
 ```ts
-import { Actor, LightComponent, quatFromEuler } from "@clockwyrks/structured-3d";
+import {
+  Actor,
+  LightComponent,
+  quatFromEuler,
+} from "@clockwyrks/structured-3d";
 
 export class Lamp extends Actor {
   constructor() {

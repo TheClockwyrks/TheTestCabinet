@@ -48,16 +48,16 @@ serves that `dist/` for a final check.
 The game is played from the keyboard alone. Keys are named by their physical
 `KeyboardEvent.code`, so the bindings hold whatever layout you type on.
 
-| Action | Keys | On the board | On a menu |
-| --- | --- | --- | --- |
-| Steer up | `ArrowUp`, `KeyW` | Turns the snake up | Moves the highlight up |
-| Steer down | `ArrowDown`, `KeyS` | Turns the snake down | Moves the highlight down |
-| Steer left | `ArrowLeft`, `KeyA` | Turns the snake left | Nothing |
-| Steer right | `ArrowRight`, `KeyD` | Turns the snake right | Nothing |
-| Confirm | `Enter`, `Space` | Nothing | Accepts the highlighted item |
-| Back | `Escape` | Pauses the round | Leaves the screen |
-| Pause | `KeyP` | Pauses the round | Resumes, on the pause menu |
-| Mute | `KeyM` | Toggles sound | Toggles sound |
+| Action      | Keys                 | On the board          | On a menu                    |
+| ----------- | -------------------- | --------------------- | ---------------------------- |
+| Steer up    | `ArrowUp`, `KeyW`    | Turns the snake up    | Moves the highlight up       |
+| Steer down  | `ArrowDown`, `KeyS`  | Turns the snake down  | Moves the highlight down     |
+| Steer left  | `ArrowLeft`, `KeyA`  | Turns the snake left  | Nothing                      |
+| Steer right | `ArrowRight`, `KeyD` | Turns the snake right | Nothing                      |
+| Confirm     | `Enter`, `Space`     | Nothing               | Accepts the highlighted item |
+| Back        | `Escape`             | Pauses the round      | Leaves the screen            |
+| Pause       | `KeyP`               | Pauses the round      | Resumes, on the pause menu   |
+| Mute        | `KeyM`               | Toggles sound         | Toggles sound                |
 
 The backtick key (`Backquote`) shows and hides the diagnostics overlay.
 

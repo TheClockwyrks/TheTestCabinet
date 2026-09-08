@@ -8,6 +8,17 @@
 // passes: a validator asks for a number of frames and gets exactly that number, at
 // exactly the deltas its clock supplied.
 //
+// RECONCILING AFTER A POSE. A helper here that poses anything a reading derives
+// from ends with `reconcile`, so a check that poses through these helpers never
+// calls it itself. Spectra's derived readings are `isChallenge`, the four
+// stage-scaled figures, `dischargeReady`, `inversionActive`, `ship.alive`, every
+// `effectiveBand`, a Flux's `shimmer` and a burst's `particles` — so `startPosed`
+// and the drone and bullet poses carry the call. A check that poses with
+// `h.debug.set...` DIRECTLY, outside these helpers, calls `reconcile` once itself
+// before its first read or sweep. It costs no simulation time, so it never moves
+// a measurement that begins at a posed rest state, which is exactly what stepping
+// a frame to refresh a reading would do.
+//
 // THE MACHINERY THAT DOES THAT IS NOT SPECTRA'S. The draw-command recorder, the
 // debug surface read off the engine and the stand-in for a missing one, the driver
 // that threads a PURE surface through `engine.apply`, the frame sweep, the cue
@@ -117,7 +128,7 @@ import {
   type Rect,
 } from "./case-harness/point";
 import { retable } from "./case-harness/replay/retable";
-import { drawnText, textDraws, type TextDraw } from "./case-harness/text";
+import { drawnText, drawnTextRuns, type TextDraw } from "./case-harness/text";
 import {
   DevicePointerEvent,
   applyDriver,
@@ -627,7 +638,18 @@ const WORKSPACE = dirname(PROJECT_ROOT);
  *    naming the canvas library's decoded image as the host's `ImageBitmap` would
  *    change what the ENGINE's own recorder captures into a replay, which is
  *    evidence this case's outputs were never sized for.
- *  - `documentElement` is off: nothing here asks the host for a canvas element.
+ *  - `documentElement` supplies `document.createElement("canvas")`. It is ON
+ *    because specs/assets.md leaves the BAND ROUTE to the build: the tint may be
+ *    "composited over the seeded PNG at draw time" or "a per-band copy is baked
+ *    once at load time", and the second route composes on a scratch canvas the
+ *    build asks the document for. With no document that call throws inside the
+ *    build's own `initialize`, `createHarness` rejects, and EVERY check in this
+ *    project fails on a fact about Node rather than about the build. The shim
+ *    hands back a canvas of the same `@napi-rs/canvas` implementation every
+ *    reading in this project rasterizes through, so a source a build baked is
+ *    read exactly as a seeded bitmap is. Nothing else of a document is supplied,
+ *    because nothing else is something the engine's own runtime would give a
+ *    build either.
  */
 function serveSeededAssets(): AssetHost {
   return installAssetHost({
@@ -636,6 +658,7 @@ function serveSeededAssets(): AssetHost {
     onMissing: "404",
     images: true,
     nameImageBitmap: false,
+    documentElement: true,
     label: "spectra",
   });
 }
@@ -1097,6 +1120,11 @@ export function startPosed(h: Harness): void {
   h.debug.setExtraLifeAwarded(false);
   h.debug.setChallengeHits(0);
   h.debug.setDiveClock(0);
+
+  // The stage, the resonance, the inversion, the phase and the ship's band are
+  // all posed above, and the derived figures follow every one of them, so the
+  // readings are brought into agreement before anything reads them back.
+  h.debug.reconcile();
 }
 
 /**
@@ -1277,6 +1305,10 @@ export function poseDrone(
   h.debug.setDroneOscillation(id, opts.oscillation ?? false);
   h.debug.setDroneFire(id, opts.fire ?? false);
 
+  // The band, the shell and the band clock posed above are what a drone's
+  // `effectiveBand` and its `shimmer` follow.
+  h.debug.reconcile();
+
   return id;
 }
 
@@ -1418,26 +1450,6 @@ export async function drawFrame(h: Harness): Promise<DrawCall[]> {
 /* ---- Text ----------------------------------------------------------------- */
 
 /**
- * Whether the frame drew `text` as part of some run of text, ignoring case.
- *
- * Substring rather than equality on purpose: the copy a validator asserts is the
- * case's own, but how a build presents it is the build's, and a menu entry is
- * commonly drawn with a selection marker or padding around it. Requiring the exact
- * run would fail a screen that shows precisely the right words.
- *
- * OVER THE RAW CALLS, WHICH IS NOT THE PACKAGE'S READING. The package's `drewText`
- * matches against the logical RUNS a frame spells, so a heading drawn a glyph per
- * `fillText` is one string there and several here. Coalescing can only ADD a match,
- * and this suite's screen items include ones that assert a word was NOT drawn — so
- * the two readings do not decide the same points, and this case keeps the one its
- * verdicts were taken under.
- */
-export function drewText(calls: readonly DrawCall[], text: string): boolean {
-  const wanted = text.trim().toLowerCase();
-  return drawnText(calls).some((drawn) => drawn.toLowerCase().includes(wanted));
-}
-
-/**
  * One run of text a frame drew, and the logical x range its glyphs span.
  *
  * The package's `TextDraw`, which carries the alignment beside the four figures
@@ -1446,7 +1458,7 @@ export function drewText(calls: readonly DrawCall[], text: string): boolean {
 export type TextSpan = TextDraw;
 
 /**
- * Every run of text `calls` drew, placed in logical units.
+ * Every logical run of text `calls` drew, placed in logical units.
  *
  * A build may anchor its text through any `translate`/`scale` it likes and align it
  * any way it likes, so the anchor is mapped through the transform the context held
@@ -1454,21 +1466,27 @@ export type TextSpan = TextDraw;
  * `textAlign`. Which way a `start`/`end` alignment reads is the page's direction;
  * this game draws no right-to-left text, so they are left and right.
  *
+ * COALESCED, never one entry per call. A build that letter-spaces a heading or a
+ * readout draws one glyph per `fillText`, which is the only portable way to
+ * letter-space canvas text, and every reader of these looks a run up by the copy
+ * it carries and then asks where it sits — and no glyph reads as the figure it
+ * is part of. So this is the package's `drawnTextRuns`, not its `textDraws`: the
+ * merge rule (`case-harness/text.ts`) folds side-by-side glyphs on one baseline
+ * back into the run they spell, decided in the canvas's own pixels because the
+ * rule is relative, and the merged runs are then carried back through the
+ * engine's fit to logical units. A run keeps the anchor of its first draw, so a
+ * call that stands alone comes back exactly as `textDraws` would place it, and
+ * every raw string is a substring of its run, so this can only add a match and
+ * never take one away.
+ *
  * This is how the HUD items decide WHERE a reading was drawn — which strip it sits
  * in, which half of the strip, whether it clears the play field.
- *
- * ONE ENTRY PER CALL. The package ships three placed text readings and only one of
- * them is this: `textDraws` reports each draw on its own, where `drawnTextRuns` and
- * `reanchoredTextRuns` MERGE the draws of a letter-spaced run into one entry. A
- * merged run is wider than any of its members and sits at a different anchor, so a
- * check holding a HUD figure clear of a strip would be reading a different
- * rectangle under either of those.
  */
 export function drawnTextSpans(
   h: Harness,
   calls: readonly DrawCall[] = h.calls,
 ): TextSpan[] {
-  return allInLogical(h.engine.viewport(), textDraws(calls));
+  return allInLogical(h.engine.viewport(), drawnTextRuns(calls));
 }
 
 /* ---- Where a frame put its sprites ---------------------------------------- */

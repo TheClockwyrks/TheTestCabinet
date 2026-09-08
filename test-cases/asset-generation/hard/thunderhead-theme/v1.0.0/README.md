@@ -2,7 +2,7 @@
 
 An audio asset-generation test case (`asset_kind = "music"`). It asks a model to
 compose the Thunderhead main-menu theme, a long, grand, cinematic main-title
-overture for the *Thunderhead* fleet-command game, using only the `music`
+overture for the _Thunderhead_ fleet-command game, using only the `music`
 sequencer binary, one recorded operation at a time. There is no target clip; the
 model composes to match the written brief.
 
@@ -18,14 +18,14 @@ compositional creativity over instruction-following.
 
 ## Layout
 
-| File | Seeded? | Purpose |
-| --- | --- | --- |
-| `test-case.toml` | manifest | Metadata, `[audio]` (format + `packs = ["gm-lite@0.1.0"]`), `[tool]` (`music`), `[output]`, domain. |
-| `specs/brief.md` | seeded | The self-contained brief: mood and role, length and clean loop, how the piece should develop, the instrumentation (model's choice), and the stereo image. |
-| `variants/base.toml` | — | The single default variant. |
-| `prompt.hbs` | rendered | The instruction handed to the harness (points at the brief and the tool). |
-| `description.md` | — | Site-facing blurb. |
-| `README.md` | — | This overview. |
+| File                 | Seeded?  | Purpose                                                                                                                                                   |
+| -------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `test-case.toml`     | manifest | Metadata, `[audio]` (format + `packs = ["gm-lite@0.1.0"]`), `[tool]` (`music`), `[output]`, domain.                                                       |
+| `specs/brief.md`     | seeded   | The self-contained brief: mood and role, length and clean loop, how the piece should develop, the instrumentation (model's choice), and the stereo image. |
+| `variants/base.toml` | —        | The single default variant.                                                                                                                               |
+| `prompt.hbs`         | rendered | The instruction handed to the harness (points at the brief and the tool).                                                                                 |
+| `description.md`     | —        | Site-facing blurb.                                                                                                                                        |
+| `README.md`          | —        | This overview.                                                                                                                                            |
 
 ## The instrument bank
 

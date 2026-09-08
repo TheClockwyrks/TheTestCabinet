@@ -248,10 +248,13 @@ export function fluxHold(stage: number): number {
  * A Flux's whole band window at `stage`: the hold, then the shimmer.
  *
  * There is deliberately no flat `FLUX_CYCLE` here. `fluxHold(stage)` falls from
- * `FLUX_HOLD_L1` to a floor of `1.0`, so a caller could not know
- * `setDroneBandClock`'s legal argument domain at any stage but the first from a
- * flat constant. Every check that advances a Flux through a window or a cycle
- * names the stage it posed.
+ * `FLUX_HOLD_L1` to a floor of `1.0`, so a caller could not work out from a flat
+ * constant WHERE IN THE WINDOW a posed band clock lands at any stage but the
+ * first. The window is not `setDroneBandClock`'s argument domain — it is a live
+ * figure the stage moves, so the pose takes the seconds it is handed
+ * (`specs/instrumentation.md`) — but it is what `shimmer` is read against, so
+ * every check that advances a Flux through a window or a cycle names the stage it
+ * posed.
  */
 export function fluxWindow(stage: number): number {
   return fluxHold(stage) + FLUX_SHIMMER;

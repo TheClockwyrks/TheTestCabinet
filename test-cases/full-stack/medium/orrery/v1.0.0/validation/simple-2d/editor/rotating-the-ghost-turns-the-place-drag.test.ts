@@ -102,7 +102,11 @@ it("raises the ghost's rotation by one modulo six and places at it", async () =>
   );
 
   const ids = await partIds(h);
-  assertEqual(ids.length, 1, "the release on a legal hex placed the ghost's part");
+  assertEqual(
+    ids.length,
+    1,
+    "the release on a legal hex placed the ghost's part",
+  );
   assertEqual(
     partById(await h.snapshot(), ids[0] as number)?.rotation,
     TURNED[PRESSES - 1],

@@ -59,18 +59,18 @@ every run.
 
 ## Contents
 
-| Path                   | Seeded to run? | Purpose                                                                 |
-| ---------------------- | -------------- | ----------------------------------------------------------------------- |
-| `specs/`               | Yes            | The specification handed to the model, by concern.                      |
-| `workspaces/`          | Yes            | The starter TypeScript project, `<engine>/`, seeded at the run root.    |
-| `references/`          | No             | The authored, correct build, one directory per engine. Never seeded.    |
-| `validation/`          | No             | The validator suites deciding every review point, `<engine>/`.          |
-| `prompt.hbs`           | No             | Rendered into the model's prompt; not seeded.                           |
-| `test-case.toml`       | No             | Manifest: engines, workspaces, toolchain, specs, domains, review items. |
-| `variants/`            | No             | One TOML file per variant (listed in `variants`).                       |
-| `description.md`       | No             | The site-facing introduction on the case's detail page.                 |
-| `changelog.md`         | No             | This version's entry in the case's changelog.                           |
-| `README.md`            | No             | This overview.                                                          |
+| Path             | Seeded to run? | Purpose                                                                 |
+| ---------------- | -------------- | ----------------------------------------------------------------------- |
+| `specs/`         | Yes            | The specification handed to the model, by concern.                      |
+| `workspaces/`    | Yes            | The starter TypeScript project, `<engine>/`, seeded at the run root.    |
+| `references/`    | No             | The authored, correct build, one directory per engine. Never seeded.    |
+| `validation/`    | No             | The validator suites deciding every review point, `<engine>/`.          |
+| `prompt.hbs`     | No             | Rendered into the model's prompt; not seeded.                           |
+| `test-case.toml` | No             | Manifest: engines, workspaces, toolchain, specs, domains, review items. |
+| `variants/`      | No             | One TOML file per variant (listed in `variants`).                       |
+| `description.md` | No             | The site-facing introduction on the case's detail page.                 |
+| `changelog.md`   | No             | This version's entry in the case's changelog.                           |
+| `README.md`      | No             | This overview.                                                          |
 
 The specification is split across `specs/` by concern, and every file is seeded
 for every run. A file is a Handlebars template only where it branches on the

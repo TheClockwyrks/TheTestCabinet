@@ -15,9 +15,10 @@
 // stage: under What stays drawn in code, "The title, howto, and select screens,
 // the solved panel, and all text" are drawn by the build, and "Every word the
 // game puts on the stage is drawn as text ... rather than as shapes traced into
-// the form of letters or assembled from images of glyphs". The frame's text runs are gathered onto the baselines
-// they were drawn on, so a heading drawn as one run and a heading drawn word by
-// word read alike, and the comparison ignores spacing and case, which
+// the form of letters or assembled from images of glyphs". The heading is read
+// with the shared harness's `drewText`, which gathers the frame's logical runs
+// onto the baselines they share, so a heading drawn as one run and a heading
+// drawn word by word read alike, and which ignores spacing and case, which
 // `specs/ui.md` fixes no more than it fixes a palette or a font.
 //
 // THE POSE. A challenge asking for ONE delivery of a lone `sol`, with one `set`
@@ -31,6 +32,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNotNull, assertTrue } from "../assert";
+import { drawnTextLines, drewText } from "../case-harness/text";
 import { SOLVED_TITLE_TEXT } from "../constants";
 import { setPart, solution } from "../formats";
 import { ONE_DELIVERY, ORIGIN } from "../fixtures";
@@ -40,37 +42,11 @@ import {
   createHarness,
   openRun,
   spawnMote,
-  textDraws,
   type Harness,
-  type TextDraw,
 } from "../harness";
 
 /** The whole machine: one set for the challenge's only product, at the origin. */
 const ONE_SET = solution([setPart(0, ORIGIN.q, ORIGIN.r)]);
-
-/**
- * The frame's text, one string per baseline it drew on.
- *
- * A build is free to draw a line as one run or as a run per word, and nothing in
- * `specs/` says which; what they share is the baseline, so the runs at one `y`
- * are joined in `x` order and read as that line.
- */
-function linesOf(draws: readonly TextDraw[]): string[] {
-  const baselines = new Map<number, TextDraw[]>();
-  for (const draw of draws) {
-    const on = baselines.get(draw.y) ?? [];
-    on.push(draw);
-    baselines.set(draw.y, on);
-  }
-  return [...baselines.entries()]
-    .sort((a, b) => a[0] - b[0])
-    .map(([, on]) =>
-      [...on]
-        .sort((a, b) => a.x - b.x)
-        .map((draw) => draw.text)
-        .join(" "),
-    );
-}
 
 let h: Harness;
 
@@ -88,7 +64,7 @@ it("draws SOLVED_TITLE_TEXT over the completed run", async () => {
   await advanceCycles(h, 1);
   await h.advance(1);
 
-  const lines = linesOf(textDraws(await h.lastCalls()));
+  const calls = await h.lastCalls();
   await captureStill(h, "heading");
 
   const after = await h.snapshot();
@@ -103,12 +79,9 @@ it("draws SOLVED_TITLE_TEXT over the completed run", async () => {
       "target of 1, and the run completes, which is the status the panel is up in",
   );
 
-  const wanted = SOLVED_TITLE_TEXT.replace(/\s+/g, "").toLowerCase();
   assertTrue(
-    lines.some((line) =>
-      line.replace(/\s+/g, "").toLowerCase().includes(wanted),
-    ),
+    drewText(calls, SOLVED_TITLE_TEXT),
     `the solved panel is headed ${JSON.stringify(SOLVED_TITLE_TEXT)}, and the ` +
-      `text the frame drew is ${JSON.stringify(lines)}`,
+      `text the frame drew is ${JSON.stringify(drawnTextLines(calls))}`,
   );
 });

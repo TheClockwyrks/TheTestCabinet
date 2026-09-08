@@ -27,10 +27,10 @@ import { PAUSE_ITEMS } from "../constants";
 import {
   captureStill,
   createHarness,
-  drewText,
   startPosed,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/index";
 
 let h: Harness;
 

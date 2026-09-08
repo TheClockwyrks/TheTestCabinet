@@ -48,49 +48,49 @@ one. `npm run preview` serves the built output locally.
 
 ## The checks
 
-| Command | Checks |
-| --- | --- |
-| `npm run typecheck` | The code type-checks. |
-| `npm run lint` | The code is lint-clean. |
-| `npm run format` | The code is formatted. |
-| `npm test` | The unit tests pass, with coverage over `src/`. |
+| Command             | Checks                                          |
+| ------------------- | ----------------------------------------------- |
+| `npm run typecheck` | The code type-checks.                           |
+| `npm run lint`      | The code is lint-clean.                         |
+| `npm run format`    | The code is formatted.                          |
+| `npm test`          | The unit tests pass, with coverage over `src/`. |
 
 ## Controls
 
 Every screen and every control is fully operable with the pointer alone, and every menu
 with a touch contact alone. The keys below are accelerators.
 
-| Key | Does |
-| --- | --- |
-| `B` | Pulls the press and arms a rock. |
-| `K` | Harvests the selected candidate, which starts the wave. |
-| `G` | Harvests it one quality tier lower. |
-| `C` | Commits a combine from the current selection. |
-| `U` | Raises the selected combination tower's level, or refines the press. |
-| `T` | Cycles the selected structure's targeting priority. |
-| `X` | Dismantles the selected structure. |
-| `F` | Cycles the speed multiplier through 1x, 2x, 4x and 8x. |
-| `Space` | Pauses in place, and resumes. |
-| `P` | Opens the pause menu, and closes it and resumes. |
-| `V` | Opens and closes the recipe book. |
-| `L` | Opens and closes the damage leaderboard. |
-| `M` | Toggles audio mute. |
-| `Shift` | Held across a press on a structure, adds it to the combine set. |
-| `↑` `↓` `Enter` | Move and take a menu choice. |
-| `Esc` | Backs out: a held rock, then the selection, then an overlay, then the pause menu. |
-| `` ` `` | Shows and hides the engine's diagnostics overlay. |
+| Key             | Does                                                                              |
+| --------------- | --------------------------------------------------------------------------------- |
+| `B`             | Pulls the press and arms a rock.                                                  |
+| `K`             | Harvests the selected candidate, which starts the wave.                           |
+| `G`             | Harvests it one quality tier lower.                                               |
+| `C`             | Commits a combine from the current selection.                                     |
+| `U`             | Raises the selected combination tower's level, or refines the press.              |
+| `T`             | Cycles the selected structure's targeting priority.                               |
+| `X`             | Dismantles the selected structure.                                                |
+| `F`             | Cycles the speed multiplier through 1x, 2x, 4x and 8x.                            |
+| `Space`         | Pauses in place, and resumes.                                                     |
+| `P`             | Opens the pause menu, and closes it and resumes.                                  |
+| `V`             | Opens and closes the recipe book.                                                 |
+| `L`             | Opens and closes the damage leaderboard.                                          |
+| `M`             | Toggles audio mute.                                                               |
+| `Shift`         | Held across a press on a structure, adds it to the combine set.                   |
+| `↑` `↓` `Enter` | Move and take a menu choice.                                                      |
+| `Esc`           | Backs out: a held rock, then the selection, then an overlay, then the pause menu. |
+| `` ` ``         | Shows and hides the engine's diagnostics overlay.                                 |
 
 Drop a rock by pressing on the yard while one is held, select a structure by pressing on
 it, and clear the selection by pressing on empty yard.
 
 ## Layout
 
-| Path | Holds |
-| --- | --- |
-| `src/` | The game: its state, its simulation, its drawing, and its debug surface. |
-| `assets/` | Every produced sprite, animation frame, particle system, and sound. |
-| `public/assets` | A link to `assets/`, so the built site serves every produced file under the asset root the engine resolves against. |
-| `.vendor/packages/` | The prebuilt particle runtime the produced effects are played through. |
+| Path                | Holds                                                                                                               |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `src/`              | The game: its state, its simulation, its drawing, and its debug surface.                                            |
+| `assets/`           | Every produced sprite, animation frame, particle system, and sound.                                                 |
+| `public/assets`     | A link to `assets/`, so the built site serves every produced file under the asset root the engine resolves against. |
+| `.vendor/packages/` | The prebuilt particle runtime the produced effects are played through.                                              |
 
 The engine is resolved from this repository's own `packages/structured-2d` through a relative
 `file:` dependency rather than from the copy a run is seeded with, so the reference is
@@ -101,24 +101,24 @@ always built against the engine as it now stands. That path is the one line of
 builds the engine over the page canvas, and the second holds every figure the
 specification fixes. Everything else is this build's.
 
-| Module | Holds |
-| --- | --- |
-| `state.ts` | The whole of the game's state, field by field: the `GameState` the world holds. |
-| `types.ts` | The records that state carries, as the simulation works in them. |
-| `tables.ts` | The live behavior the figures in `constants.ts` add up to. |
-| `theme.ts` | The palette, the type face, and the words drawn on screen. |
-| `board.ts` | The tile grid, the pathing, and the never-seal rule. |
-| `waves.ts` | What each wave releases, and when. |
-| `sim.ts` | The simulation: functions over one state. |
-| `layout.ts` | Where every control sits, shared by the drawing, the pointer, and the surface. |
-| `render.ts` | The drawing, in the two layers the pipeline calls. |
-| `particles.ts` | The produced effects, simulated and composited. |
-| `controller.ts` | The one seat the frame's actions and pointer samples are read from. |
-| `yard.ts` | The level's one actor, and the two draw components that render it. |
-| `assets.ts` `audio.ts` `input.ts` `diagnostics.ts` | What the game asks of the engine. |
-| `debug.ts` | The debugging and automation surface. |
-| `game.ts` | The game definition: the instance, the level, and the mode that runs it. |
-| `harness.ts` | A real engine over a canvas with no document, for the tests below. |
+| Module                                             | Holds                                                                           |
+| -------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `state.ts`                                         | The whole of the game's state, field by field: the `GameState` the world holds. |
+| `types.ts`                                         | The records that state carries, as the simulation works in them.                |
+| `tables.ts`                                        | The live behavior the figures in `constants.ts` add up to.                      |
+| `theme.ts`                                         | The palette, the type face, and the words drawn on screen.                      |
+| `board.ts`                                         | The tile grid, the pathing, and the never-seal rule.                            |
+| `waves.ts`                                         | What each wave releases, and when.                                              |
+| `sim.ts`                                           | The simulation: functions over one state.                                       |
+| `layout.ts`                                        | Where every control sits, shared by the drawing, the pointer, and the surface.  |
+| `render.ts`                                        | The drawing, in the two layers the pipeline calls.                              |
+| `particles.ts`                                     | The produced effects, simulated and composited.                                 |
+| `controller.ts`                                    | The one seat the frame's actions and pointer samples are read from.             |
+| `yard.ts`                                          | The level's one actor, and the two draw components that render it.              |
+| `assets.ts` `audio.ts` `input.ts` `diagnostics.ts` | What the game asks of the engine.                                               |
+| `debug.ts`                                         | The debugging and automation surface.                                           |
+| `game.ts`                                          | The game definition: the instance, the level, and the mode that runs it.        |
+| `harness.ts`                                       | A real engine over a canvas with no document, for the tests below.              |
 
 The simulation touches no canvas, no clock, and no input, which is what lets the unit
 tests drive it in Node and what lets a driven scenario be posed and read there. The renderer

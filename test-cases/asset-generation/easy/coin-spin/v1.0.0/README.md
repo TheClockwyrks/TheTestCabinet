@@ -31,15 +31,15 @@ stays on-palette on full transparency.
 
 ## Layout
 
-| Path | Seeded to run? | Purpose |
-| --- | --- | --- |
-| `specs/brief.md` | Yes | The self-contained brief (plain Markdown). |
-| `prompt.hbs` | No | Rendered into the model's prompt. |
-| `test-case.toml` | No | Manifest: canvas, tool, sheet, domain. |
-| `variants/` | No | One TOML file per variant (listed in `variants`). |
-| `description.md` | No | Site blurb. |
-| `changelog.md` | No | This version's changelog entry. |
-| `README.md` | No | This overview. |
+| Path             | Seeded to run? | Purpose                                           |
+| ---------------- | -------------- | ------------------------------------------------- |
+| `specs/brief.md` | Yes            | The self-contained brief (plain Markdown).        |
+| `prompt.hbs`     | No             | Rendered into the model's prompt.                 |
+| `test-case.toml` | No             | Manifest: canvas, tool, sheet, domain.            |
+| `variants/`      | No             | One TOML file per variant (listed in `variants`). |
+| `description.md` | No             | Site blurb.                                       |
+| `changelog.md`   | No             | This version's changelog entry.                   |
+| `README.md`      | No             | This overview.                                    |
 
 A run receives the seeded brief, the `draw-sheet` binary, and six pre-seeded blank
 32×32 frames with empty action logs. There is no target image and no operations

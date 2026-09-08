@@ -13,11 +13,11 @@ falls on it. It reports `hearingRange` and `hearingLock` as `null`.
 
 The Flarefish senses the forager on any step where all three of these hold at once.
 
-| The condition | What it means |
-| --- | --- |
-| In range | The distance between the two centers is at most `R`, the Flarefish's detection range. |
-| In line of sight | The straight line between the two centers crosses no rock tile. |
-| Clear of ink | That same line crosses no ink cloud, and the Flarefish itself stands in none. |
+| The condition    | What it means                                                                         |
+| ---------------- | ------------------------------------------------------------------------------------- |
+| In range         | The distance between the two centers is at most `R`, the Flarefish's detection range. |
+| In line of sight | The straight line between the two centers crosses no rock tile.                       |
+| Clear of ink     | That same line crosses no ink cloud, and the Flarefish itself stands in none.         |
 
 `R` grows with the forager's brightness `G` on the same curve the Lanternjaw's does:
 `R = LANTERN_RANGE_BASE + LANTERN_RANGE_GAIN * G`, `128` (4 tiles) at `G = 0` and `320`
@@ -89,11 +89,11 @@ hunting pace.
 
 ## States
 
-| From | To | When |
-| --- | --- | --- |
-| `"den"` | `"wander"` | It has swum out of the den chamber after its release time. |
-| `"wander"` | `"chase"` | Its light-sense holds the forager, or its bloom locks on. |
-| `"chase"` | `"chase"` | Its light-sense holds the forager, or the linger is still running. |
-| `"chase"` | `"wander"` | `LINGER_TIME` runs out with nothing sensed, or ink blinds it. |
+| From       | To         | When                                                               |
+| ---------- | ---------- | ------------------------------------------------------------------ |
+| `"den"`    | `"wander"` | It has swum out of the den chamber after its release time.         |
+| `"wander"` | `"chase"`  | Its light-sense holds the forager, or its bloom locks on.          |
+| `"chase"`  | `"chase"`  | Its light-sense holds the forager, or the linger is still running. |
+| `"chase"`  | `"wander"` | `LINGER_TIME` runs out with nothing sensed, or ink blinds it.      |
 
 The Flarefish never reports `state` as `"search"`.

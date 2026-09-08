@@ -187,9 +187,18 @@ it wants them. No pose decides an outcome: every motion, collision, fault,
 transmutation, delivery, and completion comes from the frames advanced after
 the pose.
 
-An argument outside the domain its operation states is invalid, and the call
-fails loudly rather than guessing what was meant, except where an operation
-states that it normalizes or ignores the call.
+No operation asks how a caller got there. A pose reaches the state it names
+whatever the game's own rules would have allowed a player, and where the
+pointer is, what is selected, which screen is up, and whether a control is
+drawn are how a player reaches an edit rather than a pose's conditions.
+
+What no operation does is refuse quietly. An argument outside the domain its
+operation states is invalid, and so is a part or a mote no id names, an
+arrangement of the field the game holds no state for, and a faculty the
+operation's subject does not carry: each one fails loudly and changes
+nothing, rather than passing with the state exactly as it was. A caller reads
+what an operation left from `snapshot()`, and reads a call it got wrong from
+the `Error` it threw.
 {{#if (eq engine.slug "none")}}
 {{else if (eq engine.slug "simple-2d")}}
 
@@ -231,6 +240,7 @@ doing.
 | --- | --- |
 | `reset()` | Restores every declared field of the game's state to its title-screen value: the title screen with its first menu item highlighted and its remembered selection back at `0`, `mode` `campaign`, no challenge open, an empty editor with empty histories, no run, the pointer reported as up, `simTime` `0`, the completion switch on, and all progress cleared, so nothing is solved, every record and stash is empty, only the first campaign challenge is unlocked, and both select screens land on their first row. |
 | `snapshot()` | A pure read of the state, returned as the plain object under Snapshot shape below. It changes nothing. |
+| `reconcile()` | Brings every value the surface reports into agreement with the game as it now stands, without advancing anything. It is the call a caller makes after posing a world and before reading it. |
 | `setCompletion(enabled)` | Sets the completion switch above. |
 
 `muted` is untouched; the runtime owns muting.
@@ -242,6 +252,35 @@ Whether the frame loop advances the simulation is untouched too, so a
 A reset leaves the game indistinguishable from a freshly started session, so
 anything else the build keeps across frames is derived from what a reset
 restores.
+
+`reconcile()` answers for everything derived. The cost and the period follow
+from the parts and their tapes, a mote's drawn `x` and `y` from its hex, its
+motion and `sim.fraction`, the banked `area` from the bank, and each mode's
+`count` and `stashed` list from the course and its stashes — so after a pose
+every one of them reports the machine and the field as they are now rather
+than as they were before it. A build that works those out at the read has
+nothing to do here and the call changes nothing; a build that keeps any of
+them as a stored copy rewrites that copy from what it is a copy of.
+
+It moves no clock and runs no system. `simTime`, `sim.cycle`, and
+`sim.fraction` are untouched, no part moves along its tape, no collision is
+decided, no filament is made or broken, no tally moves, no fault is raised,
+and the completion test does not fire. It sounds nothing, changes no screen,
+touches no progress, and pushes no undo entry. It moves nothing to make a
+reading agree either: a part posed where its own rules would not have let a
+player leave it stays exactly where it was posed and reads as it is. What a
+frame owns stays the frame's, so the three figures the render-free core
+carries as running sums are the frames' to move and the run's metrics are the
+completion's. Calling it twice leaves the same state as calling it once.
+
+It is never an error. It may be called on any screen, with or without a
+challenge open and with or without a live run.
+{{#if (eq engine.slug "simple-2d")}}
+
+`reconcile(state)` returns the next `OrreryState`, built from the one it was
+handed, which it leaves as it was. A build that works every one of those
+readings out at the read returns a state equal to the one it was given.
+{{/if}}
 
 ### Navigation and progress
 
@@ -404,19 +443,21 @@ group requires a live run and throws an `Error` without one. A new mote's
 A typical scenario calls `reset()`, `loadChallenge` to pose a small
 challenge, `clearMachine()`, `setCompletion(false)`, `setAutoStep(false)`,
 `startRun()`, and `clearMotes()`, places the one part and spawns the motes
-it is about, advances the clock with `advance`, and reads the result from
+it is about, calls `reconcile()` to bring the readings into agreement with
+what it posed, advances the clock with `advance`, and reads the result from
 `snapshot()`.
 {{else if (eq engine.slug "simple-2d")}}
 A typical scenario runs the same sequence through the engine's `apply`, as
 `engine.apply((s) => debug.spawnMote(s, 0, 0, "dust"))`: `reset`,
 `loadChallenge` to pose a small challenge, `clearMachine`,
 `setCompletion(false)`, `startRun`, and `clearMotes`, then the one part and
-the motes it is about, then `engine.advance` over a clock of its own, and
-reads the result from `debug.snapshot(engine.state)`.
+the motes it is about, then `reconcile`, then `engine.advance` over a clock
+of its own, and reads the result from `debug.snapshot(engine.state)`.
 {{else}}
 A typical scenario calls `reset()`, `loadChallenge` to pose a small
 challenge, `clearMachine()`, `setCompletion(false)`, `startRun()`, and
-`clearMotes()`, places the one part and spawns the motes it is about,
+`clearMotes()`, places the one part and spawns the motes it is about, calls
+`reconcile()` to bring the readings into agreement with what it posed,
 advances the game with `engine.advance` over a clock of its own, and reads
 the result from `snapshot()`.
 {{/if}}
@@ -549,6 +590,10 @@ reports is what the game holds. The derived ones are:
 | `sim.area` | the length of the area bank |
 | `campaign.count`, `extras.count` | the length of each mode's challenge list |
 | `campaign.stashed`, `extras.stashed` | the challenges each mode holds a stashed machine for |
+
+A build is free to work any of these out at the read or to keep it as a
+stored copy, and `reconcile()` is what brings a stored copy back into
+agreement after a pose.
 
 Three fields need the game to keep them honest every frame: `pointer`
 mirrors the position and press the pointer input reports, `muted` mirrors

@@ -73,19 +73,22 @@ export const debug: Debug = {
     ball: { ...state.ball, vx, vy },
   }),
   setPaddle: (state, y) => ({ ...state, paddle: { y } }),
-  snapshot: (state) => ({ ball: { ...state.ball }, paddle: { ...state.paddle } }),
+  snapshot: (state) => ({
+    ball: { ...state.ball },
+    paddle: { ...state.paddle },
+  }),
 };
 ```
 
-| Figure | Value |
-| --- | --- |
-| Logical design size | `640 × 360` |
-| Background | `#101018` |
-| Ball | Radius `8`, drawn in `#f45b69`, reflected by every wall |
-| Paddle | `12 × 60` at `x = 24`, drawn in `#e8e8e8`, moving at `240` units per second and clamped to the field |
-| Actions | `up` bound to `KeyW` and `ArrowUp`, `down` bound to `KeyS` and `ArrowDown` |
-| Cues | `bounce`, played on the frame a wall reflects the ball |
-| Diagnostics | `ball`, reporting `` `${x}, ${y}` `` in whole units, and `paddle`, reporting the paddle's `y` |
+| Figure              | Value                                                                                                |
+| ------------------- | ---------------------------------------------------------------------------------------------------- |
+| Logical design size | `640 × 360`                                                                                          |
+| Background          | `#101018`                                                                                            |
+| Ball                | Radius `8`, drawn in `#f45b69`, reflected by every wall                                              |
+| Paddle              | `12 × 60` at `x = 24`, drawn in `#e8e8e8`, moving at `240` units per second and clamped to the field |
+| Actions             | `up` bound to `KeyW` and `ArrowUp`, `down` bound to `KeyS` and `ArrowDown`                           |
+| Cues                | `bounce`, played on the frame a wall reflects the ball                                               |
+| Diagnostics         | `ball`, reporting `` `${x}, ${y}` `` in whole units, and `paddle`, reporting the paddle's `y`        |
 
 ## Layout
 
@@ -274,7 +277,11 @@ class KeyEvent extends Event {
   }
 }
 
-function toDevice(view: Viewport, x: number, y: number): { x: number; y: number } {
+function toDevice(
+  view: Viewport,
+  x: number,
+  y: number,
+): { x: number; y: number } {
   return {
     x: Math.round(view.offsetX + x * view.scale),
     y: Math.round(view.offsetY + y * view.scale),
@@ -298,24 +305,35 @@ function recorder(target: SKRSContext2D, calls: DrawCall[]): SKRSContext2D {
   });
 }
 
-export function callsTo(calls: readonly DrawCall[], method: string): unknown[][] {
+export function callsTo(
+  calls: readonly DrawCall[],
+  method: string,
+): unknown[][] {
   return calls.flatMap((call) =>
     call.kind === "call" && call.method === method ? [call.args] : [],
   );
 }
 
-export function setsOf(calls: readonly DrawCall[], property: string): unknown[] {
+export function setsOf(
+  calls: readonly DrawCall[],
+  property: string,
+): unknown[] {
   return calls.flatMap((call) =>
     call.kind === "set" && call.property === property ? [call.value] : [],
   );
 }
 
-export async function createHarness(options: HarnessOptions = {}): Promise<Harness> {
+export async function createHarness(
+  options: HarnessOptions = {},
+): Promise<Harness> {
   const cssWidth = options.cssWidth ?? FIELD_WIDTH;
   const cssHeight = options.cssHeight ?? FIELD_HEIGHT;
   const dpr = options.dpr ?? 1;
 
-  const canvas = createCanvas(Math.round(cssWidth * dpr), Math.round(cssHeight * dpr));
+  const canvas = createCanvas(
+    Math.round(cssWidth * dpr),
+    Math.round(cssHeight * dpr),
+  );
   const ctx = canvas.getContext("2d");
   const calls: DrawCall[] = [];
   const recorded = recorder(ctx, calls);
@@ -610,7 +628,9 @@ it("fills the ball and the paddle in their own colors", async () => {
 
   expect(harness.device(0, 0)).toEqual({ x: 160, y: 0 });
   expect(harness.pixel(320, 180)).toEqual([244, 91, 105, 255]);
-  expect(harness.pixel(320 + BALL_RADIUS - 2, 180)).toEqual([244, 91, 105, 255]);
+  expect(harness.pixel(320 + BALL_RADIUS - 2, 180)).toEqual([
+    244, 91, 105, 255,
+  ]);
   expect(harness.pixel(320, 180 - BALL_RADIUS - 4)).toEqual([16, 16, 24, 255]);
   expect(harness.pixel(PADDLE_X + 6, 180)).toEqual([232, 232, 232, 255]);
 });
@@ -635,7 +655,9 @@ it("draws the paddle as one rect and the ball as one arc", async () => {
   expect(arcs).toHaveLength(1);
   expect(arcs[0].slice(0, 3)).toEqual([320, 180, BALL_RADIUS]);
 
-  const colors = setsOf(calls, "fillStyle").filter((color) => color !== BACKGROUND);
+  const colors = setsOf(calls, "fillStyle").filter(
+    (color) => color !== BACKGROUND,
+  );
   expect(colors).toEqual([PADDLE_COLOR, BALL_COLOR]);
 });
 ```

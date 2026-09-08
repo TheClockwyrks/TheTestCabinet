@@ -51,7 +51,10 @@ if (!ctx) throw new Error("Holdfast: 2D canvas context unavailable");
 // ratio. Called on load (before any input) and on every resize.
 function resize(): void {
   const dpr = window.devicePixelRatio || 1;
-  const scale = Math.min(window.innerWidth / STAGE_W, window.innerHeight / STAGE_H);
+  const scale = Math.min(
+    window.innerWidth / STAGE_W,
+    window.innerHeight / STAGE_H,
+  );
   const cssW = Math.max(1, Math.round(STAGE_W * scale));
   const cssH = Math.max(1, Math.round(STAGE_H * scale));
   canvas.style.width = `${cssW}px`;
@@ -89,10 +92,18 @@ async function main(): Promise<void> {
     startBase: () => game.startBase(),
     setState: (s: GameState) => game.setState(s),
     camTo: (tx: number, ty: number) => game.camTo(tx, ty),
-    designate: (kind: "chop" | "mine", tx0: number, ty0: number, tx1: number, ty1: number) => game.designateRect(tx0, ty0, tx1, ty1, kind),
-    build: (kind: StructureKind, tx: number, ty: number) => game.build(kind, tx, ty),
+    designate: (
+      kind: "chop" | "mine",
+      tx0: number,
+      ty0: number,
+      tx1: number,
+      ty1: number,
+    ) => game.designateRect(tx0, ty0, tx1, ty1, kind),
+    build: (kind: StructureKind, tx: number, ty: number) =>
+      game.build(kind, tx, ty),
     grant: (res: ResourceKind, n: number) => game.grant(res, n),
-    setPriority: (id: number, work: WorkType, p: number) => game.setPriority(id, work, p),
+    setPriority: (id: number, work: WorkType, p: number) =>
+      game.setPriority(id, work, p),
     advance: (seconds: number) => game.advance(seconds),
     triggerRaid: (n?: number) => game.triggerRaid(n),
     forcePhase: (phase: Phase) => game.forcePhase(phase),
@@ -248,7 +259,13 @@ async function main(): Promise<void> {
   // A left release: finalize a designation drag (a rectangle over the marked nodes).
   function routeUp(x: number, y: number): void {
     if (!boardDragFrom) return;
-    const a = screenToTile(game.camX, game.camY, game.zoom, boardDragFrom.x, boardDragFrom.y);
+    const a = screenToTile(
+      game.camX,
+      game.camY,
+      game.zoom,
+      boardDragFrom.x,
+      boardDragFrom.y,
+    );
     const b = screenToTile(game.camX, game.camY, game.zoom, x, y);
     game.designateRect(a.tx, a.ty, b.tx, b.ty);
     boardDragFrom = null;
@@ -292,8 +309,15 @@ async function main(): Promise<void> {
     // confirms; Esc goes back (specs/controls.md "Menus").
     const items = menuItems(game.state, game);
     if (items.length === 0) return;
-    if (k === "ArrowUp" || k === "ArrowLeft" || lower === "w" || lower === "a") menuIndex = (menuIndex - 1 + items.length) % items.length;
-    else if (k === "ArrowDown" || k === "ArrowRight" || lower === "s" || lower === "d") menuIndex = (menuIndex + 1) % items.length;
+    if (k === "ArrowUp" || k === "ArrowLeft" || lower === "w" || lower === "a")
+      menuIndex = (menuIndex - 1 + items.length) % items.length;
+    else if (
+      k === "ArrowDown" ||
+      k === "ArrowRight" ||
+      lower === "s" ||
+      lower === "d"
+    )
+      menuIndex = (menuIndex + 1) % items.length;
     else if (k === "Enter" || k === " ") {
       const it = items[menuIndex];
       if (it) activate(it.action);
@@ -311,7 +335,13 @@ async function main(): Promise<void> {
     const items = menuItems(game.state, game);
     for (let idx = 0; idx < items.length; idx++) {
       const c = clickables.find((cl) => cl.action === items[idx]!.action);
-      if (c && pl.x >= c.x && pl.x <= c.x + c.w && pl.y >= c.y && pl.y <= c.y + c.h) {
+      if (
+        c &&
+        pl.x >= c.x &&
+        pl.x <= c.x + c.w &&
+        pl.y >= c.y &&
+        pl.y <= c.y + c.h
+      ) {
         menuIndex = idx;
         return;
       }
@@ -319,7 +349,13 @@ async function main(): Promise<void> {
   }
 
   function handleInput(): void {
-    if (input.downs.length || input.keys.length || input.rightClicks || input.wheel) gesture();
+    if (
+      input.downs.length ||
+      input.keys.length ||
+      input.rightClicks ||
+      input.wheel
+    )
+      gesture();
     for (const d of input.downs) routeDown(d.x, d.y);
     for (const u of input.ups) routeUp(u.x, u.y);
     // A right-click cancels the held tool / build (specs/controls.md — tools stay active
@@ -352,7 +388,12 @@ async function main(): Promise<void> {
     if (input.anyHeld(["arrowup", "w"])) dy -= 1;
     if (input.anyHeld(["arrowdown", "s"])) dy += 1;
     // Edge scroll: only when the pointer is inside the colony view band.
-    if (pl.x >= VIEW_X0 && pl.x <= VIEW_X1 && pl.y >= VIEW_Y0 && pl.y <= VIEW_Y1) {
+    if (
+      pl.x >= VIEW_X0 &&
+      pl.x <= VIEW_X1 &&
+      pl.y >= VIEW_Y0 &&
+      pl.y <= VIEW_Y1
+    ) {
       if (pl.x < VIEW_X0 + EDGE_SCROLL) dx -= 1;
       else if (pl.x > VIEW_X1 - EDGE_SCROLL) dx += 1;
       if (pl.y < VIEW_Y0 + EDGE_SCROLL) dy -= 1;
@@ -384,7 +425,8 @@ async function main(): Promise<void> {
     updateCamera(pl, dt);
 
     // The in-flight designation drag preview (screen coords; render maps it to tiles).
-    if (boardDragFrom && game.tool === "designate") setDrag({ x0: boardDragFrom.x, y0: boardDragFrom.y, x1: pl.x, y1: pl.y });
+    if (boardDragFrom && game.tool === "designate")
+      setDrag({ x0: boardDragFrom.x, y0: boardDragFrom.y, x1: pl.x, y1: pl.y });
     else setDrag(null);
 
     // Advance the sim in fixed ticks, scaled by speed, frozen while paused or off-play.

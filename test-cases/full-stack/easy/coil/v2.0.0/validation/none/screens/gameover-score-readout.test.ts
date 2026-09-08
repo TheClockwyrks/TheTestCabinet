@@ -23,13 +23,13 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
+import { drewText } from "../case-harness/text";
 import { SCORE_LABEL } from "../constants";
 import {
   WALL_CELL,
   arrangeApproach,
   captureStill,
   createHarness,
-  drewText,
   type Harness,
 } from "../harness";
 import { drewNumber } from "./copy";

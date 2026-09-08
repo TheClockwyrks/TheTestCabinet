@@ -11,18 +11,10 @@
     {
       "name": "ignition",
       "shape": "point",
-      "position": [
-        64.0,
-        74.0,
-        0.0
-      ],
+      "position": [64.0, 74.0, 0.0],
       "extent": {
         "radius": 1.0,
-        "size": [
-          1.0,
-          1.0,
-          0.0
-        ]
+        "size": [1.0, 1.0, 0.0]
       },
       "emission": {
         "mode": "burst",
@@ -33,11 +25,7 @@
       "lifetimeSpread": 80.0,
       "speed": 40.0,
       "speedSpread": 20.0,
-      "direction": [
-        0.0,
-        1.0,
-        0.0
-      ],
+      "direction": [0.0, 1.0, 0.0],
       "coneAngle": 360.0,
       "seed": 2,
       "forces": {
@@ -69,18 +57,10 @@
     {
       "name": "flame",
       "shape": "point",
-      "position": [
-        64.0,
-        78.0,
-        0.0
-      ],
+      "position": [64.0, 78.0, 0.0],
       "extent": {
         "radius": 1.0,
-        "size": [
-          1.0,
-          1.0,
-          0.0
-        ]
+        "size": [1.0, 1.0, 0.0]
       },
       "emission": {
         "mode": "rate",
@@ -90,11 +70,7 @@
       "lifetimeSpread": 70.0,
       "speed": 60.0,
       "speedSpread": 25.0,
-      "direction": [
-        0.0,
-        -1.0,
-        0.0
-      ],
+      "direction": [0.0, -1.0, 0.0],
       "coneAngle": 14.0,
       "seed": 9,
       "forces": {
@@ -126,18 +102,10 @@
     {
       "name": "column",
       "shape": "point",
-      "position": [
-        64.0,
-        78.0,
-        0.0
-      ],
+      "position": [64.0, 78.0, 0.0],
       "extent": {
         "radius": 1.0,
-        "size": [
-          1.0,
-          1.0,
-          0.0
-        ]
+        "size": [1.0, 1.0, 0.0]
       },
       "emission": {
         "mode": "rate",
@@ -147,11 +115,7 @@
       "lifetimeSpread": 120.0,
       "speed": 150.0,
       "speedSpread": 40.0,
-      "direction": [
-        0.0,
-        -1.0,
-        0.0
-      ],
+      "direction": [0.0, -1.0, 0.0],
       "coneAngle": 22.0,
       "seed": 15,
       "forces": {
@@ -189,18 +153,10 @@
     {
       "name": "sparks",
       "shape": "point",
-      "position": [
-        64.0,
-        78.0,
-        0.0
-      ],
+      "position": [64.0, 78.0, 0.0],
       "extent": {
         "radius": 1.0,
-        "size": [
-          1.0,
-          1.0,
-          0.0
-        ]
+        "size": [1.0, 1.0, 0.0]
       },
       "emission": {
         "mode": "rate",
@@ -210,11 +166,7 @@
       "lifetimeSpread": 160.0,
       "speed": 210.0,
       "speedSpread": 70.0,
-      "direction": [
-        0.0,
-        -1.0,
-        0.0
-      ],
+      "direction": [0.0, -1.0, 0.0],
       "coneAngle": 30.0,
       "seed": 24,
       "forces": {
@@ -248,18 +200,10 @@
     {
       "name": "smoke",
       "shape": "disc",
-      "position": [
-        64.0,
-        60.0,
-        0.0
-      ],
+      "position": [64.0, 60.0, 0.0],
       "extent": {
         "radius": 10.0,
-        "size": [
-          1.0,
-          1.0,
-          0.0
-        ]
+        "size": [1.0, 1.0, 0.0]
       },
       "emission": {
         "mode": "rate",
@@ -269,11 +213,7 @@
       "lifetimeSpread": 300.0,
       "speed": 65.0,
       "speedSpread": 32.0,
-      "direction": [
-        0.0,
-        1.0,
-        0.0
-      ],
+      "direction": [0.0, 1.0, 0.0],
       "coneAngle": 130.0,
       "seed": 33,
       "forces": {

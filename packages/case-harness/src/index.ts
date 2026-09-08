@@ -73,3 +73,4 @@ export * from "./viewport";
 export * from "./media";
 export * from "./replay/format";
 export * from "./replay/retable";
+export * from "./replay/store";

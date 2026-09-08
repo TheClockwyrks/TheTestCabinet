@@ -30,9 +30,11 @@ import {
   captureStill,
   createHarness,
   drawnText,
+  drawnTextLines,
   hasToken,
   isolate,
   openLevelUp,
+  type DrawCall,
   type Harness,
 } from "../harness";
 import { fillEverySlot } from "./stage";
@@ -40,9 +42,24 @@ import { fillEverySlot } from "./stage";
 /** Two offers for items the run does not hold. */
 const OFFERS: readonly OfferId[] = ["ember", "tallow"];
 
-/** How many runs of drawn text carry `text` as a whole token. */
-function tagged(lines: readonly string[], text: string): number {
+/** How many of `lines` carry `text` as a whole token. */
+function carrying(lines: readonly string[], text: string): number {
   return lines.filter((line) => hasToken([line], text)).length;
+}
+
+/**
+ * How many runs of drawn text carry `text` as a whole token: the larger count
+ * over the raw calls and over the logical runs they spell, each a partition of
+ * the same draws. The runs, so a tag drawn a glyph per call is one run carrying
+ * it; the raw calls as well, so a tag drawn a narrow gap after its name, which
+ * the run rule merges into `EmberNEW`, is still the call carrying it. A count
+ * cannot read the two together, since a plain call would be counted twice.
+ */
+function tagged(calls: readonly DrawCall[], text: string): number {
+  return Math.max(
+    carrying(drawnText(calls), text),
+    carrying(drawnTextLines(calls), text),
+  );
 }
 
 let h: Harness;
@@ -78,7 +95,7 @@ it("tags both unheld offers and the lamp-oil offer NEW", async () => {
   const { calls } = await h.frameDraw();
   captureStill(h, "new");
   assertGreaterThanOrEqual(
-    tagged(drawnText(calls), OFFER_NEW_TEXT),
+    tagged(calls, OFFER_NEW_TEXT),
     OFFERS.length,
     `runs of text carrying the ${OFFER_NEW_TEXT} tag, one per unheld offer (specs/ui.md, levelup)`,
   );
@@ -94,7 +111,7 @@ it("tags both unheld offers and the lamp-oil offer NEW", async () => {
 
   const second = await h.frameDraw();
   assertGreaterThanOrEqual(
-    tagged(drawnText(second.calls), OFFER_NEW_TEXT),
+    tagged(second.calls, OFFER_NEW_TEXT),
     1,
     `runs of text carrying the ${OFFER_NEW_TEXT} tag on the lamp-oil offer`,
   );

@@ -205,29 +205,29 @@ The backend is configured entirely through environment variables.
 variables omitted the backend still ingests, records reviews and publishes,
 skipping the public write.
 
-| Variable | Purpose | Default |
-| --- | --- | --- |
-| `TCAB_BACKEND_CHECKOUT` | The repository checkout ingest scans. Required. | — |
-| `TCAB_BACKEND_BIND` | Bind address. | `127.0.0.1:8787` |
-| `TCAB_BACKEND_DATABASE_URL` | System-of-record database; the scheme picks SQLite or PostgreSQL. | `sqlite://./tcab-backend.sqlite?mode=rwc` |
-| `TCAB_BACKEND_DB_AZURE_AD` | Authenticate to PostgreSQL with a Microsoft Entra managed-identity token. | `false` |
-| `TCAB_BACKEND_STORE` | The on-disk definition store. | `./tcab-store` |
-| `TCAB_BACKEND_AUTH_URL` | The auth service bearer tokens are verified against. | `http://127.0.0.1:8789` |
-| `TCAB_BACKEND_SERVICE_TOKEN` | Shared token the dispatcher claims jobs with. Unset disables the claim endpoints. | — |
-| `TCAB_BACKEND_ALLOW_EXPERIMENTAL` | Offer experimental case versions to the UI. | `false` |
-| `TCAB_ENV` | Deployment environment name, selecting this backend's entries in the reference-builds lockfile. | `local` |
-| `TCAB_R2_*` | Credentials and bucket the public documents and media are uploaded to. | — |
-| `TCAB_PROJECTION_DATABASE_URL` | Connection string of the [public projection](/components/backend/projection/) the backend writes on publish. | — |
-| `TCAB_OPENROUTER_API_KEY` | OpenRouter key the backend's own completion calls are billed to, today only [model probes](/components/backend/api/#model-probes). Distinct from the runners' `OPENROUTER_API_KEY`. Unset, a probe trigger fails with `openrouter_key_missing`. | — |
-| `TCAB_REFERENCE_BROWSER` | Headless browser used to render references at ingest. | image Chromium |
-| `TCAB_GG_REFERENCE` | Directory holding gg's projected reference documents. | `<checkout>/target/gg-reference` |
-| `TCAB_ARTIFACTS_PUBLIC_URL` | Artifact service base URL, advertised to consoles. | — |
-| `TCAB_ARTIFACTS_URL` | Artifact service base URL the backend itself calls to prune and sweep run trees. Unset disables the prune, the sweep, and the snapshot's artifact media fallback. | — |
-| `TCAB_ARTIFACT_SWEEP_INTERVAL_HOURS` | Interval between reclamation sweeps; `0` disables the sweep. | `6` |
-| `TCAB_ARTIFACT_SWEEP_GRACE_HOURS` | How old a run-less tree must be before a sweep deletes it. | `24` |
-| `TCAB_ARENA_PUBLIC_URL` | Arena service base URL, advertised to consoles. | — |
-| `TCAB_GRAFANA_PUBLIC_URL` | Grafana base URL, advertised to consoles. | — |
-| `TCAB_SNAPSHOT_PUBLIC_URL` | Public read base URL of the document bucket, advertised to consoles. | — |
+| Variable                             | Purpose                                                                                                                                                                                                                                         | Default                                   |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| `TCAB_BACKEND_CHECKOUT`              | The repository checkout ingest scans. Required.                                                                                                                                                                                                 | —                                         |
+| `TCAB_BACKEND_BIND`                  | Bind address.                                                                                                                                                                                                                                   | `127.0.0.1:8787`                          |
+| `TCAB_BACKEND_DATABASE_URL`          | System-of-record database; the scheme picks SQLite or PostgreSQL.                                                                                                                                                                               | `sqlite://./tcab-backend.sqlite?mode=rwc` |
+| `TCAB_BACKEND_DB_AZURE_AD`           | Authenticate to PostgreSQL with a Microsoft Entra managed-identity token.                                                                                                                                                                       | `false`                                   |
+| `TCAB_BACKEND_STORE`                 | The on-disk definition store.                                                                                                                                                                                                                   | `./tcab-store`                            |
+| `TCAB_BACKEND_AUTH_URL`              | The auth service bearer tokens are verified against.                                                                                                                                                                                            | `http://127.0.0.1:8789`                   |
+| `TCAB_BACKEND_SERVICE_TOKEN`         | Shared token the dispatcher claims jobs with. Unset disables the claim endpoints.                                                                                                                                                               | —                                         |
+| `TCAB_BACKEND_ALLOW_EXPERIMENTAL`    | Offer experimental case versions to the UI.                                                                                                                                                                                                     | `false`                                   |
+| `TCAB_ENV`                           | Deployment environment name, selecting this backend's entries in the reference-builds lockfile.                                                                                                                                                 | `local`                                   |
+| `TCAB_R2_*`                          | Credentials and bucket the public documents and media are uploaded to.                                                                                                                                                                          | —                                         |
+| `TCAB_PROJECTION_DATABASE_URL`       | Connection string of the [public projection](/components/backend/projection/) the backend writes on publish.                                                                                                                                    | —                                         |
+| `TCAB_OPENROUTER_API_KEY`            | OpenRouter key the backend's own completion calls are billed to, today only [model probes](/components/backend/api/#model-probes). Distinct from the runners' `OPENROUTER_API_KEY`. Unset, a probe trigger fails with `openrouter_key_missing`. | —                                         |
+| `TCAB_REFERENCE_BROWSER`             | Headless browser used to render references at ingest.                                                                                                                                                                                           | image Chromium                            |
+| `TCAB_GG_REFERENCE`                  | Directory holding gg's projected reference documents.                                                                                                                                                                                           | `<checkout>/target/gg-reference`          |
+| `TCAB_ARTIFACTS_PUBLIC_URL`          | Artifact service base URL, advertised to consoles.                                                                                                                                                                                              | —                                         |
+| `TCAB_ARTIFACTS_URL`                 | Artifact service base URL the backend itself calls to prune and sweep run trees. Unset disables the prune, the sweep, and the snapshot's artifact media fallback.                                                                               | —                                         |
+| `TCAB_ARTIFACT_SWEEP_INTERVAL_HOURS` | Interval between reclamation sweeps; `0` disables the sweep.                                                                                                                                                                                    | `6`                                       |
+| `TCAB_ARTIFACT_SWEEP_GRACE_HOURS`    | How old a run-less tree must be before a sweep deletes it.                                                                                                                                                                                      | `24`                                      |
+| `TCAB_ARENA_PUBLIC_URL`              | Arena service base URL, advertised to consoles.                                                                                                                                                                                                 | —                                         |
+| `TCAB_GRAFANA_PUBLIC_URL`            | Grafana base URL, advertised to consoles.                                                                                                                                                                                                       | —                                         |
+| `TCAB_SNAPSHOT_PUBLIC_URL`           | Public read base URL of the document bucket, advertised to consoles.                                                                                                                                                                            | —                                         |
 
 The backend binds `8787`, the [auth service](/components/auth/overview/) `8789`,
 the [artifact service](/components/artifacts/overview/) `8790`, and the

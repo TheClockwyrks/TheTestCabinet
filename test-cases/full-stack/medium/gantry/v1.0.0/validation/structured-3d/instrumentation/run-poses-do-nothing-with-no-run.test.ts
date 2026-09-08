@@ -1,34 +1,28 @@
 // instrumentation/run-poses-do-nothing-with-no-run — a run pose with no run in
-// progress does nothing.
+// progress reaches the idle run, and one naming a load index fails loudly.
 //
-// `specs/instrumentation.md` § The run in progress lists eight operations and then
-// says which of them need a run: "The first seven pose the run while one is in
-// progress." So `setAxis`, `setAxisRate`, `setBob`, `setBobVelocity`, `setLoadPose`,
-// `setLoadPhase` and `setRunTick` change nothing against an idle run, exactly as the
-// general rule requires — "Each pose applies on the screens its section names and
-// does nothing on any other".
+// `specs/instrumentation.md` § The run in progress: "The first seven pose the
+// run the snapshot reports, which is the run in progress where there is one and
+// the idle placeholder where there is not; whether a run is live is not a
+// condition on them." The rule above the tables is what puts them there: "No
+// operation asks which screen is showing, whether a run is in progress, or which
+// tool is selected. Those are how a player reaches a control and are not an
+// operation's conditions."
 //
-// THE IDLE PLACEHOLDER IS THE WHOLE READING. `specs/state.md` fixes what it is —
-// "phase `idle`, no cause, a zero tick, step index, and speed index, no live step,
-// the four axes at the run-start posture ... a zero pivot, a bob at the origin with
-// zero velocity, no attachment, and an empty load, force, and broken list" — so the
-// run is read whole after each of the seven, and any field one of them wrote shows up.
-// A build that wrote an axis value, or a bob position, onto the placeholder would
-// hand the next run a posture it was not started with.
+// THE FIVE UNINDEXED POSES REACH THE PLACEHOLDER. `setAxis`, `setAxisRate`,
+// `setBob`, `setBobVelocity` and `setRunTick` name a field the idle run carries
+// — the axes are at the run-start posture, the bob at the origin, the tick count
+// at zero (`specs/state.md`) — so there is a defined state to reach and each
+// reaches it. Each asks for something the placeholder does not already hold, so
+// a call that was swallowed is visible.
 //
-// EACH POSE ASKS FOR SOMETHING THE PLACEHOLDER DOES NOT ALREADY HOLD, so a call that
-// landed would be visible: an axis value away from the run-start posture, a rate away
-// from zero, a bob away from the origin, a tick count away from zero.
-//
-// THE TWO POSES THAT NAME A LOAD INDEX MAY REFUSE LOUDLY INSTEAD, and that is not
-// this point's business. The same file makes "an index no site, load, or tape step
-// carries" an invalid argument that "fails loudly rather than guessing what was
-// meant", and with no run in progress the run carries no load entries at all, so a
-// build is free to read index `0` as outside the domain of a run pose. Either way the
-// requirement is the same and is what is asserted: the idle run does not move. So the
-// two are driven through a refusal that is allowed to raise, and the reading after
-// them is taken all the same. One load stands in the yard, so a build that reads the
-// index against the SITE's loads instead is on its silent path.
+// THE TWO THAT NAME A LOAD INDEX FAIL LOUDLY, and that is the same rule read from
+// the other end: "an index no site, load, or tape step carries" is an invalid
+// argument that "fails loudly rather than guessing what was meant", and the idle
+// placeholder carries "an empty load, force, and broken list". So `setLoadPose(0,
+// …)` and `setLoadPhase(0, …)` name nothing and must raise rather than pass
+// quietly. One load stands in the YARD, so a build that read the index against
+// the site's loads instead would take the call and fail here.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
@@ -40,13 +34,6 @@ import {
   type Harness,
 } from "../harness";
 
-/** One pose: what to call it, and whether naming a load index may refuse loudly. */
-interface Pose {
-  readonly name: string;
-  readonly indexed: boolean;
-  readonly run: () => Promise<void>;
-}
-
 let h: Harness;
 
 beforeEach(async () => {
@@ -57,7 +44,7 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("leaves the idle run untouched by every pose that needs a run in progress", async () => {
+it("poses the idle run, and fails loudly on a load index it carries no entry for", async () => {
   await openSite(h, 0);
   await emptyYard(h);
   await addOneLoad(
@@ -68,57 +55,87 @@ it("leaves the idle run untouched by every pose that needs a run in progress", a
     { x: -6, y: 2, z: 0, yaw: 0 },
   );
 
-  const idle = JSON.stringify((await h.snapshot()).run);
+  const idle = await h.snapshot();
+  assertEqual(
+    idle.run.phase,
+    "idle",
+    "the run before any of these, which is the idle placeholder " +
+      "(specs/state.md)",
+  );
 
-  const poses: readonly Pose[] = [
-    { name: "setAxis", indexed: false, run: () => h.debug.setAxis("hoist", 9) },
-    {
-      name: "setAxisRate",
-      indexed: false,
-      run: () => h.debug.setAxisRate("slew", 12),
-    },
-    { name: "setBob", indexed: false, run: () => h.debug.setBob(3, 5, -2) },
-    {
-      name: "setBobVelocity",
-      indexed: false,
-      run: () => h.debug.setBobVelocity(1, -2, 3),
-    },
-    {
-      name: "setLoadPose",
-      indexed: true,
-      run: () => h.debug.setLoadPose(0, 3, 3, 3, 45),
-    },
-    {
-      name: "setLoadPhase",
-      indexed: true,
-      run: () => h.debug.setLoadPhase(0, "attached"),
-    },
-    {
-      name: "setRunTick",
-      indexed: false,
-      run: () => h.debug.setRunTick(600),
-    },
-  ];
+  await h.debug.setAxis("hoist", 9);
+  await h.debug.setAxisRate("slew", 12);
+  await h.debug.setBob(3, 5, -2);
+  await h.debug.setBobVelocity(1, -2, 3);
+  await h.debug.setRunTick(600);
+  await h.debug.reconcile();
+  const posed = await h.snapshot();
 
-  try {
-    for (const pose of poses) {
-      if (pose.indexed) {
-        // An index the idle run carries no entry for may be refused loudly; what it
-        // may not do is move the run.
-        await pose.run().catch(() => undefined);
-      } else {
-        await pose.run();
-      }
-      assertEqual(
-        JSON.stringify((await h.snapshot()).run),
-        idle,
-        `the idle run across a ${pose.name} made with no run in progress ` +
-          "(specs/instrumentation.md)",
-      );
+  const raised: boolean[] = [];
+  for (const call of [
+    () => h.debug.setLoadPose(0, 3, 3, 3, 45),
+    () => h.debug.setLoadPhase(0, "attached"),
+  ] as const) {
+    let threw = false;
+    try {
+      await call();
+    } catch {
+      threw = true;
     }
-  } finally {
-    // In a `finally`, so a check that fails inside the sweep still leaves
-    // the picture that shows why.
-    await h.capture("state", "the idle run seven run poses could not touch");
+    raised.push(threw);
   }
+  const after = await h.snapshot();
+
+  await h.advance(1);
+  await h.capture("state", "the idle run five run poses reached");
+
+  assertEqual(
+    posed.run.axes.hoist.value,
+    9,
+    "the hoist setAxis posed onto the idle run: the placeholder carries the " +
+      "field, so there is a defined state to reach (specs/instrumentation.md)",
+  );
+  assertEqual(
+    posed.run.axes.slew.rate,
+    12,
+    "the slew rate setAxisRate posed onto the idle run " +
+      "(specs/instrumentation.md)",
+  );
+  assertEqual(
+    JSON.stringify(posed.run.bob.pos),
+    JSON.stringify({ x: 3, y: 5, z: -2 }),
+    "the bob setBob posed onto the idle run (specs/instrumentation.md)",
+  );
+  assertEqual(
+    JSON.stringify(posed.run.bob.vel),
+    JSON.stringify({ x: 1, y: -2, z: 3 }),
+    "the bob velocity setBobVelocity posed onto the idle run " +
+      "(specs/instrumentation.md)",
+  );
+  assertEqual(
+    posed.run.tick,
+    600,
+    "the tick count setRunTick posed onto the idle run: the placeholder " +
+      "carries a zero tick, so there is a defined state to reach " +
+      "(specs/instrumentation.md)",
+  );
+  assertEqual(
+    raised[0],
+    true,
+    "setLoadPose(0, …) to fail loudly: the idle run carries an empty load " +
+      "list, so index 0 names nothing (specs/instrumentation.md)",
+  );
+  assertEqual(
+    raised[1],
+    true,
+    "setLoadPhase(0, …) to fail loudly, for the same reason " +
+      "(specs/instrumentation.md)",
+  );
+  assertEqual(
+    after.run.loads.length,
+    0,
+    "the run's load entries after the two refused calls: a call that fails " +
+      "reaches nothing, and the yard's load is the SITE's " +
+      "(specs/instrumentation.md)",
+  );
 });

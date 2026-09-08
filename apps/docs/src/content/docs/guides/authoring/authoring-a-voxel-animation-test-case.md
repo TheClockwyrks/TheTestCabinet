@@ -98,10 +98,10 @@ Seed a single self-contained `specs/brief.md`. State:
 - how the tool behaves: `voxel-anim` is the only way to place a voxel and edit
   the rig, `--part` is required on every operation, `--help` lists the operations
   and rig subcommands, and a sculpting operation only records. `voxel-anim
-  render` draws each part's preview and the assembled-scene previews under
+render` draws each part's preview and the assembled-scene previews under
   `scene/` (`iso`, `front`, `side`, `top`) and emits the geometry, with
   `render --component <part>` for one part and `render --time <ms> --animation
-  <name>` to preview a motion, so the model must render before finishing;
+<name>` to preview a motion, so the model must render before finishing;
 - the required animations: name each one, describe the behavior it must show,
   and state whether it loops and whether it self-plays;
 - that the model may add parts, joints, and animations beyond the required set

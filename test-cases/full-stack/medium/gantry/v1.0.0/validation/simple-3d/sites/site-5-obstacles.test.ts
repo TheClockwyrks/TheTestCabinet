@@ -68,19 +68,7 @@ it("stands Site 5's platform at the corner and the size the specification gives"
     MIN.z,
     `the platform's minimum corner, z ${where}`,
   );
-  assertEqual(
-    platform?.size.x,
-    SIZE.x,
-    `the platform's size along x ${where}`,
-  );
-  assertEqual(
-    platform?.size.y,
-    SIZE.y,
-    `the platform's size along y ${where}`,
-  );
-  assertEqual(
-    platform?.size.z,
-    SIZE.z,
-    `the platform's size along z ${where}`,
-  );
+  assertEqual(platform?.size.x, SIZE.x, `the platform's size along x ${where}`);
+  assertEqual(platform?.size.y, SIZE.y, `the platform's size along y ${where}`);
+  assertEqual(platform?.size.z, SIZE.z, `the platform's size along z ${where}`);
 });

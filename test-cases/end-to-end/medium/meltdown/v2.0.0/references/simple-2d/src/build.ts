@@ -51,18 +51,6 @@ export function previewTileFor(
   };
 }
 
-/** Clamp an arbitrary anchor tile so the footprint stays on the grid. */
-export function clampAnchor(
-  col: number,
-  row: number,
-  size: number,
-): { col: number; row: number } {
-  return {
-    col: clamp(Math.round(col), 0, COLS - size),
-    row: clamp(Math.round(row), 0, ROWS - size),
-  };
-}
-
 /**
  * Whether a footprint of `type` anchored at `(col, row)` could be placed right
  * now: on the grid, every tile open, no tile under a unit, affordable, inside
@@ -222,8 +210,12 @@ export function movePreview(
   row: number,
 ): MeltdownState {
   if (!state.build) return state;
-  const anchor = clampAnchor(col, row, sizeOf(state.build.type));
-  return { ...state, build: { ...state.build, ...anchor } };
+  // NO CLAMP HERE, deliberately. A pointer's move runs through
+  // `previewToPoint`, which clamps because specs/building.md says the FOLLOWING
+  // footprint stays on the grid; this is the surface's own pose, and
+  // specs/instrumentation.md says a pose reaches the tile it names. A footprint
+  // hanging off the grid is one `heldValid` answers `false` for.
+  return { ...state, build: { ...state.build, col, row } };
 }
 
 /** Carry the held preview to the pointer at `(x, y)`. */

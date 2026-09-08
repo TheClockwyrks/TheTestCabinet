@@ -116,6 +116,81 @@ describe("the debug surface", () => {
     });
   });
 
+  describe("reconcile", () => {
+    it("re-derives a stored reading from a posed state", () => {
+      playOnFixture();
+      api.addPredator("gloamfin", 5, 8);
+      const plankton = api.snapshot().planktonRemaining;
+
+      // Both readings are already in step: this build keeps them so, because
+      // every pose that writes what they follow from writes them too.
+      api.setPredatorState(0, "chase");
+      expect(api.snapshot().predators[0].speed).toBe(GLOAMFIN_CHASE_SPEED);
+
+      // What `reconcile` owes is the state a build that DID let them drift
+      // would be in, so the two stored copies are knocked out of agreement here
+      // and read back after the call. Nothing else is touched.
+      h.state.predators[0].speed = 0;
+      h.state.planktonRemaining = plankton + 7;
+      expect(api.snapshot().predators[0].speed).toBe(0);
+
+      api.reconcile();
+      expect(api.snapshot().predators[0].speed).toBe(GLOAMFIN_CHASE_SPEED);
+      expect(api.snapshot().planktonRemaining).toBe(plankton);
+      // And the position the predator was posed at is untouched: nothing was
+      // moved to make a reading agree.
+      expect(api.snapshot().predators[0].tx).toBe(5);
+      expect(api.snapshot().predators[0].ty).toBe(8);
+    });
+
+    it("advances nothing", () => {
+      playOnFixture();
+      api.addPredator("lanternjaw", 6, 8);
+      api.setBrightness(0.5);
+      api.setBrightHold(BRIGHT_HOLD);
+      api.setSonarCooldown(1.5);
+      api.setInkCooldown(2.5);
+      api.setDrifterIn(9);
+
+      // Taken after one call, so what the assertions compare is a second call
+      // against a first rather than a first against a stale reading.
+      api.reconcile();
+      const before = api.snapshot();
+      api.reconcile();
+      const once = api.snapshot();
+      api.reconcile();
+      const twice = api.snapshot();
+
+      // The clock, every timer and every body stand exactly where they were,
+      // and a second call is worth no more than the first.
+      expect(once).toEqual(before);
+      expect(twice).toEqual(once);
+      expect(once.simTime).toBe(before.simTime);
+      expect(once.brightHold).toBe(before.brightHold);
+      expect(once.drifterIn).toBe(before.drifterIn);
+      expect(once.sonar.cooldown).toBe(before.sonar.cooldown);
+      expect(once.ink.cooldown).toBe(before.ink.cooldown);
+      expect(once.forager).toEqual(before.forager);
+      expect(once.predators).toEqual(before.predators);
+    });
+
+    it("is legal on every screen", () => {
+      for (const screen of [
+        "title",
+        "howto",
+        "countdown",
+        "playing",
+        "paused",
+        "cleared",
+        "gameover",
+      ] as const satisfies readonly Screen[]) {
+        api.setScreen(screen);
+        api.reconcile();
+        expect(api.snapshot().screen).toBe(screen);
+      }
+    });
+  });
+
   describe("reset", () => {
     it("restores every field to its title-screen value", () => {
       api.setScreen("playing");

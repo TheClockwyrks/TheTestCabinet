@@ -12,11 +12,11 @@ A run configures this only when the deployment already exports telemetry. See
 
 ## Exported signals
 
-| Signal | Exported |
-| ------ | -------- |
-| Traces | Yes |
-| Logs | Yes |
-| Metrics | No |
+| Signal  | Exported |
+| ------- | -------- |
+| Traces  | Yes      |
+| Logs    | Yes      |
+| Metrics | No       |
 
 Token usage is captured for a run through the
 [metrics](/harnesses/kilo/metrics/) path, which parses the CLI's output rather
@@ -26,12 +26,12 @@ than relying on OpenTelemetry.
 
 A run sets these standard variables on the container before the session:
 
-| Variable | Value |
-| -------- | ----- |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | the collector, as a base URL |
-| `OTEL_EXPORTER_OTLP_PROTOCOL` | `http/protobuf` |
-| `OTEL_SERVICE_NAME` | `tcab-harness-kilo` |
-| `OTEL_RESOURCE_ATTRIBUTES` | the run's `tcab.*` attributes |
+| Variable                      | Value                         |
+| ----------------------------- | ----------------------------- |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | the collector, as a base URL  |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | `http/protobuf`               |
+| `OTEL_SERVICE_NAME`           | `tcab-harness-kilo`           |
+| `OTEL_RESOURCE_ATTRIBUTES`    | the run's `tcab.*` attributes |
 
 :::note[The endpoint is the only requirement]
 Telemetry is on by default. Kilo Code's `experimental.openTelemetry` setting is

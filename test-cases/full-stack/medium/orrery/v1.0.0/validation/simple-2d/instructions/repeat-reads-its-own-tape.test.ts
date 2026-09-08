@@ -126,7 +126,10 @@ it("copies the cursor's own row, whatever the other rows carry", async () => {
     [...OTHER_ARM, null, null],
     "the second arm's tape is untouched: an edit changes the edited part alone",
   );
-  assertNotNull(partById(written, wheel)?.tape, "the wheel still carries a tape");
+  assertNotNull(
+    partById(written, wheel)?.tape,
+    "the wheel still carries a tape",
+  );
   assertDeepEqual(
     cellsAt(written, wheel, 0, 6),
     [...WHEEL, null],

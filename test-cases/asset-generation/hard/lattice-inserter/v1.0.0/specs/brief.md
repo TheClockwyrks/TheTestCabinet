@@ -17,7 +17,7 @@ upgraded.
 You draw the **machine only — never an item**. The renderer draws the carried
 item into the sprite at run time, so the same arm has to work for any cargo. Your
 job is the arm and the hand that holds things, plus the **space reserved for what
-it is holding** (see *The item slot*, which is the part of this brief most likely
+it is holding** (see _The item slot_, which is the part of this brief most likely
 to be got wrong).
 
 You draw **one canonical orientation**: the inserter is mounted on the centre
@@ -38,7 +38,7 @@ third dimension.
   it. The arm sweeps **across the ground plane** between them. Do **not** draw a
   side elevation — the base does **not** sit on a ground line at the bottom of
   the frame, and the arm does **not** rise vertically "up the screen" like a
-  pendulum. Screen-down is *south on the floor*, not *toward the viewer's feet*.
+  pendulum. Screen-down is _south on the floor_, not _toward the viewer's feet_.
 - **No faux 3D.** No beveled sides falling away to the floor, no cast shadow
   under the arm implying it floats above the belt. The inserter is a flat shape
   on the floor.
@@ -59,11 +59,11 @@ third dimension.
 - You choose which frame an operation draws into with `--frame <index>`. The sheet
   has **36 frames, numbered 0–35**, in three tiers of twelve:
 
-  | Frames | Tier | Arm accent |
-  | --- | --- | --- |
-  | `0`–`11` | Tier 1 — base | amber |
+  | Frames    | Tier                        | Arm accent |
+  | --------- | --------------------------- | ---------- |
+  | `0`–`11`  | Tier 1 — base               | amber      |
   | `12`–`23` | Tier 2 — reinforced, faster | red-orange |
-  | `24`–`35` | Tier 3 — advanced, fastest | blue-cyan |
+  | `24`–`35` | Tier 3 — advanced, fastest  | blue-cyan  |
 
 - Each tier's twelve frames are one **swing cycle**.
 
@@ -75,11 +75,11 @@ of mechanical detail**, and the **swing speed** — and nothing else. The grey-b
 pivot base, the reach, the item slot, and the swing motion stay the same, so a
 higher tier is unmistakably the same machine, only upgraded.
 
-| Tier | Arm accent | Mechanical detail | Speed |
-| --- | --- | --- | --- |
-| Tier 1 | amber | the base machine — a slender arm, a simple hand | base |
-| Tier 2 | red-orange | reinforced — a secondary strut or rib along the arm, a bolt at the pivot, a sturdier gripper | faster |
-| Tier 3 | blue-cyan | the most advanced — the densest arm and hand detail, a subtle energy glow along the arm | fastest |
+| Tier   | Arm accent | Mechanical detail                                                                            | Speed   |
+| ------ | ---------- | -------------------------------------------------------------------------------------------- | ------- |
+| Tier 1 | amber      | the base machine — a slender arm, a simple hand                                              | base    |
+| Tier 2 | red-orange | reinforced — a secondary strut or rib along the arm, a bolt at the pivot, a sturdier gripper | faster  |
+| Tier 3 | blue-cyan  | the most advanced — the densest arm and hand detail, a subtle energy glow along the arm      | fastest |
 
 - **Arm accent color.** The **arm and hand** carry the tier's accent color — amber,
   then red-orange, then blue-cyan — using that tier's arm / highlight / shadow
@@ -116,7 +116,7 @@ The inserter reads, at a glance, as a **swing-arm machine**:
   takes hold of an item and lets go of it. Its design is **yours to choose**:
   pincers, a clamp, a cradle, a magnetic pad, a pair of arms that close around the
   item, anything that reads as a mechanism that grips. What it must do is make
-  **holding** and **not holding** obvious at a glance (see *The swing*), and leave
+  **holding** and **not holding** obvious at a glance (see _The swing_), and leave
   the item slot clear.
 
 ## The item slot
@@ -148,14 +148,14 @@ viewer plays back as a loop. Over the twelve frames the arm sweeps from the left
 pickup, in an arc across the floor through the far side of the centre tile, to the
 right drop, then back. Reading the twelve as positions 1–12 within the tier's loop:
 
-| Position in the loop | Contents |
-| --- | --- |
-| 1 | hand over the **LEFT** pickup tile, **holding** |
-| 2–5 | arm sweeping rightward, bowing through the **far (top) side** of the centre tile, still **holding** |
-| 6 | hand over the **RIGHT** drop tile, still **holding** (about to release) |
-| 7 | hand over the **RIGHT** drop tile, **released** (open and empty) |
-| 8–11 | arm sweeping back leftward through the same arc, **empty** |
-| 12 | hand over the **LEFT** pickup tile, **empty** — back at the start, so the last frame loops to the first |
+| Position in the loop | Contents                                                                                                |
+| -------------------- | ------------------------------------------------------------------------------------------------------- |
+| 1                    | hand over the **LEFT** pickup tile, **holding**                                                         |
+| 2–5                  | arm sweeping rightward, bowing through the **far (top) side** of the centre tile, still **holding**     |
+| 6                    | hand over the **RIGHT** drop tile, still **holding** (about to release)                                 |
+| 7                    | hand over the **RIGHT** drop tile, **released** (open and empty)                                        |
+| 8–11                 | arm sweeping back leftward through the same arc, **empty**                                              |
+| 12                   | hand over the **LEFT** pickup tile, **empty** — back at the start, so the last frame loops to the first |
 
 So the **first six frames of each tier's loop are the delivery stroke** (holding,
 left → right) and the **last six are the return stroke** (empty, right → left).
@@ -180,37 +180,37 @@ its arm and hand in its own accent trio.
 
 ### Shared base — every tier
 
-| Role | Hex |
-| --- | --- |
+| Role                  | Hex       |
+| --------------------- | --------- |
 | Dark outline / shadow | `#1b1d21` |
-| Base / mount — light | `#6a7884` |
-| Base / mount — mid | `#4d5a64` |
-| Base / mount — dark | `#36424b` |
+| Base / mount — light  | `#6a7884` |
+| Base / mount — mid    | `#4d5a64` |
+| Base / mount — dark   | `#36424b` |
 
 ### Tier 1 arm — amber
 
-| Role | Hex |
-| --- | --- |
-| Arm + hand | `#e6b329` |
+| Role                 | Hex       |
+| -------------------- | --------- |
+| Arm + hand           | `#e6b329` |
 | Arm + hand highlight | `#f6d96b` |
-| Arm + hand shadow | `#b88410` |
+| Arm + hand shadow    | `#b88410` |
 
 ### Tier 2 arm — red-orange
 
-| Role | Hex |
-| --- | --- |
-| Arm + hand | `#e6602a` |
+| Role                 | Hex       |
+| -------------------- | --------- |
+| Arm + hand           | `#e6602a` |
 | Arm + hand highlight | `#f59a5a` |
-| Arm + hand shadow | `#b8400f` |
+| Arm + hand shadow    | `#b8400f` |
 
 ### Tier 3 arm — blue-cyan
 
-| Role | Hex |
-| --- | --- |
-| Arm + hand | `#2ab0e6` |
+| Role                 | Hex       |
+| -------------------- | --------- |
+| Arm + hand           | `#2ab0e6` |
 | Arm + hand highlight | `#7fd8f6` |
-| Arm + hand shadow | `#1069b8` |
-| Energy glow | `#bfeeff` |
+| Arm + hand shadow    | `#1069b8` |
+| Energy glow          | `#bfeeff` |
 
 The **arm and hand are the tier's accent color** and the **base is grey-blue**.
 Keep the two color families distinct — do not let the arm color bleed into the

@@ -37,7 +37,7 @@ import {
   createHarness,
   startRun,
   type Harness,
-  type TextSpan,
+  type TextRun,
 } from "../harness";
 import { readPanel, reads, saysWord } from "./panel";
 
@@ -63,7 +63,7 @@ afterEach(() => {
 it("previews 17 Drifts on Wave 6 and 13 Hulks on Wave 8", async () => {
   startRun(h, "containment", "medium");
 
-  const read: { type: string; count: number; runs: TextSpan[] }[] = [];
+  const read: { type: string; count: number; runs: TextRun[] }[] = [];
   for (const wave of WAVES) {
     h.debug.setWave(wave);
     const runs = await readPanel(h);

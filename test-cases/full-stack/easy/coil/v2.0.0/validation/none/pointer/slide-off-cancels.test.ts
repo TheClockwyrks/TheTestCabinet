@@ -1,7 +1,7 @@
 // pointer/slide-off-cancels — a press and a release in different items confirms
 // nothing.
 //
-// specs/ui.md, "Pointer and touch": "A confirm takes both of its edges inside one
+// specs/ui.md, "Pointer and touch": "A confirm requires both of its edges inside one
 // item's region: the press and its release for a pointer... Two edges that fall
 // in different regions, and an edge that falls outside every region, confirm no
 // item." This is the affordance that lets a player who pressed the wrong entry

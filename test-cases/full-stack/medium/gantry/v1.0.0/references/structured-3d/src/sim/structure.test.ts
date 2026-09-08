@@ -27,12 +27,14 @@ function build(
   counterweights: Vec3[] = [],
 ): Structure {
   return {
-    members: members.map(([a, b, material], id): Member => ({
-      id,
-      a,
-      b,
-      material,
-    })),
+    members: members.map(
+      ([a, b, material], id): Member => ({
+        id,
+        a,
+        b,
+        material,
+      }),
+    ),
     ring: corner === null ? null : { corner },
     counterweights,
   };

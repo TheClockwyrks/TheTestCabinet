@@ -124,6 +124,7 @@ export const REQUIRED_OPS = [
   "advance",
   "reset",
   "snapshot",
+  "reconcile",
   "menuItemRect",
   "setScreen",
   "setMenuIndex",
@@ -358,6 +359,17 @@ export interface FathomDebugApi extends FixtureOps {
   advance(ticks: number): Promise<void>;
   reset(): Promise<void>;
   snapshot(): Promise<FathomSnapshot>;
+  /**
+   * Brings every value the surface reports into agreement with the dive as it
+   * stands, advancing nothing (`specs/instrumentation.md`).
+   *
+   * A body's `tx` and `ty`, `visionRadius`, `sonar.range`, the two `ready`
+   * flags, `planktonRemaining` and a predator's `speed`, `detectRange` and
+   * `hearingRange` are all functions of the world as it stands, and a build is
+   * free to keep any of them as a copy — this is what rewrites such a copy from
+   * what it is a copy of after a pose.
+   */
+  reconcile(): Promise<void>;
   /**
    * The hit region of item `index` on the menu the current screen shows, and
    * `null` on the four screens that show no menu or for an index that menu does
@@ -695,7 +707,7 @@ export async function dragBetweenItems(
 /**
  * Land a real touch contact inside item `index`'s region and LEAVE IT DOWN.
  *
- * A confirm takes both of its edges inside one region and the lift is the second
+ * A confirm requires both of its edges inside one region and the lift is the second
  * of them (`specs/ui.md`), so a gesture that stops at the landing is the one
  * gesture that isolates what the landing alone did.
  */

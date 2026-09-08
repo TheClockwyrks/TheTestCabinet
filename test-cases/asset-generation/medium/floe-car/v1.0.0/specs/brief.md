@@ -51,15 +51,15 @@ sled-dog team.
 Use only these colors (the drawing is regenerated pixel-for-pixel, so stray or
 off-palette colors and anti-aliased fringes count against you):
 
-| Role | Hex |
-| --- | --- |
-| Car body (red) | `#b5423a` |
+| Role                                  | Hex       |
+| ------------------------------------- | --------- |
+| Car body (red)                        | `#b5423a` |
 | Body — dark (hood/trunk, panel seams) | `#7d2c27` |
-| Cabin glass (windows) | `#7fb0c4` |
-| Tyres / wheels | `#171c21` |
-| Outline | `#26323a` |
-| Headlights | `#eef6fa` |
-| Taillights | `#e0492f` |
+| Cabin glass (windows)                 | `#7fb0c4` |
+| Tyres / wheels                        | `#171c21` |
+| Outline                               | `#26323a` |
+| Headlights                            | `#eef6fa` |
+| Taillights                            | `#e0492f` |
 
 ## Working the tool
 

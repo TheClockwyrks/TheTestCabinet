@@ -42,9 +42,9 @@ import {
   meanRect,
   openHowto,
   shareAwayFrom,
-  textDraws,
+  textLines,
   type Harness,
-  type TextDraw,
+  type TextLine,
 } from "../harness";
 
 /** How far above a baseline a line's glyphs reach, and how far below. */
@@ -58,35 +58,6 @@ const AFTER = 40;
 /** How short a run of text is not read as a line of copy. */
 const SHORTEST_LINE = 2;
 
-/** One baseline the frame drew text on, and the runs on it read left to right. */
-interface Line {
-  y: number;
-  text: string;
-  from: number;
-  to: number;
-}
-
-/** The frame's runs gathered into the baselines they were drawn on. */
-function linesOf(draws: readonly TextDraw[]): Line[] {
-  const baselines = new Map<number, TextDraw[]>();
-  for (const draw of draws) {
-    const on = baselines.get(draw.y) ?? [];
-    on.push(draw);
-    baselines.set(draw.y, on);
-  }
-  return [...baselines.entries()]
-    .map(([y, on]) => {
-      const ordered = [...on].sort((a, b) => a.x - b.x);
-      return {
-        y,
-        text: ordered.map((draw) => draw.text).join(""),
-        from: Math.min(...ordered.map((draw) => draw.x)),
-        to: Math.max(...ordered.map((draw) => draw.x)),
-      };
-    })
-    .sort((a, b) => a.y - b.y);
-}
-
 let h: Harness;
 
 beforeEach(async () => {
@@ -97,11 +68,16 @@ afterEach(async () => {
   await h.dispose();
 });
 
-/** How much of a line's band carries paint standing off the ground behind it. */
-async function paintedShare(line: Line): Promise<number> {
-  const x = Math.max(0, line.from - BEFORE);
+/**
+ * How much of a line's band carries paint standing off the ground behind it.
+ *
+ * The band spans the line's measured extent — on a frame the harness never
+ * measured, the run of its anchors — with `BEFORE` and `AFTER` either side.
+ */
+async function paintedShare(line: TextLine): Promise<number> {
+  const x = Math.max(0, line.left - BEFORE);
   const y = Math.max(0, line.y - ASCENT);
-  const width = Math.min(STAGE_W, line.to + AFTER) - x;
+  const width = Math.min(STAGE_W, line.right + AFTER) - x;
   const height = Math.min(STAGE_H, line.y + DESCENT) - y;
   const rect = await h.pixelRect(x, y, width, height);
   return shareAwayFrom(rect, meanRect(rect), CHANNEL_EPSILON);
@@ -120,7 +96,9 @@ it("draws text on every one of the five how-to pages", async () => {
       `page ${page} of the how-to is the page on screen, so what is read is that page's own text`,
     );
 
-    const lines = linesOf(textDraws(await h.lastCalls())).filter(
+    // Every baseline the frame drew, as `drawing.ts`'s `textLines` reads it:
+    // the shared harness's logical runs gathered onto the baselines they share.
+    const lines = textLines(await h.lastCalls()).filter(
       (line) => line.text.trim().length >= SHORTEST_LINE,
     );
     assertGreaterThan(

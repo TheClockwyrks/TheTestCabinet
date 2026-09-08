@@ -39,7 +39,10 @@ import {
 
 /** A hoist move long enough that the axis is still driving when the abort lands. */
 const TAPE: readonly TapeStepSpec[] = [
-  { kind: "move", commands: [{ axis: "hoist", target: 20, rate: HOIST_MAX_RATE }] },
+  {
+    kind: "move",
+    commands: [{ axis: "hoist", target: 20, rate: HOIST_MAX_RATE }],
+  },
 ];
 
 /** Frames watched after the abort, for a loop that re-schedules rather than loops. */

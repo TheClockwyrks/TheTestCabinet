@@ -70,7 +70,7 @@
 // delta of its own through {@link Harness.frame}, which retunes the same clock for
 // that frame alone.
 
-import { dirname } from "node:path";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   createEngine,
@@ -95,7 +95,9 @@ import { callsTo, setsOf, type DrawCall } from "./case-harness/draw-calls";
 import {
   createEngineCaseHarness,
   identityDriver,
+  installAssetHost,
   type AssetFailure,
+  type AssetHost,
   type EngineHarness,
   type EngineHarnessOptions,
   type EngineViewport,
@@ -482,6 +484,71 @@ export type Harness = EngineHarness<
 const PROJECT_ROOT = dirname(fileURLToPath(import.meta.url));
 
 /**
+ * The build's own project directory: the parent of the validator project.
+ *
+ * The runner stages `validation/<engine>/` to `validation/` inside the build's
+ * tree, so the parent of this file's directory is where `assets/` and `src/` sit,
+ * and that is the directory a page-relative URL is addressed from. Taken from
+ * this module's URL rather than from the package's, which is staged one directory
+ * deeper still and would name a tree one level too far down.
+ */
+const WORKSPACE = resolve(PROJECT_ROOT, "..");
+
+/**
+ * The transport the engine's asset loader reaches for, over the workspace on disk.
+ *
+ * WHY THIS EXISTS AT ALL. A check runs in the same Node process as the build, so
+ * there is no page for a produced file to come from. specs/assets.md tells a build
+ * to read every frame through the engine's loader, which resolves a path under the
+ * fixed `assets/` root and hands the page-relative result to `globalThis.fetch` —
+ * and Node's `fetch` refuses a relative URL outright, with no `createImageBitmap`
+ * to decode a sheet with either. Without this shim every sheet fails to load in
+ * every check, and a build whose `initialize` AWAITS its loads — which is what
+ * specs/assets.md asks for — never initializes at all, failing every point in this
+ * project for a fact about Node rather than about the build.
+ *
+ * `roots` is the repository root and nothing else, because specs/assets.md seeds
+ * every frame under `assets/` at that root and the loader asks for
+ * `assets/<folder>/<n>.png`: a build has no say in where the art lives, so there
+ * is no second place to look, and adding one could only ever answer a staged copy
+ * for the committed file.
+ *
+ * `onMissing` is left at `"404"`, the honest answer a static server gives, so the
+ * engine announces `asset:failed` with a status and a build that asked for a frame
+ * the sheet does not carry fails the points about that sheet by name. Handing such
+ * a request upstream instead would put Node's own "failed to parse URL" in front
+ * of the reviewer, which describes the host rather than the build.
+ *
+ * `images` shims `createImageBitmap` over the same decoder the seeded art is read
+ * back with. `nameImageBitmap` is off: nothing in this process has ever carried a
+ * global `ImageBitmap`, and naming one changes what a recorder that recognizes a
+ * drawable source by `instanceof` writes into a replay.
+ */
+const ASSET_HOST = {
+  workspaceRoot: WORKSPACE,
+  roots: ["."],
+  onMissing: "404",
+  images: true,
+  nameImageBitmap: false,
+  label: "fathom",
+} as const;
+
+/**
+ * The hold each runtime has on the shims, so its harness can give exactly its own
+ * back.
+ *
+ * Installed in {@link EngineCaseConfig.createEngine} rather than around
+ * `createHarness`, because the build loads its sheets inside `initialize` and the
+ * kit awaits that before a harness exists to hold anything; given up again from
+ * `dispose`. The installation is reference counted, so two overlapping harnesses
+ * in one worker share one set of shims and the globals go back when the last hold
+ * does. A harness whose `initialize` REJECTED never reaches `dispose` and so never
+ * gives its hold back, which leaves the shims standing in that worker — the same
+ * state a worker that simply exits leaves them in, and harmless either way.
+ */
+const assetHosts = new WeakMap<object, AssetHost>();
+
+/**
  * The package's engine machinery, bound to Fathom on this engine.
  *
  * Four of the config's members are where the engines differ, and each is answered
@@ -519,6 +586,9 @@ const kit = createEngineCaseHarness<
   recorder: { measureText: true },
   defaultClock: () => new StepClock(TICK_MS),
   createEngine: ({ canvas, clock, surface }) => {
+    // Before the runtime is built, because the build loads its sheet art inside
+    // `initialize` and the kit awaits that.
+    const host = installAssetHost(ASSET_HOST);
     const engine = createEngine<FathomSurface>({
       canvas,
       width: STAGE_W,
@@ -532,6 +602,7 @@ const kit = createEngineCaseHarness<
       surface: surface as SurfaceMetrics,
     });
     if (clock instanceof StepClock) stepClocks.set(engine, clock);
+    assetHosts.set(engine as object, host);
     return engine;
   },
   driver: (_engine, raw) => identityDriver(raw as FathomSurface),
@@ -550,6 +621,11 @@ const kit = createEngineCaseHarness<
       buttons: type === "pointerdown" ? PRIMARY_BUTTON_BIT : 0,
     }),
   extend: (base, engine, initialized) => {
+    // The kit's own teardown, taken before this object is laid over `base`: what
+    // `dispose` below overrides IS `base.dispose`, so calling it through `base`
+    // after the fact would call itself.
+    const destroy = base.dispose.bind(base);
+
     /**
      * The buttons the driven pointer holds, kept as a browser keeps them: a press
      * adds one, a release drops one, and every event reports the set as it stands
@@ -648,6 +724,10 @@ const kit = createEngineCaseHarness<
         heldButtons.delete(device);
         dispatchPointer("pointerup", x, y, PRIMARY_BUTTON, device);
         await base.advance(1);
+      },
+      dispose() {
+        destroy();
+        assetHosts.get(engine as object)?.uninstall();
       },
     };
   },
@@ -849,7 +929,7 @@ export async function dragBetweenItems(
 /**
  * Land a touch contact inside item `index`'s region and LEAVE IT DOWN.
  *
- * A confirm takes both of its edges inside one region and the lift is the second
+ * A confirm requires both of its edges inside one region and the lift is the second
  * of them (specs/ui.md), so a gesture that stops at the landing is the one
  * gesture that isolates what the landing alone did.
  */

@@ -39,7 +39,12 @@ export type EssenceType = "nebula" | "comet" | "nova" | "meteor";
 
 /** The planetary ladder, in `PLANETS` order (specs/field.md). */
 export type PlanetType =
-  "saturn" | "jupiter" | "mars" | "venus" | "luna" | "sol";
+  | "saturn"
+  | "jupiter"
+  | "mars"
+  | "venus"
+  | "luna"
+  | "sol";
 
 /** The twenty-one part kinds of `PARTS` (specs/parts.md). */
 export type PartKind =

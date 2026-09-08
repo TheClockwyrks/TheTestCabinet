@@ -116,6 +116,9 @@ it("draws the world vertical straight up the stage at every camera pose", async 
   } finally {
     // In a `finally`, so a check that fails inside the sweep still leaves
     // the picture that shows why.
-    await h.capture("state", "the yard from the second of the two camera poses");
+    await h.capture(
+      "state",
+      "the yard from the second of the two camera poses",
+    );
   }
 });

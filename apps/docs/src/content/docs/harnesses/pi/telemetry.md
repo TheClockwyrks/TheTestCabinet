@@ -12,13 +12,13 @@ extension to add it. The mature extensions peer-depend on the retired
 `@mariozechner/pi-coding-agent` package and will not load against the
 `@earendil-works/pi-coding-agent` package Pi ships as:
 
-| Extension | Peer dependency | Latest release |
-| --- | --- | --- |
-| `pi-telemetry-otel` | `@mariozechner/pi-coding-agent` `^0.51.0` | 0.1.1, Feb 2026 |
-| `@devkade/pi-opentelemetry` | `@mariozechner/pi-coding-agent` `^0.53.0` | 0.1.3, Feb 2026 |
-| `@mobrienv/pi-otlp` | `@mariozechner/pi-coding-agent` `>=0.42.0` | 0.2.0, Feb 2026 |
-| `pi-otel-telemetry` | `@mariozechner/pi-coding-agent` `*` | 1.0.0, Mar 2026 |
-| `pi-otel` | `@earendil-works/pi-coding-agent` `*` | 0.1.0, May 2026 |
+| Extension                   | Peer dependency                            | Latest release  |
+| --------------------------- | ------------------------------------------ | --------------- |
+| `pi-telemetry-otel`         | `@mariozechner/pi-coding-agent` `^0.51.0`  | 0.1.1, Feb 2026 |
+| `@devkade/pi-opentelemetry` | `@mariozechner/pi-coding-agent` `^0.53.0`  | 0.1.3, Feb 2026 |
+| `@mobrienv/pi-otlp`         | `@mariozechner/pi-coding-agent` `>=0.42.0` | 0.2.0, Feb 2026 |
+| `pi-otel-telemetry`         | `@mariozechner/pi-coding-agent` `*`        | 1.0.0, Mar 2026 |
+| `pi-otel`                   | `@earendil-works/pi-coding-agent` `*`      | 0.1.0, May 2026 |
 
 `pi-otel` is the only one targeting the current package. It is a single release
 with a thin maintenance history, its `@opentelemetry/*` dependencies are a

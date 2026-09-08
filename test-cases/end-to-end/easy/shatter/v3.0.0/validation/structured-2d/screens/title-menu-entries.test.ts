@@ -9,10 +9,11 @@
 //
 // THE ORDER IS A PLACEMENT, NOT A DRAW ORDER. Which entry a build's render
 // happens to issue first says nothing about what a player sees, so the reading
-// is where each entry's glyphs LANDED — `harness.ts`'s `drawnTextSpans` maps
+// is where each entry's glyphs LANDED — `harness.ts`'s `spelledTextRuns` maps
 // each run's anchor back through the transform the context held at the call, so
 // a build that draws its menu through a transform of its own is read in the same
-// logical units as one that does not.
+// logical units as one that does not, and coalesces a run drawn a glyph at a
+// time back into the entry it spells.
 //
 // ABOVE IS STRICTLY ABOVE, AND NO FIGURE IS FIXED FOR IT. `specs/ui.md` states
 // the stacking and leaves "the layout of each screen" to the build, so the check
@@ -37,7 +38,8 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { TITLE_ITEMS } from "../constants";
-import { assertContains, assertLessThan } from "../assert";
+import { assertLessThan, fail } from "../assert";
+import { drawnTextLines, drewText } from "../case-harness/text";
 import {
   captureStill,
   clearCalls,
@@ -45,7 +47,7 @@ import {
   resetTo,
   type Harness,
 } from "../harness";
-import { drawnRuns, menuRows } from "./reading";
+import { menuRows } from "./reading";
 
 let h: Harness;
 
@@ -64,14 +66,14 @@ it("draws both TITLE_ITEMS, the first stacked above the second", async () => {
   await h.advance(1);
   captureStill(h, "menu");
 
-  const drawn = drawnRuns(h);
   for (const item of TITLE_ITEMS) {
-    assertContains(
-      drawn,
-      item.toLowerCase(),
-      `the title menu entry ${JSON.stringify(item)} drawn on the title ` +
-        "screen's frame — TITLE_ITEMS is PLAY, HOW TO PLAY (specs/ui.md)",
-    );
+    if (!drewText(h.calls, item)) {
+      fail(
+        `the title menu entry ${JSON.stringify(item)} drawn on the title ` +
+          "screen's frame — TITLE_ITEMS is PLAY, HOW TO PLAY (specs/ui.md)",
+        drawnTextLines(h.calls),
+      );
+    }
   }
 
   const [first, second] = menuRows(h, TITLE_ITEMS);

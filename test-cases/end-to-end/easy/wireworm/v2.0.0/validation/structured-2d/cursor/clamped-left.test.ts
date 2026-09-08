@@ -14,9 +14,9 @@
 // covers the inset more than three times over, and even a build at a quarter of
 // the rate arrives. The rate itself is `cursor.move-speed`'s requirement.
 //
-// The inset is the HORIZONTAL pair's alone. The band is only 32 units tall, so
-// `setCursor` would clamp a 120-unit vertical inset straight onto the opposite
-// bound; the vertical pair poses at the opposite bound instead.
+// The inset is the HORIZONTAL pair's alone. The band is only 32 units tall, so a
+// 120-unit vertical inset falls outside the band, which `setCursor` fails loudly
+// on; the vertical pair poses at the opposite bound instead.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { CURSOR_X_MIN } from "../constants";

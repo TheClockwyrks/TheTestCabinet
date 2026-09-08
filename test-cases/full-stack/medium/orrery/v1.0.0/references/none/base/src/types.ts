@@ -42,7 +42,12 @@ export type EssenceType = "nebula" | "comet" | "nova" | "meteor";
 
 /** The planetary ladder, in `PLANETS` order (specs/field.md). */
 export type PlanetType =
-  "saturn" | "jupiter" | "mars" | "venus" | "luna" | "sol";
+  | "saturn"
+  | "jupiter"
+  | "mars"
+  | "venus"
+  | "luna"
+  | "sol";
 
 /** The twenty-one part kinds of `PARTS` (specs/parts.md). */
 export type PartKind =
@@ -342,7 +347,7 @@ export interface OrreryState {
    * The menu item a live press landed in, and `null` when the press landed
    * outside every item or none is live (specs/ui.md "Pointer and touch").
    *
-   * "Taking an item takes both of its edges inside that item's region", and
+   * "Taking an item requires both of its edges inside that item's region", and
    * the press position is gone by the time the release arrives — `pointer`
    * carries where the pointer IS, not where it went down — so the index the
    * press landed in is carried here, in the one value, rather than in a

@@ -1012,11 +1012,19 @@ impl SnapshotBuilder {
     /// metadata entries (served file name + snapshot-relative key) and the media
     /// objects to upload.
     ///
-    /// The set is taken from the run record's `validation.debugScripts[].outputs[]` (the
-    /// authoritative declaration), not from whatever is in the store — so each present
-    /// output is resolved through the store-then-artifact-service fallback
-    /// ([`Self::read_media`], `kind = "validation"`), and one whose bytes are in neither
-    /// place contributes nothing.
+    /// The set is the union of two things. The **declared outputs** come from the run
+    /// record's `validation.debugScripts[].outputs[]` (the authoritative declaration),
+    /// not from whatever is in the store — so each present output is resolved through
+    /// the store-then-artifact-service fallback ([`Self::read_media`],
+    /// `kind = "validation"`), and one whose bytes are in neither place contributes
+    /// nothing. The recordings' **shared image store**
+    /// (`img.<id>.png`/`img.<id>.bin`, see
+    /// [`VALIDATION_IMAGE_PREFIX`](test_cabinet_core::VALIDATION_IMAGE_PREFIX)) cannot
+    /// come from the record at all — a store file backs no verdict and is named by its
+    /// own bytes — so it is enumerated off
+    /// [`list_run_validation`](crate::store::DefinitionStore::list_run_validation),
+    /// exactly as [`Self::run_showcase`] unions its listing with the record's entries.
+    /// Without it a published replay resolves nothing and draws holes.
     ///
     /// Each output is addressed by the flat `<item>__<output>.<ext>` name the gallery
     /// requests — a still under `.png`, a clip under the `.webm` it is captured as. The
@@ -1100,6 +1108,45 @@ impl SnapshotBuilder {
                 });
             }
         }
+
+        // Then the recordings' shared image store, which the record cannot name: a
+        // store file backs no verdict and is named by its own bytes, so it is
+        // enumerated off the store's own listing instead. Published entries are the
+        // union of the declared outputs and the listed store files — the same shape
+        // (and the same precedent) as [`Self::run_showcase`], including its stance on
+        // the artifact-service fallback: the listing comes from the store only, so a
+        // run whose media exists *only* in the artifact service publishes its store
+        // files once the driver's mirror has run. That is already true of showcase
+        // media and is not a new hole.
+        //
+        // No transcode branch and no published-extension branch: a store file is
+        // never a video, and it publishes under the very name it is served under —
+        // which is what lets a recording's entry resolve it through the resolver the
+        // recording itself came from.
+        for file in self
+            .store
+            .list_run_validation(run_id)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|file| test_cabinet_core::is_validation_image_name(file))
+        {
+            let published_key = format!("{MEDIA_PREFIX}/{run_id}/validation/{file}");
+            if self.existing_media.contains(&published_key) {
+                metas.push(RunValidationMediaOut {
+                    file,
+                    key: published_key,
+                });
+                continue;
+            }
+            let Some(bytes) = self.read_media(run_id, "validation", &file).await else {
+                continue;
+            };
+            objects.push(SnapshotObject::media(published_key.clone(), bytes, &file));
+            metas.push(RunValidationMediaOut {
+                file,
+                key: published_key,
+            });
+        }
         (metas, objects)
     }
 
@@ -1118,10 +1165,21 @@ impl SnapshotBuilder {
     /// kept as the requested `.webm` so the gallery's flat lookup resolves (mirrors
     /// [`Self::run_validation_media`]). A transcode failure publishes the raw webm.
     ///
+    /// The enumeration is deliberately of the *whole* committed directory rather than
+    /// of the outputs some record declares, and that is what carries the recordings'
+    /// **shared image store** (`img.<id>.png`/`img.<id>.bin`, see
+    /// [`VALIDATION_IMAGE_PREFIX`](test_cabinet_core::VALIDATION_IMAGE_PREFIX)) along
+    /// with the baselines that name it: a store file backs no verdict and is on no
+    /// declaration, so a record-driven loop would leave the published baseline replays
+    /// resolving nothing. Do not "tidy" this into one.
+    ///
     /// Published under the content-stable [`CASE_MEDIA_PREFIX`], keyed by a digest of
     /// the **source** bytes. Because the key is decided before the transcode, a
     /// baseline already in the bucket costs neither an upload nor an ffmpeg run — the
-    /// dominant cost of a refresh over a corpus of video baselines.
+    /// dominant cost of a refresh over a corpus of video baselines. A **store** file
+    /// is the one exception and is published under its bare name: it is a hash of its
+    /// own bytes already, and a name a consumer can compose is what lets the gallery
+    /// carry one URL prefix per subject instead of one entry per image.
     async fn case_validation_baselines(
         &self,
         manifest: &StoredManifest,
@@ -1164,7 +1222,24 @@ impl SnapshotBuilder {
                     } else {
                         requested_file.clone()
                     };
-                    let key = format!("{prefix}/{digest}-{published_name}");
+                    // A store file is EXEMPT from the digest, and must be: it is
+                    // named by a hash of its own bytes already, so the digest would
+                    // add nothing a re-publish could change, and the gallery resolves
+                    // one by appending the name a recording carries to a prefix
+                    // rather than by looking it up. Listing every store file
+                    // individually is what that prefix exists to avoid — a busy
+                    // reference's store runs to a file per unique image, and the
+                    // static site inlines its lookup tables into the chunk every
+                    // visitor downloads.
+                    let stored_image = test_cabinet_core::is_validation_image_name(&requested_file);
+                    let keyed = |name: &str| {
+                        if stored_image {
+                            format!("{prefix}/{name}")
+                        } else {
+                            format!("{prefix}/{digest}-{name}")
+                        }
+                    };
+                    let key = keyed(&published_name);
                     // Already published from byte-identical source: reference it
                     // without re-uploading, and — the expensive half — without
                     // re-transcoding.
@@ -1202,7 +1277,7 @@ impl SnapshotBuilder {
                     // `.mp4` key and a later refresh that *can* transcode still
                     // publishes the mp4 instead of skipping over a webm sitting under
                     // an mp4 name.
-                    let key = format!("{prefix}/{digest}-{published_file}");
+                    let key = keyed(&published_file);
                     objects.push(SnapshotObject::media(key.clone(), bytes, &published_file));
                     metas.push(CaseValidationBaselineOut {
                         engine: engine.slug.clone(),

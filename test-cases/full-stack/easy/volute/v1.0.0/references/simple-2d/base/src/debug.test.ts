@@ -10,6 +10,7 @@ import {
   LEVEL_COUNT,
   MACHINERY_DURATIONS,
   PATH_LENGTH,
+  SCREENS,
   SEEDED_CORES,
   VOLUTE_DEBUG_VERSION,
 } from "./constants";
@@ -18,6 +19,7 @@ import { bare, harness, last, type Harness } from "./harness.test";
 /** Every operation specs/instrumentation.md names, beside `version`. */
 const OPERATIONS = [
   "reset",
+  "reconcile",
   "snapshot",
   "setScreen",
   "setLevel",
@@ -69,7 +71,7 @@ describe("the surface itself", () => {
     const h = await bare();
     const marker = h.cues.length;
     h.api.fireAt(270);
-    h.api.grantMachinery("bore");
+    h.api.grantMachinery("choke");
     h.api.startLevel(2);
     expect(h.since(marker)).toEqual([]);
     h.dispose();
@@ -241,11 +243,11 @@ describe("setNextEmitted", () => {
     h.dispose();
   });
 
-  it("takes a charge outside the five as no pose", async () => {
+  it("fails loudly on a charge outside the five, leaving the pose standing", async () => {
     const h = await halideHall();
     h.api.setNextEmitted("garnet");
-    h.api.setNextEmitted("quartz");
-    expect(h.api.snapshot().nextEmitted).toBeNull();
+    expect(() => h.api.setNextEmitted("quartz")).toThrow();
+    expect(h.api.snapshot().nextEmitted).toBe("garnet");
     h.dispose();
   });
 
@@ -341,17 +343,25 @@ describe("the poses", () => {
     h.dispose();
   });
 
-  it("poseTrain clamps an arc position past the intake and normalizes its arguments", async () => {
+  it("poseTrain fails loudly on an arc position past the intake, and on a name it does not know", async () => {
     const h = await bare();
-    h.api.poseTrain([
-      [9999, "not-a-charge", "not-a-mark"],
-      [Number.NaN, "garnet", null],
-    ]);
-    const shot = h.api.snapshot();
-    expect(shot.train[0].s).toBe(PATH_LENGTH);
-    expect(shot.train[0].charge).toBe(CHARGE_IDS[0]);
-    expect(shot.train[0].mark).toBeNull();
-    expect(shot.train[1].s).toBe(0);
+    // The intake is a constant the specification fixes, so it is the argument's
+    // domain and a position past it names nothing, exactly as an unknown charge
+    // or mark names nothing.
+    h.api.poseTrain([[PATH_LENGTH, CHARGE_IDS[0], null]]);
+    expect(h.api.snapshot().train[0].s).toBe(PATH_LENGTH);
+
+    expect(() => h.api.poseTrain([[9999, CHARGE_IDS[0], null]])).toThrow();
+    expect(() => h.api.poseTrain([[100, "not-a-charge", null]])).toThrow();
+    expect(() =>
+      h.api.poseTrain([[100, CHARGE_IDS[0], "not-a-mark"]]),
+    ).toThrow();
+    expect(() =>
+      h.api.poseTrain([[Number.NaN, CHARGE_IDS[0], null]]),
+    ).toThrow();
+    // Nothing was half-applied: the single core the legal pose left stands alone.
+    expect(h.api.snapshot().train).toHaveLength(1);
+    expect(h.api.snapshot().train[0].s).toBe(PATH_LENGTH);
     h.dispose();
   });
 
@@ -412,23 +422,30 @@ describe("the poses", () => {
     h.dispose();
   });
 
-  it("setPressure clamps, and the feed speed follows at once", async () => {
+  it("setPressure holds its fixed domain, and the feed speed follows at once", async () => {
     const h = await bare();
-    h.api.setPressure(500);
+    h.api.setPressure(100);
     expect(h.api.snapshot().pressure).toBe(100);
     expect(h.api.snapshot().feedSpeed).toBeCloseTo(44, 6);
-    h.api.setPressure(-10);
+    h.api.setPressure(0);
     expect(h.api.snapshot().pressure).toBe(0);
     expect(h.api.snapshot().feedSpeed).toBeCloseTo(22, 6);
+    // The range is fixed as a constant, so a value outside it fails rather than
+    // being brought back inside.
+    expect(() => h.api.setPressure(500)).toThrow();
+    expect(() => h.api.setPressure(-10)).toThrow();
+    expect(h.api.snapshot().pressure).toBe(0);
     h.dispose();
   });
 
-  it("setQuotaRemaining clamps into the level's quota and moves the cadence", async () => {
+  it("setQuotaRemaining takes the count as given and moves the cadence", async () => {
     const h = await bare();
+    // The level's quota is a live figure of the run, not a domain of the
+    // argument, so a count above it is applied rather than refused.
     h.api.setQuotaRemaining(999);
-    expect(h.api.snapshot().quotaRemaining).toBe(LEVELS[0].quota);
-    h.api.setQuotaRemaining(-5);
-    expect(h.api.snapshot().quotaRemaining).toBe(0);
+    expect(h.api.snapshot().quotaRemaining).toBe(999);
+    expect(() => h.api.setQuotaRemaining(-5)).toThrow();
+    expect(h.api.snapshot().quotaRemaining).toBe(999);
 
     // Wound so the next core the inlet places is the level's second mark.
     h.api.setQuotaRemaining(LEVELS[0].quota - 24 + 1);
@@ -448,8 +465,12 @@ describe("the poses", () => {
         remaining: MACHINERY_DURATIONS[kind],
       });
     }
-    h.api.grantMachinery("not-a-kind");
-    expect(h.api.snapshot().machinery?.kind).toBe("choke");
+    // `bore` is a machinery kind but not one this grants, and a name outside
+    // the three names no grant at all: both fail loudly.
+    const held = h.api.snapshot().machinery;
+    expect(() => h.api.grantMachinery("not-a-kind")).toThrow();
+    expect(() => h.api.grantMachinery("bore")).toThrow();
+    expect(h.api.snapshot().machinery).toEqual(held);
     h.dispose();
   });
 
@@ -476,8 +497,61 @@ describe("the poses", () => {
     expect(h.api.snapshot().train).toHaveLength(1);
     expect(h.api.snapshot().pressure).toBe(30);
     expect(h.api.snapshot().quotaRemaining).toBe(5);
-    h.api.startLevel(LEVEL_COUNT + 10);
+    h.api.startLevel(LEVEL_COUNT);
     expect(h.api.snapshot().level).toBe(LEVEL_COUNT);
+    h.dispose();
+  });
+});
+
+describe("reconcile", () => {
+  it("re-derives the segments the state carries from the cores as they stand", async () => {
+    const h = await bare();
+    h.api.poseTrain([
+      [3000, "halide", null],
+      [2972, "halide", null],
+      [2000, "cobalt", null],
+    ]);
+    const before = h.api.snapshot();
+    h.api.reconcile();
+    const after = h.api.snapshot();
+    expect(after.segments.map((entry) => entry.count)).toEqual([2, 1]);
+    expect(after.segments).toEqual(before.segments);
+    expect(after.train).toEqual(before.train);
+    h.dispose();
+  });
+
+  it("advances nothing, and twice matches once", async () => {
+    const h = await bare();
+    h.api.start();
+    h.api.setPressure(40);
+    h.api.fireAt(90);
+    await h.step(4);
+
+    const before = h.api.snapshot();
+    h.api.reconcile();
+    const once = h.api.snapshot();
+    h.api.reconcile();
+    const twice = h.api.snapshot();
+
+    expect(once).toEqual(before);
+    expect(twice).toEqual(once);
+    expect(once.simTime).toBe(before.simTime);
+    expect(once.train).toEqual(before.train);
+    expect(once.projectiles).toEqual(before.projectiles);
+    expect(once.pressure).toBe(before.pressure);
+    expect(once.chainTimer).toBe(before.chainTimer);
+    expect(once.injector.cooldown).toBe(before.injector.cooldown);
+    h.dispose();
+  });
+
+  it("sounds nothing and is legal on every screen", async () => {
+    const h = await bare();
+    const marker = h.cues.length;
+    for (const screen of SCREENS) {
+      h.api.setScreen(screen);
+      expect(() => h.api.reconcile()).not.toThrow();
+    }
+    expect(h.since(marker)).toEqual([]);
     h.dispose();
   });
 });

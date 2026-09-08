@@ -3,12 +3,12 @@
 What the browser playback renderer needs, committed here as the single source of
 truth and vendored into the UI (see `scripts/vendor-lattice-assets.mjs`).
 
-| File | What it is |
-| --- | --- |
-| `lattice-core.wasm` | The simulation itself, compiled for the browser. The renderer instantiates it and steps it a tick at a time; it holds no rules of its own. |
-| `sheet.png` / `sheet.json` | The packed sprite atlas and its layout, built from `source/` by `gen-sheet.mjs`. |
+| File                                  | What it is                                                                                                                                                                                |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lattice-core.wasm`                   | The simulation itself, compiled for the browser. The renderer instantiates it and steps it a tick at a time; it holds no rules of its own.                                                |
+| `sheet.png` / `sheet.json`            | The packed sprite atlas and its layout, built from `source/` by `gen-sheet.mjs`.                                                                                                          |
 | `reference-{small,medium,large}.json` | The three scored factories, windowed for playback, built from `../../cases/*.json` by `gen-reference.mjs`. The console's test-case Reference tab plays these through `lattice-core.wasm`. |
-| `source/` | The per-entity frames the atlas is packed from — see [`source/README.md`](source/README.md). |
+| `source/`                             | The per-entity frames the atlas is packed from — see [`source/README.md`](source/README.md).                                                                                              |
 
 All are checked in, and `packages/ui/.../lattice/renderer.vendor.test.ts` asserts
 the UI's vendored copies stay byte-identical, so a forgotten resync fails CI rather

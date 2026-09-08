@@ -14,8 +14,9 @@
 // is a menu that discards a run when the player meant to carry on.
 //
 // THE ORDER IS A PLACEMENT, NOT A DRAW ORDER: the reading is where each entry's
-// glyphs LANDED, through `harness.ts`'s `drawnTextSpans`, so which call a build
-// happens to issue first changes nothing.
+// glyphs LANDED, through `harness.ts`'s `spelledTextRuns`, so which call a build
+// happens to issue first changes nothing, and neither does how many calls it
+// spelled an entry in.
 //
 // NO FIGURE IS FIXED FOR THE SPACING. `specs/ui.md` leaves "the layout of each
 // screen" to the build, so the check asserts the sign of each separation and
@@ -36,7 +37,8 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { PAUSE_ITEMS } from "../constants";
-import { assertContains, assertLessThan } from "../assert";
+import { assertLessThan, fail } from "../assert";
+import { drawnTextLines, drewText } from "../case-harness/text";
 import {
   captureStill,
   clearCalls,
@@ -44,7 +46,7 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
-import { drawnRuns, menuRows } from "./reading";
+import { menuRows } from "./reading";
 
 let h: Harness;
 
@@ -64,15 +66,15 @@ it("draws all three PAUSE_ITEMS, stacked in the order the spec fixes", async () 
   await h.advance(1);
   captureStill(h, "menu");
 
-  const drawn = drawnRuns(h);
   for (const item of PAUSE_ITEMS) {
-    assertContains(
-      drawn,
-      item.toLowerCase(),
-      `the pause menu entry ${JSON.stringify(item)} drawn on the paused ` +
-        "screen's frame — PAUSE_ITEMS is RESUME, RESTART, QUIT TO MENU " +
-        "(specs/ui.md)",
-    );
+    if (!drewText(h.calls, item)) {
+      fail(
+        `the pause menu entry ${JSON.stringify(item)} drawn on the paused ` +
+          "screen's frame — PAUSE_ITEMS is RESUME, RESTART, QUIT TO MENU " +
+          "(specs/ui.md)",
+        drawnTextLines(h.calls),
+      );
+    }
   }
 
   const rows = menuRows(h, PAUSE_ITEMS);

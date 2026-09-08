@@ -28,7 +28,7 @@ text.
 
 ### Just-in-Time Delivery
 
-If information is only relevant in specific scenarios *and* said scenarios are
+If information is only relevant in specific scenarios _and_ said scenarios are
 detectable, do **NOT** provide that information up front. Information should
 **ONLY** be specified if it is legitimately needed ahead of time.
 

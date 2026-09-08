@@ -30,12 +30,12 @@ import {
   blitsNear,
   captureStill,
   createHarness,
-  drewText,
   isolate,
   openChest,
   placeEnemy,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 
 const MOTH_X = 200;
 const MOTH_Y = 100;

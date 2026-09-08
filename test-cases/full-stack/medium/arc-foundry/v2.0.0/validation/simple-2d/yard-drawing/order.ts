@@ -5,14 +5,14 @@
 // ORDER is to read the frame's operations in the order they were issued. Under
 // this engine the game draws through the raw 2D context, so a structure and a unit
 // are whatever primitives the build chose for them — a fill, a stroke, an arc, a
-// blit — and `reading.ts`'s `imageDraws` reads only one of those. So what is needed
+// blit — and the harness's `imageDraws` reads only one of those. So what is needed
 // is a way to ask, of a whole frame, WHERE each operation landed, and that is what
 // this file answers.
 //
 // HOW AN OPERATION IS LOCATED. Every drawing primitive the 2D context offers
 // carries its coordinates in its arguments, and those coordinates are in the space
 // the transform in force at the call maps onto the stage. So the transform is
-// tracked exactly as `reading.ts` tracks it for text, each operation's own points
+// tracked exactly as the harness's `imageDraws` tracks it, each operation's own points
 // are mapped through it, and an operation is "in" a box when one of those points
 // is. A point rather than an outline on purpose: a grid line spanning the whole
 // yard passes through everything and belongs to none of it, and its endpoints sit

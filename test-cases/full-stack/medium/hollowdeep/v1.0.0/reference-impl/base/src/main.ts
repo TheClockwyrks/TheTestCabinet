@@ -26,7 +26,14 @@ import { Bursts, GasOverlay } from "./particles";
 import { Game } from "./sim";
 import { Input } from "./input";
 import { menuItems } from "./menus";
-import { render, setDragRect, setMenuIndex, setMuted, setPointer, setRenderTime } from "./render";
+import {
+  render,
+  setDragRect,
+  setMenuIndex,
+  setMuted,
+  setPointer,
+  setRenderTime,
+} from "./render";
 import type { BuildKind, Clickable, Tool } from "./types";
 
 // Camera feel (view-only tuning; the simulation's numbers live in constants.ts).
@@ -42,7 +49,10 @@ if (!ctx) throw new Error("Hollowdeep: 2D canvas context unavailable");
 // device-pixel ratio. Called on load (before any input) and on every resize.
 function resize(): void {
   const dpr = window.devicePixelRatio || 1;
-  const scale = Math.min(window.innerWidth / STAGE_W, window.innerHeight / STAGE_H);
+  const scale = Math.min(
+    window.innerWidth / STAGE_W,
+    window.innerHeight / STAGE_H,
+  );
   const cssW = Math.max(1, Math.round(STAGE_W * scale));
   const cssH = Math.max(1, Math.round(STAGE_H * scale));
   canvas.style.width = `${cssW}px`;
@@ -58,7 +68,9 @@ function clamp(v: number, lo: number, hi: number): number {
 }
 
 function inView(x: number, y: number): boolean {
-  return x >= VIEW_X0 && x < VIEW_X0 + VIEW_W && y >= VIEW_Y0 && y < VIEW_Y0 + VIEW_H;
+  return (
+    x >= VIEW_X0 && x < VIEW_X0 + VIEW_W && y >= VIEW_Y0 && y < VIEW_Y0 + VIEW_H
+  );
 }
 
 async function main(): Promise<void> {
@@ -83,9 +95,12 @@ async function main(): Promise<void> {
     game,
     audio,
     startColony: () => game.startColony(),
-    digRect: (x0: number, y0: number, x1: number, y1: number) => game.devDigRect(x0, y0, x1, y1),
-    place: (kind: BuildKind, tx: number, ty: number) => game.devPlace(kind, tx, ty),
-    grant: (g: { ore?: number; material?: number; food?: number }) => game.grant(g),
+    digRect: (x0: number, y0: number, x1: number, y1: number) =>
+      game.devDigRect(x0, y0, x1, y1),
+    place: (kind: BuildKind, tx: number, ty: number) =>
+      game.devPlace(kind, tx, ty),
+    grant: (g: { ore?: number; material?: number; food?: number }) =>
+      game.grant(g),
     fillCavern: (o2: number) => game.fillCavern(o2),
     sealAndSpend: () => game.sealAndSpend(),
     setSpeed: (n: number) => game.setSpeed(n),
@@ -149,12 +164,18 @@ async function main(): Promise<void> {
   // Apply the active tool to a single tile (a click that did not become a drag).
   function applyToolAt(tx: number, ty: number): void {
     if (game.tool === "dig") game.markDig(tx, ty);
-    else if (game.tool === "build" && game.buildKind) game.placeBuild(tx, ty, game.buildKind);
+    else if (game.tool === "build" && game.buildKind)
+      game.placeBuild(tx, ty, game.buildKind);
     else if (game.tool === "cancel") game.cancelAt(tx, ty);
   }
 
   // Apply the active tool across a tile rectangle (a completed left drag over the view).
-  function applyToolRect(tx0: number, ty0: number, tx1: number, ty1: number): void {
+  function applyToolRect(
+    tx0: number,
+    ty0: number,
+    tx1: number,
+    ty1: number,
+  ): void {
     if (game.tool === "dig") {
       game.markDigRect(tx0, ty0, tx1, ty1);
       return;
@@ -165,7 +186,8 @@ async function main(): Promise<void> {
     const y1 = Math.max(ty0, ty1);
     for (let ty = y0; ty <= y1; ty++) {
       for (let tx = x0; tx <= x1; tx++) {
-        if (game.tool === "build" && game.buildKind) game.placeBuild(tx, ty, game.buildKind);
+        if (game.tool === "build" && game.buildKind)
+          game.placeBuild(tx, ty, game.buildKind);
         else if (game.tool === "cancel") game.cancelAt(tx, ty);
       }
     }
@@ -190,7 +212,12 @@ async function main(): Promise<void> {
     }
   }
 
-  function routeDrag(d: { x0: number; y0: number; x1: number; y1: number }): void {
+  function routeDrag(d: {
+    x0: number;
+    y0: number;
+    x1: number;
+    y1: number;
+  }): void {
     if (game.state !== "playing") return;
     if (!inView(d.x0, d.y0)) return; // a drag that began on the HUD is not a tool paint
     const a = screenToTile(game.world.camera, d.x0, d.y0);
@@ -230,8 +257,10 @@ async function main(): Promise<void> {
     // Menu states: pointer and/or Up/Down (or W/S) move the selection, Enter/Space confirm.
     const items = menuItems(game.state, game);
     if (items.length === 0) return;
-    if (k === "ArrowUp" || lower === "w") menuIndex = (menuIndex - 1 + items.length) % items.length;
-    else if (k === "ArrowDown" || lower === "s") menuIndex = (menuIndex + 1) % items.length;
+    if (k === "ArrowUp" || lower === "w")
+      menuIndex = (menuIndex - 1 + items.length) % items.length;
+    else if (k === "ArrowDown" || lower === "s")
+      menuIndex = (menuIndex + 1) % items.length;
     else if (k === "Enter" || k === " ") activate(items[menuIndex]!.action);
     else if (k === "Escape") {
       if (game.state === "howto") activate("menu:back");
@@ -247,7 +276,13 @@ async function main(): Promise<void> {
     const items = menuItems(game.state, game);
     for (let i = 0; i < items.length; i++) {
       const c = clickables.find((cl) => cl.action === items[i]!.action);
-      if (c && pointerX >= c.x && pointerX <= c.x + c.w && pointerY >= c.y && pointerY <= c.y + c.h) {
+      if (
+        c &&
+        pointerX >= c.x &&
+        pointerX <= c.x + c.w &&
+        pointerY >= c.y &&
+        pointerY <= c.y + c.h
+      ) {
         menuIndex = i;
         return;
       }
@@ -275,14 +310,20 @@ async function main(): Promise<void> {
 
     if (inView(pointerX, pointerY)) {
       if (pointerX < VIEW_X0 + EDGE_MARGIN) cam.x -= PAN_SPEED * dt;
-      else if (pointerX > VIEW_X0 + VIEW_W - EDGE_MARGIN) cam.x += PAN_SPEED * dt;
+      else if (pointerX > VIEW_X0 + VIEW_W - EDGE_MARGIN)
+        cam.x += PAN_SPEED * dt;
       if (pointerY < VIEW_Y0 + EDGE_MARGIN) cam.y -= PAN_SPEED * dt;
-      else if (pointerY > VIEW_Y0 + VIEW_H - EDGE_MARGIN) cam.y += PAN_SPEED * dt;
+      else if (pointerY > VIEW_Y0 + VIEW_H - EDGE_MARGIN)
+        cam.y += PAN_SPEED * dt;
     }
 
     if (input.wheel !== 0 && inView(pointerX, pointerY)) {
       const before = screenToWorld(cam, pointerX, pointerY);
-      cam.zoom = clamp(cam.zoom * Math.exp(-input.wheel * WHEEL_ZOOM), ZOOM_MIN, ZOOM_MAX);
+      cam.zoom = clamp(
+        cam.zoom * Math.exp(-input.wheel * WHEEL_ZOOM),
+        ZOOM_MIN,
+        ZOOM_MAX,
+      );
       const after = screenToWorld(cam, pointerX, pointerY);
       cam.x += before.x - after.x; // keep the world point under the cursor fixed
       cam.y += before.y - after.y;
@@ -293,9 +334,22 @@ async function main(): Promise<void> {
 
   // The live dig-drag rectangle preview (render draws it only for the dig tool).
   function updateDragPreview(): void {
-    if (game.state === "playing" && game.tool === "dig" && input.dragging && inView(input.dragging.x0, input.dragging.y0)) {
-      const a = screenToTile(game.world.camera, input.dragging.x0, input.dragging.y0);
-      const b = screenToTile(game.world.camera, input.dragging.x1, input.dragging.y1);
+    if (
+      game.state === "playing" &&
+      game.tool === "dig" &&
+      input.dragging &&
+      inView(input.dragging.x0, input.dragging.y0)
+    ) {
+      const a = screenToTile(
+        game.world.camera,
+        input.dragging.x0,
+        input.dragging.y0,
+      );
+      const b = screenToTile(
+        game.world.camera,
+        input.dragging.x1,
+        input.dragging.y1,
+      );
       setDragRect({ tx0: a.tx, ty0: a.ty, tx1: b.tx, ty1: b.ty });
     } else {
       setDragRect(null);
@@ -329,7 +383,14 @@ async function main(): Promise<void> {
     pointerY = pl.y;
 
     // Consume input for this frame (any input counts as the audio-unlock gesture).
-    if (input.clicks.length || input.keys.length || input.dragEnds.length || input.wheel || input.panDX || input.panDY) {
+    if (
+      input.clicks.length ||
+      input.keys.length ||
+      input.dragEnds.length ||
+      input.wheel ||
+      input.panDX ||
+      input.panDY
+    ) {
       gesture();
     }
     for (const c of input.clicks) routeClick(c.x, c.y);

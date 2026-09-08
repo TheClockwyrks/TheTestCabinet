@@ -61,7 +61,10 @@ function distToSegment(px: number, py: number, a: Pt, b: Pt): number {
   const dx = b.x - a.x;
   const dy = b.y - a.y;
   const len2 = dx * dx + dy * dy;
-  const t = len2 > 0 ? Math.max(0, Math.min(1, ((px - a.x) * dx + (py - a.y) * dy) / len2)) : 0;
+  const t =
+    len2 > 0
+      ? Math.max(0, Math.min(1, ((px - a.x) * dx + (py - a.y) * dy) / len2))
+      : 0;
   const qx = a.x + dx * t;
   const qy = a.y + dy * t;
   return Math.hypot(px - qx, py - qy);
@@ -85,9 +88,17 @@ function catmullRomPoly(pts: Pt[], step: number): Pt[] {
       const t2 = t * t;
       const t3 = t2 * t;
       const x =
-        0.5 * (2 * p1.x + (-p0.x + p2.x) * t + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 + (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3);
+        0.5 *
+        (2 * p1.x +
+          (-p0.x + p2.x) * t +
+          (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 +
+          (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3);
       const y =
-        0.5 * (2 * p1.y + (-p0.y + p2.y) * t + (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2 + (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3);
+        0.5 *
+        (2 * p1.y +
+          (-p0.y + p2.y) * t +
+          (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2 +
+          (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3);
       out.push({ x, y });
     }
   }
@@ -122,9 +133,13 @@ export class Path {
 
   constructor(def: PathDef) {
     this.style = def.style;
-    this.poly = def.style === "curved" ? catmullRomPoly(def.points, PATH_STEP) : densify(def.points, PATH_STEP);
+    this.poly =
+      def.style === "curved"
+        ? catmullRomPoly(def.points, PATH_STEP)
+        : densify(def.points, PATH_STEP);
     const cum = [0];
-    for (let i = 1; i < this.poly.length; i++) cum.push(cum[i - 1]! + dist(this.poly[i - 1]!, this.poly[i]!));
+    for (let i = 1; i < this.poly.length; i++)
+      cum.push(cum[i - 1]! + dist(this.poly[i - 1]!, this.poly[i]!));
     this.cum = cum;
     this.length = cum[cum.length - 1]!;
   }
@@ -145,7 +160,11 @@ export class Path {
     const b = this.poly[seg]!;
     const segLen = this.cum[seg]! - this.cum[seg - 1]!;
     const f = segLen > 0 ? (t - this.cum[seg - 1]!) / segLen : 0;
-    return { x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f, ang: Math.atan2(b.y - a.y, b.x - a.x) };
+    return {
+      x: a.x + (b.x - a.x) * f,
+      y: a.y + (b.y - a.y) * f,
+      ang: Math.atan2(b.y - a.y, b.x - a.x),
+    };
   }
 
   distTo(px: number, py: number): number {
@@ -197,9 +216,20 @@ export class Board {
   // Why a tower footprint may NOT be placed at (x, y), or null if the spot is legal. Checked
   // in the specs/board.md order — in bounds, off every path, not overlapping another tower —
   // so a caller (the debug API's placeTower) can report the exact refusal reason.
-  placementReason(x: number, y: number, towers: { id: number; x: number; y: number }[], ignoreId?: number): "bounds" | "path" | "overlap" | null {
+  placementReason(
+    x: number,
+    y: number,
+    towers: { id: number; x: number; y: number }[],
+    ignoreId?: number,
+  ): "bounds" | "path" | "overlap" | null {
     const f = TOWER_FOOTPRINT;
-    if (x < BOARD_X0 + f || x > BOARD_X1 - f || y < BOARD_Y0 + f || y > BOARD_Y1 - f) return "bounds";
+    if (
+      x < BOARD_X0 + f ||
+      x > BOARD_X1 - f ||
+      y < BOARD_Y0 + f ||
+      y > BOARD_Y1 - f
+    )
+      return "bounds";
     if (this.distToPaths(x, y) < MIN_PATH_DIST) return "path";
     for (const t of towers) {
       if (t.id === ignoreId) continue;
@@ -210,14 +240,23 @@ export class Board {
 
   // Is (x, y) a legal spot for a tower footprint? In bounds, off every path, and not
   // overlapping another tower (ignore the tower with id `ignoreId`, when re-checking).
-  canPlaceAt(x: number, y: number, towers: { id: number; x: number; y: number }[], ignoreId?: number): boolean {
+  canPlaceAt(
+    x: number,
+    y: number,
+    towers: { id: number; x: number; y: number }[],
+    ignoreId?: number,
+  ): boolean {
     return this.placementReason(x, y, towers, ignoreId) === null;
   }
 
   // The nearest legal placement to (x, y), searched on expanding rings. Used by the
   // headless balance harness, whose declarative layouts name approximate world anchors
   // (the browser places exactly at the pointer instead).
-  nearestLegal(x: number, y: number, towers: { id: number; x: number; y: number }[]): Pt | null {
+  nearestLegal(
+    x: number,
+    y: number,
+    towers: { id: number; x: number; y: number }[],
+  ): Pt | null {
     if (this.canPlaceAt(x, y, towers)) return { x, y };
     for (let r = 8; r <= 200; r += 8) {
       const n = Math.max(8, Math.round((2 * Math.PI * r) / 8));
@@ -245,7 +284,8 @@ const CONDUIT: GameMap = {
   difficulty: "EASY",
   topology: "SINGLE PATH",
   styleLabel: "CURVED",
-  blurb: "One winding channel. Blanket it and strip everything before the collector.",
+  blurb:
+    "One winding channel. Blanket it and strip everything before the collector.",
   paths: [
     {
       style: "curved",
@@ -275,10 +315,31 @@ const JUNCTION: GameMap = {
   difficulty: "MEDIUM",
   topology: "BRANCHING",
   styleLabel: "STRAIGHT",
-  blurb: "A fork into two lanes that rejoin. Split your coverage — or hold the shared runs.",
+  blurb:
+    "A fork into two lanes that rejoin. Split your coverage — or hold the shared runs.",
   paths: [
-    { style: "straight", points: [J_IN, J_SPLIT, { x: 150, y: 150 }, { x: 820, y: 150 }, J_MERGE, J_OUT] },
-    { style: "straight", points: [J_IN, J_SPLIT, { x: 150, y: 626 }, { x: 820, y: 626 }, J_MERGE, J_OUT] },
+    {
+      style: "straight",
+      points: [
+        J_IN,
+        J_SPLIT,
+        { x: 150, y: 150 },
+        { x: 820, y: 150 },
+        J_MERGE,
+        J_OUT,
+      ],
+    },
+    {
+      style: "straight",
+      points: [
+        J_IN,
+        J_SPLIT,
+        { x: 150, y: 626 },
+        { x: 820, y: 626 },
+        J_MERGE,
+        J_OUT,
+      ],
+    },
   ],
 };
 
@@ -291,7 +352,8 @@ const LATTICE: GameMap = {
   difficulty: "HARD",
   topology: "MULTIPLE PATHS",
   styleLabel: "CURVED",
-  blurb: "Three separate channels, three fronts. One board's towers must cover them all.",
+  blurb:
+    "Three separate channels, three fronts. One board's towers must cover them all.",
   paths: [
     {
       style: "curved",

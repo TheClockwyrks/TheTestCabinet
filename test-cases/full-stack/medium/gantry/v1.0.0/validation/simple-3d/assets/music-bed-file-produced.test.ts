@@ -58,7 +58,11 @@ interface Wav {
  * in the first two bytes of its sub-format GUID.
  */
 function decodeWav(bytes: Buffer, what: string): Wav {
-  if (bytes.length < 12 || tag(bytes, 0) !== "RIFF" || tag(bytes, 8) !== "WAVE") {
+  if (
+    bytes.length < 12 ||
+    tag(bytes, 0) !== "RIFF" ||
+    tag(bytes, 8) !== "WAVE"
+  ) {
     fail(
       `${what} to be a RIFF/WAVE container, which is what \`music\` renders ` +
         "(specs/assets.md)",
@@ -85,7 +89,8 @@ function decodeWav(bytes: Buffer, what: string): Wav {
       channels = bytes.readUInt16LE(body + 2);
       sampleRate = bytes.readUInt32LE(body + 4);
       bits = bytes.readUInt16LE(body + 14);
-      if (format === 0xfffe && size >= 40) format = bytes.readUInt16LE(body + 24);
+      if (format === 0xfffe && size >= 40)
+        format = bytes.readUInt16LE(body + 24);
     } else if (id === "data") {
       dataAt = body;
       dataBytes = Math.min(size, bytes.length - body);
@@ -154,7 +159,10 @@ it("commits the music bed as a decodable, non-silent .wav", async () => {
       `(specs/assets.md) — format tag 1 (integer) or 3 (float), not ` +
       `${wav.format}`,
   );
-  assertTrue(wav.dataBytes > 0, `\`${MUSIC}\` to carry audio in its \`data\` chunk`);
+  assertTrue(
+    wav.dataBytes > 0,
+    `\`${MUSIC}\` to carry audio in its \`data\` chunk`,
+  );
   assertTrue(
     wav.peak > SILENCE,
     `\`${MUSIC}\` to carry a sample above silence, so the title and select ` +

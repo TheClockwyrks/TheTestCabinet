@@ -14,14 +14,14 @@ api.assets.load(path: string): Promise<Blob>;
 api.assets.resolve(path: string): string;
 ```
 
-| Member | Behavior |
-| --- | --- |
-| `loadImage` | Resolves the path, fetches it, and decodes the body to an `ImageBitmap` ready for a `SpriteComponent`. |
+| Member        | Behavior                                                                                                                                                          |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `loadImage`   | Resolves the path, fetches it, and decodes the body to an `ImageBitmap` ready for a `SpriteComponent`.                                                            |
 | `loadTexture` | Resolves the path, fetches it, decodes the body as an image, and wraps it as a `THREE.Texture` in the sRGB color space, ready to use as a `MaterialSpec`'s `map`. |
-| `loadModel` | Resolves the path, fetches it, and decodes the body as a glTF 2.0 model, `.glb` or `.gltf`, to a `Model`. |
-| `loadAudio` | Resolves the path, fetches it, and decodes the body to an `AudioBuffer` ready to play. |
-| `load` | Resolves the path, fetches it, and resolves to the response body as a `Blob`. |
-| `resolve` | Returns the URL `path` loads from. Pure: it neither fetches nor emits. |
+| `loadModel`   | Resolves the path, fetches it, and decodes the body as a glTF 2.0 model, `.glb` or `.gltf`, to a `Model`.                                                         |
+| `loadAudio`   | Resolves the path, fetches it, and decodes the body to an `AudioBuffer` ready to play.                                                                            |
+| `load`        | Resolves the path, fetches it, and resolves to the response body as a `Blob`.                                                                                     |
+| `resolve`     | Returns the URL `path` loads from. Pure: it neither fetches nor emits.                                                                                            |
 
 Each of the five loaders emits exactly one event per call. `resolve` is their
 shared first step, so a path any one of them refuses is refused identically by
@@ -46,11 +46,11 @@ img.src = api.assets.resolve("ui/logo.png");
 
 ## Where a game loads
 
-| Surface | Loads |
-| --- | --- |
+| Surface                                            | Loads                                                                                             |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
 | `InitApi.assets`, from the instance's `initialize` | What the whole game needs. The instance holds the result, and it survives every level transition. |
-| `LoadApi.assets`, from a level's `load` | What one level needs. The engine awaits it before the world is built. |
-| `world.assets`, from a tick | What a running world discovers it needs. The load is in flight while frames continue. |
+| `LoadApi.assets`, from a level's `load`            | What one level needs. The engine awaits it before the world is built.                             |
+| `world.assets`, from a tick                        | What a running world discovers it needs. The load is in flight while frames continue.             |
 
 A level's `load` is awaited before any actor exists, so an actor constructed for
 that level reads its texture or its model as a plain value and hands it straight
@@ -87,7 +87,9 @@ import { setLoaded } from "./assets";
 
 export const arena: LevelDefinition = {
   mode: ArenaMode,
-  actors: [/* ... */],
+  actors: [
+    /* ... */
+  ],
   async load(api) {
     const [ship, hull] = await Promise.all([
       api.assets.loadModel("models/ship.glb"),
@@ -100,13 +102,19 @@ export const arena: LevelDefinition = {
 
 ```ts
 // ./actors.ts
-import { Actor, MeshComponent, ModelComponent } from "@clockwyrks/structured-3d";
+import {
+  Actor,
+  MeshComponent,
+  ModelComponent,
+} from "@clockwyrks/structured-3d";
 import { assets } from "./assets";
 
 export class Ship extends Actor {
   constructor() {
     super();
-    this.attach(new ModelComponent({ model: assets().ship, animation: "idle" }));
+    this.attach(
+      new ModelComponent({ model: assets().ship, animation: "idle" }),
+    );
   }
 }
 
@@ -163,11 +171,11 @@ interface Model {
 }
 ```
 
-| Field | Meaning |
-| --- | --- |
-| `scene` | The decoded node tree, a template. |
+| Field        | Meaning                                                                 |
+| ------------ | ----------------------------------------------------------------------- |
+| `scene`      | The decoded node tree, a template.                                      |
 | `animations` | Every animation clip the file carries, each named as the file names it. |
-| `nodes` | Every node name in the tree, in traversal order. |
+| `nodes`      | Every node name in the tree, in traversal order.                        |
 
 `loadModel` decodes glTF 2.0: the node hierarchy, meshes with their attributes,
 materials, skins, and animations. A `.glb` carries everything in one file; a
@@ -194,14 +202,14 @@ See `models-and-animation.md` for placing, animating, and posing one.
 `resolve` accepts a non-empty relative path with no `..` segment and no URI
 scheme, so every request a build makes lands under the root.
 
-| Path | Result |
-| --- | --- |
-| `"models/ship.glb"` | `"assets/models/ship.glb"` |
-| `"textures/hull.png"` | `"assets/textures/hull.png"` |
-| `"audio/theme.ogg"` | `"assets/audio/theme.ogg"` |
-| `""` | Throws: the path is empty. |
-| `"/models/ship.glb"` | Throws: a leading `/` leaves the root. |
-| `"../secrets.txt"` | Throws: a `..` segment leaves the root. |
+| Path                             | Result                                        |
+| -------------------------------- | --------------------------------------------- |
+| `"models/ship.glb"`              | `"assets/models/ship.glb"`                    |
+| `"textures/hull.png"`            | `"assets/textures/hull.png"`                  |
+| `"audio/theme.ogg"`              | `"assets/audio/theme.ogg"`                    |
+| `""`                             | Throws: the path is empty.                    |
+| `"/models/ship.glb"`             | Throws: a leading `/` leaves the root.        |
+| `"../secrets.txt"`               | Throws: a `..` segment leaves the root.       |
 | `"https://example.com/ship.glb"` | Throws: an absolute URL is not an asset path. |
 
 ## Events
@@ -214,10 +222,10 @@ Loading reports itself through the engine's event broadcaster, subscribed with
 "asset:failed": { path: string; url: string; reason: string };
 ```
 
-| Field | Meaning |
-| --- | --- |
-| `path` | The path the game passed to the loader. |
-| `url` | The URL it resolved to, or `""` for a refused path. |
+| Field    | Meaning                                                                                    |
+| -------- | ------------------------------------------------------------------------------------------ |
+| `path`   | The path the game passed to the loader.                                                    |
+| `url`    | The URL it resolved to, or `""` for a refused path.                                        |
 | `reason` | Why the load failed: the refusal, the HTTP status, the network error, or the decode error. |
 
 Subscribing to `asset:failed` on `engine.events` before `engine.initialize` is
@@ -242,13 +250,13 @@ Every loader announces the attempt in every case, and rejects whenever the value
 did not arrive. The rejection carries the original cause unchanged, so the
 caller sees the refused path, the HTTP status, or the network error itself.
 
-| Condition | Event | Promise |
-| --- | --- | --- |
-| The value arrives | `asset:loaded` with the resolved `url` | Resolves to the value. |
-| The path is refused | `asset:failed` with `url: ""` | Rejects with the `resolve` error. |
-| The response status is not `2xx` | `asset:failed` with the resolved `url` | Rejects, naming the status. |
-| The fetch fails | `asset:failed` with the resolved `url` | Rejects with the fetch error. |
-| The body fails to decode | `asset:failed` with the resolved `url` | Rejects with the decode error. |
+| Condition                        | Event                                  | Promise                           |
+| -------------------------------- | -------------------------------------- | --------------------------------- |
+| The value arrives                | `asset:loaded` with the resolved `url` | Resolves to the value.            |
+| The path is refused              | `asset:failed` with `url: ""`          | Rejects with the `resolve` error. |
+| The response status is not `2xx` | `asset:failed` with the resolved `url` | Rejects, naming the status.       |
+| The fetch fails                  | `asset:failed` with the resolved `url` | Rejects with the fetch error.     |
+| The body fails to decode         | `asset:failed` with the resolved `url` | Rejects with the decode error.    |
 
 A model whose glTF decodes but whose texture does not is the value arriving: the
 material's `map` is left unset, `asset:loaded` is emitted, and the promise

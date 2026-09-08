@@ -9,13 +9,13 @@ capability and to both execution modes.
 
 Five ceilings stop work:
 
-| Ceiling | Accounted | Effect on breach | Terminal status |
-| --- | --- | --- | --- |
-| `maxTurns` | per agent | ends that agent | `exhausted` |
-| `maxRuntimeSecs` | run-wide | ends every agent at its next boundary | `timed_out` |
-| `maxConsecutiveErrors` | per agent | ends that agent | `limit_exceeded` |
-| `maxErrorRate` + `errorRateWindow` | per agent | ends that agent | `limit_exceeded` |
-| `maxCost` | run-wide | ends every agent at its next boundary | `limit_exceeded` |
+| Ceiling                            | Accounted | Effect on breach                      | Terminal status  |
+| ---------------------------------- | --------- | ------------------------------------- | ---------------- |
+| `maxTurns`                         | per agent | ends that agent                       | `exhausted`      |
+| `maxRuntimeSecs`                   | run-wide  | ends every agent at its next boundary | `timed_out`      |
+| `maxConsecutiveErrors`             | per agent | ends that agent                       | `limit_exceeded` |
+| `maxErrorRate` + `errorRateWindow` | per agent | ends that agent                       | `limit_exceeded` |
+| `maxCost`                          | run-wide  | ends every agent at its next boundary | `limit_exceeded` |
 
 A ceiling is a safeguard, and a run is not expected to reach one. A run that
 breaches any of them, in any agent of its tree, stops early and gg exits `3`. The
@@ -130,8 +130,8 @@ enforces a wall-clock cap on every run regardless.
 
 The run records the ceilings that were in force on the session summary, beside
 the breach if there was one, and records an unarmed ceiling as unbounded. The run
-also logs one `info` line at launch naming every armed ceiling, or *"no execution
-ceiling is armed; the run is bounded only by the host's clock"* when a
+also logs one `info` line at launch naming every armed ceiling, or _"no execution
+ceiling is armed; the run is bounded only by the host's clock"_ when a
 configuration arms none.
 
 ## The ceilings
@@ -475,11 +475,11 @@ every measurement the capability set exists to make.
 A gg session leaves one of three exit codes, and the host classifies the run by
 it before it collects anything.
 
-| Exit | Meaning | Recorded as |
-| --- | --- | --- |
-| `0` | The session ran to a natural end | its own outcome, collected and scored |
-| `1` | A launch failure, a refused root credential, or a gg defect | `harness_error`, retryable |
-| `3` | Any agent breached one of the five ceilings | `limit_exceeded`, never retried |
+| Exit | Meaning                                                     | Recorded as                           |
+| ---- | ----------------------------------------------------------- | ------------------------------------- |
+| `0`  | The session ran to a natural end                            | its own outcome, collected and scored |
+| `1`  | A launch failure, a refused root credential, or a gg defect | `harness_error`, retryable            |
+| `3`  | Any agent breached one of the five ceilings                 | `limit_exceeded`, never retried       |
 
 Exit `3` is read off the whole tree rather than off the root's ending, the way a
 gg defect is. A subagent that spent its turn budget, or an issue implementer that
@@ -541,16 +541,16 @@ refusal names every such key in the set at once, so a single pass over the
 document fixes them all. A count declared as an integral JSON number is read as
 that integer, so `60` and `60.0` are one declaration.
 
-| Declaration | Result |
-| --- | --- |
-| `maxParallel` or `replayMaxBytes` absent, `limits` absent altogether | refused |
-| any of the five ceilings absent | that ceiling unarmed |
-| one error-rate half declared, the other not | refused |
-| `maxErrorRate: 0.0` | armed: any error at all, once the window is full |
-| `errorRateWindow` ≥ a set `maxTurns` | armed as declared, warned that it can fire only on the last turn |
-| any key but `maxErrorRate` declared `0` or negative | refused |
-| `maxErrorRate` outside `0.0..=1.0`, or a float that is not finite | refused |
-| a key gg cannot read as the number it is | refused |
+| Declaration                                                          | Result                                                           |
+| -------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `maxParallel` or `replayMaxBytes` absent, `limits` absent altogether | refused                                                          |
+| any of the five ceilings absent                                      | that ceiling unarmed                                             |
+| one error-rate half declared, the other not                          | refused                                                          |
+| `maxErrorRate: 0.0`                                                  | armed: any error at all, once the window is full                 |
+| `errorRateWindow` ≥ a set `maxTurns`                                 | armed as declared, warned that it can fire only on the last turn |
+| any key but `maxErrorRate` declared `0` or negative                  | refused                                                          |
+| `maxErrorRate` outside `0.0..=1.0`, or a float that is not finite    | refused                                                          |
+| a key gg cannot read as the number it is                             | refused                                                          |
 
 Every ceiling is declared in `capabilitySet.limits`. A capability's params bound
 that capability alone, so the subagents capability's `maxDepth` is the only
@@ -567,7 +567,7 @@ is never scored against a model that never ran.
 
 A reply that [looped](/gg/loop-detection/) on every one of the client's attempts
 arrives here too and ends the session on the same terms. It is named separately
-in the log (*"model looped every attempt"*), because "retries exhausted" would
+in the log (_"model looped every attempt"_), because "retries exhausted" would
 send an operator looking at the provider for an outage that never happened. The
 recorded base error kind is `model_api` and the recorded type is
 `model_response_loop`.
@@ -606,8 +606,13 @@ structure: on the agent's stream as a `limit_exceeded` event, and, when the root
 agent was the one that stopped, on the run's session summary as `limitHit`.
 
 ```jsonc
-{ "limit": "cost", "threshold": 25.0, "observed": 25.41,
-  "turns": 37, "agentId": "root" }
+{
+  "limit": "cost",
+  "threshold": 25.0,
+  "observed": 25.41,
+  "turns": 37,
+  "agentId": "root",
+}
 ```
 
 Every figure is an `f64`, so one shape carries a turn count, a number of

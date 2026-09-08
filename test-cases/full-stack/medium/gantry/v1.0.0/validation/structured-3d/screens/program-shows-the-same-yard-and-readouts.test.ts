@@ -29,10 +29,13 @@
 //
 // SITE `4` IS OPENED, whose budget (`5 600`) and name are unlike anything else on
 // either screen, and the tape is five steps long, so the step count is a figure
-// of its own too.
+// of its own too. The budget is a four-figure number, so how it is grouped is the
+// build's — `5600`, `5,600` and `5 600` are one figure written three ways — and
+// `./figures` is where this project reads a figure without fixing its setting.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { drawnText, toDrawCall, type RecordedOp } from "../case-harness/index";
+import { drawnFigures, inRun, type DrawnFigures } from "./figures";
+import type { TextDraw } from "../case-harness/text";
 import { assertEqual, assertLength, fail } from "../assert";
 import { GRIP_MAX_RATE, SITE_NAMES } from "../constants";
 import { createHarness, openSite, type Harness } from "../harness";
@@ -51,6 +54,14 @@ const TAPE_STEPS = 5;
  * so it builds the smallest structure that carries a cost at all — `RING_COST`
  * plus four units of rail, `372` against Long Reach's budget of `5600`, which is
  * a figure no other readout on the screen can be confused with.
+ *
+ * Read off the LOGICAL RUNS the frame spells, never off the `fillText` split:
+ * a build that letter-spaces its copy draws a glyph per call, which is the only
+ * portable way to letter-space canvas text, and the specification fixes the
+ * words a screen shows while leaving their spacing to the build. `screenCalls`
+ * carries the measured geometry the shared merge rule (`case-harness/text.ts`)
+ * needs to put side-by-side glyphs on one baseline back together, and every
+ * raw string is a substring of its run, so coalescing can only add a match.
  */
 async function poseCrane(harness: Harness): Promise<void> {
   await harness.debug.setRing(0, 2, 0);
@@ -79,44 +90,51 @@ afterEach(async () => {
   await h.dispose();
 });
 
-/** Every run of text the frame the page last drew put on its readout layer. */
-async function readoutText(harness: Harness): Promise<string[]> {
-  const ops = (await harness.screenOps()) as RecordedOp[];
-  return drawnText(ops.map(toDrawCall));
+/**
+ * The figures the frame the page last drew put on its readout layer, and the
+ * runs it spelled.
+ *
+ * The figures come from `./figures`, this project's one reading of a number on
+ * the screen, which reads the frame's raw draws and its coalesced logical runs
+ * TOGETHER. Neither half alone reads this screen: a build that letter-spaces the
+ * budget draws a glyph per `fillText`, so its figure exists only once the glyphs
+ * are put back together into a run, while a build that groups `5600` as `5 600`
+ * inside one call — which is what this case's own reference does — has a figure
+ * the runs cannot be read for, because the merge writes an ASCII space of its
+ * own wherever it crosses a word gap and a run's spaces are therefore not all
+ * the build's.
+ */
+async function readoutFigures(harness: Harness): Promise<DrawnFigures> {
+  return drawnFigures(await harness.screenCalls());
 }
 
 /**
- * The separators a build may set between a figure's digit triples.
+ * What it takes for one readout of a frame to be the readout being looked for.
  *
- * ASCII space is deliberately absent: a frame's text is assembled by joining
- * separate draw runs with one, so accepting it would read the two figures in
- * `40 130` as the single number 40130. `.` is absent for the same sort of
- * reason — it is the decimal point, and a build drawing `1.5` means one and a
- * half.
+ * A readout is a RUN of the frame's text rather than a string, because the two
+ * screens are compared readout by readout and a figure is read off the run that
+ * carries it together with the draws that spelled it.
  */
-const GROUP = "[,'\\u00A0\\u202F\\u2009]";
-
-/** One drawn number: a grouped figure, or a plain one. */
-const DRAWN = new RegExp(
-  `-?\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|-?\\d+(?:\\.\\d+)?`,
-  "g",
-);
+type Readout = (frame: DrawnFigures, run: TextDraw) => boolean;
 
 /**
- * Every number a run of text carries.
+ * Whether the readout `run` spells carries a figure within `tolerance` of
+ * `wanted`.
  *
- * A grouped figure reads as the one figure it is, so `1,234` and `1234` both
- * come back as 1234 and a build is free to group the figure it draws.
+ * Scoped to the one run with `inRun`, so a figure drawn on a different readout
+ * cannot stand in for this one; the reading inside that scope is the union
+ * `./figures` states, so the run's own draws are read for a figure a space
+ * groups as well.
  */
-function numbersIn(text: string): number[] {
-  return (text.match(DRAWN) ?? []).map((one) =>
-    Number(one.replace(new RegExp(GROUP, "g"), "")),
-  );
-}
-
-/** Whether a run of text carries a figure within `tolerance` of `wanted`. */
-function carries(text: string, wanted: number, tolerance: number): boolean {
-  return numbersIn(text).some((one) => Math.abs(one - wanted) <= tolerance);
+function carries(
+  frame: DrawnFigures,
+  run: TextDraw,
+  wanted: number,
+  tolerance: number,
+): boolean {
+  return frame
+    .where(inRun(run))
+    .some((one) => Math.abs(one - wanted) <= tolerance);
 }
 
 it("draws the build screen's readouts on the program screen too", async () => {
@@ -133,37 +151,40 @@ it("draws the build screen's readouts on the program screen too", async () => {
   assertEqual(built.screen, "build", "the screen a site opening shows");
   assertLength(built.program, TAPE_STEPS, "the steps the tape carries");
   await h.advance(1);
-  const before = await readoutText(h);
+  const before = await readoutFigures(h);
 
   const cost = built.structure.cost;
   const budget = built.site.budget;
-  const readouts: ReadonlyArray<readonly [string, (text: string) => boolean]> =
+  const readouts: ReadonlyArray<readonly [string, Readout]> = [
     [
-      [
-        `the site's name ("${SITE_NAMES[SITE]}")`,
-        (text) => text.toLowerCase().includes(SITE_NAMES[SITE]!.toLowerCase()),
-      ],
-      [
-        `the crane's cost (${cost.toFixed(2)})`,
-        (text) => carries(text, cost, COST_TOL),
-      ],
-      [`the site's budget (${budget})`, (text) => carries(text, budget, 0.5)],
-      [
-        `the tape's step count (${TAPE_STEPS})`,
-        (text) => carries(text, TAPE_STEPS, 0.05),
-      ],
-    ];
+      `the site's name ("${SITE_NAMES[SITE]}")`,
+      (_frame, run) =>
+        run.text.toLowerCase().includes(SITE_NAMES[SITE]!.toLowerCase()),
+    ],
+    [
+      `the crane's cost (${cost.toFixed(2)})`,
+      (frame, run) => carries(frame, run, cost, COST_TOL),
+    ],
+    [
+      `the site's budget (${budget})`,
+      (frame, run) => carries(frame, run, budget, 0.5),
+    ],
+    [
+      `the tape's step count (${TAPE_STEPS})`,
+      (frame, run) => carries(frame, run, TAPE_STEPS, 0.05),
+    ],
+  ];
 
   const wanted: string[] = [];
   for (const [what, holds] of readouts) {
-    const drawn = before.filter(holds);
+    const drawn = before.runs.filter((run) => holds(before, run));
     if (drawn.length === 0) {
       fail(
         `the build screen to show ${what} among its readouts (specs/ui.md)`,
-        `it draws [${before.map((one) => one.trim()).join(" | ")}]`,
+        `it draws [${before.runs.map((run) => run.text.trim()).join(" | ")}]`,
       );
     }
-    wanted.push(...drawn);
+    wanted.push(...drawn.map((run) => run.text));
   }
 
   await h.debug.setScreen("program");
@@ -171,19 +192,21 @@ it("draws the build screen's readouts on the program screen too", async () => {
   const after = await h.snapshot();
   assertEqual(after.screen, "program", "the screen the tape editor is on");
 
-  const drawn = await readoutText(h);
+  const drawn = await readoutFigures(h);
   await h.capture(
     "program-yard",
     "The yard and readouts under the tape editor",
   );
 
   for (const [what, holds] of readouts) {
-    const same = wanted.filter((text) => holds(text) && drawn.includes(text));
+    const same = drawn.runs.filter(
+      (run) => wanted.includes(run.text) && holds(drawn, run),
+    );
     if (same.length === 0) {
       fail(
         `the program screen to show ${what}, the same readout the build ` +
           "screen shows (specs/ui.md)",
-        `it draws [${drawn.map((one) => one.trim()).join(" | ")}]`,
+        `it draws [${drawn.runs.map((run) => run.text.trim()).join(" | ")}]`,
       );
     }
   }

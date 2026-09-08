@@ -118,7 +118,11 @@ load.
 
 ```ts
 // actors.ts
-import { Actor, MeshComponent, ModelComponent } from "@clockwyrks/structured-3d";
+import {
+  Actor,
+  MeshComponent,
+  ModelComponent,
+} from "@clockwyrks/structured-3d";
 import { hullTexture, walkerModel } from "./assets";
 
 export class Asteroid extends Actor {
@@ -136,7 +140,9 @@ export class Asteroid extends Actor {
 export class Walker extends Actor {
   constructor() {
     super();
-    this.attach(new ModelComponent({ model: walkerModel(), animation: "idle" }));
+    this.attach(
+      new ModelComponent({ model: walkerModel(), animation: "idle" }),
+    );
   }
 }
 ```
@@ -164,7 +170,10 @@ export class Ship extends Pawn {
   velocity: Vec3 = { x: 6, y: 0, z: 0 };
 
   tick(dt: number): void {
-    this.transform.position = add(this.transform.position, scale(this.velocity, dt));
+    this.transform.position = add(
+      this.transform.position,
+      scale(this.velocity, dt),
+    );
     const x = this.transform.position.x;
     if (x < -FIELD_WIDTH / 2 || x > FIELD_WIDTH / 2) {
       this.velocity = scale(this.velocity, -1);
@@ -260,7 +269,8 @@ export class Ship extends Pawn {
   thrusting = false;
 
   tick(dt: number): void {
-    if (this.thrusting) this.world.audio.loop("thrust", { at: this.transform.position });
+    if (this.thrusting)
+      this.world.audio.loop("thrust", { at: this.transform.position });
     else this.world.audio.stop("thrust");
     this.world.audio.place("thrust", this.transform.position);
     this.integrate(dt);
@@ -315,7 +325,10 @@ export class ArenaGame extends GameInstance<null> {
     api.events.on("asset:failed", ({ path, reason }) => {
       this.failed.push(`${path}: ${reason}`);
     });
-    api.diagnostics.register("assets-failed", () => this.failed.join(", ") || "none");
+    api.diagnostics.register(
+      "assets-failed",
+      () => this.failed.join(", ") || "none",
+    );
     return null;
   }
 }

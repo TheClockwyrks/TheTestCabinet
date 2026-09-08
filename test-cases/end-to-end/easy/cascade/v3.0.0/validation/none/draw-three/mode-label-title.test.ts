@@ -23,12 +23,8 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertTrue } from "../assert";
-import {
-  captureStill,
-  createHarness,
-  drewText,
-  type Harness,
-} from "../harness";
+import { drewText } from "../case-harness/index";
+import { captureStill, createHarness, type Harness } from "../harness";
 import { DEAL_MODE_LABEL } from "./constants";
 
 let h: Harness;

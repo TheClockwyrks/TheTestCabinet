@@ -61,7 +61,10 @@ const MESH: PartMesh = {
   colors: [1, 1, 1, 1, 1, 1, 1, 1, 1],
   indices: [0, 1, 2],
 };
-const RIG: ModelSpec = { parts: [{ name: "model", pivot: [0, 0, 0] }], joints: [] };
+const RIG: ModelSpec = {
+  parts: [{ name: "model", pivot: [0, 0, 0] }],
+  joints: [],
+};
 
 describe("VoxelViewer", () => {
   beforeEach(() => {
@@ -94,7 +97,12 @@ describe("VoxelViewer", () => {
     await act(async () => {
       const result = render(
         <StrictMode>
-          <VoxelViewer meshes={MESH} rig={RIG} mode="auto-rotate" label="test" />
+          <VoxelViewer
+            meshes={MESH}
+            rig={RIG}
+            mode="auto-rotate"
+            label="test"
+          />
         </StrictMode>,
       );
       unmount = result.unmount;

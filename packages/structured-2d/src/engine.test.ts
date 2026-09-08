@@ -1474,7 +1474,10 @@ describe("engine.diagnostics over the real subsystems", () => {
       game: {
         instance: WatchedInstance,
         levels: {
-          a: { mode: WatchedMode, actors: [{ type: Drifter, transform: { x: 320, y: 180 } }] },
+          a: {
+            mode: WatchedMode,
+            actors: [{ type: Drifter, transform: { x: 320, y: 180 } }],
+          },
           b: { mode: WatchedMode },
         },
         startLevel: "a",

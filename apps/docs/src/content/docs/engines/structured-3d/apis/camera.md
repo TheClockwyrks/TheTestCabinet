@@ -10,11 +10,11 @@ and draws the screen pass through the viewport alone.
 
 ## The three spaces
 
-| Space | Unit | Set by |
-| --- | --- | --- |
-| World | World units | The game, on every transform |
-| Logical | The design size handed to `createEngine` | The camera |
-| Device | Device pixels | The viewport |
+| Space   | Unit                                     | Set by                       |
+| ------- | ---------------------------------------- | ---------------------------- |
+| World   | World units                              | The game, on every transform |
+| Logical | The design size handed to `createEngine` | The camera                   |
+| Device  | Device pixels                            | The viewport                 |
 
 The camera carries the first mapping and the viewport the second, with `width`
 and `height` the logical design size. A world point passes through the
@@ -27,8 +27,8 @@ ndcX = clipX / clipW;
 ndcY = clipY / clipW;
 ndcZ = clipZ / clipW;
 
-logicalX = width / 2 + ndcX * width / 2;
-logicalY = height / 2 - ndcY * height / 2;
+logicalX = width / 2 + (ndcX * width) / 2;
+logicalY = height / 2 - (ndcY * height) / 2;
 
 deviceX = offsetX + logicalX * scale;
 deviceY = offsetY + logicalY * scale;
@@ -62,11 +62,11 @@ interface Ray {
 }
 ```
 
-| `Projected` field | Meaning |
-| --- | --- |
-| `x`, `y` | The logical point the world point draws at. |
-| `depth` | Normalized device depth in `-1..1`, near to far. |
-| `visible` | Whether the point lies inside the camera's frustum. A point behind the camera reports `false`. |
+| `Projected` field | Meaning                                                                                        |
+| ----------------- | ---------------------------------------------------------------------------------------------- |
+| `x`, `y`          | The logical point the world point draws at.                                                    |
+| `depth`           | Normalized device depth in `-1..1`, near to far.                                               |
+| `visible`         | Whether the point lies inside the camera's frustum. A point behind the camera reports `false`. |
 
 A `Ray` is a world-space line: `origin` is a point in world units and
 `direction` is unit length. `Vec3`, `Quat`, and `Box3` are the plain records the
@@ -90,14 +90,14 @@ interface CameraSnapshot {
 }
 ```
 
-| Field | Meaning |
-| --- | --- |
-| `projection` | The projection in force. |
-| `position` | The camera's world position. |
-| `rotation` | The camera's world rotation, a unit quaternion. |
-| `fov` | The vertical field of view in degrees under `perspective`, else `0`. |
-| `near`, `far` | The clipping planes, in world units from the camera. |
-| `zoom` | Three's zoom factor; the world's camera reports `1`. |
+| Field                            | Meaning                                                                 |
+| -------------------------------- | ----------------------------------------------------------------------- |
+| `projection`                     | The projection in force.                                                |
+| `position`                       | The camera's world position.                                            |
+| `rotation`                       | The camera's world rotation, a unit quaternion.                         |
+| `fov`                            | The vertical field of view in degrees under `perspective`, else `0`.    |
+| `near`, `far`                    | The clipping planes, in world units from the camera.                    |
+| `zoom`                           | Three's zoom factor; the world's camera reports `1`.                    |
 | `left`, `right`, `top`, `bottom` | The orthographic extents in world units under `orthographic`, else `0`. |
 
 The camera's projection at one moment, as a plain value the caller owns.
@@ -127,25 +127,25 @@ interface Camera {
 }
 ```
 
-| Field | Default | Meaning |
-| --- | --- | --- |
-| `position` | `{ x: 0, y: 0, z: 10 }` | The camera's world position. |
-| `rotation` | `{ x: 0, y: 0, z: 0, w: 1 }` | The camera's world rotation. The camera looks along its local `-Z` with local `+Y` up. |
-| `projection` | `"perspective"` | The projection the world pass renders through. |
-| `fov` | `60` | The vertical field of view in degrees, read under `perspective`. |
-| `near` | `0.1` | The near clipping plane, in world units from the camera. |
-| `far` | `1000` | The far clipping plane, in world units from the camera. |
-| `orthoHeight` | The logical design height | The world units the view spans vertically, read under `orthographic`. |
-| `bounds` | `null` | A box in world units the camera's position is kept inside. |
-| `target` | `null` | The actor the camera follows. |
+| Field         | Default                      | Meaning                                                                                |
+| ------------- | ---------------------------- | -------------------------------------------------------------------------------------- |
+| `position`    | `{ x: 0, y: 0, z: 10 }`      | The camera's world position.                                                           |
+| `rotation`    | `{ x: 0, y: 0, z: 0, w: 1 }` | The camera's world rotation. The camera looks along its local `-Z` with local `+Y` up. |
+| `projection`  | `"perspective"`              | The projection the world pass renders through.                                         |
+| `fov`         | `60`                         | The vertical field of view in degrees, read under `perspective`.                       |
+| `near`        | `0.1`                        | The near clipping plane, in world units from the camera.                               |
+| `far`         | `1000`                       | The far clipping plane, in world units from the camera.                                |
+| `orthoHeight` | The logical design height    | The world units the view spans vertically, read under `orthographic`.                  |
+| `bounds`      | `null`                       | A box in world units the camera's position is kept inside.                             |
+| `target`      | `null`                       | The actor the camera follows.                                                          |
 
-| Method | Result |
-| --- | --- |
-| `follow` | Sets `target`. `null` clears it and returns the pose to the game. |
-| `lookAt` | Writes `rotation` so the camera looks from `position` toward `point`, with local `+Y` as near `up` as the view allows. `up` defaults to `UP`. |
-| `snapshot` | The projection as a value the caller owns. |
-| `worldToLogical` | A world point on the logical field, through the camera as it stands at the call. |
-| `logicalToRay` | A world-space ray through a logical point, from the camera as it stands at the call. |
+| Method           | Result                                                                                                                                        |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `follow`         | Sets `target`. `null` clears it and returns the pose to the game.                                                                             |
+| `lookAt`         | Writes `rotation` so the camera looks from `position` toward `point`, with local `+Y` as near `up` as the view allows. `up` defaults to `UP`. |
+| `snapshot`       | The projection as a value the caller owns.                                                                                                    |
+| `worldToLogical` | A world point on the logical field, through the camera as it stands at the call.                                                              |
+| `logicalToRay`   | A world-space ray through a logical point, from the camera as it stands at the call.                                                          |
 
 A world's camera starts at the defaults above, at `(0, 0, 10)` looking along
 `-Z` at the origin, so a mesh at the origin is in view before the game moves
@@ -196,13 +196,13 @@ interface Viewport {
 }
 ```
 
-| Field | Meaning |
-| --- | --- |
-| `width` | The logical design width. |
-| `height` | The logical design height. |
-| `scale` | Device pixels per logical unit, with the device pixel ratio folded in. |
-| `offsetX` | The left letterbox bar, in device pixels. |
-| `offsetY` | The top letterbox bar, in device pixels. |
+| Field     | Meaning                                                                |
+| --------- | ---------------------------------------------------------------------- |
+| `width`   | The logical design width.                                              |
+| `height`  | The logical design height.                                             |
+| `scale`   | Device pixels per logical unit, with the device pixel ratio folded in. |
+| `offsetX` | The left letterbox bar, in device pixels.                              |
+| `offsetY` | The top letterbox bar, in device pixels.                               |
 
 `scale` and both offsets are device pixels. The CSS-pixel figure is `scale`
 divided by the device pixel ratio.
@@ -297,10 +297,10 @@ each correct themselves within one frame.
 The engine pins a pixel CSS size onto the canvas only while the reported size
 still matches the backing-store attributes.
 
-| Measurement | The engine writes |
-| --- | --- |
+| Measurement                                                              | The engine writes                                                                                 |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
 | The reported CSS size equals the size the backing-store attributes imply | `style.width` and `style.height` in pixels, equal to the measurement, alongside the backing store |
-| The page sized the element, inline or through a stylesheet | The backing store alone |
+| The page sized the element, inline or through a stylesheet               | The backing store alone                                                                           |
 
 An element the page has not sized takes its CSS size from the `width` and
 `height` attributes, which are exactly what the backing store writes. Writing

@@ -24,7 +24,9 @@ function surfaceOver(target: EventTarget): SurfaceMetrics {
  * to turn browser input into actions, so stubbing the event out would test nothing.
  */
 function keyDown(target: EventTarget, code: string, repeat = false): void {
-  target.dispatchEvent(new KeyboardEvent("keydown", { code, repeat, bubbles: true }));
+  target.dispatchEvent(
+    new KeyboardEvent("keydown", { code, repeat, bubbles: true }),
+  );
 }
 
 function keyUp(target: EventTarget, code: string): void {
@@ -55,17 +57,25 @@ describe("InputRegistry", () => {
       // What a validator dispatches: not a `KeyboardEvent` from this realm, but an
       // object shaped like one. The registry narrows structurally, so this is the
       // same path a player's keystroke takes.
-      const down = Object.assign(new Event("keydown"), { code: "Space", repeat: false });
+      const down = Object.assign(new Event("keydown"), {
+        code: "Space",
+        repeat: false,
+      });
       target.dispatchEvent(down);
 
       expect(input.value("fire")).toBe(1);
       expect(input.pressed("fire")).toBe(true);
 
-      const repeated = Object.assign(new Event("keydown"), { code: "Space", repeat: true });
+      const repeated = Object.assign(new Event("keydown"), {
+        code: "Space",
+        repeat: true,
+      });
       target.dispatchEvent(repeated);
       expect(input.pressed("fire")).toBe(false);
 
-      target.dispatchEvent(Object.assign(new Event("keyup"), { code: "Space" }));
+      target.dispatchEvent(
+        Object.assign(new Event("keyup"), { code: "Space" }),
+      );
       expect(input.value("fire")).toBe(0);
     });
 
@@ -393,7 +403,11 @@ describe("InputRegistry", () => {
       input.register("tilt", { keys: ["ArrowRight"], kind: "analog" });
       input.setAction("tilt", 0.5);
 
-      for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+      for (const bad of [
+        Number.NaN,
+        Number.POSITIVE_INFINITY,
+        Number.NEGATIVE_INFINITY,
+      ]) {
         expect(() => input.setAction("tilt", bad)).toThrow(/finite/);
       }
 
@@ -403,11 +417,19 @@ describe("InputRegistry", () => {
 
   describe("registration", () => {
     it("reports every action with its resolved keys, kind and layout", () => {
-      input.register("tilt", { keys: ["ArrowLeft", "ArrowRight"], kind: "analog" });
+      input.register("tilt", {
+        keys: ["ArrowLeft", "ArrowRight"],
+        kind: "analog",
+      });
       input.register("fire", { keys: ["Space"] });
 
       expect(input.actions()).toEqual<RegisteredAction[]>([
-        { name: "tilt", keys: ["ArrowLeft", "ArrowRight"], kind: "analog", layout: null },
+        {
+          name: "tilt",
+          keys: ["ArrowLeft", "ArrowRight"],
+          kind: "analog",
+          layout: null,
+        },
         { name: "fire", keys: ["Space"], kind: "digital", layout: null },
       ]);
     });
@@ -433,7 +455,11 @@ describe("InputRegistry", () => {
       input.register("c", { keys: ["KeyC"] });
       input.register("b", { keys: ["KeyN"] });
 
-      expect(input.actions().map((action) => action.name)).toEqual(["a", "b", "c"]);
+      expect(input.actions().map((action) => action.name)).toEqual([
+        "a",
+        "b",
+        "c",
+      ]);
       expect(input.actions()[1]?.keys).toEqual(["KeyN"]);
     });
 
@@ -458,7 +484,9 @@ describe("InputRegistry", () => {
     });
 
     it("accepts any name, including one no layout has ever heard of", () => {
-      expect(() => input.register("wobble-the-thing", { keys: ["KeyQ"] })).not.toThrow();
+      expect(() =>
+        input.register("wobble-the-thing", { keys: ["KeyQ"] }),
+      ).not.toThrow();
 
       keyDown(target, "KeyQ");
       expect(input.value("wobble-the-thing")).toBe(1);
@@ -514,7 +542,9 @@ describe("InputRegistry", () => {
       input.register("p1-down", { keys: ["KeyS"] });
       input.register("boost", { keys: ["ShiftLeft"] });
 
-      const byName = new Map(input.actions().map((action) => [action.name, action.layout]));
+      const byName = new Map(
+        input.actions().map((action) => [action.name, action.layout]),
+      );
       expect(byName.get("p1-up")).toBeNull();
       expect(byName.get("p1-down")).toBe("dual-vertical");
       expect(byName.get("boost")).toBeNull();

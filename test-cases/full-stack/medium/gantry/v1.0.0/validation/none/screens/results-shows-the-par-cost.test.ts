@@ -25,7 +25,10 @@
 // HOW A FIGURE IS READ. The words around a number and the way it is grouped are
 // the build's ("`2 400`", "`2,400`", "`PAR 2400`"), so the screen's text is
 // read for the NUMBERS in it, with a separator between two digits taken out
-// first.
+// first. `./figures` is this directory's one reading of a number, and it is
+// what settles the awkward separator: the space in "`2 400`" groups the figure
+// when the build wrote it into a single `fillText`, and does not when a run
+// only carries it because the harness's merge put it between two draws.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertTrue } from "../assert";
@@ -41,7 +44,8 @@ import {
   type Harness,
   type TapeStepSpec,
 } from "../harness";
-import { drawnText, toDrawCall, type RecordedOp } from "../case-harness/index";
+import { drawnTextLines } from "../case-harness/index";
+import { drawnFigures, valuesOf } from "./figures";
 
 /** Site 1, whose par specs/sites.md gives as cost 2400 and time 18. */
 const SITE = 0;
@@ -65,51 +69,41 @@ const A_SHORT_HOIST: TapeStepSpec = {
 };
 
 /**
- * Every run of text the last frame drew on the screen layer.
+ * What the last frame drew on the screen layer: the words it spells, and the
+ * figures those words show.
  *
  * specs/overview.md fixes where a readout lives — "over it the screen-space
  * readouts are drawn on a 2D layer composited on top of the picture, laid out
  * in logical stage units" — so the words a screen shows are the runs of text
  * that layer's frame issued, whatever font, colour, or arrangement a build
- * chose for them. */
-async function screenText(harness: Harness): Promise<string[]> {
-  const ops = (await harness.page.evaluate(() =>
-    (window as unknown as Record<string, { last(): unknown[] }>)[
-      "__tcabRec"
-    ]!.last(),
-  )) as RecordedOp[];
-  return drawnText(ops.map(toDrawCall));
+ * chose for them.
+ *
+ * Read off the LOGICAL RUNS the frame spells, never off the `fillText` split:
+ * a build that letter-spaces its copy draws a glyph per call, which is the only
+ * portable way to letter-space canvas text, and the specification fixes the
+ * words a screen shows while leaving their spacing to the build. `screenCalls`
+ * carries the measured geometry the shared merge rule (`case-harness/text.ts`)
+ * needs to put side-by-side glyphs on one baseline back together, and every
+ * raw string is a substring of its run, so coalescing can only add a match.
+ *
+ * The FIGURES come off the same operations through `./figures`, which is this
+ * directory's one reading of a number and reads the merged runs and the raw
+ * draws they were coalesced from together. The two answers are taken in one
+ * crossing so they are answers about the same frame.
+ */
+interface ScreenReading {
+  /** Every logical run the frame spelled, in reading order. */
+  readonly lines: string[];
+  /** Every figure those runs show, under `./figures`' rule. */
+  readonly figures: number[];
 }
 
-/**
- * The separators a build may set between a figure's digit triples.
- *
- * ASCII space is deliberately absent: a frame's text is assembled by joining
- * separate draw runs with one, so accepting it would read the two figures in
- * `40 130` as the single number 40130. `.` is absent for the same sort of
- * reason — it is the decimal point, and a build drawing `1.5` means one and a
- * half.
- */
-const GROUP = "[,'\\u00A0\\u202F\\u2009]";
-
-/** One drawn number: a grouped figure, or a plain one. */
-const DRAWN = new RegExp(
-  `\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|\\d+(?:\\.\\d+)?`,
-  "g",
-);
-
-/**
- * Every number the drawn text carries, as figures rather than characters.
- *
- * A grouped figure reads as the one figure it is, so `1,234` and `1234` both
- * come back as 1234 and a build is free to group the figure it draws.
- */
-function drawnNumbers(runs: readonly string[]): number[] {
-  return runs.flatMap((run) =>
-    (run.match(DRAWN) ?? []).map((one) =>
-      Number(one.replace(new RegExp(GROUP, "g"), "")),
-    ),
-  );
+async function screenReading(harness: Harness): Promise<ScreenReading> {
+  const calls = await harness.screenCalls();
+  return {
+    lines: drawnTextLines(calls),
+    figures: valuesOf(drawnFigures(calls)),
+  };
 }
 
 let h: Harness;
@@ -147,12 +141,11 @@ it("shows the site's par cost", async () => {
     "the screen a cleared run moves to (specs/ui.md § Run)",
   );
 
-  const shown = await screenText(h);
-  const figures = drawnNumbers(shown);
+  const { lines, figures } = await screenReading(h);
   assertTrue(
     figures.some((one) => Math.abs(one - PAR.cost) <= TOLERANCE),
     `the site's par cost, ${PAR.cost}, among the figures the results screen ` +
       `draws (specs/ui.md § Results, specs/sites.md); it drew ` +
-      `[${shown.join(" | ")}]`,
+      `[${lines.join(" | ")}]`,
   );
 });

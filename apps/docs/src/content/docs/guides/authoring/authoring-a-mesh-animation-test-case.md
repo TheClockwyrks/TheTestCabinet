@@ -66,11 +66,11 @@ The three animated meshed kinds share one authoring workflow and differ in which
 `-anim` binary the case names and the surface character that binary produces,
 which is a property of the binary rather than a manifest knob.
 
-| `asset_kind` | binary | surface character | pick for |
-| --- | --- | --- | --- |
-| `mc-animation` | `mc-anim` (Marching Cubes) | bold low poly: chunky, faceted, coarse grid | stylized, blocky machines |
-| `sn-animation` | `sn-anim` (Surface Nets) | smooth mid-fidelity: rounded, watertight, uniform | smooth, rounded forms |
-| `dc-animation` | `dc-anim` (Dual Contouring) | crisp: preserves sharp edges and corners | armored, hard-surface machines |
+| `asset_kind`   | binary                      | surface character                                 | pick for                       |
+| -------------- | --------------------------- | ------------------------------------------------- | ------------------------------ |
+| `mc-animation` | `mc-anim` (Marching Cubes)  | bold low poly: chunky, faceted, coarse grid       | stylized, blocky machines      |
+| `sn-animation` | `sn-anim` (Surface Nets)    | smooth mid-fidelity: rounded, watertight, uniform | smooth, rounded forms          |
+| `dc-animation` | `dc-anim` (Dual Contouring) | crisp: preserves sharp edges and corners          | armored, hard-surface machines |
 
 Dual Contouring adds a per-primitive `--sharp` and `--smooth` tag. The kind is a
 property of the whole version, so a case is exactly one kind.

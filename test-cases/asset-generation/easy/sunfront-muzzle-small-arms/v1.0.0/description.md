@@ -1,4 +1,4 @@
-**Sunfront Small-Arms Muzzle Flash** is the muzzle flash from *Sunfront*, a
+**Sunfront Small-Arms Muzzle Flash** is the muzzle flash from _Sunfront_, a
 real-time tug-of-war of solar-powered war automatons. It is the hot flash that
 spits from the barrel of a rifle or light autocannon as one of the game's
 infantry and light-gunner units fires. This asset-generation case asks a model to

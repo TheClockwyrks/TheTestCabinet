@@ -34,10 +34,10 @@ import {
 import {
   captureStill,
   createHarness,
-  drawnText,
   hasToken,
   holdPassive,
   isolate,
+  textReadings,
   type Harness,
 } from "../harness";
 
@@ -73,7 +73,11 @@ it("draws 73 and 115 at hp 73 of maxHp 115", async () => {
   const { calls } = await h.frameDraw();
   captureStill(h, "numbers");
 
-  const drawn = drawnText(calls);
+  // The raw calls and the logical runs they spell, both: a figure drawn a
+  // glyph per call is read as the number it is off the runs, and one drawn a
+  // narrow gap after its label, which the run rule merges into `HP73`, still
+  // stands alone as the raw call.
+  const drawn = textReadings(calls);
   const after = h.snapshot();
   assertWithin(
     after.run.player.hp,

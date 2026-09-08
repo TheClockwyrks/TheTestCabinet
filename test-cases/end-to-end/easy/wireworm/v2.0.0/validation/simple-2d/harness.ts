@@ -7,6 +7,16 @@
 // wall-clock time passes: a check asks for a number of frames and gets exactly
 // that number, at exactly the deltas its clock supplied.
 //
+//
+// A HELPER THAT POSES ANYTHING A READING DERIVES FROM RECONCILES BEFORE IT
+// RETURNS. `specs/instrumentation.md` lets a build work a derived reading out at
+// the read or keep it as a stored copy, and `reconcile()` is what brings a
+// stored copy back into agreement — so `startPlaying`, which poses the level the
+// step interval and the worm length follow, ends with the call. A check that
+// poses only through the helpers therefore never calls `reconcile` itself; a
+// check that poses with `h.debug.set…` directly calls it once before its first
+// read or sweep.
+//
 // THE MACHINERY THAT DOES THAT IS NOT WIREWORM'S. The canvas and its
 // draw-command recorder, the debug surface and the stand-in for a missing one,
 // the driver that threads a PURE surface through `engine.apply`, the driven
@@ -114,7 +124,13 @@ import {
   type DrawCall as RecordedCall,
   type TextGeometry,
 } from "./case-harness/draw-calls";
-import { drawnText, textDraws, type TextDraw } from "./case-harness/text";
+import {
+  drawnText,
+  drawnTextLines,
+  drawnTextRuns,
+  textDraws,
+  type TextDraw,
+} from "./case-harness/text";
 import { colorDistance, type Rgb } from "./case-harness/color";
 import {
   BOARD_Y,
@@ -1105,6 +1121,10 @@ export function startPlaying(h: Harness): void {
   h.debug.setCursor(BAND_CX, BAND_CY);
   h.debug.setCursorInvulnerable(0);
   h.debug.setFireCooldown(0);
+
+  // The level is posed above and the step interval and the worm length follow
+  // it, so the readings are brought into agreement before the caller reads them.
+  h.debug.reconcile();
 }
 
 /**
@@ -1244,25 +1264,27 @@ export async function drawFrame(h: Harness): Promise<DrawCall[]> {
 // else was painted.
 
 /* ---- Text ----------------------------------------------------------------- */
+//
+// Copy is read through the shared harness's `drewText` (`case-harness/text`),
+// which the screen suites import directly: a substring of the logical runs a
+// frame spells, ignoring case, so a letter-spaced heading and a menu entry drawn
+// beside its marker both read as the words they show. The text readers below
+// are the readings this case needs beyond it.
 
 /**
- * Whether the frame drew `text` as part of some RAW run of text, ignoring case.
+ * Every string the frame drew, BOTH as the calls split it and as the logical
+ * runs those calls spell.
  *
- * Substring rather than equality on purpose: the copy a check asserts is the
- * case's own, but how a build presents it is the build's, and a menu entry is
- * commonly drawn with a selection marker or padding around it. Requiring the exact
- * run would fail a screen that shows precisely the right words.
- *
- * WIREWORM'S OWN, over the package's `drawnText`. The package ships a `drewText`
- * and it is a different reading: it matches against the LOGICAL runs a frame
- * spells, coalescing the glyphs of a letter-spaced heading into one string. Every
- * copy point in this project was decided against the raw calls, so this composes
- * the package's raw reading rather than binding a name whose meaning would be the
- * other one.
+ * For the readers that hold a word or a figure to a boundary on both sides —
+ * the how-to screen's key names, the end screens' score — where neither reading
+ * alone is enough. A figure letter-spaced a digit per call is whole only in the
+ * run it spells, and a label drawn one space clear of its figure is bounded only
+ * in the call that drew the figure, because a gap that narrow joins the two into
+ * one run. The union can only add a match: every raw string is still here, and
+ * every run is a superstring of the calls that spelled it.
  */
-export function drewText(calls: readonly DrawCall[], text: string): boolean {
-  const wanted = text.trim().toLowerCase();
-  return drawnText(calls).some((drawn) => drawn.toLowerCase().includes(wanted));
+export function drawnTextForms(calls: readonly DrawCall[]): string[] {
+  return [...drawnText(calls), ...drawnTextLines(calls)];
 }
 
 /** One run of text a frame drew, and the logical x range its glyphs span. */
@@ -1287,6 +1309,63 @@ export function drawnTextSpans(
   calls: readonly DrawCall[] = h.calls,
 ): TextSpan[] {
   return allInLogical(h.viewport(), textDraws(calls));
+}
+
+/**
+ * Every LOGICAL RUN of text `calls` drew, placed in logical units.
+ *
+ * {@link drawnTextSpans} is one span per call, which is the reading for a check
+ * that holds each draw's own extent. A build that letter-spaces a menu item or
+ * a HUD label draws a glyph per call, so a check that has to FIND the text
+ * carrying some copy before it can place it reads these as well: the shared
+ * harness's merge rule (`case-harness/text.ts`) folds side-by-side draws on one
+ * baseline back into the string they spell, and a run keeps the placement of
+ * its first draw and spans its glyphs' extent. The rule is decided in the
+ * canvas's own pixels, where the calls were made — the recorder stamps the
+ * transform in force beside every text call, the engine's fit included — and
+ * the runs are taken back through that fit into logical units here exactly as
+ * the spans are.
+ */
+export function drawnTextRunSpans(
+  h: Harness,
+  calls: readonly DrawCall[] = h.calls,
+): TextSpan[] {
+  return allInLogical(h.viewport(), drawnTextRuns(calls));
+}
+
+/**
+ * Every span of text `calls` drew, BOTH as the calls split it and as the runs
+ * those calls spell: the placed counterpart of {@link drawnTextForms}.
+ *
+ * For the reader that locates copy on the frame — the row a menu item sits on,
+ * the label a readout's digits must sit beside, the readout that must sit
+ * inside the bar. A span holds the copy whole only if the build drew it in one
+ * call, and a run only if the run did not swallow a boundary the reader holds,
+ * so neither alone is enough and the union can only add a match. A run of one
+ * draw is that draw, and is listed once.
+ */
+export function drawnTextSpanForms(
+  h: Harness,
+  calls: readonly DrawCall[] = h.calls,
+): TextSpan[] {
+  const spans = drawnTextSpans(h, calls);
+  const runs = drawnTextRunSpans(h, calls).filter(
+    (run) => !spans.some((span) => sameSpan(span, run)),
+  );
+  return [...spans, ...runs];
+}
+
+/** How far apart two placements of one draw may read, in logical units. */
+const SAME_SPAN_SLACK = 1e-3;
+
+/** Whether two spans are one draw read twice: the same text at the same place. */
+function sameSpan(a: TextSpan, b: TextSpan): boolean {
+  return (
+    a.text === b.text &&
+    Math.abs(a.y - b.y) <= SAME_SPAN_SLACK &&
+    Math.abs(a.left - b.left) <= SAME_SPAN_SLACK &&
+    Math.abs(a.right - b.right) <= SAME_SPAN_SLACK
+  );
 }
 
 /* ---- Where a frame put its sprites ---------------------------------------- */

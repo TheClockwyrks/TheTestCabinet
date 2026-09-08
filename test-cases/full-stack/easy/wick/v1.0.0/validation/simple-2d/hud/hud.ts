@@ -42,7 +42,8 @@ import {
   blitsOfFile,
   blitsUnderDir,
   captureCanvas,
-  drawnText,
+  drawnTextLines,
+  textReadings,
   type Blit,
   type DrawCall,
   type Harness,
@@ -415,7 +416,8 @@ export function iconsInSlotOrder(
 }
 
 /**
- * Whether the frame drew `phrase` inside some run of text, as its own words.
+ * Whether the frame drew `phrase` inside some logical run of text, as its own
+ * words.
  *
  * specs/ui.md fixes the copy and no font, so `LEVEL 4` is read as those two
  * words in that order inside one run rather than as one spelling of the space
@@ -423,6 +425,15 @@ export function iconsInSlotOrder(
  * The phrase must sit on word boundaries, so a clock reading `0:05` is not
  * found inside `10:05` and a label reading `LEVEL 4` is not found inside
  * `LEVEL 42`, while copy a build sets around it still reads.
+ *
+ * The strings are read BOTH ways (`textReadings`): as the logical runs the
+ * frame spells, never only the raw `fillText` split, because a build that
+ * letter-spaces its HUD draws one glyph per call and specs/ui.md fixes the
+ * words and not their spacing; and as the raw calls as well, because the merge
+ * rule joins verbatim and writes a space only where a gap opens past the run's
+ * own tracking, so a label and its clock drawn a narrow gap apart come back as
+ * `TIME0:05`, where the raw call `0:05` stood on its own word boundary.
+ * Reading both only ever adds a match.
  */
 export function drewPhrase(
   calls: readonly DrawCall[],
@@ -432,7 +443,7 @@ export function drewPhrase(
     text.trim().replace(/\s+/g, " ").toLowerCase();
   const escaped = flatten(phrase).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const pattern = new RegExp(`(?<![\\w])${escaped}(?![\\w])`);
-  return drawnText(calls).some((drawn) => pattern.test(flatten(drawn)));
+  return textReadings(calls).some((drawn) => pattern.test(flatten(drawn)));
 }
 
 /** Where a device pixel of the canvas falls in logical stage units. */
@@ -449,8 +460,9 @@ export function pointOnStage(
 }
 
 /**
- * The frame drew `phrase`, or the point fails with every run of text it drew,
- * which is what says whether the copy is missing or merely spelled otherwise.
+ * The frame drew `phrase`, or the point fails with every logical run of text
+ * it drew, which is what says whether the copy is missing or merely spelled
+ * otherwise.
  */
 export function assertDrewPhrase(
   calls: readonly DrawCall[],
@@ -461,7 +473,7 @@ export function assertDrewPhrase(
   const wanted = `a run of text reading ${JSON.stringify(phrase)}`;
   fail(
     context === undefined ? wanted : `${wanted} (${context})`,
-    drawnText(calls),
+    drawnTextLines(calls),
   );
 }
 

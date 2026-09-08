@@ -11,10 +11,40 @@
 // units, and the text the document carries is read beside it so that a build
 // that lays part of a screen over the page as elements is read the way it
 // shows. `specs/ui.md` ("Presentation") fixes "no palette, no font, no layout,
-// and no styling", so a piece of copy is looked for folded — lower-cased, with
-// every space, dash, and underscore removed — and across consecutive runs, so a
-// build that letter-spaces a heading, draws a menu item word by word, or wraps
-// a highlighted item in marks of its own is read as showing it.
+// and no styling", so a piece of copy is looked for the way the shared
+// harness's `drewTextAnywhere` reads it — ignoring case and whitespace, across
+// every run the frame drew joined in reading order — so a build that
+// letter-spaces a heading, draws a menu item word by word, wraps a heading over
+// two lines, or wraps a highlighted item in marks of its own is read as showing
+// it.
+//
+// AND NEVER OFF THE `fillText` SPLIT. A build that letter-spaces a heading
+// draws one glyph per `fillText`, which is the only portable way to letter-space
+// canvas text. The harness measures every text call (`measureText` in
+// `../harness`), so the runs a frame is read by are the shared harness's
+// `drawnTextRuns`: side-by-side draws on one baseline coalesced back into the
+// string they spell (`case-harness/text.ts` states the rule). Every raw string
+// is a substring of the run it belongs to, so coalescing can only add a match
+// and never take one away, and a figure drawn `1`, `4`, `3` a glyph at a time
+// is read as the figure `143` rather than as three. The harness measures under
+// the font a frame INHERITED as well as under the ones it set, so a build that
+// sets its font once at start-up merges the same. The consecutive-run joins
+// the placement readers below make stay on top of that, for copy drawn word by
+// word or over a shadow.
+//
+// AND THE RAW CALLS ARE KEPT BESIDE THE RUNS. The merge rule writes a space
+// only where a gap opens past the run's own tracking, so a single key drawn as
+// its own call a glyph's gap before its action comes back as the one run
+// `PPause`, and a label and its figure may still merge. A reading that wants a
+// token STANDING ALONE ({@link names}) would then lose the `73` or the `P` the
+// raw call carried on its own word boundary, so it reads the raw strings as
+// well ({@link Shown.raw}). A reading that takes the DIFFERENCE between two
+// frames ({@link ownTextBelow}) diffs the raw calls and the logical runs each
+// on their own and keeps the larger, since a merge could otherwise fold a
+// frame's own word into a run the other frame draws too. Reading both keeps
+// the property the merge promises: it only ever adds a match. {@link shows},
+// which asks only whether copy is on the frame, reads the runs alone, through
+// the shared reader.
 //
 // WHERE A PIECE OF COPY WAS DRAWN. A check about an ORDER, about which row an
 // icon or a tag belongs to, or about a highlight moving needs the place a run
@@ -50,7 +80,10 @@ import {
   type OfferId,
   type PassiveId,
 } from "../constants";
+import { drewTextAnywhere } from "../case-harness/index";
 import {
+  drawnText,
+  drawnTextRuns,
   folded,
   holdPassive,
   holdWeapon,
@@ -97,8 +130,20 @@ export const SUB_TICK = 0.001;
 export interface Shown {
   /** Every operation the frame's render issued. */
   calls: DrawCall[];
-  /** Every run of text it drew, with the anchor each landed at. */
+  /**
+   * Every logical run of text it drew, with the anchor each landed at: the
+   * shared harness's `drawnTextRuns`, in reading order — down the frame, then
+   * across it — so a heading drawn one glyph per call is ONE entry spelling
+   * the heading, and never the `fillText` split.
+   */
   draws: TextDraw[];
+  /**
+   * Every string it drew as the raw `fillText`/`strokeText` calls made it, in
+   * draw order: what a token bounded either side ({@link names}) is looked for
+   * in as well as in {@link Shown.draws}, for the reason in this module's
+   * header.
+   */
+  raw: string[];
   /** The document's own text, for a build that lays part of a screen over the page. */
   dom: string;
 }
@@ -107,7 +152,7 @@ export interface Shown {
 export async function shown(h: Harness): Promise<Shown> {
   const calls = await h.frameCalls();
   const dom = await h.page.evaluate(() => document.body.innerText ?? "");
-  return { calls, draws: textDraws(calls), dom };
+  return { calls, draws: drawnTextRuns(calls), raw: drawnText(calls), dom };
 }
 
 /** Every run of text on show, drawn runs in draw order then the document's lines. */
@@ -118,14 +163,22 @@ function runsOf(page: Shown): string[] {
   ];
 }
 
+/** `text` lower-cased with every run of whitespace removed: the shared reader's fold. */
+function foldedCopy(text: string): string {
+  return text.replace(/\s+/g, "").toLowerCase();
+}
+
 /**
- * Whether the frame shows `text`: some run holds it, or consecutive runs spell
- * it, folded for case, spacing, dashes, and underscores.
+ * Whether the frame shows `text`: the frame drew it, ignoring case and
+ * whitespace, within some run or across consecutive runs in reading order —
+ * the shared harness's `drewTextAnywhere` — or the document carries it as
+ * text, folded the same way, for a build that lays part of a screen over the
+ * page as elements.
  */
 export function shows(page: Shown, text: string): boolean {
-  const wanted = folded(text);
-  if (wanted === "") return true;
-  return folded(runsOf(page).join("")).includes(wanted);
+  if (drewTextAnywhere(page.calls, text)) return true;
+  const wanted = foldedCopy(text);
+  return foldedCopy(page.dom).includes(wanted);
 }
 
 /** The frame shows `text`, or the point fails, naming what was on show. */
@@ -179,14 +232,19 @@ function spellings(token: string): string[] {
  * that is not part of a longer one.
  *
  * A folded search cannot decide a key named `P` or a kill count of `6`, because
- * either is a substring of nearly any text. So the raw text is searched for the
- * token standing alone, with a letter bounded by non-letters and a number by
- * non-digits. A whole number is looked for as any of its {@link spellings}, so
+ * either is a substring of nearly any text. So the runs on show are searched,
+ * one per line, for the token standing alone, with a letter bounded by
+ * non-letters and a number by non-digits. The runs are the LOGICAL ones
+ * ({@link Shown.draws}), so a figure a build drew a glyph at a time stands on
+ * one line as the figure it spells rather than as a digit per line, AND the
+ * raw calls ({@link Shown.raw}), so a key drawn as its own call a space before
+ * its action, which the run rule merges into `PPause`, still stands on a line
+ * of its own. A whole number is looked for as any of its {@link spellings}, so
  * a build that groups its digits names the same figure; the bound either side
  * is unchanged, so a frame showing `150` still does not name `50`.
  */
 export function names(page: Shown, token: string): boolean {
-  const text = runsOf(page).join("\n");
+  const text = [...runsOf(page), ...page.raw].join("\n");
   const bound = /^[0-9]+$/.test(token) ? "0-9" : "A-Za-z";
   return spellings(token).some((written) =>
     new RegExp(`(^|[^${bound}])${escaped(written)}([^${bound}]|$)`, "i").test(
@@ -218,7 +276,7 @@ export function assertNames(page: Shown, token: string, what: string): void {
 export const ROW_BAND = 110;
 
 /** How many consecutive runs may be joined to spell one piece of copy. */
-const MAX_RUN_SPAN = 12;
+export const MAX_RUN_SPAN = 12;
 
 /**
  * The `y` at which the frame drew `text`, in stage units, or `null`.
@@ -261,18 +319,46 @@ export function mustRowY(page: Shown, text: string, what: string): number {
 }
 
 /**
- * Every row on which the frame drew a run of text holding `text`, in draw
- * order.
+ * Every anchor `y` at which the frame spelled `text`, in stage units.
+ *
+ * The counterpart of {@link rowY} for a piece of copy that reaches the frame
+ * more than once. A span of consecutive runs counts when it spells the text and
+ * neither end of it can be dropped, so a name drawn as one run, as one run over
+ * a shadow, or word by word answers the row it landed on, and a longer span that
+ * merely contains a shorter one is not counted twice.
+ */
+export function rowsSpelling(page: Shown, text: string): number[] {
+  const wanted = folded(text);
+  if (wanted === "") return [];
+  const draws = page.draws;
+  const rows: number[] = [];
+  for (let i = 0; i < draws.length; i += 1) {
+    let joined = "";
+    let top = Number.POSITIVE_INFINITY;
+    let tail = "";
+    for (let j = i; j < Math.min(draws.length, i + MAX_RUN_SPAN); j += 1) {
+      joined += folded(draws[j]!.text);
+      if (j > i) tail += folded(draws[j]!.text);
+      top = Math.min(top, draws[j]!.y);
+      if (!joined.includes(wanted)) continue;
+      if (!tail.includes(wanted)) rows.push(top);
+      break;
+    }
+  }
+  return rows;
+}
+
+/**
+ * Every row on which the frame spelled `text`, in reading order.
  *
  * What a check about a per-entry part reads: a list shows the same tag beside
  * several entries, so the question is not where the frame drew it but whether
- * each entry has one.
+ * each entry has one. Read off {@link rowsSpelling} rather than off each run on
+ * its own, so a tag a build draws a glyph at a time, or in two parts, is the
+ * tag on the row it landed on.
  */
 export function rowsShowing(page: Shown, text: string): number[] {
-  const wanted = folded(text);
-  return page.draws
-    .filter((draw) => folded(draw.text).includes(wanted))
-    .map((draw) => draw.y);
+  return rowsSpelling(page, text);
 }
 
 /** Some row of `rows` sits within {@link ROW_BAND} of `y`, or the point fails. */
@@ -699,21 +785,59 @@ export function textOn(page: Shown): string[] {
   return runsOf(page);
 }
 
-/** Whether `page` shows a run of text that `others` do not, drawn below `heading`. */
-export function ownTextBelow(
+/** One way of reading a frame's drawn text as placed entries, with the document's lines beside. */
+type Placed = (page: Shown) => readonly TextDraw[];
+
+/** The frame's raw calls, one placed entry per `fillText`/`strokeText`. */
+const rawDraws: Placed = (page) => textDraws(page.calls);
+
+/** The frame's logical runs, as {@link Shown.draws} holds them. */
+const runDraws: Placed = (page) => page.draws;
+
+/**
+ * The text `page` draws below `heading` that no frame in `others` shows, read
+ * as `placed` reads a frame and with the document's own lines counted as shown.
+ */
+function ownBelowUnder(
+  placed: Placed,
   page: Shown,
   heading: number,
   others: readonly Shown[],
 ): string[] {
   const elsewhere = new Set(
-    others.flatMap((other) => runsOf(other).map((run) => folded(run))),
+    others.flatMap((other) =>
+      [
+        ...placed(other).map((draw) => draw.text),
+        ...other.dom.split("\n").filter((line) => line.trim() !== ""),
+      ].map((run) => folded(run)),
+    ),
   );
   const own: string[] = [];
-  for (const draw of page.draws) {
+  for (const draw of placed(page)) {
     const text = folded(draw.text);
     if (text === "" || elsewhere.has(text)) continue;
     if (draw.y <= heading) continue;
     own.push(draw.text);
   }
   return own;
+}
+
+/**
+ * The text `page` draws below `heading` that `others` do not.
+ *
+ * A set difference between frames is taken under each reading on its own — the
+ * raw calls placed one per call, and the logical runs — and the larger
+ * difference stands: a word the page draws as its own call could otherwise be
+ * merged into a run that another frame draws whole, and vanish from the
+ * difference, where the raw reading still has it. Taking the larger keeps the
+ * merge monotone here as everywhere else in this module.
+ */
+export function ownTextBelow(
+  page: Shown,
+  heading: number,
+  others: readonly Shown[],
+): string[] {
+  const raw = ownBelowUnder(rawDraws, page, heading, others);
+  const runs = ownBelowUnder(runDraws, page, heading, others);
+  return runs.length >= raw.length ? runs : raw;
 }

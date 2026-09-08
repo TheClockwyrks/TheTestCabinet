@@ -38,11 +38,11 @@ binary the case names and the surface character that binary produces. The
 character is a property of the extractor rather than a manifest knob: pick the
 binary for the surface you want, and the `asset_kind` names it.
 
-| `asset_kind` | binary | surface character | pick for |
-| --- | --- | --- | --- |
-| `mc-model` | `mc` (Marching Cubes) | low poly: coarse grid, chunky faceted surface | blocky, stylized reads |
-| `sn-model` | `sn` (Surface Nets) | smooth mid-fidelity: rounded, watertight, uniform | smooth organic forms |
-| `dc-model` | `dc` (Dual Contouring) | crisp: preserves sharp edges and corners | armored, hard-surface builds |
+| `asset_kind` | binary                 | surface character                                 | pick for                     |
+| ------------ | ---------------------- | ------------------------------------------------- | ---------------------------- |
+| `mc-model`   | `mc` (Marching Cubes)  | low poly: coarse grid, chunky faceted surface     | blocky, stylized reads       |
+| `sn-model`   | `sn` (Surface Nets)    | smooth mid-fidelity: rounded, watertight, uniform | smooth organic forms         |
+| `dc-model`   | `dc` (Dual Contouring) | crisp: preserves sharp edges and corners          | armored, hard-surface builds |
 
 Dual Contouring adds a per-primitive `--sharp` and `--smooth` tag that holds or
 rounds an edge. The kind is a property of the whole version, so a case is exactly

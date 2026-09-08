@@ -101,11 +101,20 @@ function UiElement({ element }: { element: UiElementView }) {
         ) : null}
       </div>
       <div
-        style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center" }}
+        style={{
+          display: "flex",
+          gap: 16,
+          flexWrap: "wrap",
+          alignItems: "center",
+        }}
       >
         {element.imageUrl ? (
           <figure style={{ margin: 0, textAlign: "center" }}>
-            <img src={element.imageUrl} alt={element.name} style={ELEMENT_IMG} />
+            <img
+              src={element.imageUrl}
+              alt={element.name}
+              style={ELEMENT_IMG}
+            />
             <figcaption className={styles.sequenceSub} style={{ marginTop: 4 }}>
               static
             </figcaption>
@@ -145,9 +154,10 @@ export function UiResultSection({ view }: { view: UiResultView }) {
     <>
       <h3 className={`${styles.section} ${styles.leadHeading}`}>UI elements</h3>
       <p className={styles.secondary}>
-        Each element&rsquo;s emitted image is reviewed against the brief. An element
-        with an authored nine-slice also shows a <strong>stretch preview</strong> so
-        its borders can be checked as it scales.
+        Each element&rsquo;s emitted image is reviewed against the brief. An
+        element with an authored nine-slice also shows a{" "}
+        <strong>stretch preview</strong> so its borders can be checked as it
+        scales.
       </p>
       <div className={styles.sequenceList}>
         {view.elements.map((element) => (
@@ -243,12 +253,14 @@ function LitPreview({ view }: { view: MaterialResultView }) {
 export function MaterialResultSection({ view }: { view: MaterialResultView }) {
   return (
     <>
-      <h3 className={`${styles.section} ${styles.leadHeading}`}>PBR material</h3>
+      <h3 className={`${styles.section} ${styles.leadHeading}`}>
+        PBR material
+      </h3>
       <p className={styles.secondary}>
         {view.size}×{view.size} px maps
-        {view.tiling !== null ? ` · tiling ${view.tiling}` : ""}. The material is
-        judged per map, as a 2×2 tiling (so seams show), and on the lit 3D preview
-        (drag to orbit).
+        {view.tiling !== null ? ` · tiling ${view.tiling}` : ""}. The material
+        is judged per map, as a 2×2 tiling (so seams show), and on the lit 3D
+        preview (drag to orbit).
       </p>
       <div
         style={{

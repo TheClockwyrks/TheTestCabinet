@@ -70,7 +70,9 @@ it("places nothing and ends the drag", async () => {
   await moveTo(h, hexCenter(ORIGIN));
   const targeting = (await h.snapshot()).editor.drag;
   assertEqual(
-    targeting?.kind === "place" ? `${targeting.at?.q},${targeting.at?.r}` : null,
+    targeting?.kind === "place"
+      ? `${targeting.at?.q},${targeting.at?.r}`
+      : null,
     `${ORIGIN.q},${ORIGIN.r}`,
     "the drag is live and targeting the origin before the pointer leaves the field",
   );
@@ -90,8 +92,5 @@ it("places nothing and ends the drag", async () => {
     before,
     "the release off every hex placed nothing: the machine is empty still",
   );
-  assertNull(
-    (await h.snapshot()).editor.drag,
-    "the drag ended at its release",
-  );
+  assertNull((await h.snapshot()).editor.drag, "the drag ended at its release");
 });

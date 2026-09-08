@@ -27,8 +27,22 @@
 // at the call (`text.ts`), so a build that translates to a menu's corner and draws
 // at the origin is placed where it actually drew rather than at `(0, 0)`. A build
 // that draws an item's words as several runs — a marker beside the word, a
-// letter-spaced heading — is met by taking the runs that name the item and asking
-// that at least one of them was drawn inside the region.
+// letter-spaced heading — is met by reading the LOGICAL runs (`text.ts`'s
+// `textRuns`, which merges side-by-side draws on one baseline back into the run
+// they spell, anchored where the FIRST draw was), taking the runs that name the
+// item, and asking that at least one of them REACHES the region.
+//
+// A RUN REACHES A REGION WHEN THE REGION CONTAINS ITS ANCHOR, OR ANY POINT OF ITS
+// BASELINE EXTENT. The anchor alone is not enough once runs are merged: a build
+// that draws its selection marker in its own call flush against the word —
+// `"> "` ending where `RESUME` begins — yields one run `"> RESUME"` anchored at
+// the MARKER, and a region drawn tight on the word (a text box, a common shape)
+// then holds the word and every point of it a player would aim at while missing
+// the anchor by the marker's width. So the run's extent on its baseline, `left`
+// to `right`, is read too, and the region has only to overlap it: a region tight
+// on the word overlaps the run through the word, and a run drawn in one call
+// still passes exactly when it did before, because its anchor lies on its own
+// extent. This can only ADD a pass; a region that contained an anchor still does.
 //
 // ALL THREE MENUS ARE READ, because each is laid out separately and a build that
 // reports the title's geometry correctly may report the pause menu's from the
@@ -51,7 +65,7 @@ import {
   type Harness,
 } from "../harness";
 import type { MenuRect, Screen } from "../harness";
-import { textDraws } from "../text";
+import { textRuns, type TextDraw } from "../text";
 import { frameOps } from "../states/screens";
 
 /** The three menus specs/ui.md gives, each on the screen that shows it. */
@@ -73,6 +87,21 @@ const MENULESS: readonly Screen[] = [
 function contains(rect: MenuRect, x: number, y: number): boolean {
   return (
     x >= rect.x && x <= rect.x + rect.w && y >= rect.y && y <= rect.y + rect.h
+  );
+}
+
+/**
+ * Whether a run of text reaches `rect`: the region contains the run's anchor, or
+ * some point of the run's baseline extent — the baseline `y` inside the region's
+ * vertical span and the span `left`..`right` overlapping its horizontal one.
+ */
+function reaches(rect: MenuRect, run: TextDraw): boolean {
+  return (
+    contains(rect, run.x, run.y) ||
+    (run.y >= rect.y &&
+      run.y <= rect.y + rect.h &&
+      run.right >= rect.x &&
+      run.left <= rect.x + rect.w)
   );
 }
 
@@ -104,7 +133,7 @@ it("reports a region for every menu item, and nothing for every other index", as
       `the screen the ${menu.screen} menu is read on`,
     );
 
-    const drawn = textDraws(await frameOps(h));
+    const drawn = textRuns(await frameOps(h));
     if (menu.screen === "title") {
       // Before the assertions, so a failing check still leaves a picture of the
       // menu whose geometry is being read.
@@ -148,12 +177,19 @@ it("reports a region for every menu item, and nothing for every other index", as
           "what its reported region has to contain (specs/ui.md)",
       );
       assertTrue(
-        runs.some((run) => contains(rect, run.x, run.y)),
+        runs.some((run) => reaches(rect, run)),
         `the region reported for ${item} on the ${menu.screen} menu contains ` +
-          "the point that item's own text was drawn at — it reported " +
+          "the point that item's own text was drawn at, or some point of the " +
+          "run it was drawn in — it reported " +
           `(${String(rect.x)}, ${String(rect.y)}) ${String(rect.w)} x ` +
           `${String(rect.h)} and the text was drawn at ` +
-          `${runs.map((run) => `(${run.x.toFixed(1)}, ${run.y.toFixed(1)})`).join(" ")}`,
+          `${runs
+            .map(
+              (run) =>
+                `(${run.x.toFixed(1)}, ${run.y.toFixed(1)}) spanning ` +
+                `${run.left.toFixed(1)}..${run.right.toFixed(1)}`,
+            )
+            .join(" ")}`,
       );
     }
 

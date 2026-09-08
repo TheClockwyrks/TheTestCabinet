@@ -60,6 +60,7 @@ import {
   createHarness,
   drawFrame,
   drawnImages,
+  drawnTextSpanForms,
   poseBolt,
   poseFoe,
   poseWorm,
@@ -68,6 +69,7 @@ import {
   ticksFor,
   type DrawCall,
   type Harness,
+  type TextSpan,
 } from "../harness";
 
 /**
@@ -126,9 +128,24 @@ const BOLT_READ_TICKS = ticksFor(0.08);
 const BAR_SAMPLE_DX = [-16, -8, 0, 8, 16] as const;
 const BAR_SAMPLE_Y = [8, 24, 40, 56, 72] as const;
 
-/** One run of text a frame drew, boxed in logical units. */
+/**
+ * How far a draw may sit from the run it belongs to and still be read as one of
+ * its glyphs, in logical units.
+ *
+ * The harness's merge rule joins draws within three quarters of a device pixel
+ * of one baseline and lets a draw start half a pixel inside the run before it,
+ * so at the harness's one-unit-per-pixel shape one unit is rounding room and
+ * never a rule of its own.
+ */
+const MEMBER_SLACK = 1;
+
+/** One text draw a frame made, boxed in logical units. */
 interface TextBox {
   text: string;
+  /** The baseline and the horizontal extent, as `drawnTextSpans` places them. */
+  y: number;
+  left: number;
+  right: number;
   top: number;
   bottom: number;
 }
@@ -150,12 +167,14 @@ function fontPx(font: string): number {
 }
 
 /**
- * Every run of text `calls` drew, boxed vertically in logical units.
+ * Every text draw `calls` made, boxed vertically in logical units.
  *
  * A build anchors its text through whatever transform it likes and sets its own
  * font and baseline, so the whole call list is walked to know both at each draw
- * (`save`/`restore` honoured), and the run is given a generous em box about its
- * baseline — erring toward crossing the boundary, never away from it.
+ * (`save`/`restore` honoured), and the draw is given a generous em box about its
+ * baseline — erring toward crossing the boundary, never away from it. Each box
+ * carries its baseline and horizontal extent as well, which is how it is
+ * attributed to the run it is part of.
  */
 function textBoxes(calls: readonly DrawCall[]): TextBox[] {
   const view = h.engine.viewport();
@@ -190,11 +209,25 @@ function textBoxes(calls: readonly DrawCall[]): TextBox[] {
 
     // The transform the context held at the call, stamped beside it by the
     // harness's recorder (`harness.ts`) — the anchor a `fillText` names is only
-    // where the run landed once that transform is applied.
+    // where the draw landed once that transform is applied — and the width the
+    // context measured at it, under the alignment in force, which is what
+    // places its glyphs about that anchor.
     const m = call.transform;
     if (m === undefined) continue;
+    const { width, textAlign } = call.text;
+    const deviceX = m.a * ax + m.c * ay + m.e;
     const deviceY = m.b * ax + m.d * ay + m.f;
+    const x = (deviceX - view.offsetX) / view.scale;
     const y = (deviceY - view.offsetY) / view.scale;
+    const w = (width * Math.hypot(m.a, m.b)) / view.scale;
+    const before =
+      textAlign === "center"
+        ? w / 2
+        : textAlign === "right" || textAlign === "end"
+          ? w
+          : 0;
+    const left = x - before;
+    const right = x - before + w;
     const size = (fontPx(font) * Math.hypot(m.c, m.d)) / view.scale;
     let top: number;
     let bottom: number;
@@ -218,14 +251,41 @@ function textBoxes(calls: readonly DrawCall[]): TextBox[] {
         top = y - 0.8 * size;
         bottom = y + 0.25 * size;
     }
-    boxes.push({ text, top, bottom });
+    boxes.push({ text, y, left, right, top, bottom });
   }
   return boxes;
 }
 
-/** Every box whose text carries `digits` once everything else is stripped out. */
-function boxesShowingDigits(boxes: TextBox[], digits: string): TextBox[] {
-  return boxes.filter((box) => box.text.replace(/\D/g, "").includes(digits));
+/** Whether `box` is one of the draws `span` spells: on its baseline, inside it. */
+function partOf(box: TextBox, span: TextSpan): boolean {
+  return (
+    Math.abs(box.y - span.y) <= MEMBER_SLACK &&
+    box.left >= span.left - MEMBER_SLACK &&
+    box.right <= span.right + MEMBER_SLACK
+  );
+}
+
+/**
+ * Every box that is part of a span `carries` — the draws of a readout, however
+ * the build split it.
+ *
+ * The spans are the frame's calls AND the runs they spell (`drawnTextSpanForms`),
+ * so a readout the build letter-spaced a glyph per call is found in the run and
+ * its boxes are the glyphs on that run's baseline inside its extent; one drawn in
+ * a single call is found in that call, whose box is the whole of its own run.
+ */
+function boxesOf(
+  boxes: TextBox[],
+  spans: TextSpan[],
+  carries: (text: string) => boolean,
+): TextBox[] {
+  const carrying = spans.filter((span) => carries(span.text));
+  return boxes.filter((box) => carrying.some((span) => partOf(box, span)));
+}
+
+/** Whether `text` carries `digits` once everything else is stripped out. */
+function showsDigits(text: string, digits: string): boolean {
+  return text.replace(/\D/g, "").includes(digits);
 }
 
 it("draws the score and the level readouts inside the HUD bar", async () => {
@@ -234,16 +294,20 @@ it("draws the score and the level readouts inside the HUD bar", async () => {
   h.debug.setLives(POSED_LIVES);
   h.debug.setLevel(POSED_LEVEL);
 
-  const boxes = textBoxes(await drawFrame(h));
+  const drawn = await drawFrame(h);
+  const boxes = textBoxes(drawn);
+  const spans = drawnTextSpanForms(h, drawn);
 
   const readouts = [
     {
       name: `the score readout, the digits of ${POSED_SCORE}`,
-      found: boxesShowingDigits(boxes, String(POSED_SCORE)),
+      found: boxesOf(boxes, spans, (text) =>
+        showsDigits(text, String(POSED_SCORE)),
+      ),
     },
     {
       name: `the level readout, carrying HUD_LEVEL_LABEL (${HUD_LEVEL_LABEL})`,
-      found: boxes.filter((box) => box.text.includes(HUD_LEVEL_LABEL)),
+      found: boxesOf(boxes, spans, (text) => text.includes(HUD_LEVEL_LABEL)),
     },
   ];
 

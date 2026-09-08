@@ -38,7 +38,7 @@ capability is authored with. `.gg` is gg's own — the capture journal, a hook's
 scripts, this library — so gg stands the directory up at session start and leaves
 it empty. A workspace that authored no skills therefore opens with gg's own
 [built-ins](#the-skills-gg-ships) alone, and an agent that is to hold only those
-is pointed there deliberately. gg writes nothing *into* it: what it holds is
+is pointed there deliberately. gg writes nothing _into_ it: what it holds is
 whatever the workspace put there.
 
 The files under that directory are gg's. gg reads them to build the catalogue
@@ -181,20 +181,20 @@ is the same split [a turn's own program](/gg/languages/compilation/) gets.
 gg writes twelve skills of its own, one per family of the functions it offers, so
 the capability is worth enabling in a workspace that authored none.
 
-| Skill | Family |
-| --- | --- |
-| `gg-filesystem` | Reading, writing and editing files in the workspace. |
-| `gg-shell` | Running shell commands in the workspace. |
-| `gg-project` | The [epic/issue board](/gg/project-management/). |
-| `gg-tasks` | The agent's own blocked-by [task list](/gg/tasks/). |
-| `gg-memory` | Durable [memories](/gg/memories/). |
-| `gg-skills` | Using skills, including this one. |
-| `gg-context` | [Managing its own window](/gg/agent-managed-context/): evicting, archiving, searching, compacting. |
+| Skill           | Family                                                                                               |
+| --------------- | ---------------------------------------------------------------------------------------------------- |
+| `gg-filesystem` | Reading, writing and editing files in the workspace.                                                 |
+| `gg-shell`      | Running shell commands in the workspace.                                                             |
+| `gg-project`    | The [epic/issue board](/gg/project-management/).                                                     |
+| `gg-tasks`      | The agent's own blocked-by [task list](/gg/tasks/).                                                  |
+| `gg-memory`     | Durable [memories](/gg/memories/).                                                                   |
+| `gg-skills`     | Using skills, including this one.                                                                    |
+| `gg-context`    | [Managing its own window](/gg/agent-managed-context/): evicting, archiving, searching, compacting.   |
 | `gg-delegation` | [Delegating](/gg/subagents/) work to child agents, and [handing its session on](/gg/fork-and-exec/). |
-| `gg-docs` | Finding a function by keyword, and reclaiming the documentation it has read. |
-| `gg-views` | Showing itself a file, a value, or a function's documentation. |
-| `gg-programs` | [Fetching a program it already ran](/gg/program-library/), and handing a patched copy back. |
-| `gg-session` | [Ending its session](/gg/ending-a-session/). |
+| `gg-docs`       | Finding a function by keyword, and reclaiming the documentation it has read.                         |
+| `gg-views`      | Showing itself a file, a value, or a function's documentation.                                       |
+| `gg-programs`   | [Fetching a program it already ran](/gg/program-library/), and handing a patched copy back.          |
+| `gg-session`    | [Ending its session](/gg/ending-a-session/).                                                         |
 
 Three properties make them safe to ship.
 

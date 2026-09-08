@@ -1,4 +1,4 @@
-**Foray Large Seed** is the moving prize of *Foray*, a top-down ant-colony
+**Foray Large Seed** is the moving prize of _Foray_, a top-down ant-colony
 raiding game. It is a single big golden seed that is worth three ordinary caches
 and weighs as much, and it is the one fixture on the board that drifts a tile at
 a time toward the border. Like an ordinary cache it belongs to neither colony,

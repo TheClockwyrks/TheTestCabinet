@@ -10,13 +10,13 @@ gives it.
 The board is a rectangular grid of square cells, and the grid includes the wall
 border around it.
 
-| Figure | Name | Value |
-| --- | --- | --- |
-| Columns | `GRID_COLS` | `30` |
-| Rows | `GRID_ROWS` | `18` |
-| Cell side | `CELL` | `32` |
-| Board origin, x | `BOARD_X` | `160` |
-| Board origin, y | `BOARD_Y` | `120` |
+| Figure          | Name        | Value |
+| --------------- | ----------- | ----- |
+| Columns         | `GRID_COLS` | `30`  |
+| Rows            | `GRID_ROWS` | `18`  |
+| Cell side       | `CELL`      | `32`  |
+| Board origin, x | `BOARD_X`   | `160` |
+| Board origin, y | `BOARD_Y`   | `120` |
 
 The board therefore spans `x` in `[160, 1120]` and `y` in `[120, 696]`, which is
 `960 x 576`. The band above it, `y` in `[0, BOARD_Y)`, is the HUD band that
@@ -34,13 +34,13 @@ between two cells never occurs: every piece on the board occupies whole cells.
 
 Every cell is exactly one of the following.
 
-| Kind | What it is |
-| --- | --- |
-| Wall | A perimeter cell. Solid, and fatal to the head on contact. |
+| Kind     | What it is                                                                                                                               |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Wall     | A perimeter cell. Solid, and fatal to the head on contact.                                                                               |
 | Obstacle | An interior cell the mode has placed. Solid, and fatal to the head on contact. `specs/mode.md` fixes which cells, and there may be none. |
-| Snake | A cell holding a segment of the snake, head or body. |
-| Pellet | The cell holding the live pellet. |
-| Empty | An unoccupied interior cell the snake may move through. |
+| Snake    | A cell holding a segment of the snake, head or body.                                                                                     |
+| Pellet   | The cell holding the live pellet.                                                                                                        |
+| Empty    | An unoccupied interior cell the snake may move through.                                                                                  |
 
 ## The wall border
 
@@ -59,10 +59,10 @@ A round starts the snake at `START_LENGTH` (`3`) cells, laid horizontally near
 the center of the board and facing `right`.
 
 | Cell | `(col, row)` |
-| --- | --- |
-| Head | `(15, 8)` |
-| Body | `(14, 8)` |
-| Tail | `(13, 8)` |
+| ---- | ------------ |
+| Head | `(15, 8)`    |
+| Body | `(14, 8)`    |
+| Tail | `(13, 8)`    |
 
 `specs/movement.md` fixes how the chain advances, grows, and collides.
 

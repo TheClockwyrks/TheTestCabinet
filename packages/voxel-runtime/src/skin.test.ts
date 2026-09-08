@@ -7,7 +7,9 @@ import { identity, rotation, translation } from "./hierarchy";
 import { skinMesh, skinningMatrices } from "./skin";
 
 function readGlb(name: string): ArrayBuffer {
-  const buf = readFileSync(fileURLToPath(new URL(`./__fixtures__/${name}`, import.meta.url)));
+  const buf = readFileSync(
+    fileURLToPath(new URL(`./__fixtures__/${name}`, import.meta.url)),
+  );
   return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
 }
 
@@ -31,7 +33,10 @@ const bend = (over: Partial<JointSpec> = {}): JointSpec => ({
   ...over,
 });
 const barRig: ModelSpec = {
-  parts: [part("pelvis"), part("spine", { parent: "pelvis", pivot: [0, 1, 0] })],
+  parts: [
+    part("pelvis"),
+    part("spine", { parent: "pelvis", pivot: [0, 1, 0] }),
+  ],
   joints: [bend()],
 };
 
@@ -84,7 +89,9 @@ describe("skinningMatrices + skinMesh (procedural rig driving)", () => {
 
   it("a bone rotation deforms the vertices bound to that bone, and only those", () => {
     const mesh = parseSkinnedGlb(readGlb("skinned-bar.glb"));
-    const bones = skinningMatrices(barRig, mesh, { caller: { spine_bend: 0.5 } });
+    const bones = skinningMatrices(barRig, mesh, {
+      caller: { spine_bend: 0.5 },
+    });
     const { positions } = skinMesh(mesh, bones);
 
     // Bottom vertex 0 (y=0) is weighted fully to the pelvis (root, unmoved): it stays.
@@ -105,7 +112,9 @@ describe("skinningMatrices + skinMesh (procedural rig driving)", () => {
     const mesh = parseSkinnedGlb(readGlb("skinned-bar.glb"));
     // A rig that names neither bone: both bones fall back to identity, no deformation.
     const emptyRig: ModelSpec = { parts: [part("nothing")], joints: [] };
-    const bones = skinningMatrices(emptyRig, mesh, { caller: { spine_bend: 0.5 } });
+    const bones = skinningMatrices(emptyRig, mesh, {
+      caller: { spine_bend: 0.5 },
+    });
     for (const m of bones) {
       expect(Array.from(m)).toEqual(Array.from(identity()));
     }

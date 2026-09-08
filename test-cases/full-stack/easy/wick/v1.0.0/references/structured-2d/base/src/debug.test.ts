@@ -41,6 +41,40 @@ function playing(): Harness {
   return h;
 }
 
+describe("reconcile", () => {
+  it("re-derives a stored reading from a posed run", () => {
+    const { debug } = playing();
+    debug.setTick(600);
+    debug.setPassive(0, "tallow", 2);
+    debug.spawnEnemy("moth", 100, 100);
+    debug.spawnEnemy("gnat", 120, 100);
+    debug.reconcile();
+    const snap = debug.snapshot();
+    // Every derived reading answers for the run AS POSED, not as it was.
+    expect(snap.run.time).toBe(10);
+    expect(snap.run.spawnWindow).toBe(0);
+    expect(snap.run.maxHp).toBe(130);
+    expect(snap.run.aliveCommons).toBe(1);
+  });
+
+  it("advances nothing, and twice matches once", () => {
+    const { debug } = playing();
+    debug.setTick(300);
+    debug.setPlayerPosition(40, 60);
+    debug.setSpawnTimer(1.25);
+    debug.setWeaponCooldown(0, 0.75);
+    debug.spawnEnemy("moth", 100, 100);
+    debug.setEnemyAge(debug.snapshot().run.enemies[0].id, 2);
+    const before = debug.snapshot();
+    debug.reconcile();
+    const once = debug.snapshot();
+    debug.reconcile();
+    const twice = debug.snapshot();
+    expect(once).toEqual(before);
+    expect(twice).toEqual(once);
+  });
+});
+
 describe("the snapshot", () => {
   it("carries every field on every screen", () => {
     const snap = h.debug.snapshot();
@@ -446,7 +480,6 @@ describe("the lamplighter and progression poses", () => {
     expect(snap.run.pendingLevelUps).toBe(2);
     expect(snap.run.nextOffers).toEqual(["ember", "lure"]);
     expect(() => debug.setFacing("up" as never)).toThrow();
-    expect(() => debug.setHp(101)).toThrow();
     expect(() => debug.setLevel(0)).toThrow();
     expect(() => debug.setXp(-1)).toThrow();
     expect(() => debug.setKills(1.5)).toThrow();
@@ -461,16 +494,29 @@ describe("the lamplighter and progression poses", () => {
     expect(debug.snapshot().screen).toBe("fallen");
   });
 
-  it("is inert off a run screen", () => {
+  it("poses from whatever screen is showing", () => {
     const { debug } = h;
+    expect(debug.snapshot().screen).toBe("title");
     debug.setPlayerPosition(10, 10);
     debug.setLevel(5);
     debug.spawnEnemy("moth", 0, 0);
     debug.spawnGem("small", 0, 0);
-    expect(debug.snapshot().run.player.x).toBe(0);
-    expect(debug.snapshot().run.level).toBe(1);
-    expect(debug.snapshot().run.enemies).toEqual([]);
-    expect(debug.snapshot().run.gems).toEqual([]);
+    expect(debug.snapshot().run.player.x).toBe(10);
+    expect(debug.snapshot().run.level).toBe(5);
+    expect(debug.snapshot().run.enemies).toHaveLength(1);
+    expect(debug.snapshot().run.gems).toHaveLength(1);
+    expect(debug.snapshot().screen).toBe("title");
+  });
+
+  it("applies a health and an enemy health past the live maximum", () => {
+    const { debug } = playing();
+    debug.setHp(1e4);
+    expect(debug.snapshot().run.player.hp).toBe(1e4);
+    debug.spawnEnemy("moth", 0, 0);
+    const id = debug.snapshot().run.enemies[0].id;
+    debug.setEnemyHp(id, 1e4);
+    expect(debug.snapshot().run.enemies[0].hp).toBe(1e4);
+    expect(() => debug.setEnemyHp(id, 0)).toThrow();
   });
 
   it("accepts nextOffers on levelup for the queued overlay", async () => {
@@ -484,9 +530,8 @@ describe("the lamplighter and progression poses", () => {
     debug.choose(0);
     expect(debug.snapshot().screen).toBe("levelup");
     expect(debug.snapshot().run.offers).toEqual(["lure"]);
-    debug.choose(5);
-    expect(debug.snapshot().screen).toBe("levelup");
-    debug.choose(-1);
+    expect(() => debug.choose(5)).toThrow();
+    expect(() => debug.choose(-1)).toThrow();
     expect(debug.snapshot().screen).toBe("levelup");
     expect(debug.snapshot().run.offers).toEqual(["lure"]);
     expect(h.cues).toEqual(sounded);
@@ -629,7 +674,6 @@ describe("the enemy poses", () => {
       contactCooldown: 0.25,
     });
     expect(() => debug.setEnemyHp(0, 0)).toThrow();
-    expect(() => debug.setEnemyHp(0, 100)).toThrow();
     expect(() => debug.setEnemyHeading(0, 0, 0)).toThrow();
     expect(() => debug.setEnemyAge(0, -1)).toThrow();
     expect(() => debug.setEnemyPosition(7, 0, 0)).toThrow();
@@ -868,7 +912,7 @@ describe("the drop roll reading", () => {
 });
 
 describe("the drawn outcome poses", () => {
-  it("set each field, read back by the snapshot, on a run screen alone", () => {
+  it("set each field, read back by the snapshot, from whatever screen is showing", () => {
     const { debug } = playing();
     debug.spawnEnemy("moth", 100, 0);
     const [moth] = debug.snapshot().run.enemies;
@@ -893,7 +937,8 @@ describe("the drawn outcome poses", () => {
     expect(debug.snapshot().run.nextDrop).toBe("bread");
     debug.setScreen("title");
     debug.setNextDrop("none");
-    expect(debug.snapshot().run.nextDrop).toBe("bread");
+    expect(debug.snapshot().run.nextDrop).toBe("none");
+    expect(debug.snapshot().screen).toBe("title");
     expect(h.cues).toEqual([]);
   });
 

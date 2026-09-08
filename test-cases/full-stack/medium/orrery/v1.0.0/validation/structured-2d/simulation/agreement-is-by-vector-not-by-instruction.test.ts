@@ -122,7 +122,11 @@ it("agrees an extend with an advance that impose the same one-hex vector", async
     "running",
     "a cycle that raises no fault leaves the run running",
   );
-  assertEqual(sim?.cycle, 1, "the cycle ran to its boundary rather than freezing");
+  assertEqual(
+    sim?.cycle,
+    1,
+    "the cycle ran to its boundary rather than freezing",
+  );
   assertNear(
     sim?.fraction ?? -1,
     0,

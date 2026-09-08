@@ -12,11 +12,11 @@ it.
 
 There are three algorithms, each with a static and an animated binary:
 
-| Algorithm | static binary | animated binary | `asset_kind` (static / animated) | character |
-| --- | --- | --- | --- | --- |
-| Marching Cubes | `mc` | `mc-anim` | `mc-model` / `mc-animation` | low poly: coarse sample grid, chunky faceted surfaces |
-| Surface Nets | `sn` | `sn-anim` | `sn-model` / `sn-animation` | smooth mid-fidelity: watertight, uniform triangle density, rounded features |
-| Dual Contouring | `dc` | `dc-anim` | `dc-model` / `dc-animation` | high fidelity: fine grid, preserves sharp edges and corners |
+| Algorithm       | static binary | animated binary | `asset_kind` (static / animated) | character                                                                   |
+| --------------- | ------------- | --------------- | -------------------------------- | --------------------------------------------------------------------------- |
+| Marching Cubes  | `mc`          | `mc-anim`       | `mc-model` / `mc-animation`      | low poly: coarse sample grid, chunky faceted surfaces                       |
+| Surface Nets    | `sn`          | `sn-anim`       | `sn-model` / `sn-animation`      | smooth mid-fidelity: watertight, uniform triangle density, rounded features |
+| Dual Contouring | `dc`          | `dc-anim`       | `dc-model` / `dc-animation`      | high fidelity: fine grid, preserves sharp edges and corners                 |
 
 A static binary builds one field and extracts it as a single mesh. An animated
 binary takes the same field operations plus a required `--part <name>` on every

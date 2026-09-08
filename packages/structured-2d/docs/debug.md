@@ -167,10 +167,10 @@ separately and neither replaces the other. See `diagnostics.md`.
 
 ## Errors
 
-| Condition | Result |
-| --- | --- |
-| `engine.debug` read before `initialize` resolves | `Error` naming the ordering |
-| The instance's `initialize` returns `undefined` | `engine.initialize` rejects with an `Error` naming the debug surface |
+| Condition                                        | Result                                                               |
+| ------------------------------------------------ | -------------------------------------------------------------------- |
+| `engine.debug` read before `initialize` resolves | `Error` naming the ordering                                          |
+| The instance's `initialize` returns `undefined`  | `engine.initialize` rejects with an `Error` naming the debug surface |
 
 Reading before `initialize` resolves throws exactly as `engine.instance` and
 `engine.world` do. A game with no surface returns `null` there, and

@@ -27,8 +27,12 @@ export type Mode = "solo" | "versus";
 export interface Snapshot {
   phase: string;
   ball: {
-    x: number; y: number; z: number;
-    vx: number; vy: number; vz: number;
+    x: number;
+    y: number;
+    z: number;
+    vx: number;
+    vy: number;
+    vz: number;
   };
   score: readonly number[];
 }
@@ -135,7 +139,10 @@ return {
   spawnWave: (kind, count) => {
     const world = this.engine.world;
     for (let i = 0; i < count; i += 1) {
-      world.spawn(Enemy, { tags: [TAG_ENEMY], configure: (e) => e.setKind(kind) });
+      world.spawn(Enemy, {
+        tags: [TAG_ENEMY],
+        configure: (e) => e.setKind(kind),
+      });
     }
   },
   live: () => this.engine.world.byTag(TAG_ENEMY).length,

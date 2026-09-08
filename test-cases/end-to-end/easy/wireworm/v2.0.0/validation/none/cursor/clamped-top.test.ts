@@ -7,10 +7,10 @@
 // THE POSE IS THE OPPOSITE BOUND, NOT AN INSET, AND THAT IS NOT AN OVERSIGHT.
 // `specs/board.md` gives the cursor `y` in `[672, 704]` — a band 32 units tall —
 // so the 120-unit inset `cursor.clamped-left` and `cursor.clamped-right` use
-// cannot be posed on this axis: `setCursor` applies the real clamp
-// (`specs/instrumentation.md`), and a pose 120 units below `CURSOR_Y_MIN` would
-// land on `CURSOR_Y_MAX` and the scenario this point describes would never have
-// happened. Posing at `CURSOR_Y_MAX` outright is the widest separation the band
+// cannot be posed on this axis: `setCursor` takes a position inside the band and
+// fails loudly outside it (`specs/instrumentation.md`), and 120 units below
+// `CURSOR_Y_MIN` is outside the band, so the pose could not be made at all.
+// Posing at `CURSOR_Y_MAX` outright is the widest separation the band
 // allows, and it smuggles in no rate: crossing 32 units inside a one-second hold
 // asks for 32 units per second, under a tenth of `CURSOR_SPEED`, where the hold
 // is thirteen times the 0.074 s the band takes to cross at the stated rate.

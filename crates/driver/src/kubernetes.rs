@@ -39,7 +39,7 @@ use k8s_openapi::apimachinery::pkg::apis::meta::v1::{ObjectMeta, Status};
 use kube::api::{AttachParams, DeleteParams, ListParams, LogParams, PostParams};
 use kube::{Api, Client};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
-use tokio::time::{Instant, sleep};
+use tokio::time::{Instant, sleep, sleep_until};
 use tracing::instrument;
 
 use test_cabinet_core::exec_stream::drain_with_idle_timeout;
@@ -56,6 +56,61 @@ const WORK_DIR: &str = "/work";
 /// The name of the single container in each run pod. `exec` targets it explicitly
 /// so a future sidecar would not make the target ambiguous.
 const RUN_CONTAINER: &str = "run";
+
+/// Size of the client-side pipes backing an exec's `stdin`/`stdout`.
+///
+/// `kube`'s default is 1 KiB, which is fine for a probe and poor for a copy: a
+/// seed archive is handed to the message loop a kilobyte at a time, and the
+/// produced tree streams back out the same way. The value does not change what
+/// crosses the wire — the client frames the stream with its own reader — it just
+/// stops the writer and the loop ping-ponging once per kilobyte.
+const EXEC_PIPE_BUF: usize = 64 * 1024;
+
+/// How long a **stdin-carrying** exec may make no progress before its stdin is
+/// closed to unstick it — either with a single [`EXEC_STDIN_CHUNK`] of the archive
+/// unable to move, or with the whole archive handed over and nothing coming back.
+///
+/// This is an idle bound, not a deadline: it is measured against progress, so it
+/// never races a legitimately slow or large copy — only one that has *stopped*.
+/// What it bounds is the case in [`exec_raw`] where the remote died mid-write and
+/// the server then waits forever on a stdin-EOF the ordinary path never sends.
+///
+/// Only a stdin-carrying exec is bounded. An exec without stdin is an ordinary
+/// command whose duration is the caller's business, and nothing here may cap it.
+///
+/// [`exec_raw`]: KubernetesContainerRuntime::exec_raw
+const EXEC_STDIN_IDLE: Duration = Duration::from_secs(60);
+
+/// How much of an archive is written at a time.
+///
+/// The write is chunked so that *progress* is observable: one `write_all` of the
+/// whole archive either returns or does not, and a remote that stopped reading
+/// halfway makes it never return at all. A chunk that cannot move within
+/// [`EXEC_STDIN_IDLE`] is the signal that nothing is reading any more.
+const EXEC_STDIN_CHUNK: usize = 256 * 1024;
+
+/// How long to wait for the terminating `Status` once the streams are done. On
+/// every ordinary path this is already resolved (the message loop ends *because*
+/// the status arrived) and the wait is instantaneous; it is a bound for the stall
+/// path, where stdin was just closed and the server may still have a status to
+/// deliver.
+const EXEC_STATUS_GRACE: Duration = Duration::from_secs(30);
+
+/// How many times to try seeding a tree into a run pod before failing the run.
+///
+/// A seed is one `exec`, and losing its stream — before the extract could report
+/// anything — is transient by nature: the pod is up, the command is idempotent
+/// (`tar -x` over the same destination), and the next attempt is a fresh stream.
+/// Only an attempt that *reported* a failure is taken at its word.
+const SEED_ATTEMPTS: u32 = 3;
+
+/// How long to wait between seed attempts, so a retry does not land in the same
+/// moment as whatever took the stream down.
+const SEED_RETRY_BACKOFF: Duration = Duration::from_millis(500);
+
+/// The exit code [`exit_code_from_status`] reports when no terminating `Status`
+/// arrived at all — the exec stream was lost rather than the command finishing.
+const NO_STATUS_EXIT_CODE: i32 = -1;
 
 /// The label each run pod carries identifying the job it belongs to (the same key
 /// the dispatcher stamps on the driver `Job`). It lets the driver find and delete
@@ -113,9 +168,15 @@ pub struct KubernetesConfig {
     pub cpu_request: Option<String>,
     /// CPU limit applied to each run pod (e.g. `2`).
     pub cpu_limit: Option<String>,
-    /// Memory request applied to each run pod (e.g. `1Gi`).
+    /// Memory request applied to each run pod (e.g. `4Gi`). This is the node's
+    /// reservation for the sandbox and the only memory figure the shipped manifests
+    /// set on it.
     pub memory_request: Option<String>,
-    /// Memory limit applied to each run pod (e.g. `4Gi`).
+    /// Memory limit applied to each run pod. The shipped manifests leave this unset,
+    /// deliberately: a memory limit is a cgroup ceiling enforced by `SIGKILL`, and a
+    /// sandbox OOM-killed mid-run destroys a run that has already paid for its API
+    /// calls (see the dispatcher's `DEFAULT_DRIVER_MEMORY_REQUEST`). Honoured when
+    /// set, for a namespace whose `LimitRange` or quota insists on one.
     pub memory_limit: Option<String>,
     /// How long to wait, **once the pod has been scheduled onto a node**, for it
     /// to reach `Running` before failing the run. This bounds startup work (image
@@ -404,17 +465,35 @@ impl KubernetesContainerRuntime {
     /// copy-out stream is not text) and stderr as text. Used for the trait's
     /// buffered [`exec`](ContainerRuntime::exec), the `tar` copy-in (stdin
     /// archive, output ignored beyond a failure), and the small command probes.
+    ///
+    /// A remote command that stops reading `stdin` before the whole of it has been
+    /// written is **not** reported as a write failure. The stdin writer is a
+    /// [`tokio::io::duplex`] whose reading half lives in the kube client's message
+    /// loop, so it reports `BrokenPipe` the moment that loop ends — which is what
+    /// happens whenever the exec stream is torn down or the remote process exits
+    /// early. Returning that error would discard the two things that actually say
+    /// what went wrong (the terminating `Status` and the command's own stderr) and
+    /// replace them with `broken pipe`, so it is recorded in
+    /// [`RemoteExec::stdin`] and the caller judges the attempt on what the command
+    /// said instead.
     async fn exec_raw(
         &self,
         pod: &str,
         command: &[String],
         stdin: Option<&[u8]>,
-    ) -> Result<(i32, Vec<u8>, String)> {
+    ) -> Result<RemoteExec> {
         let params = AttachParams::default()
             .container(RUN_CONTAINER)
             .stdin(stdin.is_some())
             .stdout(true)
-            .stderr(true);
+            .stderr(true)
+            // The client's internal pipes default to 1 KiB, which makes a
+            // multi-megabyte seed archive hand off to the message loop a kilobyte
+            // at a time. Neither buffer changes what crosses the wire (frames are
+            // sized by the client's own reader); they just stop the writer and the
+            // loop ping-ponging on every kilobyte of a copy.
+            .max_stdin_buf_size(EXEC_PIPE_BUF)
+            .max_stdout_buf_size(EXEC_PIPE_BUF);
         let mut attached = self
             .pods()
             .exec(pod, command.iter().cloned(), &params)
@@ -441,26 +520,39 @@ impl KubernetesContainerRuntime {
         // Write stdin (when given) concurrently with draining both output streams,
         // so a large archive on stdin cannot deadlock against an unread stdout.
         //
-        // Crucially, we do NOT close (shutdown/drop) stdin here. Closing stdin is
-        // the kube-rs client's signal for stdin-EOF, and on the **v4** exec
-        // WebSocket subprotocol (`v4.channel.k8s.io` — no per-stream CLOSE frame)
-        // the only way it can send that signal is to close the *entire* WebSocket,
-        // which races — and beats — the terminating `Status` frame coming back, so
-        // the exit code is lost as `-1`. Instead the only stdin consumer
+        // Crucially, we do NOT close (shutdown/drop) stdin on the ordinary path.
+        // Closing stdin is the kube-rs client's signal for stdin-EOF, and on the
+        // **v4** exec WebSocket subprotocol (`v4.channel.k8s.io` — no per-stream
+        // CLOSE frame) the only way it can send that signal is to close the *entire*
+        // WebSocket, which races — and beats — the terminating `Status` frame coming
+        // back, so the exit code is lost as `-1`. Instead the only stdin consumer
         // (`extract_tar`) bounds its own read with `head -c`, so the remote process
         // exits on its own and the server delivers `Status` without us ever needing
         // to signal stdin-EOF. We therefore hold the writer open until the command
         // has finished (status received), then drop it at end of scope — by which
         // point the message loop has already broken on `Status`, so the close is a
-        // harmless no-op on both v4 and v5. (Every stdin command must self-terminate
-        // without relying on stdin-EOF; a command that reads to EOF would hang.)
+        // harmless no-op on both v4 and v5.
         let write = async {
-            if let (Some(data), Some(writer)) = (stdin, writer.as_mut()) {
-                writer.write_all(data).await.map_err(|err| {
-                    Error::ContainerRuntime(format!("writing stdin to run pod `{pod}`: {err}"))
-                })?;
+            let (Some(data), Some(writer)) = (stdin, writer.as_mut()) else {
+                return Ok(StdinOutcome::Written);
+            };
+            for chunk in data.chunks(EXEC_STDIN_CHUNK) {
+                match tokio::time::timeout(EXEC_STDIN_IDLE, writer.write_all(chunk)).await {
+                    Ok(Ok(())) => {}
+                    // The remote stopped reading before we were done. Say so; do not
+                    // fail here — see this method's docs.
+                    Ok(Err(err)) if is_stream_closed(&err) => return Ok(StdinOutcome::CutShort),
+                    Ok(Err(err)) => {
+                        return Err(Error::ContainerRuntime(format!(
+                            "writing stdin to run pod `{pod}`: {err}"
+                        )));
+                    }
+                    // Nothing is draining stdin any more. The remote is gone and the
+                    // server is holding a stream it will never finish.
+                    Err(_elapsed) => return Ok(StdinOutcome::Stalled),
+                }
             }
-            Ok::<(), Error>(())
+            Ok(StdinOutcome::Written)
         };
         let read_out = async {
             out_reader
@@ -474,18 +566,87 @@ impl KubernetesContainerRuntime {
                 .await
                 .map_err(|err| Error::ContainerRuntime(format!("reading run pod stderr: {err}")))
         };
-        let (write, _, _) = tokio::join!(write, read_out, read_err);
-        write?;
-        let exit_code = exit_code_from_status(status.await);
+        // These three run together until all of them are done: the writer cannot be
+        // allowed to get ahead of the readers, or a large archive on stdin deadlocks
+        // against an unread stdout.
+        //
+        // They finish when the client's message loop ends, which needs the remote
+        // command to have terminated *and* said so. A command that dies without
+        // draining stdin — a `tar` whose destination does not exist gives up on its
+        // first entry — leaves the server holding a stream nobody will finish: it is
+        // still being sent stdin for a process that is gone, and the terminating
+        // `Status` never comes. Left alone the exec simply never returns, which is
+        // what puts a run in "starting the run container" indefinitely.
+        //
+        // `settle` is the escape. It arms only once the whole of stdin has been
+        // handed over, so it cannot cut a healthy copy short, and expiring means the
+        // remote is not coming back on its own. Closing stdin then is what unsticks
+        // the server: it is the EOF the ordinary path deliberately never sends (see
+        // above), and on a v5 stream it costs nothing — the client sends a CLOSE for
+        // that one channel and the `Status` still arrives, carrying the exit code and
+        // the stderr that say what actually went wrong.
+        let (stdin_outcome, stalled) = {
+            tokio::pin!(write, read_out, read_err);
+            let (mut wrote, mut drained_out, mut drained_err) = (false, false, false);
+            let mut outcome = StdinOutcome::Written;
+            let mut stalled = false;
+            let mut settle: Option<Instant> = None;
+            while !(wrote && drained_out && drained_err) {
+                tokio::select! {
+                    result = &mut write, if !wrote => {
+                        wrote = true;
+                        outcome = result?;
+                        if outcome == StdinOutcome::Stalled {
+                            // A chunk could not move: stdin wedged part-way. Nothing
+                            // else will arrive either, so stop waiting and close it.
+                            stalled = true;
+                            break;
+                        }
+                        if stdin.is_some() {
+                            settle = Some(Instant::now() + EXEC_STDIN_IDLE);
+                        }
+                    }
+                    result = &mut read_out, if !drained_out => {
+                        result?;
+                        drained_out = true;
+                    }
+                    result = &mut read_err, if !drained_err => {
+                        result?;
+                        drained_err = true;
+                    }
+                    () = sleep_until(settle.unwrap_or_else(Instant::now)), if settle.is_some() => {
+                        // The archive is all the way over and nothing has come back.
+                        // Same conclusion as a write that could not move: the remote
+                        // is gone, whichever side of the handover it went on.
+                        outcome = StdinOutcome::Stalled;
+                        stalled = true;
+                        break;
+                    }
+                }
+            }
+            (outcome, stalled)
+        };
+        if stalled {
+            // Signal stdin-EOF and let the server finish. Whatever the command wrote
+            // before it died is already in `stderr`.
+            drop(writer.take());
+        }
+        let exit_code = exit_code_from_status(
+            tokio::time::timeout(EXEC_STATUS_GRACE, status)
+                .await
+                .ok()
+                .flatten(),
+        );
 
         // Stdin stays open through the await above; only now is it safe to close.
         drop(writer);
 
-        Ok((
+        Ok(RemoteExec {
             exit_code,
             stdout,
-            String::from_utf8_lossy(&stderr).into_owned(),
-        ))
+            stderr: String::from_utf8_lossy(&stderr).into_owned(),
+            stdin: stdin_outcome,
+        })
     }
 
     /// Run a command streaming its stdout to `out` (a host file), returning the
@@ -502,7 +663,10 @@ impl KubernetesContainerRuntime {
             .container(RUN_CONTAINER)
             .stdin(false)
             .stdout(true)
-            .stderr(true);
+            .stderr(true)
+            // A produced run tree is the largest thing this runtime moves; the
+            // client's 1 KiB default pipe would hand it back a kilobyte at a time.
+            .max_stdout_buf_size(EXEC_PIPE_BUF);
         let mut attached = self
             .pods()
             .exec(pod, command.iter().cloned(), &params)
@@ -561,6 +725,27 @@ impl KubernetesContainerRuntime {
     /// the server delivers `Status`), so the real exit code is recovered on both v4
     /// and v5 clusters. The pipeline's exit status is `tar`'s (POSIX: the last
     /// command), so a corrupt or truncated stream still surfaces as a non-zero exit.
+    ///
+    /// ## Why an attempt is retried
+    ///
+    /// An attempt has one of three outcomes, and only one of them is the seed's
+    /// verdict:
+    ///
+    /// - **`tar` exited `0`.** The seed is done. This is sound even when the write
+    ///   was cut short: `tar` exits `0` only once it has read the end-of-archive
+    ///   marker, which is the last thing in the stream, so a zero exit *is* proof
+    ///   the whole archive arrived.
+    /// - **`tar` exited non-zero and said why.** A real, deterministic failure — a
+    ///   destination that does not exist, a tree that will not extract. Reported as
+    ///   it stands; retrying it would only fail the same way three times.
+    /// - **The stream went before the extract could report.** Nothing was decided:
+    ///   the pod is up, `tar -x` over the same destination is idempotent, and the
+    ///   next attempt gets a fresh stream. So this one is retried, up to
+    ///   [`SEED_ATTEMPTS`].
+    ///
+    /// That third case used to be indistinguishable from the second, because the
+    /// stdin write's own `broken pipe` was returned before the exit code and stderr
+    /// were ever read — see [`exec_raw`](Self::exec_raw).
     async fn extract_tar(
         &self,
         pod: &str,
@@ -569,14 +754,36 @@ impl KubernetesContainerRuntime {
         preserve_modes: bool,
     ) -> Result<()> {
         let command = extract_tar_command(dest, archive.len(), preserve_modes);
-        let (exit_code, _stdout, stderr) = self.exec_raw(pod, &command, Some(archive)).await?;
-        if exit_code != 0 {
-            return Err(Error::ContainerRuntime(format!(
-                "seeding `{dest}` in run pod `{pod}` failed (tar exit {exit_code}): {}",
-                stderr.trim()
-            )));
+        for attempt in 1..=SEED_ATTEMPTS {
+            let lost = match self.exec_raw(pod, &command, Some(archive)).await {
+                Ok(exec) => match seed_verdict(&exec) {
+                    SeedVerdict::Seeded => return Ok(()),
+                    SeedVerdict::Failed(detail) => {
+                        return Err(Error::ContainerRuntime(format!(
+                            "seeding `{dest}` in run pod `{pod}` failed: {detail}"
+                        )));
+                    }
+                    SeedVerdict::Lost(detail) => detail,
+                },
+                Err(err) => err.to_string(),
+            };
+            if attempt == SEED_ATTEMPTS {
+                return Err(Error::ContainerRuntime(format!(
+                    "seeding `{dest}` in run pod `{pod}` lost its exec stream on all \
+                     {SEED_ATTEMPTS} attempts: {lost}"
+                )));
+            }
+            tracing::warn!(
+                pod,
+                dest,
+                attempt,
+                detail = %lost,
+                "seeding the run pod lost its exec stream; retrying"
+            );
+            sleep(SEED_RETRY_BACKOFF).await;
         }
-        Ok(())
+        // `SEED_ATTEMPTS` is non-zero, so the loop always returns.
+        unreachable!("the seed loop returns on its final attempt")
     }
 
     /// Copy the seeded repository's contents into the pod's `/work`.
@@ -664,13 +871,13 @@ impl ContainerRuntime for KubernetesContainerRuntime {
         // Run under `/work` like the CLI runtime's `exec --workdir`. The images set
         // `/work` as WORKDIR, but a command may be invoked from elsewhere, so wrap
         // it in a shell that cd's first to keep parity.
-        let (exit_code, stdout, stderr) = self
+        let exec = self
             .exec_raw(&container.id, &workdir_command(command), None)
             .await?;
         Ok(ExecOutput {
-            exit_code,
-            stdout: String::from_utf8_lossy(&stdout).into_owned(),
-            stderr,
+            exit_code: exec.exit_code,
+            stdout: String::from_utf8_lossy(&exec.stdout).into_owned(),
+            stderr: exec.stderr,
             idle_timed_out: false,
         })
     }
@@ -1157,6 +1364,119 @@ fn extract_tar_command(dest: &str, len: usize, preserve_modes: bool) -> Vec<Stri
         dest = shell_quote(dest),
     );
     vec!["sh".to_string(), "-c".to_string(), pipeline]
+}
+
+/// What one seed attempt decided.
+#[derive(Debug, PartialEq, Eq)]
+enum SeedVerdict {
+    /// The extract completed. The tree is in the pod.
+    Seeded,
+    /// The extract ran and failed on its own terms, with this detail. Deterministic:
+    /// another attempt fails the same way.
+    Failed(String),
+    /// Nothing was decided — the exec stream went before the extract could report.
+    /// Worth another attempt on a fresh stream.
+    Lost(String),
+}
+
+/// Read one seed attempt's outcome.
+///
+/// A zero exit is [`Seeded`](SeedVerdict::Seeded) even when the stdin write did not
+/// finish, and that is sound rather than lenient: `tar` exits `0` only once it has
+/// read the end-of-archive marker, and that marker is the last thing in the stream,
+/// so a zero exit *is* the proof that the whole archive arrived.
+///
+/// Everything else turns on whether the attempt reached a verdict at all. A command
+/// that reported an exit code ran and judged its own input. One whose stdin was cut
+/// short, or that never produced a terminating `Status`, judged nothing: it saw a
+/// truncated archive, or the stream was gone before it could answer.
+fn seed_verdict(exec: &RemoteExec) -> SeedVerdict {
+    if exec.exit_code == 0 {
+        return SeedVerdict::Seeded;
+    }
+    let stderr = exec.stderr.trim();
+    match exec.stdin {
+        // The remote stopped reading and never came back. If it said why on its way
+        // out, that is the answer and repeating it three times would only reproduce
+        // it — a destination the image does not have will not appear on a retry.
+        // With nothing said, the stall is all we know, and that is worth another go.
+        StdinOutcome::Stalled if !stderr.is_empty() => SeedVerdict::Failed(stderr.to_string()),
+        StdinOutcome::Stalled => {
+            SeedVerdict::Lost("the remote stopped reading the archive".to_string())
+        }
+        // The stream was pulled out from under the write. Nothing was decided by
+        // anyone, so try again on a fresh one.
+        StdinOutcome::CutShort => SeedVerdict::Lost(with_stderr(
+            "the stream closed before the archive finished writing",
+            stderr,
+        )),
+        StdinOutcome::Written if exec.exit_code == NO_STATUS_EXIT_CODE => SeedVerdict::Lost(
+            with_stderr("the stream closed without a terminating status", stderr),
+        ),
+        // It read the whole archive and judged it. Take it at its word.
+        StdinOutcome::Written => SeedVerdict::Failed(with_stderr(
+            &format!("tar exited {}", exec.exit_code),
+            stderr,
+        )),
+    }
+}
+
+/// Join a cause to whatever the command managed to say for itself. The stderr is
+/// the useful half whenever there is any, so it is never dropped.
+fn with_stderr(cause: &str, stderr: &str) -> String {
+    match stderr {
+        "" => cause.to_string(),
+        stderr => format!("{cause}: {stderr}"),
+    }
+}
+
+/// How writing an exec's stdin ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StdinOutcome {
+    /// Every byte was handed over.
+    Written,
+    /// The far end went away before the write finished — see [`is_stream_closed`].
+    CutShort,
+    /// The write stopped making progress: nothing is draining stdin any more.
+    Stalled,
+}
+
+/// One `exec` attempt's outcome.
+///
+/// `stdin` is the part that is not obvious: anything but
+/// [`Written`](StdinOutcome::Written) means the remote stopped reading before it
+/// had been sent everything, so `exit_code` describes a command that ran on a
+/// truncated input rather than the work the caller asked for.
+#[derive(Debug)]
+struct RemoteExec {
+    /// The command's exit code, or [`NO_STATUS_EXIT_CODE`] when no terminating
+    /// `Status` arrived.
+    exit_code: i32,
+    /// Everything the command wrote to stdout, as raw bytes.
+    stdout: Vec<u8>,
+    /// Everything the command wrote to stderr.
+    stderr: String,
+    /// How writing `stdin` ended. [`StdinOutcome::Written`] for an exec that was
+    /// given none.
+    stdin: StdinOutcome,
+}
+
+/// Whether an I/O error on the exec's stdin means *the other end went away* rather
+/// than a fault of ours.
+///
+/// The writer is the near half of a [`tokio::io::duplex`] whose reader lives in the
+/// kube client's message loop, so every one of these is that loop having ended:
+/// the terminating `Status` arrived, the server closed the WebSocket, or the
+/// connection broke. None of them is diagnosable from here, and all of them are
+/// better described by the exit code and stderr that come back with it.
+fn is_stream_closed(err: &std::io::Error) -> bool {
+    use std::io::ErrorKind::{
+        BrokenPipe, ConnectionAborted, ConnectionReset, NotConnected, UnexpectedEof, WriteZero,
+    };
+    matches!(
+        err.kind(),
+        BrokenPipe | ConnectionReset | ConnectionAborted | NotConnected | UnexpectedEof | WriteZero
+    )
 }
 
 /// The exit code carried by a remote-exec terminating [`Status`]: `0` on success,

@@ -23,14 +23,14 @@ Exactly these six binaries are on your `PATH` — no others (there is no `ui`, `
 `texture`, voxel, or mesh tool in this image), so all UI/HUD chrome is drawn **in
 code** (below):
 
-| Tool | Produces | Used for |
-| --- | --- | --- |
-| `draw` | one sprite → a PNG | path/ground tiles, ride & stall sprites, scenery, HUD icons |
-| `draw-sheet` | a sprite sheet, **one PNG per frame** | the guest and ride animations |
-| `particle-2d` | a particle system → a `system.json` | fireworks, stall steam, ride sparkle, litter puffs |
-| `sfx-synth` | a procedural sound → a `.wav` | coin / ding / alarm cues from raw synthesis |
-| `sfx-sample` | a sampled sound over the sample pack → a `.wav` | richer purchase / ride / alarm cues |
-| `music` | sequenced music over the instrument bank → a `.wav` (+ `.mid`) | the cheerful carnival bed |
+| Tool          | Produces                                                       | Used for                                                    |
+| ------------- | -------------------------------------------------------------- | ----------------------------------------------------------- |
+| `draw`        | one sprite → a PNG                                             | path/ground tiles, ride & stall sprites, scenery, HUD icons |
+| `draw-sheet`  | a sprite sheet, **one PNG per frame**                          | the guest and ride animations                               |
+| `particle-2d` | a particle system → a `system.json`                            | fireworks, stall steam, ride sparkle, litter puffs          |
+| `sfx-synth`   | a procedural sound → a `.wav`                                  | coin / ding / alarm cues from raw synthesis                 |
+| `sfx-sample`  | a sampled sound over the sample pack → a `.wav`                | richer purchase / ride / alarm cues                         |
+| `music`       | sequenced music over the instrument bank → a `.wav` (+ `.mid`) | the cheerful carnival bed                                   |
 
 Each is a command-line tool. **Run `<tool> --help` to learn its operations** (and
 `<tool> <operation> --help` for one operation's flags) — the operation vocabulary is
@@ -67,8 +67,8 @@ path like `/runs/<id>/build/`). So:
 - **Reference assets relative to the document or module instead.** Prefer letting your
   bundler resolve them: import each PNG / `.wav` / JSON, or use a bundler directory
   glob (for example Vite's `import.meta.glob('../assets/**/*.png', { eager: true,
-  query: '?url' })`) and use the URLs it returns. A runtime `new URL('./assets/…',
-  import.meta.url)` also works if your bundler can statically resolve it.
+query: '?url' })`) and use the URLs it returns. A runtime `new URL('./assets/…',
+import.meta.url)` also works if your bundler can statically resolve it.
 - **Configure your bundler's base to be relative** (for Vite, `base: './'`) so the
   emitted JS, CSS, and asset URLs are all page-relative.
 

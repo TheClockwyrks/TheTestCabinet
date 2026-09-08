@@ -1,5 +1,6 @@
 import type { Ref } from "react";
 import type { MediaKind } from "../../client/types";
+import type { StoredImageResolver } from "../pages/runs/replay/drawFrame";
 import { ReplayPlayer } from "../pages/runs/replay/ReplayPlayer";
 import styles from "./MediaView.module.scss";
 
@@ -28,6 +29,7 @@ export function MediaView({
   loop,
   muted,
   videoRef,
+  storeUrl,
 }: {
   kind: MediaKind;
   url: string;
@@ -35,6 +37,17 @@ export function MediaView({
   loop?: boolean;
   muted?: boolean;
   videoRef?: Ref<HTMLVideoElement>;
+  /**
+   * Where to find an image a replay keeps beside itself, by file name — inert for
+   * every other kind.
+   *
+   * A recording may carry its pixels in files next to it rather than inline, and
+   * those are resolved the way the recording's own URL was, by the caller that knew
+   * how. A caller with nothing to resolve them with passes nothing and the entries
+   * naming them are reported and skipped, which is what every showcase call site
+   * does: those recordings are authored by hand and carry their pixels inline.
+   */
+  storeUrl?: StoredImageResolver | null;
 }) {
   if (kind === "video") {
     return (
@@ -50,7 +63,7 @@ export function MediaView({
     );
   }
   if (kind === "replay") {
-    return <ReplayPlayer url={url} label={alt} />;
+    return <ReplayPlayer url={url} label={alt} storeUrl={storeUrl} />;
   }
   if (kind === "image") {
     return <img className={styles.media} src={url} alt={alt} loading="lazy" />;

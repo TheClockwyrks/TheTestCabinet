@@ -10,7 +10,11 @@
 // HOW IT IS DECIDED. The how-to screen is opened directly, through the operation
 // that reaches a screen "exactly as reaching it in play does", so a build with a
 // broken title menu still has this point decided on its own terms. The frame's own
-// text draws are then read for each bound key.
+// text draws are then read for each bound key: the whole of the frame's text,
+// upper-cased, as the logical runs the shared harness reads off it
+// (`drawnTextLines`, `case-harness/text.ts`) joined with a space — so a heading a
+// build letter-spaced is one word here and not a scatter of standalone letters, a
+// `B` in `BUILD` never standing for the key `B`.
 //
 // HOW A KEY IS RECOGNISED. `specs/ui.md` asks the screen to be written "in a
 // player's words rather than as rules of a system", so a build is not going to
@@ -23,9 +27,9 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertMatches } from "../assert";
+import { drawnTextLines } from "../case-harness/text";
 import { ACTIONS, BINDINGS } from "../constants";
 import { captureStill, createHarness, type Harness } from "../harness";
-import { frameText } from "./reading";
 
 /** How a player's screen may name each key that is not a plain letter. */
 const NAMED: Readonly<Record<string, RegExp>> = {
@@ -66,7 +70,7 @@ it("names every key the game binds", async () => {
     "the how-to screen showing (specs/ui.md)",
   );
 
-  const text = frameText(calls);
+  const text = drawnTextLines(calls).join(" ").toUpperCase();
   for (const action of ACTIONS) {
     // One key per action is enough: `modify` is the only action with two, and
     // they are the two Shifts, which a screen names once.

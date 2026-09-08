@@ -12,11 +12,12 @@
 // sounded, and `watchCues` reads that name. A build that made some noise of its
 // own has not played `eat`, and this reads the difference.
 //
-// WHAT THIS READS IS THE ASK, NOT THE SOUND. This process has no Web Audio
-// context, so no produced `.wav` can be decoded through the engine here; what the
-// cue bus announces is the cue the build asked to play, by name, which is what
-// this point is about. What the file itself holds is
-// `audio/eat-file-produced`.
+// WHAT THIS READS IS THE ASK, NOT THE SOUND. The produced `.wav` does load and
+// decode here — the harness installs the host that fetches it and the stand-in
+// `AudioContext` that decodes it, so the cue binds — but that context is inert and
+// nothing is ever played back off it. What the cue bus announces is the cue the
+// build asked to play, by name, which is what this point is about. What the file
+// itself holds is `audio/eat-file-produced`.
 //
 // THE THREE THINGS THIS SEPARATES. A build that plays no cue on the eat; a build
 // that plays one on every tick, or on the approach; and a build that plays

@@ -27,12 +27,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { HURT_TIME } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
-import {
-  captureReplay,
-  createHarness,
-  ticks,
-  type Harness,
-} from "../harness";
+import { captureReplay, createHarness, ticks, type Harness } from "../harness";
 import { frameImages, imageAt } from "./drawn";
 import { minerCentre, showMiner } from "./miner";
 
@@ -70,7 +65,11 @@ it("runs the hurt cycle forward without coming back to a frame", async () => {
   });
 
   assertEqual(hurt.miner.state, "hurt", "specs/character.md");
-  assertGreaterThan(runs.length, 1, "the hurt cycle advances (specs/assets.md)");
+  assertGreaterThan(
+    runs.length,
+    1,
+    "the hurt cycle advances (specs/assets.md)",
+  );
   assertEqual(returned.length, 0, "specs/assets.md");
   assertEqual(after.miner.state === "hurt", false, "specs/character.md");
 });

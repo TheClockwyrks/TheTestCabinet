@@ -19,10 +19,14 @@
 //
 // THE COPY IS READ AS RUNS. A build may letter-space its headings and canvas
 // carries no portable property for it, so tracked copy is drawn a glyph per
-// `fillText` call; the frame's COALESCED runs are what carry the words, and
-// the count is matched as one of the numbers a run spells rather than as its
-// digits run together, and a figure the build groups with a thousands
-// separator spells the one figure it reads as.
+// `fillText` call; the frame's COALESCED runs are what carry the words. The
+// title and each menu entry are matched by the package's `drewText` —
+// ignoring case, with the whitespace folded out of both sides along a
+// baseline — and the count is matched as one of the numbers a run spells
+// rather than as its digits run together, and a figure the build groups with
+// a thousands separator spells the one figure it reads as. The menu's ORDER
+// is then read off the placed runs, each entry taken from a run that spells
+// it under the same fold.
 //
 // THE BOARD STAYS DRAWN BEHIND — AND ONLY THAT. The spec's words are that the
 // finished board "stays visible behind it ... so the player sees the shape
@@ -60,7 +64,6 @@ import {
   createHarness,
   drawnTextRuns,
   drawnTextSpans,
-  drewText,
   loadBoard,
   resetTo,
   sampleColor,
@@ -70,6 +73,7 @@ import {
   type Rgb,
   type TextSpan,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 import { BOARD_CX, BOARD_CY, cellCenter, NODE_R } from "../notation";
 import { numbersIn } from "./helpers";
 
@@ -128,6 +132,11 @@ function covered(span: TextSpan, x: number, y: number): boolean {
   );
 }
 
+/** Copy as the package's `drewText` reads it: upper case, whitespace out. */
+function fold(text: string): string {
+  return text.replace(/\s+/g, "").toUpperCase();
+}
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -178,14 +187,21 @@ it("draws the title, the count, and the menu in order over the finished board", 
     runs.some((run) => numbersIn(run).includes(SOLVES)),
     `the frame draws the boards-solved count, ${SOLVES}`,
   );
-  const itemRuns = SOLVED_ITEMS.map((item) => {
-    const found = runs.find((run) =>
-      run.text.toLowerCase().includes(item.toLowerCase()),
-    );
-    if (found === undefined) {
+  for (const item of SOLVED_ITEMS) {
+    if (!drewText(h.calls, item)) {
       fail(
         `the frame draws ${JSON.stringify(item)} (specs/modes/cascade.md: ` +
           `the solved screen's menu)`,
+        runs.map((run) => run.text),
+      );
+    }
+  }
+  const itemRuns = SOLVED_ITEMS.map((item) => {
+    const wanted = fold(item);
+    const found = runs.find((run) => fold(run.text).includes(wanted));
+    if (found === undefined) {
+      fail(
+        `a placed draw of ${JSON.stringify(item)}, to read the menu's order`,
         runs.map((run) => run.text),
       );
     }

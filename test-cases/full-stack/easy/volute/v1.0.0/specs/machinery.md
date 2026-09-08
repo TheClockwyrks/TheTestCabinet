@@ -31,12 +31,12 @@ marked core a bore removes grants nothing.
 
 ## The four kinds
 
-| Kind | Effect | Duration |
-| --- | --- | --- |
-| `choke` | The feed speed is multiplied by `0.4` | `8` s |
-| `backflow` | Every core moves toward the inlet at `BACKFLOW_SPEED` (`60`) units/s, and the inlet emits nothing | `5` s |
-| `bore` | Every core within `BORE_RADIUS` (`90`) units of the extraction point is removed and scored | instant |
-| `sightline` | The aim ray is drawn from the injector to the first core or field edge it meets | `12` s |
+| Kind        | Effect                                                                                            | Duration |
+| ----------- | ------------------------------------------------------------------------------------------------- | -------- |
+| `choke`     | The feed speed is multiplied by `0.4`                                                             | `8` s    |
+| `backflow`  | Every core moves toward the inlet at `BACKFLOW_SPEED` (`60`) units/s, and the inlet emits nothing | `5` s    |
+| `bore`      | Every core within `BORE_RADIUS` (`90`) units of the extraction point is removed and scored        | instant  |
+| `sightline` | The aim ray is drawn from the injector to the first core or field edge it meets                   | `12` s   |
 
 ## Choke
 

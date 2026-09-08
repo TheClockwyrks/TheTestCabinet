@@ -77,11 +77,11 @@ beside it, which is content-addressed and validated on read.
 `packages/gg-sandbox-ruby/build.sh` is the arm's one producer and writes three
 artifacts into the artifact crate's `OUT_DIR`, from which gg embeds them:
 
-| Artifact | What it is |
-| --- | --- |
+| Artifact              | What it is                                                                                                                                                 |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `ruby.component.wasm` | the guest: the ECMAScript component with Opal's runtime pre-initialised, and gg's SDK, `lib` and the declared libraries registered in its require registry |
-| `ruby.opal.cjs` | the host-side compiler, as one CommonJS bundle with gg's driver at the end of it |
-| `ruby.compiler.json` | which Opal that is, and which Ruby it emulates |
+| `ruby.opal.cjs`       | the host-side compiler, as one CommonJS bundle with gg's driver at the end of it                                                                           |
+| `ruby.compiler.json`  | which Opal that is, and which Ruby it emulates                                                                                                             |
 
 One build cuts all three out of one resolved Opal release, so the SDK's two
 lowerings to JavaScript are of one vintage.
@@ -150,12 +150,12 @@ the succeeding and the failing path alike. The driver gg writes into the bundle
 states the outcome in its exit code, because a compiler that refused a program
 and one that could not start both exit non-zero.
 
-| Exit | What happened | How it is reported |
-| --- | --- | --- |
-| 0 | compiled | the JavaScript, from the workspace |
-| 20 | Opal refused the Ruby | a syntax error, with Opal's own message and, where the parser located it, the model's own line |
-| 21 | Opal raised something that is not a refusal of the Ruby | a compile error, still the model's to answer |
-| anything else | the compiler could not finish | gg's own defect, which the model is never shown and which ends the run |
+| Exit          | What happened                                           | How it is reported                                                                             |
+| ------------- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| 0             | compiled                                                | the JavaScript, from the workspace                                                             |
+| 20            | Opal refused the Ruby                                   | a syntax error, with Opal's own message and, where the parser located it, the model's own line |
+| 21            | Opal raised something that is not a refusal of the Ruby | a compile error, still the model's to answer                                                   |
+| anything else | the compiler could not finish                           | gg's own defect, which the model is never shown and which ends the run                         |
 
 A rejection is structurally one diagnostic, since the driver catches a single
 thrown `SyntaxError`, so this arm declares no diagnostic cap. Both refusals a

@@ -14,14 +14,17 @@
 // Three things are read. The phase is sampled at every step from the launch to
 // the defeat, and never reads `finale`. The Maze Rating is still `0`, which
 // specs/instrumentation.md gives as its resting value "before the finale". And
-// the screen the run ends on is `overload`, on which no drawn text names a
-// rating — specs/campaign.md puts the Maze Rating on the victory screen and
-// nowhere else.
+// the screen the run ends on is `overload`, which shows no rating —
+// specs/campaign.md puts the Maze Rating on the victory screen and nowhere else,
+// and specs/ui.md has the defeat screen show "no Maze Rating". A screen that
+// SAYS there is no rating is stating exactly that and shows none; what fails is
+// a screen that presents one, a `MAZE RATING` label with or without a figure.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertLength } from "../assert";
+import { assertEqual } from "../assert";
+import { drawnTextLines } from "../case-harness/text";
 import { COLLECTOR_WAYPOINT } from "../constants";
-import { callsTo, captureStill, type Harness } from "../harness";
+import { captureStill, type Harness } from "../harness";
 import {
   createRunHarness,
   harvestWave,
@@ -102,14 +105,26 @@ it("ends the last wave on the overload screen, with no finale and no rating", as
 
   const calls = await h.frameCalls();
   await captureStill(h, "defeat");
-  const drawn = [
-    ...callsTo(calls, "fillText"),
-    ...callsTo(calls, "strokeText"),
-  ].map((args) => String(args[0] ?? "").toLowerCase());
-  assertLength(
-    drawn.filter((text) => text.includes("rating")),
-    0,
-    "the defeat screen draws no rating; the Maze Rating shows on the victory " +
-      `screen (specs/campaign.md). It drew ${drawn.join(" | ")}`,
+  // Off the whole of the frame's text, upper-cased, with letter-spacing folded
+  // back into words: a screen that letter-spaces `MAZE RATING` a glyph at a time
+  // shows a rating as surely as one that draws it whole, and the logical runs
+  // the shared harness reads off the frame (`drawnTextLines`,
+  // `case-harness/text.ts`) are joined with a space, so a phrase the merge split
+  // at a narrow space glyph still reads as one line here. What counts is a
+  // rating SHOWN: a `MAZE RATING` label, with a figure after it or without. A
+  // `NO MAZE RATING` or `NO RATING` — the disclaimer specs/ui.md has the defeat
+  // screen make — states that there is none, and is not one. The spaces of the
+  // disclaimer are optional because a build that letter-spaces it and skips its
+  // space glyphs merges to `NOMAZERATING`, its word gaps inside its tracking.
+  const text = drawnTextLines(calls)
+    .join(" ")
+    .toUpperCase()
+    .replace(/\s+/g, " ");
+  assertEqual(
+    /(?<!\bNO ?(?:MAZE ?)?)RATING/.test(text),
+    false,
+    "the defeat screen shows no rating; saying there is none is not one, and " +
+      "the Maze Rating shows on the victory screen (specs/campaign.md). It " +
+      `drew: ${text}`,
   );
 });

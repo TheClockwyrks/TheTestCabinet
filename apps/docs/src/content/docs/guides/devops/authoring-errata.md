@@ -113,11 +113,11 @@ would evict them from the version's metrics.
 
 ### Choosing between them
 
-| You want to… | Use |
-| --- | --- |
-| Note a real flaw but leave grading to the reviewer's judgment | `affects_scoring` |
-| Surface a note next to a specific review point, still scored | `review` (alone) |
-| Stop a specific point from counting at all, for every run | `exclude_from_score` + `review` |
+| You want to…                                                  | Use                             |
+| ------------------------------------------------------------- | ------------------------------- |
+| Note a real flaw but leave grading to the reviewer's judgment | `affects_scoring`               |
+| Surface a note next to a specific review point, still scored  | `review` (alone)                |
+| Stop a specific point from counting at all, for every run     | `exclude_from_score` + `review` |
 
 On a single point: when a human can reasonably still judge the point, keep it
 scored and use `affects_scoring`; when the point itself is broken or

@@ -5,14 +5,23 @@
 // how they look to the build: no palette, no font, no layout, no bar shape. So a
 // HUD check reads one of two things.
 //
-// THE TEXT, for a readout that is words or a figure. Each run the frame drew is
-// carried through the transform in force at the call (`textDraws`), so a HUD
-// drawn at a translated origin reads the same as one drawn in stage coordinates,
-// and a figure is looked for among the NUMBERS a run holds rather than as a
-// literal — a build is free to draw `SCORE 1234` as one run, to pad it to
-// `01234`, or to group it as `1,234`, and all of them are the same figure to a
-// player. A group separator is read as part of the number it punctuates rather
-// than as a break between two numbers.
+// THE TEXT, for a readout that is words or a figure. WHETHER a readout's words
+// are on the screen is the shared harness's `drewText` (`case-harness/text.ts`),
+// which a suite asks before anything here; what this file answers about words is
+// WHERE they sit. Each run the frame drew is carried through the transform in
+// force at the call (`drawnTextRuns`), so a HUD drawn at a translated origin
+// reads the same as one drawn in stage coordinates, and a figure is looked for
+// among the NUMBERS a run holds rather than as a literal — a build is free to
+// draw `SCORE 1234` as one run, to pad it to `01234`, or to group it as `1,234`,
+// and all of them are the same figure to a player. A group separator is read as
+// part of the number it punctuates rather than as a break between two numbers.
+// A run is the LOGICAL run, not the `fillText` call: a build that letter-spaces
+// its HUD draws one glyph per call, which is the only portable way to
+// letter-space canvas text, so the runs are the ones the shared harness
+// coalesces, side-by-side glyphs on one baseline merged back into the string
+// they spell. A run keeps its first glyph's anchor, and every glyph of a run
+// shares that baseline, so the band a readout is held inside reads the same
+// either way.
 //
 // THE PIXELS, for the two readouts that are not words. The combo BAR and the mute
 // indicator may be any mark a build likes, so the only fair reading of either is
@@ -32,13 +41,19 @@
 import { BOARD_Y, STAGE_W } from "../constants";
 import { fail } from "../assert";
 import {
-  colorDistance,
+  RUN_BASELINE_SLACK,
+  drawnTextRuns,
   textDraws,
+  type TextDraw,
+} from "../case-harness/text";
+import {
+  colorDistance,
   type DrawCall,
   type Harness,
   type Rgb,
-  type TextDraw,
 } from "../harness";
+
+export type { TextDraw };
 
 /** The first row of the board: the HUD band is every `y` above it. */
 export const BAND_BOTTOM = BOARD_Y;
@@ -154,12 +169,52 @@ export function bandDifferences(
   return count;
 }
 
-/** Every run of text the frame drew that carries `text`, ignoring case. */
-export function runsOf(calls: readonly DrawCall[], text: string): TextDraw[] {
-  const wanted = text.trim().toLowerCase();
-  return textDraws(calls).filter((run) =>
-    run.text.toLowerCase().includes(wanted),
+/**
+ * Every baseline the frame spelled `text` along, placed: the runs sharing that
+ * baseline as one `TextDraw`, anchored where the first of them was, spanning
+ * the extent of them all, and spelling the line they join into.
+ *
+ * WHETHER the words are on the screen is the shared harness's `drewText`, which
+ * every HUD suite asks first. This answers only WHERE, and it reads the frame
+ * the way `drewText` does — the runs of one baseline (within
+ * `RUN_BASELINE_SLACK`) joined into a line, the whitespace folded out of both
+ * sides, `text` matched as a substring ignoring case — so a label the harness
+ * says is drawn always places somewhere: a label letter-spaced into `B E S T`,
+ * or split into two runs along one baseline, is found by both readings or by
+ * neither. A HUD readout is held inside the band by its BASELINE, and every run
+ * of a line shares one, so the line places its readout exactly where each of
+ * its runs would.
+ */
+export function linesOf(calls: readonly DrawCall[], text: string): TextDraw[] {
+  const wanted = foldWhitespace(text).toLowerCase();
+  return baselines(drawnTextRuns(calls)).filter((line) =>
+    foldWhitespace(line.text).toLowerCase().includes(wanted),
   );
+}
+
+/** `text` with every run of whitespace removed. */
+function foldWhitespace(text: string): string {
+  return text.replace(/\s+/g, "");
+}
+
+/**
+ * The runs sharing a baseline joined into one placed line each, in reading
+ * order. The runs arrive sorted down the frame and then across it, so the runs
+ * of one baseline are consecutive, and a line keeps the anchor of its first.
+ */
+function baselines(runs: readonly TextDraw[]): TextDraw[] {
+  const lines: TextDraw[] = [];
+  for (const run of runs) {
+    const open = lines[lines.length - 1];
+    if (open !== undefined && Math.abs(run.y - open.y) <= RUN_BASELINE_SLACK) {
+      open.text += ` ${run.text}`;
+      open.left = Math.min(open.left, run.left);
+      open.right = Math.max(open.right, run.right);
+      continue;
+    }
+    lines.push({ ...run });
+  }
+  return lines;
 }
 
 /**
@@ -185,18 +240,30 @@ function numbersIn(text: string): number[] {
   );
 }
 
-/** Every run of text the frame drew that carries `value` as one of its numbers. */
+/**
+ * Every run of text the frame spelled that carries `value` as one of its numbers.
+ *
+ * Read off the raw `fillText` calls (`textDraws`) AND the coalesced runs
+ * together. The runs find a figure letter-spaced a digit per call; the raw
+ * split is kept beside them because the reading is an EQUALITY on the number a
+ * run holds, and a one-glyph figure drawn close after another figure with no
+ * space in either call can coalesce into one longer number (`250`, `3` read as
+ * `2503`), which the raw call still holds apart. A raw call sits at its own
+ * run's baseline, so the union adds matches and never a new anchor.
+ */
 export function numberRuns(
   calls: readonly DrawCall[],
   value: number,
 ): TextDraw[] {
-  return textDraws(calls).filter((run) => numbersIn(run.text).includes(value));
+  return [...textDraws(calls), ...drawnTextRuns(calls)].filter((run) =>
+    numbersIn(run.text).includes(value),
+  );
 }
 
-/** Every run of text the frame drew that matches `pattern`. */
+/** Every run of text the frame spelled that matches `pattern`. */
 export function matchingRuns(
   calls: readonly DrawCall[],
   pattern: RegExp,
 ): TextDraw[] {
-  return textDraws(calls).filter((run) => pattern.test(run.text));
+  return drawnTextRuns(calls).filter((run) => pattern.test(run.text));
 }

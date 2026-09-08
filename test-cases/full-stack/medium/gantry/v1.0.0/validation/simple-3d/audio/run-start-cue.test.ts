@@ -34,7 +34,9 @@ import {
 const TAPE: readonly TapeStepSpec[] = [
   {
     kind: "move",
-    commands: [{ axis: "hoist", target: HOIST_START + 2, rate: HOIST_MAX_RATE }],
+    commands: [
+      { axis: "hoist", target: HOIST_START + 2, rate: HOIST_MAX_RATE },
+    ],
   },
 ];
 

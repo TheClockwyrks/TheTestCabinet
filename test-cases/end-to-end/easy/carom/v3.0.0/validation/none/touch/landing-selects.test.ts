@@ -6,7 +6,7 @@
 // where a mouse would have had to move first, and why this is a point of its
 // own beside the click.
 //
-// The contact is LANDED AND LEFT DOWN. A confirm takes both of its edges inside
+// The contact is LANDED AND LEFT DOWN. A confirm requires both of its edges inside
 // one region, and the lift is the second of them, so a gesture that stops at the
 // landing is the one gesture that isolates the selection: what is read back is
 // `menuIndex` alone, and `touch/tap-confirms` grades the lift.

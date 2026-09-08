@@ -114,7 +114,10 @@ it("carries a well-formed repeat on every repeating product of the course", asyn
     );
     assertTrue(
       holds(
-        at(repeat.link.b.q - repeat.vector.q, repeat.link.b.r - repeat.vector.r),
+        at(
+          repeat.link.b.q - repeat.vector.q,
+          repeat.link.b.r - repeat.vector.r,
+        ),
       ),
       `${where}'s repeat link b minus the vector is a mote hex of the pattern`,
     );

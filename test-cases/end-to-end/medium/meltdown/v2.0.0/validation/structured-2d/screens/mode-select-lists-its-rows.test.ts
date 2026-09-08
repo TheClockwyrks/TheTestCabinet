@@ -5,8 +5,9 @@
 // `CONTAINMENT`, `THE HUNDRED`, `DEEP POCKETS`, `BOTTLENECK`, `SUDDEN DEATH`, and
 // `BACK`."
 //
-// ONE READING PER ROW OF ONE REQUIREMENT: each name is looked for as a run of
-// text, and the failure names the one the build did not draw. A build that lists
+// ONE READING PER ROW OF ONE REQUIREMENT: each name is looked for as copy the
+// frame drew, through the package's `drewText` (`../case-harness/text`), and
+// the failure names the one the build did not draw. A build that lists
 // four modes leaves a mode a player can never choose, and a build that omits
 // `BACK` leaves a touchscreen player no way off the list, so drawing every row is
 // the requirement rather than drawing several.
@@ -25,10 +26,11 @@
 // rather than the route that reaches it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual } from "../assert";
+import { assertEqual, assertTrue } from "../assert";
 import { MODE_ITEMS } from "../constants";
+import { drewText } from "../case-harness/text";
 import { captureStill, createHarness, resetTo, type Harness } from "../harness";
-import { readScreen, requireRun } from "./menu";
+import { readScreen, textOf } from "./menu";
 
 let h: Harness;
 
@@ -53,7 +55,12 @@ it("draws every one of the five mode names on the mode list", async () => {
     "modeselect",
     "the screen the scenario is posed on",
   );
+  const drawn = textOf(runs).join(" | ");
   for (const item of MODE_ITEMS) {
-    requireRun(runs, item, "the mode list");
+    assertTrue(
+      drewText(h.calls, item),
+      `the ${JSON.stringify(item)} row of MODE_ITEMS drawn on the mode list ` +
+        `(specs/screens.md); it drew ${drawn}`,
+    );
   }
 });

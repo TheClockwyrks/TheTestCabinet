@@ -268,6 +268,25 @@ publishes it on every push to `master`.
 A newly published pack version is reachable by a run as soon as a test case names
 it in `[audio] packs`. Run images are not rebuilt for it.
 
+### Trying it before any image is pushed
+
+Publishing the image is a release step, not a step between changing audio and
+hearing it. Both consumers can take the bytes straight from the object store:
+
+```sh
+# a local stack: builds the store from this checkout and hands the driver
+# image build that ref, pulling nothing
+make -C deployments/local audio-store
+make -C deployments/local local-rebuild
+
+# a host-side `tcab run` / `tcab validate`
+scripts/fetch-audio-store.sh --stage
+```
+
+Both need only the read-scoped `CLOUDFLARE_AUDIO_R2_PRESIGN` pair the stager
+already uses, and both verify every clip against `objects.lock.json` exactly as
+the published image's build does.
+
 ## Instrument banks
 
 An instrument bank (`kind = "instrument-bank"`) carries two extra per-entry

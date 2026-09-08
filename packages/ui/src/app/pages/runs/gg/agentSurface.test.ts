@@ -275,5 +275,4 @@ describe("apiCallSpellings", () => {
       "gg.delegation.sendMessage",
     );
   });
-
 });

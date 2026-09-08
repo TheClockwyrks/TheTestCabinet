@@ -33,8 +33,20 @@ const CRITICAL = new THREE.Color(PALETTE.healthCritical);
 const BACKING = new THREE.Color(PALETTE.yardPanel);
 const PIP_DIM = new THREE.Color(PALETTE.rock);
 
-interface BarRequest { x: number; topY: number; z: number; fraction: number; width: number; }
-interface PipRequest { x: number; topY: number; z: number; level: number; accentHex: string; }
+interface BarRequest {
+  x: number;
+  topY: number;
+  z: number;
+  fraction: number;
+  width: number;
+}
+interface PipRequest {
+  x: number;
+  topY: number;
+  z: number;
+  level: number;
+  accentHex: string;
+}
 
 /** One pooled health bar: a dark backing quad with a coloured fill that grows from the left. */
 class HealthBarQuad {
@@ -48,12 +60,18 @@ class HealthBarQuad {
   /** `leftAnchoredQuad` is a unit quad whose left edge sits on the origin (grows rightward). */
   constructor(leftAnchoredQuad: THREE.BufferGeometry) {
     const bgMat = new THREE.MeshBasicMaterial({
-      color: BACKING, transparent: true, opacity: 0.85, depthTest: false, depthWrite: false,
+      color: BACKING,
+      transparent: true,
+      opacity: 0.85,
+      depthTest: false,
+      depthWrite: false,
     });
     this.bg = new THREE.Mesh(leftAnchoredQuad, bgMat);
     this.bg.renderOrder = 20;
     this.fillMat = new THREE.MeshBasicMaterial({
-      color: HEALTHY, depthTest: false, depthWrite: false,
+      color: HEALTHY,
+      depthTest: false,
+      depthWrite: false,
     });
     this.fill = new THREE.Mesh(leftAnchoredQuad, this.fillMat);
     this.fill.position.z = 0.2; // draw the fill in front of its backing
@@ -65,7 +83,10 @@ class HealthBarQuad {
   /** Place, size, and colour the bar for this frame, facing the camera. */
   apply(cameraQuat: THREE.Quaternion): void {
     const p = this.pending;
-    if (!p) { this.group.visible = false; return; }
+    if (!p) {
+      this.group.visible = false;
+      return;
+    }
     const f = THREE.MathUtils.clamp(p.fraction, 0, 1);
     this.group.position.set(p.x, p.topY, p.z);
     this.group.quaternion.copy(cameraQuat);
@@ -79,7 +100,10 @@ class HealthBarQuad {
     this.pending = undefined;
   }
 
-  hide(): void { this.group.visible = false; this.pending = undefined; }
+  hide(): void {
+    this.group.visible = false;
+    this.pending = undefined;
+  }
 }
 
 /** One pooled row of up to {@link MAX_PIPS} level pips (filled to the current level). */
@@ -92,7 +116,11 @@ class PipRow {
 
   constructor(quad: THREE.BufferGeometry) {
     for (let i = 0; i < MAX_PIPS; i++) {
-      const mat = new THREE.MeshBasicMaterial({ color: PIP_DIM, depthTest: false, depthWrite: false });
+      const mat = new THREE.MeshBasicMaterial({
+        color: PIP_DIM,
+        depthTest: false,
+        depthWrite: false,
+      });
       const pip = new THREE.Mesh(quad, mat);
       pip.scale.set(PIP_SIZE, PIP_SIZE, 1);
       pip.renderOrder = 22;
@@ -105,20 +133,27 @@ class PipRow {
   /** Show `level` bright pips (of {@link MAX_PIPS}) in the team accent, facing the camera. */
   apply(cameraQuat: THREE.Quaternion): void {
     const p = this.pending;
-    if (!p) { this.group.visible = false; return; }
+    if (!p) {
+      this.group.visible = false;
+      return;
+    }
     this.group.position.set(p.x, p.topY, p.z);
     this.group.quaternion.copy(cameraQuat);
     const accent = this.scratchAccent.set(p.accentHex);
     const span = MAX_PIPS * PIP_SIZE + (MAX_PIPS - 1) * PIP_GAP;
     for (let i = 0; i < MAX_PIPS; i++) {
-      this.group.children[i].position.x = -span / 2 + PIP_SIZE / 2 + i * (PIP_SIZE + PIP_GAP);
+      this.group.children[i].position.x =
+        -span / 2 + PIP_SIZE / 2 + i * (PIP_SIZE + PIP_GAP);
       this.mats[i].color.copy(i < p.level ? accent : PIP_DIM);
     }
     this.group.visible = true;
     this.pending = undefined;
   }
 
-  hide(): void { this.group.visible = false; this.pending = undefined; }
+  hide(): void {
+    this.group.visible = false;
+    this.pending = undefined;
+  }
 }
 
 export class OverlayManager {
@@ -147,12 +182,24 @@ export class OverlayManager {
   }
 
   /** Queue a health bar above an entity at world `(x, topY, z)` for HP `fraction`. */
-  healthBar(x: number, topY: number, z: number, fraction: number, width: number): void {
+  healthBar(
+    x: number,
+    topY: number,
+    z: number,
+    fraction: number,
+    width: number,
+  ): void {
     this.barAt(this.barsUsed++).pending = { x, topY, z, fraction, width };
   }
 
   /** Queue a level-pip row above an entity at world `(x, topY, z)` in a team accent hex. */
-  pips(x: number, topY: number, z: number, level: number, accentHex: string): void {
+  pips(
+    x: number,
+    topY: number,
+    z: number,
+    level: number,
+    accentHex: string,
+  ): void {
     this.pipAt(this.pipsUsed++).pending = { x, topY, z, level, accentHex };
   }
 

@@ -69,7 +69,11 @@ it("opens a lay naming the track and the end that was pressed", async () => {
 
   const onFirst = await pressCell(PATH[0] as Hex);
 
-  assertEqual(onLast?.kind, "lay", "a press on the path's last cell begins a lay");
+  assertEqual(
+    onLast?.kind,
+    "lay",
+    "a press on the path's last cell begins a lay",
+  );
   assertEqual(
     onLast?.kind === "lay" ? onLast.part : null,
     track,
@@ -81,7 +85,11 @@ it("opens a lay naming the track and the end that was pressed", async () => {
     "and reports the end that was pressed",
   );
 
-  assertEqual(onFirst?.kind, "lay", "a press on the path's first cell begins a lay too");
+  assertEqual(
+    onFirst?.kind,
+    "lay",
+    "a press on the path's first cell begins a lay too",
+  );
   assertEqual(
     onFirst?.kind === "lay" ? onFirst.end : null,
     "first",

@@ -94,10 +94,10 @@ written in either spelling declares the same parameters.
 in the operator's override, then in the toolchain image's directory, then on
 `PATH`.
 
-| Executable | Override | Image path | Timeout |
-| --- | --- | --- | --- |
-| `purs` | `TCAB_GG_PURS` | `/opt/gg/toolchains/bin` | 120 s |
-| `esbuild` | `TCAB_GG_ESBUILD` | `/opt/gg/toolchains/bin` | 60 s |
+| Executable | Override          | Image path               | Timeout |
+| ---------- | ----------------- | ------------------------ | ------- |
+| `purs`     | `TCAB_GG_PURS`    | `/opt/gg/toolchains/bin` | 120 s   |
+| `esbuild`  | `TCAB_GG_ESBUILD` | `/opt/gg/toolchains/bin` | 60 s    |
 
 The first compile of a process reads `purs --version` once and refuses a release
 that disagrees with the one recorded in the shipped manifest, naming both
@@ -121,10 +121,10 @@ on the failing path as well as the succeeding one.
 `packages/gg-sandbox-purescript/build.sh` and produces two artifacts, reached by
 `crates/gg` through `GG_ARTIFACTS_PURESCRIPT` and embedded in the gg binary.
 
-| Artifact | Contents |
-| --- | --- |
+| Artifact                      | Contents                                                                                                                              |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | `purescript.libraries.tar.gz` | The declared library set, compiled with `--codegen js,sourcemaps`, with this arm's SDK staged into the same tree and compiled with it |
-| `purescript.compiler.json` | The pinned `purs` and `esbuild` releases and the packages and modules the tree holds |
+| `purescript.compiler.json`    | The pinned `purs` and `esbuild` releases and the packages and modules the tree holds                                                  |
 
 The library set is declared by `packages/gg-sandbox-purescript/spago.yaml` and
 resolved against a pinned registry package set. `purs` requires both the sources
@@ -193,16 +193,16 @@ no entry may be blank. `spago.yaml` groups each package under a
 `purs` is invoked with `--json-errors`, so a rejection arrives as structured
 diagnostics carrying the compiler's own error code and span.
 
-| What happened | How it is reported |
-| --- | --- |
-| `ErrorParsingModule` or `ErrorParsingFFIModule` in the model's file | `PrepareError::Syntax` |
-| Any other `purs` error code in the model's file | `PrepareError::Compile` |
-| `esbuild` reporting no matching export for `main` | `PrepareError::Compile`, with a sentence saying the program must define `main :: Effect Unit` |
-| `purs` reporting a diagnostic only in a loaded module's file | `PrepareFailure::Lowering`, naming the key — the module compiled on its own when it was loaded |
-| `purs` reporting only diagnostics in gg's shipped library files | `PrepareFailure::Toolchain` |
-| A compiler that could not run, was killed, timed out, or reported nothing readable | `PrepareFailure::Toolchain` |
-| A `purs` release disagreeing with the manifest's pin | `PrepareFailure::Toolchain` |
-| The response's module directory not identifiable in the compiler's output | `PrepareFailure::Toolchain`, naming what was found |
+| What happened                                                                      | How it is reported                                                                             |
+| ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `ErrorParsingModule` or `ErrorParsingFFIModule` in the model's file                | `PrepareError::Syntax`                                                                         |
+| Any other `purs` error code in the model's file                                    | `PrepareError::Compile`                                                                        |
+| `esbuild` reporting no matching export for `main`                                  | `PrepareError::Compile`, with a sentence saying the program must define `main :: Effect Unit`  |
+| `purs` reporting a diagnostic only in a loaded module's file                       | `PrepareFailure::Lowering`, naming the key — the module compiled on its own when it was loaded |
+| `purs` reporting only diagnostics in gg's shipped library files                    | `PrepareFailure::Toolchain`                                                                    |
+| A compiler that could not run, was killed, timed out, or reported nothing readable | `PrepareFailure::Toolchain`                                                                    |
+| A `purs` release disagreeing with the manifest's pin                               | `PrepareFailure::Toolchain`                                                                    |
+| The response's module directory not identifiable in the compiler's output          | `PrepareFailure::Toolchain`, naming what was found                                             |
 
 Diagnostics in the model's own file are deduplicated and capped at eight, since
 `purs` reports one error per site. The band is decided over the whole set before

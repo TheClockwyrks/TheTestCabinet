@@ -29,11 +29,11 @@ npm install -g @kilocode/cli && npm cache clean --force
 A session runs the `run` subcommand with these flags, followed by the prompt as
 the final positional argument:
 
-| Flag | Purpose |
-| ---- | ------- |
+| Flag            | Purpose                                                                                                                   |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | `--format json` | Emit the line-delimited JSON stream consumed for [events](/harnesses/kilo/events/) and [usage](/harnesses/kilo/metrics/). |
-| `--auto` | Run unattended, without per-action approval prompts. |
-| `--model <id>` | The model to run. |
+| `--auto`        | Run unattended, without per-action approval prompts.                                                                      |
+| `--model <id>`  | The model to run.                                                                                                         |
 
 ## Authentication
 

@@ -41,19 +41,20 @@
 // live (specs/sensing.md). The forager waits fourteen tiles off, past the bloom's
 // own reach, so the flare cannot lock onto it and cut itself short.
 //
-// THE SEEDED TREE IS SERVED TO THE ENGINE'S LOADER. specs/assets.md has the build
-// load every frame through the engine, which resolves each path under `assets/`
-// "relative to the page the build is served from" and fetches it. This suite runs
-// in a Node process with no page, so nothing resolves that relative URL unless
-// something here does: the two globals the loader reaches for are stood up over
-// the workspace's own `assets/` directory for the life of this file, and put back
-// afterwards. That is the same kind of thing the harness's own canvas, surface
-// metrics and clock are — the host the engine runs on — and without it the build
-// is asked to draw from art no one gave it.
+// THE SEEDED TREE IS SERVED BY THE HARNESS, NOT BY THIS FILE. specs/assets.md has
+// the build load every frame through the engine, which resolves each path under
+// `assets/` "relative to the page the build is served from" and fetches it. This
+// suite runs in a Node process with no page, so the harness stands the transport
+// up over the workspace's own tree for every check in this project — the same kind
+// of thing its canvas, surface metrics and clock are. It is deliberately NOT this
+// file's own: a point that served itself art the other points could not load would
+// be the one check in the project passing on a build every other check failed for
+// a fact about Node, which is exactly how a whole checklist can read as a verdict
+// on a build that was never given its art. What is still read off disk here is the
+// COMPARISON — the seeded frames this point holds a drawn source against.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { createCanvas, loadImage } from "@napi-rs/canvas";
-import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assertTrue, fail } from "../assert";
@@ -162,37 +163,6 @@ const ART = [
   "#########################",
   "#L#G#X#D#################",
 ] as const;
-
-/* -------------------------------------------------------------------------- */
-/* Serving the seeded tree to the engine's loader                             */
-/* -------------------------------------------------------------------------- */
-
-/** What the loader reaches for, as it stood before this file replaced it. */
-interface HostGlobals {
-  fetch: unknown;
-  createImageBitmap: unknown;
-}
-
-/** Stand the two globals up over the workspace's own `assets/` directory. */
-function serveSeededAssets(): HostGlobals {
-  const host = globalThis as unknown as Record<string, unknown>;
-  const before: HostGlobals = {
-    fetch: host.fetch,
-    createImageBitmap: host.createImageBitmap,
-  };
-  host.fetch = async (url: string): Promise<Response> =>
-    new Response(readFileSync(join(WORKSPACE, url)));
-  host.createImageBitmap = async (blob: Blob): Promise<unknown> =>
-    loadImage(Buffer.from(await blob.arrayBuffer()));
-  return before;
-}
-
-/** Put them back, so nothing this file did outlives it. */
-function restoreHost(before: HostGlobals): void {
-  const host = globalThis as unknown as Record<string, unknown>;
-  host.fetch = before.fetch;
-  host.createImageBitmap = before.createImageBitmap;
-}
 
 /* -------------------------------------------------------------------------- */
 /* Matching a drawn source against the seeded frames                          */
@@ -338,16 +308,13 @@ function blitsOf(calls: readonly DrawCall[], frames: readonly Frame[]): Blit[] {
 /* -------------------------------------------------------------------------- */
 
 let h: Harness;
-let host: HostGlobals;
 
 beforeEach(async () => {
-  host = serveSeededAssets();
   h = await createHarness();
 });
 
 afterEach(() => {
   h?.dispose();
-  restoreHost(host);
 });
 
 it("draws every element from its own seeded sheet", async () => {

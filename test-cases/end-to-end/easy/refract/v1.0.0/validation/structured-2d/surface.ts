@@ -172,6 +172,14 @@ export interface RefractDebugApi {
   version: number;
   reset(): void;
   snapshot(): RefractSnapshot;
+  /**
+   * Bring every value the snapshot reports into agreement with the board as it
+   * stands, without advancing anything. A node's `x`/`y`, a crystal's `spent`, a
+   * beam's `complete`, `solved` and `targets` are all derived, and a build that
+   * keeps any of them as a stored copy rewrites that copy here. It moves no
+   * clock, runs no system, plays no cue, and corrects nothing.
+   */
+  reconcile(): void;
   /** The mode field alone: no screen moves and no board is generated. */
   setMode(mode: Mode): void;
   /** The screen field alone: the board, the beams and the menus stay as they are. */
@@ -189,6 +197,11 @@ export interface RefractDebugApi {
   pointerDown(x: number, y: number, device?: PointerDevice): void;
   pointerMove(x: number, y: number, device?: PointerDevice): void;
   pointerUp(device?: PointerDevice): void;
+  /**
+   * The `clear` action's own transaction: every beam emptied and any live trace
+   * ended, from wherever the game stands. The screen the action is read on is
+   * the player's route to it, not this operation's condition.
+   */
   clear(): void;
 }
 
@@ -210,6 +223,7 @@ export const READINGS = ["snapshot"] as const;
 export const REQUIRED_OPS = [
   "reset",
   "snapshot",
+  "reconcile",
   "setMode",
   "setScreen",
   "setMenuIndex",

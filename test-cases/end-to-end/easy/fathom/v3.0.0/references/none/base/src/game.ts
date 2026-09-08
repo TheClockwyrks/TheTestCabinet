@@ -100,7 +100,7 @@ export interface FathomState {
   /**
    * The menu item a pointer or a finger is currently pressed on, or `null`.
    *
-   * A confirm takes both of its edges inside ONE region (`specs/ui.md`), so the
+   * A confirm requires both of its edges inside ONE region (`specs/ui.md`), so the
    * region the press landed in has to outlive the frame it landed on. It is
    * derived from the gesture in flight and nothing else, and every screen change
    * drops it, so no pose can leave a press latched over a menu it was not made
@@ -240,16 +240,31 @@ export function fillPlankton(state: FathomState): void {
  * taken again from what is left.
  */
 export function pruneBuriedPlankton(state: FathomState): void {
-  let remaining = 0;
   for (let row = 0; row < GRID_ROWS; row += 1) {
     for (let col = 0; col < GRID_COLS; col += 1) {
       const key = tileKey(col, row);
       if (!state.plankton[key]) continue;
-      if (state.maze.isCorridor(col, row)) remaining += 1;
-      else state.plankton[key] = false;
+      if (!state.maze.isCorridor(col, row)) state.plankton[key] = false;
     }
   }
-  state.planktonRemaining = remaining;
+  state.planktonRemaining = countPlankton(state);
+}
+
+/**
+ * How many plankton the layer carries (`specs/state.md`).
+ *
+ * The one place the count comes from: the prune above finishes with it, and the
+ * surface's `reconcile` brings the reported `planktonRemaining` back into
+ * agreement through the same call, so the two can never say different things.
+ */
+export function countPlankton(state: FathomState): number {
+  let remaining = 0;
+  for (let row = 0; row < GRID_ROWS; row += 1) {
+    for (let col = 0; col < GRID_COLS; col += 1) {
+      if (state.plankton[tileKey(col, row)]) remaining += 1;
+    }
+  }
+  return remaining;
 }
 
 /**
@@ -612,7 +627,7 @@ function readMenu(
  *
  * A sample that lands on an item selects it, which is what makes a mouse move
  * select and a contact select on its landing, since a finger never hovers. A
- * confirm takes both of its edges inside ONE item's region, so the release
+ * confirm requires both of its edges inside ONE item's region, so the release
  * confirms only where it lands on the item the press landed on: two edges in
  * different regions, and an edge outside every region, confirm nothing.
  *

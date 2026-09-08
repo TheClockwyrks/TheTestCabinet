@@ -10,7 +10,10 @@ name: CI
 # toolchain, and takes seconds), the audio-pack gate (the only enforcement anywhere of the rule that
 # every non-frozen full-stack version and every game jam declares the packs its
 # runs are staged with — a version that declares none is staged with none, which
-# no other check would notice), and the container build-context gate (which
+# no other check would notice), the seeded-spec vocabulary gate (the only check
+# that the specs and prompts a model is handed never tell it that it is being
+# evaluated or that this project exists — the spec counterpart of the seeded
+# contract check, and seconds as well), and the container build-context gate (which
 # protects the image builds that live in this same CI system) — so a green GitHub
 # run still means the components actually build and pass. Style linting and the
 # spec prose checks are left to Azure.
@@ -189,6 +192,22 @@ jobs:
           node-version: 22.23.1
           cache: npm
       - run: ./scripts/ci/audio-packs-lint.sh
+
+  # The spec counterpart of seeded-contract-check.sh (which runs in `contract`,
+  # after the generator): every non-frozen version's prompt.hbs and specs/, and the
+  # shared preambles prompt.rs prepends, name nothing about evaluation or this
+  # project. Hits in frozen versions are reported, not failed — they cannot be
+  # edited. Needs Node for the checker but no `npm ci`, no Rust, no credentials,
+  # and reads the checked-out tree only, so it mirrors the frozen job.
+  spec-vocabulary:
+    name: Seeded specs (name nothing about evaluation)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22.23.1
+      - run: ./scripts/ci/spec-vocabulary-check.sh
 
   # Mirrored here rather than left to Azure because the thing it protects lives on
   # GitHub: `build-containers.yml` builds the run images, only on master/staging,

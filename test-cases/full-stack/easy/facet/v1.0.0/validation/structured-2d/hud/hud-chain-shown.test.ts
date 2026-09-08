@@ -36,12 +36,14 @@
 // figures the readouts beside it are built from — `0`, `3`, and the level's
 // `6000` target — cannot be mistaken for the `1` a chain at step 1 is worth.
 //
-// The copy is read through `frameText`, which hands back every string one frame
-// put on screen, and `showsText` decides whether a string is among them across
-// every shape specs/ui.md leaves open — one call per line, one per word, one per
-// glyph, or a figure drawn beside its label in a single run.
+// The copy is read off the frame's draw calls through the shared harness's
+// `drewTextAnywhere`, which decides whether a string is among the runs of text
+// they spell across every shape specs/ui.md leaves open — one call per line,
+// one per word, one per glyph, or a figure drawn beside its label in a single
+// run.
 
 import { afterEach, beforeEach, it } from "vitest";
+import { drawnTextLines, drewTextAnywhere } from "../case-harness/text";
 import { assertEqual, assertLength, assertTrue, fail } from "../assert";
 import {
   maximalRuns,
@@ -56,8 +58,8 @@ import {
   captureStill,
   createHarness,
   loadBoard,
-  showsText,
   swapAndStep,
+  type DrawCall,
   type Harness,
 } from "../harness";
 
@@ -78,10 +80,13 @@ const POSED_LEVEL = 3;
 
 let h: Harness;
 
-/** The frame showed `wanted`, or the failure names it beside what it drew. */
-function requireCopy(drawn: readonly string[], wanted: string): void {
-  if (!showsText(drawn, wanted)) {
-    fail(`the resolving frame to show ${JSON.stringify(wanted)}`, drawn);
+/** The frame showed `wanted`, or the failure names it beside what it spelled. */
+function requireCopy(frame: readonly DrawCall[], wanted: string): void {
+  if (!drewTextAnywhere(frame, wanted)) {
+    fail(
+      `the resolving frame to show ${JSON.stringify(wanted)}`,
+      drawnTextLines(frame),
+    );
   }
 }
 
@@ -123,10 +128,10 @@ it("shows the chain label and the multiplier while a chain resolves", async () =
 
   // One frame — a sixty-fourth of a second, far inside the step's own hold —
   // and everything it put on screen. The still is that same frame.
-  const drawn = await h.frameText();
+  const frame = await h.frameCalls();
   captureStill(h, "hud");
   assertEqual(h.snapshot().phase, "resolving", "the phase it was read at");
 
-  requireCopy(drawn, HUD_CHAIN_LABEL);
-  requireCopy(drawn, String(resolving.multiplier));
+  requireCopy(frame, HUD_CHAIN_LABEL);
+  requireCopy(frame, String(resolving.multiplier));
 });

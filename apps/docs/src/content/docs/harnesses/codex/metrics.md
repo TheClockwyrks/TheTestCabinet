@@ -11,12 +11,12 @@ the ones recorded.
 
 ## Token classes
 
-| Normalized class | Codex key |
-| ---------------- | --------- |
-| Uncached input | `input_tokens` less `cached_input_tokens` |
-| Cached input | `cached_input_tokens` |
-| Output | `output_tokens` |
-| Reasoning | `reasoning_output_tokens` |
+| Normalized class | Codex key                                 |
+| ---------------- | ----------------------------------------- |
+| Uncached input   | `input_tokens` less `cached_input_tokens` |
+| Cached input     | `cached_input_tokens`                     |
+| Output           | `output_tokens`                           |
+| Reasoning        | `reasoning_output_tokens`                 |
 
 Codex's `input_tokens` is inclusive of cached reads, so the cached input is
 subtracted from it to yield the uncached input. Codex has no cache-creation

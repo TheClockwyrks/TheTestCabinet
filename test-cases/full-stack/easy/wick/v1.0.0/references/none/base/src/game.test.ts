@@ -459,7 +459,7 @@ describe("the overlays", () => {
     g.state.run.pendingLevelUps = 1;
     g.pause();
     expect(g.openLevelUp()).toBe(false);
-    expect(g.choose(0)).toBe(false);
+    expect(g.tryChoose(0)).toBe(false);
   });
 
   it("closes the chest overlay on confirm alone", () => {

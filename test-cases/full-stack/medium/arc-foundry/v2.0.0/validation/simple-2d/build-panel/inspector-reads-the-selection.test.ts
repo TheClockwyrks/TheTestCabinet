@@ -43,6 +43,7 @@ import {
   comboDamage,
   comboDef,
   comboRange,
+  COMPONENT_NAMES,
   componentDamage,
   componentFireRate,
   componentRange,
@@ -105,7 +106,7 @@ it("draws the stats and tallies of a base component and of a tower", async () =>
   const baseState = structureById(h.snapshot(), component);
 
   assertEqual(
-    drew(base, PANEL, TYPE),
+    drew(base, PANEL, COMPONENT_NAMES[TYPE]),
     true,
     "whether the panel names the type",
   );

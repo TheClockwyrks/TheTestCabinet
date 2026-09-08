@@ -11,12 +11,12 @@ paths are fixed. Capture them from the built game (serve the production build, o
 your dev server) using the project-local Playwright that `package.json` pins and
 `init` installs, and do not hand-edit images.
 
-| Path | What it must show |
-| --- | --- |
-| `proof/title.png` | The title menu on load, with every menu item visible. |
-| `proof/gameplay.png` | A live rally mid-match: both paddles, the ball with its motion trail, the HUD scores, and both mid-field obstacles. |
-| `proof/game-over.png` | The match-over screen after a finished match, with the winner and final score. |
-| `proof/rally.webm` | A short (a few seconds) screen recording of an active rally, long enough to show the ball accelerating across several paddle hits and its trail tracking it. |
+| Path                  | What it must show                                                                                                                                            |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `proof/title.png`     | The title menu on load, with every menu item visible.                                                                                                        |
+| `proof/gameplay.png`  | A live rally mid-match: both paddles, the ball with its motion trail, the HUD scores, and both mid-field obstacles.                                          |
+| `proof/game-over.png` | The match-over screen after a finished match, with the winner and final score.                                                                               |
+| `proof/rally.webm`    | A short (a few seconds) screen recording of an active rally, long enough to show the ball accelerating across several paddle hits and its trail tracking it. |
 
 Notes:
 

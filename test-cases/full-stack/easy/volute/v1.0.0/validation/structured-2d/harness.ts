@@ -25,6 +25,14 @@
 // scenario helpers below only ARRANGE the hall through the surface, and the real
 // frames the build wrote are what run from there.
 //
+// RECONCILING AFTER A POSE. `reconcile()` brings every reading the surface
+// reports into agreement with the hall a pose has just arranged, without
+// advancing anything, so a build that keeps a derived reading as a stored copy —
+// the SEGMENTS, most often — answers for the hall as posed rather than as it
+// was. {@link poseHall} and {@link startRun} reconcile before they return, so a
+// check that poses through the helpers never calls it itself. A check that poses
+// with `h.debug.set…` directly calls it once before its first read or sweep.
+//
 // WHERE THE SURFACE COMES FROM. Off `engine.debug`, never built here. The game
 // instance's `initialize` returns it (`specs/instrumentation.md`), the engine
 // holds that same object, and reading it back off the engine is the only way a
@@ -279,6 +287,13 @@ export interface VoluteDebugApi {
   version: number;
   /** Restore every declared field to its title value. */
   reset(): void;
+  /**
+   * Bring every value the surface reports into agreement with the hall as it
+   * stands, without advancing anything. A build that works its derived readings
+   * out at the read has nothing to do; one that keeps any of them — the
+   * segments, most often — rewrites that copy from its source.
+   */
+  reconcile(): void;
   /** A pure reading of the running game. */
   snapshot(): VoluteSnapshot;
   /** Set the screen, and do nothing else. */
@@ -836,24 +851,6 @@ export function imageDraws(calls: readonly DrawCall[]): ImageDraw[] {
   return draws;
 }
 
-/**
- * Whether the frame drew `text` as part of some run of text, ignoring case.
- *
- * Substring rather than equality on purpose: the value a check asserts is the
- * case's own — a score of 50, a level of 4 — but how a build presents it is the
- * build's, and a readout is commonly drawn with a label or padding around it.
- * Requiring the exact run would fail a HUD that shows precisely the right figure.
- *
- * Read off the RAW calls, which is the package's `drawnText` and not its
- * `drawnTextLines`: this project records no text measurement, so nothing could
- * coalesce a letter-spaced run in the first place, and reading the raw strings is
- * what this case's verdicts were taken under.
- */
-export function drewText(calls: readonly DrawCall[], text: string): boolean {
-  const wanted = String(text).trim().toLowerCase();
-  return drawnText(calls).some((drawn) => drawn.toLowerCase().includes(wanted));
-}
-
 /* -------------------------------------------------------------------------- */
 /* The surface a build never returned                                         */
 /* -------------------------------------------------------------------------- */
@@ -1104,9 +1101,13 @@ const loopStops = new WeakMap<object, { n: number }>();
  * `buttons` are absent — it falls back to a primary-button contact — so the
  * device-bearing event is not a richer version of the same gesture.
  *
- * The recorder is left plain. No `measureText`: this case reads a HUD figure off
- * the runs a frame issued and never off their measured extent. No `internImages`:
- * the identity a produced sprite is recognized by is {@link imageRef}'s, above.
+ * The recorder measures text (`measureText`), so every `fillText`/`strokeText`
+ * carries the width and alignment the package's merge rule needs to coalesce a
+ * letter-spaced heading back into the run it spells — which is what the
+ * package's `drewText` and `drawnTextLines` (`case-harness/text`) read copy and
+ * figures off, and why `specs/ui.md` can fix the copy a screen shows while
+ * leaving its spacing to the build. No `internImages`: the identity a produced
+ * sprite is recognized by is {@link imageRef}'s, above.
  */
 const kit = createEngineCaseHarness<
   VoluteSnapshot,
@@ -1119,6 +1120,7 @@ const kit = createEngineCaseHarness<
   tickHz: TICK_HZ,
   surfaceRequirement: SURFACE_REQUIREMENT,
   cueEvents: ["cue:played", "cue:looped"],
+  recorder: { measureText: true },
   defaultClock: () => new ConstantClock(TICK_MS),
   createEngine: ({ canvas, clock, surface }) => {
     const engine = createEngine<VoluteDebugApi>({
@@ -1660,6 +1662,7 @@ export async function poseHall(
   if (options.machinery !== undefined) {
     h.debug.grantMachinery(options.machinery);
   }
+  h.debug.reconcile();
 }
 
 /**
@@ -1682,6 +1685,7 @@ export async function startRun(h: Harness, level = 1): Promise<void> {
     h.debug.startLevel(level);
     await h.step(1);
   }
+  h.debug.reconcile();
 }
 
 /**

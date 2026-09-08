@@ -54,7 +54,10 @@ const require = createRequire(import.meta.url);
 /** @type {import("typescript")} */
 const ts = require("typescript");
 
-const PACKAGE_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const PACKAGE_DIR = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+);
 
 /**
  * Where the four files go. Required, with no default, exactly as it is in every arm's `build.sh` —
@@ -126,9 +129,13 @@ function defaultLibraryFiles() {
   const libs = program
     .getSourceFiles()
     .map((file) => file.fileName)
-    .filter((name) => path.dirname(path.resolve(name)) === path.resolve(libDir));
+    .filter(
+      (name) => path.dirname(path.resolve(name)) === path.resolve(libDir),
+    );
   if (libs.length === 0) {
-    throw new Error(`no default library files resolved for lib: ["${TARGET_LIB}"]`);
+    throw new Error(
+      `no default library files resolved for lib: ["${TARGET_LIB}"]`,
+    );
   }
   return libs;
 }
@@ -152,7 +159,10 @@ function main() {
   fs.mkdirSync(OUT_DIR, { recursive: true });
 
   const bundle = compilerBundle();
-  fs.writeFileSync(path.join(OUT_DIR, "typescript.tsc.js"), fs.readFileSync(bundle));
+  fs.writeFileSync(
+    path.join(OUT_DIR, "typescript.tsc.js"),
+    fs.readFileSync(bundle),
+  );
 
   const libs = defaultLibraryFiles();
   const declarations = libs.map(withoutReferences).join("\n");

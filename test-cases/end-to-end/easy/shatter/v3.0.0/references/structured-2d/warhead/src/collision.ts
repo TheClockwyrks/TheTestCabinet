@@ -40,7 +40,9 @@ import { destroyRock, recycleRock } from "./rocks";
 
 /** What a round found in its path this tick. */
 type RoundHit =
-  { kind: "core" } | { kind: "rock"; rock: RockState } | { kind: "saucer" };
+  | { kind: "core" }
+  | { kind: "rock"; rock: RockState }
+  | { kind: "saucer" };
 
 /**
  * The earliest thing a round strikes this tick, or `null` for a clear path.

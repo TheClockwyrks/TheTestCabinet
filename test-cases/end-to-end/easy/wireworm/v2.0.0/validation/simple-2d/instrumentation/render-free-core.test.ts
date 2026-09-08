@@ -108,7 +108,10 @@ it("reaches the simTime and the tile the specs fix however the second is divided
   };
 
   /** Hold one run to the second it was given and the tile the specs fix. */
-  const check = (run: { gained: number; head: TileSnapshot }, frames: number) => {
+  const check = (
+    run: { gained: number; head: TileSnapshot },
+    frames: number,
+  ) => {
     const division = `${frames} frame${frames === 1 ? "" : "s"}`;
     assertCloseTo(
       run.gained,

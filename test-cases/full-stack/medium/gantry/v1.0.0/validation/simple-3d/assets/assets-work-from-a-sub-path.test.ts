@@ -26,7 +26,13 @@
 //   - EVERY PATH THE BUILD ASKS FOR IS RELATIVE. A path with a scheme, or one
 //     beginning `/`, reaches the host's root rather than the directory the site
 //     was served from, and a path climbing out with `..` reaches above it. Any of
-//     the three is a request a sub-path deployment answers with a `404`.
+//     the three is a request a sub-path deployment answers with a `404`. The
+//     record this reads carries the requests that DID carry a scheme rather than
+//     dropping them, which is what lets this half of the point decide anything at
+//     all: a build fetching a model or a font off the web at play time is judged
+//     here, not merely missing from the list. `data:` and `blob:` are the
+//     exception, because they carry their own bytes and name no host, so a
+//     sub-path prefix is nothing to them.
 //   - AND `dist/` CARRIES IT. A relative path only resolves where the served
 //     output holds the file, and the toolchain does not copy `assets/` there, so
 //     a produced file the build never arranged into `dist/` is exactly the
@@ -142,8 +148,12 @@ it("runs from a sub-path, reaching every asset it needs", async () => {
   );
 
   const unanswered: string[] = [];
-  for (const { path } of asked) {
-    if (/^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(path)) {
+  for (const { path, offOrigin } of asked) {
+    if (offOrigin) {
+      // `data:` and `blob:` are addresses into the request itself rather than
+      // into the served output, so a sub-path deployment answers them exactly as
+      // a root one does and nothing below is about them.
+      if (/^(data|blob):/i.test(path)) continue;
       unanswered.push(`${path} (an absolute URL, outside the served output)`);
       continue;
     }

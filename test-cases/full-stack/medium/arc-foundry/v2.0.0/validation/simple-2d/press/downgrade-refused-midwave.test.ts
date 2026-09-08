@@ -10,15 +10,23 @@
 // build-phase actions, so a build that guards one and not the rest is told apart
 // from one that guards none. `press/mid-wave.ts` holds the yard all four share.
 //
-// THE ACTION IS TAKEN BOTH WAYS where a player has two: through the control a
-// player would press AND through the surface, so a build that guards one route
-// and not the other is caught on whichever it left open. The yard is then read
-// back and held against the yard the wave started with.
+// THE ACTION IS TAKEN THROUGH THE CONTROL A PLAYER PRESSES. The surface is not
+// the route this decides: `specs/instrumentation.md` makes an operation
+// unconditional, so `keep`, `downgrade`, `dismantle` and `placeRock` each commit
+// their own transaction from wherever the game stands and the phase running is no
+// condition on them. What is left, and what a wave must actually hold shut, is the
+// player's route. The yard is read back after it and held against the yard the
+// wave started with.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual } from "../assert";
-import { captureReplay, createHarness, type Harness } from "../harness";
-import { attempt, openMidWave, yardOf } from "./mid-wave";
+import {
+  captureReplay,
+  createHarness,
+  pressAction,
+  type Harness,
+} from "../harness";
+import { openMidWave, yardOf } from "./mid-wave";
 
 let h: Harness;
 
@@ -34,8 +42,8 @@ it("refuses a downgrade during a live wave", async () => {
   const posed = openMidWave(h);
 
   const after = await captureReplay(h, "refused", async () => {
-    attempt(() => h.debug.select(posed.candidate));
-    attempt(() => h.debug.downgrade(posed.candidate));
+    h.debug.select(posed.candidate);
+    await pressAction(h, "downgrade");
     await h.advance(12);
     return yardOf(h.snapshot());
   });

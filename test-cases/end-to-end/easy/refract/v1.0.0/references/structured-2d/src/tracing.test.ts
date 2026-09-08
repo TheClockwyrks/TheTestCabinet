@@ -8,7 +8,8 @@ import { describe, expect, it } from "vitest";
 import { cellCenter, emptyBeams, parseBoard } from "./board";
 import { RefractState, type Cell } from "./game";
 import {
-  clearBeams,
+  performClearBeams,
+  tryClearBeams,
   mergeEvents,
   noEvents,
   pointerDown,
@@ -272,20 +273,34 @@ describe("clearing", () => {
     press(state, { col: 0, row: 0 });
     moveTo(state, { col: 1, row: 0 });
     const board = state.board;
-    expect(clearBeams(state)).toBe(true);
+    expect(tryClearBeams(state)).toBe(true);
     expect(state.tracing).toBeNull();
     expect(state.beams.every((beam) => beam.cells.length === 0)).toBe(true);
     expect(state.board).toBe(board);
   });
 
   it("reports nothing to clear when no segment exists", () => {
-    expect(clearBeams(onBoard(["TtT"]))).toBe(false);
+    expect(tryClearBeams(onBoard(["TtT"]))).toBe(false);
   });
 
-  it("does nothing off the playing screen", () => {
+  it("does nothing off the playing screen, on the player's route", () => {
     const title = new RefractState();
-    expect(clearBeams(title)).toBe(false);
+    expect(tryClearBeams(title)).toBe(false);
     expect(title.screen).toBe("title");
+  });
+
+  // The transaction itself carries no screen check, because the screen is how a
+  // PLAYER reaches the action rather than a condition of the effect. The debug
+  // surface's `clear()` calls this one (specs/instrumentation.md).
+  it("empties the beams off the playing screen when the transaction is run", () => {
+    const state = onBoard(["TtT", "S.S"]);
+    press(state, { col: 0, row: 0 });
+    moveTo(state, { col: 1, row: 0 });
+    state.screen = "title";
+    expect(performClearBeams(state)).toBe(true);
+    expect(state.tracing).toBeNull();
+    expect(state.beams.every((beam) => beam.cells.length === 0)).toBe(true);
+    expect(state.screen).toBe("title");
   });
 });
 

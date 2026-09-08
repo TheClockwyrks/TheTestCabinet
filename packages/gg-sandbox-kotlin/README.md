@@ -2,15 +2,15 @@
 
 The **Kotlin** program language's toolchain pin and its hand-written SDK.
 
-| | |
-| --- | --- |
-| [`kotlin-version.sh`](kotlin-version.sh) | the Kotlin release this arm is pinned to, and the jars its compiler runs with |
-| [`src/`](src/) | the **SDK** a model's program is compiled against, and the KDoc every word a model reads is reflected out of |
-| [`../gg-sandbox-jvm/`](../gg-sandbox-jvm/) | the canonical ABI and the wire encoding, which the Java arm compiles too |
-| [`libraries.txt`](libraries.txt) | the packages this arm says a program may reach, grouped as the catalogue renders them |
-| [`build.sh`](build.sh) | compiles the SDK to `$GG_ARTIFACTS_OUT_DIR/kotlin.sdk.jar`; `crates/gg-sandbox-artifacts/kotlin` runs it on every build |
-| [`signatures.sh`](signatures.sh) | reflects `kotlin.signatures.json` out of the SDK's own KDoc, into `$GG_SIGNATURES_OUT_DIR`; `crates/gg/build.rs` runs it on every build |
-| [`tools/`](tools/) | the reflector `signatures.sh` runs, and the module table it reads |
+|                                            |                                                                                                                                         |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| [`kotlin-version.sh`](kotlin-version.sh)   | the Kotlin release this arm is pinned to, and the jars its compiler runs with                                                           |
+| [`src/`](src/)                             | the **SDK** a model's program is compiled against, and the KDoc every word a model reads is reflected out of                            |
+| [`../gg-sandbox-jvm/`](../gg-sandbox-jvm/) | the canonical ABI and the wire encoding, which the Java arm compiles too                                                                |
+| [`libraries.txt`](libraries.txt)           | the packages this arm says a program may reach, grouped as the catalogue renders them                                                   |
+| [`build.sh`](build.sh)                     | compiles the SDK to `$GG_ARTIFACTS_OUT_DIR/kotlin.sdk.jar`; `crates/gg-sandbox-artifacts/kotlin` runs it on every build                 |
+| [`signatures.sh`](signatures.sh)           | reflects `kotlin.signatures.json` out of the SDK's own KDoc, into `$GG_SIGNATURES_OUT_DIR`; `crates/gg/build.rs` runs it on every build |
+| [`tools/`](tools/)                         | the reflector `signatures.sh` runs, and the module table it reads                                                                       |
 
 ## Why the pin lives here
 
@@ -28,7 +28,7 @@ that loaded a different release is refused by number rather than left to word it
 differently. It is not a duplicate that can drift — `kotlin.compile.test.rs` fails if the two
 files ever name different releases, or if a jar in the list is at another version.
 
-## What this arm does *not* install
+## What this arm does _not_ install
 
 A JDK, and TeaVM. It compiles Kotlin to JVM bytecode and hands that bytecode to the road it
 shares with the Java arm, so `install-kotlin.sh` **runs** `install-java.sh` rather than
@@ -69,20 +69,20 @@ none of them. Standard output reaches nobody at all.
 
 The bridge is out of a program's reach, and by a stronger fence than a package alone would give
 it. Everything in [`src/gg/internal/`](src/gg/internal/) is `internal`, which in Kotlin means
-*visible inside this module* — and a model's program is compiled as its own module against this
+_visible inside this module_ — and a model's program is compiled as its own module against this
 one's jar, so it cannot name `ggCall` at all. The reflector skips that package by name, so
 nothing there can reach a model as prose.
 
 ## Where the identity of a call is written
 
 On the declaration, in its own KDoc, as `@ggop files.read_file` — never in a table beside it,
-because a table is a second place to be wrong. A declaration that is a *second* way to reach an
+because a table is a second place to be wrong. A declaration that is a _second_ way to reach an
 operation some other declaration binds carries `@ggalias` instead, and a package says which of
 gg's modules it is with a `@ggmodule` tag in the file-level KDoc above its `package` line.
 
 Those tags are written **first**, before `@param`, and that is a measured constraint. KDoc's
 parser starts a new tag at an `@` it does not know, so an `@ggop` after a `@param` or a `@return`
-arrives as its own tag — but it does *not* after a `@throws`: that tag's content swallows every
+arrives as its own tag — but it does _not_ after a `@throws`: that tag's content swallows every
 following line to the end of the comment, blank lines included. The reflector detects the
 swallowed case and names it, rather than reporting a declaration that plainly names an operation
 as one that names none.
@@ -116,7 +116,7 @@ compiles, ships, and answers every `gg.files.readFile` in every program with
 ## Which documentation tool this is, and why it is not Dokka
 
 Kotlin's documentation tool is **Dokka**, and Dokka has no JSON output: its formats are HTML,
-GFM, Jekyll and Javadoc. Emitting anything else means writing a Dokka *plugin* — a second Kotlin
+GFM, Jekyll and Javadoc. Emitting anything else means writing a Dokka _plugin_ — a second Kotlin
 artifact compiled against `dokka-core`, run through `dokka-cli` with a plugins classpath, and
 pinned separately from the compiler that compiles a model's program.
 
@@ -125,7 +125,7 @@ And Dokka reads KDoc by asking the **compiler's own front end** for it, which is
 the compiler's project, the same `KtFile` the compiler compiles is what gets read, and `KDoc` is
 the compiler's own KDoc parser rather than a regular expression over comments. The difference is
 a dependency, not a reading — and the property that decides it is the one PureScript's arm has,
-whose documentation tool *is* its compiler: **the release that describes the surface is the
+whose documentation tool _is_ its compiler: **the release that describes the surface is the
 release that compiles a program against it**, because both come out of `kotlin-version.sh`'s one
 pinned `kotlin-compiler-embeddable`.
 

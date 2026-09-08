@@ -91,11 +91,11 @@ as `attach-missed`, since there is no free hook to attach with.
 `release` is the other action. When it executes with a load attached, the
 load's pose is judged against its own target pose:
 
-| Test | Bound |
-| --- | --- |
-| Position | distance from lift point to target position at most `PLACE_POS_TOL` (`0.5`) |
-| Yaw | the wrapped difference between load yaw and target yaw at most `PLACE_YAW_TOL` (`10`) degrees |
-| Speed | the bob's speed at most `PLACE_VEL_TOL` (`0.6`) |
+| Test     | Bound                                                                                         |
+| -------- | --------------------------------------------------------------------------------------------- |
+| Position | distance from lift point to target position at most `PLACE_POS_TOL` (`0.5`)                   |
+| Yaw      | the wrapped difference between load yaw and target yaw at most `PLACE_YAW_TOL` (`10`) degrees |
+| Speed    | the bob's speed at most `PLACE_VEL_TOL` (`0.6`)                                               |
 
 The wrapped difference between two yaws is the shorter way round the circle:
 their difference in degrees brought into `0` up to but not including `360`,

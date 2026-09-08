@@ -41,7 +41,10 @@ it("marks the node the pointer is picking", async () => {
   await h.debug.setScreen("build");
 
   const at = await nodePoint(h, NODE);
-  assertTrue(at.visible, "the node to be drawn on the stage, so it can be picked");
+  assertTrue(
+    at.visible,
+    "the node to be drawn on the stage, so it can be picked",
+  );
   await h.pointerMove(at.x, at.y);
   await h.advance(1);
 
@@ -50,7 +53,10 @@ it("marks the node the pointer is picking", async () => {
 
   await h.capture("pick", "The picked node, marked under the pointer");
 
-  assertNotNull(pick.node, "a node picked under the pointer (specs/controls.md)");
+  assertNotNull(
+    pick.node,
+    "a node picked under the pointer (specs/controls.md)",
+  );
   assertTrue(
     entriesOf(drawn, "mark", "picked-node").length > 0,
     "a picked-node mark among what the frame drew (specs/ui.md)",

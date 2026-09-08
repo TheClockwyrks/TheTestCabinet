@@ -21,9 +21,14 @@
 // THE `.mid` IS CHECKED FOR PRESENCE ALONE. The specification commits it beside the
 // bed and plays the `.wav`, so what it asks of the score is that it was kept.
 //
-// THE FILES ARE READ OFF DISK, never through the engine's loader: decoding audio
-// needs a Web Audio context and this host has none, so what a build committed is
-// read directly and the point is decided by the bytes.
+// THE FILES ARE READ OFF DISK, never through the engine's loader, even though the
+// harness installs an `AudioContext` and the twelve cues really do load and bind
+// through it. This is the point that decides whether what the build COMMITTED is a
+// sound, and it is the only point that can: the harness's decoder is deliberately
+// TOLERANT, so a `.wav` the engine could not read is handed back as silence and its
+// cue binds anyway — which is what keeps a malformed cue costing this point rather
+// than the whole project — and only the bytes on disk can then say that the file
+// was malformed.
 
 import { existsSync } from "node:fs";
 import { afterEach, beforeEach, it } from "vitest";

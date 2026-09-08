@@ -60,7 +60,12 @@ import type { Component } from "./types";
  * not fall through an overlay onto the yard.
  */
 export type ControlKind =
-  "menu" | "bar" | "panel" | "press" | "overlay" | "noop";
+  | "menu"
+  | "bar"
+  | "panel"
+  | "press"
+  | "overlay"
+  | "noop";
 
 /** One hit-testable region, as drawn. */
 export interface Control {
@@ -128,7 +133,12 @@ export const MAZE_READOUT = { x: 700, y: 8, w: 120, h: 40 };
 
 /** The status bar's reads, as `specs/instrumentation.md` names them. */
 export type ReadoutName =
-  "charge" | "integrity" | "wave" | "maze-length" | "paused" | "overload";
+  | "charge"
+  | "integrity"
+  | "wave"
+  | "maze-length"
+  | "paused"
+  | "overload";
 
 /** One read of the bar, with the text it is drawing and the rectangle it drew it at. */
 export interface StatusReadout {

@@ -1290,23 +1290,53 @@ describe("the debug surface", () => {
     expect(harness.snapshot().balls.map((ball) => ball.index)).toEqual([0, 2]);
   });
 
-  it("leaves an absent ball's operations without effect", async () => {
+  // A ball that is not there is no ball to pose. A surface that quietly did
+  // nothing would let a caller read its own pose back off a field that never
+  // took it, so every one of these fails where the caller can see it.
+  it("fails loudly on an absent ball's operations", async () => {
     await openCountdown(harness, "versus");
     harness.debug.clearWorld();
 
-    harness.debug.setBallPosition(0, 100, 100);
-    harness.debug.setBallVelocity(0, 10, 10);
-    harness.debug.setBallSpin(0, 5);
-    harness.debug.setBallHeld(0, false);
-    harness.debug.setBallHoldTimer(0, 0);
+    expect(() => harness.debug.setBallPosition(0, 100, 100)).toThrow();
+    expect(() => harness.debug.setBallVelocity(0, 10, 10)).toThrow();
+    expect(() => harness.debug.setBallSpin(0, 5)).toThrow();
+    expect(() => harness.debug.setBallHeld(0, false)).toThrow();
+    expect(() => harness.debug.setBallHoldTimer(0, 0)).toThrow();
     expect(harness.snapshot().balls).toEqual([]);
 
-    // And an index this variant does not have changes nothing either.
-    harness.debug.spawnBall(BALL_COUNT);
-    harness.debug.spawnBall(-1);
-    harness.debug.spawnObstacle(9);
+    // And an index this variant does not have names nothing at all.
+    expect(() => harness.debug.spawnBall(BALL_COUNT)).toThrow();
+    expect(() => harness.debug.spawnBall(-1)).toThrow();
+    expect(() => harness.debug.spawnObstacle(9)).toThrow();
     expect(harness.snapshot().balls).toEqual([]);
     expect(harness.snapshot().obstacles).toEqual([]);
+  });
+
+  // `reconcile` is required of every build. This one works every derived reading
+  // out at the read, so the call has nothing to rewrite — which is exactly what
+  // these two assert: the readings agree with the pose, and nothing moved.
+  it("re-derives a reading from a posed velocity", async () => {
+    await openCountdown(harness, "versus");
+    harness.debug.setBallVelocity(0, 30, 40);
+    harness.debug.reconcile();
+    expect(harness.snapshot().balls[0].speed).toBeCloseTo(50, 10);
+  });
+
+  it("advances nothing", async () => {
+    await openCountdown(harness, "versus");
+    harness.debug.setBallPosition(0, 400, 300);
+    harness.debug.setBallVelocity(0, 250, -120);
+    harness.debug.setPaddleCy("left", 240);
+    harness.debug.setBallHoldTimer(1, 0.4);
+
+    const before = harness.snapshot();
+    harness.debug.reconcile();
+    const once = harness.snapshot();
+    harness.debug.reconcile();
+    const twice = harness.snapshot();
+
+    expect(once).toEqual(before);
+    expect(twice).toEqual(once);
   });
 
   it("holds one paddle at its drivenVy and leaves the other to the player", async () => {

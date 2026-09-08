@@ -24,15 +24,15 @@ other status leaves success undetermined.
 
 ## Normalized mapping
 
-| Raw record | Normalized event |
-| --- | --- |
-| `step_start` | consumed |
-| `step_finish` | consumed; carries this step's token usage, emitted as a per-turn usage event and summed into the run's [metrics](/harnesses/opencode/metrics/) |
-| `reasoning` | [reasoning](/components/core/events/#reasoning) when it carries text, otherwise consumed |
-| `text` | [agent](/components/core/events/#agent-message) message when it carries text, otherwise consumed |
-| `tool_use` | the events its tool classifies to (see [Tool mapping](#tool-mapping)) |
-| `error` | [error](/components/core/events/#harness-error) |
-| any other type | [unknown](/components/core/events/#unknown) |
+| Raw record     | Normalized event                                                                                                                               |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `step_start`   | consumed                                                                                                                                       |
+| `step_finish`  | consumed; carries this step's token usage, emitted as a per-turn usage event and summed into the run's [metrics](/harnesses/opencode/metrics/) |
+| `reasoning`    | [reasoning](/components/core/events/#reasoning) when it carries text, otherwise consumed                                                       |
+| `text`         | [agent](/components/core/events/#agent-message) message when it carries text, otherwise consumed                                               |
+| `tool_use`     | the events its tool classifies to (see [Tool mapping](#tool-mapping))                                                                          |
+| `error`        | [error](/components/core/events/#harness-error)                                                                                                |
+| any other type | [unknown](/components/core/events/#unknown)                                                                                                    |
 
 A `tool_use` whose tool name is unrecognized also becomes an unknown event, and
 a line that fails to parse as JSON becomes a
@@ -42,16 +42,16 @@ a line that fails to parse as JSON becomes a
 
 Tool names are matched case-insensitively:
 
-| OpenCode tool | Event |
-| ------------- | ----- |
-| `read` | [read](/components/core/events/#file-read) |
-| `write`, `edit` | [write](/components/core/events/#file-write) |
-| `apply_patch` | one [write](/components/core/events/#file-write) per file named by the patch markers |
-| `grep`, `glob` | [search](/components/core/events/#file-search) |
-| `bash` | [command](/components/core/events/#command), or a recognized file operation |
-| `background_process` | [command](/components/core/events/#command) when the input carries a command line, otherwise consumed |
-| `task`, `agent_manager` | [orchestration](/components/core/events/#orchestration) when the spawned agent or session is identified, otherwise [unknown](/components/core/events/#unknown) |
-| `skill` | [skill](/components/core/events/#skill) |
-| `lsp` | [search](/components/core/events/#file-search) when it carries a query or symbol, otherwise [unknown](/components/core/events/#unknown) |
-| `todo`, `todowrite`, `todoread` | consumed; the agent's internal task list |
-| any other tool | [unknown](/components/core/events/#unknown) |
+| OpenCode tool                   | Event                                                                                                                                                          |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `read`                          | [read](/components/core/events/#file-read)                                                                                                                     |
+| `write`, `edit`                 | [write](/components/core/events/#file-write)                                                                                                                   |
+| `apply_patch`                   | one [write](/components/core/events/#file-write) per file named by the patch markers                                                                           |
+| `grep`, `glob`                  | [search](/components/core/events/#file-search)                                                                                                                 |
+| `bash`                          | [command](/components/core/events/#command), or a recognized file operation                                                                                    |
+| `background_process`            | [command](/components/core/events/#command) when the input carries a command line, otherwise consumed                                                          |
+| `task`, `agent_manager`         | [orchestration](/components/core/events/#orchestration) when the spawned agent or session is identified, otherwise [unknown](/components/core/events/#unknown) |
+| `skill`                         | [skill](/components/core/events/#skill)                                                                                                                        |
+| `lsp`                           | [search](/components/core/events/#file-search) when it carries a query or symbol, otherwise [unknown](/components/core/events/#unknown)                        |
+| `todo`, `todowrite`, `todoread` | consumed; the agent's internal task list                                                                                                                       |
+| any other tool                  | [unknown](/components/core/events/#unknown)                                                                                                                    |

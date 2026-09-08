@@ -167,6 +167,7 @@ export const REQUIRED_OPS: readonly string[] = [
   "advance",
   "reset",
   "snapshot",
+  "reconcile",
   // Screens
   "setScreen",
   "choose",

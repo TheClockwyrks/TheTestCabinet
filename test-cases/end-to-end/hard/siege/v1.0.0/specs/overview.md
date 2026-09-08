@@ -123,8 +123,7 @@ seconds, and angles in degrees.
   combat cadence, redoubt damage, and spawns advance in real time (scaled by the
   elapsed time between frames), never per rendered frame, so behavior is the same
   whether a machine draws fast or slow. Use whatever integration approach you like —
-  the requirement is the observable one: the game plays the same at 30 FPS and at
-  120.
+  the requirement is the observable one: the game plays the same at 30 FPS and at 120.
 - The world is **procedurally generated with randomness** each match (the terrain
   and the spawns; see `specs/world.md` and `specs/phases.md`) — two matches should
   not lay out identically.
@@ -138,35 +137,35 @@ factions are told apart by color — the **Wardens** (you and your squad) in
 told apart by an accent that plates over the same silhouette. The canonical
 palette and type are below; match them.
 
-| Element | Color |
-| --- | --- |
-| Sky (background) | `#8fb8d6` |
-| Sky haze (horizon) | `#c2d6e4` |
-| Terrain — grass top | `#5a8f3c` |
-| Terrain — grass shadow | `#47702f` |
-| Terrain — dirt / soil | `#6b4e34` |
-| Terrain — rock / stone | `#6d6b66` |
-| Terrain — rock dark | `#4c4a46` |
-| Terrain — sand / path | `#b8a066` |
-| Redoubt structure (concrete) | `#c8ccd2` |
-| Redoubt structure (shadow) | `#9aa0a8` |
-| Warden — Cobalt (you & squad) | `#3d7bd6` |
-| Warden — Cobalt light (accent) | `#7fb0f0` |
-| Medic — Teal (squad medic) | `#2fb59a` |
-| Medic cross / heal accent | `#eafcf6` |
-| Scourge — Ember (Tier I body) | `#b83a3a` |
+| Element                           | Color     |
+| --------------------------------- | --------- |
+| Sky (background)                  | `#8fb8d6` |
+| Sky haze (horizon)                | `#c2d6e4` |
+| Terrain — grass top               | `#5a8f3c` |
+| Terrain — grass shadow            | `#47702f` |
+| Terrain — dirt / soil             | `#6b4e34` |
+| Terrain — rock / stone            | `#6d6b66` |
+| Terrain — rock dark               | `#4c4a46` |
+| Terrain — sand / path             | `#b8a066` |
+| Redoubt structure (concrete)      | `#c8ccd2` |
+| Redoubt structure (shadow)        | `#9aa0a8` |
+| Warden — Cobalt (you & squad)     | `#3d7bd6` |
+| Warden — Cobalt light (accent)    | `#7fb0f0` |
+| Medic — Teal (squad medic)        | `#2fb59a` |
+| Medic cross / heal accent         | `#eafcf6` |
+| Scourge — Ember (Tier I body)     | `#b83a3a` |
 | Scourge — Tier II plating (steel) | `#c9ced6` |
-| Scourge — Tier III trim (elite) | `#ffcf4d` |
-| Scourge — energy / eye | `#ff6a5a` |
-| Health — healthy | `#5ec96b` |
-| Health — critical | `#ff5c5a` |
-| Ammo / accent | `#ffce54` |
-| Artillery telegraph (warning) | `#ff7a3d` |
-| Artillery telegraph (imminent) | `#ff3a2f` |
-| Primary text | `#eef3f7` |
-| Secondary text | `#9fb0c0` |
-| Faint text / hints | `#6f8090` |
-| Selection / valid | `#7fb0f0` |
+| Scourge — Tier III trim (elite)   | `#ffcf4d` |
+| Scourge — energy / eye            | `#ff6a5a` |
+| Health — healthy                  | `#5ec96b` |
+| Health — critical                 | `#ff5c5a` |
+| Ammo / accent                     | `#ffce54` |
+| Artillery telegraph (warning)     | `#ff7a3d` |
+| Artillery telegraph (imminent)    | `#ff3a2f` |
+| Primary text                      | `#eef3f7` |
+| Secondary text                    | `#9fb0c0` |
+| Faint text / hints                | `#6f8090` |
+| Selection / valid                 | `#7fb0f0` |
 
 - Use a **monospace** type family for all HUD text (health, ammo, timers, labels).
   Do not depend on a downloaded web font; a system monospace stack is required so

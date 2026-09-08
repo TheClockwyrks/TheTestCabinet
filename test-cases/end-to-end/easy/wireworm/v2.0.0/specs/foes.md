@@ -35,12 +35,12 @@ giving way to active play leaves them standing too.
 
 The glitch skitters through the lower board and eats the field.
 
-| Figure | Constant | Value |
-| --- | --- | --- |
-| Horizontal speed | `GLITCH_H_SPEED` | `210` units per second |
-| Downward speed | `GLITCH_V_SPEED` | `62` units per second |
-| Dart interval | `GLITCH_DART_INTERVAL` | `0.32` s |
-| Bolts to destroy it | | `1` |
+| Figure              | Constant               | Value                  |
+| ------------------- | ---------------------- | ---------------------- |
+| Horizontal speed    | `GLITCH_H_SPEED`       | `210` units per second |
+| Downward speed      | `GLITCH_V_SPEED`       | `62` units per second  |
+| Dart interval       | `GLITCH_DART_INTERVAL` | `0.32` s               |
+| Bolts to destroy it |                        | `1`                    |
 
 ### Motion
 
@@ -84,11 +84,11 @@ points inward from that edge.
 
 The dropper falls down a column and reseeds the field beneath it.
 
-| Figure | Constant | Value |
-| --- | --- | --- |
-| Fall speed | `DROPPER_SPEED` | `150` units per second |
+| Figure                          | Constant            | Value                  |
+| ------------------------------- | ------------------- | ---------------------- |
+| Fall speed                      | `DROPPER_SPEED`     | `150` units per second |
 | Fall speed after its first bolt | `DROPPER_SPEED_HIT` | `320` units per second |
-| Bolts to destroy it | | `2` |
+| Bolts to destroy it             |                     | `2`                    |
 
 ### Motion
 
@@ -124,10 +124,10 @@ the center of a column drawn uniformly from `0` to `39` inclusive, falling.
 
 The corruptor crawls across the upper board and slams the field to critical.
 
-| Figure | Constant | Value |
-| --- | --- | --- |
-| Crawl speed | `CORRUPTOR_SPEED` | `130` units per second |
-| Bolts to destroy it | | `1` |
+| Figure              | Constant          | Value                  |
+| ------------------- | ----------------- | ---------------------- |
+| Crawl speed         | `CORRUPTOR_SPEED` | `130` units per second |
+| Bolts to destroy it |                   | `1`                    |
 
 ### Motion
 

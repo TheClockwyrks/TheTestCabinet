@@ -33,18 +33,18 @@ class PlayerController extends Controller {
 class AIController extends Controller {}
 ```
 
-| Member | Semantics |
-| --- | --- |
-| `world` | The world that holds the controller. |
-| `pawn` | The pawn the controller holds, or `null`. |
-| `playerState` | The player state built alongside the controller, carrying its index, name, and score. |
-| `possess(pawn)` | Takes `pawn`. See Possession below. |
-| `unpossess()` | Releases the held pawn. See Possession below. |
-| `beginPlay()` | Runs once, as the controller is added to the world. |
-| `tick(dt)` | Runs once per frame, before any actor ticks. `dt` is seconds. |
-| `endPlay(reason)` | Runs with `"level-closed"` when the world closes, in reverse order of addition. |
+| Member                   | Semantics                                                                                     |
+| ------------------------ | --------------------------------------------------------------------------------------------- |
+| `world`                  | The world that holds the controller.                                                          |
+| `pawn`                   | The pawn the controller holds, or `null`.                                                     |
+| `playerState`            | The player state built alongside the controller, carrying its index, name, and score.         |
+| `possess(pawn)`          | Takes `pawn`. See Possession below.                                                           |
+| `unpossess()`            | Releases the held pawn. See Possession below.                                                 |
+| `beginPlay()`            | Runs once, as the controller is added to the world.                                           |
+| `tick(dt)`               | Runs once per frame, before any actor ticks. `dt` is seconds.                                 |
+| `endPlay(reason)`        | Runs with `"level-closed"` when the world closes, in reverse order of addition.               |
 | `PlayerController.index` | The player index the controller was added under, which is the value its player state carries. |
-| `PlayerController.input` | The reader for the registered actions, the pointer, and the wheel. See `input.md`. |
+| `PlayerController.input` | The reader for the registered actions, the pointer, and the wheel. See `input.md`.            |
 
 The base class's methods do nothing, so a subclass overrides only what it needs.
 A subclass reads its input or runs its behavior in `tick` and writes to
@@ -230,7 +230,9 @@ export class ShipBot extends AIController {
     }
 
     const to = sub(ball.transform.position, pawn.transform.position);
-    if (distance(ball.transform.position, pawn.transform.position) < AI_DEADZONE) {
+    if (
+      distance(ball.transform.position, pawn.transform.position) < AI_DEADZONE
+    ) {
       pawn.drive(0, 0);
       return;
     }
@@ -278,11 +280,11 @@ is whatever it was left holding until another controller takes it.
 };
 ```
 
-| Field | Meaning |
-| --- | --- |
-| `controller` | The controller whose possession changed. |
-| `pawn` | What the controller holds after the change, and `null` for an unpossession. |
-| `previous` | What the controller held before the change, and `null` when it held nothing. |
+| Field        | Meaning                                                                      |
+| ------------ | ---------------------------------------------------------------------------- |
+| `controller` | The controller whose possession changed.                                     |
+| `pawn`       | What the controller holds after the change, and `null` for an unpossession.  |
+| `previous`   | What the controller held before the change, and `null` when it held nothing. |
 
 `GameMode.restart(controller)` destroys the controller's current pawn, spawns
 `pawnClass` at `spawnPoint(controller)`, and possesses it, returning `null` when
@@ -296,8 +298,8 @@ builds fresh controllers, player states, and pawns.
 
 ## Errors
 
-| Condition | Result |
-| --- | --- |
-| A controller's `beginPlay` throws while the start level is being built | `engine.initialize` rejects with the cause |
-| A controller's `tick` throws under `engine.run` | The error propagates to the host, and the loop schedules the next frame |
-| A controller's `tick` throws under `engine.advance` | `advance` rejects with the cause, and the remaining frames do not run |
+| Condition                                                              | Result                                                                  |
+| ---------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| A controller's `beginPlay` throws while the start level is being built | `engine.initialize` rejects with the cause                              |
+| A controller's `tick` throws under `engine.run`                        | The error propagates to the host, and the loop schedules the next frame |
+| A controller's `tick` throws under `engine.advance`                    | `advance` rejects with the cause, and the remaining frames do not run   |

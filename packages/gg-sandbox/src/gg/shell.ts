@@ -46,7 +46,10 @@ export interface ShellOutput {
  * @throws `ApiError` with `limit-exceeded` when the timeout killed the process, and `io-error`
  * when it could not be launched at all.
  */
-export function shell(command: string, options?: { timeoutSecs?: number }): ShellOutput {
+export function shell(
+  command: string,
+  options?: { timeoutSecs?: number },
+): ShellOutput {
   const o = opts<{ timeoutSecs?: number }>("shell", options);
   const timeoutSecs = positive("shell", "timeoutSecs", o?.timeoutSecs);
   return call(() => raw.shell(command, timeoutSecs));

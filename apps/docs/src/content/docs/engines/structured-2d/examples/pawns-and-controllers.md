@@ -100,9 +100,19 @@ level declares no actors: the mode spawns both paddles as it adds its players.
 ## src/actors/paddle.ts
 
 ```ts
-import { Pawn, PlayerController, ShapeComponent } from "@clockwyrks/structured-2d";
+import {
+  Pawn,
+  PlayerController,
+  ShapeComponent,
+} from "@clockwyrks/structured-2d";
 import type { Controller } from "@clockwyrks/structured-2d";
-import { HEIGHT, PADDLE_HEIGHT, PADDLE_SPEED, PADDLE_WIDTH, TAGS } from "../constants";
+import {
+  HEIGHT,
+  PADDLE_HEIGHT,
+  PADDLE_SPEED,
+  PADDLE_WIDTH,
+  TAGS,
+} from "../constants";
 
 export class Paddle extends Pawn {
   private direction = 0;

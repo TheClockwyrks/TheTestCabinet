@@ -55,6 +55,7 @@ export const FAST_DRILL_TIER = 5;
 export function armHull(h: Harness, tier: number): number {
   h.debug.setTier("hull", tier);
   h.debug.setHull(HULL_TIERS[tier - 1]);
+  h.debug.reconcile();
   return HULL_TIERS[tier - 1];
 }
 
@@ -127,6 +128,7 @@ export async function cutUnderfoot(
 export function soakIn(h: Harness, col: number, row: number): void {
   const inset = (TILE - MINER_H) / 2;
   h.debug.setMinerPosition(minerXOn(col), row * TILE + inset);
+  h.debug.reconcile();
 }
 
 /** What a driven landing did. */
@@ -169,6 +171,7 @@ export async function driveLanding(
   }
   h.debug.setMinerPosition(minerXOn(col), minerYOn(floorRow) - height);
   h.debug.setMinerVelocity(0, vy);
+  h.debug.reconcile();
   const before = h.snapshot().miner.hull;
   let fastest = 0;
   const swept = await h.until(

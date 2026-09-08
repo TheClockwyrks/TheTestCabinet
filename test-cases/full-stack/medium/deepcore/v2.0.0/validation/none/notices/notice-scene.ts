@@ -62,6 +62,7 @@ export async function openNoticeScene(h: Harness): Promise<void> {
   await openScene(h);
   await h.debug.setTier("hull", SCENE_HULL_TIER);
   await h.debug.setHull(SCENE_HULL);
+  await h.debug.reconcile();
   await pinMiner(h);
 }
 
@@ -73,6 +74,7 @@ async function standWhilePinned(
 ): Promise<void> {
   await h.debug.setMinerPosition(minerXOn(col), minerYOn(row));
   await h.debug.setMinerVelocity(0, 0);
+  await h.debug.reconcile();
 }
 
 /** What a driven hazard cut did to the miner. */

@@ -9,6 +9,16 @@
 // reaches the game the way anything reaches it: over the surface
 // `specs/instrumentation.md` told the build to install.
 //
+// RECONCILING AFTER A POSE. A helper here that poses anything a reading derives
+// from ends with `reconcile`, so a check that poses through these helpers never
+// calls it itself. Shatter's derived readings are the ship's `speed`, each rock's
+// `radius` and, on `warhead`, `torpedoReady` — so `startPlaying` and `poseRock`
+// carry the call and the helpers that only add a bullet, a saucer or a torpedo do
+// not. A check that poses with `h.debug.set...` DIRECTLY, outside these helpers,
+// calls `reconcile` once itself before its first read or sweep. It costs no
+// simulation time, so it never moves a measurement that begins at a posed rest
+// state, which is exactly what stepping a frame to refresh a reading would do.
+//
 // AND NONE OF THAT MACHINERY IS SHATTER'S. Serving the build, holding one
 // browser, bracketing each driven tick around one step of the surface, recording
 // what the build drew and reading pixels and draw calls back out is what EVERY
@@ -123,6 +133,7 @@ import {
   createCaseHarness,
   darkestOf,
   drawnText,
+  drawnTextLines,
   touchGlide,
   touchPress,
   touchRelease,
@@ -182,6 +193,7 @@ export const REQUIRED_OPS = [
   // The core.
   "reset",
   "snapshot",
+  "reconcile",
   "menuItemRect",
   // The screen and the run.
   "setScreen",
@@ -428,6 +440,15 @@ export interface ShatterDebugApi {
   advance(ticks: number): Promise<void>;
   reset(): Promise<void>;
   snapshot(): Promise<ShatterSnapshot>;
+  /**
+   * Brings every value the snapshot reports into agreement with the field as it
+   * stands, without advancing anything (`specs/instrumentation.md`).
+   *
+   * A build that works its derived readings out at the read has nothing to do
+   * here; a build that keeps one as a stored copy rewrites it from its source.
+   * It is what a driver calls after posing a field and before reading it back.
+   */
+  reconcile(): Promise<void>;
   menuItemRect(index: number): Promise<Rect | null>;
 
   setScreen(screen: Screen): Promise<void>;
@@ -630,7 +651,7 @@ export {
   closeWorkerBrowser,
   colorDistance,
   drawOps,
-  drewText,
+  drawnTextRuns,
   luminance,
   sampleColor,
   textDraws,
@@ -823,16 +844,26 @@ export async function stops(h: Harness): Promise<number> {
  * The stricter sibling of the package's `drewText`, for the copy `specs/ui.md`
  * requires as a word rather than as a substring — the how-to screen's `SPACE`,
  * `ARROWS`, `WASD`, `ESC`, `P` and `M`. A screen reading "press the spacebar"
- * contains `space` and names no key the specification named. Read off the RAW
- * text calls rather than off the coalesced runs, because a token is a token
- * wherever the build chose to break its drawing.
+ * contains `space` and names no key the specification named.
+ *
+ * Read off the RAW text calls AND off the logical runs they spell. A token is a
+ * token wherever the build chose to break its drawing — but a build that
+ * letter-spaces its how-to copy breaks it at every glyph, which is the only
+ * portable way to letter-space canvas text, and no glyph is the word. This
+ * harness asks for `measureText`, so the package's `drawnTextLines` can
+ * coalesce side-by-side glyphs on one baseline back into the word they spell
+ * (`case-harness/text.ts`). The raw strings stay in the reading because the
+ * same rule can glue two words the build set a bare space apart, in two calls,
+ * into one, and a word that stood alone in a call stood alone on the screen.
  */
 export function drewWord(calls: readonly DrawCall[], word: string): boolean {
   const pattern = new RegExp(
     `(^|[^A-Za-z0-9])${word.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^A-Za-z0-9]|$)`,
     "i",
   );
-  return drawnText(calls).some((drawn) => pattern.test(drawn));
+  return [...drawnText(calls), ...drawnTextLines(calls)].some((drawn) =>
+    pattern.test(drawn),
+  );
 }
 
 /**
@@ -1192,6 +1223,9 @@ export async function startPlaying(
     ["setFireCooldown", 0],
   ];
   if (torpedoes) calls.push(["setTorpedoCharge", 1]);
+  // LAST IN THE BATCH, so the readings agree with the field this posed before
+  // anything reads it, and the crossing count does not grow by one for it.
+  calls.push(["reconcile"]);
   await batch(h, calls);
 }
 
@@ -1261,6 +1295,9 @@ export async function poseRock(
     );
   }
   await h.debug.setRockVelocity(added.id, vx, vy);
+  // The rock's `radius` follows the size this just added, so the readings are
+  // brought into agreement before the caller reads any of them back.
+  await h.debug.reconcile();
   return added.id;
 }
 

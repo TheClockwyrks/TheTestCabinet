@@ -15,9 +15,10 @@
 // "exactly as confirming `HOW TO PLAY` does" (specs/instrumentation.md), and
 // one frame.
 //
-// THE TOLERANCE. The reading is the clock's own spelling, matched as whole
-// digits in order through `drewPhrase`, so a build that writes it inside a
-// sentence passes and one that writes another figure fails.
+// THE TOLERANCE. The reading is the clock's own spelling, matched as a whole
+// token of the frame's text through `hasToken`, so a build that writes it
+// inside a sentence passes and one that writes another figure, or this one
+// inside a longer figure, fails.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
@@ -25,8 +26,9 @@ import { DAWN_TICK, clockText } from "../constants";
 import {
   captureStill,
   createHarness,
-  drewPhrase,
+  hasToken,
   poseScene,
+  textReadings,
   type Harness,
 } from "../harness";
 
@@ -48,7 +50,7 @@ it("names the clock the night ends at", async () => {
   captureStill(h, "dawn");
 
   assertEqual(
-    drewPhrase(calls, clockText(DAWN_TICK)),
+    hasToken(textReadings(calls), clockText(DAWN_TICK)),
     true,
     `the how-to frame draws ${clockText(DAWN_TICK)}, the clock the night ends at`,
   );

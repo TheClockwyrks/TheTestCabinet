@@ -133,7 +133,11 @@ it("agrees a pivot with a rotation that turn about one hex in one direction", as
     "running",
     "a cycle that raises no fault leaves the run running",
   );
-  assertEqual(sim?.cycle, 1, "the cycle ran to its boundary rather than freezing");
+  assertEqual(
+    sim?.cycle,
+    1,
+    "the cycle ran to its boundary rather than freezing",
+  );
   assertNear(
     sim?.fraction ?? -1,
     0,

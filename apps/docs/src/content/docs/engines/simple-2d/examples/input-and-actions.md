@@ -112,7 +112,11 @@ export const hopper: Game<HopperState, null> = {
     ];
   },
 
-  update(state: DeepReadonly<HopperState>, api: UpdateApi, dt: number): HopperState {
+  update(
+    state: DeepReadonly<HopperState>,
+    api: UpdateApi,
+    dt: number,
+  ): HopperState {
     const paused = api.input.pressed("pause") ? !state.paused : state.paused;
     if (paused) return { ...state, paused };
 
@@ -129,7 +133,14 @@ export const hopper: Game<HopperState, null> = {
     const y = state.y + vy * dt;
 
     if (y >= GROUND - SIZE) {
-      return { ...launched, x, y: GROUND - SIZE, vy: 0, grounded: true, paused };
+      return {
+        ...launched,
+        x,
+        y: GROUND - SIZE,
+        vy: 0,
+        grounded: true,
+        paused,
+      };
     }
     return { ...launched, x, y, vy, paused };
   },

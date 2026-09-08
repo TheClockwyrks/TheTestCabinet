@@ -38,10 +38,10 @@ through an inversion.
 When one of the player's bullets contacts a drone, the two effective bands decide
 the outcome, and nothing else does.
 
-| Case | Outcome |
-| --- | --- |
+| Case                                           | Outcome                                                            |
+| ---------------------------------------------- | ------------------------------------------------------------------ |
 | The bullet's effective band equals the drone's | The drone's exposed layer is destroyed, and the bullet is consumed |
-| The bullet's effective band is the opposite | The drone is not destroyed, and the bullet is consumed |
+| The bullet's effective band is the opposite    | The drone is not destroyed, and the bullet is consumed             |
 
 A mismatched shot destroys nothing and is consumed on contact rather than passing
 through. What else it does to the drone belongs to the mode this build ships, and
@@ -55,10 +55,10 @@ which a Flux can and cannot be destroyed.
 The ship's current band is also its hull's shield. When an enemy bullet contacts the
 ship, the enemy bullet's effective band against the ship's band decides the outcome.
 
-| Case | Outcome |
-| --- | --- |
+| Case                        | Outcome                                                                |
+| --------------------------- | ---------------------------------------------------------------------- |
 | The same band as the ship's | The bullet is absorbed and leaves the roster, and the ship is unharmed |
-| The opposite band | The ship is hit, and the bullet leaves the roster |
+| The opposite band           | The ship is hit, and the bullet leaves the roster                      |
 
 `specs/resonance.md` states what an absorbed bullet adds to the meter, and
 `specs/progression.md` what a hit costs.

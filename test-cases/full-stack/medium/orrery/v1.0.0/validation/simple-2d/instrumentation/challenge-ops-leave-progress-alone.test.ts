@@ -27,11 +27,7 @@
 // `last` stand unchanged across all three openings.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertDeepEqual,
-  assertEqual,
-  assertNotNull,
-} from "../assert";
+import { assertDeepEqual, assertEqual, assertNotNull } from "../assert";
 import { at } from "../field";
 import { REPEATING } from "../fixtures";
 import {

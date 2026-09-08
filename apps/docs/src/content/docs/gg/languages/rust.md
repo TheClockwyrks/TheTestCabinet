@@ -133,7 +133,7 @@ written into that build's output directory and embedded from there. It is parsed
 once per process and asserted to carry `rust` as its language. Reflection needs
 the generated `src/bindings.rs`, cut by `bindings.sh`, which both
 `signatures.sh` and `build.sh` call. Rust has no per-parameter doc slot, so a
-signature taking *N* arguments documents *N* under a `# Arguments` heading, in
+signature taking _N_ arguments documents _N_ under a `# Arguments` heading, in
 order, under their own names. A `# Errors` heading names the error types a
 function declares, and the catalogue carries those types as that function's
 `throws` list.

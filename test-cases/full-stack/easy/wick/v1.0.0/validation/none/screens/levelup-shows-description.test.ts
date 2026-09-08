@@ -31,10 +31,11 @@
 // slot at its max. The overlay ticks nothing, so each frame read is the overlay
 // as it opened.
 //
-// THE TOLERANCE. The copy is matched folded — lower-cased, with spaces, dashes
-// and underscores removed, across consecutive runs of text — so a build that
-// letter-spaces a line or wraps it in marks of its own passes, and the lines
-// stay distinct from the offer names under that folding. "Beneath the offer
+// THE TOLERANCE. The copy is matched ignoring case and whitespace, across the
+// runs of text the frame drew joined in reading order (the shared harness's
+// `drewTextAnywhere`) — so a build that letter-spaces a line or wraps it in
+// marks of its own passes, and the lines stay distinct from the offer names
+// under that reading. "Beneath the offer
 // list" is a strict inequality between two drawn rows, which no tolerance can
 // soften.
 

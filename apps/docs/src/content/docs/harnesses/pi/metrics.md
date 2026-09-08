@@ -13,12 +13,12 @@ across every message of the run.
 
 The normalized classes are derived from these keys within `message.usage`:
 
-| Token class | Pi key |
-| ----------- | ------ |
+| Token class    | Pi key                               |
+| -------------- | ------------------------------------ |
 | Uncached input | `input`, plus any `cacheWrite` count |
-| Cached input | `cacheRead` |
-| Output | `output` |
-| Reasoning | (not reported) |
+| Cached input   | `cacheRead`                          |
+| Output         | `output`                             |
+| Reasoning      | (not reported)                       |
 
 Pi's `input` is the uncached prompt and excludes cached reads, which sit beside
 it under `cacheRead` and become the

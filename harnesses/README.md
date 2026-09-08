@@ -35,12 +35,12 @@ that one harness and are absent from every image any other harness runs in.
 
 Each `harness.toml` declares:
 
-| Field | Meaning |
-| --- | --- |
-| `slug` | Stable slug; must match the directory name and a slug the agent harness layer knows. |
-| `name` | Human-readable name, shown by `tcab harnesses`. |
-| `binary` | The CLI binary a run probes (`<binary> --version`) and invokes. The installer must put it on the run user's `PATH`. |
-| `install` | Shell command run inside the run container, before the session, to install the CLI. |
+| Field     | Meaning                                                                                                             |
+| --------- | ------------------------------------------------------------------------------------------------------------------- |
+| `slug`    | Stable slug; must match the directory name and a slug the agent harness layer knows.                                |
+| `name`    | Human-readable name, shown by `tcab harnesses`.                                                                     |
+| `binary`  | The CLI binary a run probes (`<binary> --version`) and invokes. The installer must put it on the run user's `PATH`. |
+| `install` | Shell command run inside the run container, before the session, to install the CLI.                                 |
 
 The `install` command runs through `sh -c` as the container's unprivileged run
 user, with the same environment the session uses — the base image's `PATH`

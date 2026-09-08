@@ -66,7 +66,10 @@ it("leaves the path as it stands when the pointer skips a hex", async () => {
     !adjacent(ORIGIN, DISTANT),
     "the hex the pointer jumps to is two steps from the live end, not one",
   );
-  assertTrue(adjacent(ORIGIN, NEAR), "and the hex it steps to afterwards is one");
+  assertTrue(
+    adjacent(ORIGIN, NEAR),
+    "and the hex it steps to afterwards is one",
+  );
 
   await openChallengeDocument(h, BARE);
   const track = await placeTrack(h, [ORIGIN]);

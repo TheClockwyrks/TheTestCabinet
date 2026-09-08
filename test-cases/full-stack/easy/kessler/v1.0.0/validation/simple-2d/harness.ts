@@ -27,6 +27,15 @@
 // hit, destruction, catch, burn-up, life loss, and clearing comes from the ticks
 // run after the pose".
 //
+// RECONCILING AFTER A POSE. `reconcile()` brings every reading the surface
+// reports into agreement with the field a pose has just arranged, without
+// advancing anything, so a build that keeps a derived reading as a stored copy
+// answers for the field as posed rather than as it was. A helper below that
+// poses anything a reading derives from — a ball, a pod, a target, an effect
+// timer — reconciles before it returns, so a check posing through the helpers
+// never calls it itself. A check that poses with `h.debug.set…` directly calls
+// it once before its first read or sweep.
+//
 // WHY THE DEBUG SURFACE RATHER THAN RAW ASSIGNMENT. `specs/instrumentation.md`
 // fixes its operations, so they mean the same thing in every build; posing
 // through it is how a scenario is staged, and it is the seam the case's
@@ -414,25 +423,6 @@ export function textDraws(calls: readonly DrawCall[]): TextDraw[] {
 }
 
 /**
- * Whether the frame drew `text` as part of some RAW run of text, ignoring case.
- *
- * Substring rather than equality on purpose: the copy a check asserts is the
- * case's own, but how a build presents it is the build's, and a menu entry is
- * commonly drawn with a selection marker or padding around it.
- *
- * KESSLER'S OWN, over the package's `drawnText`. The package ships a `drewText`
- * of its own and it is a different reading: it matches against the LOGICAL runs
- * a frame spells, which merges the glyphs of a letter-spaced heading into one
- * string. Kessler's copy points were all decided against the raw calls, so this
- * composes the package's raw reading rather than binding a name whose meaning
- * would be the other one.
- */
-export function drewText(calls: readonly DrawCall[], text: string): boolean {
-  const wanted = text.trim().toLowerCase();
-  return drawnText(calls).some((drawn) => drawn.toLowerCase().includes(wanted));
-}
-
-/**
  * Every bitmap the recorded calls blitted, as axis-aligned boxes in device
  * pixels: the four corners of each destination rectangle mapped through the
  * transform in force at the call, and the box taken around them, so a sprite
@@ -711,10 +701,11 @@ const runningLoops = new WeakMap<object, Set<string>>();
  *
  * The recorder is asked for both extras, and each pays for itself:
  * `measureText` is what gives a text draw the extent `hud/hud-clear-of-field`
- * holds the HUD clear of the field by, and `internImages` is what gives a
- * `drawImage` an identity {@link sourceId} can turn into the produced file it
- * painted — the reading every produced-sprite point in this project is decided
- * on.
+ * holds the HUD clear of the field by, and the width the package's merge rule
+ * coalesces a letter-spaced heading by, which is what the package's
+ * `drewText` reads copy off; `internImages` is what gives a `drawImage` an
+ * identity {@link sourceId} can turn into the produced file it painted — the
+ * reading every produced-sprite point in this project is decided on.
  *
  * `cueEvents` names BOTH firings, because `specs/assets.md` gives this case two
  * music beds beside its thirteen one-shot cues and a bed is announced as a loop;
@@ -985,6 +976,7 @@ export function isolate(h: Harness): KesslerSnapshot {
   h.debug.clearPods();
   h.debug.setWaveAdvance(false);
   h.debug.setPodSpawn(false);
+  h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -1036,6 +1028,7 @@ export function spawnBallPolar(
   const at = polarToXy(r, deg);
   const v = polarVelocity(deg, vr, vt);
   h.debug.spawnBall(at.x, at.y, v.vx, v.vy);
+  h.debug.reconcile();
 }
 
 /** Spawn a pod of `kind` at radius `r` and angle `deg`. It falls inward. */
@@ -1047,6 +1040,7 @@ export function spawnPodPolar(
 ): void {
   const at = polarToXy(r, deg);
   h.debug.spawnPod(kind, at.x, at.y);
+  h.debug.reconcile();
 }
 
 /**
@@ -1077,6 +1071,7 @@ export function startFreshSession(h: Harness): KesslerSnapshot {
   h.reset();
   h.debug.setScreen("playing");
   h.debug.parkBall();
+  h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -1101,6 +1096,7 @@ export function poseInterstitial(
   h.debug.setShield(false);
   h.debug.setInterstitialTicks(ticks);
   h.debug.setScreen("waveclear");
+  h.debug.reconcile();
   return h.snapshot();
 }
 

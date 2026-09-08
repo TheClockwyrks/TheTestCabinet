@@ -10,10 +10,10 @@
 // nothing else — so the banner is read over a screen a cleared wave would leave.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertMatches } from "../assert";
+import { assertEqual, assertTrue } from "../assert";
+import { drewTextAnywhere } from "../case-harness/text";
 import {
   captureStill,
-  drawnText,
   openHarness,
   poseInterstitial,
   type Harness,
@@ -36,10 +36,13 @@ it("draws a banner announcing the cleared wave", async () => {
   const { calls } = await h.frameDraw();
   await captureStill(h, "banner");
 
-  const text = drawnText(calls).join(" ").toLowerCase();
-  assertMatches(
-    text,
-    /wave|clear/,
+  // Off the logical runs the frame spells, not the raw calls: a banner that
+  // is letter-spaced is drawn one glyph per call, and only the coalesced run
+  // (`case-harness/text.ts`) reads as the word. Across every baseline, because
+  // the banner's wording is the build's and may wrap. Every raw string is a
+  // substring of its run, so this can only add a match.
+  assertTrue(
+    drewTextAnywhere(calls, "wave") || drewTextAnywhere(calls, "clear"),
     "banner text announcing the cleared wave on the waveclear frame",
   );
 });

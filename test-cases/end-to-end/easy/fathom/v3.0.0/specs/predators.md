@@ -110,12 +110,12 @@ the order `ROSTER_ADD_ORDER`: a Gloamfin, then a Lanternjaw, then a Flarefish. F
 `ROSTER_CAP_DEPTH` (`4`) on the roster holds at `ROSTER_CAP`, two of each kind and six
 predators in all, for every deeper maze.
 
-| `depth` | Lanternjaw | Gloamfin | Flarefish | Release order |
-| --- | --- | --- | --- | --- |
-| `1` | 1 | 1 | 1 | Lanternjaw, Gloamfin, Flarefish |
-| `2` | 1 | 2 | 1 | the above, then a Gloamfin |
-| `3` | 2 | 2 | 1 | the above, then a Lanternjaw |
-| `4` and deeper | 2 | 2 | 2 | the above, then a Flarefish |
+| `depth`        | Lanternjaw | Gloamfin | Flarefish | Release order                   |
+| -------------- | ---------- | -------- | --------- | ------------------------------- |
+| `1`            | 1          | 1        | 1         | Lanternjaw, Gloamfin, Flarefish |
+| `2`            | 1          | 2        | 1         | the above, then a Gloamfin      |
+| `3`            | 2          | 2        | 1         | the above, then a Lanternjaw    |
+| `4` and deeper | 2          | 2        | 2         | the above, then a Flarefish     |
 
 An added predator takes the next den slot after the ones already there, so its release
 time is `DEN_RELEASE_GAP` later than the previous predator's, and the snapshot lists the

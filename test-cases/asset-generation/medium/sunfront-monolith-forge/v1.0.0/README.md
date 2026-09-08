@@ -19,10 +19,10 @@ pieces, attaching them where they belong, and animating them convincingly. The
 required animations are declared in `test-case.toml`'s `[model]` table as
 declarations only, and the model authors their F-curve keyframes at run time:
 
-| Animation | loop | auto_play | What it must show |
-| --- | --- | --- | --- |
-| `hammer_stamp` | yes | yes | The great hammer pounds straight down deep into the throat and back up, landing with weight. |
-| `crown_spin` | yes | yes | The gear crown turns one steady full revolution atop the forge and loops seamlessly. |
+| Animation      | loop | auto_play | What it must show                                                                            |
+| -------------- | ---- | --------- | -------------------------------------------------------------------------------------------- |
+| `hammer_stamp` | yes  | yes       | The great hammer pounds straight down deep into the throat and back up, landing with weight. |
+| `crown_spin`   | yes  | yes       | The gear crown turns one steady full revolution atop the forge and loops seamlessly.         |
 
 Both animations are `auto_play` self-playing idles, so the forge cycles on its
 own with no caller, while the forge tower stays fixed. The model may add extra

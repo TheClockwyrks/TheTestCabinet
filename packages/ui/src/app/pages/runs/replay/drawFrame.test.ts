@@ -249,8 +249,8 @@ function capture(overrides: Partial<BitmapImage> = {}): CapturedImage {
   };
 }
 
-/** A `bitmap` entry, named so a fixture can be given one field of it. */
-type BitmapImage = Extract<CapturedImage, { kind: "bitmap" }>;
+/** An INLINE `bitmap` entry, named so a fixture can be given one field of it. */
+type BitmapImage = Extract<CapturedImage, { kind: "bitmap"; src: string }>;
 
 /**
  * A captured pixel buffer, carrying the bytes themselves.
@@ -1645,9 +1645,16 @@ describe("a frame the recorder had to cut down", () => {
 });
 
 describe("the images a build blits", () => {
-  /** What an entry carries: a bitmap's PNG, or a pixel buffer's bytes. */
+  /**
+   * What an entry carries: a bitmap's PNG, a pixel buffer's bytes, or the name of
+   * the file it keeps them in.
+   */
   const carried = (image: CapturedImage): string =>
-    image.kind === "bitmap" ? image.src : image.data;
+    "store" in image
+      ? image.store
+      : image.kind === "bitmap"
+        ? image.src
+        : image.data;
 
   /** Decode every capture to a sentinel naming what it carried, as a browser would to pixels. */
   const decodesToSentinel = async (
@@ -1741,7 +1748,7 @@ describe("the images a build blits", () => {
     expect(report.drawn).toBe(2);
     expect(report.skipped).toBe(1);
     expect(report.unreproducible).toEqual([
-      "an image that could not be decoded",
+      "an image that could not be loaded",
     ]);
   });
 
@@ -2001,5 +2008,137 @@ describe("decoding a captured image", () => {
       }),
     );
     expect(resources.images).toEqual([null]);
+  });
+
+  // ---- Entries kept beside the recording ---------------------------------
+  //
+  // A writer with somewhere to put them stores an image's bytes in a flat file and
+  // leaves the entry naming that file. The name is resolved by the caller, through
+  // the same function that produced the recording's own URL, because the file lives
+  // in the same namespace the recording does — deriving it here from the recording's
+  // URL would name a file that does not exist wherever the host keys media by a
+  // content digest, which the published gallery does.
+
+  it("loads a stored bitmap from the URL the resolver answers", async () => {
+    stubImages("decodes");
+    const recording = recordingOf({
+      images: [{ kind: "bitmap", width: 16, height: 16, store: "img.ab.png" }],
+    });
+    const asked: string[] = [];
+    const resources = await prepareRecording(recording, undefined, (file) => {
+      asked.push(file);
+      return `https://media.example/runs/r1/validation/${file}`;
+    });
+    // The file NAME reaches the resolver; the URL reaches the image element. A
+    // stored bitmap goes through the very same element an inline one does, which is
+    // what gets it the browser's HTTP cache across every replay of the run.
+    expect(asked).toEqual(["img.ab.png"]);
+    expect((resources.images[0] as HTMLImageElement).src).toBe(
+      "https://media.example/runs/r1/validation/img.ab.png",
+    );
+  });
+
+  it("rebuilds a stored pixel buffer from the raw bytes it fetches", async () => {
+    // Stored raw rather than base64: a file has no reason to pay base64's third,
+    // and this is the one kind of image a check compares byte for byte, so the
+    // bytes that come back have to be the bytes that were captured.
+    stubImageData();
+    const bytes = [200, 100, 50, 128, 1, 2, 3, 255];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        expect(url).toBe("https://media.example/img.cd.bin");
+        return new Response(new Uint8Array(bytes));
+      }),
+    );
+    const resources = await prepareRecording(
+      recordingOf({
+        images: [{ kind: "pixels", width: 2, height: 1, store: "img.cd.bin" }],
+      }),
+      undefined,
+      (file) => `https://media.example/${file}`,
+    );
+    const rebuilt = resources.images[0] as ImageData;
+    expect([...rebuilt.data]).toEqual(bytes);
+    expect(rebuilt.width).toBe(2);
+    expect(rebuilt.height).toBe(1);
+  });
+
+  it("refuses a stored pixel buffer that is not the size it says it is", async () => {
+    // The length check is the one thing this format is exact about, and it has to
+    // hold whichever way the bytes arrived — otherwise the stored path is a second
+    // way in that skips it.
+    stubImageData();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(new Uint8Array([1, 2, 3, 4]))),
+    );
+    const resources = await prepareRecording(
+      recordingOf({
+        images: [{ kind: "pixels", width: 2, height: 2, store: "img.ef.bin" }],
+      }),
+      undefined,
+      (file) => `https://media.example/${file}`,
+    );
+    expect(resources.images).toEqual([null]);
+  });
+
+  it("reports a stored buffer the host would not serve", async () => {
+    // An error page is bytes too. Rebuilding an `ImageData` out of one would put a
+    // wall of noise on the canvas and report the frame as clean.
+    stubImageData();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("nope", { status: 404 })),
+    );
+    const resources = await prepareRecording(
+      recordingOf({
+        images: [{ kind: "pixels", width: 1, height: 1, store: "img.gh.bin" }],
+      }),
+      undefined,
+      (file) => `https://media.example/${file}`,
+    );
+    expect(resources.images).toEqual([null]);
+  });
+
+  it("reports a stored entry no resolver can reach", async () => {
+    // Two ways a host has nothing to reach the files with: it supplied no resolver
+    // at all (every showcase call site), or its resolver answers nothing for this
+    // name. Both are the `null` entry an undecodable PNG becomes, so the replay
+    // plays with the operations naming it skipped and named — never a hole reported
+    // as a clean frame.
+    stubImages("decodes");
+    const recording = recordingOf({
+      images: [{ kind: "bitmap", width: 4, height: 4, store: "img.ij.png" }],
+    });
+    expect((await prepareRecording(recording)).images).toEqual([null]);
+    expect(
+      (await prepareRecording(recording, undefined, () => null)).images,
+    ).toEqual([null]);
+  });
+
+  it("prefers the stored bytes of an entry that carries both", async () => {
+    // Over-specified rather than damaged: the parser accepts it, and the decoder
+    // takes the stored side so an entry's two payloads can never be drawn as two
+    // different pictures depending on which reader met it.
+    stubImages("decodes");
+    const resources = await prepareRecording(
+      recordingOf({
+        images: [
+          {
+            kind: "bitmap",
+            width: 4,
+            height: 4,
+            src: "data:image/png;base64,AAAA",
+            store: "img.kl.png",
+          } as unknown as CapturedImage,
+        ],
+      }),
+      undefined,
+      (file) => `https://media.example/${file}`,
+    );
+    expect((resources.images[0] as HTMLImageElement).src).toBe(
+      "https://media.example/img.kl.png",
+    );
   });
 });

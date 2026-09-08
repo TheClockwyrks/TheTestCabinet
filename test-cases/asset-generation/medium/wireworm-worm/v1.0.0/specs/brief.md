@@ -46,14 +46,14 @@ seamlessly:
 
 ## What goes in each frame
 
-| Frame | Part & pose | Contents |
-| --- | --- | --- |
-| 0 | **head — closed** | The segment plate plus a head: a red sensor **eye** high on the plate and two pale **mandibles** meeting closed at the leading (right) edge. |
-| 1 | **head — chomp** | Same head with the mandibles **open** (spread apart at the right edge) — the bite pose. |
-| 2 | **body — pose A** | A plain body segment, seam and plate at their neutral position. |
-| 3 | **body — pose B** | The same body segment with the plate and seam nudged ~2 px (the crawl wiggle) so 2↔3 reads as undulation, not a jitter. |
-| 4 | **tail — pose A** | An end segment tapering to a rounded point at the trailing (left) edge; no left link nub. |
-| 5 | **tail — pose B** | The tail wiggled ~2 px like the body, so 4↔5 reads as the tail swishing. |
+| Frame | Part & pose       | Contents                                                                                                                                     |
+| ----- | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0     | **head — closed** | The segment plate plus a head: a red sensor **eye** high on the plate and two pale **mandibles** meeting closed at the leading (right) edge. |
+| 1     | **head — chomp**  | Same head with the mandibles **open** (spread apart at the right edge) — the bite pose.                                                      |
+| 2     | **body — pose A** | A plain body segment, seam and plate at their neutral position.                                                                              |
+| 3     | **body — pose B** | The same body segment with the plate and seam nudged ~2 px (the crawl wiggle) so 2↔3 reads as undulation, not a jitter.                      |
+| 4     | **tail — pose A** | An end segment tapering to a rounded point at the trailing (left) edge; no left link nub.                                                    |
+| 5     | **tail — pose B** | The tail wiggled ~2 px like the body, so 4↔5 reads as the tail swishing.                                                                     |
 
 Make the parts read as **one creature**:
 
@@ -72,14 +72,14 @@ Make the parts read as **one creature**:
 Use only these colors (the drawing is regenerated pixel-for-pixel, so stray or
 off-palette colors and anti-aliased fringes count against you):
 
-| Role | Hex |
-| --- | --- |
-| Carapace — mid (plate fill) | `#7a2fae` |
-| Carapace — dark (bottom shade) | `#2a1533` |
+| Role                                 | Hex       |
+| ------------------------------------ | --------- |
+| Carapace — mid (plate fill)          | `#7a2fae` |
+| Carapace — dark (bottom shade)       | `#2a1533` |
 | Carapace — edge (outline, top glint) | `#c06bff` |
-| Data seam (magenta underglow) | `#ff3fa4` |
-| Sensor eye (head only) | `#ff5a3c` |
-| Mandible (pale, head only) | `#f2d9ff` |
+| Data seam (magenta underglow)        | `#ff3fa4` |
+| Sensor eye (head only)               | `#ff5a3c` |
+| Mandible (pale, head only)           | `#f2d9ff` |
 
 ## Working the tool
 

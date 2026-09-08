@@ -34,10 +34,10 @@ import {
   captureStill,
   createHarness,
   drawnTextSpans,
-  drewText,
   startPosed,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 import { PLAY_FIELD, drawFrame, insideBand, runCarrying } from "./reading";
 
 let h: Harness;

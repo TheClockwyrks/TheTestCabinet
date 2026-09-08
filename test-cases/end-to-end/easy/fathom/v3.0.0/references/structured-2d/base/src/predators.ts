@@ -94,6 +94,27 @@ export function sensesLight(predator: Predator, trench: Trench): boolean {
  * fires the detection alert. The Lanternjaw fires none, and carries its bulb as
  * a standing tell instead.
  */
+/**
+ * The rate a predator travels at in the `state` it is in (`specs/state.md`).
+ *
+ * The one place the rule lives: every update below assigns through it, and the
+ * surface's `reconcile` brings a reported `speed` back into agreement with a
+ * posed `state` through the same call, so the two can never say different
+ * things. An undetected Lanternjaw drifts at exactly a bonus drifter's pace, so
+ * its bulb cannot be told from one; a chasing Gloamfin runs at the chase speed
+ * its ramp has reached and a corner has knocked down.
+ */
+export function predatorSpeed(predator: Predator): number {
+  if (predator.state === "den") return PREDATOR_SPEED;
+  if (predator.kind === "lanternjaw") {
+    return predator.state === "chase" ? PREDATOR_SPEED : DRIFTER_SPEED;
+  }
+  if (predator.kind === "gloamfin" && predator.state === "chase") {
+    return predator.chaseSpeed;
+  }
+  return PREDATOR_SPEED;
+}
+
 export function acquireFix(
   predator: Predator,
   trench: Trench,
@@ -147,7 +168,7 @@ function travelBody(
 
 function swimOutOfDen(predator: Predator, dt: number, trench: Trench): void {
   const { maze } = trench;
-  predator.speed = PREDATOR_SPEED;
+  predator.speed = predatorSpeed(predator);
   const gate = maze.gate;
   if (!predator.released || gate === null) {
     predator.heading = null;
@@ -204,7 +225,7 @@ function updateLanternjaw(
 
   // Undetected it drifts at exactly a bonus drifter's pace, and on a drifter's
   // wander, so its bulb cannot be told from one until it finds the forager.
-  predator.speed = predator.state === "chase" ? PREDATOR_SPEED : DRIFTER_SPEED;
+  predator.speed = predatorSpeed(predator);
 }
 
 // ---- The Gloamfin --------------------------------------------------------
@@ -237,7 +258,7 @@ function updateGloamfin(predator: Predator, dt: number, trench: Trench): void {
       GLOAMFIN_CHASE_SPEED,
       predator.chaseSpeed + RAMP_RATE * dt,
     );
-    predator.speed = predator.chaseSpeed;
+    predator.speed = predatorSpeed(predator);
     const fix = predator.fix;
     const here = bodyCell(predator);
     if (fix && sameCell(here, fix) && !sameCell(bodyCell(forager), fix)) {
@@ -245,12 +266,12 @@ function updateGloamfin(predator: Predator, dt: number, trench: Trench): void {
       predator.searchTimer = GLOAMFIN_GIVEUP;
       predator.searchPingTimer = GLOAMFIN_SEARCH_DELAY;
       predator.searchPingSpent = false;
-      predator.speed = PREDATOR_SPEED;
+      predator.speed = predatorSpeed(predator);
     }
     return;
   }
 
-  predator.speed = PREDATOR_SPEED;
+  predator.speed = predatorSpeed(predator);
 
   if (predator.state === "search") {
     predator.searchTimer -= dt;
@@ -336,7 +357,7 @@ function runFlareCycle(
 }
 
 function updateFlarefish(predator: Predator, dt: number, trench: Trench): void {
-  predator.speed = PREDATOR_SPEED;
+  predator.speed = predatorSpeed(predator);
   const blinded = blindedByInk(predator, trench);
   const senses = !blinded && sensesLight(predator, trench);
 

@@ -39,9 +39,7 @@ export function useRunEvents(runId: string): RunEventsState {
     })
       .then((data) => {
         if (!active) return;
-        setState(
-          data ? { status: "ready", data } : { status: "unsupported" },
-        );
+        setState(data ? { status: "ready", data } : { status: "unsupported" });
       })
       .catch((e) => {
         if (active) setState({ status: "error", message: String(e) });

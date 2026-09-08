@@ -26,19 +26,19 @@ and the rest of the capability set fixed and varies this one value.
 Eleven languages are registered. Each has its own page, its own hand-written
 SDK and its own segment of the shared prompt templates.
 
-| Language | `language` | How a program runs |
-| --- | --- | --- |
-| [TypeScript](/gg/languages/typescript/) | `typescript` | Type-checked by `tsc`, erased to JavaScript, evaluated as an ES module by the ECMAScript guest. |
-| [JavaScript](/gg/languages/javascript/) | `javascript` | TypeScript's SDK and signatures with the compiler removed, evaluated as an ES module by the same guest. |
-| [Python](/gg/languages/python/) | `python` | Evaluated as written by a guest carrying CPython 3.14, with no compiler on the turn path. |
-| [Ruby](/gg/languages/ruby/) | `ruby` | Compiled to JavaScript on the host by an embedded Opal, evaluated by a guest carrying Opal's runtime. |
-| [PureScript](/gg/languages/purescript/) | `purescript` | Type-checked and compiled to JavaScript by the run image's `purs`, bundled, evaluated as an ES module by the same guest. |
-| [Java](/gg/languages/java/) | `java` | Compiled by `javac` and then TeaVM inside a warm JVM, into the wasm component that turn is evaluated by. |
-| [Kotlin](/gg/languages/kotlin/) | `kotlin` | Compiled by the Kotlin compiler and then TeaVM inside the same warm JVM, into the wasm component that turn is evaluated by. |
-| [Rust](/gg/languages/rust/) | `rust` | `rustc` compiles the program into the wasm component that turn is evaluated by. |
-| [Swift](/gg/languages/swift/) | `swift` | `swiftc` compiles the reply verbatim into that turn's wasm component. |
-| [C++](/gg/languages/cpp/) | `cpp` | `clang++` compiles the reply verbatim into that turn's wasm component, with the program writing its own `#include` for every library it names. |
-| [C#](/gg/languages/csharp/) | `csharp` | Roslyn compiles the reply to an IL assembly on the host, which a guest holding Mono's IL interpreter loads. |
+| Language                                | `language`   | How a program runs                                                                                                                             |
+| --------------------------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| [TypeScript](/gg/languages/typescript/) | `typescript` | Type-checked by `tsc`, erased to JavaScript, evaluated as an ES module by the ECMAScript guest.                                                |
+| [JavaScript](/gg/languages/javascript/) | `javascript` | TypeScript's SDK and signatures with the compiler removed, evaluated as an ES module by the same guest.                                        |
+| [Python](/gg/languages/python/)         | `python`     | Evaluated as written by a guest carrying CPython 3.14, with no compiler on the turn path.                                                      |
+| [Ruby](/gg/languages/ruby/)             | `ruby`       | Compiled to JavaScript on the host by an embedded Opal, evaluated by a guest carrying Opal's runtime.                                          |
+| [PureScript](/gg/languages/purescript/) | `purescript` | Type-checked and compiled to JavaScript by the run image's `purs`, bundled, evaluated as an ES module by the same guest.                       |
+| [Java](/gg/languages/java/)             | `java`       | Compiled by `javac` and then TeaVM inside a warm JVM, into the wasm component that turn is evaluated by.                                       |
+| [Kotlin](/gg/languages/kotlin/)         | `kotlin`     | Compiled by the Kotlin compiler and then TeaVM inside the same warm JVM, into the wasm component that turn is evaluated by.                    |
+| [Rust](/gg/languages/rust/)             | `rust`       | `rustc` compiles the program into the wasm component that turn is evaluated by.                                                                |
+| [Swift](/gg/languages/swift/)           | `swift`      | `swiftc` compiles the reply verbatim into that turn's wasm component.                                                                          |
+| [C++](/gg/languages/cpp/)               | `cpp`        | `clang++` compiles the reply verbatim into that turn's wasm component, with the program writing its own `#include` for every library it names. |
+| [C#](/gg/languages/csharp/)             | `csharp`     | Roslyn compiles the reply to an IL assembly on the host, which a guest holding Mono's IL interpreter loads.                                    |
 
 ## Rules every arm keeps
 

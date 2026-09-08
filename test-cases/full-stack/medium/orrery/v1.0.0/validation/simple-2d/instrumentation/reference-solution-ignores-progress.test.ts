@@ -27,11 +27,7 @@
 // both `last` figures exactly as they stood.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertDeepEqual,
-  assertEqual,
-  assertGreaterThan,
-} from "../assert";
+import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,
   createHarness,

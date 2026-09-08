@@ -3,7 +3,7 @@
 An audio asset-generation test case (`asset_kind = "sfx-sample"`). The model
 authors one short stereo sound effect through the `sfx-sample` audio binary, one
 recorded operation at a time, to match a written brief. The effect is a
-capital-ship main-gun broadside for *Thunderhead*, a naval fleet-command game.
+capital-ship main-gun broadside for _Thunderhead_, a naval fleet-command game.
 There is no target clip; the case is human-reviewed against `specs/brief.md`.
 
 ## What the model builds
@@ -27,14 +27,14 @@ points at real pack samples as ingredients to composite, among them
 
 ## Files
 
-| File | Seeded? | Purpose |
-| --- | --- | --- |
-| `test-case.toml` | — | Manifest: type, `asset_kind`, `[audio]`, `[tool]`, `[output]`, domain. |
-| `prompt.hbs` | rendered | The instruction handed to the harness (points at the brief and the tool). |
-| `specs/brief.md` | yes | The brief — the only content the model receives. |
-| `variants/base.toml` | — | The single default variant. |
-| `description.md` | no | Site-facing blurb. |
-| `README.md` | no | This human overview. |
+| File                 | Seeded?  | Purpose                                                                   |
+| -------------------- | -------- | ------------------------------------------------------------------------- |
+| `test-case.toml`     | —        | Manifest: type, `asset_kind`, `[audio]`, `[tool]`, `[output]`, domain.    |
+| `prompt.hbs`         | rendered | The instruction handed to the harness (points at the brief and the tool). |
+| `specs/brief.md`     | yes      | The brief — the only content the model receives.                          |
+| `variants/base.toml` | —        | The single default variant.                                               |
+| `description.md`     | no       | Site-facing blurb.                                                        |
+| `README.md`          | no       | This human overview.                                                      |
 
 Only `specs/brief.md` reaches a run, alongside the seeded `sfx-sample.config.json`
 the binary writes into and the staged `combat-core` library the container is

@@ -12,12 +12,12 @@ later stage multiplies them by.
 
 A drone is always in exactly one of four phases.
 
-| Phase | The drone is |
-| --- | --- |
-| `entering` | Flying in from above the play field toward its formation slot |
-| `formation` | Resting in its slot, riding the sway |
-| `diving` | On an attack run down the field |
-| `returning` | Looping back to its slot after a dive |
+| Phase       | The drone is                                                  |
+| ----------- | ------------------------------------------------------------- |
+| `entering`  | Flying in from above the play field toward its formation slot |
+| `formation` | Resting in its slot, riding the sway                          |
+| `diving`    | On an attack run down the field                               |
+| `returning` | Looping back to its slot after a dive                         |
 
 ## The wave and its entrance
 
@@ -62,10 +62,10 @@ Which slots a wave fills is yours, subject to three rules.
 The wave carries one dive clock, in seconds. It advances with game time while the
 wave's dive launching runs, and it returns to `0` each time a dive is launched.
 
-| Launch | Happens when the dive clock reaches |
-| --- | --- |
-| The wave's first dive | `DIVE_FIRST_DELAY` (`2.0`) seconds |
-| Each later dive | A value drawn uniformly at random between `DIVE_GAP_MIN` (`1.4`) and `DIVE_GAP_MAX` (`2.6`) seconds, multiplied by `diveGapScale(stage)` |
+| Launch                | Happens when the dive clock reaches                                                                                                      |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| The wave's first dive | `DIVE_FIRST_DELAY` (`2.0`) seconds                                                                                                       |
+| Each later dive       | A value drawn uniformly at random between `DIVE_GAP_MIN` (`1.4`) and `DIVE_GAP_MAX` (`2.6`) seconds, multiplied by `diveGapScale(stage)` |
 
 A launch takes one drone resting in the formation, chosen uniformly at random from
 those standing, and puts it in phase `diving`.

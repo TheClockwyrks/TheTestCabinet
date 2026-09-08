@@ -10,10 +10,10 @@ is too slow, too memory-hungry, or that crashes does not stall the match, it
 
 The host applies these to **every** call to your `tick` entry, every tick:
 
-| Limit | Shipped value | On exceeding |
-| --- | --- | --- |
-| **Fuel** (wasmtime fuel per tick) | **50,000,000** | disqualifying forfeit |
-| **Memory** (linear-memory cap) | **64 MiB** (`67,108,864` bytes) | disqualifying forfeit |
+| Limit                             | Shipped value                   | On exceeding          |
+| --------------------------------- | ------------------------------- | --------------------- |
+| **Fuel** (wasmtime fuel per tick) | **50,000,000**                  | disqualifying forfeit |
+| **Memory** (linear-memory cap)    | **64 MiB** (`67,108,864` bytes) | disqualifying forfeit |
 
 - **Fuel** is a ceiling on the amount of work your controller may do in a single
   tick. It is generous — a per-tick BFS over the `32 × 16` board costs only a few
@@ -46,7 +46,7 @@ the match still produces a replay:
   forfeit loss before the match even starts.
 
 A **blocked move** (into a wall, off the board, or for a stalled laden raider) is
-**not** a forfeit — it is clamped to `Stop`. Only illegal *intent* and runtime
+**not** a forfeit — it is clamped to `Stop`. Only illegal _intent_ and runtime
 misbehavior forfeit; ordinary navigation bugs just cost tempo.
 
 ## Practical guidance

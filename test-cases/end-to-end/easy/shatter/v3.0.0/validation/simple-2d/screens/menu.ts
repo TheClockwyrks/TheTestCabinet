@@ -8,9 +8,10 @@
 //
 //   * WHERE a run of text ended up, in logical field units, so "the first entry
 //     above the second" is a comparison of two numbers rather than of two strings;
-//   * WHETHER a piece of copy was drawn, with the three matchings the specification
-//     actually calls for — a phrase inside a longer line, a standalone WORD, and a
-//     NUMBER that is not part of a longer number;
+//   * WHETHER a standalone WORD, or a NUMBER that is not part of a longer number,
+//     was drawn — the two matchings the specification calls for beyond the phrase
+//     inside a longer line, which is the shared harness's own `drewText`
+//     (`case-harness/text.ts`) and is read straight from it;
 //   * WHICH run belongs to WHICH menu entry, which needs care on the title menu
 //     where `PLAY` is a substring of `HOW TO PLAY`;
 //   * and a rectangle of the canvas read back in one go, for the one check that
@@ -23,7 +24,12 @@
 
 import { fail } from "../assert";
 import { ACTIONS, BINDINGS, VARIANT_ACTION } from "../constants";
-import { colorDistance, type DrawCall, type Harness } from "../harness";
+import {
+  colorDistance,
+  spelledTextRuns,
+  type DrawCall,
+  type Harness,
+} from "../harness";
 
 /* -------------------------------------------------------------------------- */
 /* Text, and where it landed                                                  */
@@ -31,10 +37,18 @@ import { colorDistance, type DrawCall, type Harness } from "../harness";
 
 /** One run of text the frame drew, placed in the logical `1280 x 720` field. */
 export interface TextRun {
-  /** The string as the build passed it. */
+  /**
+   * The string the run spells, as the build passed it — concatenated, for a run
+   * the build drew a call at a time.
+   */
   readonly raw: string;
   /** The same string upper-cased with its runs of whitespace collapsed. */
   readonly text: string;
+  /**
+   * The strings of the calls that spelled the run, each {@link normalize}d, in
+   * reading order; one entry for a run drawn whole.
+   */
+  readonly parts: readonly string[];
   /** The anchor's logical x. */
   readonly x: number;
   /** The anchor's logical y, which is the row a menu entry sits on. */
@@ -60,74 +74,74 @@ export function normalize(text: string): string {
 }
 
 /**
- * Every run of text in the recorded calls, placed in logical field units.
+ * Every logical run of text in the recorded calls, placed in logical field units.
  *
- * The placement is the real one. `fillText` is called in the build's own user
- * space, so the harness records the context transform at the moment of the call
- * along with the measured width and the alignment; the anchor is pushed through
- * that transform into device pixels, and the engine's viewport — the letterbox
- * offset and the device-pixels-per-logical-unit scale it chose — takes it the rest
- * of the way back into the field's own units. A build that drew its menu inside a
- * `translate`/`scale` of its own is read exactly like one that did not.
+ * ONE ENTRY PER RUN, NOT PER CALL. `specs/ui.md` fixes the WORDS a screen shows
+ * and leaves their spacing to the build, and a build that letter-spaces its title
+ * or its menu entries draws one glyph per `fillText` — the only portable way to
+ * letter-space canvas text. Read a call at a time, such a screen shows `S`, `H`,
+ * `A`… and never the title. So the runs come off `harness.ts`'s `spelledTextRuns`,
+ * which places every measured call in logical units and coalesces the
+ * side-by-side glyphs on one baseline back into the string they spell; each run
+ * still carries the calls that spelled it as `parts`, for {@link drawnCopy}.
+ *
+ * The placement is the real one: the anchor is pushed through the transform the
+ * context held at the call and back out through the engine's viewport, so a
+ * build that drew its menu inside a `translate`/`scale` of its own is read
+ * exactly like one that did not.
  *
  * A caller reads ONE frame by clearing the call list before the advance that drew
  * it; this does no clearing of its own.
  */
 export function textRuns(h: Harness, calls: readonly DrawCall[]): TextRun[] {
-  const view = h.engine.viewport();
-  const runs: TextRun[] = [];
-
-  for (const call of calls) {
-    if (call.kind !== "call") continue;
-    if (call.method !== "fillText" && call.method !== "strokeText") continue;
-    const raw = call.args[0];
-    const ax = call.args[1];
-    const ay = call.args[2];
-    const placed = call.text;
-    const m = placed?.transform;
-    if (typeof raw !== "string") continue;
-    if (typeof ax !== "number" || typeof ay !== "number") continue;
-    if (placed === undefined || m === undefined) continue;
-
-    const deviceX = m[0] * ax + m[2] * ay + m[4];
-    const deviceY = m[1] * ax + m[3] * ay + m[5];
-    const x = (deviceX - view.offsetX) / view.scale;
-    const y = (deviceY - view.offsetY) / view.scale;
-
-    // The measured width is in the build's user space; the same transform's own
-    // horizontal scale carries it to device pixels and the viewport's to logical.
-    const width = (placed.width * Math.hypot(m[0], m[1])) / view.scale;
-    const align = placed.textAlign;
-    const left =
-      align === "center"
-        ? x - width / 2
-        : align === "right" || align === "end"
-          ? x - width
-          : x;
-
-    runs.push({ raw, text: normalize(raw), x, y, left, right: left + width });
-  }
-  return runs;
+  return spelledTextRuns(h, calls).map((run) => ({
+    raw: run.text,
+    text: normalize(run.text),
+    parts: run.parts.map((part) => normalize(part.text)),
+    x: run.x,
+    y: run.y,
+    left: run.left,
+    right: run.right,
+  }));
 }
 
 /** Where one run ends and the next begins in {@link drawnCopy}. */
 const BETWEEN_RUNS = " | ";
 
+/** Where the runs the frame spelled end and the calls that spelled them begin. */
+const BEFORE_PARTS = " || ";
+
 /**
  * Every run the frame drew, laid end to end as one string a failure can print.
  *
- * This is the `Actual:` line of every copy check in this group: a build that drew
- * the wrong words shows the reviewer the words it did draw, beside the copy
- * `specs/ui.md` fixes. Each run is {@link normalize}d and the runs are separated
- * by a marker that appears in no piece of screen copy, so nothing matches across
- * the join.
+ * This is the container every WORD and NUMBER check in this group matches
+ * against, and the `Actual:` line of its failure: a build that drew the wrong
+ * words shows the reviewer the words it did draw, beside the copy `specs/ui.md`
+ * fixes. Each run is {@link normalize}d and the runs are separated by a marker
+ * that appears in no piece of screen copy, so nothing matches across the join.
+ * A PHRASE — the title, the tagline — is not read here: that is the shared
+ * harness's `drewText`, which the check that wants it imports directly.
  *
  * The runs are laid out AS THE BUILD WROTE THEM, separators and all. What a figure
  * was grouped with is {@link numberPattern}'s business, and leaving it in the string
  * is what lets the failure print the readout the reviewer would have seen.
+ *
+ * THE RUNS, THEN THE CALLS THAT SPELLED THEM. Coalescing glyphs into runs can
+ * only add a match to a reader that matches by containment, but
+ * {@link wordPattern} and {@link numberPattern} want a token standing alone, and
+ * the merge can glue two runs the build set a bare space apart, in two calls,
+ * into one. So after the runs, every call of a run drawn in more than one call is
+ * laid out too, behind a second marker, and a token found in either is found. A
+ * run drawn whole is not repeated.
  */
 export function drawnCopy(runs: readonly TextRun[]): string {
-  return runs.map((run) => run.text).join(BETWEEN_RUNS);
+  const spelled = runs.map((run) => run.text).join(BETWEEN_RUNS);
+  const parts = runs
+    .filter((run) => run.parts.length > 1)
+    .flatMap((run) => run.parts);
+  return parts.length === 0
+    ? spelled
+    : `${spelled}${BEFORE_PARTS}${parts.join(BETWEEN_RUNS)}`;
 }
 
 /** Every character a regular expression would otherwise read as syntax. */

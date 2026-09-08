@@ -111,7 +111,10 @@ it("puts the highlight on the panel's first item however far it had moved", asyn
   await captureStill(h, "arrived");
 
   const arrived = await h.snapshot();
-  assertNotNull(arrived.sim, "the second run is reported once it has completed");
+  assertNotNull(
+    arrived.sim,
+    "the second run is reported once it has completed",
+  );
   assertEqual(
     arrived.sim?.status,
     "complete",

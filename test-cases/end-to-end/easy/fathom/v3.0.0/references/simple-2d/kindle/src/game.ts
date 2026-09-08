@@ -147,7 +147,7 @@ interface PointedMenu {
  *
  * A sample that lands on an item selects it, which is what makes a mouse move
  * select and a contact select on its landing, since a finger never hovers. A
- * confirm takes both of its edges inside ONE item's region, so the release
+ * confirm requires both of its edges inside ONE item's region, so the release
  * confirms only where it lands on the item the press landed on: two edges in
  * different regions, and an edge outside every region, confirm nothing.
  */

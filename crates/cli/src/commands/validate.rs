@@ -1,9 +1,11 @@
 //! `tcab validate` — run validation over a produced implementation.
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
 use anyhow::Context;
+use test_cabinet_core::validation::Inconclusive;
 use test_cabinet_core::{
     AdversarialOutcome, AdversarialTeam, ArtifactCollection, BrowserRenderer, DebugScriptResult,
     DispatchValidator, ReferenceRenderer, StepResult, TestCaseCatalog, TestType, ValidationSummary,
@@ -111,12 +113,13 @@ pub async fn execute(args: ValidateArgs) -> anyhow::Result<ExitCode> {
         }
     }
     if !summary.debug_scripts.is_empty() {
-        // Two counts, because they mean opposite things. A script that did not run
-        // against a build that was supposed to answer it is a contract failure and
-        // fails this command; a script recorded inconclusive decided nothing about the
-        // build at all and leaves its point for a human, so it must not. Printing them
-        // apart is what stops an operator reading a passing exit code beside a
-        // `ran=false` line as a bug.
+        // Two counts, because they are different failures. A script that did not run
+        // against a build that was supposed to answer it is a contract failure the
+        // build earned; a script recorded inconclusive decided nothing about the build,
+        // because a precondition went unmet, the suites could not be run at all or the
+        // host stopped them on time. Both fail this command (see [`faults`]), but
+        // printing them apart is what lets an operator tell a broken build from a
+        // broken host or tree.
         let not_run = summary
             .debug_scripts
             .iter()
@@ -125,7 +128,7 @@ pub async fn execute(args: ValidateArgs) -> anyhow::Result<ExitCode> {
         let inconclusive = summary
             .debug_scripts
             .iter()
-            .filter(|script| script.precondition_unmet)
+            .filter(|script| !script.ran && script.precondition_unmet)
             .count();
         println!(
             "  debug scripts: {} ({not_run} did not run, {inconclusive} inconclusive)",
@@ -260,15 +263,24 @@ pub async fn execute(args: ValidateArgs) -> anyhow::Result<ExitCode> {
 ///   never changes a *run's* recorded status, but this command answers a different
 ///   question — whether the tree in hand carries everything the case asked for — and a
 ///   proof the case declared and the tree does not have is exactly that gap.
-/// - A gating debug script that did not run, and any verdict a script decided
-///   against. These mirror
+/// - Any verdict a gating debug script decided against the build. This mirrors
 ///   [`automated_verdicts`](test_cabinet_core::comparison::automated_verdicts), the
-///   scoring rule the run itself is graded by, so the exit code agrees with the score:
-///   a script recorded
-///   [inconclusive](test_cabinet_core::DebugScriptResult::precondition_unmet) said
-///   nothing about the build and is skipped, and a script whose backing point an
-///   erratum excluded from scoring
-///   ([`gates`](test_cabinet_core::DebugScriptResult::gates) is false) costs nothing.
+///   scoring rule the run itself is graded by.
+/// - A gating debug script that did not run, whatever the reason. Here the exit code
+///   deliberately parts from the score. Scoring skips a script recorded
+///   [inconclusive](test_cabinet_core::DebugScriptResult::precondition_unmet) because
+///   it said nothing about the build, and a run must not lose points to a busy host
+///   or a missing validator project. This command is not scoring a build: it is
+///   answering whether the tree in hand satisfied everything the case declares, and a
+///   unit that decided nothing has not been satisfied. Passing it would be an
+///   all-clear issued by a broken environment — a produced tree with no vitest binary
+///   once left every unit of a case inconclusive, and the command reported it as a
+///   pass. The two are named apart so a host problem is not read as a build problem:
+///   a contract failure is listed by verdict id, and an inconclusive unit is grouped
+///   with the others of its [kind](Inconclusive) and reason (see
+///   [`inconclusive_fault`]). Only a script whose backing point an erratum excluded
+///   from scoring ([`gates`](test_cabinet_core::DebugScriptResult::gates) is false)
+///   costs nothing, inconclusive or not.
 /// - An adversarial match the submission forfeited. A forfeit is the submission
 ///   failing to present a playable controller — it did not build, exported no contract
 ///   entry, trapped, exhausted its fuel, or returned an invalid action — so it is a
@@ -306,15 +318,32 @@ fn faults(summary: &ValidationSummary, test_type: TestType) -> Vec<String> {
 
     // One pass over the scripts, classifying each exactly once, so a script that did
     // not run is not also counted through the failing verdict its contract failure
-    // synthesizes.
+    // synthesizes. Inconclusive units are gathered by kind and reason rather than
+    // listed, because the runner-failure case that produces them is every suite of a
+    // case sharing one reason, and the reason is the finding. The key orders kinds as
+    // `inconclusive_kind` ranks them and reasons alphabetically within a kind, so the
+    // lines come out in a stable order.
     let mut not_run: Vec<String> = Vec::new();
+    let mut inconclusive: BTreeMap<(usize, &'static str, String), Vec<String>> = BTreeMap::new();
     let mut failed: Vec<String> = Vec::new();
     for script in &summary.debug_scripts {
-        if !script.gates || script.precondition_unmet {
+        if !script.gates {
             continue;
         }
         if !script.ran {
-            not_run.push(verdict_id(script));
+            if script.precondition_unmet {
+                let (rank, label) = inconclusive_kind(script.inconclusive);
+                let reason = script
+                    .detail
+                    .clone()
+                    .unwrap_or_else(|| "no detail recorded".to_string());
+                inconclusive
+                    .entry((rank, label, reason))
+                    .or_default()
+                    .push(verdict_id(script));
+            } else {
+                not_run.push(verdict_id(script));
+            }
             continue;
         }
         failed.extend(
@@ -327,6 +356,9 @@ fn faults(summary: &ValidationSummary, test_type: TestType) -> Vec<String> {
     }
     if let Some(list) = named(not_run.iter()) {
         faults.push(format!("validator(s) did not run: {list}"));
+    }
+    for ((_, label, reason), ids) in &inconclusive {
+        faults.push(inconclusive_fault(label, reason, ids));
     }
     if let Some(list) = named(failed.iter()) {
         faults.push(format!("{} verdict(s) failed: {list}", failed.len()));
@@ -363,6 +395,44 @@ fn step_fault(label: &str, step: Option<&StepResult>) -> Option<String> {
         Some(step) if step.succeeded => None,
         Some(step) => Some(format!("the {label} step failed (`{}`)", step.command)),
         None => Some(format!("the {label} step was never reached")),
+    }
+}
+
+/// The most verdict ids one inconclusive fault line names before it gives only their
+/// count. The case the grouping exists for — every suite of a case left undecided by
+/// one missing binary or one stopped run — is hundreds of units with one reason, and
+/// a line that repeated every id would bury the reason that matters and that the
+/// operator has to fix. Eight names every unit of a small case outright and still
+/// reads on one line; past it, the ids are in the per-script body above the verdict.
+const INCONCLUSIVE_IDS_LISTED: usize = 8;
+
+/// The rank an inconclusive kind sorts under in the fault list and the label the fault
+/// line quotes for it. The [`Inconclusive`] kinds that describe the environment — a
+/// suite that could not be run, a run the host stopped — rank ahead of the check's own
+/// decision that its precondition went unmet, so a host or tree problem is read
+/// first, and a record from before the kinds were told apart (`None`) ranks last.
+fn inconclusive_kind(kind: Option<Inconclusive>) -> (usize, &'static str) {
+    match kind {
+        Some(Inconclusive::NotRun) => (0, "not run"),
+        Some(Inconclusive::TimedOut) => (1, "timed out"),
+        Some(Inconclusive::PreconditionUnmet) => (2, "precondition unmet"),
+        None => (3, "unknown kind"),
+    }
+}
+
+/// The fault one group of inconclusive units contributes: how many, which kind (by
+/// the `label` from [`inconclusive_kind`]), the one reason they share, and — when
+/// there are no more than [`INCONCLUSIVE_IDS_LISTED`] of them — the verdict ids
+/// themselves.
+fn inconclusive_fault(label: &str, reason: &str, ids: &[String]) -> String {
+    let count = ids.len();
+    if count <= INCONCLUSIVE_IDS_LISTED {
+        format!(
+            "{count} validator(s) inconclusive ({label}): {} — {reason}",
+            ids.join(", ")
+        )
+    } else {
+        format!("{count} validator(s) inconclusive ({label}): {reason}")
     }
 }
 

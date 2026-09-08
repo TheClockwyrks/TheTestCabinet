@@ -72,8 +72,7 @@ function cropTop(scenario, rows, ticks) {
   };
 }
 
-const read = (name) =>
-  JSON.parse(readFileSync(join(casesDir, name), "utf8"));
+const read = (name) => JSON.parse(readFileSync(join(casesDir, name), "utf8"));
 
 // The main-bus factory fills the whole grid (machinery edge to edge), so — unlike
 // the old banded layout — there is no clean top-of-grid slice; the preview shows the

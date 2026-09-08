@@ -11,6 +11,19 @@
 // the same systems play uses and returns nothing; a READING returns plain data
 // built at the call and changes nothing.
 //
+// EVERY OPERATION ACTS, AND NONE OF THEM DECLINES QUIETLY. A pose reaches the
+// value it names whatever the game's own rules would have allowed a player to
+// reach, so nothing below clamps a posed value onto a legal neighbour or returns
+// having changed nothing. An act carries out its own transaction FROM WHEREVER
+// THE GAME STANDS: the screen, the phase, the open panel, the selection and the
+// pointer are how a PLAYER reaches the control and are not its conditions. What
+// an act keeps is its own arithmetic — the price, the purse, the cap at
+// `MAX_LEVEL`, the placement check — because that is the transaction rather than
+// a gate on reaching it. And where the game has no defined state to reach, the
+// call THROWS: an id no live tower or unit carries, a name outside its set, a
+// level or rotation outside the fixed range, an emitter operation aimed at a
+// mover that carries no heat, a preview operation with nothing armed.
+//
 // Two rules govern the shape. Each operation sets ONE field, reads the state,
 // or moves the clock, and `snapshot` reports every field an operation can set,
 // so every operation is verifiable by setting a value and reading it back. And
@@ -34,9 +47,13 @@ import {
   upgradeTowerById,
 } from "./build";
 import {
+  DIFFICULTIES,
   MAX_LEVEL,
   MELTDOWN_DEBUG_VERSION,
+  MODES,
   SURGE_DEFS,
+  SURGE_TYPES,
+  TOWER_TYPES,
   TRIP_HEAT,
   type DifficultyName,
   type ExhaustName,
@@ -235,6 +252,8 @@ export interface MeltdownDebugApi {
 
   reset(): void;
   snapshot(): MeltdownSnapshot;
+  /** Bring every reported reading into agreement with the floor as it stands. */
+  reconcile(): void;
 
   setScreen(screen: Screen): void;
   setPhase(phase: Phase): void;
@@ -376,6 +395,90 @@ function applyPointer(live: World, result: InputResult): void {
   syncActors(live);
 }
 
+// ---- The loud half of the contract ---------------------------------------
+//
+// An operation never returns having changed nothing. Where there is a defined
+// state the call reaches, it reaches it; where there is not, it throws, and the
+// helpers below are how it throws.
+
+/** The screens `setScreen` names. */
+const SCREENS: readonly Screen[] = [
+  "title",
+  "modeselect",
+  "difficultyselect",
+  "howto",
+  "playing",
+  "paused",
+  "victory",
+  "gameover",
+];
+
+/** The sub-phases `setPhase` names. */
+const PHASES: readonly Phase[] = ["opening", "building", "wave"];
+
+/** The vents `addUnit` names. */
+const VENTS: readonly VentName[] = ["left", "top"];
+
+/** The failure a call the game has no defined state for gets. */
+function reject(op: string, detail: string): never {
+  throw new RangeError(`${op}: ${detail}`);
+}
+
+/** A finite number, else a loud failure. */
+function requireNumber(op: string, name: string, value: number): number {
+  if (!Number.isFinite(value)) {
+    reject(op, `${name} must be a finite number, got ${String(value)}`);
+  }
+  return value;
+}
+
+/** A number inside a range the specs fix as a constant, else a failure. */
+function requireRange(
+  op: string,
+  name: string,
+  value: number,
+  lo: number,
+  hi: number,
+): number {
+  if (!Number.isFinite(value) || value < lo || value > hi) {
+    reject(op, `${name} must be from ${lo} to ${hi}, got ${String(value)}`);
+  }
+  return value;
+}
+
+/** A whole number inside a range the specs fix as a constant, else a failure. */
+function requireWhole(
+  op: string,
+  name: string,
+  value: number,
+  lo: number,
+  hi: number,
+): number {
+  if (!Number.isInteger(value) || value < lo || value > hi) {
+    reject(
+      op,
+      `${name} must be a whole number from ${lo} to ${hi}, got ${String(value)}`,
+    );
+  }
+  return value;
+}
+
+/** One of a fixed set of names, else a loud failure. */
+function requireOneOf<T extends string | number>(
+  op: string,
+  name: string,
+  value: T,
+  allowed: readonly T[],
+): T {
+  if (!allowed.includes(value)) {
+    reject(
+      op,
+      `${name} must be one of ${allowed.join(", ")}, got ${String(value)}`,
+    );
+  }
+  return value;
+}
+
 /**
  * Build the surface over an accessor for the open world. It holds nothing:
  * every operation reads the world — and the state and the actor set it carries
@@ -384,10 +487,22 @@ function applyPointer(live: World, result: InputResult): void {
  */
 export function createDebugApi(world: () => World): MeltdownDebugApi {
   const read = (): MeltdownState => meltdownState(world());
-  const tower = (id: number): TowerState | undefined =>
-    read().towers.find((entry) => entry.id === id);
-  const unit = (id: number): UnitState | undefined =>
-    read().surge.find((entry) => entry.id === id);
+  const tower = (op: string, id: number): TowerState => {
+    const entry = read().towers.find((candidate) => candidate.id === id);
+    if (entry === undefined) reject(op, `no tower carries id ${String(id)}`);
+    return entry;
+  };
+  const unit = (op: string, id: number): UnitState => {
+    const entry = read().surge.find((candidate) => candidate.id === id);
+    if (entry === undefined) reject(op, `no unit carries id ${String(id)}`);
+    return entry;
+  };
+  /** The held preview an operation needs. Nothing armed fails loudly. */
+  const requireHeld = (op: string): void => {
+    if (read().build === null) {
+      reject(op, "nothing is armed, so there is no preview to act on");
+    }
+  };
   /** Bring the actor set level with a roster a pose just changed. */
   const sync = (): void => {
     syncActors(world());
@@ -481,43 +596,70 @@ export function createDebugApi(world: () => World): MeltdownDebugApi {
       };
     },
 
+    /**
+     * Bring every reported reading into agreement with the floor as it stands.
+     *
+     * Every derived reading this build reports — a unit's `col`, `row`,
+     * `remaining`, `speed` and `slowed`; a tower's `size`, `redline`,
+     * `heatMult`, `damage`, `slowFactor`, `output`, `refund` and `upgradeCost`;
+     * the mode's figures; `waveRemaining`, `nextWave`, both `paths` lengths,
+     * `menu`, `controls` and `build.valid` — is worked out at the read in
+     * `snapshot`, so nothing is held that a pose can leave behind and there is
+     * nothing here to rewrite. The operation is required of every build,
+     * including one that keeps those readings as stored copies, and this is what
+     * it comes to in a build that does not.
+     *
+     * It advances nothing and fires nothing either way: no clock moves, no
+     * system runs, no cue is raised, and a caller may make the call as often as
+     * it likes. It does not even sync the actor set, because a pose that changed
+     * a roster already did.
+     */
+    reconcile() {},
+
     // ---- The screen and the run, each setting its field alone -------------
 
     setScreen(screen) {
-      read().screen = screen;
+      read().screen = requireOneOf("setScreen", "screen", screen, SCREENS);
     },
     setPhase(phase) {
-      read().phase = phase;
+      read().phase = requireOneOf("setPhase", "phase", phase, PHASES);
     },
     setMenuIndex(n) {
-      read().menuIndex = Math.max(0, Math.trunc(n));
+      read().menuIndex = requireNumber("setMenuIndex", "n", n);
     },
     setMode(mode) {
-      read().mode = mode;
+      read().mode = requireOneOf("setMode", "mode", mode, MODES);
     },
     setDifficulty(difficulty) {
-      read().difficulty = difficulty;
+      read().difficulty = requireOneOf(
+        "setDifficulty",
+        "difficulty",
+        difficulty,
+        DIFFICULTIES,
+      );
     },
     setMoney(amount) {
-      read().money = amount;
+      read().money = requireNumber("setMoney", "amount", amount);
     },
     setLives(count) {
-      read().lives = count;
+      read().lives = requireNumber("setLives", "count", count);
     },
     setScore(n) {
-      read().score = n;
+      read().score = requireNumber("setScore", "n", n);
     },
     setWave(n) {
-      read().wave = n;
+      read().wave = requireNumber("setWave", "n", n);
     },
     setBuildTimer(seconds) {
-      read().buildTimer = seconds;
+      read().buildTimer = requireNumber("setBuildTimer", "seconds", seconds);
     },
     setWavePending(n) {
-      read().wavePending = n;
+      read().wavePending = requireNumber("setWavePending", "n", n);
     },
+    // The toggle has two settings and the specs fix both, so it is a domain: a
+    // third value names no speed and fails loudly.
     setSpeed(speed) {
-      read().speed = speed === 2 ? 2 : 1;
+      read().speed = requireOneOf("setSpeed", "speed", speed, [1, 2]);
     },
 
     setWaveSpawning(enabled) {
@@ -533,10 +675,17 @@ export function createDebugApi(world: () => World): MeltdownDebugApi {
     // ---- The towers -------------------------------------------------------
 
     addTower(type, col, row, rotation) {
+      requireOneOf("addTower", "type", type, TOWER_TYPES);
+      requireNumber("addTower", "col", col);
+      requireNumber("addTower", "row", row);
+      if (rotation !== undefined) {
+        requireWhole("addTower", "rotation", rotation, 0, 3);
+      }
       addTowerAt(read(), type, col, row, rotation);
       sync();
     },
     removeTower(id) {
+      tower("removeTower", id);
       removeTowerById(read(), id);
       sync();
     },
@@ -544,68 +693,111 @@ export function createDebugApi(world: () => World): MeltdownDebugApi {
       clearAllTowers(read());
       sync();
     },
+    /**
+     * The emitter's heat, on the scale the specs fix.
+     *
+     * The Forge and the Sink carry no heat of their own (specs/heat.md), so a
+     * mover has no heat for this to reach: the call names nothing and fails
+     * loudly rather than passing quietly.
+     */
     setTowerHeat(id, heat) {
-      const entry = tower(id);
-      // The Forge and the Sink carry no heat of their own (specs/heat.md).
-      if (entry === undefined || emitterDef(entry.type) === null) return;
-      entry.heat = Math.max(0, Math.min(TRIP_HEAT, heat));
+      const entry = tower("setTowerHeat", id);
+      if (emitterDef(entry.type) === null) {
+        reject(
+          "setTowerHeat",
+          `tower ${String(id)} is a ${entry.type}, which carries no heat of its own`,
+        );
+      }
+      entry.heat = requireRange("setTowerHeat", "heat", heat, 0, TRIP_HEAT);
     },
     setTowerTripped(id, tripped) {
-      const entry = tower(id);
-      if (entry === undefined) return;
-      entry.tripped = tripped;
+      tower("setTowerTripped", id).tripped = tripped;
     },
     setTowerTripTimer(id, seconds) {
-      const entry = tower(id);
-      if (entry === undefined) return;
-      entry.tripTimer = Math.max(0, seconds);
+      tower("setTowerTripTimer", id).tripTimer = requireNumber(
+        "setTowerTripTimer",
+        "seconds",
+        seconds,
+      );
     },
+    // `1` through `MAX_LEVEL` is a range the specs fix as a constant, so a level
+    // outside it names no level of this game and fails loudly.
     setTowerLevel(id, level) {
-      const entry = tower(id);
-      if (entry === undefined) return;
-      entry.level = Math.max(1, Math.min(MAX_LEVEL, Math.trunc(level)));
+      tower("setTowerLevel", id).level = requireWhole(
+        "setTowerLevel",
+        "level",
+        level,
+        1,
+        MAX_LEVEL,
+      );
     },
     setTowerFresh(id, fresh) {
-      const entry = tower(id);
-      if (entry === undefined) return;
-      entry.fresh = fresh;
+      tower("setTowerFresh", id).fresh = fresh;
     },
     setTowerFiring(id, enabled) {
-      const entry = tower(id);
-      if (entry === undefined) return;
-      entry.firingEnabled = enabled;
+      tower("setTowerFiring", id).firingEnabled = enabled;
     },
     setTowerThermal(id, enabled) {
-      const entry = tower(id);
-      if (entry === undefined) return;
-      entry.thermalEnabled = enabled;
+      tower("setTowerThermal", id).thermalEnabled = enabled;
     },
 
     // ---- Building ---------------------------------------------------------
 
     setArmed(type) {
+      if (type !== null) requireOneOf("setArmed", "type", type, TOWER_TYPES);
       armType(read(), type);
     },
+    /**
+     * Move the held preview to the tile the call names, exactly there.
+     *
+     * A footprint hanging off the grid is one the real placement check answers
+     * `false` for, so `build.valid` reports that rather than the anchor being
+     * nudged back on. With nothing armed there is no preview to move.
+     */
     setPreview(col, row) {
+      requireHeld("setPreview");
+      requireNumber("setPreview", "col", col);
+      requireNumber("setPreview", "row", row);
       movePreview(read(), col, row);
     },
     setPreviewRotation(rotation) {
+      requireHeld("setPreviewRotation");
+      requireWhole("setPreviewRotation", "rotation", rotation, 0, 3);
       setPreviewRotation(read(), rotation);
     },
+    /**
+     * Commit the held preview, from wherever the game stands.
+     *
+     * The screen, the phase and the panel are how a player reaches the floor and
+     * are not this call's conditions. The placement check is: an invalid
+     * footprint builds nothing and spends nothing, which is the check's own
+     * answer. With nothing armed there is no preview to commit.
+     */
     place() {
+      requireHeld("place");
       placeHeld(read());
       sync();
     },
     setSelected(id) {
+      if (id !== null) tower("setSelected", id);
       read().selected = id;
     },
     setHoverShop(type) {
+      if (type !== null)
+        requireOneOf("setHoverShop", "type", type, TOWER_TYPES);
       read().hoverShop = type;
     },
+    /**
+     * One level up, paid for, through the real upgrade code. The purse and the
+     * cap at `MAX_LEVEL` stay: they are the transaction's own arithmetic and are
+     * what the economy items read.
+     */
     upgradeTower(id) {
+      tower("upgradeTower", id);
       upgradeTowerById(read(), id);
     },
     sellTower(id) {
+      tower("sellTower", id);
       sellTowerById(read(), id);
       sync();
     },
@@ -613,10 +805,13 @@ export function createDebugApi(world: () => World): MeltdownDebugApi {
     // ---- The surge --------------------------------------------------------
 
     addUnit(type, vent) {
+      requireOneOf("addUnit", "type", type, SURGE_TYPES);
+      requireOneOf("addUnit", "vent", vent, VENTS);
       spawnUnit(read(), type, vent);
       sync();
     },
     removeUnit(id) {
+      unit("removeUnit", id);
       dropUnit(read(), id);
       sync();
     },
@@ -625,35 +820,36 @@ export function createDebugApi(world: () => World): MeltdownDebugApi {
       sync();
     },
     setUnitPosition(id, x, y) {
-      const entry = unit(id);
-      if (entry === undefined) return;
-      entry.x = x;
-      entry.y = y;
+      const entry = unit("setUnitPosition", id);
+      entry.x = requireNumber("setUnitPosition", "x", x);
+      entry.y = requireNumber("setUnitPosition", "y", y);
     },
     setUnitHp(id, hp) {
-      const entry = unit(id);
-      if (entry === undefined) return;
-      entry.hp = Math.max(0, hp);
+      unit("setUnitHp", id).hp = requireNumber("setUnitHp", "hp", hp);
     },
     setUnitMaxHp(id, maxHp) {
-      const entry = unit(id);
-      if (entry === undefined) return;
-      entry.maxHp = Math.max(0, maxHp);
+      unit("setUnitMaxHp", id).maxHp = requireNumber(
+        "setUnitMaxHp",
+        "maxHp",
+        maxHp,
+      );
     },
     setUnitSlow(id, factor) {
-      const entry = unit(id);
-      if (entry === undefined) return;
-      entry.slowFactor = Math.max(0, Math.min(1, factor));
+      unit("setUnitSlow", id).slowFactor = requireNumber(
+        "setUnitSlow",
+        "factor",
+        factor,
+      );
     },
     setUnitSlowTimer(id, seconds) {
-      const entry = unit(id);
-      if (entry === undefined) return;
-      entry.slowTimer = Math.max(0, seconds);
+      unit("setUnitSlowTimer", id).slowTimer = requireNumber(
+        "setUnitSlowTimer",
+        "seconds",
+        seconds,
+      );
     },
     setUnitMotion(id, enabled) {
-      const entry = unit(id);
-      if (entry === undefined) return;
-      entry.motion = enabled;
+      unit("setUnitMotion", id).motion = enabled;
     },
 
     // ---- The pointer, through the same path a player's press takes --------

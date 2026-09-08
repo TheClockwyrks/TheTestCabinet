@@ -3,13 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Gantry \u2014 a 3D crane-building puzzle driven by an instruction tape under a structural simulation, built on the Simple 3D engine, that runs entirely in the browser.",
+  "description": "Gantry — a 3D crane-building puzzle driven by an instruction tape under a structural simulation, built on the Simple 3D engine, that runs entirely in the browser.",
   "scripts": {
     "dev": "vite --host",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --port 4173",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint .",
+    "lint": "eslint . --max-warnings 0",
     "format": "prettier --check .",
     "test": "vitest run --coverage"
   },

@@ -45,7 +45,11 @@ it("carries a legend for the utilization ramp on the run screen", async () => {
   await standMinimalCrane(h);
   await poseTape(h, [HOLD]);
   const started = await startRun(h);
-  assertEqual(started.screen, "run", "the screen a started run shows (specs/program.md)");
+  assertEqual(
+    started.screen,
+    "run",
+    "the screen a started run shows (specs/program.md)",
+  );
   await h.advance(1);
 
   const drawn = await h.drawn();

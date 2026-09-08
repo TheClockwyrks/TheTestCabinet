@@ -4,7 +4,7 @@
 // `specs/ui.md`'s "Pointer and touch" gives a touch contact two effects on a
 // menu: a contact landing inside an item's region, or travelling onto one,
 // selects that item, and a contact that lands and lifts inside one region
-// selects and confirms it. A confirm takes both of its edges inside one region,
+// selects and confirms it. A confirm requires both of its edges inside one region,
 // so a contact that lifts somewhere else confirms nothing.
 //
 // A CONTACT IS NOT A MOUSE. It has no hover: the first the build hears of it is

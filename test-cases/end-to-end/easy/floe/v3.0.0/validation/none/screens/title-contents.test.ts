@@ -17,19 +17,20 @@
 // THE MATCH IS A SUBSTRING, IN EITHER CASE, PAST THE HUD. A menu entry is
 // commonly set with a marker beside it ("> CROSS <"), and casing, font and
 // typography are the build's, so each string is looked for inside the frame's
-// copy rather than as a whole run. Only what the build drew over the strait
-// counts, which is what `screenCopy` filters to and why — the HUD bar's own
-// readouts are not this screen's copy.
+// copy rather than as a whole run, by the shared harness's `drewTextAnywhere`.
+// Only what the build drew over the strait counts, which is what `screenText`
+// hands it and why — the HUD bar's own readouts are not this screen's copy.
 //
 // THE ORDER OF THE MENU IS NOT GRADED HERE. `specs/ui.md` fixes it, and
 // `screens.cross-starts-run` and `screens.howto-opens` decide it between them:
 // each confirms one index and requires the screen that index's entry names.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThan, assertMatches } from "../assert";
+import { assertGreaterThan, assertTrue } from "../assert";
+import { drewTextAnywhere } from "../case-harness/index";
 import { TAGLINE_TEXT, TITLE_ITEMS, TITLE_TEXT } from "../constants";
 import { captureStill, createHarness, type Harness } from "../harness";
-import { screenCopy, screenRuns } from "./screens";
+import { screenRuns, screenText } from "./screens";
 
 /** Every string `specs/ui.md` requires the title screen to carry. */
 const REQUIRED_COPY: readonly string[] = [
@@ -57,17 +58,18 @@ it("draws FLOE, its tagline and both title menu items", async () => {
   const calls = await h.frameCalls();
   await captureStill(h, "title");
 
-  const copy = screenCopy(calls);
+  const runs = screenRuns(calls);
   assertGreaterThan(
-    screenRuns(calls).length,
+    runs.length,
     0,
     "the title screen to draw text over the strait at all (specs/ui.md)",
   );
+  const text = screenText(calls);
   for (const required of REQUIRED_COPY) {
-    assertMatches(
-      copy,
-      required.toUpperCase(),
-      `the title screen draws ${JSON.stringify(required)} (specs/ui.md)`,
+    assertTrue(
+      drewTextAnywhere(text, required),
+      `the title screen draws ${JSON.stringify(required)} (specs/ui.md) — ` +
+        `the strait drew ${JSON.stringify(runs)}`,
     );
   }
 });

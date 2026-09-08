@@ -79,13 +79,13 @@ One cycle runs in this order:
 An instruction imposes a rigid motion over the cycle, parameterized by the
 fraction `t` from `0` to `1`:
 
-| Instruction | Motion of the part | Motion imposed on each held constellation |
-| --- | --- | --- |
-| `rotate-cw`, `rotate-ccw` | The part's direction turns 60 degrees about its base, clockwise or counterclockwise, sweeping `60 * t` degrees. | The same rotation about the base. |
-| `pivot-cw`, `pivot-ccw` | The part does not move. | Rotation about the holding gripper's hex, sweeping `60 * t` degrees. |
-| `extend`, `retract` | The piston's length changes by one, its gripper translating one hex along its spoke. | Translation by the same vector, linearly in `t`. |
-| `advance`, `recede` | The base translates to the adjacent track cell, wrapping on a closed track. | Translation by the same vector, linearly in `t`. |
-| `grab`, `drop`, blank | None. | None. |
+| Instruction               | Motion of the part                                                                                              | Motion imposed on each held constellation                            |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `rotate-cw`, `rotate-ccw` | The part's direction turns 60 degrees about its base, clockwise or counterclockwise, sweeping `60 * t` degrees. | The same rotation about the base.                                    |
+| `pivot-cw`, `pivot-ccw`   | The part does not move.                                                                                         | Rotation about the holding gripper's hex, sweeping `60 * t` degrees. |
+| `extend`, `retract`       | The piston's length changes by one, its gripper translating one hex along its spoke.                            | Translation by the same vector, linearly in `t`.                     |
+| `advance`, `recede`       | The base translates to the adjacent track cell, wrapping on a closed track.                                     | Translation by the same vector, linearly in `t`.                     |
+| `grab`, `drop`, blank     | None.                                                                                                           | None.                                                                |
 
 A carried constellation moves as one rigid body: every mote of it follows the
 motion, and at `t = 1` every mote lands exactly on a hex center. A mote held
@@ -122,20 +122,20 @@ The following worked examples pin the rule. Coordinates are the axial hexes of
 `specs/field.md`, distances are in logical units rounded to two decimals, and
 the threshold is `38`.
 
-| # | Configuration | First sample within `38` | Nearest sampled approach | Outcome |
-| --- | --- | --- | --- | --- |
-| A | An arm at `(0, 0)`, length 1, carries a mote from `(1, 0)` toward `(0, 1)` with `rotate-cw`. A mote rests on `(1, 1)`. | `36.10` at `t = 3/8` | `35.14` at `t = 4/8` | Faults |
-| B | The same sweep, with the resting mote on `(1, -1)`. | none | `53.33` at `t = 1/8` | Clear |
-| C | An arm at `(0, 0)`, length 2, carries a mote from `(2, 0)` toward `(0, 2)` with `rotate-cw`. A mote rests on `(1, 0)`. | none | `48.81` at `t = 1/8` | Clear |
-| D | The same sweep, with the resting mote on `(1, 1)`. | `37.16` at `t = 1/8` | `12.86` at `t = 4/8` | Faults |
-| E | A piston extends, carrying a mote from `(1, 0)` to `(2, 0)`. A mote rests on `(2, -1)`. | none | `41.57` at `t = 4/8` | Clear |
-| E2 | The same slide, with the resting mote on `(1, 1)`. | none | `41.57` at `t = 4/8` | Clear |
-| F | The same slide, with the resting mote on `(3, -1)`. | none | `48.00` at `t = 8/8` | Clear |
-| G | Two arms swap two motes between `(1, 0)` and `(0, 1)`, one rotating clockwise about `(0, 0)` and the other clockwise about `(1, 1)`. | `37.16` at `t = 1/8` | `12.86` at `t = 4/8` | Faults |
-| H | Two motes rest on `(0, 0)` and `(1, 0)`. Nothing moves. | none | `48.00` at every sample | Clear |
-| I | A track arm advances east, carrying a mote from `(0, 0)` to `(1, 0)`. A mote rests on `(1, -1)`. | none | `41.57` at `t = 4/8` | Clear |
-| J | Two arms on one track both advance east, carrying motes on `(0, 0)` and `(1, 0)`. | none | `48.00` at every sample | Clear |
-| K | An open track through `(-1, 0)`, `(0, 0)`, `(1, 0)`, `(2, 0)`, `(3, 0)`. An arm at `(-1, 0)` carries a mote on `(0, 0)` and advances; an arm at `(3, 0)` carries a mote on `(2, 0)` and recedes. | `36.00` at `t = 5/8` | `0.00` at `t = 8/8` | Faults |
+| #   | Configuration                                                                                                                                                                                    | First sample within `38` | Nearest sampled approach | Outcome |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------ | ------------------------ | ------- |
+| A   | An arm at `(0, 0)`, length 1, carries a mote from `(1, 0)` toward `(0, 1)` with `rotate-cw`. A mote rests on `(1, 1)`.                                                                           | `36.10` at `t = 3/8`     | `35.14` at `t = 4/8`     | Faults  |
+| B   | The same sweep, with the resting mote on `(1, -1)`.                                                                                                                                              | none                     | `53.33` at `t = 1/8`     | Clear   |
+| C   | An arm at `(0, 0)`, length 2, carries a mote from `(2, 0)` toward `(0, 2)` with `rotate-cw`. A mote rests on `(1, 0)`.                                                                           | none                     | `48.81` at `t = 1/8`     | Clear   |
+| D   | The same sweep, with the resting mote on `(1, 1)`.                                                                                                                                               | `37.16` at `t = 1/8`     | `12.86` at `t = 4/8`     | Faults  |
+| E   | A piston extends, carrying a mote from `(1, 0)` to `(2, 0)`. A mote rests on `(2, -1)`.                                                                                                          | none                     | `41.57` at `t = 4/8`     | Clear   |
+| E2  | The same slide, with the resting mote on `(1, 1)`.                                                                                                                                               | none                     | `41.57` at `t = 4/8`     | Clear   |
+| F   | The same slide, with the resting mote on `(3, -1)`.                                                                                                                                              | none                     | `48.00` at `t = 8/8`     | Clear   |
+| G   | Two arms swap two motes between `(1, 0)` and `(0, 1)`, one rotating clockwise about `(0, 0)` and the other clockwise about `(1, 1)`.                                                             | `37.16` at `t = 1/8`     | `12.86` at `t = 4/8`     | Faults  |
+| H   | Two motes rest on `(0, 0)` and `(1, 0)`. Nothing moves.                                                                                                                                          | none                     | `48.00` at every sample  | Clear   |
+| I   | A track arm advances east, carrying a mote from `(0, 0)` to `(1, 0)`. A mote rests on `(1, -1)`.                                                                                                 | none                     | `41.57` at `t = 4/8`     | Clear   |
+| J   | Two arms on one track both advance east, carrying motes on `(0, 0)` and `(1, 0)`.                                                                                                                | none                     | `48.00` at every sample  | Clear   |
+| K   | An open track through `(-1, 0)`, `(0, 0)`, `(1, 0)`, `(2, 0)`, `(3, 0)`. An arm at `(-1, 0)` carries a mote on `(0, 0)` and advances; an arm at `(3, 0)` carries a mote on `(2, 0)` and recedes. | `36.00` at `t = 5/8`     | `0.00` at `t = 8/8`      | Faults  |
 
 A faulting run freezes at the first sample within `38`, which may precede the
 nearest approach.
@@ -147,26 +147,26 @@ finds the two motes at distance `0`.
 
 `FAULTS` names every way a run halts:
 
-| Fault | Raised |
-| --- | --- |
-| `collision` | Two motes within `38` at a sample. |
-| `torn` | A held constellation's imposed motions disagree. |
-| `overextended` | `extend` on a piston already at `ARM_MAX_LEN` (`3`). |
-| `overretracted` | `retract` on a piston already at `ARM_MIN_LEN` (`1`). |
-| `unmounted` | `advance` or `recede` on a part not on a track. |
-| `track-end` | `advance` at the last cell, or `recede` at the first cell, of an open track. |
-| `impossible` | `extend` or `retract` on a part that is not a piston, or any non-blank instruction but `rotate-cw` or `rotate-ccw` on a wheel. |
+| Fault           | Raised                                                                                                                         |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `collision`     | Two motes within `38` at a sample.                                                                                             |
+| `torn`          | A held constellation's imposed motions disagree.                                                                               |
+| `overextended`  | `extend` on a piston already at `ARM_MAX_LEN` (`3`).                                                                           |
+| `overretracted` | `retract` on a piston already at `ARM_MIN_LEN` (`1`).                                                                          |
+| `unmounted`     | `advance` or `recede` on a part not on a track.                                                                                |
+| `track-end`     | `advance` at the last cell, or `recede` at the first cell, of an open track.                                                   |
+| `impossible`    | `extend` or `retract` on a part that is not a piston, or any non-blank instruction but `rotate-cw` or `rotate-ccw` on a wheel. |
 
 A fault freezes the run where it stood: the status becomes `faulted` and
 nothing advances further. `back` returns to editing.
 
 A fault names what raised it:
 
-| Fault | `parts` | `motes` |
-| --- | --- | --- |
-| `collision` | empty | every mote of every pair within `38` at that sample |
-| `torn` | every part holding the constellation | every mote of the constellation |
-| Every fetch fault | the faulting part | empty |
+| Fault             | `parts`                              | `motes`                                             |
+| ----------------- | ------------------------------------ | --------------------------------------------------- |
+| `collision`       | empty                                | every mote of every pair within `38` at that sample |
+| `torn`            | every part holding the constellation | every mote of the constellation                     |
+| Every fetch fault | the faulting part                    | empty                                               |
 
 Both lists name each part and each mote once, however many pairs or grips
 reached it. `parts` is in placement order and `motes` is in ascending mote id.
@@ -196,11 +196,11 @@ After the rises, if every set's tally has reached the challenge's `target`,
 the run completes: the status becomes `complete` and the metrics are recorded.
 A run whose machine holds no set never completes.
 
-| Metric | Value |
-| --- | --- |
-| `cost` | The machine's cost, as `specs/parts.md` computes it. |
+| Metric   | Value                                                                             |
+| -------- | --------------------------------------------------------------------------------- |
+| `cost`   | The machine's cost, as `specs/parts.md` computes it.                              |
 | `cycles` | `sim.cycle + 1` at the completing boundary: the number of cycles the machine ran. |
-| `area` | The size of the area bank below. |
+| `area`   | The size of the area bank below.                                                  |
 
 The area bank is a set of hexes accumulated across the run. At the start of
 the run it takes every hex of every placed part, every fixture hex, and every

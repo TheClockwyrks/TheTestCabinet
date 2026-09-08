@@ -42,7 +42,9 @@ import { sigilHexes } from "../parts";
  * the placement rules of `specs/parts.md` alone, and throws an `Error` naming
  * the first rule it breaks" (`specs/instrumentation.md`, The machine).
  */
-async function refusesPlacement(place: () => Promise<unknown>): Promise<boolean> {
+async function refusesPlacement(
+  place: () => Promise<unknown>,
+): Promise<boolean> {
   try {
     await place();
     return false;
@@ -72,7 +74,11 @@ it("refuses a confluence whose anchor is on the field and whose founts are not",
   // footprint and `specs/field.md`'s extent.
   const over = sigilHexes("confluence", OVER_THE_EDGE, 0);
   const inside = sigilHexes("confluence", INSIDE, 0);
-  assertEqual(onField(OVER_THE_EDGE), true, "the refused sigil's own anchor is on the field");
+  assertEqual(
+    onField(OVER_THE_EDGE),
+    true,
+    "the refused sigil's own anchor is on the field",
+  );
   assertEqual(
     over.filter((hex) => !onField(hex)).length,
     2,
@@ -102,7 +108,11 @@ it("refuses a confluence whose anchor is on the field and whose founts are not",
     true,
     `a confluence at (${OVER_THE_EDGE.q}, ${OVER_THE_EDGE.r}) is refused: two footprint hexes are off the field`,
   );
-  assertEqual(afterRefusal, 0, "the refused confluence added no part to the machine");
+  assertEqual(
+    afterRefusal,
+    0,
+    "the refused confluence added no part to the machine",
+  );
   assertEqual(
     refusedInside,
     false,

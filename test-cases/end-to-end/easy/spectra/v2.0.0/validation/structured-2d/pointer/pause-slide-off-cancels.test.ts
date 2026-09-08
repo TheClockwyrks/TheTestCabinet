@@ -1,7 +1,7 @@
 // Spectra — pointer/pause-slide-off-cancels: two edges in different pause-menu
 // items take neither.
 //
-// THE RULE. `specs/ui.md`, "Pointer and touch": "A confirm takes both of its edges
+// THE RULE. `specs/ui.md`, "Pointer and touch": "A confirm requires both of its edges
 // inside one item's region ... Two edges that fall in different regions, and an edge
 // that falls outside every region, confirm no item." It holds over the items each of
 // the three menu screens shows, and this point decides it on the PAUSED screen:

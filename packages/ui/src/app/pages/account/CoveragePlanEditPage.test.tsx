@@ -164,7 +164,9 @@ describe("CoveragePlanEditPage settings", () => {
       screen.queryByRole("button", { name: "Reset Runs per cell" }),
     ).toBeNull();
     fireEvent.change(runsPerCell(), { target: { value: "7" } });
-    fireEvent.click(screen.getByRole("button", { name: "Reset Runs per cell" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Reset Runs per cell" }),
+    );
     expect(runsPerCell().value).toBe("3");
   });
 

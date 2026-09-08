@@ -163,17 +163,24 @@ The blueprint, the run length, and when to snapshot:
 {
   "version": 1,
   "grid": { "width": 64, "height": 64 },
-  "ticks": 100000,                       // simulate this many ticks from empty
-  "snapshots": [25000, 50000, 100000],   // emit canonical state at each tick
+  "ticks": 100000, // simulate this many ticks from empty
+  "snapshots": [25000, 50000, 100000], // emit canonical state at each tick
   "entities": [
-    { "type": "belt",   "x": 9, "y": 5, "dir": "E", "tier": "fast" },
-    { "type": "source", "x": 8, "y": 5, "dir": "E", "item": "iron-ore",
-      "lane": "both", "period": 4 },
+    { "type": "belt", "x": 9, "y": 5, "dir": "E", "tier": "fast" },
+    {
+      "type": "source",
+      "x": 8,
+      "y": 5,
+      "dir": "E",
+      "item": "iron-ore",
+      "lane": "both",
+      "period": 4,
+    },
     { "type": "splitter", "x": 12, "y": 5, "dir": "E" }, // covers (12,5)-(12,6)
     { "type": "inserter", "x": 14, "y": 6, "dir": "N" },
     { "type": "assembler", "x": 14, "y": 7, "recipe": "iron-plate" },
-    { "type": "sink", "x": 20, "y": 5, "dir": "W" }
-  ]
+    { "type": "sink", "x": 20, "y": 5, "dir": "W" },
+  ],
 }
 ```
 
@@ -190,19 +197,29 @@ An array with one canonical snapshot per entry in the scenario's `snapshots`:
 [
   {
     "tick": 50000,
-    "checksum": "fnv1a64:9f3c1a77b2e40118",  // hash of the canonical bytes
-    "entities": [                            // in scenario placement order
+    "checksum": "fnv1a64:9f3c1a77b2e40118", // hash of the canonical bytes
+    "entities": [
+      // in scenario placement order
       { "source": { "emit_phase": 1 } },
-      { "belt": {                            // each lane: from the output end back
-          "left":  [ { "pos": 0, "item": "iron-ore" } ],
-          "right": [ { "pos": 64, "item": "iron-ore" } ] } },
+      {
+        "belt": {
+          // each lane: from the output end back
+          "left": [{ "pos": 0, "item": "iron-ore" }],
+          "right": [{ "pos": 64, "item": "iron-ore" }],
+        },
+      },
       { "splitter": { "out_pref": 1, "in_first": 0 } },
       { "inserter": { "phase": "swing", "held": "iron-ore", "swing_left": 3 } },
-      { "assembler": { "inputs": { "iron-ore": 2 }, "output": {},
-                       "craft_left": 12 } },
-      { "sink": { "consumed": { "iron-plate": 4123 } } }
-    ]
-  }
+      {
+        "assembler": {
+          "inputs": { "iron-ore": 2 },
+          "output": {},
+          "craft_left": 12,
+        },
+      },
+      { "sink": { "consumed": { "iron-plate": 4123 } } },
+    ],
+  },
 ]
 ```
 
@@ -212,7 +229,7 @@ and tick.
 
 ## Determinism and the canonical state
 
-The case stands on one property: the state after *N* ticks is a single value
+The case stands on one property: the state after _N_ ticks is a single value
 every correct engine agrees on. Two rules guarantee it.
 
 Everything is integer and fixed-point. Item positions, belt speeds, and swing and
@@ -400,15 +417,15 @@ entity's sprite is the output of an
 [asset-generation](/testing/asset-generation/overview/) case drawn against its own
 brief, under the `lattice-*` slug:
 
-| Entity | Case | Frames |
-| --- | --- | --- |
-| Transport belt (scrolling surface) | `lattice-belt` | 48: three tiers × (8-frame straight loop + 8-frame curve) |
-| Splitter (2-tile balancer) | `lattice-splitter` | 8-frame loop |
-| Inserter (swing arm) | `lattice-inserter` | 36: three tiers × 12-frame swing cycle |
-| Assembler (3×3 machine) | `lattice-assembler` | 24: three tiers × 8-frame craft loop |
-| Source fixture (emitter) | `lattice-source` | 6-frame emit pulse |
-| Sink fixture (drain) | `lattice-sink` | 6-frame consume pulse |
-| Belt items (icon set) | `lattice-items` | 17 item icons (8 base materials + 9 machine icons) |
+| Entity                             | Case                | Frames                                                    |
+| ---------------------------------- | ------------------- | --------------------------------------------------------- |
+| Transport belt (scrolling surface) | `lattice-belt`      | 48: three tiers × (8-frame straight loop + 8-frame curve) |
+| Splitter (2-tile balancer)         | `lattice-splitter`  | 8-frame loop                                              |
+| Inserter (swing arm)               | `lattice-inserter`  | 36: three tiers × 12-frame swing cycle                    |
+| Assembler (3×3 machine)            | `lattice-assembler` | 24: three tiers × 8-frame craft loop                      |
+| Source fixture (emitter)           | `lattice-source`    | 6-frame emit pulse                                        |
+| Sink fixture (drain)               | `lattice-sink`      | 6-frame consume pulse                                     |
+| Belt items (icon set)              | `lattice-items`     | 17 item icons (8 base materials + 9 machine icons)        |
 
 The belt, inserter, and assembler are drawn across three upgrade tiers laid end
 to end. The atlas, `sheet.json`, records each tier's frames and its own playback

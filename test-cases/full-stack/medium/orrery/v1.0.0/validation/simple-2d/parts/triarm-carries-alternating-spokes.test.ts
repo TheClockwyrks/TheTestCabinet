@@ -30,7 +30,12 @@
 // between them hold nothing, though a mote was waiting on each.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertLength, assertNotNull, assertNull } from "../assert";
+import {
+  assertEqual,
+  assertLength,
+  assertNotNull,
+  assertNull,
+} from "../assert";
 import { armPart, solution } from "../formats";
 import { BARE, ORIGIN } from "../fixtures";
 import { gripperHex, spokesOf } from "../parts";
@@ -92,7 +97,11 @@ it("closes three grippers, on every second spoke, with a mote waiting on all six
   assertNotNull(sim, "the run is live through the cycle that grabbed");
   assertEqual(sim?.status, "running", "the grab cycle reaches its boundary");
   assertNull(sim?.fault ?? null, "no fault was raised by the grab");
-  assertEqual(sim?.cycle, 1, "the cycle ran to its boundary rather than freezing");
+  assertEqual(
+    sim?.cycle,
+    1,
+    "the cycle ran to its boundary rather than freezing",
+  );
   assertEqual(
     poseOf(snapshot, triarm)?.rotation,
     ROTATION,

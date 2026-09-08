@@ -459,3 +459,41 @@ describe("the obstacle operations", () => {
     },
   );
 });
+
+describe("reconcile", () => {
+  it("leaves every reading answering for the state it was handed", () => {
+    // Nothing this build reports is held as a copy of something a pose can leave
+    // behind, so the reconciled state describes exactly the world that was posed
+    // — which is the guarantee, whether a build had work to do here or not.
+    const posed = debug.setPellet(
+      debug.setDirection(debug.setSnake(opening(), chain(10, 8, 3)), "right"),
+      14,
+      8,
+    );
+
+    const reconciled = debug.reconcile(posed);
+
+    expect(debug.snapshot(reconciled)).toEqual(debug.snapshot(posed));
+  });
+
+  it("advances nothing, and twice matches once", () => {
+    const posed = debug.setComboWindow(
+      debug.setScreen(debug.setSnake(opening(), chain(10, 8, 3)), "playing"),
+      2,
+    );
+    const before = debug.snapshot(posed);
+
+    const once = debug.reconcile(posed);
+    const after = debug.snapshot(once);
+
+    expect(after.ticks).toBe(before.ticks);
+    expect(after.simTime).toBe(before.simTime);
+    expect(after.snake).toEqual(before.snake);
+    expect(after.pellet).toEqual(before.pellet);
+    expect(after.turns).toEqual(before.turns);
+    expect(after.comboWindow).toBe(before.comboWindow);
+    expect(after).toEqual(before);
+
+    expect(debug.snapshot(debug.reconcile(once))).toEqual(after);
+  });
+});

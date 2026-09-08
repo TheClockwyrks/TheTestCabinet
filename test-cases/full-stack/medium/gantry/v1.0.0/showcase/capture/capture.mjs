@@ -193,9 +193,13 @@ const say = (...parts) => console.log(...parts);
 const round = (n, p = 1) => Number(n.toFixed(p));
 
 function ffmpeg(args, what) {
-  const done = spawnSync("ffmpeg", ["-hide_banner", "-loglevel", "error", ...args], {
-    stdio: ["ignore", "inherit", "inherit"],
-  });
+  const done = spawnSync(
+    "ffmpeg",
+    ["-hide_banner", "-loglevel", "error", ...args],
+    {
+      stdio: ["ignore", "inherit", "inherit"],
+    },
+  );
   if (done.status !== 0) {
     throw new Error(`ffmpeg failed (${what}): exit ${done.status}`);
   }
@@ -340,7 +344,10 @@ async function assertPickable(page, nodes) {
           nearest = Math.min(nearest, Math.hypot(px - at.x, py - at.y));
         }
         if (nearest < floor) {
-          bad.push({ node: [nx, ny, nz], why: `neighbor ${nearest.toFixed(1)}px away` });
+          bad.push({
+            node: [nx, ny, nz],
+            why: `neighbor ${nearest.toFixed(1)}px away`,
+          });
         }
       }
       return bad;
@@ -493,7 +500,8 @@ async function buildCrane(page, d) {
     await clickNode(page, point(n), n);
   }
   await page.waitForFunction(
-    (want) => window.__gantry.snapshot().structure.counterweights.length === want,
+    (want) =>
+      window.__gantry.snapshot().structure.counterweights.length === want,
     d.counterweights.length,
     { polling: "raf", timeout: 5_000 },
   );
@@ -505,7 +513,9 @@ async function buildCrane(page, d) {
       `(${((Date.now() - t0) / 1000).toFixed(1)}s of clicking)`,
   );
   if (s.members !== d.members.length) {
-    throw new Error(`clicked ${d.members.length} members, the yard took ${s.members}`);
+    throw new Error(
+      `clicked ${d.members.length} members, the yard took ${s.members}`,
+    );
   }
   if (s.issues.length > 0) {
     throw new Error(`the crane is not ready to run: ${s.issues.join(", ")}`);
@@ -633,7 +643,9 @@ async function videoPass(browser, url, d) {
   page.on("pageerror", (e) => problems.push(e.message));
   const opened = Date.now();
   await page.goto(url);
-  await page.waitForFunction(() => !!window.__gantry, null, { timeout: 60_000 });
+  await page.waitForFunction(() => !!window.__gantry, null, {
+    timeout: 60_000,
+  });
   await assertStageIsOneToOne(page);
 
   say(" pass 1 — the video");
@@ -688,7 +700,9 @@ async function videoPass(browser, url, d) {
       `${final.broken} member(s) broken`,
   );
   if (final.phase !== "cleared") {
-    throw new Error(`the run did not clear: ${final.phase} ${final.cause ?? ""}`);
+    throw new Error(
+      `the run did not clear: ${final.phase} ${final.cause ?? ""}`,
+    );
   }
 
   // Hold on the results card for a beat, so the clip ends settled.
@@ -737,7 +751,10 @@ async function scout(page) {
     for (let i = 0; i < 20_000; i += 1) {
       g.advance(1);
       const s = g.snapshot();
-      const util = s.run.forces.reduce((top, f) => Math.max(top, f.utilization), 0);
+      const util = s.run.forces.reduce(
+        (top, f) => Math.max(top, f.utilization),
+        0,
+      );
       const pad = s.run.attached === null ? null : pads[s.run.attached];
       rows.push({
         tick: s.run.tick,
@@ -766,7 +783,9 @@ async function stillsPass(browser, url, d, track) {
   });
   const page = await context.newPage();
   await page.goto(url);
-  await page.waitForFunction(() => !!window.__gantry, null, { timeout: 60_000 });
+  await page.waitForFunction(() => !!window.__gantry, null, {
+    timeout: 60_000,
+  });
   await assertStageIsOneToOne(page);
 
   say(" pass 2 — the stills");
@@ -869,7 +888,8 @@ function cameraAt(tick, track) {
 async function advanceTo(page, tick) {
   const at = (await read(page)).tick;
   if (at > tick) throw new Error(`the run is already past tick ${tick}`);
-  if (at < tick) await page.evaluate((n) => window.__gantry.advance(n), tick - at);
+  if (at < tick)
+    await page.evaluate((n) => window.__gantry.advance(n), tick - at);
 }
 
 /**
@@ -880,7 +900,8 @@ async function startRunOffClock(page) {
   await page.keyboard.press("KeyG");
   await page.evaluate(() => window.__gantry.advance(1));
   const s = await read(page);
-  if (s.phase !== "running") throw new Error(`the run did not start (${s.phase})`);
+  if (s.phase !== "running")
+    throw new Error(`the run did not start (${s.phase})`);
 }
 
 /**
@@ -912,7 +933,12 @@ async function restartRun(page) {
  * yard rather than of where the driver's hand happened to be.
  */
 async function parkPointer(page) {
-  for (const [x, y] of [[1180, 120], [1240, 60], [60, 660], [1180, 60]]) {
+  for (const [x, y] of [
+    [1180, 120],
+    [1240, 60],
+    [60, 660],
+    [1180, 60],
+  ]) {
     await page.mouse.move(x, y);
     await frame(page);
     const { pick } = await read(page);
@@ -956,31 +982,44 @@ async function cutClip(recording, file) {
   await rm(file, { force: true });
   ffmpeg(
     [
-      "-ss", start.toFixed(3),
-      "-t", length.toFixed(3),
-      "-i", recording.raw,
+      "-ss",
+      start.toFixed(3),
+      "-t",
+      length.toFixed(3),
+      "-i",
+      recording.raw,
       "-an",
-      "-c:v", "libvpx-vp9",
+      "-c:v",
+      "libvpx-vp9",
       // The guide asks for a leading entry of a megabyte or two: it is a page
       // cost, paid the moment a visitor selects the case, not an archive cost.
       // This footage is flat-shaded and mostly still background, so it carries
       // a high CRF well, and a slower cpu-used spends encoder time rather than
       // bytes on the readouts, which have to stay legible on the stage.
-      "-crf", "38",
-      "-b:v", "0",
-      "-row-mt", "1",
-      "-deadline", "good",
-      "-cpu-used", "1",
-      "-pix_fmt", "yuv420p",
+      "-crf",
+      "38",
+      "-b:v",
+      "0",
+      "-row-mt",
+      "1",
+      "-deadline",
+      "good",
+      "-cpu-used",
+      "1",
+      "-pix_fmt",
+      "yuv420p",
       file,
     ],
     "cutting the clip",
   );
   const { size } = await stat(file);
   const probe = spawnSync("ffprobe", [
-    "-v", "error",
-    "-show_entries", "format=duration",
-    "-of", "default=nw=1:nk=1",
+    "-v",
+    "error",
+    "-show_entries",
+    "format=duration",
+    "-of",
+    "default=nw=1:nk=1",
     file,
   ]);
   const seconds = Number(String(probe.stdout).trim());
@@ -1019,7 +1058,9 @@ async function main() {
     const recording = await videoPass(browser, server.url, d);
     const clip = await cutClip(recording, path.join(OUT, "gameplay.webm"));
     if (clip.size > 25e6) {
-      throw new Error(`gameplay.webm is ${(clip.size / 1e6).toFixed(1)} MB, over the 25 MB cap`);
+      throw new Error(
+        `gameplay.webm is ${(clip.size / 1e6).toFixed(1)} MB, over the 25 MB cap`,
+      );
     }
     await stillsPass(browser, server.url, d, recording.track);
   } finally {
@@ -1027,7 +1068,9 @@ async function main() {
     await server.close();
   }
 
-  const shipped = (await readdir(OUT)).filter((f) => /\.(webm|png)$/.test(f)).sort();
+  const shipped = (await readdir(OUT))
+    .filter((f) => /\.(webm|png)$/.test(f))
+    .sort();
   say(`\nWrote ${shipped.length} file(s) to ${OUT}:`);
   for (const f of shipped) {
     const { size } = await stat(path.join(OUT, f));

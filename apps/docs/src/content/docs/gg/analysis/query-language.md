@@ -23,19 +23,19 @@ plain JSON, an order of magnitude smaller than the structures it derives from,
 and carries configuration ids and outcome numbers rather than source, prompts or
 model output.
 
-| Namespace | Holds |
-| --- | --- |
-| `id`, `started`, `finished`, `state`, `published`, `rating`, `score`, `reviewCount` | identity, timing, lifecycle |
-| `case`, `caseVersion`, `variant`, `testType` | what was run |
-| `model`, `orchestrator`, `harnessVersion`, `preset`, `agents`, `agent.<profileId>.model` | how it was configured |
-| `cap.<id>`, `cap.<id>.impl`, `cap.<id>.<param>`, `agent.<profileId>.cap.<id>` | the capability set, flattened and typed |
-| `tool.<name>` | the root agent's effective toolset |
-| `status`, `mode`, `limit` | how it ended |
-| `summary.<path>` | the whole session summary, flattened |
-| `model.<id>.tokens`, `model.<id>.cost` | the per-(profile, model) spend rollup |
-| `metric.*` | run time, the stage durations, tokens and cost |
-| `code.<path>`, `code.language` | the [code analysis](/gg/analysis/code-analysis/) summary |
-| `has.<block>` | presence markers |
+| Namespace                                                                                | Holds                                                    |
+| ---------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `id`, `started`, `finished`, `state`, `published`, `rating`, `score`, `reviewCount`      | identity, timing, lifecycle                              |
+| `case`, `caseVersion`, `variant`, `testType`                                             | what was run                                             |
+| `model`, `orchestrator`, `harnessVersion`, `preset`, `agents`, `agent.<profileId>.model` | how it was configured                                    |
+| `cap.<id>`, `cap.<id>.impl`, `cap.<id>.<param>`, `agent.<profileId>.cap.<id>`            | the capability set, flattened and typed                  |
+| `tool.<name>`                                                                            | the root agent's effective toolset                       |
+| `status`, `mode`, `limit`                                                                | how it ended                                             |
+| `summary.<path>`                                                                         | the whole session summary, flattened                     |
+| `model.<id>.tokens`, `model.<id>.cost`                                                   | the per-(profile, model) spend rollup                    |
+| `metric.*`                                                                               | run time, the stage durations, tokens and cost           |
+| `code.<path>`, `code.language`                                                           | the [code analysis](/gg/analysis/code-analysis/) summary |
+| `has.<block>`                                                                            | presence markers                                         |
 
 `summary.<path>` carries the entire session summary, so a figure a later feature
 folds onto it becomes queryable the day it lands. `cap.<id>.<param>` is typed,
@@ -122,17 +122,17 @@ time-range presets carry the interval that suits their range.
 
 Worked examples, which are also the editor's example menu:
 
-| Question | Query |
-| --- | --- |
-| Long recent sessions on one provider | `started >= now-30d and model:"anthropic/*" and metric.sessionSeconds >= 1800` |
-| Runs never offered the edit tool | `has.summary:true and not tool.edit_file:*` |
-| Everything that terminated abnormally | `state:(hung or timed_out or catastrophic)` |
-| Abnormal-termination share per configuration | `not state:completed \| stats count() by preset` |
-| Context overflow with compaction off, per model | `cap.compaction:false and has.summary:true \| stats avg(summary.ranOutOfContext) as overflow_rate by model` |
-| Score distribution, agent persistence on versus off | `\| stats dist(score) by cap."agent-persistence"` |
-| Sessions over time | `\| stats count() by bucket(started, 1d)` |
-| Compilation cost per [language arm](/gg/languages/overview/) | `has.summary:true \| stats avg(summary.compileMs) as compiling by summary.programLanguage` |
-| Cognitive complexity per model | `\| stats median(code.complexity.meanCognitive) by model` |
+| Question                                                     | Query                                                                                                       |
+| ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
+| Long recent sessions on one provider                         | `started >= now-30d and model:"anthropic/*" and metric.sessionSeconds >= 1800`                              |
+| Runs never offered the edit tool                             | `has.summary:true and not tool.edit_file:*`                                                                 |
+| Everything that terminated abnormally                        | `state:(hung or timed_out or catastrophic)`                                                                 |
+| Abnormal-termination share per configuration                 | `not state:completed \| stats count() by preset`                                                            |
+| Context overflow with compaction off, per model              | `cap.compaction:false and has.summary:true \| stats avg(summary.ranOutOfContext) as overflow_rate by model` |
+| Score distribution, agent persistence on versus off          | `\| stats dist(score) by cap."agent-persistence"`                                                           |
+| Sessions over time                                           | `\| stats count() by bucket(started, 1d)`                                                                   |
+| Compilation cost per [language arm](/gg/languages/overview/) | `has.summary:true \| stats avg(summary.compileMs) as compiling by summary.programLanguage`                  |
+| Cognitive complexity per model                               | `\| stats median(code.complexity.meanCognitive) by model`                                                   |
 
 ## Parser and evaluator
 

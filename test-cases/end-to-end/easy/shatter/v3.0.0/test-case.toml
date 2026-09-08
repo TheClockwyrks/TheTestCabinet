@@ -210,7 +210,7 @@ build = "npm run build"
 # does not depend on the model leaving the seeded scripts intact.
 [toolchain]
 typecheck = "npx tsc --noEmit"
-lint = "npx eslint ."
+lint = "npx eslint . --max-warnings 0"
 format = "npx prettier --check ."
 test = "npx vitest run --coverage"
 
@@ -2537,7 +2537,7 @@ validation = { script = "screens/menu-wraps-down.test.ts", outputs = [
 # business and what it does when a device arrives there is not. Selecting and
 # confirming are separate items in each direction, because a build commonly wires
 # one and not the other, and the two cancel items are the edge `specs/ui.md`
-# states outright: a confirm takes both of its edges inside one region.
+# states outright: a confirm requires both of its edges inside one region.
 [[review.categories]]
 id = "pointer"
 title = "The menus under a mouse"
@@ -2562,7 +2562,7 @@ validation = { script = "pointer/click-confirms.test.ts", outputs = [
 [[review.categories.items]]
 id = "pointer-slide-off-cancels"
 title = "A press and a release in different regions confirm nothing"
-description = "A press inside entry 1's region released inside entry 0's leaves screen title, since a confirm takes both of its edges inside one region."
+description = "A press inside entry 1's region released inside entry 0's leaves screen title, since a confirm requires both of its edges inside one region."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "pointer/slide-off-cancels.test.ts", outputs = [
@@ -2592,7 +2592,7 @@ validation = { script = "touch/tap-confirms.test.ts", outputs = [
 [[review.categories.items]]
 id = "touch-drag-cancels"
 title = "A contact lifted on a different entry confirms nothing"
-description = "A contact landing in entry 1's region and lifting in entry 0's leaves screen title, since a confirm takes both of its edges inside one region."
+description = "A contact landing in entry 1's region and lifting in entry 0's leaves screen title, since a confirm requires both of its edges inside one region."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "touch/drag-cancels.test.ts", outputs = [

@@ -300,8 +300,69 @@ describe("a route drawn through the pointer poses", () => {
   });
 });
 
+describe("reconcile", () => {
+  it("re-derives a stored reading from a posed board", () => {
+    // `loadBoard` writes the very thing five readings are functions of: the
+    // board's dimensions (a node's `x`/`y`), the drawn beams (a crystal's
+    // `spent`, a beam's `complete`, `solved`), and the screen (`targets`).
+    h.debug.loadBoard(["TtT"]);
+    h.debug.reconcile();
+    let read = h.debug.snapshot();
+    for (const node of read.board.nodes) {
+      const [x, y] = cellCenter(node, h.state.board);
+      expect([node.x, node.y]).toEqual([x, y]);
+    }
+    expect(read.solved).toBe(false);
+    expect(read.beams.triangle?.complete).toBe(false);
+
+    // Draw the route the board is solved by, then reconcile and read again.
+    h.trace([
+      { col: 0, row: 0 },
+      { col: 1, row: 0 },
+      { col: 2, row: 0 },
+    ]);
+    h.debug.reconcile();
+    read = h.debug.snapshot();
+    expect(read.solved).toBe(true);
+    expect(read.beams.triangle?.complete).toBe(true);
+
+    // A larger board: the cell centres move with the dimensions, so a stored
+    // copy of them would still answer for the board before this pose.
+    h.debug.loadBoard(["T.S", "1.s", "T.S"]);
+    h.debug.reconcile();
+    read = h.debug.snapshot();
+    expect(read.board.cols).toBe(3);
+    expect(read.board.rows).toBe(3);
+    for (const node of read.board.nodes) {
+      const [x, y] = cellCenter(node, h.state.board);
+      expect([node.x, node.y]).toEqual([x, y]);
+    }
+  });
+
+  it("advances nothing, and reconciling twice matches reconciling once", () => {
+    h.debug.loadBoard(["TtT"]);
+    h.trace([
+      { col: 0, row: 0 },
+      { col: 1, row: 0 },
+    ]);
+    const before = h.debug.snapshot();
+    const board = h.state.board;
+    h.cues.length = 0;
+    h.debug.reconcile();
+    expect(h.debug.snapshot()).toEqual(before);
+    h.debug.reconcile();
+    expect(h.debug.snapshot()).toEqual(before);
+    // Named explicitly, because "equal snapshots" is only as strong as the
+    // clock, the live trace and the cues being in it.
+    expect(h.state.simTime).toBe(before.simTime);
+    expect(h.state.screen).toBe(before.screen);
+    expect(h.state.board).toBe(board);
+    expect(h.cues).toEqual([]);
+  });
+});
+
 describe("clear", () => {
-  it("empties every beam on the playing screen alone, playing the cue once", () => {
+  it("empties every beam from wherever the game stands, playing the cue once", () => {
     h.debug.loadBoard(["TtT"]);
     h.trace([
       { col: 0, row: 0 },
@@ -312,11 +373,26 @@ describe("clear", () => {
     expect(h.state.beams[0].cells).toEqual([]);
     expect(h.cues.map((play) => play.cue)).toEqual(["clear"]);
 
-    // With nothing to remove, and off the playing screen, the cue stays quiet.
+    // With nothing to remove the cue stays quiet, whatever the screen.
     h.debug.clear();
     h.debug.reset();
     h.debug.clear();
     expect(h.cues.map((play) => play.cue)).toEqual(["clear"]);
+    expect(h.state.screen).toBe("title");
+  });
+
+  it("empties a drawn board off the playing screen, leaving the screen alone", () => {
+    // The screen is how a PLAYER reaches the clear action, not a condition of
+    // the operation (specs/instrumentation.md, "The operations").
+    h.debug.loadBoard(["TtT"]);
+    h.trace([
+      { col: 0, row: 0 },
+      { col: 1, row: 0 },
+    ]);
+    h.debug.setScreen("title");
+    h.debug.clear();
+    expect(h.state.beams[0].cells).toEqual([]);
+    expect(h.state.tracing).toBeNull();
     expect(h.state.screen).toBe("title");
   });
 });

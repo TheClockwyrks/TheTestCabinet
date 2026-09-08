@@ -98,6 +98,16 @@ import type {
 export const RECORDING_FORMAT = 1;
 
 /**
+ * A captured entry as this recorder writes one: carrying its own pixels.
+ *
+ * {@link CapturedImage} also names the forms whose pixels live in a file beside
+ * the recording, written by a writer that has a directory to put them in. A
+ * recording this engine hands back is assembled in memory and travels alone, so
+ * every entry in it is inline and the reads below say so.
+ */
+type InlineImage = Extract<CapturedImage, { src: string } | { data: string }>;
+
+/**
  * The 2D context properties a frame inherits from the one before it.
  *
  * This is the whole of the canvas state that survives a frame boundary, minus the
@@ -631,7 +641,7 @@ function identity(
  * short: a player rebuilds a `width × height` buffer from what it is handed, and
  * half a picture is a wrong picture.
  */
-function readPixels(value: object): CapturedImage | null {
+function readPixels(value: object): InlineImage | null {
   const buffer = value as { width?: unknown; height?: unknown; data?: unknown };
   const { width, height } = buffer;
   if (typeof width !== "number" || typeof height !== "number") return null;
@@ -844,7 +854,7 @@ interface Emission {
 /** Where a fixed source was captured to, and under what identity. */
 interface Captured {
   readonly key: string;
-  readonly image: CapturedImage;
+  readonly image: InlineImage;
 }
 
 /**
@@ -2135,7 +2145,7 @@ export class ContextRecorder {
    * reads that answer the same bytes share one entry, which is what an unchanging
    * surface costs and what a surface repainted every frame is worth.
    */
-  private readBitmap(value: object): CapturedImage | null {
+  private readBitmap(value: object): InlineImage | null {
     const size = sourceSize(value);
     if (size === null) return null;
     if (MUTABLE_SOURCES.some((name) => isHostInstance(value, name)))
@@ -2158,7 +2168,7 @@ export class ContextRecorder {
   private snap(
     value: object,
     size: { width: number; height: number },
-  ): CapturedImage | null {
+  ): InlineImage | null {
     const ctx = this.scratchContext(size);
     if (ctx === null) return null;
     ctx.drawImage(value as CanvasImageSource, 0, 0, size.width, size.height);

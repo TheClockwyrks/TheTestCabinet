@@ -60,9 +60,15 @@ export default function item() {
       await api.call("selectMap", map.id);
       await api.call("startScenario");
       const id = await api.call("spawnUnit", {});
+      // Posed with the raw ops rather than through a helper, so the readings this item
+      // measures from — the unit's own position on its path — are brought into agreement
+      // with the board just posed before the first of them is read.
+      await api.call("reconcile");
 
       const before = await api.snapshot();
-      const unit0 = (before.matter || []).find((m) => m.id === id) ?? (before.matter || [])[0];
+      const unit0 =
+        (before.matter || []).find((m) => m.id === id) ??
+        (before.matter || [])[0];
       if (before.phase !== "round" || !unit0) {
         throw preconditionUnmet(
           `the scenario round is not live with a unit on a path (phase ${before.phase}, ` +

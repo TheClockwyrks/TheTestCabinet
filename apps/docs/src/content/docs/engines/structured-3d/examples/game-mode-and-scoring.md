@@ -22,7 +22,13 @@ export const COLORS = { ball: "#ffd479", paddle: "#7fd1ff" } as const;
 
 export const SCORE_LIMIT = 7;
 export const COURT = { halfWidth: 10, halfHeight: 5 };
-export const PADDLE = { width: 0.4, height: 2.4, depth: 0.4, inset: 1, speed: 9 };
+export const PADDLE = {
+  width: 0.4,
+  height: 2.4,
+  depth: 0.4,
+  inset: 1,
+  speed: 9,
+};
 export const BALL = { radius: 0.25, speed: 8, drift: 3 };
 
 export const AXES: readonly (readonly [up: string, down: string])[] = [
@@ -128,7 +134,11 @@ export function rallyState(world: World): RallyState {
 ## src/actors/lamp.ts
 
 ```ts
-import { Actor, LightComponent, quatFromEuler } from "@clockwyrks/structured-3d";
+import {
+  Actor,
+  LightComponent,
+  quatFromEuler,
+} from "@clockwyrks/structured-3d";
 
 export class Lamp extends Actor {
   constructor() {
@@ -183,7 +193,10 @@ export class Ball extends Actor {
   }
 
   override tick(dt: number): void {
-    this.transform.position = add(this.transform.position, scale(this.velocity, dt));
+    this.transform.position = add(
+      this.transform.position,
+      scale(this.velocity, dt),
+    );
     const limit = COURT.halfHeight - BALL.radius;
     const y = this.transform.position.y;
     if (y < -limit || y > limit) {
@@ -196,7 +209,11 @@ export class Ball extends Actor {
       const away = Math.sign(
         this.transform.position.x - contact.actor.transform.position.x,
       );
-      this.velocity = vec3(Math.abs(this.velocity.x) * away, this.velocity.y, 0);
+      this.velocity = vec3(
+        Math.abs(this.velocity.x) * away,
+        this.velocity.y,
+        0,
+      );
       rallyState(this.world).rallies += 1;
     }
   }
@@ -212,7 +229,11 @@ rules, and each move is an assignment of a fresh vector from the math helpers.
 ## src/actors/paddle.ts
 
 ```ts
-import { ColliderComponent, MeshComponent, Pawn } from "@clockwyrks/structured-3d";
+import {
+  ColliderComponent,
+  MeshComponent,
+  Pawn,
+} from "@clockwyrks/structured-3d";
 import { COLORS, PADDLE, TAGS } from "../constants";
 
 const SHAPE = {
@@ -265,7 +286,11 @@ class PaddleController extends PlayerController {
     const limit = COURT.halfHeight - PADDLE.height / 2;
     const current = pawn.transform.position;
     const y = current.y + dir * PADDLE.speed * dt;
-    pawn.transform.position = vec3(current.x, Math.min(Math.max(y, -limit), limit), 0);
+    pawn.transform.position = vec3(
+      current.x,
+      Math.min(Math.max(y, -limit), limit),
+      0,
+    );
   }
 }
 
@@ -285,8 +310,14 @@ export class RallyMode extends GameMode {
 
   override spawnPoint(controller: Controller): Transform {
     const left = controller.playerState.index === 0;
-    const x = left ? PADDLE.inset - COURT.halfWidth : COURT.halfWidth - PADDLE.inset;
-    return { position: vec3(x, 0, 0), rotation: QUAT_IDENTITY, scale: VEC3_ONE };
+    const x = left
+      ? PADDLE.inset - COURT.halfWidth
+      : COURT.halfWidth - PADDLE.inset;
+    return {
+      position: vec3(x, 0, 0),
+      rotation: QUAT_IDENTITY,
+      scale: VEC3_ONE,
+    };
   }
 
   override tick(): void {
@@ -339,11 +370,11 @@ match from its `match:phase` subscription.
 
 ## Where each figure lives
 
-| Figure | Holder | Rebuilt |
-| --- | --- | --- |
-| `phase`, `elapsed`, `rallies` | `RallyState` | With the world |
+| Figure                           | Holder             | Rebuilt             |
+| -------------------------------- | ------------------ | ------------------- |
+| `phase`, `elapsed`, `rallies`    | `RallyState`       | With the world      |
 | `index`, `name`, `score`, `aces` | `RallyPlayerState` | On each `addPlayer` |
-| `matches` | `RallyInstance` | Never |
+| `matches`                        | `RallyInstance`    | Never               |
 
 A figure that describes the match belongs to the game state. `rallies` is read
 by the ball and by the mode and means nothing outside this match, so it sits

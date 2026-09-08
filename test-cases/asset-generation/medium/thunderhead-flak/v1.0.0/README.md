@@ -1,7 +1,7 @@
 # Thunderhead Flak Burst — `v1.0.0`
 
 An asset-generation test case (`asset_kind = "particle-3d"`): author the
-*Thunderhead* anti-air flak burst as a volumetric particle system, simulated
+_Thunderhead_ anti-air flak burst as a volumetric particle system, simulated
 live.
 
 Thunderhead is a naval fleet-command game, and this is the mid-air puff a

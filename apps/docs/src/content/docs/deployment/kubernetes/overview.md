@@ -133,14 +133,14 @@ ingest `CronJob`, and `NetworkPolicy` resources. An overlay sets the namespace
 and `TCAB_ENV`, patches in the environment's images and secret references, and
 layers on the components it needs:
 
-| Component | What it adds |
-| --------- | ------------ |
-| `components/postgres` | Backend and auth as stateless `Deployment`s on managed PostgreSQL |
-| `components/postgres-azure-ad` | Passwordless Microsoft Entra database auth for those two `Deployment`s |
-| `components/observability` | The in-cluster Grafana LGTM stack |
-| `components/keyvault-csi` | Materializes the environment's Kubernetes `Secret`s from Azure Key Vault |
-| `components/web` | The in-cluster `tcab-web` console workload |
-| `components/internal-ingress` | The console plus the service hostnames over a VPN-only ingress |
+| Component                      | What it adds                                                             |
+| ------------------------------ | ------------------------------------------------------------------------ |
+| `components/postgres`          | Backend and auth as stateless `Deployment`s on managed PostgreSQL        |
+| `components/postgres-azure-ad` | Passwordless Microsoft Entra database auth for those two `Deployment`s   |
+| `components/observability`     | The in-cluster Grafana LGTM stack                                        |
+| `components/keyvault-csi`      | Materializes the environment's Kubernetes `Secret`s from Azure Key Vault |
+| `components/web`               | The in-cluster `tcab-web` console workload                               |
+| `components/internal-ingress`  | The console plus the service hostnames over a VPN-only ingress           |
 
 The `staging` and `prod` overlays run the SQLite shape; `azure-staging` and
 `azure-prod` run the same base with the PostgreSQL, Key Vault, observability, and
@@ -180,22 +180,33 @@ Their egress is the model APIs and package registries a run needs.
 
 ## Memory ceilings
 
-Every container a deployment creates carries a memory limit equal to its memory
-request. The sum of a node's limits is then knowable, which is what lets the
-deployment guarantee that no pod is killed to satisfy another's growth, and one
-unbounded container gives that guarantee up. The sandbox pod and driver ceilings
-are sized in
-[Run plane](/deployment/kubernetes/run-plane/#sizing-sandbox-pods).
+Memory is sized by two opposite rules, chosen by what a kill costs.
 
-| Container | Ceiling | Why |
-| --- | --- | --- |
-| `backend` | `2Gi` | around 2.4x the anonymous memory plus slab a snapshot refresh reaches, which materializes every run record at once |
-| `lgtm` | `4Gi` | a collector, three TSDBs and Grafana under bursty load, since validating a test case drives far more telemetry than a quiet week |
-| `artifacts` | `1536Mi` | its resident set plus one `tree.tar` or `archive.tar.gz` build, which is still assembled in memory |
-| `ingest` sidecar | `256Mi` | around 3x its peak, and it runs a git checkout whose cost grows with the catalog |
-| `arena` | `512Mi` | sized for concurrent wasm matches rather than for an idle week |
-| `auth`, `dispatcher`, `web` | `256Mi` | around 32x their peaks, and the headroom costs a node almost nothing |
-| `publisher` (per publish `Job`) | `1Gi` | several times the largest run tree it pulls from the artifact service |
+The pods a run needs, the driver and its sandbox, carry a memory **request and no
+limit**. A memory limit is a cgroup ceiling the kernel enforces by `SIGKILL`, and a
+run pod that reaches it is dead that instant, however much memory the node still
+has free, destroying a run that may have been spending money on API calls for
+hours. The request is the node's reservation, and it must cover the real peak of
+the heaviest case, because a run pod that outgrows it on a full node is still the
+first thing evicted; it is sized in
+[Run plane](/deployment/kubernetes/run-plane/#sizing-sandbox-pods). The publisher
+`Job` keeps a limit, because a failed publish loses no spend and is retried.
+
+Every always-on service carries a memory limit **equal to its request**. For a
+service a kill is a restart, not lost spend, and a bounded service can never be
+what crowds a run pod off its node: the sum of the services' limits on a node is
+knowable, so a run pod that grows past its request is contending only with
+headroom the scheduler left, never with another tenant's unbounded growth.
+
+| Container                       | Ceiling  | Why                                                                                                                              |
+| ------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `backend`                       | `2Gi`    | around 2.4x the anonymous memory plus slab a snapshot refresh reaches, which materializes every run record at once               |
+| `lgtm`                          | `4Gi`    | a collector, three TSDBs and Grafana under bursty load, since validating a test case drives far more telemetry than a quiet week |
+| `artifacts`                     | `1536Mi` | its resident set, since a whole-tree download is written to the response as it is built rather than assembled in memory          |
+| `ingest` sidecar                | `256Mi`  | around 3x its peak, and it runs a git checkout whose cost grows with the catalog                                                 |
+| `arena`                         | `512Mi`  | sized for concurrent wasm matches rather than for an idle week                                                                   |
+| `auth`, `dispatcher`, `web`     | `256Mi`  | around 32x their peaks, and the headroom costs a node almost nothing                                                             |
+| `publisher` (per publish `Job`) | `1Gi`    | several times the largest run tree it pulls from the artifact service                                                            |
 
 CPU is treated differently. A container over its CPU limit is throttled rather
 than killed, so the failure mode is latency instead of a lost pod, and CPU limits
@@ -217,12 +228,12 @@ kubectl -n <ns> exec <pod> -c <container> -- \
 Staging and prod apply the same base manifests, so staging rehearses prod. Only
 these differ:
 
-| | Staging | Prod |
-| --- | --- | --- |
-| Namespace | `tcab-staging` | `tcab-prod` |
-| `TCAB_ENV` | `staging` | `prod` |
-| Secrets | staging keys and tokens | prod keys and tokens |
-| Hostnames | `*.staging.tcab.testcabinet.ai` | `*.tcab.testcabinet.ai` |
+|            | Staging                         | Prod                    |
+| ---------- | ------------------------------- | ----------------------- |
+| Namespace  | `tcab-staging`                  | `tcab-prod`             |
+| `TCAB_ENV` | `staging`                       | `prod`                  |
+| Secrets    | staging keys and tokens         | prod keys and tokens    |
+| Hostnames  | `*.staging.tcab.testcabinet.ai` | `*.tcab.testcabinet.ai` |
 
 Give each environment its own [public plane](/deployment/public-gallery/) so
 staging publishes stay out of the prod gallery dataset; point each backend's

@@ -27,7 +27,13 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan, assertNear, assertTrue } from "../assert";
-import { GRAVITY, GRIP_MAX_RATE, HOIST_START, HOOK_MASS, TICK_HZ } from "../constants";
+import {
+  GRAVITY,
+  GRIP_MAX_RATE,
+  HOIST_START,
+  HOOK_MASS,
+  TICK_HZ,
+} from "../constants";
 import {
   addOneLoad,
   clearAll,
@@ -109,7 +115,10 @@ const RIG: CraneDesign = {
 
 /** One move that turns the hook and applies no force (specs/rigging.md). */
 const TAPE: readonly TapeStepSpec[] = [
-  { kind: "move", commands: [{ axis: "grip", target: 100000, rate: GRIP_MAX_RATE }] },
+  {
+    kind: "move",
+    commands: [{ axis: "grip", target: 100000, rate: GRIP_MAX_RATE }],
+  },
 ];
 
 let h: Harness;
@@ -139,8 +148,12 @@ it("hands the structure the cable force rather than the weight of what hangs", a
   const leg = started.structure.members.find((m) => {
     const [low, high] = m.a.y < m.b.y ? [m.a, m.b] : [m.b, m.a];
     return (
-      low.y === 0 && low.x === CORNER.x && low.z === CORNER.z &&
-      high.x === CORNER.x && high.y === CORNER.y && high.z === CORNER.z
+      low.y === 0 &&
+      low.x === CORNER.x &&
+      low.z === CORNER.z &&
+      high.x === CORNER.x &&
+      high.y === CORNER.y &&
+      high.z === CORNER.z
     );
   });
   if (leg === undefined) {
@@ -211,7 +224,9 @@ it("hands the structure the cable force rather than the weight of what hangs", a
     hanging.cableY - bare.cableY,
     TOLERANCE,
     "the corner's leg taking exactly the change in the cable force when a load " +
-      "of mass " + LOAD_MASS + " is hung on the hook (specs/statics.md)",
+      "of mass " +
+      LOAD_MASS +
+      " is hung on the hook (specs/statics.md)",
   );
 
   // Now set the same bob swinging. Nothing about the hook or the load has
@@ -244,7 +259,9 @@ it("hands the structure the cable force rather than the weight of what hangs", a
     swinging.cableY - hanging.cableY,
     TOLERANCE,
     "the corner's leg carrying the vertical component of the cable force the " +
-      "rigging made on that tick, not (HOOK_MASS + " + LOAD_MASS + ") * " +
+      "rigging made on that tick, not (HOOK_MASS + " +
+      LOAD_MASS +
+      ") * " +
       "GRAVITY (specs/statics.md, specs/rigging.md)",
   );
 });

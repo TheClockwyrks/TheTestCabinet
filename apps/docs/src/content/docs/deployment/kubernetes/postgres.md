@@ -120,12 +120,12 @@ above rather than assuming.
 
 The identities as provisioned:
 
-| Identity | Object id |
-| --- | --- |
+| Identity                  | Object id                              |
+| ------------------------- | -------------------------------------- |
 | `tcab-backend-db-staging` | `2a3ced7d-9476-43e4-ad60-8e0426e34bcf` |
-| `tcab-auth-db-staging` | `018baf38-0dbe-4c94-9b21-23115f4f9ec1` |
-| `tcab-backend-db-prod` | `71b6b5cf-0731-4510-982a-8582cfa1e210` |
-| `tcab-auth-db-prod` | `d51d06ca-ef9b-4940-b58b-8d9ac643f028` |
+| `tcab-auth-db-staging`    | `018baf38-0dbe-4c94-9b21-23115f4f9ec1` |
+| `tcab-backend-db-prod`    | `71b6b5cf-0731-4510-982a-8582cfa1e210` |
+| `tcab-auth-db-prod`       | `d51d06ca-ef9b-4940-b58b-8d9ac643f028` |
 
 Some Azure Flexible Server images expose `pgaadauth_create_principal_with_oid`,
 which performs the `CREATE ROLE` and `SECURITY LABEL` in one call. Newer images

@@ -115,13 +115,13 @@ like is yours.
 
 ## The lamplighter
 
-| Figure | Constant | Value |
-| --- | --- | --- |
-| Base move speed, units per second | `MOVE_SPEED` | `180` |
-| Collision radius | `PLAYER_RADIUS` | `12` |
-| Base maximum health | `BASE_MAX_HP` | `100` |
-| Base recovery, health per second | `BASE_RECOVERY` | `0` |
-| Base pickup radius | `PICKUP_RADIUS` | `48` |
+| Figure                            | Constant        | Value |
+| --------------------------------- | --------------- | ----- |
+| Base move speed, units per second | `MOVE_SPEED`    | `180` |
+| Collision radius                  | `PLAYER_RADIUS` | `12`  |
+| Base maximum health               | `BASE_MAX_HP`   | `100` |
+| Base recovery, health per second  | `BASE_RECOVERY` | `0`   |
+| Base pickup radius                | `PICKUP_RADIUS` | `48`  |
 
 The lamplighter is a circle of radius `PLAYER_RADIUS` centered on
 `(player.x, player.y)`. A run starts with the lamplighter at the origin, facing
@@ -169,11 +169,11 @@ and caps it at the `maxHp` in force when the heal is applied.
 
 ### Contact damage
 
-| Figure | Constant | Value |
-| --- | --- | --- |
+| Figure                            | Constant           | Value |
+| --------------------------------- | ------------------ | ----- |
 | Seconds between hits by one enemy | `CONTACT_COOLDOWN` | `0.5` |
-| Least health a hit removes | `MIN_DAMAGE_TAKEN` | `1` |
-| Seconds the hurt flash runs | `HURT_FLASH` | `0.3` |
+| Least health a hit removes        | `MIN_DAMAGE_TAKEN` | `1`   |
+| Seconds the hurt flash runs       | `HURT_FLASH`       | `0.3` |
 
 Every enemy carries its own contact cooldown, `contactCooldown`, a timer that
 is `0` when the enemy spawns. On every tick, for every live enemy, the enemy's
@@ -202,10 +202,10 @@ heal from any source leaves it as it was. What the flash looks like is in
 of a tick, after every other phase of that tick has been applied, in one of two
 ways:
 
-| Ending | Condition | `screen` |
-| --- | --- | --- |
-| Dawn | `tick` equals `DAWN_TIME × TICK_HZ` (`36000`). | `dawn` |
-| Fallen | `hp` is `0` or below. | `fallen` |
+| Ending | Condition                                      | `screen` |
+| ------ | ---------------------------------------------- | -------- |
+| Dawn   | `tick` equals `DAWN_TIME × TICK_HZ` (`36000`). | `dawn`   |
+| Fallen | `hp` is `0` or below.                          | `fallen` |
 
 Dawn is checked first, so a tick on which both conditions hold ends the run at
 dawn. A run that has ended ticks no further. A tick that ends the run opens no
@@ -220,11 +220,11 @@ but `playing`. What each ending screen shows is in `specs/ui.md`.
 `GEM_TIERS` lists the three tiers in this order and `GEM_VALUES` gives the
 experience each grants.
 
-| Tier | Experience |
-| --- | --- |
-| `small` | `1` |
-| `medium` | `3` |
-| `large` | `10` |
+| Tier     | Experience |
+| -------- | ---------- |
+| `small`  | `1`        |
+| `medium` | `3`        |
+| `large`  | `10`       |
 
 A gem is `{ id, tier, x, y, attracted }`. While `drops` is on, every common
 enemy drops one gem of the tier `specs/enemies.md` lists for its type, at the
@@ -233,10 +233,10 @@ it is attracted, and it stays on the field until it is collected.
 
 ### Attraction and flight
 
-| Figure | Constant | Value |
-| --- | --- | --- |
-| Flight speed, units per second | `GEM_SPEED` | `600` |
-| Collection distance | `COLLECT_RADIUS` | `8` |
+| Figure                         | Constant         | Value |
+| ------------------------------ | ---------------- | ----- |
+| Flight speed, units per second | `GEM_SPEED`      | `600` |
+| Collection distance            | `COLLECT_RADIUS` | `8`   |
 
 On every tick, a gem whose center is at most `pickupRadius` from the
 lamplighter's center becomes attracted, and a gem once attracted stays
@@ -258,11 +258,11 @@ What that experience does is in `specs/progression.md`.
 `{ id, kind, x, y }`; it sits where it was dropped and stays on the field until
 it is collected.
 
-| Kind | Dropped by | On collection |
-| --- | --- | --- |
+| Kind    | Dropped by                                      | On collection                                              |
+| ------- | ----------------------------------------------- | ---------------------------------------------------------- |
 | `chest` | An elite, at its position, on the tick it dies. | Opens the chest overlay, as `specs/progression.md` states. |
-| `bread` | A common enemy, by the roll below. | Heals `BREAD_HEAL` (`30`), capped at `maxHp`. |
-| `draft` | A common enemy, by the roll below. | Every gem on the field becomes attracted. |
+| `bread` | A common enemy, by the roll below.              | Heals `BREAD_HEAL` (`30`), capped at `maxHp`.              |
+| `draft` | A common enemy, by the roll below.              | Every gem on the field becomes attracted.                  |
 
 ### Collection
 
@@ -275,9 +275,9 @@ the others wait for the next `playing` tick.
 
 ### The drop roll
 
-| Figure | Constant | Value |
-| --- | --- | --- |
-| Probability a common kill drops bread | `BREAD_CHANCE` | `0.02` |
+| Figure                                  | Constant       | Value   |
+| --------------------------------------- | -------------- | ------- |
+| Probability a common kill drops bread   | `BREAD_CHANCE` | `0.02`  |
 | Probability a common kill drops a draft | `DRAFT_CHANCE` | `0.005` |
 
 While `drops` is on, each common enemy killed by a weapon rolls for a pickup

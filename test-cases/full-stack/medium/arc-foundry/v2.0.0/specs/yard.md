@@ -17,11 +17,11 @@ The yard carries a grid of `GRID_COLS` (`50`) columns by `GRID_ROWS` (`33`) rows
 Columns are `c` `0`–`49` and rows are `r` `0`–`32`. The `4`-unit strip at `y` `716`–`720`
 is frame rather than playable grid.
 
-| Quantity | Formula |
-| --- | --- |
-| Tile `(c, r)` horizontal extent | `x` from `20c` to `20c + 20` |
-| Tile `(c, r)` vertical extent | `y` from `56 + 20r` to `56 + 20r + 20` |
-| Tile `(c, r)` center | `(20c + 10, 56 + 20r + 10)` |
+| Quantity                        | Formula                                |
+| ------------------------------- | -------------------------------------- |
+| Tile `(c, r)` horizontal extent | `x` from `20c` to `20c + 20`           |
+| Tile `(c, r)` vertical extent   | `y` from `56 + 20r` to `56 + 20r + 20` |
+| Tile `(c, r)` center            | `(20c + 10, 56 + 20r + 10)`            |
 
 A faint grid is drawn over the yard at all times so the tiles read. The Load walks
 between tile centers.
@@ -30,12 +30,12 @@ between tile centers.
 
 Every tile is in exactly one of four states.
 
-| State | Crossed by the Load | Buildable | Set by |
-| --- | --- | --- | --- |
-| Open | Yes | Yes, subject to placement legality below | The yard's resting state |
-| Blocked | No | No | A structure's footprint covering it |
-| Fixed-blocked | No | No | A map's pre-placed housing |
-| Waypoint | Yes | No | A waypoint platform covering it |
+| State         | Crossed by the Load | Buildable                                | Set by                              |
+| ------------- | ------------------- | ---------------------------------------- | ----------------------------------- |
+| Open          | Yes                 | Yes, subject to placement legality below | The yard's resting state            |
+| Blocked       | No                  | No                                       | A structure's footprint covering it |
+| Fixed-blocked | No                  | No                                       | A map's pre-placed housing          |
+| Waypoint      | Yes                 | No                                       | A waypoint platform covering it     |
 
 A Blocked tile becomes Open again only when the structure covering it is dismantled.
 Fixed-blocked and Waypoint tiles never change state.
@@ -58,11 +58,11 @@ through `col + 1` by `row` through `row + 1`. Legal anchors are `col` `0`–`48`
 Each map's chain runs through waypoints, and a waypoint is a four-tile platform rather
 than a bare tile, so it can never be walled off. A platform anchored at `(c, r)` covers:
 
-| Tile | Which |
-| --- | --- |
-| `(c - 1, r)` | The left arm |
-| `(c, r)` | The anchor, and the tile the Load paths to |
-| `(c + 1, r)` | The right arm |
+| Tile                                               | Which                                                |
+| -------------------------------------------------- | ---------------------------------------------------- |
+| `(c - 1, r)`                                       | The left arm                                         |
+| `(c, r)`                                           | The anchor, and the tile the Load paths to           |
+| `(c + 1, r)`                                       | The right arm                                        |
 | `(c, r + 1)` when `r < 16`, otherwise `(c, r - 1)` | The stem, pointing toward the grid's vertical center |
 
 All four are Waypoint tiles: the Load crosses them freely and no footprint may cover any
@@ -81,12 +81,12 @@ edge with a one-tile lane still open beside it.
 
 A footprint anchored at `(col, row)` may take a placement when all of the following hold.
 
-| Condition | Requirement |
-| --- | --- |
-| In bounds | `col` is `0`–`48` and `row` is `0`–`31`. |
-| Tiles free | All four tiles are Open, or all four are covered by a single blocker and none other. |
+| Condition              | Requirement                                                                                                                              |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| In bounds              | `col` is `0`–`48` and `row` is `0`–`31`.                                                                                                 |
+| Tiles free             | All four tiles are Open, or all four are covered by a single blocker and none other.                                                     |
 | No unit standing on it | No ground unit of the Load currently occupies any of the four tiles. A flying unit passes over the yard, so it never blocks a placement. |
-| Route preserved | The never-seal rule of `specs/pathing.md` holds after the placement. |
+| Route preserved        | The never-seal rule of `specs/pathing.md` holds after the placement.                                                                     |
 
 Dropping a rock onto the footprint of an existing blocker is the one placement that lands
 on tiles that are not Open. It rerolls that blocker in place, as `specs/scrap-press.md`
@@ -110,16 +110,16 @@ A perimeter serpentine: the route runs the top edge, down the right side, back a
 bottom, up the left, then folds inward across the middle and drops before breaking out to
 the right.
 
-| Checkpoint | Tile | Edge |
-| --- | --- | --- |
-| Entry | `(0, 5)` | Left |
-| WP1 | `(44, 5)` | — |
-| WP2 | `(44, 27)` | — |
-| WP3 | `(5, 27)` | — |
-| WP4 | `(5, 14)` | — |
-| WP5 | `(36, 14)` | — |
-| WP6 | `(36, 20)` | — |
-| Collector | `(49, 20)` | Right |
+| Checkpoint | Tile       | Edge  |
+| ---------- | ---------- | ----- |
+| Entry      | `(0, 5)`   | Left  |
+| WP1        | `(44, 5)`  | —     |
+| WP2        | `(44, 27)` | —     |
+| WP3        | `(5, 27)`  | —     |
+| WP4        | `(5, 14)`  | —     |
+| WP5        | `(36, 14)` | —     |
+| WP6        | `(36, 20)` | —     |
+| Collector  | `(49, 20)` | Right |
 
 The Substation carries no fixed housings.
 
@@ -129,16 +129,16 @@ A crossing star whose legs cut diagonally through the center: from the top the r
 whips down to the bottom-left, up to the top-right, across to the top-left, down to the
 bottom-right, into the center, out to the left, and finally down to the collector.
 
-| Checkpoint | Tile | Edge |
-| --- | --- | --- |
-| Entry | `(25, 0)` | Top |
-| WP1 | `(5, 26)` | — |
-| WP2 | `(44, 6)` | — |
-| WP3 | `(5, 6)` | — |
-| WP4 | `(44, 26)` | — |
-| WP5 | `(24, 16)` | — |
-| WP6 | `(5, 16)` | — |
-| Collector | `(25, 32)` | Bottom |
+| Checkpoint | Tile       | Edge   |
+| ---------- | ---------- | ------ |
+| Entry      | `(25, 0)`  | Top    |
+| WP1        | `(5, 26)`  | —      |
+| WP2        | `(44, 6)`  | —      |
+| WP3        | `(5, 6)`   | —      |
+| WP4        | `(44, 26)` | —      |
+| WP5        | `(24, 16)` | —      |
+| WP6        | `(5, 16)`  | —      |
+| Collector  | `(25, 32)` | Bottom |
 
 The Switchyard carries no fixed housings.
 
@@ -147,24 +147,24 @@ The Switchyard carries no fixed housings.
 Two large fixed transformer housings split the yard on a diagonal, and the central `WP2`
 threads the gap between them.
 
-| Checkpoint | Tile | Edge |
-| --- | --- | --- |
-| Entry | `(0, 2)` | Left |
-| WP1 | `(44, 5)` | — |
-| WP2 | `(24, 16)` | — |
-| WP3 | `(44, 28)` | — |
-| WP4 | `(24, 28)` | — |
-| WP5 | `(6, 28)` | — |
-| WP6 | `(6, 16)` | — |
-| Collector | `(0, 30)` | Left |
+| Checkpoint | Tile       | Edge |
+| ---------- | ---------- | ---- |
+| Entry      | `(0, 2)`   | Left |
+| WP1        | `(44, 5)`  | —    |
+| WP2        | `(24, 16)` | —    |
+| WP3        | `(44, 28)` | —    |
+| WP4        | `(24, 28)` | —    |
+| WP5        | `(6, 28)`  | —    |
+| WP6        | `(6, 16)`  | —    |
+| Collector  | `(0, 30)`  | Left |
 
 Its two housings are Fixed-blocked tiles, drawn as steel transformer boxes that read as
 impassable:
 
-| Housing | Tiles |
-| --- | --- |
-| 1 | `col` `12`–`19` by `row` `6`–`12` |
-| 2 | `col` `30`–`37` by `row` `20`–`26` |
+| Housing | Tiles                              |
+| ------- | ---------------------------------- |
+| 1       | `col` `12`–`19` by `row` `6`–`12`  |
+| 2       | `col` `30`–`37` by `row` `20`–`26` |
 
 The chain `Entry → WP1 → WP2 → WP3 → WP4 → WP5 → WP6 → Collector` has an open route
 around both housings on an otherwise empty yard.

@@ -36,7 +36,7 @@ scenario-declared number of ticks. A scenario is a factory layout plus a tick
 count, and the question is what state the factory is in at the end.
 
 Everything is integer and fixed-point. Item positions, belt speeds, swing timers,
-and craft progress are all integers, so the state after *N* ticks is a single
+and craft progress are all integers, so the state after _N_ ticks is a single
 well-defined value every correct engine agrees on to the bit. That is what turns
 "simulate a factory" into a problem with one right answer.
 

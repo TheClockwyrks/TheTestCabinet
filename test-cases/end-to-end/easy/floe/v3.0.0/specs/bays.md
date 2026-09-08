@@ -40,11 +40,11 @@ A bonus catch is a small fish that visits the open bays. At most one is on the
 strait at a time, and it is worth `SCORE_BONUS_CATCH` to a crossing that ends in
 its bay, as `specs/scoring.md` fixes.
 
-| Rule | Figure |
-| --- | --- |
+| Rule                                                                                                | Figure                  |
+| --------------------------------------------------------------------------------------------------- | ----------------------- |
 | A level opens with no bonus catch out, and the first appears this long after the level is laid out. | `FISH_INTERVAL` (`8` s) |
-| A bonus catch lingers in its bay this long, then leaves. | `FISH_LINGER` (`5` s) |
-| The next appears this long after the previous one leaves. | `FISH_INTERVAL` (`8` s) |
+| A bonus catch lingers in its bay this long, then leaves.                                            | `FISH_LINGER` (`5` s)   |
+| The next appears this long after the previous one leaves.                                           | `FISH_INTERVAL` (`8` s) |
 
 The bay a bonus catch appears in is drawn at random when it appears, uniformly
 among the bays that are open at that moment other than the bay the previous

@@ -126,7 +126,9 @@ it("carries the part of a delta that completes no tick into the next frame", asy
       `of a tick, which completes no tick`,
   );
   assertLessThanOrEqual(
-    Math.abs(run.afterAll.simTime - run.before.simTime - EXPECTED_TICKS * TICK_DT),
+    Math.abs(
+      run.afterAll.simTime - run.before.simTime - EXPECTED_TICKS * TICK_DT,
+    ),
     SIM_TIME_EPS,
     `how far simTime moved from the ${EXPECTED_TICKS} ticks that ${PART_FRAMES} ` +
       `frames each handed ${PART_OF_TICK} of a tick complete between them`,

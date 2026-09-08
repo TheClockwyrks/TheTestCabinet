@@ -23,7 +23,8 @@ import { ConstantClock } from "@clockwyrks/simple-2d";
 import { expect, it } from "vitest";
 import { createHarness } from "./harness";
 
-const framesFor = (ms: number, stepMs: number): number => Math.round(ms / stepMs);
+const framesFor = (ms: number, stepMs: number): number =>
+  Math.round(ms / stepMs);
 
 it("advances simulated time by the step it was given", async () => {
   const stepMs = 1000 / 240;
@@ -167,7 +168,10 @@ reaches the target.
 import type { Engine } from "@clockwyrks/simple-2d";
 import type { State } from "../src/game";
 
-export async function advanceMs(engine: Engine<State>, ms: number): Promise<void> {
+export async function advanceMs(
+  engine: Engine<State>,
+  ms: number,
+): Promise<void> {
   const target = engine.frame().timeMs + ms;
   while (engine.frame().timeMs < target) {
     await engine.advance(1);

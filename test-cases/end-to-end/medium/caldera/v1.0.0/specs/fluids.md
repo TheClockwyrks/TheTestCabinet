@@ -38,10 +38,10 @@ re-solves as structures are built, destroyed, or severed.
 
 Two sources draw water, at different rates and with different reach:
 
-| Source | Built on | Output | Lift |
-| --- | --- | --- | --- |
-| **River Tap** | a river cell | **`4 f/s`** (low flow) | **gravity only** — see below |
-| **Pump** | beside deep water | **`12 f/s`** (high flow) | **powered lift** — see below |
+| Source        | Built on          | Output                   | Lift                         |
+| ------------- | ----------------- | ------------------------ | ---------------------------- |
+| **River Tap** | a river cell      | **`4 f/s`** (low flow)   | **gravity only** — see below |
+| **Pump**      | beside deep water | **`12 f/s`** (high flow) | **powered lift** — see below |
 
 ### Elevation-aware flow — the central puzzle
 
@@ -139,15 +139,15 @@ incidental damage from other Slag) destroy pipes and structures (`specs/enemies.
 
 ## Summary of default rates
 
-| Quantity | Value |
-| --- | --- |
-| River Tap output | `4 f/s` water (gravity-fed, no uphill) |
-| Pump output | `12 f/s` water, `−1.5 f/s` per level lifted (floor `0`) |
-| Water pipe capacity | `12 f/s` per cell |
-| Steam pipe capacity | `10 f/s` per cell |
-| Boiler | ≤ `8 f/s` water → ≤ `6 f/s` steam (ratio `0.75`) |
-| Steam distance loss | `−0.5 f/s` per `5` cells |
-| Tower steam demand | `2`–`5 f/s` base, rising with upgrades (`specs/towers.md`) |
+| Quantity            | Value                                                      |
+| ------------------- | ---------------------------------------------------------- |
+| River Tap output    | `4 f/s` water (gravity-fed, no uphill)                     |
+| Pump output         | `12 f/s` water, `−1.5 f/s` per level lifted (floor `0`)    |
+| Water pipe capacity | `12 f/s` per cell                                          |
+| Steam pipe capacity | `10 f/s` per cell                                          |
+| Boiler              | ≤ `8 f/s` water → ≤ `6 f/s` steam (ratio `0.75`)           |
+| Steam distance loss | `−0.5 f/s` per `5` cells                                   |
+| Tower steam demand  | `2`–`5 f/s` base, rising with upgrades (`specs/towers.md`) |
 
 Keep the **relationships**: rivers are weak and gravity-
 bound, pumps are strong but pay for lift, steam is elevation-free but distance-lossy,

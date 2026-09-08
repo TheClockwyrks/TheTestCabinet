@@ -19,6 +19,7 @@
 import { gzipSync } from "node:zlib";
 import type { Recording } from "../replay/format";
 import { thinReplay } from "../replay/retable";
+import { openImageStore, type ImageStore } from "../replay/store";
 import { captureAround } from "./capture";
 
 /**
@@ -68,14 +69,27 @@ export interface RecordingEngine {
  * a file holding an empty frame list would be collected as an output that turned
  * up — the run would tell the reviewer there is a replay to watch and the player
  * would open on nothing.
+ *
+ * THE ENGINE'S OWN RECORDING IS UNTOUCHED BY THE SHARED IMAGE STORE. An engine
+ * recorder produces inline entries and knows nothing about a directory; the split
+ * happens here, in Node, on the way to disk, in exactly the place the engineless
+ * harness splits. So the two producers share one write path and an engine's
+ * in-memory document keeps the one shape it has always had.
+ *
+ * `store` is a seam for this package's own suite. A caller inside a run passes
+ * nothing and gets the run's store, which is `null` — inline everything — when
+ * nothing is collecting media.
  */
-export function replayBytes(recording: EngineRecording): Uint8Array | null {
+export function replayBytes(
+  recording: EngineRecording,
+  store: ImageStore | null = openImageStore(),
+): Uint8Array | null {
   if (recording.frames.length === 0) return null;
   // The two documents are the same nine fields; the engines' is `readonly` and
   // the package's is not, and nothing downstream writes to what it was handed —
   // `thinReplay` builds every table it answers with fresh.
   const document = recording as unknown as Recording;
-  return gzipSync(JSON.stringify(thinReplay(document)));
+  return gzipSync(JSON.stringify(thinReplay(document, store)));
 }
 
 /**

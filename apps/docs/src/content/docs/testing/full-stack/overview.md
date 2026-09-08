@@ -26,22 +26,22 @@ runs in `test-cabinet-full-stack-3d`. A deployment pins them with
 Both images are the base-wasm image plus asset-generation binaries on `PATH`.
 Six of those binaries produce 2D assets, and both images carry all six:
 
-| Binary | Produces | Reference |
-| --- | --- | --- |
-| `draw` | a single sprite → PNG | [The sprite binaries](/testing/asset-generation/sprite-binaries/) |
-| `draw-sheet` | a sprite sheet → per-frame PNGs | [The sprite binaries](/testing/asset-generation/sprite-binaries/) |
-| `particle-2d` | a particle system → `system.json` | [The particle binaries](/testing/asset-generation/particle-binaries/) |
-| `sfx-synth` | a procedural sound effect → `.wav` | [The audio binaries](/testing/asset-generation/audio-binaries/) |
-| `sfx-sample` | a sampled sound effect → `.wav` | [The audio binaries](/testing/asset-generation/audio-binaries/) |
-| `music` | sequenced music → `.wav` + `.mid` | [The audio binaries](/testing/asset-generation/audio-binaries/) |
+| Binary        | Produces                           | Reference                                                             |
+| ------------- | ---------------------------------- | --------------------------------------------------------------------- |
+| `draw`        | a single sprite → PNG              | [The sprite binaries](/testing/asset-generation/sprite-binaries/)     |
+| `draw-sheet`  | a sprite sheet → per-frame PNGs    | [The sprite binaries](/testing/asset-generation/sprite-binaries/)     |
+| `particle-2d` | a particle system → `system.json`  | [The particle binaries](/testing/asset-generation/particle-binaries/) |
+| `sfx-synth`   | a procedural sound effect → `.wav` | [The audio binaries](/testing/asset-generation/audio-binaries/)       |
+| `sfx-sample`  | a sampled sound effect → `.wav`    | [The audio binaries](/testing/asset-generation/audio-binaries/)       |
+| `music`       | sequenced music → `.wav` + `.mid`  | [The audio binaries](/testing/asset-generation/audio-binaries/)       |
 
 The 3D image adds three more, so a `3d` case has all nine:
 
-| Binary | Produces | Reference |
-| --- | --- | --- |
-| `voxel` | a static voxel model → `mesh.glb` | [The voxel binaries](/testing/asset-generation/voxel-binaries/) |
-| `voxel-anim` | a rigged, animated voxel model → per-part `.glb` + `rig.json` | [The voxel binaries](/testing/asset-generation/voxel-binaries/) |
-| `particle-3d` | a volumetric particle system → `system.json` | [The particle binaries](/testing/asset-generation/particle-binaries/) |
+| Binary        | Produces                                                      | Reference                                                             |
+| ------------- | ------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `voxel`       | a static voxel model → `mesh.glb`                             | [The voxel binaries](/testing/asset-generation/voxel-binaries/)       |
+| `voxel-anim`  | a rigged, animated voxel model → per-part `.glb` + `rig.json` | [The voxel binaries](/testing/asset-generation/voxel-binaries/)       |
+| `particle-3d` | a volumetric particle system → `system.json`                  | [The particle binaries](/testing/asset-generation/particle-binaries/) |
 
 Each binary is the same tool the corresponding
 [asset-generation](/testing/asset-generation/overview/) case uses, invoked as a

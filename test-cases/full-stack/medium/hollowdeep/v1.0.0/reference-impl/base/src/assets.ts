@@ -14,9 +14,20 @@
 import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 import type { Anim, Cue, FxKind } from "./types";
 
-const pngUrls = import.meta.glob<string>("../assets/**/*.png", { eager: true, query: "?url", import: "default" });
-const fxJson = import.meta.glob<ParticleSystem>("../assets/fx/*.system.json", { eager: true, import: "default" });
-const wavUrls = import.meta.glob<string>("../assets/audio/*.wav", { eager: true, query: "?url", import: "default" });
+const pngUrls = import.meta.glob<string>("../assets/**/*.png", {
+  eager: true,
+  query: "?url",
+  import: "default",
+});
+const fxJson = import.meta.glob<ParticleSystem>("../assets/fx/*.system.json", {
+  eager: true,
+  import: "default",
+});
+const wavUrls = import.meta.glob<string>("../assets/audio/*.wav", {
+  eager: true,
+  query: "?url",
+  import: "default",
+});
 
 function keyOf(globPath: string, ext: string): string {
   return globPath.replace("../assets/", "").replace(ext, "");
@@ -32,7 +43,12 @@ function loadImage(url: string): Promise<HTMLImageElement> {
 }
 
 // The produced delver sheet frame counts (ASSETS.md).
-const ANIM_FRAMES: Record<Anim, number> = { walk: 6, dig: 4, carry: 4, idle: 4 };
+const ANIM_FRAMES: Record<Anim, number> = {
+  walk: 6,
+  dig: 4,
+  carry: 4,
+  idle: 4,
+};
 
 // Which produced particle system drives each overlay/burst (ASSETS.md).
 const FX_SOURCE: Record<FxKind, string> = {
@@ -91,14 +107,16 @@ export async function loadAssets(): Promise<Assets> {
     rawFx[keyOf(globPath, ".system.json").replace("fx/", "")] = sys;
   }
   const fx = {} as Record<FxKind, ParticleSystem | undefined>;
-  for (const k of Object.keys(FX_SOURCE) as FxKind[]) fx[k] = rawFx[FX_SOURCE[k]];
+  for (const k of Object.keys(FX_SOURCE) as FxKind[])
+    fx[k] = rawFx[FX_SOURCE[k]];
 
   const rawWav: Record<string, string> = {};
   for (const [globPath, url] of Object.entries(wavUrls)) {
     rawWav[keyOf(globPath, ".wav").replace("audio/", "")] = url;
   }
   const audioUrl = {} as Record<Cue | "music", string>;
-  for (const k of Object.keys(CUE_SOURCE) as Cue[]) audioUrl[k] = rawWav[CUE_SOURCE[k]] ?? "";
+  for (const k of Object.keys(CUE_SOURCE) as Cue[])
+    audioUrl[k] = rawWav[CUE_SOURCE[k]] ?? "";
   audioUrl.music = rawWav.music ?? "";
 
   return {

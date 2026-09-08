@@ -32,14 +32,14 @@ import { DAWN_TEXT, DAWN_TICK, END_ITEMS, clockText } from "../constants";
 import {
   captureStill,
   createHarness,
-  drawnText,
-  drewText,
   endDawn,
   hasToken,
   isolate,
-  textDraws,
+  placedRuns,
+  textReadings,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 import { anchorY } from "./stage";
 
 /** The run the dawn screen reports: its level and its kills. */
@@ -66,7 +66,11 @@ it("draws DAWN, the figures, and TRY AGAIN above TITLE", async () => {
 
   const { calls } = await h.frameDraw();
   captureStill(h, "dawn");
-  const lines = drawnText(calls);
+  // The raw calls and the logical runs they spell, both (`textReadings`): a
+  // figure drawn a glyph per call is the number it is off the runs, and one
+  // drawn a narrow gap after its label, which the run rule merges into
+  // `KILLS143`, still stands alone as the raw call.
+  const lines = textReadings(calls);
 
   assertTrue(
     drewText(calls, DAWN_TEXT),
@@ -85,7 +89,7 @@ it("draws DAWN, the figures, and TRY AGAIN above TITLE", async () => {
     `the dawn screen drew the kill count, ${KILLS}`,
   );
 
-  const draws = textDraws(calls);
+  const draws = placedRuns(calls);
   const first = anchorY(draws, END_ITEMS[0]);
   const second = anchorY(draws, END_ITEMS[1]);
   assertNotNull(first, `where ${END_ITEMS[0]} was drawn`);

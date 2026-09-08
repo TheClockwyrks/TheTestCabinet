@@ -92,9 +92,17 @@ describe("modelCaseOptions", () => {
 
   it("breaks an equal-run tie on recency, then on the slug", () => {
     const options = modelCaseOptions([
-      run({ id: "a", testCaseSlug: "alpha", startedAt: "2026-01-01T00:00:00Z" }),
+      run({
+        id: "a",
+        testCaseSlug: "alpha",
+        startedAt: "2026-01-01T00:00:00Z",
+      }),
       run({ id: "b", testCaseSlug: "beta", startedAt: "2026-02-01T00:00:00Z" }),
-      run({ id: "c", testCaseSlug: "gamma", startedAt: "2026-02-01T00:00:00Z" }),
+      run({
+        id: "c",
+        testCaseSlug: "gamma",
+        startedAt: "2026-02-01T00:00:00Z",
+      }),
     ]);
 
     expect(options.map((c) => c.slug)).toEqual(["beta", "gamma", "alpha"]);
@@ -125,8 +133,9 @@ describe("modelCaseOptions", () => {
 
 describe("runIsModel", () => {
   it("matches a covered id exactly", () => {
-    expect(runIsModel(run({ modelId: "anthropic/claude" }), ["anthropic/claude"]))
-      .toBe(true);
+    expect(
+      runIsModel(run({ modelId: "anthropic/claude" }), ["anthropic/claude"]),
+    ).toBe(true);
   });
 
   it("matches an OpenRouter-prefixed recording of a covered id", () => {
@@ -138,8 +147,9 @@ describe("runIsModel", () => {
   });
 
   it("does not match another model", () => {
-    expect(runIsModel(run({ modelId: "openai/gpt" }), ["anthropic/claude"]))
-      .toBe(false);
+    expect(
+      runIsModel(run({ modelId: "openai/gpt" }), ["anthropic/claude"]),
+    ).toBe(false);
   });
 });
 
@@ -269,7 +279,11 @@ describe("standInField", () => {
 describe("meanReported", () => {
   it("averages only the runs that reported the figure", () => {
     const mean = meanReported(
-      [run({ id: "a", cost: 2 }), run({ id: "b", cost: null }), run({ id: "c", cost: 4 })],
+      [
+        run({ id: "a", cost: 2 }),
+        run({ id: "b", cost: null }),
+        run({ id: "c", cost: 4 }),
+      ],
       costOf,
     );
 

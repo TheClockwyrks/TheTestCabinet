@@ -35,19 +35,25 @@ describe("coverage", () => {
   ])("reproduces the source exactly: %s", (text) => {
     // If this ever fails the caret is in the wrong place, which is the classic failure of
     // a textarea-over-a-painted-layer editor.
-    expect(spans(text).map((span) => span.text).join("")).toBe(text);
+    expect(
+      spans(text)
+        .map((span) => span.text)
+        .join(""),
+    ).toBe(text);
   });
 });
 
 describe("classification", () => {
   it("marks the field before an operator, however it is spelled", () => {
     expect(kindOf("state:completed", "state")).toBe("field");
-    expect(kindOf("metric.runTimeSeconds >= 1800", "metric.runTimeSeconds")).toBe("field");
+    expect(
+      kindOf("metric.runTimeSeconds >= 1800", "metric.runTimeSeconds"),
+    ).toBe("field");
     // A quoted segment is part of the same dotted name, and adjacency is what says so.
     expect(kindOf('cap."speculative-execution":true', "cap.")).toBe("field");
-    expect(kindOf('cap."speculative-execution":true', '"speculative-execution"')).toBe(
-      "field",
-    );
+    expect(
+      kindOf('cap."speculative-execution":true', '"speculative-execution"'),
+    ).toBe("field");
   });
 
   it("marks a field the moment its operator is typed, before any value exists", () => {
@@ -68,8 +74,12 @@ describe("classification", () => {
     expect(kindOf("not state:completed", "not")).toBe("keyword");
     expect(kindOf("| stats avg(score) by preset", "avg")).toBe("function");
     expect(kindOf("| stats avg(score) by preset", "stats")).toBe("keyword");
-    expect(kindOf("| stats count() by bucket(started, 1d)", "bucket")).toBe("function");
-    expect(kindOf("| stats count() by bucket(started, 1d)", "by")).toBe("keyword");
+    expect(kindOf("| stats count() by bucket(started, 1d)", "bucket")).toBe(
+      "function",
+    );
+    expect(kindOf("| stats count() by bucket(started, 1d)", "by")).toBe(
+      "keyword",
+    );
     expect(kindOf("state:completed", ":")).toBe("punct");
     expect(kindOf("state:completed | limit 10", "|")).toBe("punct");
   });
@@ -95,7 +105,9 @@ describe("error marking", () => {
 
   it("underlines a stray character without swallowing the rest of the query", () => {
     const all = spans("state:completed @ preset:a");
-    expect(all.filter((span) => span.invalid).map((span) => span.text)).toEqual(["@"]);
+    expect(all.filter((span) => span.invalid).map((span) => span.text)).toEqual(
+      ["@"],
+    );
     // The clauses either side stay clean, which is what an error-tolerant parser buys.
     expect(kindOf("state:completed @ preset:a", "state")).toBe("field");
     expect(kindOf("state:completed @ preset:a", "preset")).toBe("field");
@@ -103,7 +115,9 @@ describe("error marking", () => {
 
   it("leaves a well-formed query entirely unmarked", () => {
     expect(
-      spans("not state:completed | stats count() by preset").some((s) => s.invalid),
+      spans("not state:completed | stats count() by preset").some(
+        (s) => s.invalid,
+      ),
     ).toBe(false);
   });
 });

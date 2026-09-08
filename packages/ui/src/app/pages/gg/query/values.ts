@@ -69,7 +69,8 @@ export const GG_DATE_FIELDS: readonly string[] = ["started", "finished"];
  */
 export function asNumber(value: GgValue): number | undefined {
   if (typeof value === "boolean") return value ? 1 : 0;
-  if (typeof value === "number") return Number.isFinite(value) ? value : undefined;
+  if (typeof value === "number")
+    return Number.isFinite(value) ? value : undefined;
   return undefined;
 }
 

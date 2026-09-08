@@ -25,8 +25,9 @@
 // this point reads are a weapon and a weapon whose lines share no run of words,
 // so neither line can be found in the other.
 //
-// THE TOLERANCE. Each line is matched as its words in order through
-// `drewPhrase`, case ignored, which admits any font, spacing, and line wrap;
+// THE TOLERANCE. Each line is matched as a substring of the frame's text
+// through the shared harness's `drewTextAnywhere`, ignoring case and whitespace
+// across every run the frame drew, which admits any font, spacing, and line wrap;
 // nothing about where the line sits is read, since specs/ui.md fixes no layout.
 
 import { afterEach, beforeEach, it } from "vitest";
@@ -35,12 +36,12 @@ import { WEAPON_DESCRIPTIONS } from "../constants";
 import {
   captureStill,
   createHarness,
-  drewPhrase,
   isolate,
   openLevelUp,
   tap,
   type Harness,
 } from "../harness";
+import { drewTextAnywhere } from "../case-harness/text";
 
 let h: Harness;
 
@@ -69,12 +70,12 @@ it("draws the second offer's line in place of the first's", async () => {
 
   const { calls: first } = await h.frameDraw();
   assertEqual(
-    drewPhrase(first, WEAPON_DESCRIPTIONS.ember),
+    drewTextAnywhere(first, WEAPON_DESCRIPTIONS.ember),
     true,
     "the first offer's line, under the highlight on the first offer",
   );
   assertEqual(
-    drewPhrase(first, WEAPON_DESCRIPTIONS.shard),
+    drewTextAnywhere(first, WEAPON_DESCRIPTIONS.shard),
     false,
     "the second offer's line, under the highlight on the first offer",
   );
@@ -85,12 +86,12 @@ it("draws the second offer's line in place of the first's", async () => {
   const { calls: second } = await h.frameDraw();
   captureStill(h, "followed");
   assertEqual(
-    drewPhrase(second, WEAPON_DESCRIPTIONS.shard),
+    drewTextAnywhere(second, WEAPON_DESCRIPTIONS.shard),
     true,
     "the second offer's line, under the highlight on the second offer",
   );
   assertEqual(
-    drewPhrase(second, WEAPON_DESCRIPTIONS.ember),
+    drewTextAnywhere(second, WEAPON_DESCRIPTIONS.ember),
     false,
     "the first offer's line, under the highlight on the second offer",
   );

@@ -61,14 +61,27 @@ export function toggleDebugOverlay(): void {
   debugOverlay = !debugOverlay;
 }
 
-const DAMAGE_TOWERS: TowerKind[] = ["emitter", "ionizer", "cleaver", "reactor", "beam"];
+const DAMAGE_TOWERS: TowerKind[] = [
+  "emitter",
+  "ionizer",
+  "cleaver",
+  "reactor",
+  "beam",
+];
 function isDamageTower(kind: TowerKind): boolean {
   return DAMAGE_TOWERS.includes(kind);
 }
 const ROMAN = ["I", "II", "III"];
 
 // ---- small helpers ------------------------------------------------------------
-function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
+function roundRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+): void {
   const rr = Math.min(r, w / 2, h / 2);
   ctx.beginPath();
   ctx.moveTo(x + rr, y);
@@ -97,7 +110,8 @@ function text(
   if (letter > 0) {
     const chars = [...s];
     const total = chars.length * (size * 0.6 + letter);
-    let cx = align === "center" ? x - total / 2 : align === "right" ? x - total : x;
+    let cx =
+      align === "center" ? x - total / 2 : align === "right" ? x - total : x;
     ctx.textAlign = "left";
     for (const c of chars) {
       ctx.fillText(c, cx, y);
@@ -108,7 +122,15 @@ function text(
   }
 }
 
-function blit(ctx: CanvasRenderingContext2D, img: HTMLImageElement, cx: number, cy: number, w: number, h: number, ang = 0): void {
+function blit(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  cx: number,
+  cy: number,
+  w: number,
+  h: number,
+  ang = 0,
+): void {
   ctx.save();
   ctx.imageSmoothingEnabled = false;
   ctx.translate(cx, cy);
@@ -118,7 +140,12 @@ function blit(ctx: CanvasRenderingContext2D, img: HTMLImageElement, cx: number, 
 }
 
 // ---- entry --------------------------------------------------------------------
-export function render(ctx: CanvasRenderingContext2D, game: Game, A: Assets, bursts: Bursts): Clickable[] {
+export function render(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  A: Assets,
+  bursts: Bursts,
+): Clickable[] {
   ctx.imageSmoothingEnabled = true;
   ctx.fillStyle = COL.void;
   ctx.fillRect(0, 0, STAGE_W, STAGE_H);
@@ -165,11 +192,21 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, A: Assets, bur
 function drawDebugOverlay(ctx: CanvasRenderingContext2D, game: Game): void {
   const s = game.debugSnapshot();
   const lines: string[] = [];
-  lines.push(`screen  ${s.screen}   phase ${s.phase}${s.paused ? "   PAUSED" : ""}`);
-  lines.push(`round   ${s.round}/${s.totalRounds}   ${(game.roundProgress() * 100).toFixed(0)}%   speed x${s.speed}`);
-  lines.push(`energy  ${s.energy.toFixed(0)}   integ ${s.integrity.toFixed(0)}   score ${s.score}`);
-  lines.push(`matter  ${s.matter.length}   towers ${s.towers.length}   proj ${s.projectiles.length}`);
-  lines.push(`simTime ${s.simTime.toFixed(2)}s${s.buildCountdown != null ? `   build ${s.buildCountdown.toFixed(1)}s` : ""}`);
+  lines.push(
+    `screen  ${s.screen}   phase ${s.phase}${s.paused ? "   PAUSED" : ""}`,
+  );
+  lines.push(
+    `round   ${s.round}/${s.totalRounds}   ${(game.roundProgress() * 100).toFixed(0)}%   speed x${s.speed}`,
+  );
+  lines.push(
+    `energy  ${s.energy.toFixed(0)}   integ ${s.integrity.toFixed(0)}   score ${s.score}`,
+  );
+  lines.push(
+    `matter  ${s.matter.length}   towers ${s.towers.length}   proj ${s.projectiles.length}`,
+  );
+  lines.push(
+    `simTime ${s.simTime.toFixed(2)}s${s.buildCountdown != null ? `   build ${s.buildCountdown.toFixed(1)}s` : ""}`,
+  );
 
   // The unit nearest the pointer (or the first live unit) — its ground truth.
   let near: (typeof s.matter)[number] | null = null;
@@ -182,9 +219,20 @@ function drawDebugOverlay(ctx: CanvasRenderingContext2D, game: Game): void {
     }
   }
   if (near) {
-    const tr = [near.traits.bonded ? "bonded" : "", near.traits.heavy ? "heavy" : "", near.traits.inert ? "inert" : ""].filter(Boolean).join("+") || "plain";
-    lines.push(`unit    ${near.type} [${tr}]${near.revealed ? " revealed" : ""}`);
-    lines.push(`        hp ${near.hp.toFixed(0)}/${near.maxHp.toFixed(0)}${near.bond != null ? `  bond ${near.bond.toFixed(0)}/${near.maxBond?.toFixed(0)}` : ""}  slow ${near.slow.toFixed(2)}`);
+    const tr =
+      [
+        near.traits.bonded ? "bonded" : "",
+        near.traits.heavy ? "heavy" : "",
+        near.traits.inert ? "inert" : "",
+      ]
+        .filter(Boolean)
+        .join("+") || "plain";
+    lines.push(
+      `unit    ${near.type} [${tr}]${near.revealed ? " revealed" : ""}`,
+    );
+    lines.push(
+      `        hp ${near.hp.toFixed(0)}/${near.maxHp.toFixed(0)}${near.bond != null ? `  bond ${near.bond.toFixed(0)}/${near.maxBond?.toFixed(0)}` : ""}  slow ${near.slow.toFixed(2)}`,
+    );
   }
 
   const pad = 12;
@@ -216,12 +264,20 @@ function drawDebugOverlay(ctx: CanvasRenderingContext2D, game: Game): void {
 // straight/right-angle), draw the flow direction and the inlet/collector of each path,
 // then the auras, the selected tower's range, and the towers. Placement is free, so there
 // is no grid to draw — the legal/illegal cue rides the held-tower cursor (drawBuildCursor).
-function drawPaths(ctx: CanvasRenderingContext2D, board: Board, A: Assets, step: number, size: number): void {
+function drawPaths(
+  ctx: CanvasRenderingContext2D,
+  board: Board,
+  A: Assets,
+  step: number,
+  size: number,
+): void {
   const conduit = A.sprite("board/conduit");
   ctx.save();
   ctx.shadowColor = COL.flow;
   ctx.shadowBlur = 10;
-  for (let i = 0; i < board.pathCount; i++) for (const p of board.pathSamples(i, step)) blit(ctx, conduit, p.x, p.y, size, size, p.ang);
+  for (let i = 0; i < board.pathCount; i++)
+    for (const p of board.pathSamples(i, step))
+      blit(ctx, conduit, p.x, p.y, size, size, p.ang);
   ctx.restore();
 }
 
@@ -246,8 +302,24 @@ function drawBoard(ctx: CanvasRenderingContext2D, game: Game, A: Assets): void {
 
   // Inlet at the start of each path, collector at its end (positions may be shared).
   for (const path of board.paths) {
-    blit(ctx, A.sprite("board/inlet"), path.inlet.x + 6, path.inlet.y, 40, 40, 0);
-    blit(ctx, A.sprite("board/collector"), path.collector.x - 4, path.collector.y, 40, 40, 0);
+    blit(
+      ctx,
+      A.sprite("board/inlet"),
+      path.inlet.x + 6,
+      path.inlet.y,
+      40,
+      40,
+      0,
+    );
+    blit(
+      ctx,
+      A.sprite("board/collector"),
+      path.collector.x - 4,
+      path.collector.y,
+      40,
+      40,
+      0,
+    );
   }
 
   for (const t of game.towers) drawAura(ctx, game, t);
@@ -261,7 +333,14 @@ function drawZones(ctx: CanvasRenderingContext2D, game: Game): void {
   for (const z of game.zones) {
     ctx.save();
     const a = 0.12 + 0.05 * Math.sin(time * 8 + z.x);
-    const g = ctx.createRadialGradient(z.x, z.y, z.radius * 0.2, z.x, z.y, z.radius);
+    const g = ctx.createRadialGradient(
+      z.x,
+      z.y,
+      z.radius * 0.2,
+      z.x,
+      z.y,
+      z.radius,
+    );
     g.addColorStop(0, hexA(COL.fission, a + 0.06));
     g.addColorStop(1, hexA(COL.fission, 0));
     ctx.fillStyle = g;
@@ -299,7 +378,13 @@ function drawAura(ctx: CanvasRenderingContext2D, game: Game, t: Tower): void {
   ctx.restore();
 }
 
-function drawRange(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, kind: TowerKind): void {
+function drawRange(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  r: number,
+  kind: TowerKind,
+): void {
   const c = TOWERS[kind].color;
   ctx.save();
   ctx.strokeStyle = hexA(c, 0.8);
@@ -312,20 +397,37 @@ function drawRange(ctx: CanvasRenderingContext2D, x: number, y: number, r: numbe
   ctx.restore();
 }
 
-function towerHead(ctx: CanvasRenderingContext2D, A: Assets, kind: TowerKind, level: number, cx: number, cy: number, size: number, aimAngle: number): void {
+function towerHead(
+  ctx: CanvasRenderingContext2D,
+  A: Assets,
+  kind: TowerKind,
+  level: number,
+  cx: number,
+  cy: number,
+  size: number,
+  aimAngle: number,
+): void {
   blit(ctx, A.sprite("towers/base"), cx, cy, size, size, 0);
   const ang = isDamageTower(kind) ? aimAngle : 0;
   blit(ctx, A.sprite(towerSprite(kind, level)), cx, cy, size, size, ang);
 }
 
-function drawTower(ctx: CanvasRenderingContext2D, t: Tower, A: Assets, game: Game): void {
+function drawTower(
+  ctx: CanvasRenderingContext2D,
+  t: Tower,
+  A: Assets,
+  game: Game,
+): void {
   const size = 34;
   const cy = t.y - 4;
   towerHead(ctx, A, t.kind, t.level, t.x, cy, size, t.aimAngle);
   if (isDamageTower(t.kind)) {
     const frames = A.towerFire[t.kind];
     if (frames.length && t.fireAnim < 0.24) {
-      const idx = Math.min(frames.length - 1, Math.floor((t.fireAnim / 0.24) * frames.length));
+      const idx = Math.min(
+        frames.length - 1,
+        Math.floor((t.fireAnim / 0.24) * frames.length),
+      );
       ctx.save();
       ctx.globalAlpha = 0.9;
       blit(ctx, frames[idx]!, t.x, cy, size, size, t.aimAngle);
@@ -345,16 +447,38 @@ function drawTower(ctx: CanvasRenderingContext2D, t: Tower, A: Assets, game: Gam
     ctx.arc(t.x - 8 + i * 8, t.y + 14, 2.4, 0, Math.PI * 2);
     ctx.fill();
   }
-  if (t.level === 3 && t.branch) text(ctx, t.branch, t.x + 12, t.y + 14, 8, TOWERS[t.kind].color, "left", "800");
+  if (t.level === 3 && t.branch)
+    text(
+      ctx,
+      t.branch,
+      t.x + 12,
+      t.y + 14,
+      8,
+      TOWERS[t.kind].color,
+      "left",
+      "800",
+    );
 }
 
 // ---- projectiles in flight ----------------------------------------------------
-function drawProjectiles(ctx: CanvasRenderingContext2D, game: Game, A: Assets): void {
+function drawProjectiles(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  A: Assets,
+): void {
   for (const pr of game.projectiles) {
     ctx.save();
     ctx.shadowColor = DMG_COLOR[pr.damageType];
     ctx.shadowBlur = 8;
-    blit(ctx, A.sprite(projSprite(pr.damageType)), pr.x, pr.y, 16, 16, pr.angle);
+    blit(
+      ctx,
+      A.sprite(projSprite(pr.damageType)),
+      pr.x,
+      pr.y,
+      16,
+      16,
+      pr.angle,
+    );
     ctx.restore();
   }
 }
@@ -380,7 +504,8 @@ function drawUnits(ctx: CanvasRenderingContext2D, game: Game, A: Assets): void {
 
     // Trait / status overlays (drawn at full alpha over the body).
     if (hasT(u, "inert")) drawCloak(ctx, p.x, p.y, u.radius, u.revealed);
-    if (u.slowFactor < 0.999) ring(ctx, p.x, p.y, u.radius + 6, COL.moderator, 0.5);
+    if (u.slowFactor < 0.999)
+      ring(ctx, p.x, p.y, u.radius + 6, COL.moderator, 0.5);
     if (u.markTimer > 0) ring(ctx, p.x, p.y, u.radius + 8, COL.beam, 0.8);
     if (u.excite > 0) ring(ctx, p.x, p.y, u.radius + 3, COL.catalyst, 0.4);
   }
@@ -390,8 +515,16 @@ function drawUnits(ctx: CanvasRenderingContext2D, game: Game, A: Assets): void {
 // shell and up to 4 on the outer (specs/matter.md, specs/overview.md). The electron count
 // is the atom's remaining hit points, so as it is stripped it visibly sheds electrons (the
 // outer shell empties first, then the inner), and the ring for an empty shell disappears.
-function drawAtom(ctx: CanvasRenderingContext2D, A: Assets, x: number, y: number, u: Unit): void {
-  const orb = A.sprite(u.element === 0 ? "matter/nucleus_i" : "matter/nucleus_ii");
+function drawAtom(
+  ctx: CanvasRenderingContext2D,
+  A: Assets,
+  x: number,
+  y: number,
+  u: Unit,
+): void {
+  const orb = A.sprite(
+    u.element === 0 ? "matter/nucleus_i" : "matter/nucleus_ii",
+  );
   const col = u.element === 0 ? COL.elemI : COL.elemII;
   const e = Math.max(1, Math.min(ATOM_MAX_ELECTRONS, Math.round(u.shells)));
   const inner = Math.min(e, ATOM_INNER_MAX);
@@ -417,14 +550,28 @@ function drawAtom(ctx: CanvasRenderingContext2D, A: Assets, x: number, y: number
   if (A.electron.length) {
     // Composite the produced single-electron sprite once per electron, spaced evenly around
     // its shell and orbiting on a timer (the two shells counter-rotate so the motion reads).
-    const dot = A.electron[Math.floor((u.animT * 6 + u.id) % A.electron.length)]!;
+    const dot =
+      A.electron[Math.floor((u.animT * 6 + u.id) % A.electron.length)]!;
     const DOT = 7;
     ctx.save();
     ctx.globalAlpha = 0.95;
-    const ring = (count: number, radius: number, dir: number, phase: number): void => {
+    const ring = (
+      count: number,
+      radius: number,
+      dir: number,
+      phase: number,
+    ): void => {
       for (let j = 0; j < count; j++) {
         const a = phase + dir * u.animT * 1.7 + (j / count) * Math.PI * 2;
-        blit(ctx, dot, x + Math.cos(a) * radius, y + Math.sin(a) * radius, DOT, DOT, 0);
+        blit(
+          ctx,
+          dot,
+          x + Math.cos(a) * radius,
+          y + Math.sin(a) * radius,
+          DOT,
+          DOT,
+          0,
+        );
       }
     };
     ring(inner, rIn, 1, u.id * 0.7);
@@ -434,7 +581,12 @@ function drawAtom(ctx: CanvasRenderingContext2D, A: Assets, x: number, y: number
   if (u.hitFlash < 0.1) flash(ctx, x, y, 16, COL.ionizer);
 }
 
-function drawMolecule(ctx: CanvasRenderingContext2D, A: Assets, p: { x: number; y: number; ang: number }, u: Unit): void {
+function drawMolecule(
+  ctx: CanvasRenderingContext2D,
+  A: Assets,
+  p: { x: number; y: number; ang: number },
+  u: Unit,
+): void {
   const remaining = u.atoms.length - u.fragmentsShed; // atoms still bonded in the cluster
   const n = Math.max(1, remaining);
   const spacing = 14;
@@ -451,7 +603,9 @@ function drawMolecule(ctx: CanvasRenderingContext2D, A: Assets, p: { x: number; 
     const ax = p.x + dx * (start + i * spacing);
     const ay = p.y + dy * (start + i * spacing);
     const a = u.atoms[Math.min(u.fragmentsShed + i, u.atoms.length - 1)]!;
-    const orb = A.sprite(a.element === 0 ? "matter/nucleus_i" : "matter/nucleus_ii");
+    const orb = A.sprite(
+      a.element === 0 ? "matter/nucleus_i" : "matter/nucleus_ii",
+    );
     blitGlow(ctx, orb, ax, ay, 18, a.element === 0 ? COL.elemI : COL.elemII);
   }
   // bond-integrity read: an outer arc that drains as any tower chips the bonds.
@@ -466,7 +620,13 @@ function drawMolecule(ctx: CanvasRenderingContext2D, A: Assets, p: { x: number; 
   if (u.hitFlash < 0.1) flash(ctx, p.x, p.y, 20, COL.shear);
 }
 
-function drawHeavy(ctx: CanvasRenderingContext2D, A: Assets, x: number, y: number, u: Unit): void {
+function drawHeavy(
+  ctx: CanvasRenderingContext2D,
+  A: Assets,
+  x: number,
+  y: number,
+  u: Unit,
+): void {
   blitGlow(ctx, A.sprite("matter/heavy"), x, y, 26, COL.heavy);
   // hit-point read: an arc of REMAINING shells (kinetic/nuclear only chip it).
   const frac = u.maxShells > 0 ? Math.max(0, u.shells) / u.maxShells : 0;
@@ -487,7 +647,13 @@ function drawHeavy(ctx: CanvasRenderingContext2D, A: Assets, x: number, y: numbe
   if (u.hitFlash < 0.1) flash(ctx, x, y, 20, COL.fission);
 }
 
-function drawBoss(ctx: CanvasRenderingContext2D, A: Assets, x: number, y: number, u: Unit): void {
+function drawBoss(
+  ctx: CanvasRenderingContext2D,
+  A: Assets,
+  x: number,
+  y: number,
+  u: Unit,
+): void {
   const frames = A.boss;
   if (frames.length) {
     const f = Math.floor((u.animT * 11) % frames.length);
@@ -515,7 +681,13 @@ function drawBoss(ctx: CanvasRenderingContext2D, A: Assets, x: number, y: number
 
 // A sealed inert "cloak" — a dashed shell that reads as camouflage when unseen, and
 // snaps to a solid reveal ring while a detector covers it (specs/matter.md).
-function drawCloak(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, revealed: boolean): void {
+function drawCloak(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  r: number,
+  revealed: boolean,
+): void {
   ctx.save();
   ctx.strokeStyle = revealed ? hexA(COL.catalyst, 0.9) : hexA(COL.inert, 0.8);
   ctx.lineWidth = revealed ? 2 : 1.5;
@@ -526,7 +698,14 @@ function drawCloak(ctx: CanvasRenderingContext2D, x: number, y: number, r: numbe
   ctx.restore();
 }
 
-function ring(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, c: string, a: number): void {
+function ring(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  r: number,
+  c: string,
+  a: number,
+): void {
   ctx.save();
   ctx.strokeStyle = hexA(c, a);
   ctx.lineWidth = 1.5;
@@ -536,7 +715,14 @@ function ring(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, c:
   ctx.restore();
 }
 
-function blitGlow(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: number, y: number, size: number, glow: string): void {
+function blitGlow(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  x: number,
+  y: number,
+  size: number,
+  glow: string,
+): void {
   ctx.save();
   ctx.shadowColor = glow;
   ctx.shadowBlur = 8;
@@ -544,7 +730,13 @@ function blitGlow(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: numbe
   ctx.restore();
 }
 
-function flash(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, c: string): void {
+function flash(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  r: number,
+  c: string,
+): void {
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
   const g = ctx.createRadialGradient(x, y, 0, x, y, r);
@@ -558,7 +750,12 @@ function flash(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, c
 }
 
 // ---- status bar ---------------------------------------------------------------
-function drawStatusBar(ctx: CanvasRenderingContext2D, game: Game, A: Assets, clicks: Clickable[]): void {
+function drawStatusBar(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  A: Assets,
+  clicks: Clickable[],
+): void {
   ctx.fillStyle = COL.panel;
   ctx.fillRect(0, 0, STAGE_W, STATUS_H);
   ctx.strokeStyle = "rgba(255,255,255,0.05)";
@@ -569,15 +766,42 @@ function drawStatusBar(ctx: CanvasRenderingContext2D, game: Game, A: Assets, cli
 
   blit(ctx, A.sprite("icons/energy"), 26, 28, 18, 18, 0);
   text(ctx, "ENERGY", 42, 21, 10, COL.text3, "left", "600", 1);
-  text(ctx, `${Math.floor(game.energy)}`, 42, 36, 18, COL.energy, "left", "700");
+  text(
+    ctx,
+    `${Math.floor(game.energy)}`,
+    42,
+    36,
+    18,
+    COL.energy,
+    "left",
+    "700",
+  );
 
   const low = game.integrity <= game.maxIntegrity * 0.25;
   blit(ctx, A.sprite("icons/integrity"), 176, 28, 18, 18, 0);
   text(ctx, "INTEGRITY", 192, 21, 10, COL.text3, "left", "600", 1);
-  text(ctx, `${Math.max(0, Math.floor(game.integrity))}`, 192, 36, 18, low ? COL.alert : COL.integrity, "left", "700");
+  text(
+    ctx,
+    `${Math.max(0, Math.floor(game.integrity))}`,
+    192,
+    36,
+    18,
+    low ? COL.alert : COL.integrity,
+    "left",
+    "700",
+  );
 
   text(ctx, "ROUND", 330, 21, 10, COL.text3, "left", "600", 1);
-  text(ctx, `${game.round === 0 ? 1 : game.round}`, 330, 36, 18, COL.text, "left", "700");
+  text(
+    ctx,
+    `${game.round === 0 ? 1 : game.round}`,
+    330,
+    36,
+    18,
+    COL.text,
+    "left",
+    "700",
+  );
   text(ctx, `/ ${TOTAL_ROUNDS}`, 360, 37, 13, COL.text2, "left", "500");
   let sub = "";
   let subColor: string = COL.text2;
@@ -585,16 +809,44 @@ function drawStatusBar(ctx: CanvasRenderingContext2D, game: Game, A: Assets, cli
     // Interactive (in-place) pause: the board is frozen but still fully interactive.
     sub = "PAUSED";
     subColor = COL.alert;
-  } else if (game.state === "playing" && game.phase === "build") sub = game.buildTimed ? `BUILD · ${Math.ceil(game.buildTimer)}s` : "BUILD · READY";
-  else if (game.phase === "round") sub = `${Math.round(game.roundProgress() * 100)}%`;
+  } else if (game.state === "playing" && game.phase === "build")
+    sub = game.buildTimed
+      ? `BUILD · ${Math.ceil(game.buildTimer)}s`
+      : "BUILD · READY";
+  else if (game.phase === "round")
+    sub = `${Math.round(game.roundProgress() * 100)}%`;
   if (sub) text(ctx, sub, 420, 37, 12, subColor, "left", "600", 1);
 
   ctrl(ctx, clicks, 1112, `${game.speed}x`, "speed", COL.text, 52);
-  ctrl(ctx, clicks, 1172, game.paused ? "▶" : "❚❚", "pause", game.paused ? COL.alert : COL.text, 40);
-  ctrl(ctx, clicks, 1220, muted ? "♪̸" : "♪", "mute", muted ? COL.text3 : COL.text, 40);
+  ctrl(
+    ctx,
+    clicks,
+    1172,
+    game.paused ? "▶" : "❚❚",
+    "pause",
+    game.paused ? COL.alert : COL.text,
+    40,
+  );
+  ctrl(
+    ctx,
+    clicks,
+    1220,
+    muted ? "♪̸" : "♪",
+    "mute",
+    muted ? COL.text3 : COL.text,
+    40,
+  );
 }
 
-function ctrl(ctx: CanvasRenderingContext2D, clicks: Clickable[], x: number, label: string, action: string, color: string, w: number): void {
+function ctrl(
+  ctx: CanvasRenderingContext2D,
+  clicks: Clickable[],
+  x: number,
+  label: string,
+  action: string,
+  color: string,
+  w: number,
+): void {
   const y = 12,
     h = 32;
   roundRect(ctx, x, y, w, h, 6);
@@ -611,7 +863,12 @@ function ctrl(ctx: CanvasRenderingContext2D, clicks: Clickable[], x: number, lab
 const SHOP_Y0 = 90;
 const SHOP_PITCH = 40;
 
-function drawPanel(ctx: CanvasRenderingContext2D, game: Game, A: Assets, clicks: Clickable[]): void {
+function drawPanel(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  A: Assets,
+  clicks: Clickable[],
+): void {
   ctx.fillStyle = COL.panel;
   ctx.fillRect(PANEL_X, STATUS_H, STAGE_W - PANEL_X, STAGE_H - STATUS_H);
   ctx.strokeStyle = "rgba(255,255,255,0.05)";
@@ -641,11 +898,53 @@ function drawPanel(ctx: CanvasRenderingContext2D, game: Game, A: Assets, clicks:
     ctx.fillStyle = hexA(def.color, afford ? 0.9 : 0.3);
     ctx.fill();
     text(ctx, `${i + 1}`, px + 18, y + 17, 12, COL.void, "center", "800");
-    text(ctx, def.name, px + 38, y + 13, 12, afford ? COL.text : COL.text3, "left", "600", 0.5);
-    text(ctx, damageTag(kind), px + 38, y + 27, 9, hexA(tagColor(kind), 0.9), "left", "500", 0.5);
-    text(ctx, `${def.cost}`, px + pw - 10, y + 17, 13, afford ? COL.energy : COL.text3, "right", "700");
-    clicks.push({ x: px, y, w: pw, h, action: `shop:${kind}`, disabled: !afford });
-    if (game.pointerX >= px && game.pointerX <= px + pw && game.pointerY >= y && game.pointerY <= y + h) hover = kind;
+    text(
+      ctx,
+      def.name,
+      px + 38,
+      y + 13,
+      12,
+      afford ? COL.text : COL.text3,
+      "left",
+      "600",
+      0.5,
+    );
+    text(
+      ctx,
+      damageTag(kind),
+      px + 38,
+      y + 27,
+      9,
+      hexA(tagColor(kind), 0.9),
+      "left",
+      "500",
+      0.5,
+    );
+    text(
+      ctx,
+      `${def.cost}`,
+      px + pw - 10,
+      y + 17,
+      13,
+      afford ? COL.energy : COL.text3,
+      "right",
+      "700",
+    );
+    clicks.push({
+      x: px,
+      y,
+      w: pw,
+      h,
+      action: `shop:${kind}`,
+      disabled: !afford,
+    });
+    if (
+      game.pointerX >= px &&
+      game.pointerX <= px + pw &&
+      game.pointerY >= y &&
+      game.pointerY <= y + h
+    )
+      hover = kind;
   });
   game.hoverShop = hover;
 
@@ -659,8 +958,19 @@ function drawPanel(ctx: CanvasRenderingContext2D, game: Game, A: Assets, clicks:
   ctx.stroke();
 
   const sel = game.selectedTower;
-  if (hover) drawTowerInfo(ctx, hover, deriveStats(hover, 1, null), 1, null, px + 14, iy + 10, pw - 28);
-  else if (sel) drawSelectedTower(ctx, game, sel, px + 14, iy + 10, pw - 28, clicks);
+  if (hover)
+    drawTowerInfo(
+      ctx,
+      hover,
+      deriveStats(hover, 1, null),
+      1,
+      null,
+      px + 14,
+      iy + 10,
+      pw - 28,
+    );
+  else if (sel)
+    drawSelectedTower(ctx, game, sel, px + 14, iy + 10, pw - 28, clicks);
   else drawPreview(ctx, game, A, px + 14, iy + 10, pw - 28);
 
   drawRoundButton(ctx, game, px, pw, clicks);
@@ -668,7 +978,8 @@ function drawPanel(ctx: CanvasRenderingContext2D, game: Game, A: Assets, clicks:
 
 function damageTag(kind: TowerKind): string {
   const def = TOWERS[kind];
-  if (def.support) return kind === "catalyst" ? "SUPPORT · REVEAL" : "SUPPORT · SLOW";
+  if (def.support)
+    return kind === "catalyst" ? "SUPPORT · REVEAL" : "SUPPORT · SLOW";
   const dt = def.damageType!.toUpperCase();
   return def.detection ? `${dt} · SEES INERT` : dt;
 }
@@ -690,8 +1001,20 @@ function drawTowerInfo(
   maxBottom?: number,
 ): number {
   const def = TOWERS[kind];
-  const tier = branch ? `${ROMAN[level - 1]}·${branch === "A" ? def.branchA.name : def.branchB.name}` : ROMAN[level - 1];
-  text(ctx, `${def.name} · ${tier}`, x, y + 8, 14, def.color, "left", "700", 0.5);
+  const tier = branch
+    ? `${ROMAN[level - 1]}·${branch === "A" ? def.branchA.name : def.branchB.name}`
+    : ROMAN[level - 1];
+  text(
+    ctx,
+    `${def.name} · ${tier}`,
+    x,
+    y + 8,
+    14,
+    def.color,
+    "left",
+    "700",
+    0.5,
+  );
   // The role/targets line can be long — wrap it to the panel width instead of letting it
   // run off the edge, and start the stat rows below however many lines it took.
   const targets = capitalize(def.targets);
@@ -705,18 +1028,24 @@ function drawTowerInfo(
   // compress the row pitch so the whole block always clears those controls instead of
   // overprinting them.
   const rows: [string, string, string][] = [];
-  const line = (k: string, v: string, c: string = COL.text) => rows.push([k, v, c]);
+  const line = (k: string, v: string, c: string = COL.text) =>
+    rows.push([k, v, c]);
   line("RANGE", `${Math.round(s.range)}`);
   if (def.support) {
     if (kind === "moderator") {
       line("SLOW", `${Math.round((1 - s.auraSlow) * 100)}%`);
-      if (s.auraExcite > 0) line("BRITTLE", `+${s.auraExcite} dmg`, COL.catalyst);
+      if (s.auraExcite > 0)
+        line("BRITTLE", `+${s.auraExcite} dmg`, COL.catalyst);
     } else {
       line("REVEAL", "inert matter", COL.catalyst);
       line("EXCITE", `+${s.auraExcite} dmg`);
     }
   } else {
-    line("DAMAGE TYPE", def.damageType!.toUpperCase(), DMG_COLOR[def.damageType!]);
+    line(
+      "DAMAGE TYPE",
+      def.damageType!.toUpperCase(),
+      DMG_COLOR[def.damageType!],
+    );
     line("FIRE RATE", `${s.fireRate.toFixed(1)} /s`);
     line("DAMAGE", `${s.dmg} shell${s.dmg > 1 ? "s" : ""}`);
     if (s.detection) line("DETECT", "sees inert", COL.catalyst);
@@ -742,7 +1071,15 @@ function drawTowerInfo(
   return row;
 }
 
-function drawSelectedTower(ctx: CanvasRenderingContext2D, game: Game, t: Tower, x: number, y: number, w: number, clicks: Clickable[]): void {
+function drawSelectedTower(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  t: Tower,
+  x: number,
+  y: number,
+  w: number,
+  clicks: Clickable[],
+): void {
   const by = STAGE_H - 58 - 8 - 44 - 40; // sit the controls above the round button
   const def = TOWERS[t.kind];
   const cost = game.upgradeCost(t);
@@ -755,8 +1092,20 @@ function drawSelectedTower(ctx: CanvasRenderingContext2D, game: Game, t: Tower, 
   const rowH = 26;
   const blockTop = t.level === 1 ? by : t.level === 2 ? by - 12 : sellY; // top of the upgrade/branch/sell controls
   const rowY = blockTop - 14 - rowH; // targeting row (damage towers)
-  const statMaxBottom = def.support ? (t.level === 2 ? by - 12 : by) - 8 : rowY - 6;
-  drawTowerInfo(ctx, t.kind, game.statsOf(t), t.level, t.branch, x, y, w, statMaxBottom);
+  const statMaxBottom = def.support
+    ? (t.level === 2 ? by - 12 : by) - 8
+    : rowY - 6;
+  drawTowerInfo(
+    ctx,
+    t.kind,
+    game.statsOf(t),
+    t.level,
+    t.branch,
+    x,
+    y,
+    w,
+    statMaxBottom,
+  );
 
   // Targeting controls — damage towers only (the two auras have no single target). One row
   // between the stat block and the upgrade controls: a TARGET selector (click or `T` cycles
@@ -766,41 +1115,173 @@ function drawSelectedTower(ctx: CanvasRenderingContext2D, game: Game, t: Tower, 
   if (!def.support) {
     const inertW = 70;
     const tgtW = w - inertW - 8;
-    button(ctx, clicks, x, rowY, tgtW, rowH, `TARGET · ${TARGETING_LABEL[t.targeting]}`, "targeting", COL.text2, true);
-    toggle(ctx, clicks, x + tgtW + 8, rowY, inertW, rowH, "INERT", "inertPriority", t.prioritizeInert, COL.catalyst);
-    if (inRect(game.pointerX, game.pointerY, x + tgtW + 8, rowY, inertW, rowH)) {
-      drawTooltip(ctx, "PRIORITIZE INERT", "Fire on inert matter this tower can see before other targets. Off by default.", COL.catalyst, rowY + rowH / 2);
+    button(
+      ctx,
+      clicks,
+      x,
+      rowY,
+      tgtW,
+      rowH,
+      `TARGET · ${TARGETING_LABEL[t.targeting]}`,
+      "targeting",
+      COL.text2,
+      true,
+    );
+    toggle(
+      ctx,
+      clicks,
+      x + tgtW + 8,
+      rowY,
+      inertW,
+      rowH,
+      "INERT",
+      "inertPriority",
+      t.prioritizeInert,
+      COL.catalyst,
+    );
+    if (
+      inRect(game.pointerX, game.pointerY, x + tgtW + 8, rowY, inertW, rowH)
+    ) {
+      drawTooltip(
+        ctx,
+        "PRIORITIZE INERT",
+        "Fire on inert matter this tower can see before other targets. Off by default.",
+        COL.catalyst,
+        rowY + rowH / 2,
+      );
     }
   }
 
   if (t.level === 1) {
     const en = cost != null && game.energy >= cost;
-    button(ctx, clicks, x, by, half, 34, `UPGRADE ${cost}`, "upgrade", en ? COL.integrity : COL.text3, en);
+    button(
+      ctx,
+      clicks,
+      x,
+      by,
+      half,
+      34,
+      `UPGRADE ${cost}`,
+      "upgrade",
+      en ? COL.integrity : COL.text3,
+      en,
+    );
   } else if (t.level === 2) {
     // Tier III — choose a branch (specs/towers.md). Two buttons, the identity choice.
     const en = cost != null && game.energy >= cost;
-    text(ctx, `TIER III — CHOOSE  (${cost})`, x, by - 12, 10, COL.text3, "left", "600", 0.5);
-    button(ctx, clicks, x, by, half, 34, def.branchA.name, "branchA", en ? def.color : COL.text3, en);
-    button(ctx, clicks, x + half + 10, by, half, 34, def.branchB.name, "branchB", en ? def.color : COL.text3, en);
+    text(
+      ctx,
+      `TIER III — CHOOSE  (${cost})`,
+      x,
+      by - 12,
+      10,
+      COL.text3,
+      "left",
+      "600",
+      0.5,
+    );
+    button(
+      ctx,
+      clicks,
+      x,
+      by,
+      half,
+      34,
+      def.branchA.name,
+      "branchA",
+      en ? def.color : COL.text3,
+      en,
+    );
+    button(
+      ctx,
+      clicks,
+      x + half + 10,
+      by,
+      half,
+      34,
+      def.branchB.name,
+      "branchB",
+      en ? def.color : COL.text3,
+      en,
+    );
     // The choice is permanent, so make the buttons self-explanatory: hovering either one
     // pops a tooltip describing what that branch actually does.
     const overA = inRect(game.pointerX, game.pointerY, x, by, half, 34);
-    const overB = inRect(game.pointerX, game.pointerY, x + half + 10, by, half, 34);
-    if (overA) drawTooltip(ctx, `${def.branchA.name} — TIER III`, def.branchA.blurb, def.color, by + 17);
-    else if (overB) drawTooltip(ctx, `${def.branchB.name} — TIER III`, def.branchB.blurb, def.color, by + 17);
+    const overB = inRect(
+      game.pointerX,
+      game.pointerY,
+      x + half + 10,
+      by,
+      half,
+      34,
+    );
+    if (overA)
+      drawTooltip(
+        ctx,
+        `${def.branchA.name} — TIER III`,
+        def.branchA.blurb,
+        def.color,
+        by + 17,
+      );
+    else if (overB)
+      drawTooltip(
+        ctx,
+        `${def.branchB.name} — TIER III`,
+        def.branchB.blurb,
+        def.color,
+        by + 17,
+      );
   } else if (def.support) {
     // Maxed support tower — the title already carries the branch, so a compact MAX marker
     // is enough. (A damage tower shows its targeting selector in this space instead.)
-    text(ctx, `MAX · ${t.branch === "A" ? def.branchA.name : def.branchB.name}`, x, by + 8, 12, def.color, "left", "700", 0.5);
+    text(
+      ctx,
+      `MAX · ${t.branch === "A" ? def.branchA.name : def.branchB.name}`,
+      x,
+      by + 8,
+      12,
+      def.color,
+      "left",
+      "700",
+      0.5,
+    );
   }
-  button(ctx, clicks, x, sellY, w, 30, `SELL ${game.sellRefund(t)}`, "sell", COL.energy, true);
+  button(
+    ctx,
+    clicks,
+    x,
+    sellY,
+    w,
+    30,
+    `SELL ${game.sellRefund(t)}`,
+    "sell",
+    COL.energy,
+    true,
+  );
 }
 
-function drawPreview(ctx: CanvasRenderingContext2D, game: Game, A: Assets, x: number, y: number, w: number): void {
+function drawPreview(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  A: Assets,
+  x: number,
+  y: number,
+  w: number,
+): void {
   text(ctx, "NEXT ROUND", x, y + 8, 12, COL.text3, "left", "700", 1);
   const w2 = game.comingRound;
   const label = w2.hasBoss ? `ROUND ${w2.round} · BOSS` : `ROUND ${w2.round}`;
-  text(ctx, label, x, y + 28, 14, w2.hasBoss ? COL.boss : COL.text, "left", "700", 0.5);
+  text(
+    ctx,
+    label,
+    x,
+    y + 28,
+    14,
+    w2.hasBoss ? COL.boss : COL.text,
+    "left",
+    "700",
+    0.5,
+  );
   const iconFor: Record<MatterType, string> = {
     atom: "icons/atom",
     dimer: "icons/molecule",
@@ -833,15 +1314,33 @@ function counter(type: MatterType): string {
   return bits.join(" · ");
 }
 
-function drawRoundButton(ctx: CanvasRenderingContext2D, game: Game, px: number, pw: number, clicks: Clickable[]): void {
+function drawRoundButton(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  px: number,
+  pw: number,
+  clicks: Clickable[],
+): void {
   const y = STAGE_H - 58,
     h = 44;
   if (game.phase === "build") {
-    const label = game.buildTimed ? `SEND NEXT · +${Math.max(0, Math.floor(game.buildTimer))}` : `START ROUND`;
+    const label = game.buildTimed
+      ? `SEND NEXT · +${Math.max(0, Math.floor(game.buildTimer))}`
+      : `START ROUND`;
     roundRect(ctx, px, y, pw, h, 8);
     ctx.fillStyle = hexA(COL.energy, 0.9);
     ctx.fill();
-    text(ctx, label, px + pw / 2, y + h / 2 + 1, 15, COL.void, "center", "800", 1);
+    text(
+      ctx,
+      label,
+      px + pw / 2,
+      y + h / 2 + 1,
+      15,
+      COL.void,
+      "center",
+      "800",
+      1,
+    );
     clicks.push({ x: px, y, w: pw, h, action: "startRound" });
   } else {
     roundRect(ctx, px, y, pw, h, 8);
@@ -849,45 +1348,105 @@ function drawRoundButton(ctx: CanvasRenderingContext2D, game: Game, px: number, 
     ctx.fill();
     ctx.strokeStyle = "rgba(255,255,255,0.10)";
     ctx.stroke();
-    text(ctx, `ROUND ${game.round} · ACTIVE`, px + pw / 2, y + h / 2 + 1, 14, COL.text2, "center", "700", 1);
+    text(
+      ctx,
+      `ROUND ${game.round} · ACTIVE`,
+      px + pw / 2,
+      y + h / 2 + 1,
+      14,
+      COL.text2,
+      "center",
+      "700",
+      1,
+    );
   }
 }
 
-function button(ctx: CanvasRenderingContext2D, clicks: Clickable[], x: number, y: number, w: number, h: number, label: string, action: string, color: string, enabled: boolean): void {
+function button(
+  ctx: CanvasRenderingContext2D,
+  clicks: Clickable[],
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  label: string,
+  action: string,
+  color: string,
+  enabled: boolean,
+): void {
   roundRect(ctx, x, y, w, h, 6);
   ctx.fillStyle = enabled ? hexA(color, 0.12) : "rgba(255,255,255,0.03)";
   ctx.fill();
   ctx.strokeStyle = enabled ? color : "rgba(255,255,255,0.08)";
   ctx.lineWidth = 1.5;
   ctx.stroke();
-  text(ctx, label, x + w / 2, y + h / 2 + 1, 12, enabled ? color : COL.text3, "center", "700");
+  text(
+    ctx,
+    label,
+    x + w / 2,
+    y + h / 2 + 1,
+    12,
+    enabled ? color : COL.text3,
+    "center",
+    "700",
+  );
   if (enabled) clicks.push({ x, y, w, h, action });
 }
 
 // A two-state toggle button: it reads clearly ON (accented, filled) vs OFF (dim), and is
 // always clickable (unlike `button`, which greys out when disabled).
-function toggle(ctx: CanvasRenderingContext2D, clicks: Clickable[], x: number, y: number, w: number, h: number, label: string, action: string, on: boolean, color: string): void {
+function toggle(
+  ctx: CanvasRenderingContext2D,
+  clicks: Clickable[],
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  label: string,
+  action: string,
+  on: boolean,
+  color: string,
+): void {
   roundRect(ctx, x, y, w, h, 6);
   ctx.fillStyle = on ? hexA(color, 0.26) : "rgba(255,255,255,0.03)";
   ctx.fill();
   ctx.strokeStyle = on ? color : "rgba(255,255,255,0.12)";
   ctx.lineWidth = on ? 2 : 1.5;
   ctx.stroke();
-  text(ctx, label, x + w / 2, y + h / 2 + 1, 11, on ? color : COL.text3, "center", "700", 0.5);
+  text(
+    ctx,
+    label,
+    x + w / 2,
+    y + h / 2 + 1,
+    11,
+    on ? color : COL.text3,
+    "center",
+    "700",
+    0.5,
+  );
   clicks.push({ x, y, w, h, action });
 }
 
 // A floating info popover, anchored to the LEFT of the build panel (over the board) so it
 // never clips past the panel edge. `anchorY` is the vertical centre it points at; the box
 // is clamped to stay on-screen.
-function drawTooltip(ctx: CanvasRenderingContext2D, title: string, body: string, accent: string, anchorY: number): void {
+function drawTooltip(
+  ctx: CanvasRenderingContext2D,
+  title: string,
+  body: string,
+  accent: string,
+  anchorY: number,
+): void {
   const tw = 236;
   const pad = 12;
   const innerW = tw - pad * 2;
   const bodyLines = lineCount(ctx, body, innerW, 11);
   const th = pad + 16 + bodyLines * 15 + pad;
   const tx = PANEL_X - 12 - tw;
-  const ty = Math.max(STATUS_H + 8, Math.min(STAGE_H - th - 8, anchorY - th / 2));
+  const ty = Math.max(
+    STATUS_H + 8,
+    Math.min(STAGE_H - th - 8, anchorY - th / 2),
+  );
   ctx.save();
   ctx.shadowColor = "rgba(0,0,0,0.55)";
   ctx.shadowBlur = 24;
@@ -906,14 +1465,24 @@ function drawTooltip(ctx: CanvasRenderingContext2D, title: string, body: string,
 // ---- build cursor (held tower ghost + range + legality) -----------------------
 // Free placement (specs/board.md): the held tower follows the pointer exactly, its range
 // is previewed, and a green/red footprint ring cues whether the spot is legal.
-function drawBuildCursor(ctx: CanvasRenderingContext2D, game: Game, A: Assets): void {
+function drawBuildCursor(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  A: Assets,
+): void {
   if (!game.buildKind) return;
   if (game.state !== "playing") return;
   const px = game.pointerX,
     py = game.pointerY;
   if (px < BOARD_X0 || px > BOARD_X1 || py < BOARD_Y0 || py > BOARD_Y1) return;
   const legal = game.canBuildAt(px, py, game.buildKind);
-  drawRange(ctx, px, py, deriveStats(game.buildKind, 1, null).range, game.buildKind);
+  drawRange(
+    ctx,
+    px,
+    py,
+    deriveStats(game.buildKind, 1, null).range,
+    game.buildKind,
+  );
   // Footprint validity ring.
   ctx.save();
   ctx.strokeStyle = legal ? COL.integrity : COL.alert;
@@ -930,11 +1499,18 @@ function drawBuildCursor(ctx: CanvasRenderingContext2D, game: Game, A: Assets): 
 }
 
 // ---- title / how-to / overlays ------------------------------------------------
-function drawTitle(ctx: CanvasRenderingContext2D, game: Game, A: Assets, clicks: Clickable[]): void {
+function drawTitle(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  A: Assets,
+  clicks: Clickable[],
+): void {
   ctx.save();
   ctx.globalAlpha = 0.25;
   const conduit = A.sprite("board/conduit");
-  for (let i = 0; i < game.board.pathCount; i++) for (const p of game.board.pathSamples(i, 16)) blit(ctx, conduit, p.x, p.y, 18, 18, p.ang);
+  for (let i = 0; i < game.board.pathCount; i++)
+    for (const p of game.board.pathSamples(i, 16))
+      blit(ctx, conduit, p.x, p.y, 18, 18, p.ang);
   ctx.restore();
 
   const grad = ctx.createLinearGradient(360, 0, 920, 0);
@@ -951,20 +1527,56 @@ function drawTitle(ctx: CanvasRenderingContext2D, game: Game, A: Assets, clicks:
   ctx.fillStyle = grad;
   drawSpaced(ctx, "VALENCE", STAGE_W / 2, 250, 92, 14);
   ctx.restore();
-  text(ctx, game.mode.tagline, STAGE_W / 2, 320, 16, COL.text2, "center", "500", 6);
+  text(
+    ctx,
+    game.mode.tagline,
+    STAGE_W / 2,
+    320,
+    16,
+    COL.text2,
+    "center",
+    "500",
+    6,
+  );
 
   const items = menuItems("title", game);
   items.forEach((it, i) => {
     const y = 420 + i * 60;
     const on = highlighted(game, i, STAGE_W / 2 - 200, y - 26, 400, 52);
-    text(ctx, it.label, STAGE_W / 2, y, 30, on ? COL.energy : COL.text, "center", "700", 6);
+    text(
+      ctx,
+      it.label,
+      STAGE_W / 2,
+      y,
+      30,
+      on ? COL.energy : COL.text,
+      "center",
+      "700",
+      6,
+    );
     if (on) {
       text(ctx, "▶", STAGE_W / 2 - 190, y, 20, COL.energy, "center", "700");
       text(ctx, "◀", STAGE_W / 2 + 190, y, 20, COL.energy, "center", "700");
     }
-    clicks.push({ x: STAGE_W / 2 - 200, y: y - 26, w: 400, h: 52, action: it.action });
+    clicks.push({
+      x: STAGE_W / 2 - 200,
+      y: y - 26,
+      w: 400,
+      h: 52,
+      action: it.action,
+    });
   });
-  text(ctx, "↑↓ SELECT    ENTER CONFIRM    MOUSE OK", STAGE_W / 2, 660, 13, COL.text3, "center", "500", 4);
+  text(
+    ctx,
+    "↑↓ SELECT    ENTER CONFIRM    MOUSE OK",
+    STAGE_W / 2,
+    660,
+    13,
+    COL.text3,
+    "center",
+    "500",
+    4,
+  );
 }
 
 // ---- map select ---------------------------------------------------------------
@@ -984,7 +1596,14 @@ function difficultyColor(d: GameMap["difficulty"]): string {
 }
 
 // Draw a map's paths, scaled from board space into the preview rect (curved or straight).
-function drawMapPreview(ctx: CanvasRenderingContext2D, map: GameMap, x: number, y: number, w: number, h: number): void {
+function drawMapPreview(
+  ctx: CanvasRenderingContext2D,
+  map: GameMap,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): void {
   ctx.save();
   roundRect(ctx, x, y, w, h, 8);
   ctx.fillStyle = COL.substrate;
@@ -1021,17 +1640,37 @@ function drawMapPreview(ctx: CanvasRenderingContext2D, map: GameMap, x: number, 
     ctx.fill();
     ctx.fillStyle = COL.alert;
     ctx.beginPath();
-    ctx.arc(ox + path.collector.x * s, oy + path.collector.y * s, 3.5, 0, Math.PI * 2);
+    ctx.arc(
+      ox + path.collector.x * s,
+      oy + path.collector.y * s,
+      3.5,
+      0,
+      Math.PI * 2,
+    );
     ctx.fill();
   }
   ctx.restore();
 }
 
-function drawMapSelect(ctx: CanvasRenderingContext2D, game: Game, clicks: Clickable[]): void {
+function drawMapSelect(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  clicks: Clickable[],
+): void {
   ctx.fillStyle = COL.void;
   ctx.fillRect(0, 0, STAGE_W, STAGE_H);
   text(ctx, "SELECT MAP", STAGE_W / 2, 70, 34, COL.text, "center", "700", 6);
-  text(ctx, "SAME CAMPAIGN, DIFFERENT FRONT — THE MAP IS THE DIFFICULTY", STAGE_W / 2, 108, 12, COL.text3, "center", "500", 3);
+  text(
+    ctx,
+    "SAME CAMPAIGN, DIFFERENT FRONT — THE MAP IS THE DIFFICULTY",
+    STAGE_W / 2,
+    108,
+    12,
+    COL.text3,
+    "center",
+    "500",
+    3,
+  );
 
   const n = MAPS.length;
   const cardW = 360;
@@ -1054,7 +1693,17 @@ function drawMapSelect(ctx: CanvasRenderingContext2D, game: Game, clicks: Clicka
 
     drawMapPreview(ctx, map, x + 18, cardY + 18, cardW - 36, 200);
 
-    text(ctx, map.name, x + 20, cardY + 248, 24, on ? COL.energy : COL.text, "left", "800", 2);
+    text(
+      ctx,
+      map.name,
+      x + 20,
+      cardY + 248,
+      24,
+      on ? COL.energy : COL.text,
+      "left",
+      "800",
+      2,
+    );
     // difficulty pill
     const pillW = 12 + map.difficulty.length * 8;
     roundRect(ctx, x + cardW - 20 - pillW, cardY + 236, pillW, 24, 6);
@@ -1063,9 +1712,29 @@ function drawMapSelect(ctx: CanvasRenderingContext2D, game: Game, clicks: Clicka
     ctx.strokeStyle = dc;
     ctx.lineWidth = 1;
     ctx.stroke();
-    text(ctx, map.difficulty, x + cardW - 20 - pillW / 2, cardY + 249, 11, dc, "center", "700", 1);
+    text(
+      ctx,
+      map.difficulty,
+      x + cardW - 20 - pillW / 2,
+      cardY + 249,
+      11,
+      dc,
+      "center",
+      "700",
+      1,
+    );
 
-    text(ctx, `${map.topology} · ${map.styleLabel}`, x + 20, cardY + 280, 11, COL.text2, "left", "600", 1);
+    text(
+      ctx,
+      `${map.topology} · ${map.styleLabel}`,
+      x + 20,
+      cardY + 280,
+      11,
+      COL.text2,
+      "left",
+      "600",
+      1,
+    );
     wrap(ctx, map.blurb, x + 20, cardY + 306, cardW - 40, 12, COL.text3);
 
     clicks.push({ x, y: cardY, w: cardW, h: cardH, action: `map:${map.id}` });
@@ -1076,12 +1745,40 @@ function drawMapSelect(ctx: CanvasRenderingContext2D, game: Game, clicks: Clicka
   const bx = STAGE_W / 2 - 90;
   const byy = cardY + cardH + 26;
   const onBack = highlighted(game, backIdx, bx, byy, 180, 42);
-  button(ctx, clicks, bx, byy, 180, 42, "BACK", "menu:back", onBack ? COL.energy : COL.text, true);
+  button(
+    ctx,
+    clicks,
+    bx,
+    byy,
+    180,
+    42,
+    "BACK",
+    "menu:back",
+    onBack ? COL.energy : COL.text,
+    true,
+  );
 
-  text(ctx, "↑↓ / ← → SELECT    ENTER CONFIRM    MOUSE OK", STAGE_W / 2, STAGE_H - 22, 12, COL.text3, "center", "500", 3);
+  text(
+    ctx,
+    "↑↓ / ← → SELECT    ENTER CONFIRM    MOUSE OK",
+    STAGE_W / 2,
+    STAGE_H - 22,
+    12,
+    COL.text3,
+    "center",
+    "500",
+    3,
+  );
 }
 
-function drawSpaced(ctx: CanvasRenderingContext2D, s: string, cx: number, y: number, size: number, letter: number): void {
+function drawSpaced(
+  ctx: CanvasRenderingContext2D,
+  s: string,
+  cx: number,
+  y: number,
+  size: number,
+  letter: number,
+): void {
   const chars = [...s];
   const adv = size * 0.62 + letter;
   const total = chars.length * adv;
@@ -1098,14 +1795,38 @@ function drawHowto(ctx: CanvasRenderingContext2D, clicks: Clickable[]): void {
   ctx.fillRect(0, 0, STAGE_W, STAGE_H);
   text(ctx, "HOW TO PLAY", STAGE_W / 2, 60, 32, COL.text, "center", "700", 4);
   const lines: [string, string][] = [
-    ["GOAL", "Break matter down before it reaches the collector. Every leak costs integrity; reach 0 and containment fails."],
-    ["HIT POINTS", "Every unit has electron SHELLS — its hit points. A regular ATOM carries 1–6 electrons (its layers) on two shells; each is one hit point, so a bigger atom takes more hits. Any of three damage types strips them: ENERGY, KINETIC, NUCLEAR. At zero it is neutralized and pays energy; a leaking atom costs its remaining electrons."],
-    ["BONDED (molecules)", "A cluster carries an outer BOND pool — extra health ANY tower chips through, shedding free atoms as it breaks. KINETIC (Cleaver) chews bonds fastest, but it is not the only opener."],
-    ["HEAVY (isotope)", "A radioactive isotope: immune to ENERGY, cracked only by KINETIC or NUCLEAR — the Cleaver, the Reactor, or a Beam's Disruptor. As it is worn down it DECAYS, shedding ALPHA (6-electron) and BETA (2-electron) atoms until it reaches a stable nucleus."],
-    ["INERT (camo)", "Untargetable until a DETECTOR sees it: a Catalyst's field, a Reactor's fallout, an Ionizer's Array upgrade, or a Beam (which sees it natively). Traits stack late — a heavy that is also inert needs both answers."],
-    ["TOWERS", "Seven general-purpose towers; each picks one of two BRANCHES at tier III. Support: a Catalyst reveals + excites (+damage), a Moderator slows."],
-    ["ECONOMY", "Neutralizing pays energy; clearing a round pays a bonus; banked energy earns interest. Spend it to build and upgrade."],
-    ["CONTROLS", "Pick a map, then click a shop tower (or 1-7) and place it freely beside the paths — anywhere off the track and clear of other towers. Select a tower to UPGRADE (U) or SELL (S); at tier III pick a branch. SPACE starts a round, then pauses it in place (build while frozen); the status-bar ❚❚ pauses in place too. F cycles speed; ESC opens the pause menu; M mutes."],
+    [
+      "GOAL",
+      "Break matter down before it reaches the collector. Every leak costs integrity; reach 0 and containment fails.",
+    ],
+    [
+      "HIT POINTS",
+      "Every unit has electron SHELLS — its hit points. A regular ATOM carries 1–6 electrons (its layers) on two shells; each is one hit point, so a bigger atom takes more hits. Any of three damage types strips them: ENERGY, KINETIC, NUCLEAR. At zero it is neutralized and pays energy; a leaking atom costs its remaining electrons.",
+    ],
+    [
+      "BONDED (molecules)",
+      "A cluster carries an outer BOND pool — extra health ANY tower chips through, shedding free atoms as it breaks. KINETIC (Cleaver) chews bonds fastest, but it is not the only opener.",
+    ],
+    [
+      "HEAVY (isotope)",
+      "A radioactive isotope: immune to ENERGY, cracked only by KINETIC or NUCLEAR — the Cleaver, the Reactor, or a Beam's Disruptor. As it is worn down it DECAYS, shedding ALPHA (6-electron) and BETA (2-electron) atoms until it reaches a stable nucleus.",
+    ],
+    [
+      "INERT (camo)",
+      "Untargetable until a DETECTOR sees it: a Catalyst's field, a Reactor's fallout, an Ionizer's Array upgrade, or a Beam (which sees it natively). Traits stack late — a heavy that is also inert needs both answers.",
+    ],
+    [
+      "TOWERS",
+      "Seven general-purpose towers; each picks one of two BRANCHES at tier III. Support: a Catalyst reveals + excites (+damage), a Moderator slows.",
+    ],
+    [
+      "ECONOMY",
+      "Neutralizing pays energy; clearing a round pays a bonus; banked energy earns interest. Spend it to build and upgrade.",
+    ],
+    [
+      "CONTROLS",
+      "Pick a map, then click a shop tower (or 1-7) and place it freely beside the paths — anywhere off the track and clear of other towers. Select a tower to UPGRADE (U) or SELL (S); at tier III pick a branch. SPACE starts a round, then pauses it in place (build while frozen); the status-bar ❚❚ pauses in place too. F cycles speed; ESC opens the pause menu; M mutes.",
+    ],
   ];
   let y = 108;
   for (const [k, v] of lines) {
@@ -1118,7 +1839,16 @@ function drawHowto(ctx: CanvasRenderingContext2D, clicks: Clickable[]): void {
   button(ctx, clicks, bx, byy, 180, 42, "BACK", "menu:back", COL.text, true);
 }
 
-function wrap(ctx: CanvasRenderingContext2D, s: string, x: number, y: number, maxW: number, size: number, color: string, lineHeight = 20): void {
+function wrap(
+  ctx: CanvasRenderingContext2D,
+  s: string,
+  x: number,
+  y: number,
+  maxW: number,
+  size: number,
+  color: string,
+  lineHeight = 20,
+): void {
   ctx.font = `400 ${size}px ${FONT}`;
   const words = s.split(" ");
   let line = "";
@@ -1137,7 +1867,12 @@ function wrap(ctx: CanvasRenderingContext2D, s: string, x: number, y: number, ma
   ctx.fillText(line, x, yy);
 }
 
-function lineCount(ctx: CanvasRenderingContext2D, s: string, maxW: number, size: number): number {
+function lineCount(
+  ctx: CanvasRenderingContext2D,
+  s: string,
+  maxW: number,
+  size: number,
+): number {
   ctx.font = `400 ${size}px ${FONT}`;
   const words = s.split(" ");
   let line = "";
@@ -1152,43 +1887,149 @@ function lineCount(ctx: CanvasRenderingContext2D, s: string, maxW: number, size:
   return n;
 }
 
-function drawPause(ctx: CanvasRenderingContext2D, game: Game, clicks: Clickable[]): void {
+function drawPause(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  clicks: Clickable[],
+): void {
   dim(ctx);
   panelBox(ctx, 440, 210, 400, 320);
   text(ctx, "PAUSED", STAGE_W / 2, 262, 30, COL.text, "center", "700", 4);
   menuButtons(ctx, game, menuItems("paused", game), 330, 56, 260, clicks);
 }
 
-function menuButtons(ctx: CanvasRenderingContext2D, game: Game, items: MenuItem[], y0: number, gap: number, w: number, clicks: Clickable[]): void {
+function menuButtons(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  items: MenuItem[],
+  y0: number,
+  gap: number,
+  w: number,
+  clicks: Clickable[],
+): void {
   const x = STAGE_W / 2 - w / 2;
   items.forEach((it, i) => {
     const y = y0 + i * gap;
     const on = highlighted(game, i, x, y, w, 44);
-    button(ctx, clicks, x, y, w, 44, it.label, it.action, on ? COL.energy : COL.text, true);
+    button(
+      ctx,
+      clicks,
+      x,
+      y,
+      w,
+      44,
+      it.label,
+      it.action,
+      on ? COL.energy : COL.text,
+      true,
+    );
   });
 }
 
-function drawEnd(ctx: CanvasRenderingContext2D, game: Game, clicks: Clickable[], won: boolean): void {
+function drawEnd(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  clicks: Clickable[],
+  won: boolean,
+): void {
   dim(ctx);
   panelBox(ctx, 400, 180, 480, 360);
-  text(ctx, won ? "CONTAINMENT HELD" : "CONTAINMENT FAILED", STAGE_W / 2, 232, 15, won ? COL.moderator : COL.alert, "center", "700", 3);
-  text(ctx, won ? "SECURED" : "BREACH", STAGE_W / 2, 282, 42, won ? COL.integrity : COL.shear, "center", "800", 2);
+  text(
+    ctx,
+    won ? "CONTAINMENT HELD" : "CONTAINMENT FAILED",
+    STAGE_W / 2,
+    232,
+    15,
+    won ? COL.moderator : COL.alert,
+    "center",
+    "700",
+    3,
+  );
+  text(
+    ctx,
+    won ? "SECURED" : "BREACH",
+    STAGE_W / 2,
+    282,
+    42,
+    won ? COL.integrity : COL.shear,
+    "center",
+    "800",
+    2,
+  );
   if (won) {
-    text(ctx, `ALL ${TOTAL_ROUNDS} ROUNDS SURVIVED`, STAGE_W / 2, 340, 20, COL.text, "center", "600", 2);
-    text(ctx, `INTEGRITY ${Math.max(0, Math.floor(game.integrity))}`, STAGE_W / 2, 372, 14, COL.text2, "center", "500", 1);
+    text(
+      ctx,
+      `ALL ${TOTAL_ROUNDS} ROUNDS SURVIVED`,
+      STAGE_W / 2,
+      340,
+      20,
+      COL.text,
+      "center",
+      "600",
+      2,
+    );
+    text(
+      ctx,
+      `INTEGRITY ${Math.max(0, Math.floor(game.integrity))}`,
+      STAGE_W / 2,
+      372,
+      14,
+      COL.text2,
+      "center",
+      "500",
+      1,
+    );
   } else {
-    text(ctx, `REACHED ROUND ${game.round} / ${TOTAL_ROUNDS}`, STAGE_W / 2, 344, 22, COL.text, "center", "600", 2);
+    text(
+      ctx,
+      `REACHED ROUND ${game.round} / ${TOTAL_ROUNDS}`,
+      STAGE_W / 2,
+      344,
+      22,
+      COL.text,
+      "center",
+      "600",
+      2,
+    );
   }
-  text(ctx, `SCORE ${game.score.toLocaleString()}`, STAGE_W / 2, 404, 15, COL.text2, "center", "500", 1);
+  text(
+    ctx,
+    `SCORE ${game.score.toLocaleString()}`,
+    STAGE_W / 2,
+    404,
+    15,
+    COL.text2,
+    "center",
+    "500",
+    1,
+  );
   const items = menuItems(won ? "victory" : "defeat", game);
   const xs = [STAGE_W / 2 - 170, STAGE_W / 2 + 10];
   items.forEach((it, i) => {
     const on = highlighted(game, i, xs[i]!, 452, 160, 46);
-    button(ctx, clicks, xs[i]!, 452, 160, 46, it.label, it.action, on ? COL.energy : COL.text, true);
+    button(
+      ctx,
+      clicks,
+      xs[i]!,
+      452,
+      160,
+      46,
+      it.label,
+      it.action,
+      on ? COL.energy : COL.text,
+      true,
+    );
   });
 }
 
-function highlighted(game: Game, i: number, x: number, y: number, w: number, h: number): boolean {
+function highlighted(
+  game: Game,
+  i: number,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): boolean {
   return menuIndex === i || inRect(game.pointerX, game.pointerY, x, y, w, h);
 }
 
@@ -1196,7 +2037,13 @@ function dim(ctx: CanvasRenderingContext2D): void {
   ctx.fillStyle = "rgba(6,9,14,0.72)";
   ctx.fillRect(0, 0, STAGE_W, STAGE_H);
 }
-function panelBox(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number): void {
+function panelBox(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): void {
   ctx.save();
   ctx.shadowColor = "rgba(0,0,0,0.5)";
   ctx.shadowBlur = 30;
@@ -1221,6 +2068,13 @@ function hexA(hex: string, a: number): string {
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
-function inRect(px: number, py: number, x: number, y: number, w: number, h: number): boolean {
+function inRect(
+  px: number,
+  py: number,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): boolean {
   return px >= x && px <= x + w && py >= y && py <= y + h;
 }

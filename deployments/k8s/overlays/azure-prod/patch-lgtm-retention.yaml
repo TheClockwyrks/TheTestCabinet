@@ -15,9 +15,9 @@
 # within days. Metrics now also answer a *capacity* question — what is the largest
 # memory footprint any run pod has ever reached — and that one is only answerable
 # over a window wide enough to contain the rare heavy test case. A voxel-meshing or
-# arena run may appear a handful of times a month; sizing a memory limit off a 3-day
-# sample would set the ceiling from whatever happened to run that weekend, and a
-# ceiling set too low is a deterministic OOM kill rather than a near miss.
+# arena run may appear a handful of times a month; sizing a run pod's memory request
+# off a 3-day sample would set the reservation from whatever happened to run that
+# weekend, and a reservation set too low is node memory pressure waiting to happen.
 #
 # The cost is small and bounded. The cAdvisor scrape keeps only nine whitelisted
 # series per container (see the component's prometheus.yaml), per-run pods live

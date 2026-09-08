@@ -9,11 +9,11 @@ each element sits inside the strip is the build's own layout choice.
 
 The panel draws three readouts at all times during a run:
 
-| Readout | Label | What it shows |
-| --- | --- | --- |
-| Money | `HUD_MONEY_LABEL` (`MONEY`) | The current money. |
-| Lives | `HUD_LIVES_LABEL` (`LIVES`) | The lives remaining. |
-| Wave | `HUD_WAVE_LABEL` (`WAVE`) | The current wave number over the run's total. |
+| Readout | Label                       | What it shows                                 |
+| ------- | --------------------------- | --------------------------------------------- |
+| Money   | `HUD_MONEY_LABEL` (`MONEY`) | The current money.                            |
+| Lives   | `HUD_LIVES_LABEL` (`LIVES`) | The lives remaining.                          |
+| Wave    | `HUD_WAVE_LABEL` (`WAVE`)   | The current wave number over the run's total. |
 
 Each readout follows its value as it changes. In a build phase the panel also
 draws the seconds left on the build timer, falling as the timer does. In The
@@ -75,10 +75,10 @@ rather than naming one, alongside the count.
 
 While a placement is armed the panel carries two more controls:
 
-| Control | What it does |
-| --- | --- |
-| Rotate | Turns the held preview one step, as `specs/building.md` states. |
-| Cancel | Disarms the placement, clearing the held preview. |
+| Control | What it does                                                    |
+| ------- | --------------------------------------------------------------- |
+| Rotate  | Turns the held preview one step, as `specs/building.md` states. |
+| Cancel  | Disarms the placement, clearing the held preview.               |
 
 Both are drawn only while a preview is held, and neither is drawn with nothing
 armed.

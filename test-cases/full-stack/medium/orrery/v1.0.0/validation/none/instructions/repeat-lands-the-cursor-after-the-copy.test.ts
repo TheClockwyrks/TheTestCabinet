@@ -100,7 +100,10 @@ it("leaves the cursor on the same row, at twice the column it was invoked at", a
   );
 
   const cursor = written.editor.cursor;
-  assertNotNull(cursor, "the cursor is still pointing at a cell after the macro");
+  assertNotNull(
+    cursor,
+    "the cursor is still pointing at a cell after the macro",
+  );
   assertEqual(
     cursor?.part,
     arm,

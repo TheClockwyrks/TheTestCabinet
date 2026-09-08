@@ -11,7 +11,7 @@
 // `specs/instrumentation.md`, taking exactly the arguments that row names, and
 // the two mapped types below are the mechanical translation of that into this
 // engine's spelling: a state parameter in front, and the promise dropped. Writing
-// the fifty-one rows out a second time is how the two would drift, and a drift
+// the fifty-three rows out a second time is how the two would drift, and a drift
 // between them is a check calling an operation with the wrong arguments and
 // nothing saying so.
 //

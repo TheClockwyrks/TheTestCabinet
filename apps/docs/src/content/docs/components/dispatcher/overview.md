@@ -163,12 +163,15 @@ guaranteed, while a sandbox must be cleaned up regardless, so the reap is gated
 only on the `Job` having failed. A failed reap is retried on the next tick
 rather than recorded as done.
 
-The driver pod also carries small resource requests
+The driver pod also carries resource requests
 (`TCAB_DISPATCHER_DRIVER_CPU_REQUEST` and
-`TCAB_DISPATCHER_DRIVER_MEMORY_REQUEST`) purely to keep it out of the
-`BestEffort` QoS class, which is what made it the first thing evicted and
-OOM-killed. Limits are deliberately unset by default, because a memory limit
-would re-introduce the same `SIGKILL` from the container's own cgroup.
+`TCAB_DISPATCHER_DRIVER_MEMORY_REQUEST`). They keep it out of the `BestEffort`
+QoS class, which is what made it the first thing evicted and OOM-killed, and the
+memory request is the node's reservation for the post-run toolchain the driver
+runs. The memory limit is deliberately unset by default, because a memory limit
+would re-introduce the same `SIGKILL` from the container's own cgroup; only a CPU
+limit is set, and over-limit CPU throttles rather than kills. See
+[the run plane](/deployment/kubernetes/run-plane/#driver-pod-reservation).
 
 ## Surviving the cluster autoscaler
 

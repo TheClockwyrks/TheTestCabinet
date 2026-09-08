@@ -10,9 +10,10 @@
 // and the ball speed off a launch, "Pressing `Space` launches the parked ball
 // radially outward at the current wave's ball speed."
 //
-// THE WORLD IS THE FRESH WAVE-2 SESSION the interstitial hands back. The ball
-// is parked through the surface's own parkBall (a no-op beside a parked ball)
-// so the launch reading does not ride on the park-on-new-wave item.
+// THE WORLD IS THE FRESH WAVE-2 SESSION the interstitial hands back. The field
+// is emptied and one ball parked through the surface's own clearBalls and
+// parkBall, so the launch reading does not ride on the park-on-new-wave item
+// and does not depend on whether the transition left a ball parked.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertEqual } from "../assert";
@@ -59,6 +60,7 @@ it("serves at 270 and orbits at +15/-10 on wave 2", async () => {
     "ring 3's wave-2 orbit speed (-10)",
   );
 
+  h.debug.clearBalls();
   h.debug.parkBall();
   const launched = await captureReplay(h, "wave-two-launch", async () => {
     h.debug.launchBall();

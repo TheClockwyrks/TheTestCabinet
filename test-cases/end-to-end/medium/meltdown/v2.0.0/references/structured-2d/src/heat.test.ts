@@ -239,7 +239,10 @@ describe("the movers", () => {
     startRun(harness);
     const forge = poseTower(harness, "forge", 10, 10, 0);
     const sink = poseTower(harness, "sink", 12, 10, 0);
-    harness.debug.setTowerHeat(forge, 90);
+    // A mover carries no heat of its own, so there is none for the surface to
+    // reach and the call fails loudly rather than passing quietly
+    // (specs/instrumentation.md).
+    expect(() => harness.debug.setTowerHeat(forge, 90)).toThrow(RangeError);
     await stepSeconds(harness, 1, 4);
     const read = towerOf(harness, forge);
     expect(read.heat).toBe(0);

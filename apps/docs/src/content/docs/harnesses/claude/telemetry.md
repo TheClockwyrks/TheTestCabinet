@@ -12,31 +12,31 @@ Everything here is gated on the deployment exporting telemetry. See
 
 ## Exported signals
 
-| Signal | Exported | Notes |
-| ------ | -------- | ----- |
-| Traces | Yes | Spans named `claude_code.interaction`, `claude_code.llm_request`, `claude_code.tool`, `claude_code.hook`. Span names and attributes are beta and may change between Claude Code releases. |
-| Metrics | Yes | Token counts, cost, and session counters. |
-| Logs | Yes | Structured session events. |
+| Signal  | Exported | Notes                                                                                                                                                                                     |
+| ------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Traces  | Yes      | Spans named `claude_code.interaction`, `claude_code.llm_request`, `claude_code.tool`, `claude_code.hook`. Span names and attributes are beta and may change between Claude Code releases. |
+| Metrics | Yes      | Token counts, cost, and session counters.                                                                                                                                                 |
+| Logs    | Yes      | Structured session events.                                                                                                                                                                |
 
 ## Configuration
 
 A run sets these on the container before the session:
 
-| Variable | Value | Purpose |
-| -------- | ----- | ------- |
-| `CLAUDE_CODE_ENABLE_TELEMETRY` | `1` | The master switch. Nothing is exported without it. |
-| `CLAUDE_CODE_ENHANCED_TELEMETRY_BETA` | `1` | Gates traces. With this unset, only metrics and logs are emitted. |
-| `OTEL_TRACES_EXPORTER` | `otlp` | Each signal needs its exporter named. |
-| `OTEL_METRICS_EXPORTER` | `otlp` | |
-| `OTEL_LOGS_EXPORTER` | `otlp` | |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | the collector | Rewritten to be reachable from inside the container. |
-| `OTEL_EXPORTER_OTLP_PROTOCOL` | `http/protobuf` | |
-| `OTEL_SERVICE_NAME` | `tcab-harness-claude` | |
-| `OTEL_RESOURCE_ATTRIBUTES` | the run's `tcab.*` attributes | Correlates the session to the run. |
-| `OTEL_TRACES_EXPORT_INTERVAL` | `1000` | |
-| `OTEL_METRIC_EXPORT_INTERVAL` | `1000` | |
-| `OTEL_LOGS_EXPORT_INTERVAL` | `1000` | |
-| `TRACEPARENT` | the run's trace context | Joins the run's trace. Set only when a trace is in scope. |
+| Variable                              | Value                         | Purpose                                                           |
+| ------------------------------------- | ----------------------------- | ----------------------------------------------------------------- |
+| `CLAUDE_CODE_ENABLE_TELEMETRY`        | `1`                           | The master switch. Nothing is exported without it.                |
+| `CLAUDE_CODE_ENHANCED_TELEMETRY_BETA` | `1`                           | Gates traces. With this unset, only metrics and logs are emitted. |
+| `OTEL_TRACES_EXPORTER`                | `otlp`                        | Each signal needs its exporter named.                             |
+| `OTEL_METRICS_EXPORTER`               | `otlp`                        |                                                                   |
+| `OTEL_LOGS_EXPORTER`                  | `otlp`                        |                                                                   |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`         | the collector                 | Rewritten to be reachable from inside the container.              |
+| `OTEL_EXPORTER_OTLP_PROTOCOL`         | `http/protobuf`               |                                                                   |
+| `OTEL_SERVICE_NAME`                   | `tcab-harness-claude`         |                                                                   |
+| `OTEL_RESOURCE_ATTRIBUTES`            | the run's `tcab.*` attributes | Correlates the session to the run.                                |
+| `OTEL_TRACES_EXPORT_INTERVAL`         | `1000`                        |                                                                   |
+| `OTEL_METRIC_EXPORT_INTERVAL`         | `1000`                        |                                                                   |
+| `OTEL_LOGS_EXPORT_INTERVAL`           | `1000`                        |                                                                   |
+| `TRACEPARENT`                         | the run's trace context       | Joins the run's trace. Set only when a trace is in scope.         |
 
 Both Claude Code switches are required. `CLAUDE_CODE_ENABLE_TELEMETRY` alone
 yields metrics and logs, and the beta switch is what adds traces.

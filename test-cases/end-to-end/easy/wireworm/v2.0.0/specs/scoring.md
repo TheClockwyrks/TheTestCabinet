@@ -6,18 +6,18 @@ end screens, as `specs/ui.md` states.
 
 ## What scores
 
-| Event | Constant | Figure |
-| --- | --- | --- |
-| A bolt destroys a worm's head. | `SCORE_HEAD` | `100` |
-| A bolt destroys any other worm segment. | `SCORE_BODY` | `10` |
-| A discharge destroys a worm segment. | `SCORE_FRY` | `10` |
-| A discharge removes a node. | `SCORE_PURGE_NODE` | `5` |
-| A bolt removes an inert node. | `SCORE_INERT_NODE` | `1` |
-| A glitch is destroyed. | `SCORE_GLITCH` | `300` |
-| A dropper is destroyed. | `SCORE_DROPPER` | `200` |
-| A corruptor is destroyed. | `SCORE_CORRUPTOR` | `1000` |
-| A level is cleared. | `SCORE_LEVEL_CLEAR` | `100 * level`, for the level just cleared |
-| The run is won. | `SCORE_VICTORY` | `250 * lives`, for the lives remaining |
+| Event                                   | Constant            | Figure                                    |
+| --------------------------------------- | ------------------- | ----------------------------------------- |
+| A bolt destroys a worm's head.          | `SCORE_HEAD`        | `100`                                     |
+| A bolt destroys any other worm segment. | `SCORE_BODY`        | `10`                                      |
+| A discharge destroys a worm segment.    | `SCORE_FRY`         | `10`                                      |
+| A discharge removes a node.             | `SCORE_PURGE_NODE`  | `5`                                       |
+| A bolt removes an inert node.           | `SCORE_INERT_NODE`  | `1`                                       |
+| A glitch is destroyed.                  | `SCORE_GLITCH`      | `300`                                     |
+| A dropper is destroyed.                 | `SCORE_DROPPER`     | `200`                                     |
+| A corruptor is destroyed.               | `SCORE_CORRUPTOR`   | `1000`                                    |
+| A level is cleared.                     | `SCORE_LEVEL_CLEAR` | `100 * level`, for the level just cleared |
+| The run is won.                         | `SCORE_VICTORY`     | `250 * lives`, for the lives remaining    |
 
 Each figure is paid once, on the event itself. `SCORE_FRY` is paid for every
 segment a discharge destroys, whatever its place in the chain, and

@@ -112,7 +112,8 @@ function galleryValue(summaries: RunSummary[]): GalleryDataInput {
     writeups: {},
     reviews: {},
     runsLoading: false,
-    queryRunSummaries: async (query: RunQuery) => runSummaryPage(summaries, query),
+    queryRunSummaries: async (query: RunQuery) =>
+      runSummaryPage(summaries, query),
     testCases: [],
     testCasesStatus: "ready",
     models: MODELS,
@@ -145,9 +146,10 @@ describe("ModelOverviewPage", () => {
     expect(await screen.findByText("Carom · Base")).toBeTruthy();
     const cases = screen.getByLabelText("Test case") as HTMLSelectElement;
     expect(cases.value).toBe("carom");
-    expect(
-      [...cases.options].map((option) => option.textContent),
-    ).toEqual(["Carom (3 runs)", "Space Invaders (1 run)"]);
+    expect([...cases.options].map((option) => option.textContent)).toEqual([
+      "Carom (3 runs)",
+      "Space Invaders (1 run)",
+    ]);
   });
 
   it("aggregates only the selected cohort, never across cases", async () => {
@@ -179,7 +181,12 @@ describe("ModelOverviewPage", () => {
     renderPage([
       run({ id: "a", cost: 4, sessionSeconds: null }),
       run({ id: "bb", cost: 6, sessionSeconds: null }),
-      run({ id: "eeeee", modelId: "openai/gpt", cost: 1, sessionSeconds: null }),
+      run({
+        id: "eeeee",
+        modelId: "openai/gpt",
+        cost: 1,
+        sessionSeconds: null,
+      }),
     ]);
     await screen.findByText("Carom");
 

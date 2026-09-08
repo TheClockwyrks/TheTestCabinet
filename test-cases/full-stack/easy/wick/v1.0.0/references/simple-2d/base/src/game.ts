@@ -59,7 +59,12 @@ export type Screen =
 export type Facing = "left" | "right";
 
 export type ZoneKind =
-  "puddle" | "lantern" | "aura" | "slash" | "strike" | "burst";
+  | "puddle"
+  | "lantern"
+  | "aura"
+  | "slash"
+  | "strike"
+  | "burst";
 
 export type ChestResult =
   | { readonly kind: "evolve"; readonly weapon: WeaponId }
@@ -355,6 +360,8 @@ export interface WickDebugApi {
   readonly version: number;
   reset(state: DeepReadonly<WickState>): WickState;
   snapshot(state: DeepReadonly<WickState>): WickSnapshot;
+  /** Bring every reported reading into agreement with the world as it stands. */
+  reconcile(state: DeepReadonly<WickState>): WickState;
   menuRects(state: DeepReadonly<WickState>): readonly WickRect[];
   tabRects(state: DeepReadonly<WickState>): readonly WickRect[];
   setScreen(state: DeepReadonly<WickState>, name: Screen): WickState;

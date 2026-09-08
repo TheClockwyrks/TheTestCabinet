@@ -23,11 +23,13 @@
 // away from the tag's number by `isolate`, so the HUD's `LEVEL` label cannot
 // supply the reading.
 //
-// THE TOLERANCE. The tag is matched as its label and its number in order,
-// through `drewPhrase`, which admits a build that draws them as two runs or
-// separates them with a marker. That the frame carries no `NEW` is read the
-// same way, and it is the other half of the same rule: the tag is one or the
-// other, never both.
+// THE TOLERANCE. The tag is matched as `LEVEL_LABEL` followed by the level
+// with any run of spaces between them, ignoring case, which is the form
+// specs/ui.md spells (`LEVEL 3`), read off both the raw calls and the runs
+// they spell so a label and its number drawn as two runs still read; the
+// digits must stand as their own token. That the frame carries no `NEW` is
+// read as a whole token through `hasToken`, and it is the other half of the
+// same rule: the tag is one or the other, never both.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual } from "../assert";
@@ -35,10 +37,11 @@ import { LEVEL_LABEL, OFFER_NEW_TEXT } from "../constants";
 import {
   captureStill,
   createHarness,
-  drewPhrase,
+  hasToken,
   holdWeapon,
   isolate,
   openLevelUp,
+  textReadings,
   type Harness,
 } from "../harness";
 
@@ -80,13 +83,18 @@ it("tags an offer for Taper held at 3 with LEVEL 4", async () => {
   const { calls } = await h.frameDraw();
   captureStill(h, "level");
 
+  const lines = textReadings(calls);
+  const tag = new RegExp(`${LEVEL_LABEL}\\s*${OFFERED_LEVEL}(?![\\w])`, "i");
   assertEqual(
-    drewPhrase(calls, `${LEVEL_LABEL} ${OFFERED_LEVEL}`),
+    // Both readings, so the tag is found whether the level was drawn a glyph
+    // at a time (the run) or a plain call the run rule merged into its
+    // neighbour (the raw call).
+    lines.some((line) => tag.test(line)),
     true,
     `the tag on an offer for Taper held at ${HELD_LEVEL} (${LEVEL_LABEL} ${OFFERED_LEVEL})`,
   );
   assertEqual(
-    drewPhrase(calls, OFFER_NEW_TEXT),
+    hasToken(lines, OFFER_NEW_TEXT),
     false,
     `the ${OFFER_NEW_TEXT} tag, which belongs to an item not yet held`,
   );

@@ -11,11 +11,11 @@ specification gives it.
 
 ## Slots
 
-| Figure | Constant | Value |
-| --- | --- | --- |
-| Weapon slots | `WEAPON_SLOTS` | `6` |
-| Passive slots | `PASSIVE_SLOTS` | `6` |
-| Max level of a base weapon | `MAX_WEAPON_LEVEL` | `8` |
+| Figure                     | Constant           | Value |
+| -------------------------- | ------------------ | ----- |
+| Weapon slots               | `WEAPON_SLOTS`     | `6`   |
+| Passive slots              | `PASSIVE_SLOTS`    | `6`   |
+| Max level of a base weapon | `MAX_WEAPON_LEVEL` | `8`   |
 
 A weapon slot holds one weapon at one level, and a passive slot holds one
 passive at one level. An item enters the first free slot of its kind at level
@@ -30,10 +30,10 @@ empty, `level` `1`, and `xp` `0`.
 
 ## Levels and experience
 
-| Figure | Constant | Value |
-| --- | --- | --- |
-| Experience to leave level 1 | `XP_BASE` | `5` |
-| Increase per level | `XP_STEP` | `10` |
+| Figure                      | Constant  | Value |
+| --------------------------- | --------- | ----- |
+| Experience to leave level 1 | `XP_BASE` | `5`   |
+| Increase per level          | `XP_STEP` | `10`  |
 
 `level` starts at `1` and `xp` is a real number that starts at `0`. The
 experience needed to leave a level is:
@@ -43,17 +43,17 @@ xpToNext(level) = XP_BASE + XP_STEP × (level - 1)
 ```
 
 | Level | `xpToNext(level)` | Total collected since level 1 |
-| --- | --- | --- |
-| 1 | 5 | 5 |
-| 2 | 15 | 20 |
-| 3 | 25 | 45 |
-| 4 | 35 | 80 |
-| 5 | 45 | 125 |
-| 6 | 55 | 180 |
-| 7 | 65 | 245 |
-| 8 | 75 | 320 |
-| 9 | 85 | 405 |
-| 10 | 95 | 500 |
+| ----- | ----------------- | ----------------------------- |
+| 1     | 5                 | 5                             |
+| 2     | 15                | 20                            |
+| 3     | 25                | 45                            |
+| 4     | 35                | 80                            |
+| 5     | 45                | 125                           |
+| 6     | 55                | 180                           |
+| 7     | 65                | 245                           |
+| 8     | 75                | 320                           |
+| 9     | 85                | 405                           |
+| 10    | 95                | 500                           |
 
 The last column is the experience collected over a run at which that level is
 left, so a lamplighter reaches level `11` after collecting `500` experience.
@@ -97,12 +97,12 @@ a candidate, and neither is the base weapon it came from.
 
 ### The draw
 
-| Figure | Constant | Value |
-| --- | --- | --- |
-| Offers per overlay | `OFFER_COUNT` | `3` |
-| The fallback offer's id | `LAMP_OIL_ID` | `lamp-oil` |
-| Its display name | `LAMP_OIL_NAME` | `Lamp Oil` |
-| Health it restores | `LAMP_OIL_HEAL` | `30` |
+| Figure                  | Constant        | Value      |
+| ----------------------- | --------------- | ---------- |
+| Offers per overlay      | `OFFER_COUNT`   | `3`        |
+| The fallback offer's id | `LAMP_OIL_ID`   | `lamp-oil` |
+| Its display name        | `LAMP_OIL_NAME` | `Lamp Oil` |
+| Health it restores      | `LAMP_OIL_HEAL` | `30`       |
 
 The overlay offers `OFFER_COUNT` distinct candidates drawn uniformly at random
 from the pool without replacement, and every candidate in a pool smaller than
@@ -125,11 +125,11 @@ fixes the text of each.
 
 Accepting an offer applies it on the spot:
 
-| Offer | Effect |
-| --- | --- |
-| A weapon or passive not held | It enters the first free slot of its kind at level `1`. A weapon's cooldown timer starts at `0`, so it fires on the first `playing` tick it is held. |
-| A held weapon or passive | Its level rises by `1`. Its table row and its derived-stat terms read the new level from the next tick; a weapon's running cooldown timer keeps counting. |
-| `lamp-oil` | `hp` rises by `LAMP_OIL_HEAL`, capped at `maxHp`. |
+| Offer                        | Effect                                                                                                                                                    |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A weapon or passive not held | It enters the first free slot of its kind at level `1`. A weapon's cooldown timer starts at `0`, so it fires on the first `playing` tick it is held.      |
+| A held weapon or passive     | Its level rises by `1`. Its table row and its derived-stat terms read the new level from the next tick; a weapon's running cooldown timer keeps counting. |
+| `lamp-oil`                   | `hp` rises by `LAMP_OIL_HEAL`, capped at `maxHp`.                                                                                                         |
 
 Gaining a Tallow level raises `hp` by `TALLOW_HP_PER_LEVEL` (`15`) at the same
 time as `maxHp`, whichever path grants it. Accepting decrements

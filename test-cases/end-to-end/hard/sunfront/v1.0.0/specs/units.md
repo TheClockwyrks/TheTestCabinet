@@ -20,13 +20,13 @@ Every unit has one **armor class** and its attack has one **attack type**. Damag
 dealt is the attack's base damage times a **counter multiplier** read from this
 matrix (times any upgrade bonus from `specs/economy.md`):
 
-| Attack type ↓ / Armor → | Light | Heavy | Air |
-| --- | --- | --- | --- |
-| **Normal** | `1.0` | `0.75` | — |
-| **Piercing** (anti-armor) | `1.0` | `1.5` | — |
-| **Splash** (area, anti-swarm) | `1.5` | `0.75` | — |
-| **Flak** (anti-air) | `0.5` | `0.5` | `2.0` |
-| **Support** (no damage) | — | — | — |
+| Attack type ↓ / Armor →       | Light | Heavy  | Air   |
+| ----------------------------- | ----- | ------ | ----- |
+| **Normal**                    | `1.0` | `0.75` | —     |
+| **Piercing** (anti-armor)     | `1.0` | `1.5`  | —     |
+| **Splash** (area, anti-swarm) | `1.5` | `0.75` | —     |
+| **Flak** (anti-air)           | `0.5` | `0.5`  | `2.0` |
+| **Support** (no damage)       | —     | —      | —     |
 
 A `—` means the attack **cannot target that armor class at all**. So:
 
@@ -48,18 +48,18 @@ targeting**; it defends its own half and never crosses the diagonal midline (ful
 definition in `specs/waves.md`). Stats are base values at spawner level 1; upgrades
 scale HP and damage per `specs/economy.md`.
 
-| Unit | Cost | HP | Armor | Attack type | Dmg | Cadence | Range | Speed | Targets | Role |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| **Scarab** | 60 | 55 | Light | Normal | 8 | 0.6 s | 22 | 95 | Ground | Cheap fast melee swarm; screens the line, soaks fire. |
-| **Trooper** | 80 | 70 | Light | Normal | 9 | 0.8 s | 90 | 70 | Ground | Cheap rifle infantry; short-ranged body that braces and holds ground. |
-| **Sentinel** | 100 | 90 | Light | Normal | 12 | 0.9 s | 130 | 65 | Ground | Backbone ranged rifleman; longer reach, cost-efficient staple. |
-| **Bulwark** | 200 | 420 | Heavy | Normal | 16 | 1.1 s | 26 | 45 | Ground | Heavy frontline; walks the line forward and eats fire. |
-| **Lancer** | 180 | 80 | Light | Piercing | 26 | 1.4 s | 200 | 55 | Ground | Long-range marksman; deletes Heavy units, fragile. |
-| **Bombard** | 280 | 130 | Light | Splash | 22 | 2.0 s | 240 | 40 | Ground | Siege artillery; erases swarms, helpless up close. |
-| **Flakhound** | 150 | 120 | Light | Flak | 20 | 0.8 s | 190 | 60 | Air + Ground | Anti-air platform; near-useless against ground alone. |
-| **Sunhawk** | 240 | 160 | **Air** | Normal | 14 | 0.7 s | 120 | 85 | Ground | Air gunship; flies over the line, only Flak stops it. |
-| **Lumen** | 160 | 100 | Light | Support | — | — | 130 | 60 | Allies | Repair drone; heals nearby allies, deals no damage. |
-| **Monolith** | 900 | 900 | Heavy | Splash | 40 | 1.5 s | 90 | 38 | Ground | Expensive capstone bruiser; slow, splashes the line. |
+| Unit          | Cost | HP  | Armor   | Attack type | Dmg | Cadence | Range | Speed | Targets      | Role                                                                  |
+| ------------- | ---- | --- | ------- | ----------- | --- | ------- | ----- | ----- | ------------ | --------------------------------------------------------------------- |
+| **Scarab**    | 60   | 55  | Light   | Normal      | 8   | 0.6 s   | 22    | 95    | Ground       | Cheap fast melee swarm; screens the line, soaks fire.                 |
+| **Trooper**   | 80   | 70  | Light   | Normal      | 9   | 0.8 s   | 90    | 70    | Ground       | Cheap rifle infantry; short-ranged body that braces and holds ground. |
+| **Sentinel**  | 100  | 90  | Light   | Normal      | 12  | 0.9 s   | 130   | 65    | Ground       | Backbone ranged rifleman; longer reach, cost-efficient staple.        |
+| **Bulwark**   | 200  | 420 | Heavy   | Normal      | 16  | 1.1 s   | 26    | 45    | Ground       | Heavy frontline; walks the line forward and eats fire.                |
+| **Lancer**    | 180  | 80  | Light   | Piercing    | 26  | 1.4 s   | 200   | 55    | Ground       | Long-range marksman; deletes Heavy units, fragile.                    |
+| **Bombard**   | 280  | 130 | Light   | Splash      | 22  | 2.0 s   | 240   | 40    | Ground       | Siege artillery; erases swarms, helpless up close.                    |
+| **Flakhound** | 150  | 120 | Light   | Flak        | 20  | 0.8 s   | 190   | 60    | Air + Ground | Anti-air platform; near-useless against ground alone.                 |
+| **Sunhawk**   | 240  | 160 | **Air** | Normal      | 14  | 0.7 s   | 120   | 85    | Ground       | Air gunship; flies over the line, only Flak stops it.                 |
+| **Lumen**     | 160  | 100 | Light   | Support     | —   | —       | 130   | 60    | Allies       | Repair drone; heals nearby allies, deals no damage.                   |
+| **Monolith**  | 900  | 900 | Heavy   | Splash      | 40  | 1.5 s   | 90    | 38    | Ground       | Expensive capstone bruiser; slow, splashes the line.                  |
 
 Notes on specific units:
 

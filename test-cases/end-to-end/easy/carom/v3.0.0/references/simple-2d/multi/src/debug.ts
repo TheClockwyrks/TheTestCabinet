@@ -156,6 +156,11 @@ export interface CaromDebugApi {
   spawnBall(state: State, index: number): CaromState;
   spawnObstacle(state: State, index: number): CaromState;
   reset(state: State): CaromState;
+  /**
+   * Brings every reading this surface reports into agreement with the world as
+   * it stands, advancing nothing.
+   */
+  reconcile(state: State): CaromState;
 
   /* Screens and menus. */
   setScreen(state: State, screen: Screen): CaromState;
@@ -221,22 +226,33 @@ function isObstacleIndex(index: number): boolean {
 /**
  * `state` with ball `index` replaced by `change` applied to it.
  *
- * An operation naming an absent ball, or an index this variant does not have,
- * leaves the state exactly as it was (specs/instrumentation.md).
+ * An index this variant does not play with names nothing, and an index whose
+ * ball has been taken off the field is nothing to pose. Either way there is no
+ * state for the call to reach, and an operation that quietly handed the state
+ * back would leave a caller reading its own pose off a field that never took it
+ * — so this fails where the caller can see it (specs/instrumentation.md).
+ * `spawnBall` is how a ball is put back.
  */
 function withBall(
   state: State,
   index: number,
   change: (ball: DeepReadonly<BallState>) => BallState,
 ): CaromState {
-  if (!isBallIndex(index)) return state;
+  if (!isBallIndex(index)) {
+    throw new RangeError(`Carom: no ball ${index}`);
+  }
   let touched = false;
   const balls = state.balls.map((ball) => {
     if (ball.index !== index) return ball;
     touched = true;
     return change(ball);
   });
-  return touched ? { ...state, balls } : state;
+  if (!touched) {
+    throw new Error(
+      `Carom: ball ${index} is not on the field; spawnBall places it`,
+    );
+  }
+  return { ...state, balls };
 }
 
 /** `state` with one side's paddle replaced by `change` applied to it. */
@@ -274,16 +290,24 @@ export function createDebugApi(): CaromDebugApi {
      * already in play.
      */
     spawnBall(state, index) {
-      if (!isBallIndex(index)) return state;
+      if (!isBallIndex(index)) {
+        throw new RangeError(`Carom: no ball ${index}`);
+      }
       return {
         ...state,
         balls: placeByIndex<BallState>(state.balls, parkBall(index, HOLD_TIME)),
       };
     },
 
-    /** Obstacle `index` back at `OBSTACLE_CENTERS[index]`. */
+    /**
+     * Obstacle `index` back at `OBSTACLE_CENTERS[index]`. An index outside the
+     * two this field is built with names no obstacle, so the call fails where
+     * the caller can see it rather than passing quietly.
+     */
     spawnObstacle(state, index) {
-      if (!isObstacleIndex(index)) return state;
+      if (!isObstacleIndex(index)) {
+        throw new RangeError(`Carom: no obstacle ${index}`);
+      }
       return {
         ...state,
         obstacles: placeByIndex<ObstacleState>(
@@ -303,6 +327,23 @@ export function createDebugApi(): CaromDebugApi {
      */
     reset(state) {
       return { ...createInitialState(), muted: state.muted };
+    },
+
+    /**
+     * Every reading brought into agreement with the world as it stands, without
+     * advancing anything.
+     *
+     * Every derived reading this build reports is worked out at the read: a
+     * ball's `speed` is `ballSpeed(ball)` in the snapshot, and every other field
+     * is the state's own. Nothing is held that a pose can leave behind, so the
+     * state handed in is already the state to hand back. The operation is
+     * required of every build, including one that keeps those readings as stored
+     * copies, and returning the state unchanged is what it comes to in a build
+     * that keeps none — not an omission. Running the update would be wrong: an
+     * update moves the very thing a pose has just placed.
+     */
+    reconcile(state) {
+      return { ...state };
     },
 
     // ---- Screens and menus ----------------------------------------------

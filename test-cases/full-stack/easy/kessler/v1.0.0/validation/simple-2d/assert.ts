@@ -21,3 +21,27 @@
 // states its verdict in, not a package a check depends on.
 
 export * from "./case-harness/assert";
+
+import { fail } from "./case-harness/assert";
+
+/**
+ * Calling `run` fails LOUDLY: it throws, or the promise it returns rejects.
+ *
+ * `specs/instrumentation.md` has no operation refuse quietly — "a call the
+ * field has no state for ... fails loudly rather than passing quietly, so a
+ * caller never reads a call that did nothing as a call that did" — so a check
+ * whose requirement is that the game had nothing to act on grades a THROWN
+ * error, and reads the unchanged field beside it rather than instead of it. A
+ * build that returned quietly is the defect this catches.
+ */
+export async function assertFailsLoudly(
+  run: () => unknown,
+  context: string,
+): Promise<void> {
+  try {
+    await run();
+  } catch {
+    return;
+  }
+  fail(`a thrown error — ${context}`, "the call returned, changing nothing");
+}

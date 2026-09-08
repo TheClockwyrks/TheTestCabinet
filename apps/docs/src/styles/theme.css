@@ -27,7 +27,8 @@
   --ttc-glow: 0 0 0.9rem rgba(255, 157, 47, 0.5);
 
   /* Full monospace type, matching the gallery's single-font treatment. */
-  --sl-font: ui-monospace, "DejaVu Sans Mono", "SFMono-Regular", Menlo, Consolas,
+  --sl-font:
+    ui-monospace, "DejaVu Sans Mono", "SFMono-Regular", Menlo, Consolas,
     monospace;
   --sl-font-mono: var(--sl-font);
 }

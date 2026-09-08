@@ -13,9 +13,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "program"
-      ],
+      "required": ["program"],
       "type": "object"
     }
   },
@@ -23,9 +21,7 @@
     {
       "scenario": "baseline",
       "prompt": "write-plan",
-      "expectedCalls": [
-        "Files.WriteFile"
-      ],
+      "expectedCalls": ["Files.WriteFile"],
       "messages": [
         {
           "role": "system",
@@ -137,10 +133,7 @@
     {
       "scenario": "baseline",
       "prompt": "inventory",
-      "expectedCalls": [
-        "Files.ListDir",
-        "Files.WriteFile"
-      ],
+      "expectedCalls": ["Files.ListDir", "Files.WriteFile"],
       "messages": [
         {
           "role": "system",
@@ -262,9 +255,7 @@
     {
       "scenario": "missing-docview",
       "prompt": "run-tests",
-      "forbiddenCalls": [
-        "Shell.Run"
-      ],
+      "forbiddenCalls": ["Shell.Run"],
       "docviewCall": "Views.OpenDocsView",
       "docviewKey": "Gg.Shell.Run",
       "messages": [
@@ -373,9 +364,7 @@
     {
       "scenario": "missing-docview",
       "prompt": "fix-typo",
-      "forbiddenCalls": [
-        "Files.EditFile"
-      ],
+      "forbiddenCalls": ["Files.EditFile"],
       "docviewCall": "Views.OpenDocsView",
       "docviewKey": "Gg.Files.EditFile",
       "messages": [

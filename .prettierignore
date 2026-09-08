@@ -1,0 +1,32 @@
+# What `npm run lint:format` leaves alone. Prettier reads only this file and the
+# root `.gitignore`; a nested package's own `.gitignore` is not consulted, so the
+# build trees those packages keep are named here as well.
+**/node_modules/
+**/dist/
+**/target/
+**/.build/
+**/.spago/
+**/.vendor/
+**/vendor/
+crates/desktop/gen/
+apps/docs/.astro/
+packages/gg-sandbox-purescript/output/
+
+# The lattice case's graded scenarios are written by the lattice designer, whose
+# writer is their canonical format: it re-writes a committed scenario byte for
+# byte, and that round trip is what its tests assert.
+test-cases/performance/hard/lattice/*/cases/*.json
+
+# The JSON Schemas foray-core and lattice-core commit are written by their
+# `gen-artifacts` binaries, and each crate's `committed_schemas_match_the_types`
+# test asserts the committed text equals what the generator writes, byte for
+# byte. Formatting them fails that test.
+crates/foray-core/schemas/*.json
+crates/lattice-core/schemas/*.json
+
+# Handlebars templates: the prompt, spec and message templates are not a language
+# prettier parses, and formatting one destroys it.
+**/*.hbs
+
+# Frozen test-case versions cannot be modified, so they cannot be formatted.
+# `scripts/format-check.mjs` appends them from their `.frozen` markers at run time.

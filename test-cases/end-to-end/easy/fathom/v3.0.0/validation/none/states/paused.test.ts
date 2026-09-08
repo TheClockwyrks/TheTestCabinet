@@ -38,6 +38,7 @@ import { afterEach, beforeEach, it } from "vitest";
 import { poseApart, spawnPredator } from "../fixtures";
 import { parkForager } from "../scene";
 import { assertEqual, assertGreaterThan } from "../assert";
+import { drewText } from "../case-harness/text";
 import { BRIGHT_HOLD, ticksFor } from "../constants";
 import {
   captureStill,
@@ -46,7 +47,7 @@ import {
   startPlaying,
 } from "../harness";
 
-import { MOVE_KEY, assertDrew, frameOps } from "./screens";
+import { MOVE_KEY, frameOps } from "./screens";
 
 /** The roster index of the one hunter posed loose, on a board emptied of the rest. */
 const LOOSE = 0;
@@ -124,9 +125,9 @@ it("freezes the dive behind its menu", async () => {
     "paused",
     "the screen this point's freeze is read on (specs/ui.md)",
   );
-  assertDrew(
-    ops,
-    `DEPTH ${String(paused.depth)}`,
+  assertEqual(
+    drewText(ops, `DEPTH ${String(paused.depth)}`),
+    true,
     "the HUD's depth readout, still drawn over the maze that stays visible " +
       "behind the pause menu (specs/ui.md)",
   );

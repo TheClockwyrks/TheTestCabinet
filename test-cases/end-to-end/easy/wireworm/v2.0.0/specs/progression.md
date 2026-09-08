@@ -10,25 +10,25 @@ between are in `specs/ui.md`, and the figures the run pays are in
 
 A new run opens on the `playing` screen with:
 
-| Field | Value |
-| --- | --- |
-| Lives | `START_LIVES` (`3`) |
-| Level | `1` |
-| The level reached | `1` |
-| Score | `0` |
-| The node field | A fresh scatter, as `specs/nodes.md` states |
-| Phase | `banner` |
+| Field             | Value                                       |
+| ----------------- | ------------------------------------------- |
+| Lives             | `START_LIVES` (`3`)                         |
+| Level             | `1`                                         |
+| The level reached | `1`                                         |
+| Score             | `0`                                         |
+| The node field    | A fresh scatter, as `specs/nodes.md` states |
+| Phase             | `banner`                                    |
 
 ## The three phases of play
 
 The `playing` screen runs in one of three phases, each carrying a phase timer in
 seconds that counts down against the delta time of each update.
 
-| Phase | What it is | Timer |
-| --- | --- | --- |
-| `banner` | The level's banner is shown over the board before play begins. | `BANNER_TIME` (`1.3` s) |
-| `active` | Live play. | Rests at `0`. |
-| `respawn` | The pause after a life is lost, before play resumes. | `RESPAWN_TIME` (`1.4` s) |
+| Phase     | What it is                                                     | Timer                    |
+| --------- | -------------------------------------------------------------- | ------------------------ |
+| `banner`  | The level's banner is shown over the board before play begins. | `BANNER_TIME` (`1.3` s)  |
+| `active`  | Live play.                                                     | Rests at `0`.            |
+| `respawn` | The pause after a life is lost, before play resumes.           | `RESPAWN_TIME` (`1.4` s) |
 
 When the `banner` phase's timer runs out, the phase becomes `active` and the
 level's worm enters, as `specs/worm.md` states. The worm enters at that moment
@@ -76,9 +76,9 @@ screens report.
 
 ## Winning and losing
 
-| Outcome | Reached when | Result |
-| --- | --- | --- |
-| Victory | The last worm segment of level `12` is removed. | The victory bonus is paid and the game moves to the `victory` screen. |
-| Game over | A contact takes lives to `0`. | The game moves to the `gameover` screen. |
+| Outcome   | Reached when                                    | Result                                                                |
+| --------- | ----------------------------------------------- | --------------------------------------------------------------------- |
+| Victory   | The last worm segment of level `12` is removed. | The victory bonus is paid and the game moves to the `victory` screen. |
+| Game over | A contact takes lives to `0`.                   | The game moves to the `gameover` screen.                              |
 
 A bonus life is granted as the score climbs, as `specs/scoring.md` states.

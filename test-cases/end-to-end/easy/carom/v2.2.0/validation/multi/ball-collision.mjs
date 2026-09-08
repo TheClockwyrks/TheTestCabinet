@@ -34,6 +34,7 @@ export default function item() {
         vy: 0,
         spin: 0,
       });
+      await api.call("reconcile");
     },
 
     async act(api) {

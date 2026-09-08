@@ -80,7 +80,11 @@ function pointerEvent(
   x: number,
   y: number,
 ): Event {
-  return Object.assign(new Event(type), { clientX: x, clientY: y, isPrimary: true });
+  return Object.assign(new Event(type), {
+    clientX: x,
+    clientY: y,
+    isPrimary: true,
+  });
 }
 
 export async function drag(h: Harness, path: Point[]): Promise<void> {

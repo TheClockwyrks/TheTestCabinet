@@ -39,15 +39,16 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertTrue } from "../assert";
+import { drewText } from "../case-harness/text";
 import { BINDINGS, type ActionName } from "../constants";
 import {
   captureStill,
   createHarness,
   openHowto,
   openTitle,
-  textDraws,
+  textLines,
+  type DrawCall,
   type Harness,
-  type TextDraw,
 } from "../harness";
 
 /** The page of the how-to that `specs/ui.md` gives to running. */
@@ -86,24 +87,12 @@ const EDGE = /[\s"'`([{<>)\]}]/;
  * The page's text, one string per baseline the frame drew on.
  *
  * A build is free to draw a line as one run or as a run per word, and nothing in
- * `specs/` says which; what they share is the baseline, so the runs at one `y`
- * are joined in `x` order and read as that line.
+ * `specs/` says which; what they share is the baseline, so the page is read as
+ * `drawing.ts`'s `textLines` — the shared harness's logical runs gathered onto
+ * the baselines they share, each line its runs joined in reading order.
  */
-function linesOf(draws: readonly TextDraw[]): string[] {
-  const baselines = new Map<number, TextDraw[]>();
-  for (const draw of draws) {
-    const on = baselines.get(draw.y) ?? [];
-    on.push(draw);
-    baselines.set(draw.y, on);
-  }
-  return [...baselines.entries()]
-    .sort((a, b) => a[0] - b[0])
-    .map(([, on]) =>
-      [...on]
-        .sort((a, b) => a.x - b.x)
-        .map((draw) => draw.text)
-        .join(" "),
-    );
+function linesOf(calls: readonly DrawCall[]): string[] {
+  return textLines(calls).map((line) => line.text);
 }
 
 /** Every word-like run of characters the page drew, in the case it drew it. */
@@ -113,23 +102,29 @@ function wordsOf(lines: readonly string[]): string[] {
   );
 }
 
-/** Whether some run of text carries `char` standing on its own. */
-function drawsCharacter(runs: readonly string[], char: string): boolean {
-  return runs.some((run) => {
-    for (let index = 0; index < run.length; index += 1) {
-      if (run[index] !== char) continue;
-      const before = run[index - 1] ?? " ";
-      const after = run[index + 1] ?? " ";
+/** Whether some line of text carries `char` standing on its own. */
+function drawsCharacter(lines: readonly string[], char: string): boolean {
+  return lines.some((line) => {
+    for (let index = 0; index < line.length; index += 1) {
+      if (line[index] !== char) continue;
+      const before = line[index - 1] ?? " ";
+      const after = line[index + 1] ?? " ";
       if (EDGE.test(before) && EDGE.test(after)) return true;
     }
     return false;
   });
 }
 
-/** Whether the page names the key `code`. */
+/**
+ * Whether the page names the key `code`.
+ *
+ * A key whose name is a word is looked for with the shared harness's `drewText`
+ * — substring, ignoring case and whitespace, along each baseline — and a cap or
+ * a character standing on its own is looked for among the words of the lines.
+ */
 function namesKey(
+  calls: readonly DrawCall[],
   lines: readonly string[],
-  runs: readonly string[],
   code: string,
 ): boolean {
   const label = labelOf(code);
@@ -138,16 +133,9 @@ function namesKey(
     ...(label.length === 1 ? [] : [label.toLowerCase()]),
     ...(ALIASES[label] ?? []),
   ];
-  const flattened = lines.map((line) => line.replace(/\s+/g, "").toLowerCase());
-  if (
-    spellings.some((spelling) =>
-      flattened.some((line) => line.includes(spelling)),
-    )
-  ) {
-    return true;
-  }
+  if (spellings.some((spelling) => drewText(calls, spelling))) return true;
   const character = CHARACTERS[label];
-  return character !== undefined && drawsCharacter(runs, character);
+  return character !== undefined && drawsCharacter(lines, character);
 }
 
 let h: Harness;
@@ -166,9 +154,8 @@ it("names every key BINDINGS gives play, step, speed-down and speed-up", async (
   await h.debug.setHowtoPage(RUNNING_PAGE);
   await h.advance(1);
 
-  const draws = textDraws(await h.lastCalls());
-  const lines = linesOf(draws);
-  const runs = draws.map((draw) => draw.text);
+  const calls = await h.lastCalls();
+  const lines = linesOf(calls);
   await captureStill(h, "page");
 
   const shown = await h.snapshot();
@@ -182,7 +169,7 @@ it("names every key BINDINGS gives play, step, speed-down and speed-up", async (
   for (const action of RUN_ACTIONS) {
     const code = BINDINGS[action][0] as string;
     assertTrue(
-      namesKey(lines, runs, code),
+      namesKey(calls, lines, code),
       `the running page names ${labelOf(code)}, the key BINDINGS gives ` +
         `${action}, and what it drew is ${JSON.stringify(lines)}`,
     );

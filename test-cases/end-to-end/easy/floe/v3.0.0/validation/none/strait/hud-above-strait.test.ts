@@ -66,10 +66,10 @@ import {
   blitsOfFrame,
   captureStill,
   createHarness,
+  drawnTextRuns,
   poseBear,
   poseLane,
   startCrossing,
-  textDraws,
   type Blit,
   type Harness,
 } from "../harness";
@@ -155,9 +155,11 @@ it("draws the readouts inside the HUD bar and none of the strait's bodies there"
   await captureStill(h, "hud");
   const reported = (await h.snapshot()).critter;
 
-  // The readouts: the run of text carrying each, and the anchor it was drawn at.
+  // The readouts: the run of text carrying each, and the anchor it was drawn
+  // at. The LOGICAL runs, so a readout letter-spaced a glyph per `fillText` is
+  // found by what it spells; a merged run keeps its glyphs' shared baseline.
   const calls = await h.frameCalls();
-  const runs = textDraws(calls);
+  const runs = drawnTextRuns(calls);
   const level = runs.filter((run) =>
     run.text.toUpperCase().includes(HUD_LEVEL_LABEL),
   );

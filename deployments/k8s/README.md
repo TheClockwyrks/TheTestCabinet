@@ -6,7 +6,7 @@ backend's run queue and creates one **driver** Job per run, and each driver spaw
 a **separate sandbox pod via the Kubernetes API**. There is no worker pool and no
 headless Service.
 
-Read the docs first — these files are the *assets*; the narrative lives at
+Read the docs first — these files are the _assets_; the narrative lives at
 [`deployment/kubernetes/overview.md`](../../apps/docs/src/content/docs/deployment/kubernetes/overview.md)
 (published at <https://docs.testcabinet.ai/deployment/kubernetes/overview/>). Everything
 here uses **placeholder values** (`REPLACE_REGISTRY`, `REPLACE_OWNER`,
@@ -20,37 +20,37 @@ the base directly. `base/` is a sibling of `overlays/` (not a parent) so an over
 can reference it as `../../base` without kustomize flagging an overlay→ancestor
 cycle.
 
-| File (under `base/`) | What it is |
-| --- | --- |
-| `kustomization.yaml` | The base: lists every resource below for the overlays to reference. |
-| `namespace.yaml` | The per-environment namespace (`tcab-staging` / `tcab-prod`). |
-| `rbac.yaml` | The `tcab-driver` SA/Role (pod create/get/list/delete + pods/exec get+create — the driver execs over a WebSocket, a GET to the exec subresource, so `get` is required, not just `create`, for the sandbox) and the `tcab-dispatcher` SA/Role (jobs create/get/list/watch/delete + pods/log, for the queue). |
-| `secrets.example.yaml` | Secret templates (R2 creds, the shared service token, harness keys, registry pull secret) — **placeholders only**, not a base resource. |
-| `backend.yaml` | Backend StatefulSet (1 replica) + PVC + ClusterIP Service. |
-| `auth.yaml` | Auth-service StatefulSet (1 replica) + PVC + ClusterIP Service. |
-| `dispatcher.yaml` | Dispatcher Deployment (1 replica) running under `tcab-dispatcher`; claims queued jobs and creates driver Jobs. No Service (binds no socket). |
-| `artifacts.yaml` | Artifact-service StatefulSet (1 replica) + PVC + ClusterIP Service + its own SA (no API access). |
-| `arena.yaml` | Arena-service Deployment (1 replica, **no PVC** — stateless) + ClusterIP Service (`:8791`) + its own SA (no API access); runs adversarial matches/tournaments off the backend, with real CPU requests/limits. |
-| `ingest-cronjob.yaml` | Periodic `POST /ingest` to refresh the catalog. |
-| `networkpolicy.yaml` | Optional default-deny-ingress + explicit allows (needs a NetworkPolicy-enforcing CNI). |
+| File (under `base/`)   | What it is                                                                                                                                                                                                                                                                                                  |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `kustomization.yaml`   | The base: lists every resource below for the overlays to reference.                                                                                                                                                                                                                                         |
+| `namespace.yaml`       | The per-environment namespace (`tcab-staging` / `tcab-prod`).                                                                                                                                                                                                                                               |
+| `rbac.yaml`            | The `tcab-driver` SA/Role (pod create/get/list/delete + pods/exec get+create — the driver execs over a WebSocket, a GET to the exec subresource, so `get` is required, not just `create`, for the sandbox) and the `tcab-dispatcher` SA/Role (jobs create/get/list/watch/delete + pods/log, for the queue). |
+| `secrets.example.yaml` | Secret templates (R2 creds, the shared service token, harness keys, registry pull secret) — **placeholders only**, not a base resource.                                                                                                                                                                     |
+| `backend.yaml`         | Backend StatefulSet (1 replica) + PVC + ClusterIP Service.                                                                                                                                                                                                                                                  |
+| `auth.yaml`            | Auth-service StatefulSet (1 replica) + PVC + ClusterIP Service.                                                                                                                                                                                                                                             |
+| `dispatcher.yaml`      | Dispatcher Deployment (1 replica) running under `tcab-dispatcher`; claims queued jobs and creates driver Jobs. No Service (binds no socket).                                                                                                                                                                |
+| `artifacts.yaml`       | Artifact-service StatefulSet (1 replica) + PVC + ClusterIP Service + its own SA (no API access).                                                                                                                                                                                                            |
+| `arena.yaml`           | Arena-service Deployment (1 replica, **no PVC** — stateless) + ClusterIP Service (`:8791`) + its own SA (no API access); runs adversarial matches/tournaments off the backend, with real CPU requests/limits.                                                                                               |
+| `ingest-cronjob.yaml`  | Periodic `POST /ingest` to refresh the catalog.                                                                                                                                                                                                                                                             |
+| `networkpolicy.yaml`   | Optional default-deny-ingress + explicit allows (needs a NetworkPolicy-enforcing CNI).                                                                                                                                                                                                                      |
 
 Overlays:
 
-| Overlay | Purpose |
-| --- | --- |
-| `overlays/prod` | Production: the base + the image registry pinned. |
-| `overlays/staging` | Staging: the same manifests, renamed to `tcab-staging` with `TCAB_ENV=staging`. |
-| `overlays/azure-prod` | Prod on **managed PostgreSQL**: `overlays/prod` + the `postgres` component. Apply instead of `overlays/prod`. |
+| Overlay                  | Purpose                                                                                                                |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| `overlays/prod`          | Production: the base + the image registry pinned.                                                                      |
+| `overlays/staging`       | Staging: the same manifests, renamed to `tcab-staging` with `TCAB_ENV=staging`.                                        |
+| `overlays/azure-prod`    | Prod on **managed PostgreSQL**: `overlays/prod` + the `postgres` component. Apply instead of `overlays/prod`.          |
 | `overlays/azure-staging` | Staging on **managed PostgreSQL**: `overlays/staging` + the `postgres` component. Apply instead of `overlays/staging`. |
-| `overlays/local` | The k3d development mirror (driven by [`../local/Makefile`](../local/Makefile)). |
+| `overlays/local`         | The k3d development mirror (driven by [`../local/Makefile`](../local/Makefile)).                                       |
 
 Overlays compose in reusable kustomize **components**:
 
-| Component | Purpose |
-| --- | --- |
+| Component                  | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `components/observability` | Runs the Grafana LGTM stack (`grafana/otel-lgtm`: collector + Tempo/Mimir/Loki + Grafana) in-cluster as `tcab-lgtm` (StatefulSet + ClusterIP Service + PVC for Grafana state) plus a NetworkPolicy admitting the services' OTLP. Included by `overlays/{local,staging,prod,azure-staging,azure-prod}`; each overlay's env patch sets every workload's `OTEL_EXPORTER_OTLP_ENDPOINT=http://tcab-lgtm:4318`. Grafana is `ClusterIP`-only — reach it via `kubectl port-forward svc/tcab-lgtm 3000:3000`, or, in `azure-prod`, at `grafana.tcab.testcabinet.ai` over the internal (VPN-only) ingress (the `internal-ingress` component's route + the overlay's `patch-grafana-auth.yaml`, which disables the image's anonymous-admin default and sets creds from the `tcab-grafana-admin` Secret). Drop it (and the endpoint) to send telemetry to Grafana Cloud / an external collector instead. |
-| `components/postgres` | Converts the backend + auth service from their SQLite `StatefulSet` shape to stateless `Deployment`s (no PVC) wired to a managed database via Secret. Environment-agnostic — each overlay supplies its own namespace, `TCAB_ENV`, images, and connection-string Secret (Azure Database for PostgreSQL — Flexible Server in the `azure-*` overlays). |
-| `components/web` | The in-cluster web console (`tcab-web`) `Deployment` + `ClusterIP` `Service` — the static SPA, with its backend/auth URLs injected at runtime into `/config.js` (each consumer patches the real values). Pulled in by the `internal-ingress` component behind a prod ingress. `overlays/local` deliberately does NOT include it — locally the console runs from source (`npm run -w apps/web dev`) against a `kubectl port-forward`ed backend, so a UI edit needs no image rebuild. |
+| `components/postgres`      | Converts the backend + auth service from their SQLite `StatefulSet` shape to stateless `Deployment`s (no PVC) wired to a managed database via Secret. Environment-agnostic — each overlay supplies its own namespace, `TCAB_ENV`, images, and connection-string Secret (Azure Database for PostgreSQL — Flexible Server in the `azure-*` overlays).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `components/web`           | The in-cluster web console (`tcab-web`) `Deployment` + `ClusterIP` `Service` — the static SPA, with its backend/auth URLs injected at runtime into `/config.js` (each consumer patches the real values). Pulled in by the `internal-ingress` component behind a prod ingress. `overlays/local` deliberately does NOT include it — locally the console runs from source (`npm run -w apps/web dev`) against a `kubectl port-forward`ed backend, so a UI edit needs no image rebuild.                                                                                                                                                                                                                                                                                                                                                                                                           |
 
 The service container images are built from [`../images/`](../images/) — every Rust
 service is a `--target` of the shared `services.Dockerfile` (`backend`, `auth`,
@@ -76,7 +76,7 @@ kubectl kustomize deployments/k8s/overlays/prod    # or staging
 kubectl apply -k deployments/k8s/overlays/prod      # or staging
 ```
 
-> **Note:** the dispatcher's `TCAB_DRIVER_IMAGE` is an env *value*, not a container
+> **Note:** the dispatcher's `TCAB_DRIVER_IMAGE` is an env _value_, not a container
 > `image:` field, so kustomize's `images:` transformer cannot rewrite it; each
 > overlay carries a `patch-dispatcher-driver-image.yaml` that sets it to match the
 > driver image. Keep the two tags in lockstep.

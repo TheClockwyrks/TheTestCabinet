@@ -17,7 +17,7 @@
 // units is writing the same figure.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { drawnText, toDrawCall, type RecordedOp } from "../case-harness/index";
+import { drawnFigures, type DrawnFigures } from "./figures";
 import { assertGreaterThan, assertTrue, fail } from "../assert";
 import { SLEW_MAX_RATE } from "../constants";
 import {
@@ -53,39 +53,28 @@ afterEach(async () => {
   await h.dispose();
 });
 
-/** Every run of text the frame the page last drew put on its readout layer. */
-async function readoutText(harness: Harness): Promise<string[]> {
-  const ops = (await harness.screenOps()) as RecordedOp[];
-  return drawnText(ops.map(toDrawCall));
-}
-
 /**
- * The separators a build may set between a figure's digit triples.
+ * The figures the last closed frame's text carries, and the runs it spelled.
  *
- * ASCII space is deliberately absent: a frame's text is assembled by joining
- * separate draw runs with one, so accepting it would read the two figures in
- * `40 130` as the single number 40130. `.` is absent for the same sort of
- * reason — it is the decimal point, and a build drawing `1.5` means one and a
- * half.
- */
-const GROUP = "[,'\\u00A0\\u202F\\u2009]";
-
-/** One drawn number: a grouped figure, or a plain one. */
-const DRAWN = new RegExp(
-  `-?\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|-?\\d+(?:\\.\\d+)?`,
-  "g",
-);
-
-/**
- * Every number a run of text carries.
+ * specs/overview.md fixes where a readout lives — "over it the screen-space
+ * readouts are drawn on a 2D layer composited on top of the picture, laid out
+ * in logical stage units" — so what a screen shows is the text that layer's
+ * frame issued, whatever font, colour, or arrangement a build chose for it.
  *
- * A grouped figure reads as the one figure it is, so `1,234` and `1234` both
- * come back as 1234 and a build is free to group the figure it draws.
+ * The figures come from `./figures`, this project's one reading of a number on
+ * the screen, and it reads the frame's raw draws and its coalesced logical runs
+ * TOGETHER, because neither half alone answers a check like this one. A build
+ * that letter-spaces a figure draws a glyph per `fillText` — the only portable
+ * way to letter-space canvas text — so its figure exists only once the glyphs
+ * are put back together into a run. A build that groups a figure with a space
+ * inside ONE call, which is what this case's own reference does, has a figure
+ * the runs cannot be read for: the merge writes an ASCII space of its own
+ * wherever it crosses a word gap, so a run's spaces are not all the build's and
+ * a reading of the runs may not treat one as a separator. `screenCalls` carries
+ * the measured geometry that merge needs.
  */
-function numbersIn(text: string): number[] {
-  return (text.match(DRAWN) ?? []).map((one) =>
-    Number(one.replace(new RegExp(GROUP, "g"), "")),
-  );
+async function readoutFigures(harness: Harness): Promise<DrawnFigures> {
+  return drawnFigures(await harness.screenCalls());
 }
 
 it("draws the crane's cost on the run screen", async () => {
@@ -108,9 +97,9 @@ it("draws the crane's cost on the run screen", async () => {
     "the cost of the crane the run is being made with (specs/structure.md)",
   );
 
-  const drawn = await readoutText(h);
-  const shown = drawn.some((text) =>
-    numbersIn(text).some((figure) => Math.abs(figure - cost) <= FIGURE_TOL),
+  const drawn = await readoutFigures(h);
+  const shown = drawn.all.some(
+    (figure) => Math.abs(figure - cost) <= FIGURE_TOL,
   );
   await h.capture("run-cost", "The cost readout on the run screen");
 
@@ -118,7 +107,8 @@ it("draws the crane's cost on the run screen", async () => {
     fail(
       `the crane's cost, ${cost.toFixed(2)}, drawn on the run screen ` +
         "(specs/ui.md)",
-      `the screen's text reads [${drawn.map((one) => one.trim()).join(" | ")}]`,
+      `the screen's text reads ` +
+        `[${drawn.runs.map((run) => run.text.trim()).join(" | ")}]`,
     );
   }
 });

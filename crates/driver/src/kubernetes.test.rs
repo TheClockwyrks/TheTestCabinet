@@ -68,6 +68,145 @@ fn missing_status_is_minus_one() {
     assert_eq!(exit_code_from_status(None), -1);
 }
 
+// ── is_stream_closed / seed_verdict ──────────────────────────────────────────
+
+#[test]
+fn a_write_error_from_the_far_end_going_away_is_recognized() {
+    use std::io::{Error as IoError, ErrorKind};
+    // Every one of these is the client's message loop having ended under the stdin
+    // writer, which says nothing about the seed itself.
+    for kind in [
+        ErrorKind::BrokenPipe,
+        ErrorKind::ConnectionReset,
+        ErrorKind::ConnectionAborted,
+        ErrorKind::NotConnected,
+        ErrorKind::UnexpectedEof,
+        ErrorKind::WriteZero,
+    ] {
+        assert!(is_stream_closed(&IoError::from(kind)), "{kind:?}");
+    }
+}
+
+#[test]
+fn a_write_error_of_our_own_making_is_not_a_closed_stream() {
+    use std::io::{Error as IoError, ErrorKind};
+    for kind in [ErrorKind::PermissionDenied, ErrorKind::OutOfMemory] {
+        assert!(!is_stream_closed(&IoError::from(kind)), "{kind:?}");
+    }
+}
+
+fn exec_outcome(exit_code: i32, stderr: &str, stdin: StdinOutcome) -> RemoteExec {
+    RemoteExec {
+        exit_code,
+        stdout: Vec::new(),
+        stderr: stderr.to_string(),
+        stdin,
+    }
+}
+
+#[test]
+fn a_zero_exit_is_a_completed_seed() {
+    let verdict = seed_verdict(&exec_outcome(0, "", StdinOutcome::Written));
+    assert_eq!(verdict, SeedVerdict::Seeded);
+}
+
+#[test]
+fn a_zero_exit_is_a_completed_seed_even_if_the_write_did_not_finish() {
+    // `tar` only exits 0 once it has read the end-of-archive marker, which is the
+    // last thing in the stream — so a zero exit proves the whole archive landed,
+    // whatever our own writer made of the stream.
+    for stdin in [StdinOutcome::CutShort, StdinOutcome::Stalled] {
+        assert_eq!(
+            seed_verdict(&exec_outcome(0, "", stdin)),
+            SeedVerdict::Seeded
+        );
+    }
+}
+
+#[test]
+fn a_reported_tar_failure_is_deterministic_and_carries_its_stderr() {
+    let verdict = seed_verdict(&exec_outcome(
+        2,
+        "tar: /opt/audio: Cannot open: No such file or directory",
+        StdinOutcome::Written,
+    ));
+    let SeedVerdict::Failed(detail) = verdict else {
+        panic!("expected a reported failure, got {verdict:?}");
+    };
+    assert!(detail.contains("tar exited 2"), "{detail}");
+    assert!(detail.contains("/opt/audio: Cannot open"), "{detail}");
+}
+
+#[test]
+fn a_stall_that_named_its_cause_is_deterministic_and_not_retried() {
+    // The shape a run image missing `/opt/audio` produces: `tar` gives up on its
+    // first entry, nothing drains stdin again, and the terminating status never
+    // arrives — but `tar` already said exactly what was wrong. Retrying only
+    // reproduces it; the directory does not appear between attempts.
+    let verdict = seed_verdict(&exec_outcome(
+        NO_STATUS_EXIT_CODE,
+        "tar: /opt/audio: Cannot open: No such file or directory",
+        StdinOutcome::Stalled,
+    ));
+    let SeedVerdict::Failed(detail) = verdict else {
+        panic!("expected a reported failure, got {verdict:?}");
+    };
+    assert!(detail.contains("/opt/audio: Cannot open"), "{detail}");
+}
+
+#[test]
+fn a_silent_stall_decided_nothing_and_is_retried() {
+    let verdict = seed_verdict(&exec_outcome(
+        NO_STATUS_EXIT_CODE,
+        "",
+        StdinOutcome::Stalled,
+    ));
+    let SeedVerdict::Lost(detail) = verdict else {
+        panic!("expected an undecided attempt, got {verdict:?}");
+    };
+    assert!(detail.contains("stopped reading"), "{detail}");
+}
+
+#[test]
+fn a_cut_short_write_decided_nothing_and_is_retried() {
+    // The command saw a truncated archive, so its exit code describes work nobody
+    // asked for. This is the `broken pipe` case, which used to fail the run.
+    let verdict = seed_verdict(&exec_outcome(2, "", StdinOutcome::CutShort));
+    let SeedVerdict::Lost(detail) = verdict else {
+        panic!("expected an undecided attempt, got {verdict:?}");
+    };
+    assert!(
+        detail.contains("before the archive finished writing"),
+        "{detail}"
+    );
+}
+
+#[test]
+fn a_missing_status_decided_nothing_and_is_retried() {
+    let verdict = seed_verdict(&exec_outcome(
+        NO_STATUS_EXIT_CODE,
+        "",
+        StdinOutcome::Written,
+    ));
+    let SeedVerdict::Lost(detail) = verdict else {
+        panic!("expected an undecided attempt, got {verdict:?}");
+    };
+    assert!(detail.contains("without a terminating status"), "{detail}");
+}
+
+#[test]
+fn an_undecided_attempt_still_reports_what_the_command_managed_to_say() {
+    let verdict = seed_verdict(&exec_outcome(
+        NO_STATUS_EXIT_CODE,
+        "tar: short read",
+        StdinOutcome::CutShort,
+    ));
+    let SeedVerdict::Lost(detail) = verdict else {
+        panic!("expected an undecided attempt, got {verdict:?}");
+    };
+    assert!(detail.contains("tar: short read"), "{detail}");
+}
+
 // ── normalize_image_id ───────────────────────────────────────────────────────
 
 #[test]

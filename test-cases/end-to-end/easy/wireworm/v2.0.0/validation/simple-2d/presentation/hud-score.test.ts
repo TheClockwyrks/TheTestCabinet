@@ -32,7 +32,13 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
-import { barText, digitsAcross, figuresIn, hudSpans } from "./hud";
+import {
+  barText,
+  digitsAcross,
+  figuresIn,
+  hudSpanForms,
+  hudSpans,
+} from "./hud";
 
 /**
  * The score this point poses.
@@ -61,14 +67,16 @@ it("draws the posed score on the HUD bar", async () => {
   await h.advance(1);
   captureStill(h, "hud");
 
-  const spans = hudSpans(h);
-  const asOneRun = spans.some((span) => figuresIn(span).includes(SCORE));
-  const acrossTheBar = digitsAcross(spans).includes(String(SCORE));
+  // As one run: a call, or the run a glyph-per-call score coalesces into.
+  const forms = hudSpanForms(h);
+  const asOneRun = forms.some((span) => figuresIn(span).includes(SCORE));
+  // Across the bar: the calls alone, left to right, so a run is not read twice.
+  const acrossTheBar = digitsAcross(hudSpans(h)).includes(String(SCORE));
 
   assertTrue(
     asOneRun || acrossTheBar,
     `the score ${SCORE} drawn on the HUD bar, y in [0, 80] (specs/ui.md: the ` +
       "running score, as digits; specs/board.md: the readouts are drawn " +
-      `inside the HUD bar) — the bar drew ${barText(spans)}`,
+      `inside the HUD bar) — the bar drew ${barText(forms)}`,
   );
 });

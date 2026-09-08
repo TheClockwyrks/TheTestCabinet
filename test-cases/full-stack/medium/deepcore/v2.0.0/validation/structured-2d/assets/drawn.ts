@@ -190,7 +190,8 @@ function walk(
       else if (typeof args[0] === "object" && args[0] !== null) {
         const m = args[0] as Record<string, unknown>;
         const parts = [m.a, m.b, m.c, m.d, m.e, m.f];
-        if (parts.every((p) => typeof p === "number")) current = parts as Matrix;
+        if (parts.every((p) => typeof p === "number"))
+          current = parts as Matrix;
       }
     } else if (method === "resetTransform") {
       current = IDENTITY;

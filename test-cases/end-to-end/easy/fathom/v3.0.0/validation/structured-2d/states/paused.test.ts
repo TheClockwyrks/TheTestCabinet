@@ -36,6 +36,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
+import { drewText } from "../case-harness/text";
 import { BRIGHT_HOLD } from "../constants";
 import { placeForager, poseMaze, spawnPredator } from "../fixtures";
 import {
@@ -45,7 +46,7 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import { MOVE_KEY, assertDrew, frameOps } from "./screens";
+import { MOVE_KEY, frameOps } from "./screens";
 import {} from "../scene";
 
 /**
@@ -125,9 +126,9 @@ it("freezes the dive behind its menu", async () => {
     "paused",
     "the screen this point's freeze is read on (specs/ui.md)",
   );
-  assertDrew(
-    ops,
-    `DEPTH ${String(paused.depth)}`,
+  assertEqual(
+    drewText(ops, `DEPTH ${String(paused.depth)}`),
+    true,
     "the HUD's depth readout, still drawn over the maze that stays visible " +
       "behind the pause menu (specs/ui.md)",
   );

@@ -2,56 +2,32 @@
   "parts": [
     {
       "name": "frame",
-      "pivot": [
-        20,
-        0,
-        20
-      ]
+      "pivot": [20, 0, 20]
     },
     {
       "name": "beam",
       "parent": "frame",
-      "pivot": [
-        20,
-        27,
-        20
-      ]
+      "pivot": [20, 27, 20]
     },
     {
       "name": "counterweight",
       "parent": "beam",
-      "pivot": [
-        20,
-        27,
-        20
-      ]
+      "pivot": [20, 27, 20]
     },
     {
       "name": "piston_rod",
       "parent": "frame",
-      "pivot": [
-        32,
-        12,
-        20
-      ]
+      "pivot": [32, 12, 20]
     },
     {
       "name": "flywheel",
       "parent": "frame",
-      "pivot": [
-        23,
-        11,
-        30
-      ]
+      "pivot": [23, 11, 30]
     },
     {
       "name": "snorkel",
       "parent": "frame",
-      "pivot": [
-        6,
-        6,
-        27
-      ]
+      "pivot": [6, 6, 27]
     }
   ],
   "joints": [
@@ -60,11 +36,7 @@
       "part": "beam",
       "kind": "rotation",
       "axis": "z",
-      "pivot": [
-        20,
-        27,
-        20
-      ],
+      "pivot": [20, 27, 20],
       "min": -0.32,
       "max": 0.32,
       "rest": 0.0,
@@ -75,11 +47,7 @@
       "part": "piston_rod",
       "kind": "translation",
       "axis": "y",
-      "pivot": [
-        32,
-        12,
-        20
-      ],
+      "pivot": [32, 12, 20],
       "min": -4.0,
       "max": 4.0,
       "rest": 0.0,
@@ -90,11 +58,7 @@
       "part": "flywheel",
       "kind": "rotation",
       "axis": "z",
-      "pivot": [
-        23,
-        11,
-        30
-      ],
+      "pivot": [23, 11, 30],
       "min": -13.0,
       "max": 13.0,
       "rest": 0.0,
@@ -105,11 +69,7 @@
       "part": "snorkel",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        6,
-        6,
-        27
-      ],
+      "pivot": [6, 6, 27],
       "min": -0.06,
       "max": 0.06,
       "rest": 0.0,

@@ -23,17 +23,17 @@ Matches are first to **11 points**, win by **2** (deuce continues past 10-10).
 
 ## Controls
 
-| Action | Keys |
-| --- | --- |
-| Move (Solo, player one) | `W` / `S` or `↑` / `↓` |
-| Move player one (Versus) | `W` / `S` |
-| Move player two (Versus) | `↑` / `↓` |
-| Menu navigation | `↑` / `↓` (or `W` / `S`) |
-| Confirm | `Enter` or `Space` |
-| Back | `Esc` |
-| Pause (in match) | `Esc` or `P` |
-| Mute / unmute audio | `M` |
-| Toggle debug overlay | `` ` `` (backtick) |
+| Action                   | Keys                     |
+| ------------------------ | ------------------------ |
+| Move (Solo, player one)  | `W` / `S` or `↑` / `↓`   |
+| Move player one (Versus) | `W` / `S`                |
+| Move player two (Versus) | `↑` / `↓`                |
+| Menu navigation          | `↑` / `↓` (or `W` / `S`) |
+| Confirm                  | `Enter` or `Space`       |
+| Back                     | `Esc`                    |
+| Pause (in match)         | `Esc` or `P`             |
+| Mute / unmute audio      | `M`                      |
+| Toggle debug overlay     | `` ` `` (backtick)       |
 
 **Spin:** swing your paddle (hold a movement key) as it strikes the ball to
 curve the shot. Up and down swings curve it opposite ways; a stationary paddle

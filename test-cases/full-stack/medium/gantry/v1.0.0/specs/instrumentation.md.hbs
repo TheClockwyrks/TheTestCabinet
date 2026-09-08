@@ -67,14 +67,21 @@ Each operation is a reading or a pose acting on the live world at the moment of
 the call. A pose sets one thing and leaves the rest of the game as it stands,
 so a caller that wants several things arranged makes several calls, in the
 order it wants them, and nothing it does not ask for happens. A pose arranges
-the yard through the same systems play uses: a posed edit passes the placement
-rules a click passes, a posed tape step passes the rules the tape editor
-applies, and a run started through the surface is the run the `run` action
-starts. A pose establishes a precondition and never an outcome; what happens
+the yard through the same systems play uses, so a posed edit lands in the
+structure the placement rules govern, a posed tape step joins the tape the
+program runs, and a run started through the surface is the run the `run` action
+starts — and the rules those systems apply are what the RUN afterwards
+exercises. A pose establishes a precondition and never an outcome; what happens
 next comes from advancing the real simulation. Gantry runs in one world for the
 whole session and every screen is a value of the screen field, so a pose that
 changes the screen takes effect at the call rather than riding a level
 transition.
+
+The surface is not a player, and it never asks whether one could have reached
+what it is doing. Which screen is showing, whether a run is in progress, which
+tool is selected, and whether a control is drawn are how a player reaches an
+effect; none of them is a condition on an operation, and every operation acts
+from wherever the game stands.
 
 The surface is inert during normal play, doing nothing until something calls
 it.
@@ -92,9 +99,13 @@ properties make it driveable from code:
   independent of the canvas, of the renderer, and of wall-clock time. The
   dependency runs one way: the simulation reads nothing from the renderer, and
   whether an edit is accepted is decided from the structure and the site alone.
-- Silent refusal as data. A pose the game's own rules refuse leaves the state
-  exactly as it was, so a caller reads the outcome of any pose back from
-  `snapshot` rather than from a return value.
+- No refusal on the strength of the route. Every pose reaches the state it
+  names, whatever screen is showing and whatever a player would have had to do
+  to reach it, and a call naming nothing the game holds a state for throws
+  rather than passing quietly. An edit rule is the one thing that still
+  decides, because that rule is the edit and not a route to it: an edit the
+  rule refuses leaves the yard exactly as it was, and a caller reads that from
+  `snapshot`, as it reads what any pose left, rather than from a return value.
 
 ## What the runtime provides instead
 
@@ -162,13 +173,20 @@ Three rules cover every operation below.
   table names a lattice node takes one: a coordinate that is not a multiple of
   `LATTICE_PITCH` is outside the domain and fails the same way, rather than
   being refused as an edit.
-- A pose that stands for something a player does commits through the same rule
-  the player's act passes, so it is refused wherever that act is refused and
-  changes nothing when it is. The refusal is silent and readable in the
-  snapshot: no member appears, no cost is spent, no step joins the tape, and no
-  run begins.
-- Each pose applies on the screens its section names and does nothing on any
-  other, exactly as the control it stands for does.
+- A pose that stands for an EDIT — a member, the ring, a counterweight, a tape
+  step, a run started — commits through the same rule the edit itself passes,
+  because that rule is the edit and not a gate on reaching it: an over-budget
+  member costs nothing and appears nowhere, a rate above an axis's maximum joins
+  no step, and a run the structure is not ready for does not begin. Each of
+  those outcomes is readable in the snapshot, and `check` says why a run would
+  be refused.
+- No operation asks which screen is showing, whether a run is in progress, or
+  which tool is selected. Those are how a player reaches a control and are not
+  an operation's conditions, so an operation acts from wherever the game stands:
+  a structure pose edits the open site's structure with the program screen up,
+  and a tape pose edits its tape with the build screen up. Nothing an operation
+  is asked to do is passed over because of where the game stands; the edit
+  rules of the bullet above are the only thing that refuses an edit.
 
 {{#if (eq engine.slug "none")}}
 ### The clock
@@ -307,16 +325,17 @@ picks none.
 | Operation | Effect |
 | --- | --- |
 | `reset` | Returns the game to its title state, as below. |
+| `reconcile` | Brings every value the surface reports into agreement with the world as it now stands, without advancing anything, as below. |
 | `setScreen(screen)` | Shows a named screen and sets nothing else; `menuIndex` is left as it stands (`specs/state.md`), so a caller posing a screen with a menu sets it with `setMenuIndex` afterwards. `screen` is one of the seven identifiers of `specs/ui.md`. |
 | `setMenuIndex(index)` | Sets the highlighted entry of the menu on the screen showing, counted from `0`; the domain is the entry count of the menu that screen shows (`specs/ui.md`). |
 | `openSite(index)` | Opens site `index`, counted from `0`, locked or not: the opening `specs/state.md` fixes, as below, and nothing else. The screen is left as it stands. |
 | `setCleared(index, cleared)` | Sets whether site `index` has been cleared this session, and with it which sites are open. |
 | `setBest(index, cost, time)` | Records `{ cost, time }` as site `index`'s best score, whatever it held. |
 | `clearBest(index)` | Returns site `index` to having no recorded score. |
-| `setCamera(yaw, pitch, dist)` | Sets the orbit camera's pose as the orbit controls set it (`specs/controls.md`): the pitch and the distance are held inside their limits, and the yaw wraps to at or above `0` and below `360`. |
+| `setCamera(yaw, pitch, dist)` | Sets the orbit camera's pose. The pitch and the distance limits `specs/controls.md` fixes are constants, so they are this operation's domain and a value outside either fails loudly; the yaw is unbounded and wraps to at or above `0` and below `360`. |
 | `startRun` | Poses the `run` action: the same refusals, the same `run-start`, and the same move to the run screen as `specs/program.md` states. |
 | `abortRun` | Poses the abort, ending a running run with no verdict: `run` goes back to its idle placeholder and the build screen returns. |
-| `showCheck` | Poses the `check` action: computes the static check and leaves it showing on the build screen, exactly as the action does (`specs/structure.md`). |
+| `showCheck` | Poses the `check` action: computes the static check and leaves it showing, exactly as the action does (`specs/structure.md`), from whatever screen it is called on. |
 
 `openSite` carries exactly the effects `specs/state.md` states for opening a
 site and leaves the screen where it stands. It is the surface's way onto any
@@ -338,17 +357,45 @@ refusals `specs/program.md` gives it, `abortRun` is the abort, and each takes
 the screen its act takes. `openSite` poses no act, only the opening
 `specs/state.md` fixes, so it moves no screen.
 
-The first eight of these apply on every screen, `setMenuIndex` aside: it applies
-on the three screens that show a menu — `title`, `select`, and `results` — and
-does nothing on the other four, whatever the index. `startRun` applies on the
-build and program screens, where the `run` action does, and `abortRun` while a
-run is in progress. `showCheck` applies on the build screen, where the `check`
-action does, and does nothing on any other. `startRun` is refused exactly as the
-action is, leaving the state as it was; `check` says why it would refuse. A run
-that begins is the ordinary run, and it starts as `specs/state.md` says a run
-starts: nothing has ticked at the call, so `run.tick` reads `0` immediately
+Every one of these applies on every screen. `setMenuIndex` is the one with a
+screen-dependent domain rather than a screen-dependent effect: the entry count
+it is checked against is the menu the screen showing carries, so on one of the
+four screens carrying no menu — `howto`, `build`, `program`, and `run` — there
+is no entry to name and the call fails loudly. `startRun` still carries the
+`run` action's own refusals, which are the structure's readiness and not a
+screen: it is refused exactly as the action is, leaving the state as it was, and
+`check` says why it would refuse. `abortRun` with no run in progress finds the
+run already idle and leaves it there. `showCheck` computes the check and leaves
+it showing wherever it is called. A run that begins is the ordinary run, and it
+starts as `specs/state.md` says a run starts: nothing has ticked at the call, so `run.tick` reads `0` immediately
 after it, and the axes, the pivot, and the bob stand at the run-start values
 that file gives.
+
+`reconcile` brings every value this surface reports into agreement with the
+world as it now stands, without advancing anything. The structure's `cost` and
+`issues` and the `pick` a click at the pointer would take all follow from the
+structure, the site and the pointer, so after a pose they answer for the yard as
+it now is rather than as it was before. A build
+that works those out at the read has nothing to do here and this call changes
+nothing; a build that keeps any of them as a stored copy rewrites that copy from
+what it is a copy of.
+
+It moves no clock and runs no tick: `simTime` and `run.tick` are untouched, no
+axis advances, no step is taken, no pendulum is stepped, no collision is tested,
+and no solve is run for its own sake. It plays no cue, shows no check result,
+changes no screen, pushes no history, and reaches no verdict. It moves nothing
+to make a reading agree: a bob posed away from its cable stays where it was put,
+and a value posed past a limit is not brought back inside it. What a tick owns
+stays the tick's, so `run.forces` is the latest solve's and `run.pivot` is still
+the tick's to move, and `historyDepth`, `best` and `run.broken` are untouched. Calling it twice leaves the same state as
+calling it once. It is never an error and may be called on any screen, whether
+or not a run is in progress.
+{{#if (eq engine.slug "simple-3d")}}
+
+`reconcile(state)` returns the next `GantryState`, built from the one it was
+handed, which it leaves as it was. A build that works every one of those
+readings out at the call returns a state equal to the one it was given.
+{{/if}}
 
 `reset` restores every field the snapshot reports to its title-screen value, bar
 one: the `title` screen with `menuIndex` `0`, site `0` open, every site
@@ -388,14 +435,17 @@ The pointer is six fields, and this table is the whole of what sets each:
 | `setPendingNode(x, y, z)` | Holds that lattice node as the pending first node of a member placement, as a first click does. |
 | `clearPendingNode` | Clears the pending node without placing, as `back` does. |
 
-These pose single edits on the build screen, entering the rule pipeline the
-build tools feed, so every refusal in `specs/structure.md` applies unchanged and
-a refused edit leaves the structure exactly as it was. Each edit that lands
+These pose single edits on the open site's structure, entering the rule pipeline
+the build tools feed, so every refusal in `specs/structure.md` applies unchanged
+and an edit that rule refuses leaves the structure exactly as it was. That rule
+is the edit rather than a gate on reaching it, which is why it stays; the build
+screen is how a player reaches the tools and is not a condition here, so these
+edit the open site's structure whatever screen is showing. Each edit that lands
 pushes the undo history exactly as a click would. `addMember` gives the member
 the structure's `nextMemberId` and advances it by one.
 
-A removal with nothing to remove is a refusal rather than an invalid argument,
-so it is silent: `clearRing` on a crane carrying no ring and
+A removal with nothing to remove takes the structure to the state it names,
+which it is already in: `clearRing` on a crane carrying no ring and
 `removeCounterweight` on a lattice node carrying none both leave the structure
 exactly as it stands and push no history.
 
@@ -420,8 +470,9 @@ it, which is what puts it under the same rules a player builds under.
 | `removeStep(index)` | Removes the step at `index`. |
 
 An `axis` is `"slew"`, `"trolley"`, `"hoist"`, or `"grip"`. These pose tape
-edits on the program screen, which is where the tape editor lives
-(`specs/controls.md`), and each passes the rules that editor applies
+edits on the open site's tape, wherever the game stands — the program screen is
+how a player reaches the tape editor (`specs/controls.md`) and is not a
+condition on these — and each passes the rules that editor applies
 (`specs/program.md`): a rate at most the axis's max rate and greater than `0`,
 and at most one command per axis in a step. A command on an axis its step
 already commands is refused, as is a command added to an action step. Targets
@@ -437,10 +488,11 @@ are accepted as written and judged when the step starts.
 | `clearObstacles` | Removes every obstacle from the open site. |
 | `addObstacle(x, y, z, w, h, d)` | Appends an obstacle: the axis-aligned box with minimum corner `(x, y, z)` and size `(w, h, d)`. |
 
-The site poses apply on the build and program screens, with no run in progress.
-`openSite` leaves the screen as it stands, so a caller that opens a site from
-`title` or `select` and then poses loads or obstacles sets the screen first.
-They are what lets a scenario hold only what it is about: a caller clears the
+The site poses apply wherever the game stands, run or no run: the yard is the
+open site's and the screen is the player's route to it. `openSite` leaves the
+screen as it stands, so a caller that wants a screen with the site it opened
+sets the screen itself. They are what lets a scenario hold only what it is
+about: a caller clears the
 loads and the obstacles and adds back exactly the ones its requirement
 concerns, so a check on a lift runs against one load and a check on a member
 striking a wall runs against one obstacle. The loads a run carries are the ones
@@ -475,15 +527,19 @@ an anchor set, or a budget opens the site carrying the one it is about.
 | `setRunTick(tick)` | Sets the number of ticks the run has taken, from which the run clock is `tick / TICK_HZ` seconds (`specs/state.md`). The domain is the whole numbers at or above `0`. |
 | `setSpeedIndex(index)` | Sets the watch speed to that index into `RUN_SPEEDS`. |
 
-The first seven pose the run while one is in progress. `setSpeedIndex` poses the
-watch speed on the run screen, as the `speed` action does, whether or not the
-run that screen is showing has ended. Each sets what it names and leaves the
-rest of the run as it stands, and none of them reaches a verdict: the run's own
-rules decide clearing, breakage, and every failure on the ticks that follow.
+The first seven pose the run the snapshot reports, which is the run in
+progress where there is one and the idle placeholder where there is not;
+whether a run is live is not a condition on them. `setSpeedIndex` poses the
+watch speed, as the `speed` action does, wherever the game stands and whether or
+not a run that screen is showing has ended. Each sets what it names and leaves
+the rest of the run as it stands, and none of them reaches a verdict: the run's
+own rules decide clearing, breakage, and every failure on the ticks that follow.
 
 `setLoadPhase` to `"attached"` hangs that load on the hook exactly as a
 successful `attach` leaves it, without the candidate search and without the
-`attach-missed` verdict, and it is refused while another load is attached. The
+`attach-missed` verdict. The hook holds one load, which is the rigging's own
+rule rather than a gate on reaching the control, so a second load asked onto an
+occupied hook is not hung. The
 grip's value is left as it is, so a caller that wants the hook square on the
 load sets the grip too. Every other phase takes the load off the hook, so the
 run's attachment clears when the load posed was the one hanging. `"placed"`
@@ -670,9 +726,9 @@ gives the value each rests at.
   `pointer.x` and `pointer.y`. The pointer table under `reset` above is what
   sets each of the six fields, and `specs/controls.md` fixes what separates a
   click from an orbit drag.
-- `checkResult` is the result the build screen is currently showing, exactly as
-  the `check` action or the `showCheck` pose left it. The `check` reading never
-  sets it.
+- `checkResult` is the check result currently standing, exactly as the `check`
+  action or the `showCheck` pose left it, and it is what the build screen draws.
+  The `check` reading never sets it.
 - `run.stepLive` is whether the step at `run.stepIndex` has been taken and is
   not yet complete, and `run.pivot` is the point the cable hangs from at the
   most recent tick's geometry, which the pendulum reads on the tick after
@@ -685,8 +741,14 @@ gives the value each rests at.
   declares, and `simTime` accumulates every update's delta time whatever the
   screen.
 
-Every field is read straight off the game's own state or derived from it at the
-call, so what the snapshot reports is what the game holds. Every field an
+Every field is read straight off the game's own state or derived from it, so
+what the snapshot reports is what the game holds. A build is free to work any
+derived field out at the read — `structure.cost` and `structure.issues`, and
+`pick`, are the ones that follow from the world as it stands — or to keep it as
+a stored copy, and `reconcile` is what brings a stored copy back into agreement
+after a pose. `run.forces` is not one of them: it is the latest solve's reading
+rather than a reading of the structure as it now stands, so a pose does not
+change it and the tick does. Every field an
 operation above sets is reported here, so a call is checked by setting a value
 and reading it back. Two are read a step apart. The undo stack is reported as
 `historyDepth`, and each entry comes back through `structure` as an `undo`

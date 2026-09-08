@@ -69,11 +69,11 @@ and each pose arranges the live world through the same systems play uses.
 
 ## Pages
 
-| Page | Covers |
-| --- | --- |
-| [The Suite](/engines/structured-3d/validators/the-suite/) | Where the files live, the vitest browser project that runs them, the harness with its stage and screen canvases, and the module contract a case fixes. |
-| [Simulation](/engines/structured-3d/validators/simulation/) | Stepping with a scripted clock, reading the world back, and asserting on outcomes that survive a change in step size. |
-| [World and Actors](/engines/structured-3d/validators/world-and-actors/) | The level open, the match phase, which actors exist, 3D transforms in assertions, which controller holds which pawn, and what a transition produced. |
-| [Rendering](/engines/structured-3d/validators/rendering/) | Render components as data, the scene the pipeline placed, projection through the camera, pixel readback from the stage canvas and the screen layer, the recording proxy over the screen layer, and asserting on a render mode. |
-| [Input and Audio](/engines/structured-3d/validators/input-and-audio/) | Dispatching key and pointer events at the harness event target and asserting on the cues a build played, with the world point a positional cue carries. |
-| [Recording](/engines/structured-3d/validators/recording/) | Arming the engine's recorder around a scenario and emitting the `.webm` video as the review item's media. |
+| Page                                                                    | Covers                                                                                                                                                                                                                         |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [The Suite](/engines/structured-3d/validators/the-suite/)               | Where the files live, the vitest browser project that runs them, the harness with its stage and screen canvases, and the module contract a case fixes.                                                                         |
+| [Simulation](/engines/structured-3d/validators/simulation/)             | Stepping with a scripted clock, reading the world back, and asserting on outcomes that survive a change in step size.                                                                                                          |
+| [World and Actors](/engines/structured-3d/validators/world-and-actors/) | The level open, the match phase, which actors exist, 3D transforms in assertions, which controller holds which pawn, and what a transition produced.                                                                           |
+| [Rendering](/engines/structured-3d/validators/rendering/)               | Render components as data, the scene the pipeline placed, projection through the camera, pixel readback from the stage canvas and the screen layer, the recording proxy over the screen layer, and asserting on a render mode. |
+| [Input and Audio](/engines/structured-3d/validators/input-and-audio/)   | Dispatching key and pointer events at the harness event target and asserting on the cues a build played, with the world point a positional cue carries.                                                                        |
+| [Recording](/engines/structured-3d/validators/recording/)               | Arming the engine's recorder around a scenario and emitting the `.webm` video as the review item's media.                                                                                                                      |

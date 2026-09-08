@@ -27,22 +27,22 @@ Every angular rule in this specification uses these conventions.
 Every radius below is measured from the stage center to the center of the ball
 or pod concerned. An annulus is the region between its two radii.
 
-| Element | Figure |
-| --- | --- |
-| Planet | Disc at the stage center, radius `70`. |
-| Ball burn-up threshold | Ball center radius `78` or less. |
-| Pod burn-up threshold | Pod center radius `78` or less. |
-| Shield ring | Circle of radius `92`, present while the shield is active; ball contact radius `100`, crossed inward. |
-| Deflector track | Annulus from radius `170` to `186`. |
-| Deflector ball contact | Radius `194`, crossed inward within the span. |
-| Deflector pod catch | Radius `196`, crossed inward within the span. |
-| Deflector span | `48` degrees at baseline, `24` to each side of its center angle. |
-| Ring 1 | Annulus from `290` to `314`; contact radii `282` (inner) and `322` (outer). |
-| Ring 2 | Annulus from `360` to `384`; contact radii `352` (inner) and `392` (outer). |
-| Ring 3 | Annulus from `430` to `454`; contact radii `422` (inner) and `462` (outer). |
-| Containment field | Circle of radius `480`; ball contact radius `472`, crossed outward. |
-| Ball | Radius `8`, `16` across. |
-| Pod | Radius `10`, `20` across. |
+| Element                | Figure                                                                                                |
+| ---------------------- | ----------------------------------------------------------------------------------------------------- |
+| Planet                 | Disc at the stage center, radius `70`.                                                                |
+| Ball burn-up threshold | Ball center radius `78` or less.                                                                      |
+| Pod burn-up threshold  | Pod center radius `78` or less.                                                                       |
+| Shield ring            | Circle of radius `92`, present while the shield is active; ball contact radius `100`, crossed inward. |
+| Deflector track        | Annulus from radius `170` to `186`.                                                                   |
+| Deflector ball contact | Radius `194`, crossed inward within the span.                                                         |
+| Deflector pod catch    | Radius `196`, crossed inward within the span.                                                         |
+| Deflector span         | `48` degrees at baseline, `24` to each side of its center angle.                                      |
+| Ring 1                 | Annulus from `290` to `314`; contact radii `282` (inner) and `322` (outer).                           |
+| Ring 2                 | Annulus from `360` to `384`; contact radii `352` (inner) and `392` (outer).                           |
+| Ring 3                 | Annulus from `430` to `454`; contact radii `422` (inner) and `462` (outer).                           |
+| Containment field      | Circle of radius `480`; ball contact radius `472`, crossed outward.                                   |
+| Ball                   | Radius `8`, `16` across.                                                                              |
+| Pod                    | Radius `10`, `20` across.                                                                             |
 
 ## The order a tick resolves in
 
@@ -50,14 +50,14 @@ A tick of the `playing` screen resolves these steps, in this order. Each
 contact below is a crossing event, decided from the position a body held
 before its advance this tick and the position the advance gave it.
 
-| Step | What happens |
-| --- | --- |
-| 1 | Held input moves the deflector. |
-| 2 | Each ring's angle advances by its orbit speed. |
-| 3 | Every running effect timer falls by one tick. |
-| 4 | Pods advance inward; catches and burn-ups resolve. |
-| 5 | Balls advance and resolve their contacts, in the order the balls were spawned. |
-| 6 | The life-loss check below runs. |
+| Step | What happens                                                                   |
+| ---- | ------------------------------------------------------------------------------ |
+| 1    | Held input moves the deflector.                                                |
+| 2    | Each ring's angle advances by its orbit speed.                                 |
+| 3    | Every running effect timer falls by one tick.                                  |
+| 4    | Pods advance inward; catches and burn-ups resolve.                             |
+| 5    | Balls advance and resolve their contacts, in the order the balls were spawned. |
+| 6    | The life-loss check below runs.                                                |
 
 A destruction inside step 5 runs its salvage pod draw at once, so draws happen
 in the order destructions resolve. `specs/pods.md` fixes the draw.

@@ -84,18 +84,18 @@ packs a run may reach.
 rather than a variant axis: a case is exactly one kind, and a variant cannot
 change it. Each kind declares exactly the tables its family requires.
 
-| `asset_kind` | Required tables | Page |
-| --- | --- | --- |
-| `sprite`, `sprite-sheet` | `[canvas]`; `[sheet]` for a sheet | [Sprite cases](/testing/asset-generation/manifests/sprite-cases/) |
-| `ui` | `[canvas]`, optional `[ui]` | [UI cases](/testing/asset-generation/manifests/ui-cases/) |
-| `material` | `[material]` | [Material cases](/testing/asset-generation/manifests/material-cases/) |
-| `voxel-model`, `mc-model`, `sn-model`, `dc-model` | `[voxel]` | [Voxel cases](/testing/asset-generation/manifests/voxel-cases/) |
-| `voxel-animation`, `mc-animation`, `sn-animation`, `dc-animation` | `[voxel]`, `[model]` | [Voxel cases](/testing/asset-generation/manifests/voxel-cases/) |
-| `mc-skinned`, `sn-skinned`, `dc-skinned` | `[voxel]`, `[model]` | [Skinned cases](/testing/asset-generation/manifests/skinned-cases/) |
-| `blender-character`, `blender-mechanism` | `[voxel]`, `[model]` | [Blender cases](/testing/asset-generation/manifests/blender-cases/) |
-| `blender-prop` | `[voxel]` | [Blender cases](/testing/asset-generation/manifests/blender-cases/) |
-| `particle-2d`, `particle-3d` | `[particle]` | [Particle cases](/testing/asset-generation/manifests/particle-cases/) |
-| `sfx-synth`, `sfx-sample`, `music` | `[audio]` | [Audio cases](/testing/asset-generation/manifests/audio-cases/) |
+| `asset_kind`                                                      | Required tables                   | Page                                                                  |
+| ----------------------------------------------------------------- | --------------------------------- | --------------------------------------------------------------------- |
+| `sprite`, `sprite-sheet`                                          | `[canvas]`; `[sheet]` for a sheet | [Sprite cases](/testing/asset-generation/manifests/sprite-cases/)     |
+| `ui`                                                              | `[canvas]`, optional `[ui]`       | [UI cases](/testing/asset-generation/manifests/ui-cases/)             |
+| `material`                                                        | `[material]`                      | [Material cases](/testing/asset-generation/manifests/material-cases/) |
+| `voxel-model`, `mc-model`, `sn-model`, `dc-model`                 | `[voxel]`                         | [Voxel cases](/testing/asset-generation/manifests/voxel-cases/)       |
+| `voxel-animation`, `mc-animation`, `sn-animation`, `dc-animation` | `[voxel]`, `[model]`              | [Voxel cases](/testing/asset-generation/manifests/voxel-cases/)       |
+| `mc-skinned`, `sn-skinned`, `dc-skinned`                          | `[voxel]`, `[model]`              | [Skinned cases](/testing/asset-generation/manifests/skinned-cases/)   |
+| `blender-character`, `blender-mechanism`                          | `[voxel]`, `[model]`              | [Blender cases](/testing/asset-generation/manifests/blender-cases/)   |
+| `blender-prop`                                                    | `[voxel]`                         | [Blender cases](/testing/asset-generation/manifests/blender-cases/)   |
+| `particle-2d`, `particle-3d`                                      | `[particle]`                      | [Particle cases](/testing/asset-generation/manifests/particle-cases/) |
+| `sfx-synth`, `sfx-sample`, `music`                                | `[audio]`                         | [Audio cases](/testing/asset-generation/manifests/audio-cases/)       |
 
 ## The tool and output tables
 

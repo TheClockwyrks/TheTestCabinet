@@ -29,10 +29,10 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { TITLE_ITEMS } from "../constants";
 import { assertEqual } from "../assert";
+import { drewText } from "../case-harness/text";
 import {
   captureStill,
   createHarness,
-  drewText,
   openTitle,
   type Harness,
 } from "../harness";

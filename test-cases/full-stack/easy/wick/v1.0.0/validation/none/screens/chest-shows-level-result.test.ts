@@ -18,9 +18,11 @@
 // The run's own level is the one `isolate` poses, far from either item's, so
 // the experience bar's `LEVEL` label cannot be read as the result's.
 //
-// THE TOLERANCE. The name and the `LEVEL n` tag are matched folded, each looked
-// for on the result's row within `ROW_BAND` (`110` units), and the icon counts
-// as the result's on the same terms.
+// THE TOLERANCE. The name is matched ignoring case and whitespace, across the
+// runs of text the frame drew (the shared harness's `drewTextAnywhere`); it
+// and the `LEVEL n` tag are each located by the shortest span of consecutive
+// draws spelling them and looked for on the result's row within `ROW_BAND`
+// (`110` units), and the icon counts as the result's on the same terms.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNotEqual, assertNotNull } from "../assert";

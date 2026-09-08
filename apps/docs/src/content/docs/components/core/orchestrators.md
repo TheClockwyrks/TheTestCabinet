@@ -97,12 +97,12 @@ unknown, not as none.
 
 The runner script is handed everything it needs through its environment:
 
-| Variable | Meaning |
-| --- | --- |
-| `TCAB_PROMPT` | The rendered test-case prompt (the goal). An orchestrator wraps this with its own protocol before passing it to `tcab-session`. |
-| `TCAB_WORKSPACE` | The seeded workspace directory (`/work`). |
-| `TCAB_DEADLINE` | Epoch seconds after which the run's maximum runtime is exhausted. A multi-session runner checks this to stop gracefully before the hard cap. |
-| `TCAB_PARAM_<KEY>` | Each `[params]` entry from the manifest, upper-cased (for example `marker_file` becomes `TCAB_PARAM_MARKER_FILE`). |
+| Variable           | Meaning                                                                                                                                      |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TCAB_PROMPT`      | The rendered test-case prompt (the goal). An orchestrator wraps this with its own protocol before passing it to `tcab-session`.              |
+| `TCAB_WORKSPACE`   | The seeded workspace directory (`/work`).                                                                                                    |
+| `TCAB_DEADLINE`    | Epoch seconds after which the run's maximum runtime is exhausted. A multi-session runner checks this to stop gracefully before the hard cap. |
+| `TCAB_PARAM_<KEY>` | Each `[params]` entry from the manifest, upper-cased (for example `marker_file` becomes `TCAB_PARAM_MARKER_FILE`).                           |
 
 `one-shot`'s runner is a single `tcab-session "$TCAB_PROMPT"`, and a
 multi-session runner is a loop that calls `tcab-session` with a wrapped prompt

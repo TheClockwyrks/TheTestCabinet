@@ -69,9 +69,9 @@ describe("modelForHarness", () => {
       "anthropic/claude-opus-4.8",
     );
     // OpenCode → Claude Code: back to the native slug.
-    expect(modelForHarness(catalog, "anthropic/claude-opus-4.8", "claude")).toBe(
-      "claude-opus-4-8",
-    );
+    expect(
+      modelForHarness(catalog, "anthropic/claude-opus-4.8", "claude"),
+    ).toBe("claude-opus-4-8");
   });
 
   it("clears a known model that has no slug for the new family", () => {

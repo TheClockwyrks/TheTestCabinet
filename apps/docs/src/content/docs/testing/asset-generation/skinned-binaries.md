@@ -22,11 +22,11 @@ character needs.
 There are three binaries, mirroring the three mesh algorithms and their fixed
 surface character:
 
-| Algorithm | binary | `asset_kind` | character |
-| --- | --- | --- | --- |
-| Marching Cubes | `mc-skin` | `mc-skinned` | low poly: coarse sample grid, chunky faceted surface; stylized characters |
-| Surface Nets | `sn-skin` | `sn-skinned` | smooth mid-fidelity: watertight, uniform triangle density, rounded features; smooth organic creatures |
-| Dual Contouring | `dc-skin` | `dc-skinned` | high fidelity: fine grid, preserves sharp edges and corners; armored, hard-surface characters |
+| Algorithm       | binary    | `asset_kind` | character                                                                                             |
+| --------------- | --------- | ------------ | ----------------------------------------------------------------------------------------------------- |
+| Marching Cubes  | `mc-skin` | `mc-skinned` | low poly: coarse sample grid, chunky faceted surface; stylized characters                             |
+| Surface Nets    | `sn-skin` | `sn-skinned` | smooth mid-fidelity: watertight, uniform triangle density, rounded features; smooth organic creatures |
+| Dual Contouring | `dc-skin` | `dc-skinned` | high fidelity: fine grid, preserves sharp edges and corners; armored, hard-surface characters         |
 
 The surface character is a fixed characteristic of the binary, exactly as for
 the [static and animated mesh kinds](/testing/asset-generation/mesh-binaries/):

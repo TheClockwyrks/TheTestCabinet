@@ -64,7 +64,13 @@ import { MODE } from "./mode";
 import { RNG } from "./rng";
 import { Threat, resolveShooting, updateDowned } from "./combat";
 import { advanceJob, assignJob, regenJobs } from "./jobs";
-import { endOf, findPath, isReachable, moveAlong, reachableAdjacent } from "./pathfind";
+import {
+  endOf,
+  findPath,
+  isReachable,
+  moveAlong,
+  reachableAdjacent,
+} from "./pathfind";
 import {
   World,
   centerOn,
@@ -144,7 +150,13 @@ export class Game {
   // Work-priority grid: settlerId → per-work-type priority (0 off .. 4 top).
   priority: Record<number, Record<WorkType, number>> = {};
 
-  score: Score = { days: 0, raidsRepelled: 0, raidersKilled: 0, structuresBuilt: 0, peakPop: 0 };
+  score: Score = {
+    days: 0,
+    raidsRepelled: 0,
+    raidersKilled: 0,
+    structuresBuilt: 0,
+    peakPop: 0,
+  };
 
   // Presentation queues, drained by main.ts each frame.
   fxQueue: FxEvent[] = [];
@@ -201,7 +213,13 @@ export class Game {
     this.raidActive = false;
     this.raidIncoming = false;
     this.raidCountdown = 0;
-    this.score = { days: 0, raidsRepelled: 0, raidersKilled: 0, structuresBuilt: 0, peakPop: 0 };
+    this.score = {
+      days: 0,
+      raidsRepelled: 0,
+      raidersKilled: 0,
+      structuresBuilt: 0,
+      peakPop: 0,
+    };
     this.spawnCrew();
     this.centerCameraOnLanding();
   }
@@ -231,7 +249,11 @@ export class Game {
         facing: 0,
         health: SETTLER_HEALTH,
         maxHealth: SETTLER_HEALTH,
-        needs: { hunger: this.rng.range(0, 0.15), rest: this.rng.range(0.85, 1), mood: MOOD_BASE },
+        needs: {
+          hunger: this.rng.range(0, 0.15),
+          rest: this.rng.range(0.85, 1),
+          mood: MOOD_BASE,
+        },
         skills: { ...arch.skills },
         job: null,
         path: [],
@@ -306,7 +328,8 @@ export class Game {
   private updateNeeds(s: Settler, dt: number): void {
     if (s.dead) return;
     // transient event mood decays toward 0
-    if (s.eventMood < 0) s.eventMood = Math.min(0, s.eventMood + EVENT_MOOD_DECAY * dt);
+    if (s.eventMood < 0)
+      s.eventMood = Math.min(0, s.eventMood + EVENT_MOOD_DECAY * dt);
     if (s.downed) {
       this.recomputeMood(s);
       return;
@@ -398,7 +421,14 @@ export class Game {
   private startEat(s: Settler): void {
     this.releaseJob(s);
     const t = this.tileOf(s);
-    s.job = { kind: "eat", tx: t.tx, ty: t.ty, claimedBy: s.id, work: 0, workNeeded: EAT_TIME };
+    s.job = {
+      kind: "eat",
+      tx: t.tx,
+      ty: t.ty,
+      claimedBy: s.id,
+      work: 0,
+      workNeeded: EAT_TIME,
+    };
     s.path = [];
     s.pathIdx = 0;
     s.activity = "eat";
@@ -406,7 +436,8 @@ export class Game {
 
   // Returns true when sleep is handling the settler this tick (walking to a bed or asleep).
   private handleSleep(s: Settler, dt: number): boolean {
-    const trigger = this.phase === "night" ? SLEEP_TRIGGER_NIGHT : SLEEP_TRIGGER_DAY;
+    const trigger =
+      this.phase === "night" ? SLEEP_TRIGGER_NIGHT : SLEEP_TRIGGER_DAY;
     const midSleep = s.activity === "sleep" && s.needs.rest < SLEEP_WAKE;
     if (!midSleep && s.needs.rest > trigger) return false;
 
@@ -431,10 +462,13 @@ export class Game {
   private findBed(s: Settler): PathNode | null {
     if (s.bedId !== null) {
       const t = this.tileFromIdx(s.bedId);
-      if (t && t.structure && t.structure.built && t.structure.kind === "bed") return { tx: t.x, ty: t.y };
+      if (t && t.structure && t.structure.built && t.structure.kind === "bed")
+        return { tx: t.x, ty: t.y };
       s.bedId = null;
     }
-    const owned = new Set(this.settlers.filter((o) => o.bedId !== null).map((o) => o.bedId));
+    const owned = new Set(
+      this.settlers.filter((o) => o.bedId !== null).map((o) => o.bedId),
+    );
     const from = this.tileOf(s);
     for (const b of this.structures) {
       if (!b.built || b.kind !== "bed") continue;
@@ -492,12 +526,18 @@ export class Game {
 
   // The nearest cover tile (adjacent to a wall/door) that can see the target, is in range,
   // and is reachable — a firing slot to fight from behind the wall line (specs/combat.md).
-  private findFiringSlot(s: Settler, tgt: { x: number; y: number }): PathNode | null {
+  private findFiringSlot(
+    s: Settler,
+    tgt: { x: number; y: number },
+  ): PathNode | null {
     const at = this.tileOf(s);
     const tt = { tx: tileOfPixelX(tgt.x), ty: tileOfPixelY(tgt.y) };
     const candidates: { tile: PathNode; d: number }[] = [];
     for (const c of this.coverSlots()) {
-      const wd = Math.hypot(tileCenterX(c.tx) - tgt.x, tileCenterY(c.ty) - tgt.y);
+      const wd = Math.hypot(
+        tileCenterX(c.tx) - tgt.x,
+        tileCenterY(c.ty) - tgt.y,
+      );
       if (wd > 120) continue;
       if (!this.world.lineOfSight(c.tx, c.ty, tt.tx, tt.ty)) continue;
       candidates.push({ tile: c, d: Math.hypot(c.tx - at.tx, c.ty - at.ty) });
@@ -531,7 +571,10 @@ export class Game {
     return out;
   }
 
-  private nearestRaiderPixel(x: number, y: number): { x: number; y: number } | null {
+  private nearestRaiderPixel(
+    x: number,
+    y: number,
+  ): { x: number; y: number } | null {
     let best: { x: number; y: number } | null = null;
     let bestD = Infinity;
     for (const r of this.raiders) {
@@ -551,7 +594,8 @@ export class Game {
     for (const s of this.structures) {
       if (!s.built || s.kind !== "farm" || s.cropStage !== 1) continue;
       const t = this.world.tileAt(s.tx, s.ty);
-      const rate = t && t.terrain === "grass" ? FARM_GROW_GRASS : FARM_GROW_SOIL;
+      const rate =
+        t && t.terrain === "grass" ? FARM_GROW_GRASS : FARM_GROW_SOIL;
       s.growth = Math.min(1, s.growth + rate * dt);
       if (s.growth >= 1) s.cropStage = 2; // ripe → a harvest job appears next regen
     }
@@ -560,13 +604,16 @@ export class Game {
   // ---- Decay / cull -----------------------------------------------------------
   private stepDecay(dt: number): void {
     for (const tr of this.tracers) tr.life -= dt;
-    if (this.tracers.some((t) => t.life <= 0)) this.tracers = this.tracers.filter((t) => t.life > 0);
+    if (this.tracers.some((t) => t.life <= 0))
+      this.tracers = this.tracers.filter((t) => t.life > 0);
     for (const t of this.toasts) t.life -= dt;
-    if (this.toasts.some((t) => t.life <= 0)) this.toasts = this.toasts.filter((t) => t.life > 0);
+    if (this.toasts.some((t) => t.life <= 0))
+      this.toasts = this.toasts.filter((t) => t.life > 0);
   }
 
   private cullDead(): void {
-    if (this.raiders.some((r) => r.dead)) this.raiders = this.raiders.filter((r) => !r.dead);
+    if (this.raiders.some((r) => r.dead))
+      this.raiders = this.raiders.filter((r) => !r.dead);
     // dead settlers stay in the array (the roster greys them / the loss check counts living)
   }
 
@@ -591,7 +638,8 @@ export class Game {
     s.bleed = 45; // BLEED
     s.activity = "downed";
     this.releaseJob(s);
-    for (const o of this.settlers) if (o.id !== s.id && !o.dead) o.eventMood -= MOOD_PEN_ALLY_DOWNED;
+    for (const o of this.settlers)
+      if (o.id !== s.id && !o.dead) o.eventMood -= MOOD_PEN_ALLY_DOWNED;
     this.pushFx("blood", s.x, s.y);
   }
 
@@ -603,7 +651,8 @@ export class Game {
     s.health = 0;
     s.bedId = null;
     this.releaseJob(s);
-    for (const o of this.settlers) if (o.id !== s.id && !o.dead) o.eventMood -= MOOD_PEN_ALLY_DIED;
+    for (const o of this.settlers)
+      if (o.id !== s.id && !o.dead) o.eventMood -= MOOD_PEN_ALLY_DIED;
     this.pushFx("blood", s.x, s.y);
   }
 
@@ -619,7 +668,12 @@ export class Game {
   tileOf(e: { x: number; y: number }): PathNode {
     return { tx: tileOfPixelX(e.x), ty: tileOfPixelY(e.y) };
   }
-  private tileFromIdx(id: number): { x: number; y: number; structure: Structure | null; terrain: string } | null {
+  private tileFromIdx(id: number): {
+    x: number;
+    y: number;
+    structure: Structure | null;
+    terrain: string;
+  } | null {
     const x = id % COLS;
     const y = (id - x) / COLS;
     return this.world.tileAt(x, y);
@@ -634,11 +688,18 @@ export class Game {
   }
   private walkSpeed(s: Settler): number {
     const t = this.tileOf(s);
-    return SETTLER_SPEED * (this.world.isFloor(t.tx, t.ty) ? FLOOR_MOVE_MUL : 1);
+    return (
+      SETTLER_SPEED * (this.world.isFloor(t.tx, t.ty) ? FLOOR_MOVE_MUL : 1)
+    );
   }
   private onBed(s: Settler): boolean {
     const t = this.world.tileAt(tileOfPixelX(s.x), tileOfPixelY(s.y));
-    return !!(t && t.structure && t.structure.built && t.structure.kind === "bed");
+    return !!(
+      t &&
+      t.structure &&
+      t.structure.built &&
+      t.structure.kind === "bed"
+    );
   }
   private onFloor(s: Settler): boolean {
     return this.world.isFloor(tileOfPixelX(s.x), tileOfPixelY(s.y));
@@ -680,7 +741,8 @@ export class Game {
     this.score.structuresBuilt += 1;
     this.pushFx("dust", tileCenterX(s.tx), tileCenterY(s.ty));
     this.pushCue("build");
-    if (s.kind === "turret") this.milestone("firstTurret", "First turret online");
+    if (s.kind === "turret")
+      this.milestone("firstTurret", "First turret online");
   }
 
   private completeJob(s: Settler): void {
@@ -745,7 +807,13 @@ export class Game {
 
   // Rectangle designate: auto-reads the node under each tile (single designate tool), or
   // restricts to `kind` when one is given (the proof hook passes it explicitly).
-  designateRect(tx0: number, ty0: number, tx1: number, ty1: number, kind?: "chop" | "mine"): void {
+  designateRect(
+    tx0: number,
+    ty0: number,
+    tx1: number,
+    ty1: number,
+    kind?: "chop" | "mine",
+  ): void {
     const x0 = Math.min(tx0, tx1);
     const x1 = Math.max(tx0, tx1);
     const y0 = Math.min(ty0, ty1);
@@ -785,7 +853,10 @@ export class Game {
     return !!(t && t.structure && t.structure.kind === "wall");
   }
   private doorInWallLine(tx: number, ty: number): boolean {
-    return (this.isWallLike(tx - 1, ty) && this.isWallLike(tx + 1, ty)) || (this.isWallLike(tx, ty - 1) && this.isWallLike(tx, ty + 1));
+    return (
+      (this.isWallLike(tx - 1, ty) && this.isWallLike(tx + 1, ty)) ||
+      (this.isWallLike(tx, ty - 1) && this.isWallLike(tx, ty + 1))
+    );
   }
 
   canAfford(kind: StructureKind): boolean {
@@ -804,7 +875,12 @@ export class Game {
     return true;
   }
 
-  private addStructure(kind: StructureKind, tx: number, ty: number, built: boolean): Structure {
+  private addStructure(
+    kind: StructureKind,
+    tx: number,
+    ty: number,
+    built: boolean,
+  ): Structure {
     const def = STRUCTURES[kind];
     const s: Structure = {
       kind,
@@ -872,7 +948,8 @@ export class Game {
   // Run N sim-seconds forward at the fixed step (setup fast-forward). Runs even while paused.
   advance(seconds: number): void {
     const n = Math.max(0, Math.round(seconds / FIXED_STEP));
-    for (let i = 0; i < n && this.state === "playing"; i++) this.tick(FIXED_STEP);
+    for (let i = 0; i < n && this.state === "playing"; i++)
+      this.tick(FIXED_STEP);
   }
   // Place a finished structure directly (proof setup): built, no build wait, cost if afforded.
   build(kind: StructureKind, tx: number, ty: number): boolean {
@@ -884,7 +961,8 @@ export class Game {
     }
     const s = this.addStructure(kind, tx, ty, true);
     this.score.structuresBuilt += 1;
-    if (s.kind === "turret") this.milestone("firstTurret", "First turret online");
+    if (s.kind === "turret")
+      this.milestone("firstTurret", "First turret online");
     return true;
   }
   triggerRaid(n?: number): void {
@@ -892,7 +970,14 @@ export class Game {
     this.threat.spawnRaid(this, n);
   }
   forcePhase(phase: Phase): void {
-    this.time = phase === "dawn" ? 0.03 : phase === "day" ? 0.25 : phase === "dusk" ? 0.53 : 0.72;
+    this.time =
+      phase === "dawn"
+        ? 0.03
+        : phase === "day"
+          ? 0.25
+          : phase === "dusk"
+            ? 0.53
+            : 0.72;
     this.phase = phaseOf(this.time);
   }
   hurtSettler(id: number, dmg: number): void {
@@ -909,7 +994,9 @@ export class Game {
 
   // ---- Derived reads for the HUD ----------------------------------------------
   get selectedSettler(): Settler | null {
-    return this.selectedSettlerId != null ? (this.settlers.find((s) => s.id === this.selectedSettlerId) ?? null) : null;
+    return this.selectedSettlerId != null
+      ? (this.settlers.find((s) => s.id === this.selectedSettlerId) ?? null)
+      : null;
   }
   // The tile an entity ends up on after walking its path (for render interpolation targets).
   destinationOf(s: Settler): PathNode {

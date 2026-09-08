@@ -33,11 +33,11 @@ import {
   colorDistance,
   createHarness,
   drawFrame,
-  drewText,
   sampleTile,
   startPlaying,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 
 /** The tile the board is read on: high and to the left, clear of a menu's copy. */
 const PROBE_C = 3;

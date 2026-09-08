@@ -66,8 +66,8 @@ const REACHED_LEVEL = 9;
 
 /**
  * The cursor's posed center, inside the band on every one of its four bounds
- * (specs/board.md: `x` in `[16, 1264]`, `y` in `[672, 704]`), so the band's clamp
- * leaves it exactly where it was put and the reading is of the pose alone.
+ * (specs/board.md: `x` in `[16, 1264]`, `y` in `[672, 704]`), which is the domain
+ * `setCursor` takes, so the reading is of the pose alone.
  */
 const CURSOR_X = 300;
 const CURSOR_Y = 680;

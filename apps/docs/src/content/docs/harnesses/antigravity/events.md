@@ -14,10 +14,10 @@ failing run's full output survives.
 
 ## Raw event stream
 
-| Antigravity output | Normalized |
-| ------------------ | ---------- |
-| stdout line | [unknown](/components/core/events/#unknown) carrying the raw JSON value, or the raw text |
-| stderr line | [warning](/components/core/events/#warning) |
+| Antigravity output | Normalized                                                                               |
+| ------------------ | ---------------------------------------------------------------------------------------- |
+| stdout line        | [unknown](/components/core/events/#unknown) carrying the raw JSON value, or the raw text |
+| stderr line        | [warning](/components/core/events/#warning)                                              |
 
 The generic parser interprets none of the harness's own output, so a run records
 no [agent](/components/core/events/#agent-message),

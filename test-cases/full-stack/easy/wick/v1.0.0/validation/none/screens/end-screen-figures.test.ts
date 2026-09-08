@@ -19,9 +19,10 @@
 // count and nothing else moves a figure between the pose and the ending tick.
 //
 // THE TOLERANCE. None on the snapshot: a tick, a level and a count are exact.
-// On the frame the clock is matched folded and the two counts as whole numbers
-// standing alone, because specs/ui.md fixes the figures and not the words
-// around them.
+// On the frame the clock is matched ignoring case and whitespace, across the
+// runs of text the frame drew (the shared harness's `drewTextAnywhere`), and
+// the two counts as whole numbers standing alone, because specs/ui.md fixes
+// the figures and not the words around them.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";

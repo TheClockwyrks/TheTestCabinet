@@ -19,164 +19,34 @@
 // review point.
 //
 // THE FIGURE IS READ WITHOUT FIXING ITS FORMAT. `specs/ui.md` fixes that the
-// time is shown and leaves the setting to the build, so a row is read with its
-// spaces and thousands separators removed and the figure is looked for inside
-// it: `17.5s`, `17.50` and `0:17.50` all carry the time. What would fail is a
-// row that does not show it, or shows a different one.
+// time is shown and leaves the setting to the build, so the row's figures are
+// read through `./figures` — this directory's one reading of a number — and
+// `17.5s`, `17.50` and `0:17.50` all carry the time. What would fail is a row
+// that does not show it, or shows a different one.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertTrue, fail } from "../assert";
+import { drawnTextRuns, type TextDraw } from "../case-harness/index";
 import { SITE_NAMES } from "../constants";
 import { createHarness, type Harness } from "../harness";
+import { drawnFigures, type DrawnFigure } from "./figures";
+import { runStarting } from "./reading";
+
 /* -------------------------------------------------------------------------- */
 /* Reading the frame's text                                                   */
 /* -------------------------------------------------------------------------- */
 //
-// The harness lifts the clock, the projection and the input out of the surface
-// but exposes no reading of the frame's draw operations, so this suite reaches
-// the injected recorder over `h.page` — the one escape hatch the harness leaves
-// open. `last()` answers every operation the last CLOSED frame issued, so a
-// frame is advanced before it is read.
-
-/** The page global the shared harness installs its draw recorder on. */
-const RECORDER = "__tcabRec";
-
-/** One operation the recorder wrote, in the order the render made it. */
-type RecordedOp =
-  | { op: "call"; method: string; args: unknown[] }
-  | { op: "set"; property: string; value: unknown };
-
-/** A 2D affine transform, in the order `setTransform` takes its arguments. */
-type Matrix = readonly [number, number, number, number, number, number];
-
-const IDENTITY: Matrix = [1, 0, 0, 1, 0, 0];
-
-/** `m` with `n` applied under it, as the canvas composes a transform. */
-function mul(m: Matrix, n: Matrix): Matrix {
-  return [
-    m[0] * n[0] + m[2] * n[1],
-    m[1] * n[0] + m[3] * n[1],
-    m[0] * n[2] + m[2] * n[3],
-    m[1] * n[2] + m[3] * n[3],
-    m[0] * n[4] + m[2] * n[5] + m[4],
-    m[1] * n[4] + m[3] * n[5] + m[5],
-  ];
-}
-
-/** Where `(x, y)` lands under `m`. */
-function at(m: Matrix, x: number, y: number): { x: number; y: number } {
-  return { x: m[0] * x + m[2] * y + m[4], y: m[1] * x + m[3] * y + m[5] };
-}
-
-/** `m` after the transform `method` names, or `null` when it names none. */
-function moved(m: Matrix, method: string, n: readonly number[]): Matrix | null {
-  if (method === "resetTransform") return IDENTITY;
-  if (method === "setTransform" && n.length >= 6) {
-    return [n[0], n[1], n[2], n[3], n[4], n[5]];
-  }
-  if (method === "transform" && n.length >= 6) {
-    return mul(m, [n[0], n[1], n[2], n[3], n[4], n[5]]);
-  }
-  if (method === "translate" && n.length >= 2) {
-    return mul(m, [1, 0, 0, 1, n[0], n[1]]);
-  }
-  if (method === "scale" && n.length >= 2) {
-    return mul(m, [n[0], 0, 0, n[1], 0, 0]);
-  }
-  if (method === "rotate" && n.length >= 1) {
-    const c = Math.cos(n[0]);
-    const s = Math.sin(n[0]);
-    return mul(m, [c, s, -s, c, 0, 0]);
-  }
-  return null;
-}
-
-/** One run of text a frame drew, at the point the transform in force put it. */
-interface TextDraw {
-  text: string;
-  x: number;
-  y: number;
-}
-
-/**
- * Every run of text the frame drew, with its anchor.
- *
- * A build is free to draw under a transform — to translate to a corner of the
- * stage and draw at the origin — so where a `fillText` landed is only the point
- * it names once the transform in force at that call is applied.
- */
-function textDraws(ops: readonly RecordedOp[]): TextDraw[] {
-  const out: TextDraw[] = [];
-  const stack: Matrix[] = [];
-  let m = IDENTITY;
-  for (const op of ops) {
-    if (op.op !== "call") continue;
-    const n = op.args.filter((a): a is number => typeof a === "number");
-    if (op.method === "save") {
-      stack.push(m);
-      continue;
-    }
-    if (op.method === "restore") {
-      m = stack.pop() ?? IDENTITY;
-      continue;
-    }
-    const next = moved(m, op.method, n);
-    if (next !== null) {
-      m = next;
-      continue;
-    }
-    if (
-      (op.method === "fillText" || op.method === "strokeText") &&
-      typeof op.args[0] === "string" &&
-      n.length >= 2
-    ) {
-      out.push({ text: op.args[0], ...at(m, n[0], n[1]) });
-    }
-  }
-  return out;
-}
-
-/** Two runs are on one line when their anchors sit this close in `y`. */
-const LINE_TOL = 4;
-
-/** The frame's runs of text in reading order: down the stage, then across. */
-function readingOrder(draws: readonly TextDraw[]): TextDraw[] {
-  return [...draws].sort((a, b) =>
-    Math.abs(a.y - b.y) > LINE_TOL ? a.y - b.y : a.x - b.x,
-  );
-}
-
-/**
- * Where `wanted` starts among the frame's runs, or `null` when it was not
- * drawn.
- *
- * The frame's text is joined in reading order with every space removed, so copy
- * split across calls, letter-spaced, or padded matches the same as copy drawn
- * in one call; the answer is the index of the run the match starts in, which is
- * what puts two pieces of copy in order. */
-function findText(order: readonly TextDraw[], wanted: string): number | null {
-  const needle = wanted.replace(/\s+/g, "").toLowerCase();
-  let joined = "";
-  const owner: number[] = [];
-  order.forEach((draw, index) => {
-    const bare = draw.text.replace(/\s+/g, "").toLowerCase();
-    joined += bare;
-    for (let k = 0; k < bare.length; k += 1) owner.push(index);
-  });
-  const found = joined.indexOf(needle);
-  return found < 0 ? null : owner[found]!;
-}
-
-/** Every operation the last closed frame's render issued. */
-async function frameOps(harness: Harness): Promise<RecordedOp[]> {
-  return (await harness.page.evaluate(
-    (global) =>
-      (window as unknown as Record<string, { last(): unknown[] }>)[
-        global
-      ]!.last(),
-    RECORDER,
-  )) as RecordedOp[];
-}
+// The frame's text is read through `h.screenCalls()`, the harness's record of
+// every operation the last CLOSED frame made on the screen layer with each text
+// call measured, so a frame is advanced before it is read. The runs come back
+// coalesced by `drawnTextRuns` (`case-harness/text.ts`): a build that
+// letter-spaces a row's name or its figure draws a glyph per `fillText`, and
+// the specification fixes what a row shows and not how it is set, so the row is
+// read off the logical runs it spells and never off the call split. Every raw
+// string is a substring of its run, so coalescing can only add a match.
+//
+// The runs arrive in reading order — down the stage, then across it — and a
+// row is found by the run its name starts in (`./reading`).
 
 /* ---- The six rows of the site list ---------------------------------------- */
 
@@ -198,7 +68,7 @@ interface Row {
  * heading and footer outside every band. */
 function siteRows(order: readonly TextDraw[]): Row[] {
   const anchors = SITE_NAMES.map((name, index) => {
-    const found = findText(order, name);
+    const found = runStarting(order, name);
     if (found === null) {
       fail(
         `site ${index + 1}'s name, "${name}", drawn on the select screen ` +
@@ -239,6 +109,20 @@ function rowText(order: readonly TextDraw[], row: Row): string[] {
   return order.filter((draw) => inRow(row, draw)).map((draw) => draw.text);
 }
 
+/**
+ * Every figure the frame drew inside `row`.
+ *
+ * Read off `./figures`, this directory's one reading of a number, rather than
+ * off the row's text joined: a figure is placed at the RUN it was read inside,
+ * so it belongs to the row that run was drawn in, and no figure is ever fused
+ * out of two runs that a join happened to put a space between.
+ */
+function rowFigures(drawn: readonly DrawnFigure[], row: Row): number[] {
+  return drawn
+    .filter((figure) => inRow(row, figure.run))
+    .map((figure) => figure.value);
+}
+
 /* -------------------------------------------------------------------------- */
 
 /** The site the score is recorded on. */
@@ -247,35 +131,6 @@ const SITE = 0;
 /** The recorded score: a four-figure cost and a time with a fraction. */
 const COST = 2350;
 const TIME = 17.5;
-
-/**
- * The separators a build may set between a figure's digit triples.
- *
- * ASCII space is deliberately absent: a frame's text is assembled by joining
- * separate draw runs with one, so accepting it would read the two figures in
- * `40 130` as the single number 40130. `.` is absent for the same sort of
- * reason — it is the decimal point, and a build drawing `1.5` means one and a
- * half.
- */
-const GROUP = "[,'\\u00A0\\u202F\\u2009]";
-
-/** One drawn number: a grouped figure, or a plain one. */
-const DRAWN = new RegExp(
-  `\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|\\d+(?:\\.\\d+)?`,
-  "g",
-);
-
-/**
- * Every figure a row's text carries.
- *
- * A grouped figure reads as the one figure it is, so `2,350` and `2350` both
- * come back as 2350 and a build is free to set the figure with a separator.
- */
-function figures(text: string): number[] {
-  return (text.match(DRAWN) ?? []).map((one) =>
-    Number(one.replace(new RegExp(GROUP, "g"), "")),
-  );
-}
 
 let h: Harness;
 
@@ -301,7 +156,8 @@ it("shows a cleared site's best time on its row", async () => {
     `site ${SITE + 1} standing cleared, which is what puts a score on its row`,
   );
 
-  const order = readingOrder(textDraws(await frameOps(h)));
+  const calls = await h.screenCalls();
+  const order = drawnTextRuns(calls);
   await h.capture("state", "The best time beside a cleared site");
 
   assertTrue(
@@ -310,7 +166,7 @@ it("shows a cleared site's best time on its row", async () => {
   );
   const row = siteRows(order)[SITE]!;
   const written = rowText(order, row);
-  const shown = figures(written.join("\n"));
+  const shown = rowFigures(drawnFigures(calls), row);
 
   if (!shown.includes(TIME)) {
     fail(

@@ -17,23 +17,23 @@ logical stage size of `1000 x 1000` that `specs/overview.md` fixes.
 The snapshot's `screen` field, fixed in `specs/instrumentation.md`, names the
 screen the game is in, and the game opens on `title`.
 
-| `screen` | The screen |
-| --- | --- |
-| `title` | The title and main menu. |
-| `howto` | How to play. |
-| `playing` | The live field. |
+| `screen`    | The screen                                |
+| ----------- | ----------------------------------------- |
+| `title`     | The title and main menu.                  |
+| `howto`     | How to play.                              |
+| `playing`   | The live field.                           |
 | `waveclear` | The interstitial after a wave is cleared. |
-| `paused` | The pause menu over the frozen field. |
-| `gameover` | The end of a session out of lives. |
+| `paused`    | The pause menu over the frozen field.     |
+| `gameover`  | The end of a session out of lives.        |
 
 ### `title`
 
 Shows the title, `KESSLER`, and the menu:
 
-| Entry | Copy |
-| --- | --- |
-| `0` | `START` |
-| `1` | `HOW TO PLAY` |
+| Entry | Copy          |
+| ----- | ------------- |
+| `0`   | `START`       |
+| `1`   | `HOW TO PLAY` |
 
 `confirm` on `START` starts a fresh session and sets `screen` to `playing`,
 with wave 1 laid out as `specs/rings.md` states and a ball parked on the
@@ -80,10 +80,10 @@ out as `specs/rings.md` states.
 The pause menu, over the field drawn exactly as the tick that paused it left
 it:
 
-| Entry | Copy |
-| --- | --- |
-| `0` | `RESUME` |
-| `1` | `QUIT` |
+| Entry | Copy     |
+| ----- | -------- |
+| `0`   | `RESUME` |
+| `1`   | `QUIT`   |
 
 `confirm` on `RESUME` returns to `playing` with the session intact, and `back`
 and `pause` both do exactly what `RESUME` does. `confirm` on `QUIT` discards
@@ -118,20 +118,20 @@ every entry it shows through the `menuItemRect` reading of
 Arriving at a menu-bearing screen highlights the entry that led away from it
 to the screen just left, and entry `0` otherwise.
 
-| Arrival | Highlighted entry |
-| --- | --- |
-| `title`, entered from `howto` | `1`, `HOW TO PLAY` |
-| `title`, entered from `playing`, `paused`, or `gameover` | `0`, `START` |
-| `title`, when the game opens | `0`, `START` |
-| `paused`, on every entry into it | `0`, `RESUME` |
+| Arrival                                                  | Highlighted entry  |
+| -------------------------------------------------------- | ------------------ |
+| `title`, entered from `howto`                            | `1`, `HOW TO PLAY` |
+| `title`, entered from `playing`, `paused`, or `gameover` | `0`, `START`       |
+| `title`, when the game opens                             | `0`, `START`       |
+| `paused`, on every entry into it                         | `0`, `RESUME`      |
 
 ## What advances on each screen
 
-| Screen | What advances |
-| --- | --- |
-| `playing` | Every part of the simulation. |
-| `waveclear` | The interstitial's `180`-tick timer, and nothing else. |
-| `title`, `howto`, `paused`, `gameover` | Nothing. |
+| Screen                                 | What advances                                          |
+| -------------------------------------- | ------------------------------------------------------ |
+| `playing`                              | Every part of the simulation.                          |
+| `waveclear`                            | The interstitial's `180`-tick timer, and nothing else. |
+| `title`, `howto`, `paused`, `gameover` | Nothing.                                               |
 
 Pausing freezes the whole simulation: the ring orbits, the effect and
 interstitial timers, the falling pods, the balls in flight, and the ball
@@ -145,12 +145,12 @@ The HUD is drawn on `playing`, clear of the containment field, so nothing it
 draws crosses the field of play, and each readout is legible at a glance.
 Where on the stage it sits is yours.
 
-| Readout | Content |
-| --- | --- |
-| Score | The score, in digits, as `specs/scoring.md` fixes it. |
-| Lives | The lives remaining. |
-| Wave | The number of the wave in play. |
-| Effects | The active effects, as below. |
+| Readout | Content                                               |
+| ------- | ----------------------------------------------------- |
+| Score   | The score, in digits, as `specs/scoring.md` fixes it. |
+| Lives   | The lives remaining.                                  |
+| Wave    | The number of the wave in play.                       |
+| Effects | The active effects, as below.                         |
 
 The effects readout indicates each timed effect currently in force and whether
 a shield is active. It may reuse the produced pod sprites `specs/assets.md`

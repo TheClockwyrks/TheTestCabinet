@@ -69,12 +69,7 @@ export function WireframeTerrain({ color }: WireframeTerrainProps) {
       rotation-x={-Math.PI / 2}
       position-z={-72}
     >
-      <meshBasicMaterial
-        color={color}
-        wireframe
-        transparent
-        opacity={0.55}
-      />
+      <meshBasicMaterial color={color} wireframe transparent opacity={0.55} />
     </mesh>
   );
 }

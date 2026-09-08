@@ -22,7 +22,11 @@
 // THE VERDICT. The screen was `title` before the press and is `select` after it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThanOrEqual, assertNotEqual } from "../assert";
+import {
+  assertEqual,
+  assertGreaterThanOrEqual,
+  assertNotEqual,
+} from "../assert";
 import { TITLE_ITEMS } from "../constants";
 import {
   captureStill,

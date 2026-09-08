@@ -12,10 +12,7 @@ import type {
   MatchSummary,
   TournamentRecord,
 } from "@clockwyrks/run-record";
-import type {
-  ArenaApi,
-  ArenaWorkerOption,
-} from "../app/data/galleryContext";
+import type { ArenaApi, ArenaWorkerOption } from "../app/data/galleryContext";
 import { getJson, joinUrl, postJson } from "./http";
 
 // The arena service's `POST /tournaments` ack: the id plus the URLs to observe it.
@@ -103,12 +100,16 @@ export function createHttpArena(
     },
 
     async runTournament(input): Promise<string> {
-      const ack = await postJson<TournamentAck>(requireArena(), "/tournaments", {
-        testCase: input.testCase,
-        version: input.version,
-        variant: input.variant,
-        participants: input.participants,
-      });
+      const ack = await postJson<TournamentAck>(
+        requireArena(),
+        "/tournaments",
+        {
+          testCase: input.testCase,
+          version: input.version,
+          variant: input.variant,
+          participants: input.participants,
+        },
+      );
       return ack.tournamentId;
     },
 

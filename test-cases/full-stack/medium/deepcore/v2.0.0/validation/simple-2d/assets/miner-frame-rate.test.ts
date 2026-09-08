@@ -71,7 +71,11 @@ it("holds each drawn miner frame for one interval of ANIM_FPS", async () => {
   const expected = TICK_HZ / ANIM_FPS;
 
   assertEqual(watched.state, "idle", "specs/character.md");
-  assertGreaterThan(runs.length, 0, "the idle cycle advances (specs/assets.md)");
+  assertGreaterThan(
+    runs.length,
+    0,
+    "the idle cycle advances (specs/assets.md)",
+  );
   assertBetween(
     shortest,
     expected * (1 - TOLERANCE),

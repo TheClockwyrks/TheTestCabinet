@@ -59,7 +59,12 @@ import {
   takeFromWasteSets,
   wasteVisibleCount,
 } from "./piles";
-import { pointerDown, pointerMove, pointerUp } from "./pointer";
+import {
+  pointerDown,
+  pointerMove,
+  pointerUp,
+  refreshDropTarget,
+} from "./pointer";
 import { turnStock } from "./stock";
 import { menuItemRect } from "./menus";
 import type { Rect } from "./layout";
@@ -158,6 +163,8 @@ export interface CascadeDebugApi {
 
   reset(): void;
   snapshot(): CascadeSnapshot;
+  /** Bring every reported reading into agreement with the table as it stands. */
+  reconcile(): void;
 
   /**
    * The hit region of item `index` on the menu the current screen shows.
@@ -239,6 +246,15 @@ function reportCard(card: CardState): SnapshotCard {
 
 function reportPile(cards: readonly CardState[]): SnapshotCard[] {
   return cards.map(reportCard);
+}
+
+/**
+ * A call whose subject the table does not hold names nothing the surface can
+ * act on, so it fails loudly rather than passing quietly with the state
+ * unchanged (specs/instrumentation.md, The operations).
+ */
+function refuse(where: string, why: string): never {
+  throw new RangeError(`Cascade: ${where}() ${why}`);
 }
 
 /**
@@ -359,6 +375,29 @@ export function createDebugApi(world: () => World): CascadeDebugApi {
       };
     },
 
+    /**
+     * Bring every reported reading into agreement with the table as it stands,
+     * without advancing anything (specs/instrumentation.md, The core).
+     *
+     * Of this build's derived readings, `wasteVisibleCount` and a card's
+     * `color` are worked out inside `snapshot`, so there is nothing to rewrite
+     * for either. `dropTarget` is the one the game state keeps: the pointer
+     * path writes it as a gesture moves, so a pose that changes what the pile
+     * beneath a held run holds leaves it answering for the table as it was.
+     * `refreshDropTarget` is the rule the pointer path itself calls, so this is
+     * the same answer that path would have written rather than a restatement of
+     * the drop rule.
+     *
+     * It runs no system and moves no clock. `simTime` and `launchClock` stand
+     * where they were, no flyer moves or paints, no card turns, no win is
+     * detected, no cue is played, and nothing is drawn from the generator. It
+     * corrects nothing either: a run held over a pile that no longer accepts it
+     * is left in hand and simply reports no drop target.
+     */
+    reconcile() {
+      refreshDropTarget(read());
+    },
+
     menuItemRect(index) {
       return menuItemRect(read().screen, index);
     },
@@ -385,7 +424,9 @@ export function createDebugApi(world: () => World): CascadeDebugApi {
     addCard(pile, index, suit, rank, faceUp) {
       const state = read();
       const cards = pileOf(state, pile, index);
-      if (cards === null) return;
+      if (cards === null) {
+        refuse("addCard", `has no pile "${String(pile)}" at ${index}`);
+      }
       cards.push(makeCard(state, suit, rank, faceUp));
     },
 
@@ -397,7 +438,7 @@ export function createDebugApi(world: () => World): CascadeDebugApi {
     removeCard(id) {
       const state = read();
       const found = locate(state, id);
-      if (found === null) return;
+      if (found === null) refuse("removeCard", `has no card with id ${id}`);
       found.pile.splice(found.row, 1);
       if (found.isWaste) takeFromWasteSets(state);
     },
@@ -405,7 +446,7 @@ export function createDebugApi(world: () => World): CascadeDebugApi {
     setCardFaceUp(id, faceUp) {
       const state = read();
       const found = locate(state, id);
-      if (found === null) return;
+      if (found === null) refuse("setCardFaceUp", `has no card with id ${id}`);
       found.pile[found.row].faceUp = faceUp;
     },
 
@@ -413,7 +454,9 @@ export function createDebugApi(world: () => World): CascadeDebugApi {
     clearPile(pile, index) {
       const state = read();
       const cards = pileOf(state, pile, index);
-      if (cards === null) return;
+      if (cards === null) {
+        refuse("clearPile", `has no pile "${String(pile)}" at ${index}`);
+      }
       cards.length = 0;
       if (pile === "waste") state.wasteSets = [];
     },
@@ -432,6 +475,12 @@ export function createDebugApi(world: () => World): CascadeDebugApi {
     },
 
     addWasteSet(count) {
+      if (!Number.isInteger(count) || count < 0) {
+        refuse(
+          "addWasteSet",
+          `needs a whole, non-negative count, got ${count}`,
+        );
+      }
       read().wasteSets.push(count);
     },
 
@@ -512,20 +561,27 @@ export function createDebugApi(world: () => World): CascadeDebugApi {
 
     setFlyerPosition(id, x, y) {
       const flyer = flyerById(read(), id);
-      if (flyer === undefined) return;
+      if (flyer === undefined) {
+        refuse("setFlyerPosition", `has no flyer with id ${id}`);
+      }
       flyer.x = x;
       flyer.y = y;
     },
 
     setFlyerVelocity(id, vx, vy) {
       const flyer = flyerById(read(), id);
-      if (flyer === undefined) return;
+      if (flyer === undefined) {
+        refuse("setFlyerVelocity", `has no flyer with id ${id}`);
+      }
       flyer.vx = vx;
       flyer.vy = vy;
     },
 
     removeFlyer(id) {
       const state = read();
+      if (!state.flyers.some((flyer) => flyer.id === id)) {
+        refuse("removeFlyer", `has no flyer with id ${id}`);
+      }
       state.flyers = state.flyers.filter((flyer) => flyer.id !== id);
     },
 

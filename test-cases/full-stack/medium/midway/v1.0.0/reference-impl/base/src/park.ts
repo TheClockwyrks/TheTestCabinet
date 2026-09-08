@@ -72,7 +72,8 @@ export function makeWorld(): World {
   const tiles: Tile[] = new Array(COLS * ROWS);
   for (let row = 0; row < ROWS; row++) {
     for (let col = 0; col < COLS; col++) {
-      const border = col === 0 || col === COLS - 1 || row === 0 || row === ROWS - 1;
+      const border =
+        col === 0 || col === COLS - 1 || row === 0 || row === ROWS - 1;
       tiles[idx(col, row)] = {
         kind: border ? "fence" : "grass",
         litter: 0,
@@ -111,7 +112,11 @@ export function makeWorld(): World {
   };
   recomputeConnectivity(world);
   // Centre the camera on the gate + plaza on load (park.md).
-  centerCameraOn(world, GATE_COL * TILE + TILE / 2, (PLAZA_TOP + GATE_ROW) * 0.5 * TILE);
+  centerCameraOn(
+    world,
+    GATE_COL * TILE + TILE / 2,
+    (PLAZA_TOP + GATE_ROW) * 0.5 * TILE,
+  );
   return world;
 }
 
@@ -122,7 +127,13 @@ export function canPlacePath(world: World, col: number, row: number): boolean {
 }
 
 // A ride/stall/scenery footprint is legal on entirely-buildable grass inside the fence.
-export function canPlaceFootprint(world: World, col: number, row: number, w: number, h: number): boolean {
+export function canPlaceFootprint(
+  world: World,
+  col: number,
+  row: number,
+  w: number,
+  h: number,
+): boolean {
   for (let r = row; r < row + h; r++) {
     for (let c = col; c < col + w; c++) {
       const t = tileAt(world, c, r);
@@ -153,7 +164,8 @@ export function recomputeConnectivity(world: World): void {
       let touchesGate = false;
       while (queue.length) {
         const cur = queue.shift()!;
-        if (cur.col === world.gate.col && cur.row === world.gate.row) touchesGate = true;
+        if (cur.col === world.gate.col && cur.row === world.gate.row)
+          touchesGate = true;
         for (const [dc, dr] of NEIGHBORS) {
           const nc = cur.col + dc;
           const nr = cur.row + dr;
@@ -169,7 +181,11 @@ export function recomputeConnectivity(world: World): void {
   }
   const gateRegion = world.tiles[idx(world.gate.col, world.gate.row)]!.region;
   for (const t of world.tiles) {
-    if (t.region !== -1 && (t.region === gateRegion || gateRegionSeeds.includes(t.region))) t.connected = true;
+    if (
+      t.region !== -1 &&
+      (t.region === gateRegion || gateRegionSeeds.includes(t.region))
+    )
+      t.connected = true;
   }
 }
 
@@ -214,8 +230,13 @@ export function recomputeAppeal(world: World, scenery: Scenery[]): void {
 // both endpoints, or null if `to` is unreachable. The sim memoizes results per
 // from/target and invalidates on any edit.
 export function findPath(world: World, from: Cell, to: Cell): Cell[] | null {
-  if (!isWalkable(world, from.col, from.row) || !isWalkable(world, to.col, to.row)) return null;
-  if (from.col === to.col && from.row === to.row) return [{ col: to.col, row: to.row }];
+  if (
+    !isWalkable(world, from.col, from.row) ||
+    !isWalkable(world, to.col, to.row)
+  )
+    return null;
+  if (from.col === to.col && from.row === to.row)
+    return [{ col: to.col, row: to.row }];
   const prev = new Int32Array(COLS * ROWS).fill(-1);
   const seen = new Uint8Array(COLS * ROWS);
   const startI = idx(from.col, from.row);
@@ -254,7 +275,11 @@ export function findPath(world: World, from: Cell, to: Cell): Cell[] | null {
 
 // The nearest walkable path tile to (col,row), searched on expanding rings (used to
 // snap a hired staff member onto the network and to nudge a stranded guest).
-export function nearestPathTile(world: World, col: number, row: number): Cell | null {
+export function nearestPathTile(
+  world: World,
+  col: number,
+  row: number,
+): Cell | null {
   if (isWalkable(world, col, row)) return { col, row };
   for (let r = 1; r < Math.max(COLS, ROWS); r++) {
     for (let dr = -r; dr <= r; dr++) {
@@ -271,7 +296,13 @@ export function nearestPathTile(world: World, col: number, row: number): Cell | 
 
 // The path tile adjacent to a footprint (the entrance / queue tile); prefers a
 // gate-connected one so an attraction with any connected approach reads as reachable.
-export function footprintEntrance(world: World, col: number, row: number, w: number, h: number): Cell | null {
+export function footprintEntrance(
+  world: World,
+  col: number,
+  row: number,
+  w: number,
+  h: number,
+): Cell | null {
   let fallback: Cell | null = null;
   for (const cell of footprintPerimeter(col, row, w, h)) {
     const t = tileAt(world, cell.col, cell.row);
@@ -282,7 +313,12 @@ export function footprintEntrance(world: World, col: number, row: number, w: num
   return fallback;
 }
 
-function* footprintPerimeter(col: number, row: number, w: number, h: number): Generator<Cell> {
+function* footprintPerimeter(
+  col: number,
+  row: number,
+  w: number,
+  h: number,
+): Generator<Cell> {
   for (let c = col; c < col + w; c++) {
     yield { col: c, row: row - 1 };
     yield { col: c, row: row + h };
@@ -307,7 +343,10 @@ export interface Mover {
 // Advance a mover up to speed*dt px toward the next waypoint(s) of its route. Returns
 // whether it reached the end of its path and how many tiles it crossed (for guest
 // energy drain). Continuous — a mover never teleports between tiles.
-export function advancePath(m: Mover, dt: number): { arrived: boolean; tilesCrossed: number } {
+export function advancePath(
+  m: Mover,
+  dt: number,
+): { arrived: boolean; tilesCrossed: number } {
   let remaining = m.speed * dt;
   let tilesCrossed = 0;
   while (remaining > 0) {
@@ -357,11 +396,19 @@ export function centerCameraOn(world: World, wx: number, wy: number): void {
 }
 
 // World px -> screen px within the park view band (y in [PARK_Y0, PARK_Y1]).
-export function worldToScreen(cam: Camera, wx: number, wy: number): { x: number; y: number } {
+export function worldToScreen(
+  cam: Camera,
+  wx: number,
+  wy: number,
+): { x: number; y: number } {
   return { x: (wx - cam.x) * cam.zoom, y: PARK_Y0 + (wy - cam.y) * cam.zoom };
 }
 
 // Screen px -> world px (inverse of worldToScreen), for pointer picking.
-export function screenToWorld(cam: Camera, sx: number, sy: number): { x: number; y: number } {
+export function screenToWorld(
+  cam: Camera,
+  sx: number,
+  sy: number,
+): { x: number; y: number } {
   return { x: cam.x + sx / cam.zoom, y: cam.y + (sy - PARK_Y0) / cam.zoom };
 }

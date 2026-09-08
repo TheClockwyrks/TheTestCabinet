@@ -99,7 +99,12 @@ export function tokenize(text: string): Token[] {
   const tokens: Token[] = [];
   let i = 0;
 
-  const push = (kind: TokenKind, start: number, end: number, value?: string) => {
+  const push = (
+    kind: TokenKind,
+    start: number,
+    end: number,
+    value?: string,
+  ) => {
     tokens.push({
       kind,
       text: text.slice(start, end),

@@ -23,7 +23,12 @@ export type { FloeKind, ItemKind, LaneDir, VehicleKind };
 
 /** The screen the game is showing (specs/ui.md). */
 export type Screen =
-  "title" | "howto" | "playing" | "paused" | "victory" | "gameover";
+  | "title"
+  | "howto"
+  | "playing"
+  | "paused"
+  | "victory"
+  | "gameover";
 
 /** What a crossing is doing (specs/progression.md). */
 export type Phase = "crossing" | "dying" | "clearing";

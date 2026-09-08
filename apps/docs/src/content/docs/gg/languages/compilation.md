@@ -15,19 +15,19 @@ judges a program, or none for a language whose prepare step invokes no compiler.
 The answer is required, and `prepare_compiles` is derived from it so the two can
 never disagree.
 
-| Arm | Checker |
-| --- | --- |
-| TypeScript | `tsc` |
-| JavaScript | none |
-| Python | none |
-| Ruby | `opal` |
-| PureScript | `purs` |
-| Java | `javac` |
-| Kotlin | `kotlinc` |
-| Rust | `rustc` |
-| Swift | `swiftc` |
-| C++ | `clang++` |
-| C# | `csc` |
+| Arm        | Checker   |
+| ---------- | --------- |
+| TypeScript | `tsc`     |
+| JavaScript | none      |
+| Python     | none      |
+| Ruby       | `opal`    |
+| PureScript | `purs`    |
+| Java       | `javac`   |
+| Kotlin     | `kotlinc` |
+| Rust       | `rustc`   |
+| Swift      | `swiftc`  |
+| C++        | `clang++` |
+| C#         | `csc`     |
 
 An arm that names a checker has it interpolated into the system prompt, so a
 model told its program is checked is told by what. What the prompt states is
@@ -140,10 +140,10 @@ compile that spent four seconds refusing a program spent them.
 A language reports the two failures as different values, and gg keeps them apart
 from there to the run record.
 
-| | What happened | What the model is told | How the turn is recorded |
-| --- | --- | --- | --- |
+|                                   | What happened                                                                                | What the model is told                                                           | How the turn is recorded                                                                |
+| --------------------------------- | -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
 | The compiler rejected the program | It read the reply whole and found a type error, a borrow error, a name that does not resolve | a `Compiler error` band carrying the compiler's own diagnostics and nothing else | one of the `transpile` error types, under the `transpile` base kind: the model's to fix |
-| The compiler could not finish | It crashed, its own timeout killed it, or the binary is missing from the image | nothing | a fatal turn, and the run ends under `internal_error` |
+| The compiler could not finish     | It crashed, its own timeout killed it, or the binary is missing from the image               | nothing                                                                          | a fatal turn, and the run ends under `internal_error`                                   |
 
 Routing a compiler's crash into the `Compiler error` band is the failure this
 split exists to prevent. The model would read that its program did not compile
@@ -273,16 +273,16 @@ A language arranges none of that itself. `prepare_program` and `prepare_module`
 are each handed a `PrepareContext`, minted per preparation by the sandbox and by
 nothing else, and it hands out the only ground the seam offers.
 
-| Need | The sanctioned answer |
-| --- | --- |
-| Somewhere to put files while compiling | `context.workspace()`, cleared of the previous preparation's files before this one writes |
-| Somewhere for a compiler's artifacts | `workspace.output()`, inside that same private tree and cleared on the same terms |
-| Somewhere for a loaded module's build output | `workspace.open_module(key)`, cleared when that key is loaded and kept for as long as it stays loaded |
-| Running a compiler | `context.compiler(program)`, with the working directory, `HOME`, `TMPDIR` and the `XDG_*` roots inside that tree, plus the timeout, the kill and the reap |
-| A long-lived compiler instance | `CompilerPool::checkout`, which lends an instance exclusively |
-| A long-lived compiler process to pool | `daemon(program)`, started on a private tree of its own and spoken to one request at a time |
-| Toolchain inputs too big to unpack per preparation | `shared_toolchain_dir(key)` with `place` or `place_tree` |
-| A tree a toolchain lays out once for the agent | `workspace.stage_once`, together with a `persistent_work` entry naming it |
+| Need                                               | The sanctioned answer                                                                                                                                     |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Somewhere to put files while compiling             | `context.workspace()`, cleared of the previous preparation's files before this one writes                                                                 |
+| Somewhere for a compiler's artifacts               | `workspace.output()`, inside that same private tree and cleared on the same terms                                                                         |
+| Somewhere for a loaded module's build output       | `workspace.open_module(key)`, cleared when that key is loaded and kept for as long as it stays loaded                                                     |
+| Running a compiler                                 | `context.compiler(program)`, with the working directory, `HOME`, `TMPDIR` and the `XDG_*` roots inside that tree, plus the timeout, the kill and the reap |
+| A long-lived compiler instance                     | `CompilerPool::checkout`, which lends an instance exclusively                                                                                             |
+| A long-lived compiler process to pool              | `daemon(program)`, started on a private tree of its own and spoken to one request at a time                                                               |
+| Toolchain inputs too big to unpack per preparation | `shared_toolchain_dir(key)` with `place` or `place_tree`                                                                                                  |
+| A tree a toolchain lays out once for the agent     | `workspace.stage_once`, together with a `persistent_work` entry naming it                                                                                 |
 
 The environment redirection is what a toolchain benefits from without its
 language having thought about it. A compiler that writes to `output/`, to

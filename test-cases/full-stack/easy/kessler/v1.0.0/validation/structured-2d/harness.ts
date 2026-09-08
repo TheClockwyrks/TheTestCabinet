@@ -29,6 +29,15 @@
 // so no engine collision event is read anywhere: everything comes off the
 // debug surface and the world.
 //
+// RECONCILING AFTER A POSE. `reconcile()` brings every reading the surface
+// reports into agreement with the field a pose has just arranged, without
+// advancing anything, so a build that keeps a derived reading as a stored copy
+// answers for the field as posed rather than as it was. A helper below that
+// poses anything a reading derives from — a ball, a pod, a target, an effect
+// timer — reconciles before it returns, so a check posing through the helpers
+// never calls it itself. A check that poses with `h.debug.set…` directly calls
+// it once before its first read or sweep.
+//
 // WHY THE DEBUG SURFACE RATHER THAN RAW ASSIGNMENT. `specs/instrumentation.md`
 // fixes its operations, so they mean the same thing in every build: a pose
 // arranges the running game through the same systems play uses, the two driver
@@ -78,6 +87,8 @@ import {
   createEngineCaseHarness,
   identityDriver,
   installAssetHost,
+  installAudioContext,
+  wavAudioBuffer,
   type AssetFailure,
   type DrivenEngine,
   type EngineHarness,
@@ -295,17 +306,23 @@ export function failSurface(fault: string): never {
 // `specs/assets.md` has the build load every produced sprite and sound through
 // the engine, which resolves each path under `assets/` relative to the page
 // the build is served from and fetches it. This project runs in a Node process
-// with no page, so the two globals the loader reaches for are stood up over
-// the workspace's own `assets/` directory, once, for the life of the process.
+// with no page, so the harness supplies the three things a browser gives the
+// loader: a `fetch` that reads the very file the build committed, a
+// `createImageBitmap` that decodes one, and an `AudioContext` that decodes a
+// produced PCM `.wav` far enough for the engine's `audio.load` to bind the cue.
 //
-// AUDIO IS THE ONE THING THIS CANNOT SERVE, and that is why no `AudioContext`
-// is installed at all. `loadAudio` decodes through a Web Audio context and this
-// host has none, so every cue's produced `.wav` fails to decode here — a fact
-// about the host rather than about the build. So the cue points read WHICH cue
-// sounded off the cue bus, and the points that are about the FILES read them off
-// disk directly, which is where they live. The package splits the asset host and
-// the audio host into two modules for exactly this: a case that wants the first
-// and not the second says so by calling one of them.
+// WHAT WOULD HAPPEN WITHOUT THE AUDIO HOST, WHICH IS WHY IT IS INSTALLED HERE.
+// The engine's bus binds a cue name ONLY once its decode has succeeded, and
+// `play`, `loop`, and `stop` THROW `unknown audio cue "<name>"` for a name
+// nothing bound. So a build that does exactly what `specs/assets.md` asks —
+// bind every name in `CUES` to its produced file through the engine's
+// `audio.load`, then run the cues and the two beds off that bus — would either
+// never finish initializing, if it awaits its loads, or throw out of its own
+// tick on the first cue it sounds; every point in this project would then fail
+// for a fact about Node rather than about the build. The package keeps the
+// asset host and the audio host in two modules so a case declares which it
+// needs by calling it, and this case, whose builds bind thirteen cues and two
+// beds, needs both.
 
 /**
  * The directory this harness sits in, which is the validator project's root.
@@ -349,6 +366,17 @@ const assets = installAssetHost({
   images: true,
   label: "kessler",
 });
+
+/**
+ * An `AudioContext` that decodes a produced `.wav` and nothing else.
+ *
+ * `wavAudioBuffer` decodes the file to its SAMPLES — the half of the package's
+ * pair that a case listening to a channel needs, as against `silentAudioBuffer`,
+ * which reads the header alone. This project's `assets/` suites read a produced
+ * bed's own samples for their loop seam, so a decoder that answered silence
+ * would read zero off every channel with nothing to say so.
+ */
+installAudioContext({ decode: wavAudioBuffer });
 
 /**
  * The produced file a drawn source came from, or `""` for one this harness
@@ -417,23 +445,6 @@ export function textDraws(calls: readonly DrawCall[]): TextDraw[] {
     width: draw.right - draw.left,
     textAlign: draw.align ?? DEFAULT_TEXT_ALIGN,
   }));
-}
-
-/**
- * Whether the frame drew `text` as part of some RAW run of text, ignoring case.
- * Substring on purpose: the copy a check asserts is the case's own, but how a
- * build presents it — a selection marker, padding — is the build's.
- *
- * KESSLER'S OWN, over the package's `drawnText`. The package ships a `drewText`
- * of its own and it is a different reading: it matches against the LOGICAL runs
- * a frame spells, which merges the glyphs of a letter-spaced heading into one
- * string. Kessler's copy points were all decided against the raw calls, so this
- * composes the package's raw reading rather than binding a name whose meaning
- * would be the other one.
- */
-export function drewText(calls: readonly DrawCall[], text: string): boolean {
-  const wanted = text.trim().toLowerCase();
-  return drawnText(calls).some((drawn) => drawn.toLowerCase().includes(wanted));
 }
 
 /**
@@ -703,10 +714,11 @@ const runningLoops = new WeakMap<object, Set<string>>();
  *
  * The recorder is asked for both extras, and each pays for itself:
  * `measureText` is what gives a text draw the extent `hud/hud-clear-of-field`
- * holds the HUD clear of the field by, and `internImages` is what gives a
- * `drawImage` an identity {@link sourceId} can turn into the produced file it
- * painted — the reading every produced-sprite point in this project is decided
- * on.
+ * holds the HUD clear of the field by, and the width the package's merge rule
+ * coalesces a letter-spaced heading by, which is what the package's
+ * `drewText` reads copy off; `internImages` is what gives a `drawImage` an
+ * identity {@link sourceId} can turn into the produced file it painted — the
+ * reading every produced-sprite point in this project is decided on.
  *
  * `cueEvents` names BOTH firings, because `specs/assets.md` gives this case two
  * music beds beside its thirteen one-shot cues and a bed is announced as a loop;
@@ -995,6 +1007,7 @@ export function isolate(h: Harness): KesslerSnapshot {
   h.debug.clearPods();
   h.debug.setWaveAdvance(false);
   h.debug.setPodSpawn(false);
+  h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -1050,6 +1063,7 @@ export function spawnBallPolar(
   const { x, y } = polarToXy(r, thetaDeg);
   const { vx, vy } = polarVelocity(thetaDeg, vr, vt);
   h.debug.spawnBall(x, y, vx, vy);
+  h.debug.reconcile();
 }
 
 /** Spawn one pod by its polar position. It falls radially inward on its own. */
@@ -1061,6 +1075,7 @@ export function spawnPodPolar(
 ): void {
   const { x, y } = polarToXy(r, thetaDeg);
   h.debug.spawnPod(kind, x, y);
+  h.debug.reconcile();
 }
 
 /**
@@ -1104,6 +1119,7 @@ export function startFreshSession(h: Harness): KesslerSnapshot {
   h.reset();
   h.debug.setScreen("playing");
   h.debug.parkBall();
+  h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -1128,6 +1144,7 @@ export function poseInterstitial(
   h.debug.setShield(false);
   h.debug.setInterstitialTicks(ticks);
   h.debug.setScreen("waveclear");
+  h.debug.reconcile();
   return h.snapshot();
 }
 

@@ -2,13 +2,13 @@
 
 This is the implementation contract for the engineers building the authored,
 ground-truth reference for the `midway` **full-stack** case (`base` variant — the
-*New Park* start). It is the analogue of the committed `valence` reference
+_New Park_ start). It is the analogue of the committed `valence` reference
 implementation and must mirror its shape and quality: plain **TypeScript** rendering
 to a single **HTML5 canvas**, bundled with **Vite** (`base: "./"`), no backend, no
 network, no API keys, everything in the built bundle. Every sprite, animation,
 particle effect, and sound is a file **produced during the build** with the six
 on-`PATH` tools and committed under `assets/` (see `ASSETS.md`); at runtime the game
-only *loads* those committed files.
+only _loads_ those committed files.
 
 Read this alongside the seeded specs — it never contradicts them. Where a spec pins a
 value this document repeats it; where the specs leave a choice (`overview.md` "Free
@@ -44,7 +44,7 @@ operated** (plus peak guests, park rating, total profit). The only end is
   fatal. On loss the game enters the **park-closed** state showing days operated + the
   secondary tally, with **TRY AGAIN** / **MENU**.
 
-### Mode base (the *New Park* start — `specs/mode.md`)
+### Mode base (the _New Park_ start — `specs/mode.md`)
 
 `src/mode.ts` isolates the start, exactly as valence's `mode.ts` isolates its campaign.
 The `base` variant is `NEW PARK`: a fresh green plot, the entrance gate + a small paved
@@ -63,25 +63,25 @@ The split mirrors valence (`constants`/`types`/`mode`/`board`→`park`/`sim`/`re
 `src/*.ts` file. The **contracts** (`constants.ts`, `types.ts`) come first because every
 later module depends on them; write them first and freeze them.
 
-| File | Responsibility | Key exports |
-| --- | --- | --- |
-| `constants.ts` | Every pinned number and color: stage geometry, palette (`COL`), font, tile size + plot dims, the ride/stall/scenery/staff **catalogs**, and the `TUNE` tuning table (§4). No logic. | `STAGE_W/H`, `TOP_HUD_H`, `BOTTOM_HUD_H`, `PARK_Y0/Y1`, `TILE`, `COLS`, `ROWS`, `FIXED_STEP`, `COL`, `FONT`, `RIDES`, `STALLS`, `SCENERY`, `STAFF`, `TUNE`, enums `TileKind`, `RideKind`, `StallKind`, `SceneryKind`, `StaffKind`, `ToolKind`, `DesireKey` |
-| `types.ts` | The **core data model** (§3): every runtime interface — `World`, `Tile`, `Guest`, `Staff`, `Attraction`, `Camera`, `Ledger`, particle/sound event types, `GameState`, `Tool`, `Clickable`. No logic, only types. | all interfaces + `GameState`, `FxKind`, `Cue`, `Clickable` |
-| `mode.ts` | The start config, isolated (§1). | `Mode` interface, `MODE` const |
-| `rng.ts` | Seeded deterministic RNG (mulberry32), so the sim and the balance harness reproduce. | `RNG` class (`float()`, `int(n)`, `chance(p)`, `pick(arr)`, `range(a,b)`) |
-| `park.ts` | The park **grid + camera + graph** (valence's `board.ts`). Builds the plot (§3.1), the gate/plaza, tile legality, path connectivity flood from the gate, appeal accumulation from scenery, and **pathfinding** (BFS over the 4-connected walkable graph, memoized per target). Camera clamp/zoom. | `makeWorld(mode)`, `tileAt`, `inBounds`, `isWalkable`, `canPlacePath`, `canPlaceFootprint`, `recomputeConnectivity(world)`, `recomputeAppeal(world)`, `findPath(world, from, to)`, `nearestPathTile`, `clampCamera`, `worldToScreen`/`screenToWorld` |
-| `guests.ts` | Pure guest AI helpers (`specs/guests.md`): desire decay/growth, `chooseAction` (weigh pressing desires against reachable+affordable targets), price-vs-value judgment, happiness deltas, queue-tolerance + patience. Called by `sim.ts`; holds no state. | `stepDesires`, `chooseAction`, `perceivedValue`, `judgePrice`, `applyHappiness`, `queueTolerance`, `shouldLeave` |
-| `rides.ts` | Pure ride/stall cycle helpers (`specs/rides.md`): the load→run→unload state machine, throughput, breakdown accrual + repair, stall sale + litter emission. Called by `sim.ts`. | `stepAttraction`, `tryLoad`, `accrueBreakdown`, `beginRepair`, `sellAt`, `throughputOf` |
-| `staff.ts` | Pure staff behavior (`specs/staff.md`): janitor litter-seek + clear (+ cleanup puff), mechanic inspect-on-patrol + repair-broken, entertainer roaming mood aura; assignment (zone vs roam). Called by `sim.ts`. | `stepStaff`, `assignZone`, `wageBill`, `findLitterTarget`, `findBrokenRide` |
-| `economy.ts` | The money **ledger + accounting** (`specs/economy.md`): per-day upkeep + wages charge, income tallies, rolling income/expense rate for the trend, bankruptcy timer. | `Ledger` helpers `earn`, `spend`, `chargeDaily`, `rates`, `bankruptcyStep` |
-| `rating.ts` | The reputation loop (`specs/flow.md`): compute the rating target from avg happiness + cleanliness + variety/reliability, ease the live rating toward it, and derive the **arrival rate** from the rating. Small but load-bearing — it closes the loop. | `computeRatingTarget`, `arrivalRateFor`, `easeRating` |
-| `sim.ts` | The **`Game` class** — the orchestrator (valence's `sim.ts`). Owns `World`, `guests[]`, `staff[]`, `attractions[]`, `scenery[]`, the `Ledger`, `rating`, day clock, active `Tool`/selection, `state`, milestones, and the `fxQueue`/`sndQueue`. `fixedStep(dt)` advances everything on the tick; the tool/command methods mutate the park. | `Game` class: `fixedStep`, arrivals/spawn, `layPath`, `placeAttraction`, `placeScenery`, `hireStaff`, `assignStaff`, `setPrice`, `demolish`, `selectAt`, `cycleSpeed`, `togglePause`, `restart`, plus `fxQueue`, `sndQueue`, `pointerX/Y`, `state` |
-| `assets.ts` | Load the **produced** files through Vite `import.meta.glob` (page-relative under any base path). Maps sprite names → `HTMLImageElement`, animation prefixes → frame arrays, `fx/*.system.json` → `ParticleSystem`, `audio/*.wav` → URL. | `loadAssets()` → `Assets` ( `sprite(name)`, `frames(prefix)`, `guest`, `ride`, `staff`, `fx`, `audioUrl` ) |
-| `audio.ts` | Web Audio playback (`specs/assets.md` "Audio"): decode the produced `.wav`s on first gesture, play cues on events, loop the crowd hum + carnival music, mute toggle, no autostart. Direct copy of valence's `Audio` class shape. | `Audio` class (`resume`, `play(cue)`, `toggleMute`, `muted`) |
-| `particles.ts` | Play the produced particle systems live via `@clockwyrks/particle-runtime`'s `/canvas` binding. **One-shots** (fireworks, cleanup puff) simulated on an offscreen canvas and composited; **loops** (steam, sparkle) held while a stall/ride is active and stopped when idle/broken. | `Particles` class (`spawnOneShot`, `ensureLoop`, `stopLoop`, `update`, `draw`) |
-| `input.ts` | Pointer + keyboard capture, drag state (for the path tool), wheel (zoom), viewport→logical mapping. Valence's `input.ts` plus drag + wheel. | `Input` class (`attach`, `pointerLogical`, `clicks`, `drag`, `wheel`, `keys`, `setViewport`, `drain`) |
-| `menus.ts` | One source of truth for each menu's items so `render` draws them and keyboard nav drives the same list. | `menuItems(state, game)` |
-| `main.ts` | Bootstrap: load assets, fit the fixed 1280×720 stage (letterboxed, centered, crisp at any DPR and on load), wire input, run the fixed-step loop, route clicks/keys to tools & menus, expose `window.__midway` dev hooks for the proof script. | `main()` |
+| File           | Responsibility                                                                                                                                                                                                                                                                                                                             | Key exports                                                                                                                                                                                                                                                |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `constants.ts` | Every pinned number and color: stage geometry, palette (`COL`), font, tile size + plot dims, the ride/stall/scenery/staff **catalogs**, and the `TUNE` tuning table (§4). No logic.                                                                                                                                                        | `STAGE_W/H`, `TOP_HUD_H`, `BOTTOM_HUD_H`, `PARK_Y0/Y1`, `TILE`, `COLS`, `ROWS`, `FIXED_STEP`, `COL`, `FONT`, `RIDES`, `STALLS`, `SCENERY`, `STAFF`, `TUNE`, enums `TileKind`, `RideKind`, `StallKind`, `SceneryKind`, `StaffKind`, `ToolKind`, `DesireKey` |
+| `types.ts`     | The **core data model** (§3): every runtime interface — `World`, `Tile`, `Guest`, `Staff`, `Attraction`, `Camera`, `Ledger`, particle/sound event types, `GameState`, `Tool`, `Clickable`. No logic, only types.                                                                                                                           | all interfaces + `GameState`, `FxKind`, `Cue`, `Clickable`                                                                                                                                                                                                 |
+| `mode.ts`      | The start config, isolated (§1).                                                                                                                                                                                                                                                                                                           | `Mode` interface, `MODE` const                                                                                                                                                                                                                             |
+| `rng.ts`       | Seeded deterministic RNG (mulberry32), so the sim and the balance harness reproduce.                                                                                                                                                                                                                                                       | `RNG` class (`float()`, `int(n)`, `chance(p)`, `pick(arr)`, `range(a,b)`)                                                                                                                                                                                  |
+| `park.ts`      | The park **grid + camera + graph** (valence's `board.ts`). Builds the plot (§3.1), the gate/plaza, tile legality, path connectivity flood from the gate, appeal accumulation from scenery, and **pathfinding** (BFS over the 4-connected walkable graph, memoized per target). Camera clamp/zoom.                                          | `makeWorld(mode)`, `tileAt`, `inBounds`, `isWalkable`, `canPlacePath`, `canPlaceFootprint`, `recomputeConnectivity(world)`, `recomputeAppeal(world)`, `findPath(world, from, to)`, `nearestPathTile`, `clampCamera`, `worldToScreen`/`screenToWorld`       |
+| `guests.ts`    | Pure guest AI helpers (`specs/guests.md`): desire decay/growth, `chooseAction` (weigh pressing desires against reachable+affordable targets), price-vs-value judgment, happiness deltas, queue-tolerance + patience. Called by `sim.ts`; holds no state.                                                                                   | `stepDesires`, `chooseAction`, `perceivedValue`, `judgePrice`, `applyHappiness`, `queueTolerance`, `shouldLeave`                                                                                                                                           |
+| `rides.ts`     | Pure ride/stall cycle helpers (`specs/rides.md`): the load→run→unload state machine, throughput, breakdown accrual + repair, stall sale + litter emission. Called by `sim.ts`.                                                                                                                                                             | `stepAttraction`, `tryLoad`, `accrueBreakdown`, `beginRepair`, `sellAt`, `throughputOf`                                                                                                                                                                    |
+| `staff.ts`     | Pure staff behavior (`specs/staff.md`): janitor litter-seek + clear (+ cleanup puff), mechanic inspect-on-patrol + repair-broken, entertainer roaming mood aura; assignment (zone vs roam). Called by `sim.ts`.                                                                                                                            | `stepStaff`, `assignZone`, `wageBill`, `findLitterTarget`, `findBrokenRide`                                                                                                                                                                                |
+| `economy.ts`   | The money **ledger + accounting** (`specs/economy.md`): per-day upkeep + wages charge, income tallies, rolling income/expense rate for the trend, bankruptcy timer.                                                                                                                                                                        | `Ledger` helpers `earn`, `spend`, `chargeDaily`, `rates`, `bankruptcyStep`                                                                                                                                                                                 |
+| `rating.ts`    | The reputation loop (`specs/flow.md`): compute the rating target from avg happiness + cleanliness + variety/reliability, ease the live rating toward it, and derive the **arrival rate** from the rating. Small but load-bearing — it closes the loop.                                                                                     | `computeRatingTarget`, `arrivalRateFor`, `easeRating`                                                                                                                                                                                                      |
+| `sim.ts`       | The **`Game` class** — the orchestrator (valence's `sim.ts`). Owns `World`, `guests[]`, `staff[]`, `attractions[]`, `scenery[]`, the `Ledger`, `rating`, day clock, active `Tool`/selection, `state`, milestones, and the `fxQueue`/`sndQueue`. `fixedStep(dt)` advances everything on the tick; the tool/command methods mutate the park. | `Game` class: `fixedStep`, arrivals/spawn, `layPath`, `placeAttraction`, `placeScenery`, `hireStaff`, `assignStaff`, `setPrice`, `demolish`, `selectAt`, `cycleSpeed`, `togglePause`, `restart`, plus `fxQueue`, `sndQueue`, `pointerX/Y`, `state`         |
+| `assets.ts`    | Load the **produced** files through Vite `import.meta.glob` (page-relative under any base path). Maps sprite names → `HTMLImageElement`, animation prefixes → frame arrays, `fx/*.system.json` → `ParticleSystem`, `audio/*.wav` → URL.                                                                                                    | `loadAssets()` → `Assets` ( `sprite(name)`, `frames(prefix)`, `guest`, `ride`, `staff`, `fx`, `audioUrl` )                                                                                                                                                 |
+| `audio.ts`     | Web Audio playback (`specs/assets.md` "Audio"): decode the produced `.wav`s on first gesture, play cues on events, loop the crowd hum + carnival music, mute toggle, no autostart. Direct copy of valence's `Audio` class shape.                                                                                                           | `Audio` class (`resume`, `play(cue)`, `toggleMute`, `muted`)                                                                                                                                                                                               |
+| `particles.ts` | Play the produced particle systems live via `@clockwyrks/particle-runtime`'s `/canvas` binding. **One-shots** (fireworks, cleanup puff) simulated on an offscreen canvas and composited; **loops** (steam, sparkle) held while a stall/ride is active and stopped when idle/broken.                                                        | `Particles` class (`spawnOneShot`, `ensureLoop`, `stopLoop`, `update`, `draw`)                                                                                                                                                                             |
+| `input.ts`     | Pointer + keyboard capture, drag state (for the path tool), wheel (zoom), viewport→logical mapping. Valence's `input.ts` plus drag + wheel.                                                                                                                                                                                                | `Input` class (`attach`, `pointerLogical`, `clicks`, `drag`, `wheel`, `keys`, `setViewport`, `drain`)                                                                                                                                                      |
+| `menus.ts`     | One source of truth for each menu's items so `render` draws them and keyboard nav drives the same list.                                                                                                                                                                                                                                    | `menuItems(state, game)`                                                                                                                                                                                                                                   |
+| `main.ts`      | Bootstrap: load assets, fit the fixed 1280×720 stage (letterboxed, centered, crisp at any DPR and on load), wire input, run the fixed-step loop, route clicks/keys to tools & menus, expose `window.__midway` dev hooks for the proof script.                                                                                              | `main()`                                                                                                                                                                                                                                                   |
 
 Two dev-only trees mirror valence and are **excluded from the build**:
 
@@ -108,19 +108,24 @@ export type TileKind = "grass" | "water" | "fence" | "gate" | "path";
 
 export interface Tile {
   kind: TileKind;
-  litter: number;        // 0..1, path tiles only; raised by guests, cleared by janitors
-  appeal: number;        // 0..1, derived each rebuild from nearby scenery (park.md)
-  connected: boolean;    // path tile reachable from the gate (flood from gate)
-  occupantId: number;    // attraction/scenery id occupying this tile, or -1
-  region: number;        // path-graph connected-component id (for fast reachability)
+  litter: number; // 0..1, path tiles only; raised by guests, cleared by janitors
+  appeal: number; // 0..1, derived each rebuild from nearby scenery (park.md)
+  connected: boolean; // path tile reachable from the gate (flood from gate)
+  occupantId: number; // attraction/scenery id occupying this tile, or -1
+  region: number; // path-graph connected-component id (for fast reachability)
 }
 
 // top-left world px, zoom 0.75..1.5
-export interface Camera { x: number; y: number; zoom: number; }
+export interface Camera {
+  x: number;
+  y: number;
+  zoom: number;
+}
 
 export interface World {
-  cols: number; rows: number;         // COLS x ROWS (64 x 44)
-  tiles: Tile[];                       // row-major, length cols*rows
+  cols: number;
+  rows: number; // COLS x ROWS (64 x 44)
+  tiles: Tile[]; // row-major, length cols*rows
   gate: { col: number; row: number }; // the single entrance in the fence
   plaza: { col: number; row: number }[]; // pre-laid plaza path tiles at the gate
   camera: Camera;
@@ -133,53 +138,70 @@ export type RideState = "idle" | "loading" | "running" | "unloading" | "broken";
 export interface Attraction {
   id: number;
   category: AttractionCategory;
-  kind: RideKind | StallKind;          // catalog key
-  col: number; row: number;            // footprint top-left
-  w: number; h: number;                // footprint in tiles
+  kind: RideKind | StallKind; // catalog key
+  col: number;
+  row: number; // footprint top-left
+  w: number;
+  h: number; // footprint in tiles
   entrance: { col: number; row: number }; // the queue tile; must be path-adjacent
-  connected: boolean;                  // entrance touches a gate-connected path
-  price: number;                       // player-set ticket / sale price
-  upkeep: number;                      // per-day cost (from catalog)
+  connected: boolean; // entrance touches a gate-connected path
+  price: number; // player-set ticket / sale price
+  upkeep: number; // per-day cost (from catalog)
   // rides:
-  capacity: number; rideDuration: number; thrill: number; // from catalog
-  state: RideState; runTimer: number; loadTimer: number;
-  riders: number[];                    // guest ids aboard
-  queue: number[];                     // guest ids waiting, front = index 0
-  breakdownAccum: number;              // rises as it runs; > threshold -> break
-  brokenTimer: number; inspectTimer: number;
+  capacity: number;
+  rideDuration: number;
+  thrill: number; // from catalog
+  state: RideState;
+  runTimer: number;
+  loadTimer: number;
+  riders: number[]; // guest ids aboard
+  queue: number[]; // guest ids waiting, front = index 0
+  breakdownAccum: number; // rises as it runs; > threshold -> break
+  brokenTimer: number;
+  inspectTimer: number;
   // stalls:
-  serves: DesireKey;                   // hunger | thirst | souvenir(want) | bladder
+  serves: DesireKey; // hunger | thirst | souvenir(want) | bladder
   sellTimer: number;
   // shared bookkeeping:
-  takings: number; takingsWindow: number[]; // rolling recent takings for the panel
-  animT: number;                       // ride animation phase (frozen when not running)
+  takings: number;
+  takingsWindow: number[]; // rolling recent takings for the panel
+  animT: number; // ride animation phase (frozen when not running)
 }
 
 // ---- Guests (the signature system, guests.md) -------------------------------
 export type DesireKey = "thrill" | "hunger" | "thirst" | "bladder" | "energy";
 export type GuestState =
-  | "entering" | "wandering" | "walking" | "queuing"
-  | "riding" | "buying" | "resting" | "leaving";
+  | "entering"
+  | "wandering"
+  | "walking"
+  | "queuing"
+  | "riding"
+  | "buying"
+  | "resting"
+  | "leaving";
 export type GuestMood = "walk" | "happy" | "angry" | "eating"; // animation set
 
 export interface Guest {
   id: number;
-  x: number; y: number;                // world px (continuous, interpolated in render)
+  x: number;
+  y: number; // world px (continuous, interpolated in render)
   tile: { col: number; row: number };
-  path: { col: number; row: number }[]; pathIdx: number; // current route
-  speed: number;                       // px/sim-second
-  facing: 1 | -1;                      // sprite flip
-  desires: Record<DesireKey, number>;  // thrill/hunger/thirst/bladder 0..100 (need),
-                                       // energy 0..100 (reserve, falls with walking)
+  path: { col: number; row: number }[];
+  pathIdx: number; // current route
+  speed: number; // px/sim-second
+  facing: 1 | -1; // sprite flip
+  desires: Record<DesireKey, number>; // thrill/hunger/thirst/bladder 0..100 (need),
+  // energy 0..100 (reserve, falls with walking)
   wallet: number;
-  happiness: number;                   // 0..100, the value everything moves
+  happiness: number; // 0..100, the value everything moves
   admissionPaid: boolean;
   state: GuestState;
-  mood: GuestMood; animT: number;      // which produced sheet + frame timer
-  targetId: number;                    // attraction id, or -1 for gate/bench/wander
+  mood: GuestMood;
+  animT: number; // which produced sheet + frame timer
+  targetId: number; // attraction id, or -1 for gate/bench/wander
   targetKind: "ride" | "stall" | "bench" | "gate" | "none";
-  waitTimer: number;                   // seconds in the current queue (patience)
-  actTimer: number;                    // riding/buying/resting countdown
+  waitTimer: number; // seconds in the current queue (patience)
+  actTimer: number; // riding/buying/resting countdown
   reviewGiven: boolean;
 }
 
@@ -187,39 +209,62 @@ export interface Guest {
 export type StaffState = "idle" | "walking" | "working";
 export interface Staff {
   id: number;
-  kind: StaffKind;                     // janitor | mechanic | entertainer
-  x: number; y: number; tile: { col: number; row: number };
-  path: { col: number; row: number }[]; pathIdx: number; speed: number; facing: 1 | -1;
-  state: StaffState; workTimer: number;
-  targetId: number;                    // ride to repair / tile index to clean / -1
+  kind: StaffKind; // janitor | mechanic | entertainer
+  x: number;
+  y: number;
+  tile: { col: number; row: number };
+  path: { col: number; row: number }[];
+  pathIdx: number;
+  speed: number;
+  facing: 1 | -1;
+  state: StaffState;
+  workTimer: number;
+  targetId: number; // ride to repair / tile index to clean / -1
   zone: { col: number; row: number; w: number; h: number } | null; // null = roam
-  wage: number; animT: number;
+  wage: number;
+  animT: number;
 }
 
 // ---- Scenery ----------------------------------------------------------------
 export interface Scenery {
-  id: number; kind: SceneryKind; col: number; row: number; w: number; h: number;
+  id: number;
+  kind: SceneryKind;
+  col: number;
+  row: number;
+  w: number;
+  h: number;
 }
 
 // ---- Economy ----------------------------------------------------------------
 export interface Ledger {
   cash: number;
-  dayIncome: number; dayExpense: number;   // accumulating this day
-  incomeRate: number; expenseRate: number; // last full day's rates (for the HUD trend)
+  dayIncome: number;
+  dayExpense: number; // accumulating this day
+  incomeRate: number;
+  expenseRate: number; // last full day's rates (for the HUD trend)
   totalProfit: number;
-  belowFloorTimer: number;                 // seconds under BANKRUPTCY_FLOOR
+  belowFloorTimer: number; // seconds under BANKRUPTCY_FLOOR
 }
 
 // ---- Events, state, UI ------------------------------------------------------
 export type FxKind = "fireworks" | "steam" | "sparkle" | "cleanup";
-export interface FxEvent { kind: FxKind; x: number; y: number; }
+export interface FxEvent {
+  kind: FxKind;
+  x: number;
+  y: number;
+}
 export type Cue = "coin" | "ding" | "alarm" | "crowd" | "music";
 
 export type GameState = "title" | "howto" | "playing" | "paused" | "gameover";
 export type ToolKind = "path" | "build" | "staff" | "price" | "demolish";
 export interface Clickable {
-  x: number; y: number; w: number; h: number; action: string;
-  payload?: string; disabled?: boolean;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  action: string;
+  payload?: string;
+  disabled?: boolean;
 }
 ```
 

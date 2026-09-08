@@ -20,7 +20,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan, assertTrue } from "../assert";
-import { drawnText, toDrawCall, type RecordedOp } from "../case-harness/index";
+import { drawnTextLines } from "../case-harness/index";
 import { createHarness, type Harness } from "../harness";
 
 /** The ring, in the words a player's own account of it would reach for. */
@@ -33,9 +33,12 @@ const TERMS = [/\bring\b/i];
 // The how-to screen is words, so this point is decided on the words the frame
 // actually drew. The harness records every operation the game makes on the
 // screen layer — the 2D pass the engine composites over the WebGL yard — and
-// `drawnText` folds a frame's `fillText` and `strokeText` runs out of it.
-// `h.screenOps()` is where that record is read; it answers the last CLOSED
-// frame, so a frame is advanced before it is read.
+// `h.screenCalls()` hands that record back with every text call measured, so
+// `drawnTextLines` can fold the frame's `fillText` and `strokeText` calls into
+// the logical runs they spell. A build that letter-spaces a heading draws it a
+// glyph per call, and the specification fixes the copy and not its spacing, so
+// the copy is read off the runs and never off the call split. It answers the
+// last CLOSED frame, so a frame is advanced before it is read.
 //
 // MATCHING IS BY TERM, NEVER BY SENTENCE. specs/ui.md fixes WHAT the how-to
 // screen explains and leaves every word of it to the build ("in a player's
@@ -45,12 +48,21 @@ const TERMS = [/\bring\b/i];
 // specs/structure.md give the things being explained — with the ordinary
 // synonyms a player's words would reach for.
 
-/** Every run of text the how-to screen drew, folded into one block. */
+/**
+ * Every run of text the how-to screen drew, folded into one block.
+ *
+ * Read off the LOGICAL RUNS the frame spells, never off the `fillText` split:
+ * a build that letter-spaces its copy draws a glyph per call, which is the only
+ * portable way to letter-space canvas text, and the specification fixes the
+ * words a screen shows while leaving their spacing to the build. `screenCalls`
+ * carries the measured geometry the shared merge rule (`case-harness/text.ts`)
+ * needs to put side-by-side glyphs on one baseline back together, and every
+ * raw string is a substring of its run, so coalescing can only add a match.
+ */
 async function howtoCopy(h: Harness): Promise<string> {
   await h.debug.setScreen("howto");
   await h.advance(1);
-  const ops = (await h.screenOps()) as RecordedOp[];
-  return drawnText(ops.map(toDrawCall)).join("\n");
+  return drawnTextLines(await h.screenCalls()).join("\n");
 }
 
 let h: Harness;

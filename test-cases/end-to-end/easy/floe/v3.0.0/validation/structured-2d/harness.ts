@@ -26,6 +26,12 @@
 // through the debug surface, and the real rules the build wrote are what decide
 // every hop, every glide and every catch from there.
 //
+// RECONCILING AFTER A POSE. A helper below that poses anything a reading derives
+// from — `timerMax`, the critter's `col`, `row` and `footing`, a bear's
+// `swimming` — calls `h.debug.reconcile()` before it returns, so a check posed
+// through the helpers never calls it itself. A check that poses with
+// `h.debug.set…` directly calls it once before its first read or sweep.
+//
 // WHY THE DEBUG SURFACE RATHER THAN RAW ASSIGNMENT. specs/instrumentation.md
 // fixes its operations, so they mean the same thing in every build:
 // `addVehicle` puts a vehicle the covering rule reads unchanged, `addBear`
@@ -118,6 +124,7 @@ import { IDENTITY, transformed, type Matrix } from "./case-harness/matrix";
 import { rectCenter, type Point } from "./case-harness/point";
 import {
   drawnText as rawDrawnText,
+  drawnTextRuns as sharedTextRuns,
   textDraws,
   type TextDraw,
 } from "./case-harness/text";
@@ -1011,6 +1018,8 @@ export const captureStill = kit.captureStill;
  */
 export function resetTo(h: Harness): void {
   h.debug.reset();
+  // `reset` rewrites the whole strait, and every derived reading with it.
+  h.debug.reconcile();
 }
 
 /**
@@ -1088,6 +1097,9 @@ export function startCrossing(h: Harness, level = 1): void {
   h.debug.setScore(0);
   h.debug.setTimer(crossingTimer(level));
   h.debug.addCritter(START_COL, ROW_NEAR);
+  // The level, the rosters and the critter are all things a reading derives
+  // from, so the readings are brought into agreement before this returns.
+  h.debug.reconcile();
 }
 
 /**
@@ -1155,6 +1167,9 @@ export function poseVehicle(
       "the vehicle roster is empty",
     );
   }
+  // The critter's footing and a bear's swimming flag both derive from what
+  // covers a tile, so the reading is reconciled before anything reads it.
+  h.debug.reconcile();
   return vehicles[vehicles.length - 1].id;
 }
 
@@ -1177,6 +1192,9 @@ export function poseFloe(
       "the floe roster is empty",
     );
   }
+  // The critter's footing and a bear's swimming flag both derive from the
+  // floes, so the reading is reconciled before anything reads it.
+  h.debug.reconcile();
   return floes[floes.length - 1].id;
 }
 
@@ -1230,6 +1248,8 @@ export function poseBear(
   if (faculties.travel !== undefined) {
     h.debug.setBearTravel(id, faculties.travel);
   }
+  // A bear's `swimming` derives from the tile it is travelling into.
+  h.debug.reconcile();
   return id;
 }
 
@@ -1539,26 +1559,6 @@ export function drawnText(calls: readonly DrawCall[]): string[] {
 }
 
 /**
- * Whether the frame drew `text` as part of some RAW run of text, ignoring case.
- *
- * Substring rather than equality on purpose: the copy a check asserts is the
- * case's own, but how a build presents it is the build's, and a menu entry is
- * commonly drawn with a selection marker or padding around it. Requiring the
- * exact run would fail a screen that shows precisely the right words.
- *
- * A DIFFERENT QUESTION FROM THE PACKAGE'S `drewText`, which reads off the
- * LOGICAL runs the frame spells rather than off the calls that spelled them: a
- * heading letter-spaced a glyph per `fillText` is one string there and many
- * here. Every screen-copy reading in this project is taken over the placed spans
- * already — see `screens/screens.ts` — so this stays the raw reading it has
- * always been, under this case's own name.
- */
-export function drewText(calls: readonly DrawCall[], text: string): boolean {
-  const wanted = text.trim().toLowerCase();
-  return drawnText(calls).some((drawn) => drawn.toLowerCase().includes(wanted));
-}
-
-/**
  * The geometry calls a frame made, by name.
  *
  * Enough of a count to compare two frames of the same scene: a frame that drew a
@@ -1752,6 +1752,45 @@ export type TextSpan = TextDraw;
  */
 export function drawnTextSpans(h: Harness): TextSpan[] {
   return allInLogical(h.viewport(), textDraws(h.calls));
+}
+
+/* ---- Logical runs of text -------------------------------------------------- */
+//
+// A build that letter-spaces a heading draws a glyph per `fillText`, which is
+// the only portable way to letter-space canvas text, and specs/ui.md fixes the
+// COPY a screen shows while leaving its typography to the build. So a check that
+// asserts copy reads it off the logical RUN the frame spells, never off the
+// `fillText` split that spelled it. The merge is the shared harness's
+// (`case-harness/text.ts`): side-by-side draws on one baseline coalesce into the
+// string they spell, decided in device pixels where the calls were made, off the
+// width and alignment the recorder measured on each text call. Every raw string
+// is a substring of the run it belongs to, so coalescing can only add a match.
+//
+// WHAT STAYS RAW. {@link drawnText} and {@link drawnTextSpans} are untouched:
+// the overlay checks diff line SETS off `drawnText` and must not see merged
+// text, and a reader that needs each draw's own extent asks a different
+// question, since a merged run is wider than any of its members. Every copy
+// reader opts in.
+
+/**
+ * Every logical run of text the last frame spelled, placed in stage units.
+ *
+ * The placed companion to the shared harness's `drawnTextLines`: its runs,
+ * which it places in device pixels by walking the transform ops the frame
+ * recorded — the pipeline's own `setTransform` fit and camera among them, made
+ * through this same recorded context every frame — carried back through the
+ * engine's fit by the same `allInLogical` {@link drawnTextSpans} uses. A run
+ * keeps the placement of its first draw, so a run of one draw comes back exactly
+ * as {@link drawnTextSpans} reports it.
+ *
+ * The frame is whatever `h.calls` currently holds, as with
+ * {@link drawnTextSpans}. This is what every copy reader reads:
+ * `screens/screens.ts` takes the runs anchored on the strait,
+ * `presentation/hud.ts` the runs anchored in the bar, and the items that find a
+ * readout by what it says look it up here.
+ */
+export function drawnTextRuns(h: Harness): TextSpan[] {
+  return allInLogical(h.viewport(), sharedTextRuns(h.calls));
 }
 
 /* -------------------------------------------------------------------------- */

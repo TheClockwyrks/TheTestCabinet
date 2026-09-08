@@ -23,8 +23,8 @@ environment, and how external orchestrators are resolved, see
 
 ## Built-in orchestrators
 
-| Orchestrator | Slug | What it does |
-| --- | --- | --- |
+| Orchestrator                         | Slug       | What it does                                                |
+| ------------------------------------ | ---------- | ----------------------------------------------------------- |
 | [One-shot](/orchestrators/one-shot/) | `one-shot` | A single harness session driven to completion. The default. |
 
 The built-ins are embedded into `crates/core` at build time, so a backend-driven

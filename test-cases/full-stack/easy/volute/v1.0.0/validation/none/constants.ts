@@ -488,6 +488,7 @@ export const REQUIRED_OPS = [
   "setAutoStep",
   "step",
   "reset",
+  "reconcile",
   "snapshot",
   "setScreen",
   "setLevel",

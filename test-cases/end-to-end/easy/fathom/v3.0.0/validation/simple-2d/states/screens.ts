@@ -17,9 +17,23 @@
 //   reference implementations draw the selected item as `> DIVE <`. Requiring a
 //   whole drawn run to equal the copy would fail a screen showing precisely the
 //   right words, and so would requiring the copy to fall inside one run, since a
-//   build is free to draw a line in pieces. So the frame's runs are joined into
-//   one string and matched by substring, folded to upper case because
-//   `specs/ui.md` states the copy in capitals and says nothing about case.
+//   build is free to draw a line in pieces. The shared harness's `drewText` reads
+//   exactly that way — a substring, ignoring case since `specs/ui.md` states the
+//   copy in capitals and says nothing about case, over the runs sharing a
+//   baseline joined — so every copy check reads it directly. What this file adds
+//   is ORDER, which `drewText` does not decide: each menu's items stack the way
+//   `specs/ui.md` lists them.
+//
+//   AND THE RUNS READ ARE THE LOGICAL ONES, NEVER THE `fillText` SPLIT. A build
+//   that letter-spaces a heading draws one glyph per call, which is the only
+//   portable way to letter-space canvas text, and `specs/ui.md` fixes the copy a
+//   screen shows while leaving its spacing to the build. The shared harness's
+//   `drawnTextRuns` merges side-by-side draws on one baseline back into the run
+//   they spell, and `drawnTextLines` is those runs as strings, so `FATHOM` drawn
+//   a glyph at a time reads as `FATHOM` rather than as `F | A | T | H | O | M`.
+//   Every raw string is a substring of its run, so the merge can only add a
+//   match and never take one away. The harness's own `drawnText` stays the raw
+//   split.
 //
 //   HOW LONG DID A SCREEN HOLD, AND DID ANYTHING MOVE BEHIND IT? `specs/ui.md`
 //   times the countdown and the cleared interstitial on "the simulation's own
@@ -33,15 +47,10 @@
 // the predator poses come from `specs/instrumentation.md`, and every key it
 // presses is one `specs/movement.md` binds.
 
-import { assertMatches } from "../assert";
+import { drawnTextLines } from "../case-harness/text";
 import { BINDINGS } from "../constants";
 import { stageCatch } from "../fixtures";
-import {
-  DIR_KEY,
-  drawnText as textRuns,
-  type DrawCall,
-  type Harness,
-} from "../harness";
+import { DIR_KEY, type DrawCall, type Harness } from "../harness";
 import { FathomSnapshot } from "../surface";
 
 /** The key `specs/movement.md` binds `confirm` to first: it takes a menu item. */
@@ -77,23 +86,29 @@ export async function frameOps(h: Harness): Promise<DrawCall[]> {
 }
 
 /**
- * Every run the frame drew, folded to upper case and joined for one reading.
+ * Where in the frame's reading order the first logical run spelling `text`
+ * stands, or `-1` where none does.
  *
- * The runs themselves are the harness's `drawnText`; what this adds is the FORM
- * these points read them in — one string, so a screen's copy is matched by
- * substring across however many runs a build split it into.
+ * ORDER is the one fact the two menu points read that the shared harness's copy
+ * readers do not answer: `specs/ui.md` stacks each menu's items in a fixed order,
+ * and `drewText` decides only that an item is there. So this reads the shared
+ * harness's `drawnTextLines` — every logical run the frame spelled, in reading
+ * order down the frame and then across it — and places `text` at the first run
+ * that spells it the way `drewText` matches copy: a substring ignoring case,
+ * with the whitespace folded out of both sides. A menu point asserts every
+ * placing it compares is not `-1` before comparing, because `-1` sorts before
+ * everything.
+ *
+ * One run, not one baseline: `drewText` also joins the runs that share a
+ * baseline, so an item drawn as two runs a wide gap apart on one line would pass
+ * it and still not be placed here. All three references draw each item in one
+ * call, and under a measured recorder an ordinary word space merges into the run
+ * around it, so nothing the copy check accepts splits.
  */
-export function drawnText(ops: readonly DrawCall[]): string {
-  return textRuns(ops).join(" | ").toUpperCase();
-}
-
-/** The frame drew `text` somewhere in some run of text, ignoring case. */
-export function assertDrew(
-  ops: readonly DrawCall[],
-  text: string,
-  context: string,
-): void {
-  assertMatches(drawnText(ops), text.toUpperCase(), context);
+export function runOrder(ops: readonly DrawCall[], text: string): number {
+  const fold = (copy: string): string => copy.replace(/\s+/g, "").toUpperCase();
+  const wanted = fold(text);
+  return drawnTextLines(ops).findIndex((run) => fold(run).includes(wanted));
 }
 
 /* -------------------------------------------------------------------------- */

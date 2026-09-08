@@ -157,7 +157,7 @@ async function main(): Promise<void> {
       case "refine":
         // The panel's refinement control is the press's own: it refines whatever is
         // selected and never touches a combination tower's level (specs/hud.md).
-        game.upgradeQuality();
+        game.tryUpgradeQuality();
         break;
       case "upgrade":
         // The `upgrade` ACTION raises a selected combination tower's level, and refines
@@ -167,7 +167,7 @@ async function main(): Promise<void> {
           const sel = game.selected();
           if (sel && sel.kind === "component" && sel.combo)
             game.upgradeComboSelected();
-          else game.upgradeQuality();
+          else game.tryUpgradeQuality();
         }
         break;
       case "downgrade":
@@ -245,7 +245,7 @@ async function main(): Promise<void> {
     if (game.state === "playing" && x < PANEL_X && y > BOARD_Y0) {
       if (game.holding) {
         const a = game.board.pixelToAnchor(x, y);
-        game.placeStamp(a.col, a.row);
+        game.tryPlaceStamp(a.col, a.row);
       } else {
         game.selectAt(x, y, isActionHeld("modify"));
       }

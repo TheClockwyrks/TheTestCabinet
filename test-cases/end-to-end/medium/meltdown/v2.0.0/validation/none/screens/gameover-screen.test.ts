@@ -54,10 +54,10 @@ import { ENDING_ITEMS, modeFigures } from "../constants";
 import {
   captureStill,
   createHarness,
-  drewText,
   startRun,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/index";
 import { drewNumber, reactorTexts } from "./copy";
 
 /** The row the lost run was played on. */

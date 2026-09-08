@@ -26,7 +26,7 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
-import { textDraws } from "../text";
+import { textRuns } from "../text";
 import { frameOps } from "../states/screens";
 import { LEGIBLE_MIN, TOP_STRIP, legibility, readoutOf } from "./readouts";
 
@@ -44,7 +44,7 @@ it("draws the KINDLE dive label in the top strip, legibly", async () => {
   await startPlaying(h);
   await h.debug.clearPredators();
 
-  const drawn = textDraws(await frameOps(h));
+  const drawn = textRuns(await frameOps(h));
   // Before the assertions, so a failing check still leaves the HUD it read.
   await captureStill(h, "hud");
 

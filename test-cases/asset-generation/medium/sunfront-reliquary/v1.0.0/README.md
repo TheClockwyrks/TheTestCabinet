@@ -35,14 +35,14 @@ contradict them.
 
 ## Contents
 
-| Path             | Seeded to run? | Purpose                                                    |
-| ---------------- | -------------- | ---------------------------------------------------------- |
-| `specs/brief.md` | Yes            | The self-contained sculpting-and-rigging brief.            |
-| `prompt.hbs`     | No             | Rendered into the model's prompt; not seeded.              |
-| `test-case.toml` | No             | Manifest: voxel volume, tool, output, animations, review.  |
-| `variants/`      | No             | One TOML file per variant (listed in `variants`).          |
-| `description.md` | No             | Site blurb.                                                |
-| `README.md`      | No             | This overview.                                             |
+| Path             | Seeded to run? | Purpose                                                   |
+| ---------------- | -------------- | --------------------------------------------------------- |
+| `specs/brief.md` | Yes            | The self-contained sculpting-and-rigging brief.           |
+| `prompt.hbs`     | No             | Rendered into the model's prompt; not seeded.             |
+| `test-case.toml` | No             | Manifest: voxel volume, tool, output, animations, review. |
+| `variants/`      | No             | One TOML file per variant (listed in `variants`).         |
+| `description.md` | No             | Site blurb.                                               |
+| `README.md`      | No             | This overview.                                            |
 
 A run receives the seeded brief, the `voxel-anim` binary, and the pre-seeded
 `rig.json`, which declares no parts or joints. There is no target model and no

@@ -8,8 +8,12 @@
 //
 //   - THE COPY IS THE CASE'S OWN. `TITLE_TEXT`, `TAGLINE_TEXT`, `TITLE_ITEMS`,
 //     `MODE_ITEMS`, `DIFFICULTY_ITEMS`, `PAUSE_ITEMS` and `ENDING_ITEMS` are
-//     seeded constants, so a run of text is looked for by the string the case
-//     handed the build rather than by a literal written here.
+//     seeded constants, so copy is looked for by the string the case handed the
+//     build rather than by a literal written here. WHETHER a screen drew its copy
+//     is never decided here: a suite asks the package's `drewText`, from
+//     `../case-harness/text`, over the frame's calls. What this file decides is
+//     WHICH run of text is the row — {@link runFor} — for the checks that go on
+//     to read the pixels over it.
 //   - EVERY FIGURE A SCREEN REPORTS IS A NUMBER. `specs/screens.md` fixes not one
 //     thing about how a screen formats what it reports — a build may draw
 //     `SCORE 875`, `875 PTS`, `Score: 875` or, for a long figure, `12,345` — so a
@@ -29,20 +33,55 @@
 import { fail } from "../assert";
 import {
   colorDistance,
-  drawnTextSpans,
   renderFrame,
+  spelledRuns,
   type ControlRect,
   type Harness,
   type Rgb,
+  type TextRun,
   type TextSpan,
 } from "../harness";
 
 /* ---- Text ----------------------------------------------------------------- */
 
-/** Run one frame and hand back every run of text it drew, placed in logical units. */
-export async function readScreen(h: Harness): Promise<TextSpan[]> {
+/**
+ * Run one frame and hand back every run of text it drew, placed in logical units.
+ *
+ * The LOGICAL runs the frame spells (`spelledRuns`), not the `fillText`
+ * split: a build that letter-spaces its menu draws each row a glyph per call,
+ * and a row found by its copy or a figure read as a token wants the words the
+ * screen shows, not how the build spaced them. Each run also carries the spans
+ * it was spelled from, because the merge concatenates verbatim inside the run's
+ * own tracking: a row's label and its figure drawn as two calls tight together
+ * read as the one run `EASY500`, which is neither the row nor a token `EASY`. So
+ * {@link runFor}, which prefers the run that IS the copy, and {@link saysStem},
+ * a token reading, look at the parts beside the run, and keep every match they
+ * had call by call. Coalescing only ever adds a match.
+ */
+export async function readScreen(h: Harness): Promise<TextRun[]> {
   await renderFrame(h);
-  return drawnTextSpans(h);
+  return spelledRuns(h);
+}
+
+/**
+ * A run of text that may name the spans it was spelled from: a {@link TextRun},
+ * or a bare span, which spells itself.
+ */
+export type Spelled = TextSpan & { parts?: readonly TextSpan[] };
+
+/**
+ * Every string a run shows: the run itself, and each raw span it was spelled
+ * from, each once.
+ *
+ * What every reading on a token boundary is made over — a stem, and a FIGURE
+ * too, for the reason {@link readScreen} gives: the merge concatenates verbatim
+ * inside the run's tracking, so a score and a wave count drawn tight in two
+ * calls, `875` and `12`, come back as the one run `87512`, which is a figure neither of them is, and
+ * only the parts still carry the two the screen reported.
+ */
+function spellings(run: Spelled): string[] {
+  const texts = [run.text, ...(run.parts ?? []).map((part) => part.text)];
+  return texts.filter((text, i) => texts.indexOf(text) === i);
 }
 
 /** A run's text, trimmed and upper-cased — how every comparison here is made. */
@@ -51,21 +90,39 @@ function normalize(text: string): string {
 }
 
 /**
- * The run that drew `copy`, or `undefined` when no run carries it.
+ * The run that IS the row reading `copy`, placed where the build drew it, or
+ * `undefined` when no single run carries it.
  *
- * A run that IS the copy wins over a run that merely contains it, and among
- * containing runs the shortest wins. Both rules are there for the same reason:
- * `TITLE_ITEMS` holds `PLAY` and `HOW TO PLAY`, so a bare substring search for
- * `PLAY` would happily answer with the other row. A build free to decorate its
- * highlighted row — `> PLAY`, `[PLAY]` — is still answered with its own row
- * rather than with the longer one.
+ * A PLACEMENT reading, not a copy check. Whether the screen drew `copy` at all is
+ * the package's `drewText` (`../case-harness/text`), which every suite asks
+ * before it comes here; this decides WHICH of the frame's runs is the row, so a
+ * check can box the pixels over it. A run that IS the copy wins over a run that
+ * merely contains it, and among containing runs the shortest wins. Both rules
+ * are there for the same reason: `TITLE_ITEMS` holds `PLAY` and `HOW TO PLAY`,
+ * so taking the first run mentioning `PLAY` would happily answer with the other
+ * row. A build free to decorate its highlighted row — `> PLAY`, `[PLAY]` — is
+ * still answered with its own row rather than with the longer one.
+ *
+ * A run that IS the copy is looked for among the runs first and then among the
+ * spans they were spelled from, for the reason {@link readScreen} gives: a row
+ * whose label merged with a figure beside it is still answered with the label
+ * as it was drawn, placed where it was drawn. Containment is asked of the runs
+ * alone, since a span holding the copy belongs to a run that holds it too.
+ *
+ * One run, on purpose: a row is boxed as one span, so copy the merge left in
+ * several runs along one baseline — which `drewText` still finds, reading the
+ * baseline joined — is copy this cannot place, and answers `undefined`.
  */
 export function runFor(
-  runs: readonly TextSpan[],
+  runs: readonly TextRun[],
   copy: string,
 ): TextSpan | undefined {
   const wanted = normalize(copy);
-  const exact = runs.find((run) => normalize(run.text) === wanted);
+  const exact =
+    runs.find((run) => normalize(run.text) === wanted) ??
+    runs
+      .flatMap((run) => run.parts)
+      .find((part) => normalize(part.text) === wanted);
   if (exact !== undefined) return exact;
   const holding = runs.filter((run) => normalize(run.text).includes(wanted));
   if (holding.length === 0) return undefined;
@@ -75,23 +132,25 @@ export function runFor(
 }
 
 /**
- * The run that drew `copy`, or a failure naming the copy the screen did not draw.
+ * The run that IS the row reading `copy`, placed, or a failure naming the row
+ * that could not be placed.
  *
- * `specs/screens.md` names the copy each screen draws as a seeded constant, so a
- * screen that drew none of it is a screen missing its content, and that is what
- * this says — with every run the screen DID draw as the actual, so a reviewer
- * reads what the build put on the screen instead.
+ * For a check that goes on to read the pixels over the row: {@link runFor}, with
+ * the absent case turned into a verdict. Asked only after the package's
+ * `drewText` has said the copy is on the screen, so a failure here is a row the
+ * build drew in no single run of text — with every run the screen DID draw as
+ * the actual, so a reviewer reads what the build put on the screen instead.
  */
 export function requireRun(
-  runs: readonly TextSpan[],
+  runs: readonly TextRun[],
   copy: string,
   context: string,
 ): TextSpan {
   const run = runFor(runs, copy);
   if (run === undefined) {
     return fail(
-      `a run of text reading ${JSON.stringify(copy)} on ${context} ` +
-        `(specs/screens.md)`,
+      `one run of text reading ${JSON.stringify(copy)} on ${context}, placed ` +
+        `where the build drew it (specs/screens.md)`,
       runs.map((entry) => entry.text),
     );
   }
@@ -105,17 +164,18 @@ export function requireRun(
  * names a subject rather than a sentence: a screen covering the redline TRIP may
  * say "trips", "tripped" or "the trip", and all three are the same subject
  * covered. The token boundary is what keeps it honest — a stem of `AIR` is not
- * answered by `REPAIR`.
+ * answered by `REPAIR`. Read over the run and the spans it was spelled from
+ * both, for the reason {@link readScreen} gives.
  */
-export function saysStem(runs: readonly TextSpan[], stem: string): boolean {
+export function saysStem(runs: readonly TextRun[], stem: string): boolean {
   const escaped = stem.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const pattern = new RegExp(`(^|[^A-Za-z0-9])${escaped}[A-Za-z]*`, "i");
-  return runs.some((run) => pattern.test(run.text));
+  return runs.some((run) => spellings(run).some((text) => pattern.test(text)));
 }
 
 /** Whether some run carries a token beginning with ANY of `stems`. */
 export function saysAnyStem(
-  runs: readonly TextSpan[],
+  runs: readonly TextRun[],
   stems: readonly string[],
 ): boolean {
   return stems.some((stem) => saysStem(runs, stem));
@@ -142,11 +202,19 @@ const DRAWN = new RegExp(
 /** Every group separator inside one figure, for dropping before it is read. */
 const GROUPS = new RegExp(GROUP, "g");
 
-/** Every number a run's text carries, in the order it carries them. */
-export function numbersIn(run: TextSpan): number[] {
-  return (run.text.match(DRAWN) ?? []).map((figure) =>
+/** Every number one string carries, in the order it carries them. */
+function figuresIn(text: string): number[] {
+  return (text.match(DRAWN) ?? []).map((figure) =>
     Number(figure.replace(GROUPS, "")),
   );
+}
+
+/**
+ * Every number a run carries: those its text carries, and those each span it
+ * was spelled from carries, for the reason {@link spellings} gives.
+ */
+export function numbersIn(run: Spelled): number[] {
+  return spellings(run).flatMap(figuresIn);
 }
 
 /**
@@ -157,7 +225,7 @@ export function numbersIn(run: TextSpan): number[] {
  * a wave count, a life count, a sum of money — is a whole number, and a build
  * that grouped a long one into digit triples reported that same whole number.
  */
-export function readsNumber(runs: readonly TextSpan[], value: number): boolean {
+export function readsNumber(runs: readonly Spelled[], value: number): boolean {
   return runs.some((run) => numbersIn(run).includes(value));
 }
 

@@ -84,12 +84,14 @@ it("carries a well-formed molecule for every reagent and every product", async (
     );
 
     const molecules: [string, Molecule][] = [
-      ...view.reagents.map(
-        (molecule, n): [string, Molecule] => [`${at}'s reagent ${n}`, molecule],
-      ),
-      ...view.products.map(
-        (molecule, n): [string, Molecule] => [`${at}'s product ${n}`, molecule],
-      ),
+      ...view.reagents.map((molecule, n): [string, Molecule] => [
+        `${at}'s reagent ${n}`,
+        molecule,
+      ]),
+      ...view.products.map((molecule, n): [string, Molecule] => [
+        `${at}'s product ${n}`,
+        molecule,
+      ]),
     ];
     for (const [where, molecule] of molecules) {
       assertGreaterThan(

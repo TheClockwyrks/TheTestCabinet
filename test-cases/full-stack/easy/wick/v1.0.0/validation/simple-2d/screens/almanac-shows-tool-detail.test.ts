@@ -25,9 +25,10 @@
 // `BASE_WEAPON_IDS`, so no key is pressed and a build with a broken list still
 // reaches the entry this point is about.
 //
-// THE TOLERANCE. The name, the labels and the line are matched as words in
-// order through `drewPhrase`, which admits any font, wrap, marker, or split
-// across runs. Each figure is matched as a number the frame wrote, within
+// THE TOLERANCE. The name, the labels and the line are matched as substrings
+// of the frame's text through the shared harness's `drewTextAnywhere`,
+// ignoring case and whitespace across every run the frame drew, which admits
+// any font, wrap, marker, or split across runs. Each figure is matched as a number the frame wrote, within
 // `FIGURE_TOLERANCE`, because specs/ui.md fixes the figure and its label but
 // fixes no place for it and no unit beside it: a build writing `1.35`,
 // `1.35 s`, or `1.35s` passes and a build writing another figure fails.
@@ -44,10 +45,10 @@ import {
 import {
   captureStill,
   createHarness,
-  drewPhrase,
   poseScene,
   type Harness,
 } from "../harness";
+import { drewTextAnywhere } from "../case-harness/text";
 import { drewFigure } from "./almanac";
 
 let h: Harness;
@@ -80,7 +81,7 @@ it("draws the weapon's name, its two stat labels, and its line", async () => {
     WEAPON_DESCRIPTIONS[TOOL],
   ];
   assertDeepEqual(
-    copy.filter((text) => !drewPhrase(calls, text)),
+    copy.filter((text) => !drewTextAnywhere(calls, text)),
     [],
     `the copy specs/ui.md gives ${WEAPON_NAMES[TOOL]}'s entry, missing from its frame`,
   );

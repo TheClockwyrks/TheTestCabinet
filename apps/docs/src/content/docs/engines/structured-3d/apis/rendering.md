@@ -15,12 +15,12 @@ built-in component draws; this page covers the pipeline that draws them.
 type RenderMode = "shaded" | "wireframe" | "unlit" | "normals";
 ```
 
-| Mode | World pass | Screen pass |
-| --- | --- | --- |
-| `shaded` | Every material as declared, lit by the scene's lights. The default. | The full picture: fills, strokes, images, text, tint, and opacity. |
-| `wireframe` | Every mesh as its edges in one flat color, lights ignored. | Each component's outline alone, at one stroke width, with images reduced to their bounds. |
-| `unlit` | Every material's base color and map at full opacity, lights ignored. | Fills and images at full opacity with every tint dropped. |
-| `normals` | Every surface colored by its world-space normal, lights ignored. | The full picture. |
+| Mode        | World pass                                                           | Screen pass                                                                               |
+| ----------- | -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `shaded`    | Every material as declared, lit by the scene's lights. The default.  | The full picture: fills, strokes, images, text, tint, and opacity.                        |
+| `wireframe` | Every mesh as its edges in one flat color, lights ignored.           | Each component's outline alone, at one stroke width, with images reduced to their bounds. |
+| `unlit`     | Every material's base color and map at full opacity, lights ignored. | Fills and images at full opacity with every tint dropped.                                 |
+| `normals`   | Every surface colored by its world-space normal, lights ignored.     | The full picture.                                                                         |
 
 The mode belongs to the pipeline and applies to everything it draws, so every
 game has all four modes available. In the world pass the mode substitutes
@@ -38,12 +38,12 @@ interface Renderer {
 }
 ```
 
-| Member | Effect |
-| --- | --- |
-| `mode` | The mode in force, `shaded` until it is set. |
-| `setMode` | Sets the mode. The next frame the pipeline runs draws under it. |
-| `collisionOverlay` | Whether the collision overlay draws. |
-| `setCollisionOverlay` | Turns the collision overlay on or off. |
+| Member                | Effect                                                          |
+| --------------------- | --------------------------------------------------------------- |
+| `mode`                | The mode in force, `shaded` until it is set.                    |
+| `setMode`             | Sets the mode. The next frame the pipeline runs draws under it. |
+| `collisionOverlay`    | Whether the collision overlay draws.                            |
+| `setCollisionOverlay` | Turns the collision overlay on or off.                          |
 
 The renderer is reached as `engine.renderer` and is available from
 construction, so whoever holds the engine drives both switches.
@@ -177,13 +177,13 @@ abstract class DrawComponent extends RenderComponent {
 }
 ```
 
-| Member | Meaning |
-| --- | --- |
-| `ctx` | The screen layer's 2D context, already carrying the viewport transform. |
-| `mode` | The mode in force for this frame. |
-| `frame` | The frame counter, the accumulated simulated time, and the most recent delta. |
-| `viewport` | The current logical-to-device fit, as a snapshot the caller owns. |
-| `camera` | The camera's pose and projection for this frame, as a snapshot the caller owns. |
+| Member     | Meaning                                                                         |
+| ---------- | ------------------------------------------------------------------------------- |
+| `ctx`      | The screen layer's 2D context, already carrying the viewport transform.         |
+| `mode`     | The mode in force for this frame.                                               |
+| `frame`    | The frame counter, the accumulated simulated time, and the most recent delta.   |
+| `viewport` | The current logical-to-device fit, as a snapshot the caller owns.               |
+| `camera`   | The camera's pose and projection for this frame, as a snapshot the caller owns. |
 
 `DrawComponent` is the direct-drawing path onto the screen layer, for a case
 that measures the drawing itself. The engine calls `draw` in the component's

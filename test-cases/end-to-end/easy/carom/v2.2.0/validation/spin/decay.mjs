@@ -81,7 +81,10 @@ export default function item() {
       const flyFor = async (ticks) => {
         for (let t = 0; t < ticks; t += RECENTER_CHUNK) {
           await api.advance(Math.min(RECENTER_CHUNK, ticks - t));
-          await api.call("setBall", 0, { x: 640, y: 360 }); // recenter; keep vx/vy/spin
+          // Recenter; keep vx/vy/spin. The velocity is what `speed` is derived
+          // from, so the readings are reconciled before the next measurement.
+          await api.call("setBall", 0, { x: 640, y: 360 });
+          await api.call("reconcile");
         }
       };
 
@@ -98,6 +101,7 @@ export default function item() {
           vx: speed,
           vy: 0,
         }); // keep spin
+        await api.call("reconcile");
         return actCurveOffset(api, MEASURE_TICKS);
       };
 
@@ -134,8 +138,12 @@ export default function item() {
       );
       // The flight has to straighten with the number. Each bend must match the spin
       // the ball carried through it...
-      assertCurved(check, earlyBend, { who: "the shot while its spin is fresh" });
-      assertCurved(check, lateBend, { who: "the same shot once its spin has decayed" });
+      assertCurved(check, earlyBend, {
+        who: "the shot while its spin is fresh",
+      });
+      assertCurved(check, lateBend, {
+        who: "the same shot once its spin has decayed",
+      });
       // ...and the late one must be a fraction of the early one: the decay leaves
       // about a quarter of the spin by the time the second is measured, so a build
       // whose flight keeps bending as hard as it did at the hit fails here even

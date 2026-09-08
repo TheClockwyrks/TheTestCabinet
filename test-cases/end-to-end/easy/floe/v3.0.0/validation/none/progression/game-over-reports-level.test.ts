@@ -27,8 +27,8 @@
 // the HUD printed. The runs are therefore filtered by where they were anchored.
 //
 // THE FIGURE IS MATCHED AS A WHOLE TOKEN. A `6` inside a score of `1650` is not
-// the level reached, so the digits must stand with no letter or digit against
-// either end. The score is posed to `POSED_SCORE`, which carries neither digit at
+// the level reached, so the digits must stand with no digit against either end
+// (a letter may: coalesced runs spell a label and its figure as `LEVEL6`). The score is posed to `POSED_SCORE`, which carries neither digit at
 // all, so nothing else on the screen can supply or mask one.
 //
 // It does NOT require the current level to be absent from the screen. specs/ui.md
@@ -41,8 +41,8 @@ import { HUD_H } from "../constants";
 import {
   captureStill,
   createHarness,
+  drawnTextRuns,
   startCrossing,
-  textDraws,
   type DrawCall,
   type Harness,
 } from "../harness";
@@ -59,9 +59,13 @@ const REACHED_LEVEL = 6;
  */
 const POSED_SCORE = 1250;
 
-/** Every run of text the frame drew over the strait, where the screens are drawn. */
+/**
+ * Every logical run of text the frame spelled over the strait, where the screens
+ * are drawn — the runs, not the `fillText` calls, so a figure letter-spaced a
+ * glyph per call is read as the figure it spells.
+ */
 function screenRuns(calls: readonly DrawCall[]): string[] {
-  return textDraws(calls)
+  return drawnTextRuns(calls)
     .filter((draw) => draw.y >= HUD_H)
     .map((draw) => draw.text);
 }
@@ -103,13 +107,15 @@ function settings(figure: number): string[] {
 
 /**
  * Whether some run of that text carries `figure`, under any of its settings, with
- * no letter or digit either side — so a `6` is still not found inside `1250`.
+ * no digit either side — so a `6` is still not found inside `1250`, while the
+ * `6` of `LEVEL6` is: the runs are coalesced verbatim, so a label and its figure
+ * drawn a measured space apart spell one run with no space between them.
  */
 function names(runs: readonly string[], figure: number): boolean {
   const wanted = settings(figure)
     .map((setting) => setting.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
     .join("|");
-  const pattern = new RegExp(`(^|[^A-Za-z0-9])(?:${wanted})([^A-Za-z0-9]|$)`);
+  const pattern = new RegExp(`(^|[^0-9])(?:${wanted})([^0-9]|$)`);
   return runs.some((run) => pattern.test(run));
 }
 

@@ -11,10 +11,10 @@ capture to the next". Two consecutive captures over unchanged code contradict
 this. Comparing the two captures directly, rather than either against the
 committed bytes, the `none` engine rewrote these replays:
 
-| Replay | Target |
-| --- | --- |
-| `drones.flux-cycle-holds__hold` | `none/base` |
-| `ship.fire-cadence__cadence` | `none/base` |
+| Replay                                | Target      |
+| ------------------------------------- | ----------- |
+| `drones.flux-cycle-holds__hold`       | `none/base` |
+| `ship.fire-cadence__cadence`          | `none/base` |
 | `swarm.formation-holds-slot__holding` | `none/base` |
 
 The set is not fixed. A capture compared against the committed baselines moved

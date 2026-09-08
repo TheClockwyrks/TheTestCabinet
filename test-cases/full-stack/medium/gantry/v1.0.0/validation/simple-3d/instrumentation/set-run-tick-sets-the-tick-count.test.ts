@@ -25,10 +25,13 @@
 // AFTER the pose. It runs after both readings either way, so what it draws
 // decides nothing here.
 //
-// The crane, the tape and the empty yard are here only because a run has to be
-// in progress for a run pose to apply: the tape's one step commands the `hoist`
-// to the value it already stands at, which `specs/program.md` makes a step "done
-// on the tick it is issued", so nothing in the yard moves while this is read.
+// The crane, the tape and the empty yard are here because this point reads the
+// clock of a run IN PROGRESS — the item starts one before the pose — and not
+// because a run pose needs one: the first seven run poses "pose the run the
+// snapshot reports", and "whether a run is live is not a condition on them".
+// The tape's one step commands the `hoist` to the value it already stands at,
+// which `specs/program.md` makes a step "done on the tick it is issued", so
+// nothing in the yard moves while this is read.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
