@@ -49,6 +49,8 @@ use test_cabinet_core::execution::{
 };
 use test_cabinet_core::{Error, Result, SKIPPED_DIRS};
 
+use crate::collect::{CollectListener, Received, uploader_command};
+
 /// The container working directory the seeded repository is copied into. Matches
 /// the run-container images' `WORKDIR` (`containers/base/Dockerfile`).
 const WORK_DIR: &str = "/work";
@@ -145,25 +147,26 @@ const SAFE_TO_EVICT_FALSE: &str = "false";
 /// genuinely been abandoned. It is a leak backstop, not a run timeout.
 const DEFAULT_POD_ACTIVE_DEADLINE: Duration = Duration::from_secs(24 * 60 * 60);
 
-/// How many times to attempt the streaming `tar` artifact collection before giving
-/// up. The collection rides the kube exec WebSocket, where a transient tunnel drop
-/// surfaces as a missing exit `Status` (`tar exit -1`) on an otherwise-finished run,
-/// and where the tail of stdout can go missing behind an exit `Status` of `0` (an
-/// archive without its [`COLLECT_END_MARK`]); `tar -c` is read-only so re-running
-/// it is safe. See `KubernetesArtifactCollector`.
+/// How many times to attempt the run-tree collection before giving up. Each
+/// attempt is a fresh upload from the sandbox over the driver's own listener (see
+/// [`crate::collect`]); the listener verifies the tree whole, so a failed attempt
+/// is one that did not arrive whole — a dropped connection, a stalled stream, an
+/// uploader that could not start. `tar -c` is read-only, so re-running it is safe.
+/// See `KubernetesArtifactCollector`.
 const COLLECT_ATTEMPTS: u32 = 4;
 
-/// The bytes the collection pipeline prints to stdout after the archive, so the
-/// host can tell a whole stream from a truncated one.
-///
-/// An exec's exit `Status` is not proof its stdout arrived: the client stops reading
-/// the moment the status frame lands, and Kubernetes has been seen to drop the tail
-/// of a large exec stdout under load with no error at all
-/// (kubernetes/kubernetes#124571). Stdout is delivered in order, though, so if the
-/// last bytes of the stream made it, everything before them did. The mark is printed
-/// only after `tar` exited `0` (see `collect_tar_command`), and it is ASCII that a
-/// tar stream, which ends in zero-filled blocks, never ends with on its own.
-const COLLECT_END_MARK: &[u8] = b"--tcab-collect-complete--";
+/// How long to keep waiting for the uploader's exec to report after the listener
+/// has verified its upload. The exec's outcome no longer matters by then; this
+/// only lets its stderr reach the log before the attempt is closed.
+const UPLOADER_EXIT_GRACE: Duration = Duration::from_secs(30);
+
+/// How long to keep waiting for a verified upload after the uploader's exec has
+/// reported an exit code. The uploader exits `0` only on the listener's
+/// acknowledgement, which follows verification, so the two normally land
+/// together; this covers the verified upload being the later of the pair to be
+/// polled. An exec that reported no exit code at all is a different case — see
+/// `KubernetesArtifactCollector::upload_attempt`.
+const UPLOAD_AFTER_EXIT_GRACE: Duration = Duration::from_secs(5);
 
 /// Configuration for the Kubernetes runtime, resolved from the driver's
 /// environment (see [`crate::config`]). Everything here scopes *sandbox pods*;
@@ -664,9 +667,11 @@ impl KubernetesContainerRuntime {
     }
 
     /// Run a command streaming its stdout to `out` (a host file), returning the
-    /// exit code and captured stderr. This is the copy-**out** path: the working
-    /// tree can be large, so the `tar` stream is streamed to disk rather than held
-    /// in memory.
+    /// exit code and captured stderr. This carries the best-effort salvage of one
+    /// file out of a hung run (see `collect_file`), and nothing a run's outcome
+    /// depends on: exec stdout can be cut short while the exit status still
+    /// reports success, which is why the produced tree travels over the driver's
+    /// own channel instead (see [`crate::collect`]).
     async fn exec_stream_stdout(
         &self,
         pod: &str,
@@ -678,8 +683,8 @@ impl KubernetesContainerRuntime {
             .stdin(false)
             .stdout(true)
             .stderr(true)
-            // A produced run tree is the largest thing this runtime moves; the
-            // client's 1 KiB default pipe would hand it back a kilobyte at a time.
+            // A salvaged journal can run to megabytes; the client's 1 KiB default
+            // pipe would hand it back a kilobyte at a time.
             .max_stdout_buf_size(EXEC_PIPE_BUF);
         let mut attached = self
             .pods()
@@ -985,8 +990,8 @@ impl ContainerRuntime for KubernetesContainerRuntime {
     }
 }
 
-/// Collects a finished run's working tree by streaming it out of the pod with
-/// `tar` and unpacking it on the host.
+/// Collects a finished run's working tree over the driver's own collection channel
+/// (see [`crate::collect`]) and unpacks it on the host.
 #[derive(Clone)]
 pub struct KubernetesArtifactCollector {
     runtime: KubernetesContainerRuntime,
@@ -1014,82 +1019,143 @@ impl KubernetesArtifactCollector {
     }
 }
 
+impl KubernetesArtifactCollector {
+    /// One upload: start the uploader in the pod and receive its stream on the
+    /// listener, concurrently.
+    ///
+    /// The listener's verdict is the attempt's verdict, and the exec that started
+    /// the uploader never overrules it. The exec is consulted only when no verified
+    /// upload has landed yet:
+    ///
+    /// - An uploader that reported an exit code has stopped, so the upload it was
+    ///   making is over; the attempt fails with its exit code and stderr once a
+    ///   short grace for the verified upload to be polled has passed.
+    /// - An exec that reported no exit code has lost its WebSocket, not its
+    ///   uploader: the process in the pod keeps streaming to the listener, which
+    ///   is the channel that matters. The attempt keeps waiting for the listener's
+    ///   own verdict, which its idle bound guarantees.
+    async fn upload_attempt(
+        &self,
+        pod: &str,
+        command: &[String],
+        listener: &CollectListener,
+        archive: &Path,
+    ) -> Result<Received> {
+        let upload = self.runtime.exec_raw(pod, command, None);
+        let receive = listener.receive(archive);
+        tokio::pin!(upload);
+        tokio::pin!(receive);
+        tokio::select! {
+            received = &mut receive => {
+                let received = received?;
+                // Let the uploader's exit reach the log; nothing turns on it now.
+                match tokio::time::timeout(UPLOADER_EXIT_GRACE, &mut upload).await {
+                    Ok(Ok(exec)) => tracing::debug!(
+                        pod,
+                        exit_code = exec.exit_code,
+                        stderr = %exec.stderr.trim(),
+                        "the collection uploader exited",
+                    ),
+                    Ok(Err(err)) => tracing::debug!(
+                        pod,
+                        error = %err,
+                        "the collection uploader's exec failed; the upload was already verified",
+                    ),
+                    Err(_elapsed) => tracing::debug!(
+                        pod,
+                        "the collection uploader's exec did not report in time; the upload was already verified",
+                    ),
+                }
+                Ok(received)
+            }
+            exec = &mut upload => {
+                let exec = match exec {
+                    Ok(exec) => exec,
+                    Err(err) => {
+                        // The exec could not even be started; nothing is uploading.
+                        return Err(err);
+                    }
+                };
+                if exec.exit_code == NO_STATUS_EXIT_CODE {
+                    tracing::warn!(
+                        pod,
+                        "the collection uploader's exec stream was lost; waiting on the listener's verdict",
+                    );
+                    return receive.await;
+                }
+                match tokio::time::timeout(UPLOAD_AFTER_EXIT_GRACE, &mut receive).await {
+                    Ok(received) => received,
+                    Err(_elapsed) => Err(Error::ArtifactCollection(format!(
+                        "the collection uploader exited {} without completing an upload: {}",
+                        exec.exit_code,
+                        exec.stderr.trim()
+                    ))),
+                }
+            }
+        }
+    }
+}
+
 #[async_trait::async_trait]
 impl ArtifactCollector for KubernetesArtifactCollector {
     async fn collect(&self, container: &ContainerHandle) -> Result<ArtifactCollection> {
+        // The tree leaves the pod over the driver's own channel, never over exec
+        // stdout: the listener is bound on the driver's pod IP, the exec carries
+        // only the command that starts the uploader, and the upload is accepted
+        // only once its terminator's byte count and digest match what arrived. A
+        // driver without its pod IP has no address to offer the sandbox and cannot
+        // collect at all; the dispatcher wires it in through the downward API.
+        let host = self.runtime.config.pod_ip.clone().ok_or_else(|| {
+            Error::ArtifactCollection(
+                "TCAB_K8S_POD_IP is unset, so the sandbox has no address to upload the run tree to"
+                    .to_string(),
+            )
+        })?;
+        let listener = CollectListener::bind().await.map_err(|err| {
+            Error::ArtifactCollection(format!("binding the collection listener: {err}"))
+        })?;
+        let command = uploader_command(
+            &host,
+            listener.port(),
+            listener.token(),
+            WORK_DIR,
+            SKIPPED_DIRS,
+        );
+
         let dest = self
             .base_dir
             .join(format!("artifact-{}", cuid2::create_id()));
-
-        // `tar -c -C /work .` writes the working tree to stdout as a binary stream;
-        // the extracting `tar` ran as `node`, so it can read its own tree. Stream it
-        // to a scratch file (the tree can be large) and unpack into the native host
-        // destination. The regenerable dependency directories the published
-        // implementation never keeps are excluded here so they never enter the
-        // archive, and the pipeline ends by printing [`COLLECT_END_MARK`] after the
-        // archive so the host can prove the stream arrived whole (see
-        // `collect_tar_command`).
-        let command = collect_tar_command();
-
-        // Retry the streaming collection a few times. `tar -c` is read-only, so
-        // re-running it is safe, and every failure it guards against is transient:
-        // the collection rides the kube exec WebSocket, and that transport can
-        //
-        // - sever the long-lived stream (a managed API-server tunnel dropping it),
-        //   which surfaces as a missing terminating `Status` frame — `tar exit -1`
-        //   with empty stderr — even though the run finished and its tree is intact;
-        // - deliver the exit `Status` before the last of stdout, so `tar` reports
-        //   `0` for an archive the host received truncated. The client stops reading
-        //   the moment the status lands, and Kubernetes itself has been seen to drop
-        //   the tail of a large exec stdout under load without any error
-        //   (kubernetes/kubernetes#124571). That is what [`COLLECT_END_MARK`]
-        //   catches: an archive that does not end with it did not arrive whole, no
-        //   matter what exit code came with it. Without the mark the truncation
-        //   shows up later — as an unpack that fails mid-file, or worse, as a tree
-        //   silently missing its last files.
-        //
-        // Without the retry a single blip permanently fails an otherwise-successful
-        // run, since the dispatcher never retries a driver Job.
         let archive_path = self
             .base_dir
             .join(format!("artifact-{}.tar", cuid2::create_id()));
+
+        // Retry the upload a few times. Every failure the listener can report is
+        // transient from here — the sandbox is up and its tree is final — and the
+        // dispatcher never retries a driver Job, so one blip must not cost a run
+        // that has already paid for every one of its API calls. Unpacking is the
+        // one step outside the retry: an archive that verified byte-exact and then
+        // failed to unpack is a host-side problem another transfer cannot change.
+        std::fs::create_dir_all(&dest).map_err(|err| Error::ArtifactCollection(err.to_string()))?;
         for attempt in 1..=COLLECT_ATTEMPTS {
-            // A fresh destination per attempt: a failed unpack leaves a partial tree
-            // behind, and the next attempt must not stack on top of it.
-            let _ = std::fs::remove_dir_all(&dest);
-            std::fs::create_dir_all(&dest)
-                .map_err(|err| Error::ArtifactCollection(err.to_string()))?;
-
-            let mut archive = tokio::fs::File::create(&archive_path)
+            let failure = match self
+                .upload_attempt(&container.id, &command, &listener, &archive_path)
                 .await
-                .map_err(|err| {
-                    Error::ArtifactCollection(format!("creating scratch archive: {err}"))
-                })?;
-            let result = self
-                .runtime
-                .exec_stream_stdout(&container.id, &command, &mut archive)
-                .await;
-            drop(archive);
-
-            // Treat a non-zero `tar` exit, an exec transport error, a truncated
-            // stream, and an unpack failure all as retryable; surface the last one if
-            // every attempt is exhausted.
-            let failure = match result {
-                Ok((0, _)) => match verify_collected_archive(&archive_path) {
-                    Ok(()) => match unpack_archive_file(&archive_path, &dest) {
-                        Ok(()) => {
-                            let _ = std::fs::remove_file(&archive_path);
-                            return Ok(ArtifactCollection::new(dest));
-                        }
-                        Err(err) => err,
-                    },
-                    Err(err) => err,
-                },
-                Ok((exit_code, stderr)) => Error::ArtifactCollection(format!(
-                    "collecting `{WORK_DIR}` from run pod `{}` failed (tar exit {exit_code}): {}",
-                    container.id,
-                    stderr.trim()
-                )),
+            {
+                Ok(received) => {
+                    tracing::info!(
+                        pod = %container.id,
+                        bytes = received.bytes,
+                        attempt,
+                        "collected the run tree",
+                    );
+                    let unpack = unpack_archive_file(&archive_path, &dest);
+                    let _ = std::fs::remove_file(&archive_path);
+                    if unpack.is_err() {
+                        let _ = std::fs::remove_dir_all(&dest);
+                    }
+                    unpack?;
+                    return Ok(ArtifactCollection::new(dest));
+                }
                 Err(err) => err,
             };
             let _ = std::fs::remove_file(&archive_path);
@@ -1617,80 +1683,6 @@ fn pod_waiting_reason(pod: &Pod) -> Option<String> {
         .and_then(|cs| cs.state.as_ref())
         .and_then(|state| state.waiting.as_ref())
         .and_then(|waiting| waiting.reason.clone())
-}
-
-/// The command that streams the run's `/work` tree out of the pod to stdout as a
-/// tar archive followed by [`COLLECT_END_MARK`], excluding the regenerable
-/// dependency directories the published implementation never keeps
-/// ([`SKIPPED_DIRS`]).
-///
-/// Excluding them at pack time — rather than packing, unpacking on the host, then
-/// dropping them in `copy_tree` — keeps the archive small and, critically, avoids
-/// unpacking a `node_modules` full of platform-specific native binaries and
-/// package-manager `.bin/*` symlinks, which the host-side [`unpack_archive_file`]
-/// chokes on (the tree is discarded immediately afterward regardless). GNU tar's
-/// `--exclude` is unanchored, so a bare directory name matches that directory at
-/// any depth.
-///
-/// The mark is printed by a second command run only if `tar` exited `0` (`&&`), so
-/// the pipeline's exit code is `tar`'s whenever `tar` failed, and a stream that
-/// ends with the mark carries an archive `tar` finished writing. The host verifies
-/// and strips it with [`verify_collected_archive`]. No path or user input reaches
-/// the shell: every word here is a literal.
-fn collect_tar_command() -> Vec<String> {
-    let mut tar = vec!["tar".to_string(), "-c".to_string()];
-    tar.extend(SKIPPED_DIRS.iter().map(|dir| format!("--exclude={dir}")));
-    tar.extend([
-        "-f".to_string(),
-        "-".to_string(),
-        "-C".to_string(),
-        WORK_DIR.to_string(),
-        ".".to_string(),
-    ]);
-    let mark = std::str::from_utf8(COLLECT_END_MARK).expect("the end mark is ASCII");
-    vec![
-        "sh".to_string(),
-        "-c".to_string(),
-        format!("{} && printf '%s' '{mark}'", tar.join(" ")),
-    ]
-}
-
-/// Prove the collected stream arrived whole, and leave `archive` a plain tar file.
-///
-/// The stream ends with [`COLLECT_END_MARK`] only if every byte before it arrived
-/// (stdout is delivered in order) and `tar` exited `0` before it was printed. An
-/// archive that does not end with the mark was cut short in transit — whatever exit
-/// code came with it — and is reported as a collection failure for the caller to
-/// retry. One that does is truncated by the mark's length so `tar` never sees it.
-fn verify_collected_archive(archive: &Path) -> Result<()> {
-    use std::io::{Read, Seek, SeekFrom};
-
-    let mut file = std::fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open(archive)
-        .map_err(|err| Error::ArtifactCollection(format!("opening collected archive: {err}")))?;
-    let len = file
-        .metadata()
-        .map_err(|err| Error::ArtifactCollection(format!("sizing collected archive: {err}")))?
-        .len();
-    let mark_len = COLLECT_END_MARK.len() as u64;
-    let mut tail = vec![0u8; COLLECT_END_MARK.len()];
-    let complete = len >= mark_len
-        && file
-            .seek(SeekFrom::Start(len - mark_len))
-            .and_then(|_| file.read_exact(&mut tail))
-            .map_err(|err| Error::ArtifactCollection(format!("reading collected archive: {err}")))
-            .map(|()| tail == COLLECT_END_MARK)?;
-    if !complete {
-        return Err(Error::ArtifactCollection(format!(
-            "the collected archive arrived truncated: {len} bytes received and the stream \
-             does not end with the completion mark, so the exec transport dropped the \
-             tail of stdout behind tar's exit status"
-        )));
-    }
-    file.set_len(len - mark_len)
-        .map_err(|err| Error::ArtifactCollection(format!("trimming collected archive: {err}")))
 }
 
 /// Build a tar archive of the *contents* of `dir` (entries relative to the

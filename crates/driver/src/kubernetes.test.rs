@@ -500,55 +500,7 @@ fn tar_dir_contents_packs_relative_entries() {
     assert!(names.iter().any(|n| n == "sub/file.txt"), "{names:?}");
 }
 
-#[test]
-fn collect_tar_command_excludes_regenerable_dependency_dirs() {
-    let cmd = collect_tar_command();
-    // The pipeline runs under `sh -c`: `tar` streams the working tree to stdout
-    // (`-f -`) from `/work`, packing `.`, and only a `tar` that exited `0` gets the
-    // completion mark printed after it (`&&`).
-    assert_eq!(cmd.len(), 3, "{cmd:?}");
-    assert_eq!(&cmd[..2], ["sh", "-c"].map(String::from));
-    let pipeline = &cmd[2];
-    let (tar, mark) = pipeline
-        .split_once(" && ")
-        .expect("a `tar` command chained to the mark");
-    let tar: Vec<&str> = tar.split(' ').collect();
-    assert_eq!(tar.first(), Some(&"tar"));
-    assert!(tar.contains(&"-c"), "{tar:?}");
-    assert_eq!(tar[tar.len() - 5..], ["-f", "-", "-C", WORK_DIR, "."]);
-    let expected_mark = std::str::from_utf8(COLLECT_END_MARK).expect("ascii");
-    assert_eq!(mark, format!("printf '%s' '{expected_mark}'"));
-    // Every never-kept directory is excluded at pack time, before the `.` operand
-    // (GNU tar's `--exclude` is unanchored, so the bare name matches at any depth),
-    // so a `node_modules` full of native binaries and `.bin/*` symlinks never
-    // enters the archive the host must unpack.
-    for dir in SKIPPED_DIRS {
-        let flag = format!("--exclude={dir}");
-        let pos = tar.iter().position(|a| *a == flag);
-        assert!(pos.is_some(), "expected {flag} in {tar:?}");
-        let dot = tar.iter().position(|a| *a == ".").expect("`.` operand");
-        assert!(pos.unwrap() < dot, "{flag} must precede the `.` operand");
-    }
-    assert!(
-        SKIPPED_DIRS.contains(&"node_modules"),
-        "node_modules must be excluded from collection",
-    );
-}
-
-#[test]
-fn the_collect_end_mark_is_shell_safe_ascii_that_no_tar_stream_ends_with() {
-    // The mark is spliced into a single-quoted `sh -c` word, so it must carry no
-    // quote, and it must be something a tar stream — which ends in zero-filled
-    // blocks — cannot end with by itself.
-    let mark = std::str::from_utf8(COLLECT_END_MARK).expect("the mark is UTF-8");
-    assert!(mark.is_ascii());
-    assert!(!mark.contains('\''), "{mark}");
-    assert!(!mark.contains(char::is_whitespace), "{mark}");
-    assert!(!COLLECT_END_MARK.contains(&0), "{mark}");
-    assert!(COLLECT_END_MARK.len() >= 16, "{mark}");
-}
-
-/// A tar archive of one file, as the pod's `tar -c` would stream it.
+/// A tar archive of one file, as the sandbox's `tar -c` would stream it.
 fn one_file_archive(name: &str, contents: &[u8]) -> Vec<u8> {
     let mut builder = tar::Builder::new(Vec::new());
     let mut header = tar::Header::new_gnu();
@@ -562,79 +514,11 @@ fn one_file_archive(name: &str, contents: &[u8]) -> Vec<u8> {
 }
 
 #[test]
-fn a_collected_archive_ending_with_the_mark_is_verified_and_trimmed() {
-    let dir = tempfile::tempdir().expect("tempdir");
-    let archive_path = dir.path().join("collected.tar");
-    let archive = one_file_archive("dist/assets/music-play.wav", b"RIFF....WAVE");
-    let mut stream = archive.clone();
-    stream.extend_from_slice(COLLECT_END_MARK);
-    std::fs::write(&archive_path, &stream).expect("write");
-
-    verify_collected_archive(&archive_path).expect("a whole stream verifies");
-
-    // The mark is gone, leaving exactly the archive `tar` wrote …
-    assert_eq!(std::fs::read(&archive_path).expect("read"), archive);
-    // … which unpacks into the destination as-is.
-    let dest = dir.path().join("dest");
-    std::fs::create_dir(&dest).expect("dest");
-    unpack_archive_file(&archive_path, &dest).expect("unpack");
-    assert_eq!(
-        std::fs::read(dest.join("dist/assets/music-play.wav")).expect("unpacked"),
-        b"RIFF....WAVE"
-    );
-}
-
-#[test]
-fn a_collected_archive_without_the_mark_is_reported_as_truncated() {
-    // The exec transport delivered `tar`'s exit status before the tail of stdout:
-    // the archive is cut mid-file and the mark never arrived. Whatever exit code
-    // came with it, this is not a whole archive.
-    let dir = tempfile::tempdir().expect("tempdir");
-    let archive_path = dir.path().join("collected.tar");
-    let mut stream = one_file_archive("dist/assets/music-play.wav", &[7u8; 4096]);
-    stream.extend_from_slice(COLLECT_END_MARK);
-    stream.truncate(stream.len() - COLLECT_END_MARK.len() - 1500);
-    std::fs::write(&archive_path, &stream).expect("write");
-
-    let err = verify_collected_archive(&archive_path).expect_err("truncated");
-    let message = err.to_string();
-    assert!(
-        message.contains("failed to collect run artifacts"),
-        "{message}"
-    );
-    assert!(message.contains("arrived truncated"), "{message}");
-    assert!(
-        message.contains(&format!("{} bytes received", stream.len())),
-        "{message}"
-    );
-    // Nothing was trimmed off a stream that was not verified.
-    assert_eq!(std::fs::read(&archive_path).expect("read"), stream);
-}
-
-#[test]
-fn a_collected_stream_shorter_than_the_mark_is_reported_as_truncated() {
-    // The degenerate cut: almost nothing arrived. Verification must not try to
-    // read a mark's worth of bytes that are not there.
-    let dir = tempfile::tempdir().expect("tempdir");
-    let archive_path = dir.path().join("collected.tar");
-    std::fs::write(&archive_path, b"ustar").expect("write");
-
-    let err = verify_collected_archive(&archive_path).expect_err("truncated");
-    assert!(err.to_string().contains("arrived truncated"), "{err}");
-
-    // And so is an empty stream (the exec produced no stdout at all).
-    std::fs::write(&archive_path, b"").expect("write");
-    let err = verify_collected_archive(&archive_path).expect_err("empty");
-    assert!(err.to_string().contains("0 bytes received"), "{err}");
-}
-
-#[test]
 fn an_unpack_failure_reports_the_cause_beneath_the_tar_crates_wrapper() {
     // The `tar` crate wraps an entry that would not unpack twice over the I/O error
     // that says why, and shows only the outermost wrapper in its `Display`. The
     // collection report must carry the innermost cause, or the failure reads as
-    // "failed to unpack `<path>`" and nothing more — which is exactly the report a
-    // truncated stream produced before the completion mark existed.
+    // "failed to unpack `<path>`" and nothing more.
     let dir = tempfile::tempdir().expect("tempdir");
     let archive_path = dir.path().join("collected.tar");
     let mut archive = one_file_archive("dist/assets/music-play.wav", &[7u8; 4096]);

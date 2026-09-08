@@ -118,8 +118,10 @@ spec:
             matchLabels:
               app.kubernetes.io/name: tcab-backend
 ---
-# Let a driver reach its sandbox pods (the live asset-preview stream): the sandbox
-# pod connects back to the driver pod's IP, so the driver pod is the ingress target.
+# Let a sandbox pod reach its driver: the live asset-preview stream and the run-tree
+# collection both have the sandbox connect back to the driver pod's IP, so the driver
+# pod is the ingress target. Collection is not best-effort — a run whose tree cannot
+# reach its driver fails — so this policy is load-bearing wherever policies are enforced.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
