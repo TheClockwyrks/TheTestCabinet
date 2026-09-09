@@ -16,11 +16,18 @@
 // judgement in it.
 //
 // EACH READOUT IS READ TWICE — once on the build screen and once on the program
-// screen — and the requirement is that the SAME run of text is drawn on both.
-// That is what "the same readouts" says, and it is stronger than looking for the
-// figures on the program screen alone: the tape editor draws every step's own
-// index and every command's figures, so a bare figure hunt would find a `5` in
-// the editor and call it the step count.
+// screen — and the requirement is that the readout is drawn on both. The site's
+// name, the cost and the budget are read anywhere on the program screen: the
+// specification fixes no layout, and nothing the tape editor draws can be
+// mistaken for them. THE STEP COUNT IS HELD TO THE SAME READOUT: a run spelling
+// the same text as the build screen's, or a run drawn at the same place that
+// carries the same reading. The tape editor draws every step's own index and
+// every command's figures, so a bare figure hunt would find a `5` in the editor
+// and call it the step count, while a figure at the place the build screen's
+// readout stood is that readout. The place is admitted beside the text because
+// a build may set the screen's own heading inside its header run — "BUILD" on
+// one screen and "PROGRAM" on the other — which changes the run and not the
+// readout.
 //
 // THE YARD IS READ THROUGH THE CAMERA. `specs/state.md` has the camera "persist
 // across the three yard screens", so a screen showing the same yard shows it from
@@ -28,8 +35,8 @@
 // is what the still beside this check shows a reviewer.
 //
 // SITE `4` IS OPENED, whose budget (`5 600`) and name are unlike anything else on
-// either screen, and the tape is five steps long, so the step count is a figure
-// of its own too.
+// either screen, and the tape is seven steps long, so the step count is a figure
+// of its own too, past the six palette bindings.
 
 import { afterEach, beforeEach, it } from "vitest";
 
@@ -41,8 +48,12 @@ import { createHarness, openSite, type Harness } from "../harness";
 /** The site opened: its budget and name are unlike the rest of the screen. */
 const SITE = 3;
 
-/** Five steps, so the tape's count is a figure of its own. */
-const TAPE_STEPS = 5;
+/**
+ * Seven steps, so the tape's count is a figure of its own: past the palette's
+ * six bindings, so no run listing the tools can stand in for it on either
+ * screen, and unlike every other figure the site puts on the screen.
+ */
+const TAPE_STEPS = 7;
 
 /**
  * The crane whose cost the readout carries: the ring and one rail off its top
@@ -66,7 +77,7 @@ async function poseCrane(harness: Harness): Promise<void> {
   await harness.debug.addMember(0, 4, 0, 4, 4, 0, "rail");
 }
 
-/** Five grip moves, appended through the tape editor's own screen. */
+/** `TAPE_STEPS` grip moves, appended through the tape editor's own screen. */
 async function poseTape(harness: Harness): Promise<void> {
   await harness.debug.setScreen("program");
   for (let at = 0; at < TAPE_STEPS; at += 1) {
@@ -106,6 +117,25 @@ function carries(run: FigureRun, wanted: number, tolerance: number): boolean {
   return figuresIn(run).some((one) => Math.abs(one - wanted) <= tolerance);
 }
 
+/**
+ * How far, in canvas pixels, a program-screen run may sit from where the build
+ * screen drew a readout and still be drawn at the same place: the rounding of
+ * one anchor, since a readout a build keeps is drawn where it was.
+ */
+const SAME_PLACE_PX = 4;
+
+/** Whether `run` is the readout `shown`: the same copy, or the same place. */
+function sameReadout(
+  shown: { text: string; x: number; y: number },
+  run: { text: string; x: number; y: number },
+): boolean {
+  return (
+    shown.text === run.text ||
+    (Math.abs(shown.x - run.x) <= SAME_PLACE_PX &&
+      Math.abs(shown.y - run.y) <= SAME_PLACE_PX)
+  );
+}
+
 it("draws the build screen's readouts on the program screen too", async () => {
   await openSite(h, SITE);
   // The opening `reset` leaves every site's stored structure and tape empty and
@@ -124,21 +154,32 @@ it("draws the build screen's readouts on the program screen too", async () => {
 
   const cost = built.structure.cost;
   const budget = built.site.budget;
+  // Each readout: how it is read, and whether the program screen must draw it
+  // as the SAME readout (the same text, or the same place) rather than
+  // anywhere. Only the step count is held to a place, since only it can be
+  // confused with what the tape editor draws.
   const readouts: ReadonlyArray<
-    readonly [string, (run: FigureRun) => boolean]
+    readonly [string, (run: FigureRun) => boolean, boolean]
   > = [
     [
       `the site's name ("${SITE_NAMES[SITE]}")`,
       (run) => run.text.toLowerCase().includes(SITE_NAMES[SITE]!.toLowerCase()),
+      false,
     ],
     [
       `the crane's cost (${cost.toFixed(2)})`,
       (run) => carries(run, cost, COST_TOL),
+      false,
     ],
-    [`the site's budget (${budget})`, (run) => carries(run, budget, 0.5)],
+    [
+      `the site's budget (${budget})`,
+      (run) => carries(run, budget, 0.5),
+      false,
+    ],
     [
       `the tape's step count (${TAPE_STEPS})`,
       (run) => carries(run, TAPE_STEPS, 0.05),
+      true,
     ],
   ];
 
@@ -165,14 +206,18 @@ it("draws the build screen's readouts on the program screen too", async () => {
     "The yard and readouts under the tape editor",
   );
 
-  for (const [what, holds] of readouts) {
-    const same = wanted.filter(
-      (run) => holds(run) && drawn.some((one) => one.text === run.text),
+  for (const [what, holds, placed] of readouts) {
+    const same = drawn.filter(
+      (run) =>
+        holds(run) &&
+        (!placed || wanted.some((shown) => sameReadout(shown, run))),
     );
     if (same.length === 0) {
       fail(
-        `the program screen to show ${what}, the same readout the build ` +
-          "screen shows (specs/ui.md)",
+        placed
+          ? `the program screen to show ${what}, the same readout the build ` +
+              "screen shows (specs/ui.md)"
+          : `the program screen to show ${what} among its readouts (specs/ui.md)`,
         `it draws [${drawn.map((one) => one.text.trim()).join(" | ")}]`,
       );
     }

@@ -38,5 +38,13 @@ export default defineValidationConfig({
   // the page, and a crane is posed one edit at a time before any of it starts.
   // Generous against a healthy build, and still bounds a hung one.
   testTimeout: 600_000,
-  hookTimeout: 60_000,
+  // The hook this bounds is `createHarness`: a browser page opened, the build's
+  // twenty produced files fetched, and the surface waited for. `harness.ts`
+  // gives that wait `surfaceTimeoutMs` of 90 s on its own measurement of four
+  // suites loading at once, so the hook's allowance has to stand above the wait
+  // plus the launch and the load in front of it, or a slow page is cut off as a
+  // hook failure with no reading at all instead of being read against the
+  // surface wait. Twice the wait is that allowance; a build with no surface is
+  // still bounded, by the wait itself.
+  hookTimeout: 180_000,
 });

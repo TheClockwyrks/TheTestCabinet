@@ -11,8 +11,12 @@
 // the six tool bindings — so "some run carries a 2" would pass a build that draws
 // no step count at all. So the tape is read at two lengths and the frame's runs
 // are matched by where they were drawn: a readout showing the count is a run that
-// says two while the tape holds two steps and three while it holds three, in the
-// same place. Nothing else on the build screen changes when a step is appended.
+// says `FIRST` while the tape holds that many steps and `THEN` once one more is
+// appended, in the same place, and says neither count at the other length.
+// Nothing else on the build screen changes when a step is appended. Both lengths
+// lie past the palette's six bindings, because a run that lists several tools —
+// "1 STRUT 2 CABLE 3 RAIL" — holds several small figures at one anchor on both
+// frames, and a count that changes is what tells the step count from it.
 //
 // The tape is posed through the tape operations rather than through the program
 // screen's widgets, and the build screen is the one read, so a build with a broken
@@ -33,6 +37,12 @@ import { drawnFigures, type DrawnFigure } from "./figures";
 
 /** Two runs are the same readout when their anchors sit this close. */
 const ANCHOR_TOL = 2;
+
+/** The tape's length at the first reading: past the palette's six bindings. */
+const FIRST = 7;
+
+/** And at the second, one step appended. */
+const THEN = FIRST + 1;
 
 /** A step that asks for nothing unusual: one axis, in range, at a legal rate. */
 const STEP: TapeStepSpec = {
@@ -84,7 +94,10 @@ afterEach(async () => {
 it("draws the tape's step count on the build screen", async () => {
   await openSite(h, 0);
   await clearAll(h);
-  await poseTape(h, [STEP, STEP]);
+  await poseTape(
+    h,
+    Array.from({ length: FIRST }, () => STEP),
+  );
   await h.advance(1);
   const atTwo = await frameDraws(h);
   await h.capture("build-steps", "The step-count readout");
@@ -93,12 +106,24 @@ it("draws the tape's step count on the build screen", async () => {
   await h.advance(1);
   const atThree = await frameDraws(h);
 
+  // What identifies the step count is that ONE readout says the first count
+  // and then the second, and never both at once. `drawnFigures` places every
+  // figure of a run at that one run object, so a run's figures are the ones
+  // sharing its `run`.
+  const holds = (
+    figures: readonly (typeof atTwo.figures)[number][],
+    run: (typeof atTwo.figures)[number]["run"],
+    value: number,
+  ): boolean =>
+    figures.some((figure) => figure.run === run && figure.value === value);
   const readout = atTwo.figures.find(
     (two) =>
-      two.value === 2 &&
+      two.value === FIRST &&
+      !holds(atTwo.figures, two.run, THEN) &&
       atThree.figures.some(
         (three) =>
-          three.value === 3 &&
+          three.value === THEN &&
+          !holds(atThree.figures, three.run, FIRST) &&
           Math.abs(three.run.x - two.run.x) <= ANCHOR_TOL &&
           Math.abs(three.run.y - two.run.y) <= ANCHOR_TOL,
       ),
@@ -107,10 +132,10 @@ it("draws the tape's step count on the build screen", async () => {
   if (readout === undefined) {
     fail(
       "the build screen to draw the tape's step count, so one readout says " +
-        "two while the tape holds two steps and three while it holds three " +
-        "(specs/ui.md § Build)",
-      `with two steps it drew ${JSON.stringify(atTwo.lines)} ` +
-        `and with three ${JSON.stringify(atThree.lines)}`,
+        `${FIRST} while the tape holds ${FIRST} steps and ${THEN} while it ` +
+        `holds ${THEN} (specs/ui.md § Build)`,
+      `with ${FIRST} steps it drew ${JSON.stringify(atTwo.lines)} ` +
+        `and with ${THEN} ${JSON.stringify(atThree.lines)}`,
     );
   }
 });

@@ -19,6 +19,15 @@
 // tenths of the way from it toward the other, so the node it takes is the nearer
 // on the stage and the farther in the yard: a build that reached for the nearest
 // node to the CAMERA — the rule that only decides a tie — answers the other one.
+//
+// THE PAIR STANDS ON THE STAGE. The lens decides which of the envelope's nodes
+// the stage holds at all, and `specs/controls.md` leaves the lens to the build,
+// so a node in front of the camera may well be drawn past the stage's edge — a
+// narrower lens than another build's puts the envelope's corners there. A click
+// is a stage position, so the two nodes are chosen from the ones the model puts
+// on the stage with room to spare, while every node in front of the camera is
+// still a candidate the click has to be clear of, because that is what a node
+// pick considers.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -34,6 +43,8 @@ import {
   LATTICE_PITCH,
   NODE_PICK_PX,
   SITES,
+  STAGE_H,
+  STAGE_W,
 } from "../constants";
 import { createHarness, emptyYard, openSite, type Harness } from "../harness";
 
@@ -51,6 +62,13 @@ const GAP_MIN = 8;
 
 /** How much farther than the second node every other node has to be drawn. */
 const CLEAR_BY = 4;
+
+/**
+ * How far inside the stage's edges both nodes of the pair are drawn, so the
+ * click between them is a stage position with the pick radius around it, and
+ * the model's own tolerance cannot put either node over the edge.
+ */
+const STAGE_INSET = NODE_PICK_PX;
 
 /* -------------------------------------------------------------------------- */
 /* Where this build draws the lattice                                         */
@@ -288,15 +306,28 @@ it("takes the nearer of two nodes that are both in range", async () => {
     "the lattice nodes in front of the camera",
   );
   const drawn = nodes.map((node) => ({ node, at: model.at(node) }));
+  const onStage = drawn.filter(
+    ({ at }) =>
+      at.x >= STAGE_INSET &&
+      at.x <= STAGE_W - STAGE_INSET &&
+      at.y >= STAGE_INSET &&
+      at.y <= STAGE_H - STAGE_INSET,
+  );
+  assertGreaterThan(
+    onStage.length,
+    1,
+    "the lattice nodes the build draws on the stage, clear of its edges",
+  );
 
-  // The pair drawn close enough together for one click to be in range of both,
-  // and clear enough of everything else that no third node can be the answer.
+  // The pair drawn on the stage close enough together for one click to be in
+  // range of both, and clear enough of everything else in front of the camera
+  // that no third node can be the answer.
   let taken: { near: Vec; other: Vec; gap: number } | null = null;
   let widest = 0;
-  for (let i = 0; i < drawn.length; i += 1) {
-    for (let j = i + 1; j < drawn.length; j += 1) {
-      const one = drawn[i]!;
-      const other = drawn[j]!;
+  for (let i = 0; i < onStage.length; i += 1) {
+    for (let j = i + 1; j < onStage.length; j += 1) {
+      const one = onStage[i]!;
+      const other = onStage[j]!;
       const gap = Math.hypot(one.at.x - other.at.x, one.at.y - other.at.y);
       if (gap < GAP_MIN || gap > GAP_MAX) continue;
       // The click stands nearer the one FARTHER from the camera.
@@ -326,9 +357,9 @@ it("takes the nearer of two nodes that are both in range", async () => {
   }
   if (taken === null) {
     fail(
-      "two lattice nodes drawn close enough together for one click to stand " +
-        `inside NODE_PICK_PX (${NODE_PICK_PX}) of both, and clear of every ` +
-        "other node in the envelope",
+      "two lattice nodes drawn on the stage close enough together for one " +
+        `click to stand inside NODE_PICK_PX (${NODE_PICK_PX}) of both, and ` +
+        "clear of every other node in the envelope",
       "the build draws no such pair at the camera pose the site opened at",
     );
   }
