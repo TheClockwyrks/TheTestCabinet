@@ -17,7 +17,8 @@
 // against a run posed to differ on EVERY declared field at once — a different
 // screen, phase, menu row, mode, difficulty, money, lives, score, wave, timer,
 // pending count and speed, a selection, a hover, a held preview, towers, units,
-// a shut world gate, and a simulated clock that has run.
+// a shut world gate, and a simulated clock that has run (run while the screen
+// was still `playing`, before the divergent screen is posed over it).
 //
 // THE STARTING MONEY AND LIVES ARE THE SPECIFICATION'S. They are computed here
 // from `specs/modes.md`'s own table for the Containment Medium pair `reset`
@@ -78,6 +79,12 @@ let h: Harness;
 async function poseADivergentRun(): Promise<void> {
   const { debug } = h;
   await startRun(h, "bottleneck", "hard");
+  // The clock runs FIRST, while the screen is still `playing`: that is the one
+  // screen on which every conformant build advances the simulation. Whether
+  // `simTime` also moves on the `gameover` screen posed next is something the
+  // specification leaves to the build (it fixes only that the clock holds while
+  // paused), so a clock run there would read a build's choice as a broken reset.
+  await h.advance(framesFor(RUN_SECONDS));
   await debug.setScreen("gameover");
   await debug.setPhase("wave");
   await debug.setMenuIndex(2);
@@ -97,9 +104,6 @@ async function poseADivergentRun(): Promise<void> {
   await debug.setSelected(tower);
   await debug.setHoverShop("rime");
   await debug.setArmed("flak");
-
-  // And a clock that has run, so `simTime` is restored from something.
-  await h.advance(framesFor(RUN_SECONDS));
 }
 
 beforeEach(async () => {

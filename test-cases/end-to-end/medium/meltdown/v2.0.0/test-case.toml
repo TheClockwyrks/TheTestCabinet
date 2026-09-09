@@ -926,7 +926,7 @@ validation = { script = "floor/no-floor-in-the-strip.test.ts", outputs = [
 [[review.categories.items]]
 id = "casing-band"
 title = "The casing rings the floor eighteen units thick"
-description = "On all four sides a tower standing on the first rank of floor changes the picture 21 units in from the wall's outer face and not 9 or 14 units in, so the floor's edge is where the 18-unit band leaves it."
+description = "On all four sides a tower standing on the first rank of floor changes the picture 21 units in from the wall's outer face and changes it strictly less 9 and 14 units in, so the floor's edge is where the 18-unit band leaves it."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "floor/casing-band.test.ts", outputs = [

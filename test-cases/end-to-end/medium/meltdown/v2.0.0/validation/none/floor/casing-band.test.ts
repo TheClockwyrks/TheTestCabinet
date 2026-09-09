@@ -20,18 +20,29 @@
 // and a point on the band side does not.
 //
 // WHERE THE BOUNDARY IS BRACKETED. Three depths, measured from the wall's outer
-// face inward. At 9 and at 14 the picture must be UNMOVED by the tower — still
-// band — and at 21 it must have MOVED — floor the tower is standing on. That
-// places the inner face between 14 and 21 units in, which is the 18 the
-// specification fixes with about three units either side: enough for the rim a
+// face inward. At 21 the picture must have MOVED — floor the tower is standing
+// on — and at 9 and at 14 it must have moved STRICTLY LESS than that, by a step
+// a player can see. A body standing over a depth moves it as much as it moves
+// the floor beside it, so the two inside depths together place the body's edge
+// past 14 units in and the past depth places it before 21: the 18 the
+// specification fixes with about three units either side, enough for the rim a
 // build may draw on the inner face and for the antialiasing of it, and nowhere
-// near enough to admit a hairline outline, a band half the stated depth, or one
-// that swallows the first rank of tiles.
+// near enough to admit a band that swallows the first rank of tiles or a tile
+// grid that begins inside the band.
+//
+// WHY "LESS", NOT "UNMOVED". specs/overview.md hands "the glow, and every other
+// aspect of the look" to the build, and a glow, a shadow or a halo around a
+// tower's body falls off across the band beside it without the band ceasing to
+// be band. Reading the inside depths as untouched would grade that look, which
+// no sentence of specs/floor.md fixes; reading them as moved LESS than the floor
+// the tower stands on still catches the one thing that sentence does fix, a
+// footprint drawn over the band, because a body moves both alike.
 //
 // HOW MUCH MOVEMENT COUNTS. Measured rather than assumed. Every point is read on
 // two frames with the floor empty first, which is how far the picture moves on
 // its own under a build that animates it, and the tower has to beat that by
-// `NOISE_MARGIN` on the floor side while staying inside it on the band side.
+// `NOISE_MARGIN` on the floor side, and fall short of the floor side's movement
+// by the same `NOISE_MARGIN` on the band side.
 //
 // WHY THE READINGS ARE SINGLE PIXELS. The harness's `sampleColor` averages a
 // cluster four units wide, which would blur an eighteen-unit band's inner face
@@ -79,7 +90,13 @@ import { readPixels, type Point } from "./read";
  */
 const NOISE_MARGIN = 8;
 
-/** The two depths inside the band, and the one just past it, in logical units. */
+/**
+ * The two depths inside the band, and the one just past it, in logical units.
+ *
+ * The inside pair is read against the past depth at the same rank rather than
+ * against a figure of its own, so what the pair decides is where the body's
+ * edge is and not how far a build's glow reaches.
+ */
 const INSIDE_DEPTHS: readonly number[] = [CASING / 2, CASING - 4];
 const PAST_DEPTH = CASING + 3;
 
@@ -188,21 +205,8 @@ it("puts the floor's edge eighteen units in on all four sides", async () => {
       const noise = (i: number) => colorDistance(first[i], empty[i]);
       const moved = (i: number) => colorDistance(empty[i], standing[i]);
       const stand = wall.stand(rank);
-
-      for (const [depthIndex, depth] of INSIDE_DEPTHS.entries()) {
-        const i = base + depthIndex;
-        assertLessThanOrEqual(
-          moved(i),
-          noise(i) + NOISE_MARGIN,
-          `${wall.name} at rank ${rank}, ${depth} units in: untouched by a ` +
-            `${TYPE} standing on tile (${stand.col}, ${stand.row}), the first ` +
-            `rank of floor beside it, so the band is still band ${depth} ` +
-            `units in (specs/floor.md: the casing is ${CASING} units thick, ` +
-            `impassable and not buildable)`,
-        );
-      }
-
       const past = base + INSIDE_DEPTHS.length;
+
       assertGreaterThan(
         moved(past),
         noise(past) + NOISE_MARGIN,
@@ -212,6 +216,21 @@ it("puts the floor's edge eighteen units in on all four sides", async () => {
           `band, and the wall is no thicker than ${PAST_DEPTH} units ` +
           `(specs/floor.md: ${CASING})`,
       );
+
+      for (const [depthIndex, depth] of INSIDE_DEPTHS.entries()) {
+        const i = base + depthIndex;
+        assertLessThanOrEqual(
+          moved(i),
+          moved(past) - NOISE_MARGIN,
+          `${wall.name} at rank ${rank}, ${depth} units in: moved less by a ` +
+            `${TYPE} standing on tile (${stand.col}, ${stand.row}), the first ` +
+            `rank of floor beside it, than the floor ${PAST_DEPTH} units in ` +
+            `that its body stands on (moved ${moved(past)}), so the body's ` +
+            `edge lies past ${depth} units and the band is still band there ` +
+            `(specs/floor.md: the casing is ${CASING} units thick, impassable ` +
+            `and not buildable)`,
+        );
+      }
     }
   }
 });

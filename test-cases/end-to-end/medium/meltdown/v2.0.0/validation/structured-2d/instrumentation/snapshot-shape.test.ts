@@ -32,7 +32,11 @@
 // THE PRESS IS MADE LAST AND READ WITH NO FRAME BETWEEN. `pointer` mirrors what
 // the pointer input reports and is refreshed in every update, so a frame advanced
 // after a posed press would report the runtime's own idle pointer instead — which
-// is why the still is captured before the press rather than after it.
+// is why the still is captured before the press rather than after it. The shop
+// hover is posed after the press for the reason the `none` and `simple-2d`
+// projects press before they pose: the press is a press and nothing more, and
+// the specification fixes nothing about what a press off every shop entry
+// leaves of a hover.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -320,13 +324,18 @@ it("reports every documented field, on a floor that exercises each of them", asy
   h.debug.setPreviewRotation(1);
   h.debug.setPreview(44, 30);
   h.debug.setSelected(arc);
-  h.debug.setHoverShop("rime");
 
   await h.advance(SETTLE_FRAMES);
   captureStill(h, "posed");
 
-  // The press is last, and nothing is advanced after it.
+  // The press is last, and nothing is advanced after it. The hover is posed
+  // AFTER the press: `pointerDown` feeds the real pointer path, and what a press
+  // off every shop entry does to the hover is a state `specs/controls.md`
+  // leaves open (moving out of every entry clears it; a touch press arrives with
+  // no move before it), so a hover posed before the press would read a build's
+  // choice there as a missing field.
   h.debug.pointerDown(PRESS_X, PRESS_Y);
+  h.debug.setHoverShop("rime");
   const snapshot = h.snapshot();
 
   assertRunShape(snapshot);

@@ -229,13 +229,60 @@ export async function frameWhere(
   return { hit: swept.hit, frame: h.frame(), snapshot: swept.snapshot };
 }
 
+/**
+ * Hold a real key until `holds`, and name the frame the event resolved on.
+ *
+ * TWO CONFORMANT WAYS TO READ A PRESS, ONE FRAME EACH. `specs/controls.md` reads
+ * every action "as a press edge" that "fires once per press", and an engineless
+ * build wrote its own keyboard layer, so it either latches the edge in its
+ * `keydown` handler or compares held state at the top of each frame. The second
+ * resolves the event on the first frame driven after the key goes down, which
+ * {@link frameWhere} names. The first resolves it IN THE HANDLER, between two
+ * driven frames — the situation already holds before a frame is opened — and
+ * `specs/audio.md` has its cue "played from the frame loop, so a cue always
+ * names one real frame": the next frame the loop runs. The shared harness
+ * credits a sound started between driven frames to that same next frame, so for
+ * a build of that kind the event's frame is the one driven right after the key
+ * went down, and that is the frame this returns.
+ *
+ * WHAT IS STILL A MIS-POSED SCENARIO: the situation holding BEFORE the key goes
+ * down. That is read here, once, and fails the way {@link frameWhere} fails,
+ * because no press resolved anything.
+ */
+async function pressWhere(
+  h: Harness,
+  code: string,
+  holds: (snapshot: MeltdownSnapshot) => boolean,
+  ceiling: number,
+  doing: string,
+): Promise<Resolution> {
+  if (holds(await h.snapshot())) {
+    fail(
+      `${doing}: the event to resolve on a frame of this drive`,
+      "the situation already held before the key went down",
+    );
+  }
+  await h.hold(code);
+  try {
+    if (holds(await h.snapshot())) {
+      // Resolved in the handler, between frames: the frame loop that plays the
+      // cue runs next, and that frame is the event's.
+      await h.advance(1);
+      return { hit: true, frame: h.frame(), snapshot: await h.snapshot() };
+    }
+    return await frameWhere(h, holds, ceiling, doing);
+  } finally {
+    await h.release(code);
+  }
+}
+
 /* -------------------------------------------------------------------------- */
 /* The keyboard moves                                                         */
 /* -------------------------------------------------------------------------- */
 
 /**
  * Move the highlight of whatever menu is on screen on by one, and let the key go
- * the moment it moves.
+ * the moment it moves ({@link pressWhere}).
  *
  * `specs/screens.md`: "`up` and `down` move the highlight one row, and the
  * highlight wraps at both ends". The action is released as soon as the highlight
@@ -247,17 +294,13 @@ export async function frameWhere(
  */
 export async function moveHighlight(h: Harness): Promise<Resolution> {
   const from = (await h.snapshot()).menuIndex;
-  await h.hold(BINDINGS.down);
-  try {
-    return await frameWhere(
-      h,
-      (snapshot) => snapshot.menuIndex !== from,
-      PRESS_CEILING,
-      "the menu move",
-    );
-  } finally {
-    await h.release(BINDINGS.down);
-  }
+  return pressWhere(
+    h,
+    BINDINGS.down,
+    (snapshot) => snapshot.menuIndex !== from,
+    PRESS_CEILING,
+    "the menu move",
+  );
 }
 
 /**
@@ -270,17 +313,13 @@ export async function moveHighlight(h: Harness): Promise<Resolution> {
  */
 export async function sellSelected(h: Harness): Promise<Resolution> {
   const standing = (await h.snapshot()).towers.length;
-  await h.hold(BINDINGS.sell);
-  try {
-    return await frameWhere(
-      h,
-      (snapshot) => snapshot.towers.length < standing,
-      PRESS_CEILING,
-      "the sale",
-    );
-  } finally {
-    await h.release(BINDINGS.sell);
-  }
+  return pressWhere(
+    h,
+    BINDINGS.sell,
+    (snapshot) => snapshot.towers.length < standing,
+    PRESS_CEILING,
+    "the sale",
+  );
 }
 
 /**
@@ -299,16 +338,15 @@ export async function sellSelected(h: Harness): Promise<Resolution> {
  */
 export async function sendWave(h: Harness): Promise<Resolution> {
   await h.debug.setWaveSpawning(true);
-  await h.hold(BINDINGS.send);
   try {
-    return await frameWhere(
+    return await pressWhere(
       h,
+      BINDINGS.send,
       (snapshot) => snapshot.phase === "wave" && snapshot.surge.length > 0,
       PRESS_CEILING,
       "the send",
     );
   } finally {
-    await h.release(BINDINGS.send);
     await h.debug.setWaveSpawning(false);
   }
 }
