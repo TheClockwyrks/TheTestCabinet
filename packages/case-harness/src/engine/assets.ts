@@ -39,9 +39,10 @@
 import { readFileSync, statSync } from "node:fs";
 import { isAbsolute, join, normalize, sep } from "node:path";
 
-import { Image, createCanvas, loadImage } from "@napi-rs/canvas";
+import { Image, loadImage } from "@napi-rs/canvas";
 
 import { cloneKeeping } from "./clone";
+import { createHostCanvas } from "./fonts";
 
 /* -------------------------------------------------------------------------- */
 /* Where a page-relative URL is looked for                                    */
@@ -560,7 +561,9 @@ function shim(settled: SettledOptions, installation: Installation): void {
               `${settled.label}: this process has no document element "${tag}"`,
             );
           }
-          return createCanvas(1, 1);
+          // Its 2D context resolves fonts as the screen's does (`./fonts`), so
+          // text a build draws or measures off-screen meets the same faces.
+          return createHostCanvas(1, 1);
         },
       }),
     );

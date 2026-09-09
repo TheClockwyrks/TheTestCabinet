@@ -90,7 +90,12 @@ that import valid for every build.
 
 A validator builds the engine itself over a canvas of its own, a 2D engine's from
 `@napi-rs/canvas` in the test process and a 3D engine's from
-`document.createElement("canvas")` in a headless Chromium page. It supplies a
+`document.createElement("canvas")` in a headless Chromium page. The headless 2D
+canvas resolves a build's fonts as a page would: a generic family such as
+`monospace` or `sans-serif` resolves to the host's face for that role, and a
+glyph the named faces lack falls through to a broad-coverage face the host
+carries, so a mark a build draws as a symbol glyph reads as that glyph rather
+than as the missing-glyph box. A validator supplies a
 clock with a scripted sequence of deltas, runs the engine's own initialization,
 and steps an exact number of frames one call at a time, so a scenario runs with
 nothing to wait for. Setup runs the real game forward, so a validator poses a

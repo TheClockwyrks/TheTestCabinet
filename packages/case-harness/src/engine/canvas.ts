@@ -5,6 +5,9 @@
 // rasterizer with a real 2D context — dressed as an `HTMLCanvasElement` well
 // enough for the engine to take it: a `style` object it may write to, and a
 // `getContext` that hands back the RECORDING proxy rather than the raw context.
+// The context resolves the fonts a build sets the way a page does — generic
+// families to the host's faces, missing glyphs through a fallback tail — which
+// is `./fonts`' business and is installed before the recorder wraps it.
 //
 // THE PROXY IS WHY ONE FRAME ANSWERS TWO QUESTIONS. Everything the engine and the
 // build draw goes through it, so a frame leaves both a pixel buffer a check can
@@ -34,6 +37,7 @@
 
 import { createCanvas, type Canvas, type SKRSContext2D } from "@napi-rs/canvas";
 import type { DrawCall, ImageRef } from "../draw-calls";
+import { installFontResolution } from "./fonts";
 import type { Matrix } from "../matrix";
 import type { SurfaceShape } from "./events";
 
@@ -218,6 +222,8 @@ export function createRecordingCanvas(
     Math.round(shape.cssHeight * shape.dpr),
   );
   const ctx = canvas.getContext("2d");
+  // The build's fonts, resolved as a page resolves them: see `./fonts`.
+  installFontResolution(ctx);
   const calls: DrawCall[] = [];
   const images = new Map<number, object>();
   const recorded =

@@ -231,6 +231,44 @@ export default defineEngineValidationConfig({
 });
 ```
 
+### The faces a headless frame is drawn in
+
+A build names its fonts the way a page does — `700 21px ui-monospace, monospace`
+— and a browser answers every part of that through the platform's font
+configuration: a generic family resolves to the host's face for that role, and a
+glyph the chosen face lacks falls through, glyph by glyph, to an installed face
+that carries it. `@napi-rs/canvas` does neither on its own. It takes the first
+family in the list it can find BY NAME and falls through the rest of the list per
+glyph; a generic family is not a name it knows, so a list of generics alone lands
+on whichever face the library loaded first, and past the end of the list there is
+no fallback at all — a glyph no listed face carries is drawn as the missing-glyph
+box. A HUD that marks its bays `◆ ◇ ◇`, a heart per life or an arrow per direction
+is legible in every browser and came out of the headless frame as a row of
+identical boxes, which a pixel reading reports as no mark at all.
+
+So every 2D context this package hands a build — the screen `createRecordingCanvas`
+builds, and the scratch canvas `document.createElement("canvas")` returns under
+`installAssetHost({ documentElement: true })` — resolves the font it is set
+(`engine/fonts.ts`). Each generic family is replaced by the host's face for its
+role (`monospace`/`ui-monospace`, `sans-serif`/`system-ui`/`cursive`/`fantasy`,
+`serif`, `emoji`), and a TAIL of the host's broad-coverage faces is appended —
+the sans face, a symbol face, the monospace face, a plane-wide face, an emoji face
+and a CJK face, each the first of a preference list the host actually registered
+(DejaVu Sans, Sans Mono and Serif on the run image, which installs
+`fonts-dejavu-core` alone; a developer host may add Liberation, Noto, GNU
+FreeFont, Unifont or WenQuanYi, and an emoji or CJK mark falls through to a
+face only where the host carries one).
+The families a build named stay first, in its order, so their metrics are the
+frame's; only what it left to the host is decided here. A host carrying none of a
+role's faces leaves that role to the library's default, as before.
+
+`ctx.font` reads back the string the build set, not the resolution, so a build
+that saves and restores its font by hand sees its own value and the recorder's
+`set font` entry carries it. An invalid font string is ignored and leaves the font
+in force, as the CSS shorthand has a browser do, rather than thrown out of the
+frame. The default a context starts under is the page's `10px sans-serif`,
+resolved the same way.
+
 ### The three barrels, and what a case may not drag in
 
 | Specifier                     | What is in it                                                                                                                                                                                                                                                            |
