@@ -75,6 +75,7 @@ import {
   mousePress,
   mouseRelease,
   touchGlide,
+  RECORDER_GLOBAL,
   touchPress,
   touchRelease,
   type DrawCall,
@@ -605,32 +606,54 @@ export type Harness = Omit<
 > &
   CoilModel;
 
+/** The context state a frame's operations began under, as {@link blitsOf} walks from it. */
+interface ContextAtOpen {
+  /** `imageSmoothingEnabled` as the frame inherited it. */
+  smoothing: boolean;
+  /** The transform as the frame inherited it. */
+  transform: Matrix;
+}
+
 /**
- * The value in force on the page's canvas at this moment.
+ * The state the last closed frame's operations began under, as the recorder
+ * reports it.
  *
- * Read before a frame is driven, so {@link blitsOf} starts its walk from the flag
- * the frame OPENED under: `imageSmoothingEnabled` is context state that survives
- * every frame boundary, so a build that sets it once when it starts and never
- * again has it in force on every frame after, and a walk that assumed the
- * canvas's own default would report every one of those blits as smoothed.
+ * Read AFTER the frame is driven, off the recorder's `lastInherited()`, so
+ * {@link blitsOf} starts its walk from what the frame's surviving operations were
+ * issued from. Both the smoothing flag and the transform are context state that
+ * survives every frame boundary: a build that sets `imageSmoothingEnabled` once
+ * when it starts, or issues its letterbox fit as a `setTransform` on load and on
+ * `resize` rather than on every frame, has that value in force on every frame
+ * after, and a walk that assumed the canvas's own defaults would report every
+ * one of those blits as smoothed, or at the logical position of the draw rather
+ * than where the fit put it on the canvas. The recorder reads the state again
+ * when a canvas reset inside the frame drops the operations before it, which a
+ * read taken off the context before the frame could not know about.
  */
-async function smoothingNow(page: Page): Promise<boolean> {
-  const read = await page.evaluate(() => {
-    const canvases = Array.from(document.querySelectorAll("canvas"));
-    let canvas = canvases[0];
-    if (canvas === undefined) return null;
-    for (const other of canvases) {
-      if (other.width * other.height > canvas.width * canvas.height) {
-        canvas = other;
-      }
-    }
-    const ctx = canvas.getContext("2d");
-    return ctx === null ? null : ctx.imageSmoothingEnabled;
-  });
-  // A page with no canvas, or none that answers a 2D context, is a build the
-  // pixel checks fail on their own terms; the canvas's own default is the honest
-  // answer for a frame that drew nothing.
-  return read ?? true;
+async function inheritedOf(page: Page): Promise<ContextAtOpen> {
+  const read = (await page.evaluate((rec) => {
+    const recorder = (
+      window as unknown as Record<string, { lastInherited?(): unknown }>
+    )[rec];
+    return typeof recorder?.lastInherited === "function"
+      ? recorder.lastInherited()
+      : null;
+  }, RECORDER_GLOBAL)) as {
+    transform?: unknown;
+    imageSmoothingEnabled?: unknown;
+  } | null;
+  // A recorder that closed no frame, or a context that answered neither
+  // accessor, leaves the canvas's own defaults as the honest answer.
+  const transform = read?.transform;
+  return {
+    smoothing: read?.imageSmoothingEnabled !== false,
+    transform:
+      Array.isArray(transform) &&
+      transform.length === 6 &&
+      transform.every((part) => typeof part === "number")
+        ? (transform as Matrix)
+        : IDENTITY,
+  };
 }
 
 /**
@@ -659,9 +682,12 @@ export async function createHarness(
 
   /** Drive one frame and answer what its render issued. */
   const oneFrame = async (): Promise<FrameDraw> => {
-    const smoothing = await smoothingNow(base.page);
     const calls = await driven(() => base.frameCalls());
-    return { calls, blits: blitsOf(calls, smoothing) };
+    const opened = await inheritedOf(base.page);
+    return {
+      calls,
+      blits: blitsOf(calls, opened.smoothing, opened.transform),
+    };
   };
 
   const h: Harness = {
@@ -974,17 +1000,21 @@ function destinationOf(
  * Every bitmap `calls` blitted, as axis-aligned boxes in device pixels.
  *
  * THE FRAME IS WALKED, CARRYING THE TRANSFORM AND THE SMOOTHING FLAG. Both are
- * ordinary context state: `save`/`restore` stack them together, an engineless
- * build issues its own letterbox fit as a `setTransform` the recorder sees, and a
- * renderer draws each sprite under a `translate` and a quarter `rotate` inside a
- * `save`. So the state in force at a call is recovered exactly by replaying the
- * operations the frame issued.
+ * ordinary context state: `save`/`restore` stack them together, and a renderer
+ * draws each sprite under a `translate` and a quarter `rotate` inside a `save`.
+ * So the state in force at a call is recovered exactly by replaying the
+ * operations the frame issued, from the state the frame opened under.
  *
- * `smoothingAtOpen` is the flag in force when the FRAME opened rather than the
- * canvas's own default, because the flag survives every frame boundary: a build
- * that set it once when it started and never again would otherwise have every one
- * of its blits reported as smoothed. {@link Harness.frameBlits} reads it off the
- * page before it drives the frame.
+ * `smoothingAtOpen` and `matrixAtOpen` are the flag and the transform in force
+ * when the FRAME opened rather than the canvas's own defaults, because both
+ * survive every frame boundary. A build that set the flag once when it started
+ * and never again would otherwise have every one of its blits reported as
+ * smoothed; and `specs/overview.md` gives the letterbox fit to the runtime
+ * without saying when it is issued, so an engineless build is free to issue it
+ * as a `setTransform` on load and on `resize` alone, where no frame's own
+ * operations carry it. A build that re-issues the fit inside the frame is read
+ * identically, because its own `setTransform` overrides the opening state.
+ * {@link Harness.frameBlits} reads both off the page before it drives the frame.
  *
  * The four corners of each destination rectangle are mapped through the transform
  * and the box is taken around them, so a sprite drawn under the quarter turns
@@ -993,10 +1023,11 @@ function destinationOf(
 export function blitsOf(
   calls: readonly DrawCall[],
   smoothingAtOpen = true,
+  matrixAtOpen: Matrix = IDENTITY,
 ): Blit[] {
   const blits: Blit[] = [];
   const stack: { matrix: Matrix; smoothing: boolean }[] = [];
-  let matrix: Matrix = IDENTITY;
+  let matrix: Matrix = matrixAtOpen;
   let smoothing = smoothingAtOpen;
 
   for (const call of calls) {
@@ -1013,7 +1044,7 @@ export function blitsOf(
     }
     if (method === "restore") {
       const held = stack.pop();
-      matrix = held?.matrix ?? IDENTITY;
+      matrix = held?.matrix ?? matrixAtOpen;
       smoothing = held?.smoothing ?? smoothingAtOpen;
       continue;
     }

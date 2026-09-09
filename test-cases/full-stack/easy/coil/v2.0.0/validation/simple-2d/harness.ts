@@ -617,15 +617,18 @@ function destinationOf(
  * frame preparation issues the letterbox fit as a `setTransform` the recorder
  * sees, and the build's renderer draws each sprite under a `translate` and a
  * quarter `rotate` inside a `save`. So the state in force at a call is recovered
- * exactly by replaying the operations the frame issued, and nothing here has to
- * ask the context a question the record cannot answer.
+ * exactly by replaying the operations the frame issued, from the state the frame
+ * opened under.
  *
- * `smoothing` is the flag in force AT THE CALL, which is why the walk starts from
- * the value in force when the FRAME OPENED rather than from the canvas's own
- * default: a build is free to set `imageSmoothingEnabled` once when it starts and
- * never again, and the flag is context state that survives every frame boundary
- * after it. {@link Harness.frameBlits} reads that value off the real context
- * before it runs the frame.
+ * `smoothingAtOpen` and `matrixAtOpen` are the flag and the transform in force
+ * when the FRAME OPENED rather than the canvas's own defaults, because both are
+ * context state that survives every frame boundary: a build is free to set
+ * `imageSmoothingEnabled` once when it starts and never again, and a fit issued
+ * outside the frame is in force on every frame after it. Under this engine the
+ * fit is re-issued inside every frame, so the opening transform is overridden
+ * before the first blit; it is carried all the same, so the walk reads the same
+ * way the engineless project's does. {@link Harness.frameBlits} reads both off
+ * the real context before it runs the frame.
  *
  * The four corners of each destination rectangle are mapped through the transform
  * and the box is taken around them, so a sprite drawn under the quarter turns
@@ -634,10 +637,11 @@ function destinationOf(
 export function blitsOf(
   calls: readonly DrawCall[],
   smoothingAtOpen = true,
+  matrixAtOpen: Matrix = IDENTITY,
 ): Blit[] {
   const blits: Blit[] = [];
   const stack: { matrix: Matrix; smoothing: boolean }[] = [];
-  let matrix: Matrix = IDENTITY;
+  let matrix: Matrix = matrixAtOpen;
   let smoothing = smoothingAtOpen;
 
   for (const call of calls) {
@@ -654,7 +658,7 @@ export function blitsOf(
     }
     if (method === "restore") {
       const held = stack.pop();
-      matrix = held?.matrix ?? IDENTITY;
+      matrix = held?.matrix ?? matrixAtOpen;
       smoothing = held?.smoothing ?? smoothingAtOpen;
       continue;
     }
@@ -1122,13 +1126,16 @@ const kit = createEngineCaseHarness<
     /** Clear the record, run one frame, and answer what that frame issued. */
     const oneFrame = async (): Promise<FrameDraw> => {
       base.calls.length = 0;
-      // The flag in force when the frame OPENS, which is where the walk over the
-      // frame's own operations starts. Read off the real context rather than
-      // assumed, because it is context state a build may have set once and left.
+      // The flag and the transform in force when the frame OPENS, which is where
+      // the walk over the frame's own operations starts. Read off the real
+      // context rather than assumed, because both are context state a build may
+      // have set once and left.
       const smoothing = base.ctx.imageSmoothingEnabled;
+      const m = base.ctx.getTransform();
+      const transform: Matrix = [m.a, m.b, m.c, m.d, m.e, m.f];
       await base.advance(1);
       const calls = [...base.calls];
-      return { calls, blits: blitsOf(calls, smoothing) };
+      return { calls, blits: blitsOf(calls, smoothing, transform) };
     };
 
     return {

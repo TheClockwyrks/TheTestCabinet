@@ -27,11 +27,18 @@
  *      so the name is on `currentSrc`.
  *
  * A bundler renames a produced file — Vite writes `eat.wav` out as
- * `eat-CdXtw1S2.wav` — so the name is taken as the URL's basename with the
- * extension and a trailing content hash removed. That is general over any build
- * that ships the four files the specification names, and it is why the reduction
- * carom accepts under this engine (see its own `audio-init.js`, which can only
- * count) is not one Coil has to accept.
+ * `eat-CdXtw1S2.wav` — so the name is read off the URL's basename, less the
+ * extension, against the cue files `specs/assets.md` fixes: a basename that is
+ * one of them, alone or ahead of a bundler's content hash, is that cue. The hash
+ * is matched as a whole run rather than split at a dash, because Vite's base64url
+ * alphabet can put a dash inside it (`eat-D58Dkt-M.wav` is still `eat`), and the
+ * fixed names are tried longest first, so `combo-up` keeps the dash that is its
+ * own. Any other file keeps its basename less a trailing hash, so a sound of the
+ * build's own is named for what it played rather than mistaken for one of the
+ * cues. That is general over any build that ships the four files the
+ * specification names, and it is why the reduction carom accepts under this
+ * engine (see its own `audio-init.js`, which can only count) is not one Coil has
+ * to accept.
  *
  * WHAT IS DELIBERATELY NOT REQUIRED. One source per cue: a build is free to layer
  * a decoded clip with a synthesized one, and demanding a single source would fail
@@ -83,13 +90,31 @@
   const decoded = [];
 
   /**
+   * The produced audio files `specs/assets.md` fixes, by the cue each stands for.
+   *
+   * Longest first, so a name that extends another is matched ahead of it.
+   */
+  const CUE_FILES = ["combo-up", "death", "music", "eat"];
+
+  /**
+   * A bundler's content hash, as the run after the basename's own name.
+   *
+   * Vite and Rollup write eight characters of base64url, an alphabet that
+   * includes `-`, so a hash is matched as a whole run rather than split at its
+   * last dash; other bundlers write eight or more of hex or base64 without one.
+   */
+  const HASH = /^(?:[A-Za-z0-9_-]{8}|[A-Za-z0-9_]{8,})$/;
+
+  /**
    * The cue name a URL stands for: its basename, less the extension and less a
    * bundler's content hash.
    *
-   * `assets/audio/combo-up-DEXxayDe.wav` is `combo-up`. The hash is stripped only
-   * when it is the LAST dash-separated run and looks like one — eight or more
-   * characters of a bundler's alphabet with no dash inside — so a cue whose own
-   * name carries a dash keeps it.
+   * `assets/audio/eat-DEXxayDe.wav` is `eat`, and so are
+   * `eat-D58Dkt-M.wav` and `eat.wav`. The four cue names are fixed by
+   * `specs/assets.md`, so a basename that is one of them, alone or ahead of a
+   * hash, is that cue. Any other file keeps its basename less a hash that stands
+   * alone after its last dash, so a sound of the build's own is named for what
+   * it played rather than mistaken for one of the cues.
    */
   const cueName = (url) => {
     if (typeof url !== "string" || url === "" || url.startsWith("data:")) {
@@ -100,10 +125,14 @@
     if (slash >= 0) path = path.slice(slash + 1);
     const dot = path.lastIndexOf(".");
     if (dot > 0) path = path.slice(0, dot);
-    const dash = path.lastIndexOf("-");
-    if (dash > 0 && /^[A-Za-z0-9_]{8,}$/.test(path.slice(dash + 1))) {
-      path = path.slice(0, dash);
+    for (const cue of CUE_FILES) {
+      if (path === cue) return cue;
+      if (path.startsWith(`${cue}-`) && HASH.test(path.slice(cue.length + 1))) {
+        return cue;
+      }
     }
+    const dash = path.lastIndexOf("-");
+    if (dash > 0 && HASH.test(path.slice(dash + 1))) path = path.slice(0, dash);
     return path === "" ? null : path;
   };
 
