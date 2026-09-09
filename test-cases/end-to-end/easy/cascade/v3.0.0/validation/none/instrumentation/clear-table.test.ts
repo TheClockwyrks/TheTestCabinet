@@ -34,6 +34,16 @@
 // different operation and never calls this one, so without the reading below a
 // build whose `clearTable` also wiped the trail would go ungraded.
 //
+// THE FLIGHT IS RUN ON THE `won` SCREEN, the screen `specs/screens.md` gives the
+// cascade, exactly as `cascade/flight.ts`'s `openFlight` and every other flight
+// point of this suite run theirs. `specs/victory.md` states the five motion steps
+// for "each frame of a running cascade", and `specs/screens.md` has nothing on
+// the table move on `playing` between one gesture and the next, so whether a
+// posed flyer advances on `playing` is a question the specification leaves open
+// and this point does not put. What it decides is what `clearTable` leaves
+// alone, and that is read where the flight is defined to run. Launching is posed
+// off among the gates, so nothing leaves the posed foundations meanwhile.
+//
 // WHAT THIS DOES NOT DECIDE. Which pile any card was on, which is
 // `instrumentation/clear-pile`'s; and that the run in hand goes with the cards,
 // which is `instrumentation/clear-table-drops-the-hand`'s.
@@ -152,7 +162,9 @@ it("empties every pile and the set memory, and leaves the flight and the gates",
   for (const gate of GATES) await h.debug[gate.pose](gate.value);
 
   // Painting is one of the four gates posed on, so flying the two cards for a
-  // moment is what puts stamps on the layer the clear must leave alone.
+  // moment — on the screen the cascade runs on — is what puts stamps on the
+  // layer the clear must leave alone.
+  await h.debug.setScreen("won");
   await h.advance(framesFor(PAINT_SECONDS));
 
   const before = await h.snapshot();

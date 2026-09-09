@@ -89,6 +89,29 @@ export function overlayValues(lines: readonly string[]): string[] {
 }
 
 /**
+ * The lines `after` carries that `before` did not, as a multiset difference.
+ *
+ * What a point reads beyond {@link overlayLines}: the panel's report of a
+ * situation, less its report of the same board without that situation, so a line
+ * that never changed cannot answer for one that had to.
+ */
+export function linesAdded(
+  before: readonly string[],
+  after: readonly string[],
+): string[] {
+  const counts = new Map<string, number>();
+  for (const line of before) counts.set(line, (counts.get(line) ?? 0) + 1);
+  return after.filter((line) => {
+    const held = counts.get(line) ?? 0;
+    if (held > 0) {
+      counts.set(line, held - 1);
+      return false;
+    }
+    return true;
+  });
+}
+
+/**
  * The separators a build may group a figure's digit triples with.
  *
  * specs/instrumentation.md fixes the FIGURE a source reports and leaves how it
@@ -129,6 +152,11 @@ export function drawnNumbers(lines: readonly string[]): number[] {
       Number(drawn.replace(GROUPS, "")),
     ),
   );
+}
+
+/** How many of the lines carry `value` as a whole figure in their value half. */
+export function linesCarrying(lines: readonly string[], value: number): number {
+  return lines.filter((line) => drawnNumbers([line]).includes(value)).length;
 }
 
 /**

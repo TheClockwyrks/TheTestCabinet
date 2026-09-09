@@ -20,10 +20,11 @@
 //
 // FIVE IS THE DISTINGUISHING VALUE. The column is posed as a face-down card
 // under a run of five, so the board carries a six before the press and a one
-// after it, and every other pile is empty; no figure on the idle panel is five,
-// and no figure on the held panel is five but the run in hand. A build reporting
-// the column it came from, or the cards left behind, reads as a different number
-// rather than as this one.
+// after it, and every other pile is empty, so no figure the board gives the
+// panel is five but the run in hand. A build reporting the column it came from,
+// or the cards left behind, reads as a different number rather than as this one.
+// The reading is over the lines the press ADDED, so a source of the build's own
+// that happens to carry a five while idle is not what is read.
 //
 // THE RUN IS LIFTED BY A REAL PRESS on the run's topmost face-up card, which
 // specs/controls.md has take that card and every face-up card below it, so the
@@ -84,12 +85,6 @@ it("draws the live drag and the cards it holds on the overlay", async () => {
   const beforeIdle = await h.drawFrame();
   const afterIdle = await toggleOverlay(h);
   const idle = overlayLines(beforeIdle, afterIdle);
-  assertEqual(
-    linesCarrying(idle, RUN),
-    0,
-    `no line of the idle panel to carry ${String(RUN)}, so the figure read ` +
-      "after the press can only be the run in hand",
-  );
 
   const grab = grabPoint(h.snapshot(), COLUMN, GRAB_ROW);
   pressAt(h, grab.x, grab.y);

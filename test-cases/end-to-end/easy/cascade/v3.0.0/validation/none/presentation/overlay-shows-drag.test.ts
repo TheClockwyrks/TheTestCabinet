@@ -77,8 +77,9 @@ const COLUMN = 0;
  * or a word of its own. It is the only flag the specification asks the panel to
  * carry, and every other value on this board is a count, so none of these words
  * can belong to anything else. The `simple-2d` and `structured-2d` suites read
- * the same words, so the one requirement is decided the same way on all three
- * engines.
+ * the same requirement as a dependence instead — a line the panel draws only
+ * once the run is in hand, carrying the run's length — and both readings accept
+ * every form the specification permits.
  */
 const HELD_WORDS = /\b(true|yes|on|live|held|holding|in hand)\b/i;
 
