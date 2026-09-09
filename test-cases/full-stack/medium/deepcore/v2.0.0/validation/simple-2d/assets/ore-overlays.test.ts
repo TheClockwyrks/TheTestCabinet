@@ -13,6 +13,11 @@
 // the failure this decides; whether the smears read as smears and the jewels as
 // jewels is a reviewer's reading off the still, which poses a run of them side by
 // side in one band's rock.
+//
+// THE STILL IS EVIDENCE ONLY. The verdict is read off the files, so the pose
+// that puts the game beside them is guarded: a build whose debug surface
+// cannot take the pose loses the picture and keeps the point, and no still is
+// recorded over the un-posed frame.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { MINERAL_SPRITES, PLAYABLE_COL_MIN } from "../constants";
@@ -57,17 +62,24 @@ it("produces a distinct overlay for each of the thirteen minerals", async () => 
     else pictures.push(picture);
   }
 
-  openScene(h);
-  pinDrill(h);
-  layFloor(h, ROW);
-  standOn(h, MINER_COL, ROW);
-  pinMiner(h);
-  fillRow(h, ROW - 1, MINER_COL + 1, MINER_COL + SHOWN, "rock");
-  for (let at = 0; at < SHOWN; at += 1) {
-    layOre(h, MINER_COL + 1 + at, ROW - 1, MINERAL_SPRITES[at]);
+  try {
+    openScene(h);
+    pinDrill(h);
+    layFloor(h, ROW);
+    standOn(h, MINER_COL, ROW);
+    pinMiner(h);
+    fillRow(h, ROW - 1, MINER_COL + 1, MINER_COL + SHOWN, "rock");
+    for (let at = 0; at < SHOWN; at += 1) {
+      layOre(h, MINER_COL + 1 + at, ROW - 1, MINERAL_SPRITES[at]);
+    }
+    await h.advance(2);
+    captureStill(h, "ores");
+  } catch (error) {
+    // Evidence only; the readings below carry the verdict.
+    console.warn(
+      `deepcore: could not pose the still for \`ores\`, so none is recorded: ${String(error)}`,
+    );
   }
-  await h.advance(2);
-  captureStill(h, "ores");
 
   assertEqual(missing.join(", "), "", "specs/assets.md");
   assertEqual(allDistinct(pictures), true, "specs/assets.md");

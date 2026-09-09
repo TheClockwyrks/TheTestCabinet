@@ -12,6 +12,11 @@
 // read here: `specs/assets.md` states what a sprite is authored at, and how large
 // the build draws it in its own bar is layout, which `specs/overview.md` hands to
 // the build.
+//
+// THE STILL IS EVIDENCE ONLY. The verdict is read off the files, so the pose
+// that puts the game beside them is guarded: a build whose debug surface
+// cannot take the pose loses the picture and keeps the point, and no still is
+// recorded over the un-posed frame.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
@@ -49,13 +54,20 @@ it("produces a distinct icon for each status-bar reading", async () => {
 
   // The bar the icons belong to, so the evidence beside the verdict is the
   // place a player reads them rather than the files on their own.
-  await openScene(h);
-  await layCamp(h);
-  await pinMiner(h);
-  await pinDrill(h);
-  await standAtCamp(h);
-  await h.advance(2);
-  await captureStill(h, "icons");
+  try {
+    await openScene(h);
+    await layCamp(h);
+    await pinMiner(h);
+    await pinDrill(h);
+    await standAtCamp(h);
+    await h.advance(2);
+    await captureStill(h, "icons");
+  } catch (error) {
+    // Evidence only; the readings below carry the verdict.
+    console.warn(
+      `deepcore: could not pose the still for \`icons\`, so none is recorded: ${String(error)}`,
+    );
+  }
 
   assertEqual(missing.join(", "), "", "specs/assets.md");
   assertEqual(allDistinct(icons), true, "specs/assets.md");

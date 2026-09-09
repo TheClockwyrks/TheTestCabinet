@@ -57,14 +57,29 @@ const OTHER_LIVES = 1;
  * reading `40 130` drew the two figures `40` and `130`, not `40130`. The word
  * boundaries on both sides are kept, so a copy showing `150` still does not
  * report `50`.
+ *
+ * Leading zeros are not part of that boundary. The specification fixes the
+ * figure and leaves how it is written to the build, so a readout padded to a
+ * fixed width — `000050`, the odometer idiom `padStart` produces — is the
+ * figure 50 as surely as `50` is. Any run of zeros standing directly before
+ * the figure is absorbed into it, while a non-zero digit there still ends the
+ * reading: `000050` shows 50, `150` and `504` do not. A zero run that is
+ * itself a group of a larger grouped figure is not padding: `1,050` shows
+ * 1050, not 50. That guard falls on the zeros alone, so a figure standing
+ * after a separator with no padding before it, the `7` of a `10,7` pair,
+ * reads as it did without the padding allowance.
  */
 function drawnFigure(figure: number): RegExp {
   const plain = String(figure);
   const forms = new Set([plain]);
-  for (const separator of [",", "'", "\u00A0", "\u202F", "\u2009"]) {
+  const separators = [",", "'", "\u00A0", "\u202F", "\u2009"];
+  for (const separator of separators) {
     forms.add(plain.replace(/\B(?=(\d{3})+(?!\d))/g, separator));
   }
-  return new RegExp(`\\b(?:${[...forms].join("|")})\\b`);
+  const group = `[${separators.join("")}]`;
+  return new RegExp(
+    `\\b(?:(?<![0-9]${group})0+)?(?:${[...forms].join("|")})\\b`,
+  );
 }
 
 let h: Harness;

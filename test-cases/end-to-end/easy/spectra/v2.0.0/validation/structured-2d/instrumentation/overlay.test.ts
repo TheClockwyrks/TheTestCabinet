@@ -138,6 +138,12 @@ const STAGE = 9;
 const RESONANCE = RESONANCE_MAX;
 
 /**
+ * Where the meter's twin is posed: below the ceiling, so a discharge is no
+ * longer ready, at a figure nothing else posed here carries.
+ */
+const RESONANCE_SPENT = 37;
+
+/**
  * The two durations, in seconds, each at the top of the range its own rule fixes.
  *
  * `specs/bands.md` runs an inversion for `INVERSION_TIME` (`5.0`) seconds and
@@ -239,8 +245,6 @@ const BAND_WORDS = new RegExp(
 function withoutBands(line: string): string {
   return line.replace(BAND_WORDS, "band");
 }
-const READY_FORMS = /ready|\byes\b|\btrue\b|\bon\b|\bfull\b/i;
-const INVERSION_FORMS = /invert|inversion|activ|\byes\b|\btrue\b|\bon\b/i;
 
 /** The scales a build may honestly print a duration in: seconds to milliseconds. */
 const DURATION_SCALES = [1, 10, 100, 1000] as const;
@@ -266,6 +270,20 @@ const TWIN_SHIMMER_CLOCK = fluxHold(1) + 0.1;
  * them and reads the sources Spectra registered.
  */
 const ENGINE_LINES = /^\s*(level|frame):\s/;
+
+/**
+ * A line with every figure blanked: which line of the panel it is, whatever it
+ * reads at the moment.
+ *
+ * The control reading finds the lines a panel moves on its own, and a frame
+ * counter or a clock is the same line from one reading to the next with a
+ * different figure on it. Such a line is compared in this blanked form rather
+ * than dropped, so a line keeps its words if a counter shares its baseline;
+ * only a flag spelled as a figure is lost with it there.
+ */
+function shapeOf(line: string): string {
+  return line.replace(/\d+/g, "#");
+}
 
 /** The lines `after` drew beyond `before`, as a multiset difference. */
 function newLines(
@@ -325,6 +343,25 @@ function drawnNumbers(lines: readonly string[], apart = false): number[] {
       if (!apart) return [whole];
       return [whole, ...drawn.split(new RegExp(GROUP)).map(Number)];
     }),
+  );
+}
+
+/**
+ * A line with every figure that reads as one of `figures` blanked.
+ *
+ * The discharge twin moves the resonance, and the resonance is a source of its
+ * own that the panel already draws — `resonance: 100` on one field and
+ * `resonance: 37` on the other — so a panel with no readiness on it at all would
+ * differ on that figure alone. Both figures are blanked before the two panels
+ * are compared, as the band words are for the shimmer and the shell, and what
+ * is left to differ is something that is not the meter: the flag, in whatever
+ * spelling, or a mark drawn only while a discharge is ready. A flag spelled as
+ * a figure of its own (`ready: 1`) is neither figure and still changes its line.
+ */
+function withoutFigures(line: string, figures: readonly number[]): string {
+  const grouping = new RegExp(GROUP, "g");
+  return line.replace(DRAWN, (drawn) =>
+    figures.includes(Number(drawn.replace(grouping, ""))) ? "#" : drawn,
   );
 }
 
@@ -493,9 +530,9 @@ it("draws every registered value and changes nothing in the game", async () => {
   assertFigure(overlay, SCORE, "the score");
   assertFigure(overlay, LIVES, "the lives");
   assertFigure(overlay, RESONANCE, "the resonance");
-  assertForm(overlay, READY_FORMS, "that a discharge is ready");
+  // Whether a discharge is ready is read below, against a twin field.
 
-  assertForm(overlay, INVERSION_FORMS, "that a spectral inversion is active");
+  // Whether an inversion is active is read below, against a twin field.
   assertDuration(overlay, INVERSION, "how long is left of the inversion");
 
   assertFigure(overlay, SHIP_X, "the ship's x");
@@ -570,32 +607,61 @@ it("draws every registered value and changes nothing in the game", async () => {
     return lines;
   };
 
+  // The control first: the same field posed twice, with nothing between the
+  // two poses. A line that reads differently across them is one the build moves
+  // on its own — a frame counter, a wall clock — and its figures are blanked in
+  // every twin below, so a restless panel cannot pass for one that reports the
+  // fact a twin moves.
+  const restless = new Set(
+    [
+      ...newLines(
+        await panelOver(() => undefined),
+        await panelOver(() => undefined),
+      ),
+    ].map((line) => shapeOf(withoutBands(line))),
+  );
+
   /**
    * Two fields differing in exactly one fact must draw two different panels.
    *
    * A fact that moves the drone's effective band with it (specs/bands.md) is
    * read with the band words `masked`, so the band the panel already draws
-   * cannot answer for the flag.
+   * cannot answer for the flag; a fact that follows a figure the panel draws in
+   * its own right is read with those `figures` blanked, for the same reason.
+   * A line the control found restless is compared by its shape alone.
    */
   const reports = async (
     fact: string,
     one: () => void,
     other: () => void,
-    masked = false,
+    options: { masked?: boolean; figures?: readonly number[] } = {},
   ): Promise<void> => {
+    const masked = options.masked ?? false;
+    const figures = options.figures ?? [];
     const read = (panel: readonly string[]): string =>
-      (masked ? panel.map(withoutBands) : panel).join("\n");
+      panel
+        .map((line) => {
+          const bare = masked ? withoutBands(line) : line;
+          const seen = withoutFigures(bare, figures);
+          return restless.has(shapeOf(withoutBands(line)))
+            ? shapeOf(seen)
+            : seen;
+        })
+        .join("\n");
     const first = read(await panelOver(one));
     const second = read(await panelOver(other));
     assertNotEqual(
       second,
       first,
-      `the overlay's own lines${masked ? ", band words masked," : ""} over a ` +
-        `field posed with ${fact} — the two fields are identical in every ` +
-        `other respect, and both runs are opened by reset() so the drone ` +
+      `the overlay's own lines${masked ? ", band words masked," : ""}` +
+        `${figures.length > 0 ? ` with the figures ${figures.join(", ")} blanked,` : ""} ` +
+        `over a field posed with ${fact} — the two fields are identical in ` +
+        `every other respect, and both runs are opened by reset() so the drone ` +
         `carries the same id at the same point in each, so a panel that ` +
         `reports the fact draws something different and one that omits it ` +
-        `cannot (specs/instrumentation.md, Diagnostics)`,
+        `cannot (specs/instrumentation.md, Diagnostics); the figures of ` +
+        `${String(restless.size)} line(s) that moved with nothing changed are ` +
+        `blanked`,
     );
   };
 
@@ -653,7 +719,7 @@ it("draws every registered value and changes nothing in the game", async () => {
         bandClock: TWIN_SHIMMER_CLOCK,
       });
     },
-    true,
+    { masked: true },
   );
 
   await reports(
@@ -673,7 +739,7 @@ it("draws every registered value and changes nothing in the game", async () => {
         shell: false,
       });
     },
-    true,
+    { masked: true },
   );
 
   await reports(
@@ -681,5 +747,28 @@ it("draws every registered value and changes nothing in the game", async () => {
       "SHIP'S BAND)",
     () => h.debug.setShipBand("cyan"),
     () => h.debug.setShipBand("magenta"),
+  );
+
+  await reports(
+    `the resonance at RESONANCE_MAX (${String(RESONANCE_MAX)}), against the ` +
+      `same field with it at ${String(RESONANCE_SPENT)} (whether a DISCHARGE IS ` +
+      `READY, which follows the resonance, specs/instrumentation.md); the ` +
+      `meter's own two figures are blanked, so the readiness itself is what ` +
+      `must show`,
+    () => h.debug.setResonance(RESONANCE_MAX),
+    () => h.debug.setResonance(RESONANCE_SPENT),
+    { figures: [RESONANCE_MAX, RESONANCE_SPENT] },
+  );
+
+  await reports(
+    `an inversion with INVERSION_TIME (${String(INVERSION_TIME)}) s left, ` +
+      `against the same field with none (whether an INVERSION IS ACTIVE, which ` +
+      `follows the seconds left, specs/instrumentation.md); the effective bands ` +
+      `that move with it (specs/bands.md) are masked out, and the seconds left ` +
+      `are not, because a zero of them is none and a line that reports them ` +
+      `reports the fact`,
+    () => h.debug.setInversion(INVERSION_TIME),
+    () => h.debug.setInversion(0),
+    { masked: true },
   );
 });

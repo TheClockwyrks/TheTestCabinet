@@ -1823,6 +1823,31 @@ export async function writeBoard(
 }
 
 /**
+ * Put away whatever an earlier scenario left standing on the board: the
+ * selection, the offer, the refusal, and any swap or chain step in motion, each
+ * cleared only where the snapshot reports one. A no-op, and not an error, on a
+ * board with nothing standing.
+ *
+ * `specs/instrumentation.md` fixes what `clearSelection`, `clearOffer`,
+ * `clearRefusal` and `clearChain` do to a thing that stands and says nothing
+ * about a call with nothing to put away, and its rule that "no operation returns
+ * with the state as it was" lets a build read such a call as one it must fail
+ * loudly on. So each clear is issued only where there is something to clear;
+ * `pointer/press-selects` and `appearance/selection-marked` still call
+ * `clearSelection` and `clearOffer` themselves. The snapshot shape fixes
+ * `selection`, `offer` and `refusal` as `null` while none stands and the timers
+ * at rest while `phase` is `idle`, so those four readings are the whole of what
+ * there is to put away.
+ */
+export async function clearStanding(h: Harness): Promise<void> {
+  const { selection, offer, refusal, phase } = await h.snapshot();
+  if (selection !== null) await h.debug.clearSelection();
+  if (offer !== null) await h.debug.clearOffer();
+  if (refusal !== null) await h.debug.clearRefusal();
+  if (phase !== "idle") await h.debug.clearChain();
+}
+
+/**
  * Pose a written board on a settled `playing` screen, and read it back.
  *
  * THE SEQUENCE, not one operation: the board is written, resolution is settled,
@@ -1842,10 +1867,7 @@ export async function loadBoard(
   rows: BoardRows,
 ): Promise<FacetSnapshot> {
   parseRows(rows);
-  await h.debug.clearChain();
-  await h.debug.clearSelection();
-  await h.debug.clearOffer();
-  await h.debug.clearRefusal();
+  await clearStanding(h);
   await h.debug.loadBoard(rows);
   await h.debug.setMenuIndex(0);
   await h.debug.setScreen("playing");
@@ -1886,10 +1908,7 @@ export async function startRound(h: Harness): Promise<FacetSnapshot> {
   await h.debug.setMoveScore(0);
   await h.debug.setBestMove(0);
   await h.debug.setBestChain(0);
-  await h.debug.clearSelection();
-  await h.debug.clearOffer();
-  await h.debug.clearRefusal();
-  await h.debug.clearChain();
+  await clearStanding(h);
   await h.debug.dealBoard();
   await h.debug.setMenuIndex(0);
   await h.debug.setScreen("playing");
@@ -1914,10 +1933,7 @@ export async function openNextLevel(h: Harness): Promise<FacetSnapshot> {
   await h.debug.setMoveScore(0);
   await h.debug.setBestMove(0);
   await h.debug.setBestChain(0);
-  await h.debug.clearSelection();
-  await h.debug.clearOffer();
-  await h.debug.clearRefusal();
-  await h.debug.clearChain();
+  await clearStanding(h);
   await h.debug.dealBoard();
   await h.debug.setMenuIndex(0);
   await h.debug.setScreen("playing");
@@ -1936,10 +1952,7 @@ export async function openNextLevel(h: Harness): Promise<FacetSnapshot> {
  * {@link startRound} writes both.
  */
 export async function quitToTitle(h: Harness): Promise<FacetSnapshot> {
-  await h.debug.clearSelection();
-  await h.debug.clearOffer();
-  await h.debug.clearRefusal();
-  await h.debug.clearChain();
+  await clearStanding(h);
   await h.debug.clearBoard();
   await h.debug.setMenuIndex(0);
   await h.debug.setScreen("title");

@@ -11,11 +11,11 @@
 //   npx vitest run                                       # the build's own tests
 //   npx vitest run --config validation/vitest.config.ts  # the case's validators
 //
-// Everything but the root and the per-check allowance is the shared
-// `@clockwyrks/case-harness` factory's, because everything else is what makes a
-// staged validator project one shape the runner can drive: the project's name,
-// the suites it collects, the `node` environment, and the refusal to pass a run
-// that collected nothing.
+// Everything but the root is the shared `@clockwyrks/case-harness` factory's,
+// because everything else is what makes a staged validator project one shape
+// the runner can drive: the project's name, the suites it collects, the `node`
+// environment, the two allowances, and the refusal to pass a run that collected
+// nothing.
 //
 // THE ENVIRONMENT IS `node`, and the factory fixes it. The engine takes every
 // measurement from the `SurfaceMetrics` the harness supplies and draws through an
@@ -37,6 +37,26 @@
 
 import { defineEngineValidationConfig } from "./case-harness/engine/vitest-config";
 
+// NO DIALS. The minute this project used to name for `testTimeout` was sized
+// against a healthy machine and the reference's own drawing, on the reading
+// that a posed scenario costs milliseconds. A produced build run with the whole
+// project in flight measured otherwise: `core-run/core-is-inexhaustible` at
+// 48 s, and five more checks — `audio/music-bed-loops`,
+// `fuel/thrust-burn-scales-with-world-size`, `assets/particle-on-pickup`,
+// `hazards/impact-damage`, `economy/credits-survive-a-standard-death` — between
+// 30 s and 37 s, every one a drive of hundreds of frames rendered through the
+// engine onto the recording canvas. The specification fixes nothing about how a
+// build draws the mine, so a build that blits every cell of a deep world each
+// frame costs that canvas an order of magnitude more than one that draws the
+// visible band, and it is a conforming build: every check here reads the
+// snapshot and the picture and never the wall clock, so the only thing a low
+// ceiling can take from such a build is a point it did nothing to lose. The
+// factory's five minutes are the figure measured against a host running nine
+// of these projects at once, a ninth of the runner's cap on the whole run, so a
+// check reaching it is hung rather than slow; its two-minute hook allowance is
+// what this project already relied on. The allowance is a hang cap and not a
+// budget: the authoring guide's ask that a validator finish in seconds still
+// governs what a check DRIVES.
 export default defineEngineValidationConfig({
   // The workspace, not this directory, so a validator addresses the build by the
   // same relative paths the build itself uses — `src/game.ts`, which only
@@ -45,10 +65,4 @@ export default defineEngineValidationConfig({
   // disk. Derived from this file's own URL rather than from the working
   // directory, so the command above works from anywhere.
   root: new URL("..", import.meta.url).pathname,
-  // A Deepcore scenario is posed rather than played to, so most cost
-  // milliseconds; the headroom is for the Core Sample's ninety-second timer,
-  // driven off the clock rather than waited out. This is the figure the checks
-  // here were measured against, and it is the one dial this project sets below
-  // the factory's own default.
-  testTimeout: 60_000,
 });

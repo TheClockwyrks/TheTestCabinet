@@ -23,6 +23,21 @@
 // projectiles, two zones, five gems, Ember at 3 with a 0.7 s timer and Pin
 // at 2, Bellows at 4 and Tallow at 2, six level-ups queued, and six
 // switches off beside three on. The overlay is shown for the still.
+//
+// THE NINE SWITCHES ARE READ AS A DEPENDENCE. The specification names each
+// switch as a fact "the snapshot reports" and fixes no spelling for a reading
+// of one: a build may register the boolean itself, which the panel draws as
+// `true`, or a word of its own — `on`, `enabled`, `yes`, a `1`, a tick — and no
+// list of the words is complete, so a list would fail a build that spelled an
+// honest reading some other way. What CAN be decided is that each switch
+// reaches the panel: the readings are taken before and after the switch is
+// flipped through its own operation, and one of them must change that did not
+// change between two readings taken with nothing flipped, which is what a
+// source that ticks on its own — a clock, a frame count, which "Register at
+// least" permits — would otherwise answer with. A reading is known by the name
+// it was registered under and its rank among readings of that name, and
+// compared by the text the panel would draw for it. Each switch is put back as
+// it was, so the nine readings are taken over the one posed run.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThanOrEqual, assertTrue } from "../assert";
@@ -39,6 +54,8 @@ import {
   placeGem,
   placeProjectile,
   placePuddle,
+  setSwitch,
+  switchesOf,
   toggleOverlay,
   type Harness,
 } from "../harness";
@@ -110,6 +127,42 @@ function valueText(value: unknown): string {
     return Number.isInteger(value) ? String(value) : value.toFixed(3);
   }
   return String(value);
+}
+
+/** What the engine hands back for one read of every registered source. */
+type Readings = ReturnType<Harness["diagnostics"]>;
+
+/**
+ * Every reading of one read, under a name that outlives its value: the name it
+ * was registered under and its rank among readings of that name, so two
+ * sources a build registered under one name are still told apart.
+ */
+function readingsByName(readings: Readings): Map<string, string> {
+  const ranks = new Map<string, number>();
+  const named = new Map<string, string>();
+  for (const reading of readings) {
+    const rank = ranks.get(reading.name) ?? 0;
+    ranks.set(reading.name, rank + 1);
+    named.set(
+      `${reading.name}\u0000${String(rank)}`,
+      reading.error ?? valueText(reading.value),
+    );
+  }
+  return named;
+}
+
+/** The names of every reading the two reads disagree on, either way round. */
+function changedReadings(a: Readings, b: Readings): Set<string> {
+  const namedA = readingsByName(a);
+  const namedB = readingsByName(b);
+  const changed = new Set<string>();
+  for (const [name, text] of namedA) {
+    if (namedB.get(name) !== text) changed.add(name);
+  }
+  for (const [name, text] of namedB) {
+    if (namedA.get(name) !== text) changed.add(name);
+  }
+  return changed;
 }
 
 it("reports every listed fact with the snapshot's live value", async () => {
@@ -227,8 +280,27 @@ it("reports every listed fact with the snapshot's live value", async () => {
       `switch ${name} named among the overlay's lines`,
     );
   }
-  const offs = text.match(/\b(false|off)\b/gi)?.length ?? 0;
-  const ons = text.match(/\b(true|on)\b/gi)?.length ?? 0;
-  assertGreaterThanOrEqual(offs, 6, "off readings for the six switches off");
-  assertGreaterThanOrEqual(ons, 3, "on readings for the three switches on");
+
+  // The nine switches, each as a dependence. The control pair first: two reads
+  // with nothing flipped, and whatever differs between them is what the panel
+  // moves on its own, which no switch's reading may rest on.
+  const restless = changedReadings(readings, h.diagnostics());
+  const posed = switchesOf(s);
+  for (const name of SWITCH_NAMES) {
+    const before = h.diagnostics();
+    setSwitch(h, name, !posed[name]);
+    const after = h.diagnostics();
+    setSwitch(h, name, posed[name]);
+    const answers = [...changedReadings(before, after)].some(
+      (reading) => !restless.has(reading),
+    );
+    assertTrue(
+      answers,
+      `a reading that changes when the ${name} switch is flipped from ` +
+        `${String(posed[name])} through its own operation and holds still ` +
+        `with nothing flipped (${String(restless.size)} reading(s) moved on ` +
+        `their own), so a source reports it (specs/instrumentation.md, ` +
+        `Diagnostics: the nine driver switches)`,
+    );
+  }
 });

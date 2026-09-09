@@ -28,7 +28,11 @@
 // taken from `snapshot()` rather than written down. The lines are the LOGICAL
 // runs each frame spells (`drawnTextLines`), not its `fillText` calls, so a
 // panel that letter-spaces a line still reports the value that line carries
-// rather than one character of it per line.
+// rather than one character of it per line. A comma between two runs of digits
+// is ambiguous — `731,219` is one grouped figure or the pointer's two
+// coordinates — and the specification fixes no form for the pointer position,
+// so each of its coordinates is accepted in both readings; every other figure
+// keeps the whole-figure reading.
 //
 // THE NEGATIVE IS THE CHALLENGE'S NAME. "Quorum Zenith" is on the panel in the
 // second world and cannot be on it in the first, where no challenge is open — so
@@ -144,11 +148,25 @@ const DRAWN = new RegExp(
   "g",
 );
 
-/** Every number the panel wrote, whatever it wrote beside them. */
-function numbersOn(lines: readonly string[]): number[] {
-  return (lines.join("\n").match(DRAWN) ?? []).map((drawn) =>
-    Number(drawn.replace(new RegExp(GROUP, "g"), "")),
-  );
+/**
+ * Every number the panel wrote, whatever it wrote beside them — and, when
+ * `apart` is set, every run of digits inside a grouped figure as a number of its
+ * own as well.
+ *
+ * A figure is read whole rather than digit by digit, so a panel that grouped a
+ * cost as `1,234` reports the one number `1234`. The same characters also spell
+ * two figures a panel joined with a comma — the pointer drawn as `731,219` — and
+ * nothing in the text tells the two apart, so a reading that wants the joined
+ * figures asks for them `apart`: `731,219` then reports `731219`, `731` and
+ * `219`, and a build that never drew the pointer still draws none of them.
+ */
+function numbersOn(lines: readonly string[], apart = false): number[] {
+  const grouping = new RegExp(GROUP, "g");
+  return (lines.join("\n").match(DRAWN) ?? []).flatMap((drawn) => {
+    const whole = Number(drawn.replace(grouping, ""));
+    if (!apart) return [whole];
+    return [whole, ...drawn.split(new RegExp(GROUP)).map(Number)];
+  });
 }
 
 /** Pose the second world: a challenge, a machine, a run, and a pointer on it. */
@@ -217,6 +235,7 @@ it("moves every reported figure to the posed world rather than the one it starte
   const after = await panelLines();
   const said = after.join("\n").toLowerCase();
   const wrote = numbersOn(after);
+  const placed = numbersOn(after, true);
 
   assertDefined(sim, "the second world is a live run");
   assertNotNull(posed.challenge, "with a challenge open on the editor");
@@ -231,6 +250,18 @@ it("moves every reported figure to the posed world rather than the one it starte
     assertTrue(
       wrote.includes(value),
       `the overlay now reports ${fact} (${value}), and wrote ${JSON.stringify(wrote)}`,
+    );
+  };
+  /**
+   * The panel wrote this number as one coordinate of the pointer: a whole figure
+   * of its own, or one run of a comma-joined pair — `(731, 219)`, `x 731 y 219`
+   * and `731,219` all draw the coordinates, and the last is also the grouped
+   * figure `731219`.
+   */
+  const locates = (value: number, fact: string): void => {
+    assertTrue(
+      placed.includes(value),
+      `the overlay now reports ${fact} (${value}), and wrote ${JSON.stringify(placed)}`,
     );
   };
 
@@ -254,8 +285,8 @@ it("moves every reported figure to the posed world rather than the one it starte
     "the mote count of the field that was spawned",
   );
   counts(sim?.area ?? -1, "the banked area of that run");
-  counts(posed.pointer.x, "the pointer's x");
-  counts(posed.pointer.y, "the pointer's y");
+  locates(posed.pointer.x, "the pointer's x");
+  locates(posed.pointer.y, "the pointer's y");
 
   // And none of it was on the panel before the world was posed: a source frozen at
   // registration would still be reporting the first reading here.

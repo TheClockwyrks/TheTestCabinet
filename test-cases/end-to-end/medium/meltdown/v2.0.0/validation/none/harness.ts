@@ -738,6 +738,86 @@ class CoastClock implements Clock {
   }
 }
 
+/* -------------------------------------------------------------------------- */
+/* The inert press                                                            */
+/* -------------------------------------------------------------------------- */
+//
+// THE SECOND GESTURE {@link Harness.armAudio} MAKES. `specs/audio.md` has
+// sound wait for the player's first interaction with the page and fixes no
+// gesture as the one that unlocks, so a build that opens its audio from any key
+// at all and one that opens it only from the inputs the specification binds — a
+// pointer press, a bound key — are both conformant. The key `UNBOUND_KEY` names
+// reaches the first; a key bound to nothing never reaches the second, so it is
+// paired with a real pointer press at a point `specs/controls.md` fixes as
+// doing nothing.
+
+/** A point on the stage, in logical units. */
+interface PressPoint {
+  x: number;
+  y: number;
+}
+
+/**
+ * Where an inert press is tried, in the stage's logical units: the four
+ * corners, inset, and then the middles of the four edges.
+ *
+ * `specs/screens.md` leaves where a build draws a menu to the build, so which
+ * of these lies outside every row on a given screen is read from the rows the
+ * snapshot reports rather than assumed. Whole units, inside the stage, so the
+ * press lands on the canvas wherever the fit put it.
+ */
+const INERT_PRESS_CANDIDATES: readonly PressPoint[] = [
+  { x: 4, y: 4 },
+  { x: STAGE_W - 4, y: 4 },
+  { x: 4, y: STAGE_H - 4 },
+  { x: STAGE_W - 4, y: STAGE_H - 4 },
+  { x: STAGE_W / 2, y: 4 },
+  { x: STAGE_W / 2, y: STAGE_H - 4 },
+  { x: 4, y: STAGE_H / 2 },
+  { x: STAGE_W - 4, y: STAGE_H / 2 },
+];
+
+/** Whether `point` lies inside `rect`, edges included. */
+function insideRegion(point: PressPoint, rect: Rect): boolean {
+  return (
+    point.x >= rect.x &&
+    point.x <= rect.x + rect.w &&
+    point.y >= rect.y &&
+    point.y <= rect.y + rect.h
+  );
+}
+
+/**
+ * A pointer press the specification fixes as doing nothing, delivered as a
+ * genuine browser gesture so a build that opens its audio from the pointer can
+ * open it.
+ *
+ * `specs/controls.md` gives a press exactly the effects its table lists, and on
+ * a menu screen the only thing a press lands on is "a row of the menu the
+ * current screen shows"; a move "off every row leaves the highlight on the row
+ * it last reached". So a press outside every row of the menu on screen takes
+ * nothing and moves nothing. On `playing` the same table reads a press against
+ * the floor, the shop and the panel — and open floor deselects — so no press is
+ * made there and the key gesture stands alone. Which point is outside every
+ * row is read from the rows the build reports, so a build is free to lay its
+ * menus out as it likes; a menu screen reporting no rows is left to the check
+ * that reads that. Answers whether a press was made.
+ */
+async function inertPress(
+  base: BaseHarness<MeltdownSnapshot, MeltdownDebugApi>,
+): Promise<boolean> {
+  const snapshot = await base.snapshot();
+  if (snapshot.screen === "playing" || snapshot.menu.length === 0) return false;
+  const at = INERT_PRESS_CANDIDATES.find((point) =>
+    snapshot.menu.every((row) => !insideRegion(point, row)),
+  );
+  if (at === undefined) return false;
+  await base.movePointer(at.x, at.y);
+  await base.page.mouse.down();
+  await base.page.mouse.up();
+  return true;
+}
+
 /**
  * Load the built site in a browser, take the game off the wall clock, and hand
  * back everything a check reads.
@@ -795,12 +875,19 @@ export async function createHarness(
       return { hit: false, elapsed, snapshot };
     },
 
-    // A GENUINE browser gesture, not a posed one: a build is free to open its
+    // GENUINE browser gestures, not posed ones: a build is free to open its
     // audio context from a real DOM event alone (both are conformant), so a key
     // delivered any other way would leave a perfectly good build silent. The key
     // is bound to nothing (`specs/controls.md` binds every other key it names,
-    // and `Backquote`), so arming changes no game state and toggles no overlay.
-    armAudio: () => page.keyboard.press(UNBOUND_KEY),
+    // and `Backquote`), so arming changes no game state and toggles no overlay;
+    // the pointer press before it lands outside every menu row, which the same
+    // file fixes as doing nothing. The press needs the surface to find its
+    // point, so a build with a surface fault is left to fail on the check's
+    // own reading of it; on `playing` the key stands alone.
+    async armAudio() {
+      if (base.surfaceFault === null) await inertPress(base);
+      await page.keyboard.press(UNBOUND_KEY);
+    },
   });
 
   // AND THE TWO OPERATIONS THAT SPEND REAL TIME COME OFF THE HANDLE. The shared

@@ -4,6 +4,11 @@
 // `40 x 40`, "one per tower", and "a tower has no tier variants" — so it is
 // twenty-four files rather than the sixty a quality ladder would give.
 // `specs/combinations.md` fixes the twelve identifiers.
+//
+// THE STILL IS EVIDENCE ONLY. The verdict is read off the files above the
+// drive, so the pose that puts the yard beside them is guarded: a build whose
+// debug surface cannot take the pose loses the picture and keeps the point,
+// and no still is recorded over the un-posed frame.
 
 import { it } from "vitest";
 import { assertEqual } from "../assert";
@@ -44,6 +49,11 @@ it("produces a mount and a head for every combination tower", async () => {
     h.debug.clearSelection();
     await h.advance(1);
     captureStill(h, "towers");
+  } catch (error) {
+    // Evidence only; the readings above carry the verdict.
+    console.warn(
+      `arc foundry: could not pose the still for \`towers\`, so none is recorded: ${String(error)}`,
+    );
   } finally {
     h.dispose();
   }

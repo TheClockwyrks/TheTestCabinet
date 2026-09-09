@@ -18,6 +18,11 @@
 // no Node process has — so the sounds are read here rather than through the build.
 // That the build asks for the right cue at the right moment is what the `audio/`
 // points decide; that there is a real sound behind each name is this one.
+//
+// THE STILL IS EVIDENCE ONLY. The verdict is read off the files, so the pose
+// that puts the game beside them is guarded: a build whose debug surface
+// cannot take the pose loses the picture and keeps the point, and no still is
+// recorded over the un-posed frame.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { AUDIO_FILES, BAND_HEALTH, PLAYABLE_COL_MIN } from "../constants";
@@ -74,15 +79,22 @@ it("decodes all thirteen produced sounds, none of them silent", async () => {
 
   // The game playing, as the picture the review item declares: a cut running, which
   // is the moment the most of the thirteen are sounding at once.
-  openScene(h);
-  layFloor(h, ROW);
-  standOn(h, COL, ROW);
-  pinMiner(h);
-  h.debug.setTileHealth(COL, ROW, BAND_HEALTH.coreshell);
-  h.hold(ACTION_KEY.down);
-  await h.advance(CUTTING);
-  captureStill(h, "audio");
-  h.release(ACTION_KEY.down);
+  try {
+    openScene(h);
+    layFloor(h, ROW);
+    standOn(h, COL, ROW);
+    pinMiner(h);
+    h.debug.setTileHealth(COL, ROW, BAND_HEALTH.coreshell);
+    h.hold(ACTION_KEY.down);
+    await h.advance(CUTTING);
+    captureStill(h, "audio");
+    h.release(ACTION_KEY.down);
+  } catch (error) {
+    // Evidence only; the readings below carry the verdict.
+    console.warn(
+      `deepcore: could not pose the still for \`audio\`, so none is recorded: ${String(error)}`,
+    );
+  }
 
   assertEqual(faults.join(", "), "", "specs/assets.md");
 });

@@ -64,7 +64,14 @@ import {
   type HarnessOptions,
 } from "./case-harness/index";
 import { fail } from "./assert";
-import { STAGE_H, STAGE_W, TICK_HZ, UNBOUND_KEY } from "./constants";
+import {
+  RESULTS_ITEMS,
+  STAGE_H,
+  STAGE_W,
+  TICK_HZ,
+  TITLE_ITEMS,
+  UNBOUND_KEY,
+} from "./constants";
 import type {
   DrawnEntry,
   AxisName,
@@ -469,6 +476,97 @@ function baseOf(h: Harness): BaseHarness<GantrySnapshot, GantryDebugApi> {
   return base;
 }
 
+/* -------------------------------------------------------------------------- */
+/* The inert press                                                            */
+/* -------------------------------------------------------------------------- */
+//
+// THE SECOND GESTURE ARMING MAKES. `specs/assets.md` has sound wait for the
+// player's first interaction with the page and fixes no gesture as the one that
+// unlocks, so a build that opens its audio from any key at all and one that
+// opens it only from the inputs the specification binds — a pointer press, a
+// bound key — are both conformant. The key `UNBOUND_KEY` names reaches the
+// first; a key bound to nothing never reaches the second, so it is paired with
+// a real pointer press at a point `specs/ui.md` fixes as doing nothing.
+
+/** A point on the stage, in logical units. */
+interface PressPoint {
+  x: number;
+  y: number;
+}
+
+/**
+ * How many entries the menu on each menu-bearing screen carries (`specs/ui.md`).
+ * `select` carries one too, of a size this project does not pin, and the four
+ * scene screens carry none: on those the key stands alone.
+ */
+const MENU_ITEM_COUNTS: Partial<Record<Screen, number>> = {
+  title: TITLE_ITEMS.length,
+  results: RESULTS_ITEMS.length,
+};
+
+/**
+ * Where an inert press is tried, in the stage's logical units: the four
+ * corners, inset, and then the middles of the four edges.
+ *
+ * `specs/ui.md` leaves where a menu puts its entries to the build, so which of
+ * these lies outside every entry's region on a menu screen is read from the
+ * build's own `menuItemRect` rather than assumed. Whole units, inside the
+ * stage, so the press lands on the canvas wherever the fit put it.
+ */
+const INERT_PRESS_CANDIDATES: readonly PressPoint[] = [
+  { x: 4, y: 4 },
+  { x: STAGE_W - 4, y: 4 },
+  { x: 4, y: STAGE_H - 4 },
+  { x: STAGE_W - 4, y: STAGE_H - 4 },
+  { x: STAGE_W / 2, y: 4 },
+  { x: STAGE_W / 2, y: STAGE_H - 4 },
+  { x: 4, y: STAGE_H / 2 },
+  { x: STAGE_W - 4, y: STAGE_H / 2 },
+];
+
+/** Whether `point` lies inside `rect`, edges included. */
+function insideRegion(point: PressPoint, rect: MenuRect): boolean {
+  return (
+    point.x >= rect.x &&
+    point.x <= rect.x + rect.w &&
+    point.y >= rect.y &&
+    point.y <= rect.y + rect.h
+  );
+}
+
+/**
+ * A pointer press the specification fixes as doing nothing, delivered as a
+ * genuine browser gesture so a build that opens its audio from the pointer can
+ * open it.
+ *
+ * `specs/ui.md`: on a menu screen "a pointer over no entry's region leaves the
+ * highlight where it is, and a press and release there take nothing", and
+ * `specs/controls.md` has a press on a menu screen turn no camera and edit
+ * nothing — so a press outside every entry's region does nothing at all. Which
+ * point is outside every region is read from the regions the build reports, so
+ * a build is free to lay its menus out as it likes. Answers whether a press was
+ * made.
+ */
+async function inertPress(
+  base: BaseHarness<GantrySnapshot, GantryDebugApi>,
+): Promise<boolean> {
+  const snapshot = await base.snapshot();
+  const count = MENU_ITEM_COUNTS[snapshot.screen];
+  if (count === undefined) return false;
+  const regions: MenuRect[] = [];
+  for (let index = 0; index < count; index += 1) {
+    regions.push(await base.debug.menuItemRect(index));
+  }
+  const at = INERT_PRESS_CANDIDATES.find((point) =>
+    regions.every((rect) => !insideRegion(point, rect)),
+  );
+  if (at === undefined) return false;
+  await base.movePointer(at.x, at.y);
+  await base.page.mouse.down();
+  await base.page.mouse.up();
+  return true;
+}
+
 /**
  * Open a page on the build, take the game off its own clock, and arm its audio.
  *
@@ -493,6 +591,12 @@ export async function createHarness(
   options?: HarnessOptions,
 ): Promise<Harness> {
   const base = await kit.createHarness({ ...options, armAudio: true });
+  // The second arming gesture: the kit pressed the key before its opening
+  // reset, and the pointer press goes in here, on the title the reset restored,
+  // at a point the specification fixes as inert. It needs the surface to find
+  // that point, so a build with a surface fault is left to fail on the check's
+  // own reading of it.
+  if (base.surfaceFault === null) await inertPress(base);
 
   const debug = base.debug as unknown as GantryDriver;
 

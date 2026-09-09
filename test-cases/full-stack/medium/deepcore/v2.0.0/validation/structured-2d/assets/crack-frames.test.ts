@@ -17,6 +17,11 @@
 // point; this one is about the frames existing and being a progression. The still
 // is a row of cells posed at falling health, so a reviewer sees the progression on
 // the rock it is drawn over.
+//
+// THE STILL IS EVIDENCE ONLY. The verdict is read off the files, so the pose
+// that puts the game beside them is guarded: a build whose debug surface
+// cannot take the pose loses the picture and keeps the point, and no still is
+// recorded over the un-posed frame.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { BAND_HEALTH, CRACK_FRAMES, PLAYABLE_COL_MIN } from "../constants";
@@ -54,21 +59,28 @@ afterEach(() => {
 it("produces at least four distinct transparent crack frames", async () => {
   const pictures = await readPictures(cycleFrames("tiles", "crack"));
 
-  openScene(h);
-  pinDrill(h);
-  layFloor(h, ROW);
-  standOn(h, MINER_COL, ROW);
-  pinMiner(h);
-  fillRow(h, ROW - 1, MINER_COL + 1, MINER_COL + CELLS, "rock");
-  for (let step = 0; step < CELLS; step += 1) {
-    h.debug.setTileHealth(
-      MINER_COL + 1 + step,
-      ROW - 1,
-      (BAND_HEALTH.coreshell * (CELLS - step)) / (CELLS + 1),
+  try {
+    openScene(h);
+    pinDrill(h);
+    layFloor(h, ROW);
+    standOn(h, MINER_COL, ROW);
+    pinMiner(h);
+    fillRow(h, ROW - 1, MINER_COL + 1, MINER_COL + CELLS, "rock");
+    for (let step = 0; step < CELLS; step += 1) {
+      h.debug.setTileHealth(
+        MINER_COL + 1 + step,
+        ROW - 1,
+        (BAND_HEALTH.coreshell * (CELLS - step)) / (CELLS + 1),
+      );
+    }
+    await h.advance(2);
+    captureStill(h, "cracks");
+  } catch (error) {
+    // Evidence only; the readings below carry the verdict.
+    console.warn(
+      `deepcore: could not pose the still for \`cracks\`, so none is recorded: ${String(error)}`,
     );
   }
-  await h.advance(2);
-  captureStill(h, "cracks");
 
   assertGreaterThanOrEqual(
     pictures.length,

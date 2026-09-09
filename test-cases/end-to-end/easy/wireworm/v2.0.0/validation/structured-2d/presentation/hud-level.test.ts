@@ -65,6 +65,12 @@ const POSED_SCORE = 0;
  */
 const ADJACENT_MAX = 160;
 
+/** The separators a build may draw between the digit triples of a figure. */
+const GROUP_SEPARATORS = [",", "'", "\u00A0", "\u202F", "\u2009"];
+
+/** The same separators as one character class. */
+const GROUP = `[${GROUP_SEPARATORS.join("")}]`;
+
 /**
  * Every conventional drawing of a whole figure: its plain digits, and the same
  * digits grouped in threes by each separator a build may reach for — `1,234`,
@@ -76,7 +82,7 @@ const ADJACENT_MAX = 160;
 function drawingsOf(figure: number): string[] {
   const plain = String(figure);
   const forms = new Set([plain]);
-  for (const separator of [",", "'", "\u00A0", "\u202F", "\u2009"]) {
+  for (const separator of GROUP_SEPARATORS) {
     forms.add(plain.replace(/\B(?=(\d{3})+(?!\d))/g, separator));
   }
   return [...forms];
@@ -89,10 +95,23 @@ function drawingsOf(figure: number): string[] {
  * thousands of a larger one names it as surely as a build that does not, and the
  * digit boundary is held on both sides, so a run showing `150` still does not
  * name `50`.
+ *
+ * Leading zeros are not part of that boundary. The specification fixes the
+ * figure and leaves how it is written to the build, so a readout padded to a
+ * fixed width — `000050`, the odometer idiom `padStart` produces — is the
+ * figure 50 as surely as `50` is. Any run of zeros standing directly before
+ * the figure is absorbed into it, while a non-zero digit there still ends the
+ * reading: `000050` shows 50, `150` and `504` do not. A zero run that is
+ * itself a group of a larger grouped figure is not padding: `1,050` shows
+ * 1050, not 50. That guard falls on the zeros alone, so a figure standing
+ * after a separator with no padding before it, the `7` of a `10,7` pair,
+ * reads as it did without the padding allowance.
  */
 function names(span: TextSpan, figure: number): boolean {
   return drawingsOf(figure).some((form) =>
-    new RegExp(`(?<![0-9])${form}(?![0-9])`).test(span.text),
+    new RegExp(`(?<![0-9])(?:(?<![0-9]${GROUP})0+)?${form}(?![0-9])`).test(
+      span.text,
+    ),
   );
 }
 

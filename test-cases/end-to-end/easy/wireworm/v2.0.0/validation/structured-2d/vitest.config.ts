@@ -4,7 +4,7 @@
 // which fixes everything that makes a staged validator project one shape the
 // runner can drive — the project's name, the suites it collects, the `node`
 // environment, and the refusal to pass a run that collected nothing — and
-// leaves this file the two values that are genuinely Wireworm's.
+// leaves this file the one value that is genuinely Wireworm's: its root.
 //
 //   npx vitest run                                       # the build's own tests
 //   npx vitest run --config validation/vitest.config.ts  # the case's validators
@@ -21,6 +21,25 @@
 // all".
 import { defineEngineValidationConfig } from "./case-harness/engine/vitest-config";
 
+// NO DIALS. The minute this project used to name for `testTimeout` was sized
+// against a healthy machine and the reference's own drawing, under a comment
+// that "a suite costs milliseconds". Neither holds. The ten-second sweep of
+// active play `instrumentation/worm-entry-gate` drives is some fourteen hundred
+// frames, every one rendered through the engine onto the recording canvas,
+// and a produced build measured 8.2 s on it with the whole project in flight —
+// one busy host away from a sixty-second cap. The specification fixes nothing
+// about how a build draws the board, so a build that blits the grid tile by
+// tile costs that canvas an order of magnitude more per frame than one that
+// fills it, and it is a conforming build: every check here reads the snapshot
+// and the picture and never the wall clock, so the only thing a low ceiling
+// can take from such a build is a point it did nothing to lose. The factory's
+// five minutes are the figure measured against a host running nine of these
+// projects at once, a ninth of the runner's cap on the whole run, so a check
+// reaching it is hung rather than slow; its two-minute hook allowance replaces
+// vitest's ten-second default, the tightest wall clock a validator project has
+// and the one least related to anything the build does. The allowance is a
+// hang cap and not a budget: the authoring guide's ask that a validator finish
+// in seconds still governs what a check DRIVES.
 export default defineEngineValidationConfig({
   // The workspace, not this directory, so a validator resolves the build's
   // modules by the same relative paths the build itself uses, and reads the
@@ -28,14 +47,4 @@ export default defineEngineValidationConfig({
   // file's own URL rather than from the working directory, so the command above
   // works from anywhere.
   root: new URL("..", import.meta.url).pathname,
-  // Every scenario is posed and stepped in process, so a suite costs
-  // milliseconds; the ceiling is a failure cap for a build whose update stalls,
-  // never a span a check waits out. Wireworm's own measurement, kept rather than
-  // taking the factory's more generous default.
-  testTimeout: 60_000,
-  // The hook allowance is deliberately NOT set: vitest defaults an unset one to
-  // TEN SECONDS, which is the tightest wall clock this project had and the one
-  // least related to anything the build does — a `beforeEach` that builds an
-  // engine and awaits the game's `initialize` can cross it on a loaded host
-  // alone — and the factory's own default of two minutes is what replaces it.
 });

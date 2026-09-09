@@ -70,6 +70,19 @@
 // build to drawing the two together. The captured image is what a reviewer reads
 // that off.
 //
+// TWO MORE FLAGS FOLLOW A FIGURE AND ARE READ THE SAME WAY. Whether a discharge
+// is ready follows the resonance and whether an inversion is active follows the
+// seconds left of it (specs/instrumentation.md), and neither has a spelling
+// either — `ready`, `yes`, a tick, a `1`, or a mark drawn only while the fact
+// holds are all honest drawings — so each is moved through the figure it
+// follows: the resonance from RESONANCE_MAX to below it, with the meter's own
+// figures masked so a panel that draws the meter alone cannot answer for the
+// readiness, and the inversion from its posed seconds to none, where the seconds
+// left are a source the panel owes as well and a zero of them is none. Each of
+// those panels is read against a fresh frame drawn with the panel down, so text
+// the HUD itself changes with the meter or with the inversion's mark
+// (specs/ui.md) never stands in for a line of the panel.
+//
 // PURITY is read straight off the snapshot: identical across the toggle apart from
 // `simTime`, which is set aside because the specification does not fix whether a
 // paused game runs sub-steps at all — `simTime` "accumulates the time the game's
@@ -138,6 +151,12 @@ const STAGE = 9;
 
 /** The meter, posed at the ceiling so a discharge is ready to be reported. */
 const RESONANCE = RESONANCE_MAX;
+
+/**
+ * Where the meter is moved to for the discharge reading: below the ceiling, so
+ * a discharge is no longer ready, at a figure nothing else posed here carries.
+ */
+const RESONANCE_SPENT = 37;
 
 /**
  * The two durations, in seconds, each at the top of the range its own rule fixes.
@@ -238,8 +257,6 @@ const BAND_WORDS = new RegExp(
 function withoutBands(line: string): string {
   return line.replace(BAND_WORDS, "band");
 }
-const READY_FORMS = /ready|\byes\b|\btrue\b|\bon\b|\bfull\b/i;
-const INVERSION_FORMS = /invert|inversion|activ|\byes\b|\btrue\b|\bon\b/i;
 
 /** The scales a build may honestly print a duration in: seconds to milliseconds. */
 const DURATION_SCALES = [1, 10, 100, 1000] as const;
@@ -328,6 +345,25 @@ function drawnNumbers(lines: readonly string[], apart = false): number[] {
       if (!apart) return [whole];
       return [whole, ...drawn.split(new RegExp(GROUP)).map(Number)];
     }),
+  );
+}
+
+/**
+ * A line with every figure that reads as one of `figures` blanked.
+ *
+ * The discharge reading moves the resonance, and the resonance is a source of
+ * its own that the panel already draws — `resonance: 100` before the move and
+ * `resonance: 37` after it — so a panel with no readiness on it at all would
+ * differ on that figure alone. Both figures are blanked before the two panels
+ * are compared, as the band words are for the shimmer and the shell, and what
+ * is left to differ is something that is not the meter: the flag, in whatever
+ * spelling, or a mark drawn only while a discharge is ready. A flag spelled as
+ * a figure of its own (`ready: 1`) is neither figure and still changes its line.
+ */
+function withoutFigures(line: string, figures: readonly number[]): string {
+  const grouping = new RegExp(GROUP, "g");
+  return line.replace(DRAWN, (drawn) =>
+    figures.includes(Number(drawn.replace(grouping, ""))) ? "#" : drawn,
   );
 }
 
@@ -488,9 +524,9 @@ it("registers every value the diagnostics list names and changes nothing", async
   assertFigure(overlay, SCORE, "the score");
   assertFigure(overlay, LIVES, "the lives");
   assertFigure(overlay, RESONANCE, "the resonance");
-  assertForm(overlay, READY_FORMS, "that a discharge is ready");
+  // Whether a discharge is ready is read below, by moving the resonance.
 
-  assertForm(overlay, INVERSION_FORMS, "that a spectral inversion is active");
+  // Whether an inversion is active is read below, by ending it.
   assertDuration(overlay, INVERSION, "how long is left of the inversion");
 
   assertFigure(overlay, SHIP_X, "the ship's x");
@@ -590,5 +626,71 @@ it("registers every value the diagnostics list names and changes nothing", async
       "(specs/instrumentation.md, Diagnostics); the figures of " +
       `${String(restless.size)} line(s) that moved with nothing changed are ` +
       "blanked",
+  );
+  // ---- The two flags that follow a figure, read the same way --------------
+  //
+  // Whether a discharge is ready follows the resonance and whether an inversion
+  // is active follows the seconds left of it (specs/instrumentation.md:
+  // `dischargeReady` follows the resonance, `inversionActive` follows the
+  // inversion), and specs/instrumentation.md spells neither, so each is moved
+  // through the figure it follows and the panel must differ, with the lines the
+  // control pair found restless blanked as above. Each panel here is read
+  // against a FRESH frame drawn with the panel down: the HUD draws the resonance
+  // meter and the inversion's field-wide mark (specs/ui.md), and text the game
+  // itself draws differently once the meter is spent or the inversion is over
+  // must not stand in for a line of the panel.
+
+  /** The panel's lines, read against a frame drawn with the panel down. */
+  const panelFresh = async (): Promise<string[]> => {
+    await h.tap(OVERLAY_TOGGLE);
+    const bare = drawnText(await drawFrame(h));
+    await h.tap(OVERLAY_TOGGLE);
+    return newLines(bare, drawnText(await drawFrame(h))).filter(
+      (line) => !ENGINE_METRICS.test(line),
+    );
+  };
+
+  // The resonance is a source of its own that the panel already draws, so its
+  // figure before and after the move is masked as the band words are: what is
+  // left to differ is the readiness, in whatever spelling.
+  const meterFigures = [RESONANCE, RESONANCE_SPENT];
+  const ready = await panelFresh();
+  h.debug.setResonance(RESONANCE_SPENT);
+  await h.advance(SETTLE_FRAMES);
+  const spent = await panelFresh();
+  assertNotEqual(
+    settled(spent.map((line) => withoutFigures(line, meterFigures))),
+    settled(ready.map((line) => withoutFigures(line, meterFigures))),
+    `the panel's settled lines, band words and the meter's figures masked, ` +
+      `over the same field with the resonance moved from ${String(RESONANCE)} ` +
+      `to ${String(RESONANCE_SPENT)}, below RESONANCE_MAX, so a discharge is ` +
+      `no longer ready (specs/instrumentation.md: dischargeReady follows the ` +
+      `resonance) — the meter's own figure is masked out, so a panel that ` +
+      `reports whether a discharge is ready draws something different and one ` +
+      `that draws the meter alone cannot (specs/instrumentation.md, ` +
+      `Diagnostics); the figures of ${String(restless.size)} line(s) that ` +
+      `moved with nothing changed are blanked`,
+  );
+
+  // The seconds left are a source of their own too, and they are NOT masked: a
+  // zero of them is none (specs/instrumentation.md), so a line that reports
+  // them reports whether an inversion is active, as a run's count reports
+  // whether a run is in hand. What a panel that reports neither cannot do is
+  // differ.
+  h.debug.setInversion(0);
+  await h.advance(SETTLE_FRAMES);
+  const ended = await panelFresh();
+  assertNotEqual(
+    settled(ended),
+    settled(spent),
+    `the panel's settled lines, band words masked, over the same field with ` +
+      `the inversion ended (${String(INVERSION)} s left moved to 0) — every ` +
+      `drone's and every enemy bullet's effective band moves with that ` +
+      `(specs/bands.md) and is masked out, so a panel that reports whether a ` +
+      `spectral inversion is active, or how long is left of it, draws ` +
+      `something different and one that reports neither cannot ` +
+      `(specs/instrumentation.md, Diagnostics); the figures of ` +
+      `${String(restless.size)} line(s) that moved with nothing changed are ` +
+      `blanked`,
   );
 });

@@ -1585,6 +1585,23 @@ export interface Scene {
 }
 
 /**
+ * Take the pellet off the board if one is on it. A no-op, and not an error, when
+ * `snapshot().pellet` is already `null`.
+ *
+ * `specs/instrumentation.md` fixes what `clearPellet` does to a pellet that is on
+ * the board and says nothing about a board already without one, and its rule
+ * that "no operation returns with the state as it was" lets a build read the
+ * empty-board call as one it must fail loudly on. A `reset` already leaves the
+ * board without a live pellet, so the clear is issued only where there is a
+ * pellet to clear; `visibility/pellet-apart-from-board` and
+ * `instrumentation/debug-api` still call the operation themselves against a
+ * pellet that IS on the board.
+ */
+export function clearPelletIfAny(h: Harness): void {
+  if (h.snapshot().pellet !== null) h.debug.clearPellet();
+}
+
+/**
  * Reset the game and pose exactly the world `scene` describes, through the
  * surface's atomic operations alone.
  *
@@ -1638,7 +1655,7 @@ export function poseScene(h: Harness, scene: Scene = {}): CoilSnapshot {
   h.debug.clearTurns();
 
   if (scene.pellet !== undefined) {
-    if (scene.pellet === null) h.debug.clearPellet();
+    if (scene.pellet === null) clearPelletIfAny(h);
     else h.debug.setPellet(scene.pellet.col, scene.pellet.row);
   }
   if (scene.nextPellet !== undefined) {

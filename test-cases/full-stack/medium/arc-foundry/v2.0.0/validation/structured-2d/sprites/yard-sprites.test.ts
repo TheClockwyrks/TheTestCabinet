@@ -9,6 +9,11 @@
 //
 // The files themselves are what is read, because these are a deliverable of the
 // run rather than a fixture: nothing was handed to the build.
+//
+// THE STILL IS EVIDENCE ONLY. The verdict is read off the files above the
+// drive, so the pose that puts the yard beside them is guarded: a build whose
+// debug surface cannot take the pose loses the picture and keeps the point,
+// and no still is recorded over the un-posed frame.
 
 import { it } from "vitest";
 import { assertEqual } from "../assert";
@@ -35,6 +40,11 @@ it("produces the yard's five sprites at the sizes specs/assets.md fixes", async 
     openYard(h, { map: "transformer" });
     await h.advance(1);
     captureStill(h, "yard");
+  } catch (error) {
+    // Evidence only; the readings above carry the verdict.
+    console.warn(
+      `arc foundry: could not pose the still for \`yard\`, so none is recorded: ${String(error)}`,
+    );
   } finally {
     h.dispose();
   }

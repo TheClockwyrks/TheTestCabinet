@@ -118,6 +118,7 @@ import {
   STAGE_W,
   SURFACE_Y,
   TILE,
+  TITLE_ITEMS,
   UNBOUND_KEY,
   bandIndexAt,
   coreRowFor,
@@ -143,6 +144,7 @@ import type {
   CellRef,
   DeepcoreDebugApi,
   DeepcoreSnapshot,
+  HitRect,
   MinerView,
   TileRead,
 } from "./surface";
@@ -378,6 +380,113 @@ export function nextPaint(h: Pick<Harness, "page">): Promise<void> {
   );
 }
 
+/* -------------------------------------------------------------------------- */
+/* The inert press                                                            */
+/* -------------------------------------------------------------------------- */
+//
+// THE SECOND GESTURE {@link Harness.armAudio} MAKES. `specs/assets.md` has
+// sound wait for the player's first interaction with the page and fixes no
+// gesture as the one that unlocks, so a build that opens its audio from any key
+// at all and one that opens it only from the inputs the specification binds — a
+// pointer press, a bound key — are both conformant. The key `UNBOUND_KEY` names
+// reaches the first; a key bound to nothing never reaches the second, so it is
+// paired with a real pointer press at a point `specs/controls.md` fixes as
+// doing nothing.
+
+/** A point on the stage, in logical units. */
+interface PressPoint {
+  x: number;
+  y: number;
+}
+
+/**
+ * The screens whose only pointer targets are the items of the menu they show
+ * (`specs/ui.md`, Screens). `in-mine` carries the panels, the status bar and the
+ * surface buildings as well, so no press is made there.
+ */
+const MENU_SCREENS: readonly Screen[] = [
+  "title",
+  "mode-select",
+  "size-select",
+  "how-to-play",
+  "paused",
+  "victory",
+  "game-over",
+];
+
+/**
+ * The most items any of those menus carries: the title's, with `CONTINUE`
+ * present. `menuItemRect` answers `null` past the last item, which is how a
+ * menu's own length is read.
+ */
+const MENU_ITEMS_MAX = TITLE_ITEMS.length;
+
+/**
+ * Where an inert press is tried, in the stage's logical units: the four
+ * corners, inset, and then the middles of the four edges.
+ *
+ * `specs/controls.md` leaves where a menu puts its items to the build, so which
+ * of these lies outside every item's region on a menu screen is read from the
+ * build's own `menuItemRect` rather than assumed. Whole units, inside the
+ * stage, so the press lands on the canvas wherever the fit put it.
+ */
+const INERT_PRESS_CANDIDATES: readonly PressPoint[] = [
+  { x: 4, y: 4 },
+  { x: STAGE_W - 4, y: 4 },
+  { x: 4, y: STAGE_H - 4 },
+  { x: STAGE_W - 4, y: STAGE_H - 4 },
+  { x: STAGE_W / 2, y: 4 },
+  { x: STAGE_W / 2, y: STAGE_H - 4 },
+  { x: 4, y: STAGE_H / 2 },
+  { x: STAGE_W - 4, y: STAGE_H / 2 },
+];
+
+/** Whether `point` lies inside `rect`, edges included. */
+function insideRegion(point: PressPoint, rect: HitRect): boolean {
+  return (
+    point.x >= rect.x &&
+    point.x <= rect.x + rect.w &&
+    point.y >= rect.y &&
+    point.y <= rect.y + rect.h
+  );
+}
+
+/**
+ * A pointer press the specification fixes as doing nothing, delivered as a
+ * genuine browser gesture so a build that opens its audio from the pointer can
+ * open it.
+ *
+ * `specs/controls.md`: a pointer highlights a menu item by moving onto its
+ * region and chooses one by pressing and releasing inside it, and "an edge
+ * falling outside every region" chooses nothing — so a press outside every
+ * region of the menu on screen highlights nothing and chooses nothing. Which
+ * point is outside every region is read from the regions the build reports, so
+ * a build is free to lay its menus out as it likes; a menu screen reporting no
+ * region at all is left to the check that reads that. Answers whether a press
+ * was made.
+ */
+async function inertPress(
+  base: BaseHarness<DeepcoreSnapshot, DeepcoreDebugApi>,
+): Promise<boolean> {
+  const snapshot = await base.snapshot();
+  if (!MENU_SCREENS.includes(snapshot.screen)) return false;
+  const regions: HitRect[] = [];
+  for (let index = 0; index < MENU_ITEMS_MAX; index += 1) {
+    const rect = await base.debug.menuItemRect(index);
+    if (rect === null) break;
+    regions.push(rect);
+  }
+  if (regions.length === 0) return false;
+  const at = INERT_PRESS_CANDIDATES.find((point) =>
+    regions.every((rect) => !insideRegion(point, rect)),
+  );
+  if (at === undefined) return false;
+  await base.movePointer(at.x, at.y);
+  await base.page.mouse.down();
+  await base.page.mouse.up();
+  return true;
+}
+
 /**
  * Load the built site in a browser, take the game off the wall clock, and hand
  * back everything a check reads.
@@ -493,7 +602,13 @@ export async function createHarness(
       // state. It is the same gesture the package's own `arm` config names; the
       // checks that need it deliver it here rather than at construction, because
       // waiting for a full-stack build to decode what it produced burns real time
-      // and the scene is posed afterwards (`audio/probe.ts`).
+      // and the scene is posed afterwards (`audio/probe.ts`). It is paired with
+      // a real pointer press at a point specs/controls.md fixes as inert, for
+      // a build that opens its audio only from the inputs the specification
+      // binds; the press needs the surface to find its point, so a build with a
+      // surface fault is left to fail on the check's own reading of it, and
+      // on `in-mine` the key stands alone.
+      if (base.surfaceFault === null) await inertPress(base);
       await base.page.keyboard.press(UNBOUND_KEY);
     },
   };
@@ -1044,6 +1159,22 @@ export async function openExpedition(
 }
 
 /**
+ * Empty the save slot if one is held. A no-op, and not an error, when
+ * `snapshot().hasSave` is already `false`.
+ *
+ * `specs/instrumentation.md` fixes what `clearSave` does to a slot that holds a
+ * save and says nothing about one already empty, and its rule that no operation
+ * passes "quietly, leaving the game as it was" lets a build read the empty-slot
+ * call as one it must fail loudly on. A fresh harness opens with the slot empty,
+ * so the clear is issued only where there is a save to delete; the suites that
+ * fill the slot and call `clearSave` themselves, `core-run/saving-refused-while-
+ * a-sample-is-live` among them, still exercise it against a slot that IS held.
+ */
+export async function clearSaveSlot(h: Harness): Promise<void> {
+  if ((await h.snapshot()).hasSave) await h.debug.clearSave();
+}
+
+/**
  * Start an expedition from the title the way a player does: menu keys only.
  *
  * The title menu leads with `CONTINUE` only while a save exists, so this clears
@@ -1058,7 +1189,7 @@ export async function startWithKeys(
 ): Promise<void> {
   const mode = options.mode ?? "standard";
   const size = options.size ?? "standard";
-  await h.debug.clearSave();
+  await clearSaveSlot(h);
   await h.debug.reset();
   await h.debug.setScreen("title");
 

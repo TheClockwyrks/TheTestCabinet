@@ -28,6 +28,7 @@ import { SPAWN_COL } from "../constants";
 import { assertEqual } from "../assert";
 import {
   ACTION_KEY,
+  clearSaveSlot,
   layCamp,
   minerXOn,
   minerYOn,
@@ -70,7 +71,7 @@ export async function openAtCamp(
   options: ExpeditionOptions = {},
 ): Promise<void> {
   openScene(h, options);
-  h.debug.clearSave();
+  clearSaveSlot(h);
   layCamp(h);
   standAtCamp(h, SPAWN_COL);
   await h.advance(1);
@@ -88,7 +89,7 @@ export async function openGeneratedAtCamp(
   options: ExpeditionOptions = {},
 ): Promise<void> {
   openScene(h, options);
-  h.debug.clearSave();
+  clearSaveSlot(h);
   h.debug.generateMine();
   standAtCamp(h, SPAWN_COL);
   await h.advance(1);

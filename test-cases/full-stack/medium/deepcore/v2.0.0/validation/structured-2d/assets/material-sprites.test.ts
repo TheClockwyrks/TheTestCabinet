@@ -11,6 +11,11 @@
 // see something other than the Core it was cut from. Whether they read as crystal
 // and as a glowing core is a reviewer's reading off the still, which poses one node
 // of each beside the miner.
+//
+// THE STILL IS EVIDENCE ONLY. The verdict is read off the files, so the pose
+// that puts the game beside them is guarded: a build whose debug surface
+// cannot take the pose loses the picture and keeps the point, and no still is
+// recorded over the un-posed frame.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { MATERIAL_SPRITES, MATERIALS, PLAYABLE_COL_MIN } from "../constants";
@@ -52,19 +57,26 @@ it("produces four distinct material sprites", async () => {
     else pictures.push(picture);
   }
 
-  openScene(h);
-  pinDrill(h);
-  layFloor(h, ROW);
-  standOn(h, MINER_COL, ROW);
-  pinMiner(h);
-  fillRow(h, ROW - 1, MINER_COL + 1, MINER_COL + 4, "rock");
-  for (const [at, material] of MATERIALS.entries()) {
-    layMaterial(h, MINER_COL + 2 + at * 2, ROW - 1, material);
+  try {
+    openScene(h);
+    pinDrill(h);
+    layFloor(h, ROW);
+    standOn(h, MINER_COL, ROW);
+    pinMiner(h);
+    fillRow(h, ROW - 1, MINER_COL + 1, MINER_COL + 4, "rock");
+    for (const [at, material] of MATERIALS.entries()) {
+      layMaterial(h, MINER_COL + 2 + at * 2, ROW - 1, material);
+    }
+    // And a Sample in the satchel, so the fourth sprite is on screen too.
+    h.debug.setCoreCarried(true);
+    await h.advance(2);
+    captureStill(h, "materials");
+  } catch (error) {
+    // Evidence only; the readings below carry the verdict.
+    console.warn(
+      `deepcore: could not pose the still for \`materials\`, so none is recorded: ${String(error)}`,
+    );
   }
-  // And a Sample in the satchel, so the fourth sprite is on screen too.
-  h.debug.setCoreCarried(true);
-  await h.advance(2);
-  captureStill(h, "materials");
 
   assertEqual(missing.join(", "), "", "specs/assets.md");
   assertEqual(allDistinct(pictures), true, "specs/assets.md");

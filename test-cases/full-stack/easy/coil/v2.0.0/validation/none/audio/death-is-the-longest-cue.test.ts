@@ -20,6 +20,11 @@
 //
 // THE EVIDENCE. This point drives nothing, so its declared still is a picture of
 // the moment the cue belongs to: the head one cell from the wall it runs into.
+//
+// THE STILL IS EVIDENCE ONLY. The verdict is read off the files, so the pose
+// that puts the game beside them is guarded: a build whose debug surface
+// cannot take the pose loses the picture and keeps the point, and no still is
+// recorded over the un-posed frame.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan, fail } from "../assert";
@@ -55,13 +60,20 @@ afterEach(async () => {
 it("ships a death cue longer than both of the other event cues", async () => {
   const read = await decodeSounds(h, FILES);
 
-  await showRound(h, {
-    snake: chainFrom(BRINK, "right", 4),
-    dir: "right",
-    pellet: null,
-    travel: false,
-  });
-  await captureStill(h, "death");
+  try {
+    await showRound(h, {
+      snake: chainFrom(BRINK, "right", 4),
+      dir: "right",
+      pellet: null,
+      travel: false,
+    });
+    await captureStill(h, "death");
+  } catch (error) {
+    // Evidence only; the readings below carry the verdict.
+    console.warn(
+      `coil: could not pose the still for \`death\`, so none is recorded: ${String(error)}`,
+    );
+  }
 
   const lengths = read.map(({ sound, reason }, i) => {
     if (sound === null)

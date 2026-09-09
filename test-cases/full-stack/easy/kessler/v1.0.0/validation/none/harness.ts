@@ -74,9 +74,11 @@ import {
   CUE_NAMES,
   MUSIC_PLAY,
   MUSIC_TITLE,
+  PAUSE_MENU,
   STAGE_H,
   STAGE_W,
   TICK_HZ,
+  TITLE_MENU,
   UNBOUND_KEY,
   WAVECLEAR_TICKS,
   outwardVelocity,
@@ -378,6 +380,104 @@ interface Sound {
   loop: boolean;
 }
 
+/* -------------------------------------------------------------------------- */
+/* The inert press                                                            */
+/* -------------------------------------------------------------------------- */
+//
+// THE SECOND GESTURE {@link Harness.armAudio} MAKES. `specs/assets.md` has
+// sound wait for the player's first interaction with the page and fixes no
+// gesture as the one that unlocks, so a build that opens its audio from any key
+// at all and one that opens it only from the inputs the specification binds — a
+// pointer press, a bound key — are both conformant. The key `UNBOUND_KEY` names
+// reaches the first; a key bound to nothing never reaches the second, so it is
+// paired with a real pointer press at a point `specs/controls.md` fixes as
+// doing nothing.
+
+/** A point on the stage, in logical units. */
+interface PressPoint {
+  x: number;
+  y: number;
+}
+
+/**
+ * How many entries the menu on each menu-bearing screen carries
+ * (`specs/controls.md`: "`title` and `paused` carry a menu").
+ */
+const MENU_ITEM_COUNTS: Partial<Record<Screen, number>> = {
+  title: TITLE_MENU.length,
+  paused: PAUSE_MENU.length,
+};
+
+/**
+ * Where an inert press is tried, in the stage's logical units: the four
+ * corners, inset, and then the middles of the four edges.
+ *
+ * `specs/controls.md` leaves where a menu puts its entries to the build, so
+ * which of these lies outside every entry's region on a menu screen is read
+ * from the build's own `menuItemRect` rather than assumed. Whole units, inside
+ * the stage, so the press lands on the canvas wherever the fit put it.
+ */
+const INERT_PRESS_CANDIDATES: readonly PressPoint[] = [
+  { x: 4, y: 4 },
+  { x: STAGE_W - 4, y: 4 },
+  { x: 4, y: STAGE_H - 4 },
+  { x: STAGE_W - 4, y: STAGE_H - 4 },
+  { x: STAGE_W / 2, y: 4 },
+  { x: STAGE_W / 2, y: STAGE_H - 4 },
+  { x: 4, y: STAGE_H / 2 },
+  { x: STAGE_W - 4, y: STAGE_H / 2 },
+];
+
+/** Whether `point` lies inside `rect`, edges included. */
+function insideRegion(point: PressPoint, rect: MenuItemRect): boolean {
+  return (
+    point.x >= rect.x &&
+    point.x <= rect.x + rect.width &&
+    point.y >= rect.y &&
+    point.y <= rect.y + rect.height
+  );
+}
+
+/**
+ * A pointer press the specification fixes as doing nothing, delivered as a
+ * genuine browser gesture so a build that opens its audio from the pointer can
+ * open it.
+ *
+ * `specs/controls.md`: on a menu screen a pointer moves the highlight by
+ * moving onto an entry's region and accepts one by pressing and releasing
+ * inside it, "a pointer resting outside every region leaves the highlight
+ * where it is", and a press whose release falls outside the region it began
+ * in accepts nothing — so a press outside every region moves nothing and
+ * accepts nothing. "The pointer reaches the menus alone. On every other screen
+ * it does nothing", so the first candidate serves there. Which point is
+ * outside every region is read from the regions the build reports, so a build
+ * is free to lay its menus out as it likes; a build that reports no region for
+ * an entry of its own menu is left to the check that reads that. Answers
+ * whether a press was made.
+ */
+async function inertPress(
+  base: BaseHarness<KesslerSnapshot, DrivenSurface>,
+): Promise<boolean> {
+  const snapshot = await base.snapshot();
+  const regions: MenuItemRect[] = [];
+  const count = MENU_ITEM_COUNTS[snapshot.screen];
+  if (count !== undefined) {
+    for (let index = 0; index < count; index += 1) {
+      const rect = await base.debug.menuItemRect(index);
+      if (rect === null) return false;
+      regions.push(rect);
+    }
+  }
+  const at = INERT_PRESS_CANDIDATES.find((point) =>
+    regions.every((rect) => !insideRegion(point, rect)),
+  );
+  if (at === undefined) return false;
+  await base.movePointer(at.x, at.y);
+  await base.page.mouse.down();
+  await base.page.mouse.up();
+  return true;
+}
+
 /**
  * Load the built site in a browser, take the game off the wall clock, and hand
  * back everything a check reads.
@@ -530,9 +630,13 @@ export async function openHarness(
       // cues never decode reaches its cue points and fails them there, rather
       // than hanging here.
       //
-      // Then the GENUINE browser gesture the kit is configured with — a real
-      // press of a key `specs/controls.md` binds to nothing — and the frames the
-      // build reads it on.
+      // Then the GENUINE browser gestures: a real pointer press at a point
+      // `specs/controls.md` fixes as doing nothing, the kit's own arming — a
+      // real press of a key the same file binds to nothing, and the re-baseline
+      // of the sound count that follows it, which then covers the press as well
+      // — and the frames the build reads them on. The press needs the surface
+      // to find its point, so a build with a surface fault is left to fail on
+      // the check's own reading of it.
       await page
         .waitForFunction(
           (wanted) => {
@@ -547,6 +651,7 @@ export async function openHarness(
           { timeout: AUDIO_LOAD_TIMEOUT_MS, polling: 25 },
         )
         .catch(() => undefined);
+      if (base.surfaceFault === null) await inertPress(base);
       await base.armAudio();
       await harness.settleFrame();
     },

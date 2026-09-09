@@ -36,6 +36,9 @@
 /** The characters a build may put between a figure's digit triples. */
 const SEPARATORS = [",", "'", "\u00A0", "\u202F", "\u2009"] as const;
 
+/** The same separators as one character class. */
+const GROUP_CLASS = `[${SEPARATORS.join("")}]`;
+
 /** `text` as a pattern that matches exactly itself. */
 function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -85,9 +88,22 @@ function alternation(value: number): string {
  * A digit boundary on both sides, and the decimal point counts as a digit for
  * that boundary: `50` is not found inside `150`, and `1` is not found inside
  * `1.5`.
+ *
+ * Leading zeros are not part of that boundary. The specification fixes the
+ * figure and leaves how it is written to the build, so a readout padded to a
+ * fixed width — `000050`, the odometer idiom `padStart` produces — is the
+ * figure 50 as surely as `50` is. Any run of zeros standing directly before
+ * the figure is absorbed into it, while a non-zero digit there still ends the
+ * reading: `000050` shows 50, `150` and `504` do not. A zero run that is
+ * itself a group of a larger grouped figure is not padding: `1,050` shows
+ * 1050, not 50. That guard falls on the zeros alone, so a figure standing
+ * after a separator with no padding before it, the `7` of a `10,7` pair,
+ * reads as it did without the padding allowance.
  */
 export function figurePattern(value: number): RegExp {
-  return new RegExp(`(?<![\\d.])${alternation(value)}(?![\\d.])`);
+  return new RegExp(
+    `(?<![\\d.])(?:(?<!\\d${GROUP_CLASS})0+)?${alternation(value)}(?![\\d.])`,
+  );
 }
 
 /**

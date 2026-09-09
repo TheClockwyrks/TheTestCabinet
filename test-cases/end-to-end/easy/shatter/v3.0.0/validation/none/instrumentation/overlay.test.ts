@@ -33,6 +33,14 @@
 // THE TWO COUNTS ARE SMALL INTEGERS and are the weakest readings here; nothing in
 // the specification lets them be made unique.
 //
+// A COMMA BETWEEN TWO RUNS OF DIGITS IS AMBIGUOUS. `218,653` is one grouped
+// figure or a position's two coordinates, and specs/instrumentation.md fixes no
+// form for the ship's position, its velocity or the saucer's position, so each
+// coordinate and each component is accepted in both readings — as a whole figure
+// of its own, or as one run of a comma-joined pair. Only those pairs are read
+// this way; every scalar figure keeps the whole-figure reading, so a score drawn
+// as `45,310` never answers for a wave of `45`.
+//
 // THE FIELD IS POSED AND THEN PAUSED. specs/ui.md freezes the field behind the
 // pause menu — "No body moves, no timer runs down" — so the figures the panel is
 // read for are the figures that were posed rather than whatever a tick of play had
@@ -182,17 +190,27 @@ const DRAWN = new RegExp(
 );
 
 /**
- * Every figure the lines carry, as the numbers they read as.
+ * Every figure the lines carry, as the numbers they read as — and, when `apart`
+ * is set, every run of digits inside a grouped figure as a number of its own as
+ * well.
  *
  * The separators are dropped from each match, so a panel that groups a figure
  * (`45,310`) and one that does not (`45310`) report the same number: the
- * specification fixes the FIGURE and leaves how it is written to the build.
+ * specification fixes the FIGURE and leaves how it is written to the build. The
+ * same characters also spell two figures a panel joined with a comma — a
+ * position drawn as `218,653` — and nothing in the text tells the two apart, so
+ * a reading that wants the joined figures asks for them `apart`: `218,653` then
+ * reports `218653`, `218` and `653`, and a build that never drew the pair still
+ * draws none of them.
  */
-function drawnNumbers(lines: readonly string[]): number[] {
+function drawnNumbers(lines: readonly string[], apart = false): number[] {
+  const grouping = new RegExp(GROUP, "g");
   return lines.flatMap((line) =>
-    (line.match(DRAWN) ?? []).map((figure) =>
-      Number(figure.replace(new RegExp(GROUP, "g"), "")),
-    ),
+    (line.match(DRAWN) ?? []).flatMap((figure) => {
+      const whole = Number(figure.replace(grouping, ""));
+      if (!apart) return [whole];
+      return [whole, ...figure.split(new RegExp(GROUP)).map(Number)];
+    }),
   );
 }
 
@@ -204,6 +222,26 @@ function assertFigure(
 ): void {
   if (!drawnNumbers(lines).includes(value)) {
     fail(`an overlay line carrying ${what} (${value})`, lines);
+  }
+}
+
+/**
+ * Some line carries `value` as one coordinate of a pair: a whole figure of its
+ * own, or one run of a comma-joined pair.
+ *
+ * specs/instrumentation.md asks for the ship's position, its velocity and the
+ * saucer's position and fixes no form for any of them, so `(218, 653)`,
+ * `x 218 y 653` and `@218,653` all draw the coordinates the reading asks for —
+ * and the last of those is the same text as the grouped figure `218653`. Only
+ * a pair is read this way; the scalar figures keep the whole-figure reading.
+ */
+function assertCoordinate(
+  lines: readonly string[],
+  value: number,
+  what: string,
+): void {
+  if (!drawnNumbers(lines, true).includes(value)) {
+    fail(`an overlay line carrying ${what} (${String(value)})`, lines);
   }
 }
 
@@ -271,10 +309,10 @@ it("draws every registered value when the overlay is toggled on", async () => {
   assertFigure(overlay, LIVES, "the lives");
   assertFigure(overlay, WAVE, "the wave");
 
-  assertFigure(overlay, SHIP.x, "the x of the ship's position");
-  assertFigure(overlay, SHIP.y, "the y of the ship's position");
-  assertFigure(overlay, SHIP_VELOCITY.vx, "the x of the ship's velocity");
-  assertFigure(
+  assertCoordinate(overlay, SHIP.x, "the x of the ship's position");
+  assertCoordinate(overlay, SHIP.y, "the y of the ship's position");
+  assertCoordinate(overlay, SHIP_VELOCITY.vx, "the x of the ship's velocity");
+  assertCoordinate(
     overlay,
     Math.abs(SHIP_VELOCITY.vy),
     "the y of the ship's velocity",
@@ -286,8 +324,8 @@ it("draws every registered value when the overlay is toggled on", async () => {
   assertFigure(overlay, BULLETS.length, "how many bullets are in play");
   assertFigure(overlay, ROCK_COUNT, "how many rocks are in play");
 
-  assertFigure(overlay, SAUCER.x, "the x of the saucer that is up");
-  assertFigure(overlay, SAUCER.y, "the y of the saucer that is up");
+  assertCoordinate(overlay, SAUCER.x, "the x of the saucer that is up");
+  assertCoordinate(overlay, SAUCER.y, "the y of the saucer that is up");
 
   assertFigure(
     overlay,

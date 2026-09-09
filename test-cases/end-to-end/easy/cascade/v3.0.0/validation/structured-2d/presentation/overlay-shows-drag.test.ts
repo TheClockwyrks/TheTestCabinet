@@ -30,6 +30,14 @@
 // specs/controls.md has take that card and every face-up card below it, so the
 // hand holds exactly the five the column's run has. Nothing here poses a drag.
 //
+// A CONTROL PAIR NAMES WHAT THE PANEL MOVES ON ITS OWN. specs/instrumentation.md
+// fixes what the panel shows AT LEAST, so a build may register more, and a frame
+// count or a frame time moves with nothing in hand: its line is new at every
+// reading and would carry any figure sooner or later. So the idle panel is read
+// twice, a second of the driven clock apart, and a line whose shape — its text
+// with every run of digits blanked — differed between the two is set aside
+// before the held panel's added lines are searched for the count.
+//
 // THE WORLD IT POSES. `openTable` empties all thirteen piles, and one column is
 // posed. Nothing else is on the table.
 
@@ -40,6 +48,7 @@ import {
   captureStill,
   card,
   createHarness,
+  framesFor,
   down,
   grabPoint,
   KING,
@@ -50,10 +59,22 @@ import {
   toggleOverlay,
   type Harness,
 } from "../harness";
-import { linesAdded, linesCarrying, overlayLines } from "./overlay";
+import {
+  linesAdded,
+  linesCarrying,
+  overlayLines,
+  restlessShapes,
+  settledLines,
+} from "./overlay";
 
 /** The column posed, and where in it the press lands. */
 const COLUMN = 0;
+
+/**
+ * How far apart the two control readings of the idle panel are taken: a second
+ * of the driven clock, so a clock drawn to whole seconds moves inside it.
+ */
+const CONTROL_SPAN = 1;
 
 /** How many cards the run holds: the figure the panel must carry. */
 const RUN = 5;
@@ -86,6 +107,15 @@ it("draws the live drag and the cards it holds on the overlay", async () => {
   const afterIdle = await toggleOverlay(h);
   const idle = overlayLines(beforeIdle, afterIdle);
 
+  // The control pair: the same idle panel read again, a second of the driven
+  // clock on, with nothing moved. Whatever differs is what the panel moves on
+  // its own, and no line of that shape may carry the figure below, however it
+  // happens to read at the moment.
+  await h.advance(framesFor(CONTROL_SPAN));
+  const beforeAgain = await toggleOverlay(h);
+  const afterAgain = await toggleOverlay(h);
+  const restless = restlessShapes(idle, overlayLines(beforeAgain, afterAgain));
+
   const grab = grabPoint(h.snapshot(), COLUMN, GRAB_ROW);
   pressAt(h, grab.x, grab.y);
   assertEqual(
@@ -100,13 +130,14 @@ it("draws the live drag and the cards it holds on the overlay", async () => {
   captureStill(h, "overlay");
   const held = overlayLines(beforeHeld, afterHeld);
 
-  const changed = linesAdded(idle, held);
+  const changed = settledLines(linesAdded(idle, held), restless);
   assertTrue(
     linesCarrying(changed, RUN) > 0,
     `a line the panel drew only once the run was in hand, carrying the ` +
       `${String(RUN)} cards it holds (specs/instrumentation.md: register ` +
       "whether a run is in hand and how many cards it holds) — the panel's " +
       `idle lines were ${JSON.stringify(idle)} and its lines with the run in ` +
-      `hand were ${JSON.stringify(held)}`,
+      `hand were ${JSON.stringify(held)}; ${String(restless.size)} line ` +
+      `shape(s) that moved with nothing in hand were set aside`,
   );
 });

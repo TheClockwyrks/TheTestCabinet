@@ -30,14 +30,24 @@ import { availableParallelism } from "node:os";
 
 import { defineValidationConfig } from "./case-harness/vitest-config";
 
+// NO TIMEOUT DIALS. The two minutes this project used to name for `testTimeout`
+// and the one it named for `hookTimeout` were sized against a healthy machine.
+// A fall driven to rest (`driveFall`) is up to nine hundred frames, each a
+// crossing into the browser and a snapshot back, under a recording; a crossing
+// costs 6 ms on an idle host and 90 ms on a loaded one, and a single such point
+// measured 15 s run alone against a produced build. The package's five minutes
+// are sized against the worst load these projects have been measured under and
+// still sit at a ninth of the runner's cap on the whole suite run, so a file can
+// only cross them on a host where the run was already lost. The hook allowance
+// has to be wider than every wait the harness itself bounds — thirty seconds to
+// reach the browser, the page load, fifteen for the surface, five for the
+// recorder — or the last of them is decided here, and "a hook expired" says far
+// less than which wait was crossed; one minute was not, and the package's five
+// are. An allowance a correct build can cross is a defect in the check, not a
+// dial to tighten. The one dial kept is the worker count below, which is about
+// the host and not about the clock.
 export default defineValidationConfig({
   root: new URL("..", import.meta.url).pathname,
-  // A Deepcore scenario is posed rather than played to, so the long one is the
-  // Core Sample's ninety-second timer, driven off the clock rather than waited
-  // out. Two minutes is generous against a healthy build and still bounds a hung
-  // one.
-  testTimeout: 120_000,
-  hookTimeout: 60_000,
   // Four rather than the package's eight, and never more than the host has
   // cores. A full-stack build loads the art and audio it produced into every
   // page, so a page here costs several times what one of a code-only case does,

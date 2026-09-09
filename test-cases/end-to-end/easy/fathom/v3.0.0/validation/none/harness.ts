@@ -94,9 +94,12 @@ import {
 import { assertTruthy, fail } from "./assert";
 import {
   FATHOM_DEBUG_VERSION,
+  GAMEOVER_ITEMS,
+  PAUSE_ITEMS,
   STAGE_H,
   STAGE_W,
   TICK_HZ,
+  TITLE_ITEMS,
   UNBOUND_KEY,
   type Dir,
 } from "./constants";
@@ -525,6 +528,97 @@ export interface Harness extends BaseHarness<FathomSnapshot, FathomDebugApi> {
   scan(ticks: number, poll?: number): Promise<ScanReading[]>;
 }
 
+/* -------------------------------------------------------------------------- */
+/* The inert press                                                            */
+/* -------------------------------------------------------------------------- */
+//
+// THE SECOND GESTURE AUDIO ARMING MAKES. `specs/assets.md` has sound wait for
+// the player's first interaction with the page and fixes no gesture as the one
+// that unlocks, so a build that opens its audio from any key at all and one
+// that opens it only from the inputs the specification binds — a pointer press,
+// a bound key — are both conformant. The key `UNBOUND_KEY` names reaches the
+// first; a key bound to nothing never reaches the second, so a harness that
+// asked to arm follows it with a real pointer press at a point `specs/ui.md`
+// fixes as doing nothing.
+
+/**
+ * How many items the menu on each menu-bearing screen carries (`specs/ui.md`).
+ * A screen absent here shows no menu the pointer is inert beside: `howto`
+ * returns to the title on a press anywhere, and the others give the pointer
+ * no role, so no press is made on them.
+ */
+const MENU_ITEM_COUNTS: Partial<Record<Screen, number>> = {
+  title: TITLE_ITEMS.length,
+  paused: PAUSE_ITEMS.length,
+  gameover: GAMEOVER_ITEMS.length,
+};
+
+/**
+ * Where an inert press is tried, in the stage's logical units: the four
+ * corners, inset, and then the middles of the four edges.
+ *
+ * `specs/ui.md` leaves where a screen puts its items to the build, so which of
+ * these lies outside every item's region on a given screen is read from the
+ * build's own `menuItemRect` rather than assumed. Whole units, inside the
+ * stage, so the press lands on the canvas wherever the fit put it.
+ */
+const INERT_PRESS_CANDIDATES: readonly Point[] = [
+  { x: 4, y: 4 },
+  { x: STAGE_W - 4, y: 4 },
+  { x: 4, y: STAGE_H - 4 },
+  { x: STAGE_W - 4, y: STAGE_H - 4 },
+  { x: STAGE_W / 2, y: 4 },
+  { x: STAGE_W / 2, y: STAGE_H - 4 },
+  { x: 4, y: STAGE_H / 2 },
+  { x: STAGE_W - 4, y: STAGE_H / 2 },
+];
+
+/** Whether `point` lies inside `rect`, edges included. */
+function insideRegion(point: Point, rect: MenuRect): boolean {
+  return (
+    point.x >= rect.x &&
+    point.x <= rect.x + rect.w &&
+    point.y >= rect.y &&
+    point.y <= rect.y + rect.h
+  );
+}
+
+/**
+ * A pointer press the specification fixes as doing nothing, delivered as a
+ * genuine browser gesture so a build that opens its audio from the pointer can
+ * open it.
+ *
+ * `specs/ui.md`: a pointer selects an item by moving onto its region and
+ * confirms one by pressing and releasing inside it, and "an edge that falls
+ * outside every region" confirms no item — so a press outside every region of
+ * the menu on screen selects nothing and confirms nothing. Which point is
+ * outside every region is read from the regions the build reports, so a build
+ * is free to lay its menus out as it likes; a build that reports no region for
+ * an item of its own menu is left to the check that reads that. Answers
+ * whether a press was made.
+ */
+async function inertPress(
+  base: BaseHarness<FathomSnapshot, FathomDebugApi>,
+): Promise<boolean> {
+  const snapshot = await base.snapshot();
+  const count = MENU_ITEM_COUNTS[snapshot.screen];
+  if (count === undefined) return false;
+  const regions: MenuRect[] = [];
+  for (let index = 0; index < count; index += 1) {
+    const rect = await base.debug.menuItemRect(index);
+    if (rect === null) return false;
+    regions.push(rect);
+  }
+  const at = INERT_PRESS_CANDIDATES.find((point) =>
+    regions.every((rect) => !insideRegion(point, rect)),
+  );
+  if (at === undefined) return false;
+  await base.movePointer(at.x, at.y);
+  await base.page.mouse.down();
+  await base.page.mouse.up();
+  return true;
+}
+
 /**
  * Open a page on this build, with Fathom's own readings bound onto the harness.
  *
@@ -535,6 +629,14 @@ export async function createHarness(
   options?: HarnessOptions,
 ): Promise<Harness> {
   const base = await kit.createHarness(options);
+  // The second arming gesture, for a harness that asked for the first: the
+  // kit pressed the key before its opening reset, and the press goes in here,
+  // on the title the reset restored, at a point the specification fixes as
+  // inert. It needs the surface to find that point, so a build with a surface
+  // fault is left to fail on the check's own reading of it.
+  if ((options?.armAudio ?? false) && base.surfaceFault === null) {
+    await inertPress(base);
+  }
   // ONE CUE SINK PER PAGE, opened on the first scan and kept. A sink attached by
   // `watchCues` cannot be detached, and every later tick pushes into every sink
   // there is, so opening one per call would make a scan in a loop cost more with

@@ -6,6 +6,11 @@
 // never fires, so its head is a static aura emitter with no muzzle, drawn across
 // its five tiers like every other type", so the Regulator's five are part of the
 // forty rather than an exception to them.
+//
+// THE STILL IS EVIDENCE ONLY. The verdict is read off the files above the
+// drive, so the pose that puts the yard beside them is guarded: a build whose
+// debug surface cannot take the pose loses the picture and keeps the point,
+// and no still is recorded over the un-posed frame.
 
 import { it } from "vitest";
 import { assertEqual } from "../assert";
@@ -47,6 +52,11 @@ it("produces a head for every type at every quality tier", async () => {
     h.debug.clearSelection();
     await h.advance(1);
     captureStill(h, "heads");
+  } catch (error) {
+    // Evidence only; the readings above carry the verdict.
+    console.warn(
+      `arc foundry: could not pose the still for \`heads\`, so none is recorded: ${String(error)}`,
+    );
   } finally {
     h.dispose();
   }

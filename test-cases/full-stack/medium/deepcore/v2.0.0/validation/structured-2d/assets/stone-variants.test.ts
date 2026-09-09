@@ -12,6 +12,11 @@
 // this check chose. Whether the stone reads as harder than the rock around it is a
 // reviewer's reading, off the still this item captures: two boulders posed side by
 // side in a band's rock.
+//
+// THE STILL IS EVIDENCE ONLY. The verdict is read off the files, so the pose
+// that puts the game beside them is guarded: a build whose debug surface
+// cannot take the pose loses the picture and keeps the point, and no still is
+// recorded over the un-posed frame.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { PLAYABLE_COL_MIN, STONE_VARIANTS } from "../constants";
@@ -52,16 +57,23 @@ it("produces at least two distinct boulder variants", async () => {
     names.map((name) => ["tiles", name] as const),
   );
 
-  openScene(h);
-  pinDrill(h);
-  layFloor(h, ROW);
-  standOn(h, MINER_COL, ROW);
-  pinMiner(h);
-  fillRow(h, ROW - 1, MINER_COL + 2, MINER_COL + 6, "rock");
-  h.debug.setTile(MINER_COL + 3, ROW - 1, "stone");
-  h.debug.setTile(MINER_COL + 5, ROW - 1, "stone");
-  await h.advance(2);
-  captureStill(h, "boulders");
+  try {
+    openScene(h);
+    pinDrill(h);
+    layFloor(h, ROW);
+    standOn(h, MINER_COL, ROW);
+    pinMiner(h);
+    fillRow(h, ROW - 1, MINER_COL + 2, MINER_COL + 6, "rock");
+    h.debug.setTile(MINER_COL + 3, ROW - 1, "stone");
+    h.debug.setTile(MINER_COL + 5, ROW - 1, "stone");
+    await h.advance(2);
+    captureStill(h, "boulders");
+  } catch (error) {
+    // Evidence only; the readings below carry the verdict.
+    console.warn(
+      `deepcore: could not pose the still for \`boulders\`, so none is recorded: ${String(error)}`,
+    );
+  }
 
   assertGreaterThanOrEqual(
     pictures.length,

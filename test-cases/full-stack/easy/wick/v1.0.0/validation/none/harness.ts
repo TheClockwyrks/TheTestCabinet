@@ -908,6 +908,112 @@ async function settleCues(
   }
 }
 
+/* -------------------------------------------------------------------------- */
+/* The inert press                                                            */
+/* -------------------------------------------------------------------------- */
+//
+// THE SECOND GESTURE ARMING MAKES. `specs/assets.md` has sound wait for the
+// player's first interaction with the page and fixes no gesture as the one that
+// unlocks, so a build that opens its audio from any key at all and one that
+// opens it only from the inputs the specification binds — a pointer press, a
+// bound key — are both conformant. The key `UNBOUND_KEY` names reaches the
+// first; a key bound to nothing never reaches the second, so a harness that
+// asked to arm follows it with a real pointer press at a point
+// `specs/controls.md` fixes as doing nothing.
+
+/**
+ * The screens whose pointer targets are exactly the rectangles `menuRects`
+ * reports (`specs/controls.md`: "On `title`, `levelup`, `paused`, `fallen`, and
+ * `dawn` that is every item of the menu"). `almanac` carries its tab bar as
+ * well, and `howto` and `chest` answer on a rectangle `menuRects` leaves out,
+ * so on those the key stands alone; `playing` "answers neither".
+ */
+const MENU_ONLY_SCREENS: readonly ScreenName[] = [
+  "title",
+  "levelup",
+  "paused",
+  "fallen",
+  "dawn",
+];
+
+/**
+ * Where an inert press is tried, in the stage's logical units: the four
+ * corners, inset, and then the middles of the four edges.
+ *
+ * `specs/controls.md` leaves where a menu puts its items to the build, so which
+ * of these lies outside every item's rectangle on a menu screen is read from
+ * the build's own `menuRects` rather than assumed. Whole units, inside the
+ * stage, so the press lands on the canvas wherever the fit put it.
+ */
+const INERT_PRESS_CANDIDATES: readonly XY[] = [
+  { x: 4, y: 4 },
+  { x: STAGE_W - 4, y: 4 },
+  { x: 4, y: STAGE_H - 4 },
+  { x: STAGE_W - 4, y: STAGE_H - 4 },
+  { x: STAGE_W / 2, y: 4 },
+  { x: STAGE_W / 2, y: STAGE_H - 4 },
+  { x: 4, y: STAGE_H / 2 },
+  { x: STAGE_W - 4, y: STAGE_H / 2 },
+];
+
+/** Whether `point` lies inside `rect`, edges included. */
+function insideRegion(point: XY, rect: RectView): boolean {
+  return (
+    point.x >= rect.x &&
+    point.x <= rect.x + rect.width &&
+    point.y >= rect.y &&
+    point.y <= rect.y + rect.height
+  );
+}
+
+/**
+ * A pointer press the specification fixes as doing nothing, delivered as a
+ * genuine browser gesture so a build that opens its audio from the pointer can
+ * open it.
+ *
+ * `specs/controls.md`: "the pointer inside no rectangle changes nothing" and "a
+ * press edge inside no rectangle arms nothing", so a press outside every
+ * rectangle of the menu on screen does nothing; on `playing`, which "answers
+ * neither", the first candidate serves. Which point is outside every rectangle
+ * is read from the rectangles the build reports, so a build is free to lay its
+ * menus out as it likes; a report that is not a list of rectangles is left to
+ * the check that reads it. Answers whether a press was made.
+ */
+async function inertPress(base: Harness): Promise<boolean> {
+  const snapshot = await base.snapshot();
+  const regions: RectView[] = [];
+  if (snapshot.screen !== "playing") {
+    if (!MENU_ONLY_SCREENS.includes(snapshot.screen)) return false;
+    const reported: unknown = await base.debug.menuRects();
+    if (!Array.isArray(reported)) return false;
+    for (const entry of reported) {
+      const rect = entry as Partial<RectView> | null;
+      if (
+        typeof rect?.x !== "number" ||
+        typeof rect.y !== "number" ||
+        typeof rect.width !== "number" ||
+        typeof rect.height !== "number"
+      ) {
+        return false;
+      }
+      regions.push({
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height,
+      });
+    }
+  }
+  const at = INERT_PRESS_CANDIDATES.find((point) =>
+    regions.every((rect) => !insideRegion(point, rect)),
+  );
+  if (at === undefined) return false;
+  await base.movePointer(at.x, at.y);
+  await base.page.mouse.down();
+  await base.page.mouse.up();
+  return true;
+}
+
 /**
  * Open a page on the build, take the game off its own clock, and give every
  * drive the named-cue log.
@@ -933,6 +1039,14 @@ export async function createHarness(
   // Armed, so the clips are on their way; unarmed, there is nothing to wait for
   // and a build that decodes nothing must not cost a check the whole ceiling.
   if (options?.armAudio ?? false) await waitForCues(base.page);
+  // The second arming gesture, for a harness that asked for the first: the
+  // kit pressed the key before its opening reset, and the pointer press goes
+  // in here, on the title the reset restored, at a point the specification
+  // fixes as inert. It needs the surface to find that point, so a build with a
+  // surface fault is left to fail on the check's own reading of it.
+  if ((options?.armAudio ?? false) && base.surfaceFault === null) {
+    await inertPress(base);
+  }
   const log: CueLog = { cursor: 0, sinks: [] };
 
   /** Run `drive`, then settle the sounds it produced onto its frames. */

@@ -5,6 +5,11 @@
 // `icons/type-<type>.png` at `16 x 16`, "one glyph per base component type, for
 // the panel" — eight of them, so ten in all. `specs/hud.md` is what asks for
 // them: the bar's Charge and Grid Integrity reads each carry an icon.
+//
+// THE STILL IS EVIDENCE ONLY. The verdict is read off the files above the
+// drive, so the pose that puts the yard beside them is guarded: a build whose
+// debug surface cannot take the pose loses the picture and keeps the point,
+// and no still is recorded over the un-posed frame.
 
 import { it } from "vitest";
 import { assertEqual } from "../assert";
@@ -38,6 +43,11 @@ it("produces the bar's and the panel's icons at sixteen square", async () => {
     await h.debug.select(id);
     await h.advance(1);
     await captureStill(h, "icons");
+  } catch (error) {
+    // Evidence only; the readings above carry the verdict.
+    console.warn(
+      `arc foundry: could not pose the still for \`icons\`, so none is recorded: ${String(error)}`,
+    );
   } finally {
     await h.dispose();
   }

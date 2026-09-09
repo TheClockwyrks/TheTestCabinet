@@ -19,6 +19,11 @@
 //
 // THE EVIDENCE. This point drives nothing, so its declared still is a picture of
 // the moment the cue belongs to: the head one cell from the pellet it eats.
+//
+// THE STILL IS EVIDENCE ONLY. The verdict is read off the files, so the pose
+// that puts the game beside them is guarded: a build whose debug surface
+// cannot take the pose loses the picture and keeps the point, and no still is
+// recorded over the un-posed frame.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertLessThan, fail } from "../assert";
@@ -49,13 +54,20 @@ afterEach(async () => {
 it("ships an eat cue shorter than one tick", async () => {
   const { sound, reason } = await decodeSound(h, FILE);
 
-  await showRound(h, {
-    snake: chainFrom(HOME_HEAD, "right", 4),
-    dir: "right",
-    pellet: ahead(HOME_HEAD, "right"),
-    travel: false,
-  });
-  await captureStill(h, "eat");
+  try {
+    await showRound(h, {
+      snake: chainFrom(HOME_HEAD, "right", 4),
+      dir: "right",
+      pellet: ahead(HOME_HEAD, "right"),
+      travel: false,
+    });
+    await captureStill(h, "eat");
+  } catch (error) {
+    // Evidence only; the readings below carry the verdict.
+    console.warn(
+      `coil: could not pose the still for \`eat\`, so none is recorded: ${String(error)}`,
+    );
+  }
 
   if (sound === null) fail(`a WAV at ${FILE} the browser decodes`, reason);
   assertLessThan(

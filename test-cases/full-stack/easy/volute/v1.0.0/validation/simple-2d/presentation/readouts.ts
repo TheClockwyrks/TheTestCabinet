@@ -170,12 +170,13 @@ function renderings(value: number): string[] {
  * before the figure is absorbed into it, while a non-zero digit there still ends
  * the reading: "000050" shows 50, "150" and "504" do not. A zero run that is
  * itself a group of a larger grouped figure is not padding: "1,050" shows 1050,
- * not 50.
+ * not 50, while the figure after a group mark is still read on its own, so a
+ * pair drawn "(10,7)" shows 7.
  */
 function showsFigure(text: string, value: number): boolean {
   return renderings(value).some((drawn) =>
     new RegExp(
-      `(?<![\\d.])(?<!\\d${GROUP_CLASS})0*${escapeRegExp(drawn)}(?![\\d.])`,
+      `(?<![\\d.])(?:(?<!\\d${GROUP_CLASS})0+)?${escapeRegExp(drawn)}(?![\\d.])`,
     ).test(text),
   );
 }

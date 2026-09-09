@@ -68,6 +68,17 @@ const GROUP = [",", "'", "\u00A0", "\u202F", "\u2009"];
  * fewer has exactly one rendering, so a final score short of a thousand is the
  * bare digits it is. The digit boundary either side is what keeps a screen
  * showing `150` from reading as one showing `50`.
+ *
+ * Leading zeros are not part of that boundary. The specification fixes the
+ * figure and leaves how it is written to the build, so a readout padded to a
+ * fixed width — `000050`, the odometer idiom `padStart` produces — is the
+ * figure 50 as surely as `50` is. Any run of zeros standing directly before
+ * the figure is absorbed into it, while a non-zero digit there still ends the
+ * reading: `000050` shows 50, `150` and `504` do not. A zero run that is
+ * itself a group of a larger grouped figure is not padding: `1,050` shows
+ * 1050, not 50. That guard falls on the zeros alone, so a figure standing
+ * after a separator with no padding before it, the `7` of a `10,7` pair,
+ * reads as it did without the padding allowance.
  */
 function figure(value: number): RegExp {
   const plain = String(value);
@@ -78,7 +89,10 @@ function figure(value: number): RegExp {
   const alternatives = [...forms]
     .map((form) => form.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
     .join("|");
-  return new RegExp(`(?<![\\d.])(?:${alternatives})(?![\\d.])`);
+  const group = `[${GROUP.join("")}]`;
+  return new RegExp(
+    `(?<![\\d.])(?:(?<!\\d${group})0+)?(?:${alternatives})(?![\\d.])`,
+  );
 }
 
 let h: Harness;

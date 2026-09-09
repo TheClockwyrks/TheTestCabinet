@@ -26,6 +26,10 @@
 // `(731, 219)` — and then each is taken from `snapshot()` and looked for among the
 // panel's own numbers. A number is matched EXACTLY once parsed, so a frame timing
 // of `47.3 ms` is not mistaken for a cycle of `47`.
+// A comma between two runs of digits is ambiguous — `731,219` is one grouped
+// figure or the pointer's two coordinates — and the specification fixes no form
+// for the pointer position, so each of its coordinates is accepted in both
+// readings; every other figure keeps the whole-figure reading.
 //
 // THE FRACTION IS THE ONE VALUE WHOSE WRITING IS THE BUILD'S. `sim.fraction` is a
 // running sum "read to within the rounding of that sum rather than bit for bit",
@@ -162,11 +166,25 @@ const DRAWN = new RegExp(
   "g",
 );
 
-/** Every number the panel wrote, whatever it wrote beside them. */
-function numbersOn(lines: readonly string[]): number[] {
-  return (lines.join("\n").match(DRAWN) ?? []).map((drawn) =>
-    Number(drawn.replace(new RegExp(GROUP, "g"), "")),
-  );
+/**
+ * Every number the panel wrote, whatever it wrote beside them — and, when
+ * `apart` is set, every run of digits inside a grouped figure as a number of its
+ * own as well.
+ *
+ * A figure is read whole rather than digit by digit, so a panel that grouped a
+ * cost as `1,234` reports the one number `1234`. The same characters also spell
+ * two figures a panel joined with a comma — the pointer drawn as `731,219` — and
+ * nothing in the text tells the two apart, so a reading that wants the joined
+ * figures asks for them `apart`: `731,219` then reports `731219`, `731` and
+ * `219`, and a build that never drew the pointer still draws none of them.
+ */
+function numbersOn(lines: readonly string[], apart = false): number[] {
+  const grouping = new RegExp(GROUP, "g");
+  return (lines.join("\n").match(DRAWN) ?? []).flatMap((drawn) => {
+    const whole = Number(drawn.replace(grouping, ""));
+    if (!apart) return [whole];
+    return [whole, ...drawn.split(new RegExp(GROUP)).map(Number)];
+  });
 }
 
 it("registers every diagnostic the specification asks the overlay to show", async () => {
@@ -220,6 +238,7 @@ it("registers every diagnostic the specification asks the overlay to show", asyn
   );
   const said = lines.join("\n").toLowerCase();
   const wrote = numbersOn(lines);
+  const placed = numbersOn(lines, true);
 
   /** The panel wrote this string somewhere among its lines. */
   const reports = (value: string, fact: string): void => {
@@ -230,6 +249,18 @@ it("registers every diagnostic the specification asks the overlay to show", asyn
     assertTrue(
       wrote.includes(value),
       `the overlay reports ${fact} (${value}), and wrote ${JSON.stringify(wrote)}`,
+    );
+  };
+  /**
+   * The panel wrote this number as one coordinate of the pointer: a whole figure
+   * of its own, or one run of a comma-joined pair — `(731, 219)`, `x 731 y 219`
+   * and `731,219` all draw the coordinates, and the last is also the grouped
+   * figure `731219`.
+   */
+  const locates = (value: number, fact: string): void => {
+    assertTrue(
+      placed.includes(value),
+      `the overlay reports ${fact} (${value}), and wrote ${JSON.stringify(placed)}`,
     );
   };
 
@@ -266,8 +297,8 @@ it("registers every diagnostic the specification asks the overlay to show", asyn
   counts(sim?.motes.length ?? -1, "the mote count");
   counts(sim?.area ?? -1, "the banked area");
   reports(posed.editor.focus, "the focus");
-  counts(posed.pointer.x, "the pointer's x");
-  counts(posed.pointer.y, "the pointer's y");
+  locates(posed.pointer.x, "the pointer's x");
+  locates(posed.pointer.y, "the pointer's y");
 
   // The second world: a fault, which the first world could not carry.
   await openBareRun(h, {

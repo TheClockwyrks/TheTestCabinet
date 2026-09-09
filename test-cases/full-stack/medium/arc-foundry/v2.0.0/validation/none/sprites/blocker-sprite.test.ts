@@ -4,6 +4,11 @@
 // unharvested candidate hardens into", and it has to read as dead — "no head, no
 // muzzle, no glow". `specs/scrap-press.md` is what produces one: every candidate
 // but the level's harvest hardens into a blocker at the wave's start.
+//
+// THE STILL IS EVIDENCE ONLY. The verdict is read off the files above the
+// drive, so the pose that puts the yard beside them is guarded: a build whose
+// debug surface cannot take the pose loses the picture and keeps the point,
+// and no still is recorded over the un-posed frame.
 
 import { it } from "vitest";
 import { assertEqual } from "../assert";
@@ -35,6 +40,11 @@ it("produces the blocker at the size specs/assets.md fixes", async () => {
     await h.debug.clearSelection();
     await h.advance(1);
     await captureStill(h, "blocker");
+  } catch (error) {
+    // Evidence only; the readings above carry the verdict.
+    console.warn(
+      `arc foundry: could not pose the still for \`blocker\`, so none is recorded: ${String(error)}`,
+    );
   } finally {
     await h.dispose();
   }

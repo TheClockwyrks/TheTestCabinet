@@ -1560,6 +1560,31 @@ export function writeBoard(h: Harness, rows: BoardRows): FacetSnapshot {
 }
 
 /**
+ * Put away whatever an earlier scenario left standing on the board: the
+ * selection, the offer, the refusal, and any swap or chain step in motion, each
+ * cleared only where the snapshot reports one. A no-op, and not an error, on a
+ * board with nothing standing.
+ *
+ * `specs/instrumentation.md` fixes what `clearSelection`, `clearOffer`,
+ * `clearRefusal` and `clearChain` do to a thing that stands and says nothing
+ * about a call with nothing to put away, and its rule that "no operation returns
+ * with the state as it was" lets a build read such a call as one it must fail
+ * loudly on. So each clear is issued only where there is something to clear;
+ * `pointer/press-selects` and `appearance/selection-marked` still call
+ * `clearSelection` and `clearOffer` themselves. The snapshot shape fixes
+ * `selection`, `offer` and `refusal` as `null` while none stands and the timers
+ * at rest while `phase` is `idle`, so those four readings are the whole of what
+ * there is to put away.
+ */
+export function clearStanding(h: Harness): void {
+  const { selection, offer, refusal, phase } = h.snapshot();
+  if (selection !== null) h.debug.clearSelection();
+  if (offer !== null) h.debug.clearOffer();
+  if (refusal !== null) h.debug.clearRefusal();
+  if (phase !== "idle") h.debug.clearChain();
+}
+
+/**
  * Pose a written board on a settled `playing` screen, and read it back.
  *
  * THE SEQUENCE, not one operation: the board is written, resolution is settled,
@@ -1576,10 +1601,7 @@ export function writeBoard(h: Harness, rows: BoardRows): FacetSnapshot {
  */
 export function loadBoard(h: Harness, rows: BoardRows): FacetSnapshot {
   parseRows(rows);
-  h.debug.clearChain();
-  h.debug.clearSelection();
-  h.debug.clearOffer();
-  h.debug.clearRefusal();
+  clearStanding(h);
   h.debug.loadBoard(rows);
   h.debug.setMenuIndex(0);
   h.debug.setScreen("playing");
@@ -1620,10 +1642,7 @@ export function startRound(h: Harness): FacetSnapshot {
   h.debug.setMoveScore(0);
   h.debug.setBestMove(0);
   h.debug.setBestChain(0);
-  h.debug.clearSelection();
-  h.debug.clearOffer();
-  h.debug.clearRefusal();
-  h.debug.clearChain();
+  clearStanding(h);
   h.debug.dealBoard();
   h.debug.setMenuIndex(0);
   h.debug.setScreen("playing");
@@ -1648,10 +1667,7 @@ export function openNextLevel(h: Harness): FacetSnapshot {
   h.debug.setMoveScore(0);
   h.debug.setBestMove(0);
   h.debug.setBestChain(0);
-  h.debug.clearSelection();
-  h.debug.clearOffer();
-  h.debug.clearRefusal();
-  h.debug.clearChain();
+  clearStanding(h);
   h.debug.dealBoard();
   h.debug.setMenuIndex(0);
   h.debug.setScreen("playing");
@@ -1670,10 +1686,7 @@ export function openNextLevel(h: Harness): FacetSnapshot {
  * {@link startRound} writes both.
  */
 export function quitToTitle(h: Harness): FacetSnapshot {
-  h.debug.clearSelection();
-  h.debug.clearOffer();
-  h.debug.clearRefusal();
-  h.debug.clearChain();
+  clearStanding(h);
   h.debug.clearBoard();
   h.debug.setMenuIndex(0);
   h.debug.setScreen("title");

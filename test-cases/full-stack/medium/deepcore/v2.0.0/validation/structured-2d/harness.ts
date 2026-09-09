@@ -1444,6 +1444,22 @@ export function openExpedition(
 }
 
 /**
+ * Empty the save slot if one is held. A no-op, and not an error, when
+ * `snapshot().hasSave` is already `false`.
+ *
+ * `specs/instrumentation.md` fixes what `clearSave` does to a slot that holds a
+ * save and says nothing about one already empty, and its rule that no operation
+ * passes "quietly, leaving the game as it was" lets a build read the empty-slot
+ * call as one it must fail loudly on. A fresh harness opens with the slot empty,
+ * so the clear is issued only where there is a save to delete; the suites that
+ * fill the slot and call `clearSave` themselves, `core-run/saving-refused-while-
+ * a-sample-is-live` among them, still exercise it against a slot that IS held.
+ */
+export function clearSaveSlot(h: Harness): void {
+  if (h.snapshot().hasSave) h.debug.clearSave();
+}
+
+/**
  * Start an expedition from the title the way a player does: menu keys only.
  *
  * The title menu leads with `CONTINUE` only while a save exists, so this clears
@@ -1458,7 +1474,7 @@ export async function startWithKeys(
 ): Promise<void> {
   const mode = options.mode ?? "standard";
   const size = options.size ?? "standard";
-  h.debug.clearSave();
+  clearSaveSlot(h);
   h.debug.reset();
   h.debug.setScreen("title");
 

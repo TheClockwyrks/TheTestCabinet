@@ -11,6 +11,11 @@
 // Market by looking at it, and two fixtures sharing a stamp make that impossible.
 // The three that are not buildings are held only to being present, because the
 // ground and the sky are backdrops rather than things to tell apart.
+//
+// THE STILL IS EVIDENCE ONLY. The verdict is read off the files, so the pose
+// that puts the game beside them is guarded: a build whose debug surface
+// cannot take the pose loses the picture and keeps the point, and no still is
+// recorded over the un-posed frame.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
@@ -38,9 +43,16 @@ it("produces the nine surface sprites, the six buildings distinct", async () => 
     else if (BUILDING_SPRITES.includes(id)) buildings.push(picture);
   }
 
-  showAtCamp(h);
-  await h.advance(2);
-  captureStill(h, "camp");
+  try {
+    showAtCamp(h);
+    await h.advance(2);
+    captureStill(h, "camp");
+  } catch (error) {
+    // Evidence only; the readings below carry the verdict.
+    console.warn(
+      `deepcore: could not pose the still for \`camp\`, so none is recorded: ${String(error)}`,
+    );
+  }
 
   assertEqual(missing.join(", "), "", "specs/assets.md");
   assertEqual(allDistinct(buildings), true, "specs/assets.md");

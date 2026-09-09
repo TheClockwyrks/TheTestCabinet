@@ -17,6 +17,11 @@
 // THE DECODE FLOOR. A straight-alpha canvas cleared to transparent black does not
 // always come back exactly zero, so `8` is what a pixel has to carry before the
 // decode counts it as drawn on rather than as cleared ground.
+//
+// THE STILL IS EVIDENCE ONLY. The verdict is read off the files above the
+// drive, so the pose that puts the yard beside them is guarded: a build whose
+// debug surface cannot take the pose loses the picture and keeps the point,
+// and no still is recorded over the un-posed frame.
 
 import { it } from "vitest";
 import { assertGreaterThan } from "../assert";
@@ -53,6 +58,11 @@ it("has something drawn on every produced sprite", async () => {
     h.debug.clearSelection();
     await h.advance(1);
     captureStill(h, "sheet");
+  } catch (error) {
+    // Evidence only; the readings above carry the verdict.
+    console.warn(
+      `arc foundry: could not pose the still for \`sheet\`, so none is recorded: ${String(error)}`,
+    );
   } finally {
     h.dispose();
   }

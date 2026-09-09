@@ -48,6 +48,14 @@
 // and the name is the build's own word, so a build whose sources are named
 // `col4` or `four` does not have its names counted as figures.
 //
+// A CONTROL PAIR NAMES WHAT THE PANEL MOVES ON ITS OWN. specs/instrumentation.md
+// fixes what the panel shows AT LEAST, so a build may register more, and a frame
+// count or a frame time moves with nothing in hand: its line is new at every
+// reading and would carry any figure sooner or later. So the idle panel is read
+// twice, a second of the driven clock apart, and a line whose shape — its text
+// with every run of digits blanked — differed between the two is set aside
+// before the held panel's added lines are searched for the count.
+//
 // THE WORLD IT POSES. `openTable` empties all thirteen piles; one column is posed
 // and its face-up run is lifted by a real press through the debug surface, which
 // specs/instrumentation.md feeds into the same input path a player's pointer
@@ -60,6 +68,7 @@ import {
   captureStill,
   columnCardTopLeft,
   createHarness,
+  framesFor,
   drawFrame,
   faceUpGap,
   facesOf,
@@ -69,7 +78,13 @@ import {
   toggleOverlay,
   type Harness,
 } from "../harness";
-import { linesAdded, linesCarrying, overlayLines } from "./overlay";
+import {
+  linesAdded,
+  linesCarrying,
+  overlayLines,
+  restlessShapes,
+  settledLines,
+} from "./overlay";
 
 /** The card buried under the run, so the column's idle count is not the run's. */
 const BURIED = "#2C";
@@ -77,6 +92,12 @@ const BURIED = "#2C";
 /** The run posed, in run order: each card one lower and the other colour. */
 const RUN = ["KS", "QH", "JC", "10D"];
 const COLUMN = 0;
+
+/**
+ * How far apart the two control readings of the idle panel are taken: a second
+ * of the driven clock, so a clock drawn to whole seconds moves inside it.
+ */
+const CONTROL_SPAN = 1;
 
 /** The row the press lifts from: the run's topmost card, under the buried one. */
 const GRAB_ROW = 1;
@@ -98,6 +119,15 @@ it("draws whether a run is in hand and how many cards it holds", async () => {
   const beforeIdle = await drawFrame(h);
   const afterIdle = await toggleOverlay(h);
   const idle = overlayLines(beforeIdle, afterIdle);
+
+  // The control pair: the same idle panel read again, a second of the driven
+  // clock on, with nothing moved. Whatever differs is what the panel moves on
+  // its own, and no line of that shape may carry the figure below, however it
+  // happens to read at the moment.
+  await h.advance(framesFor(CONTROL_SPAN));
+  const beforeAgain = await toggleOverlay(h);
+  const afterAgain = await toggleOverlay(h);
+  const restless = restlessShapes(idle, overlayLines(beforeAgain, afterAgain));
 
   // The band of the run's first card that the card fanned below it does not
   // cover, so the press lifts the whole run rather than part of it.
@@ -122,13 +152,14 @@ it("draws whether a run is in hand and how many cards it holds", async () => {
   captureStill(h, "overlay");
   const lines = overlayLines(beforeHeld, afterHeld);
 
-  const changed = linesAdded(idle, lines);
+  const changed = settledLines(linesAdded(idle, lines), restless);
   assertTrue(
     linesCarrying(changed, RUN.length) > 0,
     "a line the panel drew only once the run was in hand, carrying the " +
       `${String(RUN.length)} cards it holds (specs/instrumentation.md: register ` +
       "whether a run is in hand and how many cards it holds) — the panel's " +
       `idle lines were ${JSON.stringify(idle)} and its lines with the run in ` +
-      `hand were ${JSON.stringify(lines)}`,
+      `hand were ${JSON.stringify(lines)}; ${String(restless.size)} line ` +
+      `shape(s) that moved with nothing in hand were set aside`,
   );
 });

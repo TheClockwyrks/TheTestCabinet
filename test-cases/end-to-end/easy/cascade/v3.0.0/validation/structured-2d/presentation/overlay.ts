@@ -104,6 +104,37 @@ export function linesAdded(
   });
 }
 
+/** A line with every figure blanked: which line of the panel it is, whatever it reads. */
+export function shapeOf(line: string): string {
+  return line.replace(/\d+/g, "#");
+}
+
+/**
+ * The shapes of the lines two readings of one unchanged board disagree on:
+ * what the panel moves on its own.
+ *
+ * specs/instrumentation.md fixes what the panel shows AT LEAST, so a build may
+ * register more, and a frame count or a frame time moves with nothing on the
+ * board moved: its line is new at every reading and would carry any figure
+ * sooner or later. A reading that looks for a figure among the lines a
+ * situation ADDED sets such lines aside first, by shape, since the shape is
+ * what outlives the figure.
+ */
+export function restlessShapes(
+  a: readonly string[],
+  b: readonly string[],
+): Set<string> {
+  return new Set([...linesAdded(a, b), ...linesAdded(b, a)].map(shapeOf));
+}
+
+/** The lines whose shape is not among `restless`. */
+export function settledLines(
+  lines: readonly string[],
+  restless: ReadonlySet<string>,
+): string[] {
+  return lines.filter((line) => !restless.has(shapeOf(line)));
+}
+
 /**
  * The separators a build may group a figure's digit triples with.
  *

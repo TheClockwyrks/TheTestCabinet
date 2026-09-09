@@ -23,6 +23,11 @@
 // THE EVIDENCE. This point drives nothing, so its declared still is a picture of
 // what the bed plays under: a round in play, with the snake threading toward its
 // pellet.
+//
+// THE STILL IS EVIDENCE ONLY. The verdict is read off the files, so the pose
+// that puts the game beside them is guarded: a build whose debug surface
+// cannot take the pose loses the picture and keeps the point, and no still is
+// recorded over the un-posed frame.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan, fail } from "../assert";
@@ -55,13 +60,20 @@ afterEach(async () => {
 it("ships a produced music bed carrying signal", async () => {
   const { sound, reason } = await decodeSound(h, FILE);
 
-  await showRound(h, {
-    snake: chainFrom(HOME_HEAD, "right", 5),
-    dir: "right",
-    pellet: PELLET,
-    travel: false,
-  });
-  await captureStill(h, "music");
+  try {
+    await showRound(h, {
+      snake: chainFrom(HOME_HEAD, "right", 5),
+      dir: "right",
+      pellet: PELLET,
+      travel: false,
+    });
+    await captureStill(h, "music");
+  } catch (error) {
+    // Evidence only; the readings below carry the verdict.
+    console.warn(
+      `coil: could not pose the still for \`music\`, so none is recorded: ${String(error)}`,
+    );
+  }
 
   if (sound === null) fail(`a WAV at ${FILE} the browser decodes`, reason);
   assertGreaterThan(sound.frames, 0, `sample frames in ${FILE}`);
