@@ -828,16 +828,33 @@
   };
 
   /**
-   * The font and the alignment a context holds right now, as a frame that opens
-   * on it inherits them. Read off the live context rather than reconstructed,
-   * so a font set once at start-up is reported exactly.
+   * The state a context holds right now that a frame opening on it inherits and
+   * that its own operations then move from: the font and the alignment, the
+   * transform, and the smoothing flag. Read off the live context rather than
+   * reconstructed, so a font set once at start-up, or a letterbox fit issued as
+   * a `setTransform` on load and on resize rather than inside every frame, is
+   * reported exactly. Each part is read on its own, so a context that lacks one
+   * accessor still reports the rest.
    */
-  const inheritedTextState = (ctx) => {
+  const inheritedState = (ctx) => {
+    let state;
     try {
-      return { font: String(ctx.font), textAlign: String(ctx.textAlign) };
+      state = { font: String(ctx.font), textAlign: String(ctx.textAlign) };
     } catch {
       return null;
     }
+    try {
+      const m = ctx.getTransform();
+      state.transform = [m.a, m.b, m.c, m.d, m.e, m.f].map(round);
+    } catch {
+      state.transform = null;
+    }
+    try {
+      state.imageSmoothingEnabled = ctx.imageSmoothingEnabled !== false;
+    } catch {
+      state.imageSmoothingEnabled = null;
+    }
+    return state;
   };
 
   class ContextRecorder {
@@ -956,11 +973,16 @@
       /** The operations of the last frame CLOSED, whether armed or not. */
       this.lastOps = [];
       /**
-       * The text state the open frame INHERITED — the font and alignment the
-       * context held when the frame began — and the same for the last frame
-       * closed. A build that sets its font once at start-up and never again
-       * issues no `set font` inside any later frame, so the frame's own operation
-       * list cannot say what its text was drawn in; this can.
+       * The state the open frame INHERITED — the font and alignment, the
+       * transform and the smoothing flag the context held when the frame began —
+       * and the same for the last frame closed. A build that sets its font once
+       * at start-up and never again issues no `set font` inside any later frame,
+       * and one that fits its canvas to the window on load and on resize issues
+       * no `setTransform` inside any frame at all, so the frame's own operation
+       * list cannot say what its text was drawn in or where its draws landed;
+       * this can. Taken again when a reset inside the frame drops the operations
+       * before it, so it is always the state the frame's SURVIVING operations
+       * began under.
        */
       this.inherited = null;
       this.lastInherited = null;
@@ -1369,7 +1391,7 @@
       // and a state — carried or live — over shadows the context no longer holds
       // describes a frame that never happened.
       this.checkSurface();
-      this.inherited = inheritedTextState(this.target);
+      this.inherited = inheritedState(this.target);
       // Spent here whether or not this frame is armed to use it: a frame that runs
       // leaves the live context as what the frame after it inherits, so a state
       // carried from before this one is answered by the context from now on.
@@ -1667,7 +1689,11 @@
       // installed on. A reset that announced itself is dealt with here, so the size
       // last seen is forgotten rather than compared against and dealt with twice.
       this.surface = null;
-      if (this.calls !== null) this.calls.length = 0;
+      if (this.calls !== null) {
+        this.calls.length = 0;
+        // The operations that survive begin under the state the reset left.
+        this.inherited = inheritedState(this.target);
+      }
       if (this.pending === null) return;
       this.pending.length = 0;
       for (const at of this.frameUses) this.release(at);
@@ -2558,6 +2584,10 @@
           // As for a canvas resize: what was put aside for the next frame names
           // shadows this reset threw away, so the next frame reads the context.
           this.carried = null;
+          // Unlike a resize, a `reset()` keeps the operations before it — they
+          // are replayed and then reset away, as they were — but the state the
+          // frame reports as inherited is what the rest of the frame runs under.
+          if (this.calls !== null) this.inherited = inheritedState(this.target);
           break;
         case "beginPath":
           // The `beginPath` itself is kept, so a segment replays against whatever
@@ -3427,8 +3457,11 @@
     },
 
     /**
-     * The font and the alignment the last closed frame BEGAN under, or null
-     * before any frame. What the frame's own `set` operations then move from.
+     * The font and the alignment, the transform and the smoothing flag the last
+     * closed frame's operations BEGAN under, or null before any frame. What the
+     * frame's own `set` and transform operations then move from. A reset inside
+     * the frame drops the operations before it and takes this again, so it is
+     * the state the operations `last()` answers with were issued from.
      */
     lastInherited() {
       const recorder = recorderOf();

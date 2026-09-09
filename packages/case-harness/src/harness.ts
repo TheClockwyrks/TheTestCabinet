@@ -952,10 +952,24 @@ interface PendingMeasure {
   textAlign: string;
 }
 
-/** The text state a frame began under, as the recorder reports it. */
-interface InheritedTextState {
+/**
+ * The state a frame began under, as the recorder reports it.
+ *
+ * The text half is what {@link measureTextCalls} walks from. The transform and
+ * the smoothing flag are there for a case's own walk over the frame's draws: a
+ * build is free to issue its letterbox fit as a `setTransform` on load and on
+ * resize rather than inside every frame, and to set `imageSmoothingEnabled`
+ * once, so a walk that started from the canvas's defaults would misplace every
+ * blit of such a build. A reset inside the frame drops the operations before it
+ * and the recorder reads this again, so it is the state the surviving
+ * operations were issued from.
+ */
+export interface InheritedTextState {
   font?: unknown;
   textAlign?: unknown;
+  /** The transform in the canvas's `[a, b, c, d, e, f]` order, or null. */
+  transform?: unknown;
+  imageSmoothingEnabled?: unknown;
 }
 
 /**
@@ -1379,6 +1393,36 @@ export function createHarnessFactory<S, D extends object>(
     const cueSinks: TimedCue[][] = [];
     let frameCount = 0;
     let timeMs = 0;
+    /**
+     * The audio probe's count as of the last read the accounting made, or `null`
+     * before the first.
+     *
+     * WHY A DRIVE CARRIES IT IN RATHER THAN READING THE PROBE AFRESH. A sound the
+     * build starts BETWEEN two driven frames — in the DOM handler of a key the
+     * check delivered, or a decoded clip that landed a turn of the event loop
+     * after the drive that asked for it — is a sound the build made, and a frame
+     * whose `before` was read fresh would never see it: it would go into no sink
+     * at all. So the first frame of a drive starts counting from where the last
+     * accounted read left off, and such a sound is credited to the first frame
+     * driven after it — which, for a press delivered as down, one frame, up, is
+     * the frame the press itself ran on. What re-baselines it is whatever runs
+     * the build without accounting: a `skip`, a stretch on the wall clock, the
+     * arming gesture.
+     */
+    let heard: number | null = null;
+    /** Read the probe past whatever just ran unaccounted, so no drive inherits it. */
+    const rebase = async (): Promise<void> => {
+      heard = (await page.evaluate(
+        (audioName) =>
+          (window as unknown as Record<string, { started(): number }>)[
+            audioName
+          ]!.started(),
+        resolved.audioGlobal,
+      )) as number;
+    };
+    // Past the arming gesture and the opening reset above, neither of which a
+    // check's first frame answers for.
+    await rebase();
 
     /**
      * Count `upTo` of the frames a batched run was handed deltas for, and stamp
@@ -1437,15 +1481,23 @@ export function createHarnessFactory<S, D extends object>(
       resolved.step.kind === "seconds-frames"
         ? `api[${JSON.stringify(resolved.step.op)}](dt / 1000, 1)`
         : `api[${JSON.stringify(resolved.step.op)}](1)`;
-    /** The three page globals a batched script opens with, as statements. */
-    const preludeSource = `const api = ${apiSource}; const rec = ${recSource}; const audio = ${audioSource};`;
+    /**
+     * The three page globals a batched script opens with, as statements, and
+     * the probe count its first frame starts from: {@link heard}, interned at
+     * the moment the script is assembled — which is the moment the crossing
+     * opens, since every batched member assembles its script and evaluates it
+     * with nothing in between.
+     */
+    const preludeSource = (): string =>
+      `const api = ${apiSource}; const rec = ${recSource}; const audio = ${audioSource}; let heard = ${JSON.stringify(heard)} ?? audio.started();`;
     /** One recorded frame, bracketed and accounted, given `dt` and `sounds`. */
     const recordedFrameSource = `
-      const before = audio.started();
+      const before = heard;
       rec.begin();
       ${stepOneSource};
       rec.end(dt);
-      sounds.push(audio.started() - before);`;
+      heard = audio.started();
+      sounds.push(heard - before);`;
 
     /**
      * Run `count` frames and read the state they left, in one crossing.
@@ -1464,7 +1516,7 @@ export function createHarnessFactory<S, D extends object>(
       const deltas: number[] = [];
       for (let i = 0; i < count; i += 1) deltas.push(clock.delta());
       const result = (await page.evaluate(
-        ([handle, recName, audioName, op, kind, dts, every]) => {
+        ([handle, recName, audioName, op, kind, dts, every, carried]) => {
           const globals = window as unknown as PageGlobals;
           const api = globals[handle] as Record<
             string,
@@ -1479,18 +1531,20 @@ export function createHarnessFactory<S, D extends object>(
           };
           const sounds: number[] = [];
           const snapshots: unknown[] = [];
+          let last = carried ?? audio.started();
           for (let i = 0; i < dts.length; i += 1) {
             const dt = dts[i] as number;
-            const before = audio.started();
+            const before = last;
             rec.begin!();
             if (kind === "seconds-frames") api[op]!(dt / 1000, 1);
             else api[op]!(1);
             rec.end!(dt);
-            sounds.push(audio.started() - before);
+            last = audio.started();
+            sounds.push(last - before);
             if (every || i === dts.length - 1) snapshots.push(api.snapshot!());
           }
           if (dts.length === 0) snapshots.push(api.snapshot!());
-          return { snapshots, sounds };
+          return { snapshots, sounds, heard: last };
         },
         [
           resolved.handle,
@@ -1500,8 +1554,10 @@ export function createHarnessFactory<S, D extends object>(
           resolved.step.kind,
           deltas,
           sample,
+          heard,
         ] as const,
-      )) as { snapshots: S[]; sounds: number[] };
+      )) as { snapshots: S[]; sounds: number[]; heard: number };
+      heard = result.heard;
       result.snapshots = result.snapshots.map(project);
 
       for (const [index, delta] of deltas.entries()) {
@@ -1530,27 +1586,36 @@ export function createHarnessFactory<S, D extends object>(
       if (surfaceFault !== null) refuse();
       let totalMs = 0;
       for (let i = 0; i < count; i += 1) totalMs += clock.delta();
-      const snapshot = (await page.evaluate(
-        ([handle, op, kind, howMany, spanMs]) => {
-          const api = (window as unknown as PageGlobals)[handle] as Record<
+      const result = (await page.evaluate(
+        ([handle, audioName, op, kind, howMany, spanMs]) => {
+          const globals = window as unknown as PageGlobals;
+          const api = globals[handle] as Record<
             string,
             (...args: unknown[]) => unknown
           >;
+          const audio = globals[audioName] as unknown as {
+            started(): number;
+          };
           if (kind === "seconds-frames") api[op]!(spanMs / 1000, howMany);
           else api[op]!(howMany);
-          return api.snapshot!();
+          // What sounded inside an undivided run is nobody's: a skip says
+          // nothing about which of its frames sounded, so the count is read
+          // past it rather than left for the next driven frame to inherit.
+          return { snapshot: api.snapshot!(), heard: audio.started() };
         },
         [
           resolved.handle,
+          resolved.audioGlobal,
           resolved.step.op,
           resolved.step.kind,
           count,
           totalMs,
         ] as const,
-      )) as S;
+      )) as { snapshot: S; heard: number };
+      heard = result.heard;
       frameCount += count;
       timeMs += totalMs;
-      return project(snapshot);
+      return project(result.snapshot);
     };
 
     /**
@@ -1588,22 +1653,33 @@ export function createHarnessFactory<S, D extends object>(
         fail(`${who} to be given a whole number of frames, at least 1`, frames);
       }
       const spanMs = span * 1000;
-      const emitted = (await page.evaluate(
-        ([handle, recName, audioName, op, seconds, count, deltaMs, record]) => {
+      const result = (await page.evaluate(
+        ([
+          handle,
+          recName,
+          audioName,
+          op,
+          seconds,
+          count,
+          deltaMs,
+          record,
+          carried,
+        ]) => {
           const globals = window as unknown as PageGlobals;
           const api = globals[handle]!;
           const rec = globals[recName]!;
           const audio = globals[audioName] as unknown as {
             started(): number;
           };
-          const before = audio.started();
+          const before = carried ?? audio.started();
           if (record) rec.begin!();
           api[op]!(seconds, count);
           // The whole span closes as ONE kept frame, which is the honest
           // reading: the harness cannot see where the build put its own frame
           // boundaries inside a step it did not drive.
           if (record) rec.end!(deltaMs);
-          return audio.started() - before;
+          const after = audio.started();
+          return { emitted: after - before, heard: after };
         },
         [
           resolved.handle,
@@ -1614,8 +1690,11 @@ export function createHarnessFactory<S, D extends object>(
           frames,
           spanMs,
           keep,
+          heard,
         ] as const,
-      )) as number;
+      )) as { emitted: number; heard: number };
+      heard = result.heard;
+      const emitted = result.emitted;
       // Every frame of the span is counted, but only the frame it ENDED on can
       // carry a cue: an undivided call says nothing about when inside it a sound
       // happened, and spreading them over the span would be an invention.
@@ -1821,13 +1900,13 @@ export function createHarnessFactory<S, D extends object>(
         for (let i = 0; i < bound; i += 1) deltas.push(clock.delta());
 
         const script = `((predicate, batch, dts, poll, argument) => {
-  ${preludeSource}
+  ${preludeSource()}
   const sounds = [];
   for (const entry of batch) api[entry[0]](...entry.slice(1));
   const arranged = api.snapshot();
   let snapshot = arranged;
   if (predicate(snapshot, argument, arranged) === true) {
-    return { hit: true, frames: 0, snapshot: snapshot, arranged: arranged, sounds: sounds };
+    return { hit: true, frames: 0, snapshot: snapshot, arranged: arranged, sounds: sounds, heard: heard };
   }
   let frames = 0;
   while (frames < dts.length) {
@@ -1838,10 +1917,10 @@ export function createHarnessFactory<S, D extends object>(
     frames += stride;
     snapshot = api.snapshot();
     if (predicate(snapshot, argument, arranged) === true) {
-      return { hit: true, frames: frames, snapshot: snapshot, arranged: arranged, sounds: sounds };
+      return { hit: true, frames: frames, snapshot: snapshot, arranged: arranged, sounds: sounds, heard: heard };
     }
   }
-  return { hit: false, frames: frames, snapshot: snapshot, arranged: arranged, sounds: sounds };
+  return { hit: false, frames: frames, snapshot: snapshot, arranged: arranged, sounds: sounds, heard: heard };
 })(${String(predicate)}, ${JSON.stringify(calls)}, ${JSON.stringify(
           deltas,
         )}, ${JSON.stringify(poll)}, ${JSON.stringify(argument)})`;
@@ -1852,7 +1931,9 @@ export function createHarnessFactory<S, D extends object>(
           snapshot: S;
           arranged: S;
           sounds: number[];
+          heard: number;
         };
+        heard = result.heard;
 
         // Only the frames that RAN are the harness's, and the deltas the sweep
         // asked for and did not use go back to the clock — see `Clock.rewind`.
@@ -1871,7 +1952,7 @@ export function createHarnessFactory<S, D extends object>(
         for (let i = 0; i < whole; i += 1) deltas.push(clock.delta());
 
         const script = `((project, stop, dts, argument) => {
-  ${preludeSource}
+  ${preludeSource()}
   const sounds = [];
   const taken = [project(api.snapshot(), argument)];
   let frames = 0;
@@ -1884,7 +1965,7 @@ export function createHarnessFactory<S, D extends object>(
       if (held(sample)) break;
     }
   }
-  return { samples: taken, frames: frames, snapshot: api.snapshot(), sounds: sounds };
+  return { samples: taken, frames: frames, snapshot: api.snapshot(), sounds: sounds, heard: heard };
 })(${String(sampleOptions.project)}, ${
           sampleOptions.stop === undefined ? "null" : String(sampleOptions.stop)
         }, ${JSON.stringify(deltas)}, ${JSON.stringify(
@@ -1896,7 +1977,9 @@ export function createHarnessFactory<S, D extends object>(
           frames: number;
           snapshot: S;
           sounds: number[];
+          heard: number;
         };
+        heard = result.heard;
 
         clock.rewind?.(deltas.length - result.frames);
         accountFrames(deltas, result.sounds, result.frames);
@@ -1923,7 +2006,7 @@ export function createHarnessFactory<S, D extends object>(
         for (let i = 0; i < whole; i += 1) deltas.push(clock.delta());
 
         const script = `((stage, read, dts, argument) => {
-  ${preludeSource}
+  ${preludeSource()}
   const sounds = [];
   const readings = [];
   let last = null;
@@ -1933,7 +2016,7 @@ export function createHarnessFactory<S, D extends object>(
     last = read(api.snapshot(), argument);
     readings.push(last);
   }
-  return { readings: readings, snapshot: api.snapshot(), sounds: sounds };
+  return { readings: readings, snapshot: api.snapshot(), sounds: sounds, heard: heard };
 })(${String(trialOptions.stage)}, ${String(
           trialOptions.read,
         )}, ${JSON.stringify(deltas)}, ${JSON.stringify(
@@ -1944,7 +2027,9 @@ export function createHarnessFactory<S, D extends object>(
           readings: unknown[];
           snapshot: S;
           sounds: number[];
+          heard: number;
         };
+        heard = result.heard;
 
         // Every round ran a frame — a trial has no early stop — so nothing goes
         // back to the clock.
@@ -2001,6 +2086,7 @@ export function createHarnessFactory<S, D extends object>(
           },
           [resolved.handle, resolved.recorderGlobal] as const,
         );
+        await rebase();
       },
 
       async runUntil(predicate, runOptions = {}) {
@@ -2060,6 +2146,7 @@ export function createHarnessFactory<S, D extends object>(
         // way it found it, so the check that follows drives frames rather than
         // racing the build's own loop, and the failure is reported by the caller
         // reading `hit` rather than by everything after it behaving strangely.
+        await rebase();
         return { hit, snapshot, elapsedMs };
       },
 
@@ -2288,7 +2375,10 @@ export function createHarnessFactory<S, D extends object>(
       // fault: a build that installed no surface can still be handed a press,
       // and the check that reads what it SOUNDED fails on its own reading rather
       // than on the arming.
-      armAudio: () => armGesture(),
+      armAudio: async () => {
+        await armGesture();
+        await rebase();
+      },
 
       sounds: () =>
         page.evaluate(

@@ -41,6 +41,8 @@ import { isAbsolute, join, normalize, sep } from "node:path";
 
 import { Image, createCanvas, loadImage } from "@napi-rs/canvas";
 
+import { cloneKeeping } from "./clone";
+
 /* -------------------------------------------------------------------------- */
 /* Where a page-relative URL is looked for                                    */
 /* -------------------------------------------------------------------------- */
@@ -151,6 +153,13 @@ export interface AssetHostOptions {
    * drawable source by `instanceof` against the host's own constructors, of which
    * a bare Node process has none. A 3D case that loads glTF and decodes it in the
    * engine needs neither.
+   *
+   * Also replaces `structuredClone` with one that carries a decoded image
+   * across by reference, as a browser's `ImageBitmap` survives a clone and the
+   * canvas library's `Image` does not — a build that keeps its sprites in its
+   * state and clones the state to build the next one would otherwise throw at
+   * its first pose. Installed whatever {@link AssetHostOptions.nameImageBitmap}
+   * says.
    */
   readonly images?: boolean;
   /**
@@ -527,6 +536,18 @@ function shim(settled: SettledOptions, installation: Installation): void {
         if (from !== undefined) imageSource.set(image, from);
         return image as unknown as ImageBitmap;
       }),
+    );
+    // A browser's `ImageBitmap` survives `structuredClone`; the canvas
+    // library's `Image` does not, and a build that keeps its sprites in its
+    // state and clones the state to build the next one — which the
+    // specifications permit — would throw `DataCloneError` at its first pose.
+    // Carried by reference: see `./clone`. Installed whether or not the type is
+    // NAMED, because a build clones its state either way.
+    restores.push(
+      replaceGlobal(
+        "structuredClone",
+        cloneKeeping((value) => value instanceof Image, structuredClone),
+      ),
     );
   }
 

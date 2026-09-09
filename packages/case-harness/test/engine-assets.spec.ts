@@ -37,6 +37,9 @@ const opened: AssetHost[] = [];
 /** What the process's `fetch` was before a check replaced it by hand. */
 let heldFetch: typeof globalThis.fetch | undefined;
 
+/** The platform's own `structuredClone`, before any host stood over it. */
+const nativeClone = globalThis.structuredClone;
+
 afterEach(() => {
   for (const host of opened.reverse()) host.uninstall();
   opened.length = 0;
@@ -312,6 +315,142 @@ it("shims neither image member unless a case asks for them", () => {
   open({ workspaceRoot: WORKSPACE });
   expect("createImageBitmap" in bag).toBe(false);
   expect("ImageBitmap" in bag).toBe(false);
+  expect(globalThis.structuredClone).toBe(nativeClone);
+});
+
+it("carries a decoded image through `structuredClone`, as a browser does", async () => {
+  // Unnamed on purpose: a build clones its state whether or not the type is.
+  const host = open({
+    workspaceRoot: WORKSPACE,
+    images: true,
+    nameImageBitmap: false,
+  });
+  const sprite = (await createImageBitmap(
+    await (await fetch("assets/swatch.png")).blob(),
+  )) as unknown as { width: number };
+  // The platform's own clone refuses the library's image, which is the whole
+  // reason the shim stands.
+  expect(() => nativeClone({ sprite })).toThrow(/could not be cloned/);
+
+  const state = {
+    sprites: { swatch: [sprite, sprite] },
+    nodes: [{ c: 1, r: 2 }],
+    kinds: new Map([["swatch", sprite]]),
+    seen: new Set([sprite]),
+  };
+  const cloned = structuredClone(state);
+  expect(cloned).not.toBe(state);
+  expect(cloned.nodes).toEqual([{ c: 1, r: 2 }]);
+  expect(cloned.nodes).not.toBe(state.nodes);
+  // By reference, so the copy is still the decoded picture and still names its
+  // source.
+  expect(cloned.sprites.swatch[0]).toBe(sprite);
+  expect(cloned.sprites.swatch[1]).toBe(sprite);
+  expect(cloned.kinds.get("swatch")).toBe(sprite);
+  expect(cloned.seen.has(sprite)).toBe(true);
+  const [carried] = cloned.sprites.swatch;
+  expect(carried?.width).toBe(3);
+  expect(host.sourceOf(carried ?? {})).toBe("assets/swatch.png");
+});
+
+it("clones everything else exactly as the platform does", async () => {
+  open({ workspaceRoot: WORKSPACE, images: true });
+  const sprite = await createImageBitmap(
+    await (await fetch("assets/swatch.png")).blob(),
+  );
+  class Foe {
+    constructor(readonly kind: string) {}
+  }
+  const shared = { hit: false };
+  const cyclic: { back: unknown; sprite: ImageBitmap } = {
+    back: null,
+    sprite,
+  };
+  cyclic.back = cyclic;
+  const state = {
+    when: new Date(0),
+    a: shared,
+    b: shared,
+    foe: new Foe("glitch"),
+    cyclic,
+    bytes: new Uint8Array([1, 2, 3]),
+  };
+  const cloned = structuredClone(state);
+  expect(cloned.when).toBeInstanceOf(Date);
+  expect(cloned.when.getTime()).toBe(0);
+  expect(cloned.a).toBe(cloned.b);
+  expect(cloned.a).not.toBe(shared);
+  expect(cloned.foe).toEqual({ kind: "glitch" });
+  expect(Object.getPrototypeOf(cloned.foe)).toBe(Object.prototype);
+  expect(cloned.cyclic.back).toBe(cloned.cyclic);
+  expect(cloned.cyclic.sprite).toBe(sprite);
+  expect(cloned.bytes).toEqual(new Uint8Array([1, 2, 3]));
+  // A value the platform refuses is still refused, by the platform.
+  expect(() => structuredClone({ f: () => 1 })).toThrow(/could not be cloned/);
+  expect(structuredClone(7)).toBe(7);
+  expect(structuredClone(null)).toBeNull();
+});
+
+it("hands what it does not rebuild to the platform, image or no image", async () => {
+  // Every case below carries an image, so the value IS rebuilt around it — which
+  // is where a walk that flattened whatever it did not recognise would answer
+  // for the platform instead of asking it.
+  open({ workspaceRoot: WORKSPACE, images: true });
+  const sprite = await createImageBitmap(
+    await (await fetch("assets/swatch.png")).blob(),
+  );
+
+  // Refused by the platform, with the platform's own error.
+  const refusal = (value: unknown): string => {
+    try {
+      structuredClone(value);
+      return "cloned";
+    } catch (error) {
+      return (error as Error).name;
+    }
+  };
+  expect(refusal({ sprite, weak: new WeakMap() })).toBe("DataCloneError");
+  expect(refusal({ sprite, later: Promise.resolve(1) })).toBe("DataCloneError");
+  expect(refusal({ sprite, where: new URL("http://x/") })).toBe(
+    "DataCloneError",
+  );
+
+  // Encoded whole by the platform, and back as what it was.
+  const blob = new Blob(["hi"], { type: "text/plain" });
+  const withBlob = structuredClone({
+    sprite,
+    blob,
+    view: new DataView(new ArrayBuffer(2)),
+  });
+  expect(withBlob.sprite).toBe(sprite);
+  expect(withBlob.blob).toBeInstanceOf(Blob);
+  expect(withBlob.blob).not.toBe(blob);
+  expect(withBlob.blob.type).toBe("text/plain");
+  expect(await withBlob.blob.text()).toBe("hi");
+  expect(withBlob.view).toBeInstanceOf(DataView);
+  expect(withBlob.view.byteLength).toBe(2);
+
+  // An array's holes and named properties are the platform's to keep, so the
+  // rebuild keeps them.
+  const sparse = [sprite, , 3] as unknown[] & { named?: unknown };
+  sparse.named = { sprite };
+  const cloned = structuredClone({ sparse });
+  expect(cloned.sparse.length).toBe(3);
+  expect(1 in cloned.sparse).toBe(false);
+  expect(cloned.sparse[0]).toBe(sprite);
+  expect(cloned.sparse[2]).toBe(3);
+  expect((cloned.sparse.named as { sprite: unknown }).sprite).toBe(sprite);
+
+  // A null-prototype object is walked like a plain one and comes back plain,
+  // and a symbol-keyed property is dropped, which is what the platform does.
+  const bare = Object.create(null) as { sprite: ImageBitmap };
+  bare.sprite = sprite;
+  const hidden = Symbol("hidden");
+  const withBare = structuredClone({ bare, [hidden]: sprite, shown: 1 });
+  expect(Object.getPrototypeOf(withBare.bare)).toBe(Object.prototype);
+  expect(withBare.bare.sprite).toBe(sprite);
+  expect(Object.getOwnPropertySymbols(withBare)).toEqual([]);
+  expect(withBare.shown).toBe(1);
 });
 
 /* -------------------------------------------------------------------------- */
@@ -355,6 +494,7 @@ it("puts every global back exactly as it found it", () => {
   expect(globalThis.fetch).toBe(before);
   expect("createImageBitmap" in bag).toBe(false);
   expect("ImageBitmap" in bag).toBe(false);
+  expect(globalThis.structuredClone).toBe(nativeClone);
   expect("document" in bag).toBe(false);
   // Idempotent, so an `afterEach` that also ran in an `afterAll` is harmless.
   host.uninstall();

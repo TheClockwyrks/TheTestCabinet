@@ -21,7 +21,18 @@
  *      SHADOWS the base one.
  *   2. An `<audio>` element has to be `play()`ed. A build that ships or generates
  *      clips rather than decoding them into buffers is playing sound just as
- *      legitimately.
+ *      legitimately. A `play()` is recorded only when it STARTS playback — when
+ *      the element is paused, or has played to its end, at the moment of the
+ *      call. Per the HTML specification `play()` on an element that is already
+ *      playing does nothing audible, and a build calls it exactly there: on
+ *      every keydown, to unlock audio under the autoplay policy, over a bed that
+ *      is already looping. A count that credited that call to the frame it fell
+ *      on would blame a build for a sound nobody heard. (A non-looping element
+ *      that reaches its end has `paused === true` per the specification, and
+ *      `ended` is read as well for a browser that sets one flag and not the
+ *      other.) A Web Audio source, by contrast, can be started only once, and a
+ *      build that starts one twice gets the platform's error for it, so a
+ *      `start()` is counted as it is called.
  *
  * AND IT WATCHES WHAT IS STILL SOUNDING. A case may require a music bed to LOOP
  * under the game rather than play once, so the probe also reports how many of
@@ -140,12 +151,29 @@
     wrapStop(window[name]?.prototype);
   }
 
+  /**
+   * Whether a `play()` on this element, made now, starts playback.
+   *
+   * Read BEFORE the platform's `play` runs, which is what flips `paused`. An
+   * element that refuses the read is counted, since a play that cannot be told
+   * apart from a start is one.
+   */
+  const startsPlayback = (node) => {
+    try {
+      return node.paused === true || node.ended === true;
+    } catch {
+      return true;
+    }
+  };
+
   const media = window.HTMLMediaElement?.prototype;
   if (media && typeof media.play === "function") {
     const play = media.play;
     media.play = function (...args) {
-      record();
-      remember(this);
+      if (startsPlayback(this)) {
+        record();
+        remember(this);
+      }
       return play.apply(this, args);
     };
   }

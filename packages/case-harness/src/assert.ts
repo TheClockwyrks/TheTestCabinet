@@ -61,23 +61,39 @@ export function fail(expected: string, actual: unknown): never {
   throw new Error(`Expected: ${expected}\nActual: ${show(actual)}`);
 }
 
-/** `actual` is `expected`, by `Object.is`. For deep structure, `assertDeepEqual`. */
+/**
+ * The identity every equality here reads by: `Object.is`, with one exception.
+ * `+0` and `-0` are the same value. A specification states a figure of `0`,
+ * and a build reaches it through arithmetic — `-u.x * DECEL` along a unit
+ * vector whose `x` is `0`, a product with a negative multiplier that is zero
+ * — as IEEE's negative zero, which is numerically zero and prints as `0`. Read
+ * under `Object.is` alone, that verdict is "Expected: 0 / Actual: 0". `NaN`
+ * keeps its `Object.is` reading: a build that answered `NaN` where `NaN` was
+ * expected is equal, and one that answered `NaN` anywhere else is not.
+ */
+function same(a: unknown, b: unknown): boolean {
+  return Object.is(a, b) || (a === 0 && b === 0);
+}
+
+/**
+ * `actual` is `expected`, by `Object.is` with `+0` and `-0` the same value. For
+ * deep structure, `assertDeepEqual`.
+ */
 export function assertEqual(
   actual: unknown,
   expected: unknown,
   context?: string,
 ): void {
-  if (!Object.is(actual, expected))
-    fail(phrase(show(expected), context), actual);
+  if (!same(actual, expected)) fail(phrase(show(expected), context), actual);
 }
 
-/** `actual` is not `unwanted`, by `Object.is`. */
+/** `actual` is not `unwanted`, by `Object.is` with `+0` and `-0` the same value. */
 export function assertNotEqual(
   actual: unknown,
   unwanted: unknown,
   context?: string,
 ): void {
-  if (Object.is(actual, unwanted)) {
+  if (same(actual, unwanted)) {
     fail(phrase(`not ${show(unwanted)}`, context), actual);
   }
 }
@@ -95,7 +111,7 @@ export function assertDeepEqual(
 
 /** Structural equality over the JSON-shaped values the suites compare. */
 function deepEquals(a: unknown, b: unknown): boolean {
-  if (Object.is(a, b)) return true;
+  if (same(a, b)) return true;
   if (Array.isArray(a) && Array.isArray(b)) {
     return (
       a.length === b.length && a.every((item, i) => deepEquals(item, b[i]))
