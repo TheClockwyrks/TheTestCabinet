@@ -214,9 +214,13 @@ export interface Harness {
    * WHAT THE BUILD REACHED FOR is a reading in its own right: a point about which
    * of two committed files the game runs is decided by which of them the build
    * requested, and nothing about the request is interfered with. Read off the
-   * page's own resource timeline, so a file fetched before this harness was handed
+   * page's own resource timeline AND the requests the page was seen to make from
+   * before the build loaded, so a file fetched before this harness was handed
    * over is named here too, and a path appears whether its load went on to succeed
-   * or not.
+   * or not. Both, because the timeline lists a fetch once it has completed and a
+   * media element streams its file: a bed of several megabytes an `<audio>`
+   * element plays is still being read when a check asks, and only the request
+   * names it.
    *
    * THE PATHS ARE THE BUNDLER'S NAMES RATHER THAN THE AUTHORED ONES. A build's
    * `dist/` is a bundle, so `assets/audio/music.wav` is served as something like
@@ -379,12 +383,22 @@ export async function createHarness(
 ): Promise<Harness> {
   const frameMs = options.frameMs ?? 1000 / TICK_HZ;
   const clock = new TunableClock(frameMs);
+  /** Every path the page requested, in request order, from before the build loaded. */
+  const requested: string[] = [];
   const base = await kit.createHarness({
     clock,
     cssWidth: options.cssWidth,
     cssHeight: options.cssHeight,
     dpr: options.dpr,
     armAudio: options.armAudio,
+    // Attached before the load, because the build asks for its files as it
+    // starts, and a request nothing lists once it is under way — a media
+    // element's stream — is seen only by watching it go out.
+    beforeLoad: async (page) => {
+      page.on("request", (request) => {
+        requested.push(new URL(request.url()).pathname);
+      });
+    },
   });
 
   const assetFailures: AssetFailure[] = [];
@@ -479,12 +493,14 @@ export async function createHarness(
     surfaceFault: base.surfaceFault,
     cues,
     assetFailures,
-    assetRequests: async () =>
-      await base.page.evaluate(() =>
+    assetRequests: async () => {
+      const timed = await base.page.evaluate(() =>
         performance
           .getEntriesByType("resource")
           .map((entry) => new URL(entry.name, document.baseURI).pathname),
-      ),
+      );
+      return [...new Set([...timed, ...requested])];
+    },
     pageErrors: base.pageErrors,
 
     frame: () => base.frame(),

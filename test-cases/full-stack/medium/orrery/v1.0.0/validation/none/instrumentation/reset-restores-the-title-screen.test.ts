@@ -75,8 +75,12 @@ it("shows the title screen, at its first item, in campaign, with the pointer up"
   await h.debug.setLast("extras", POSED_LAST);
   await h.debug.setScreen("select");
   await h.debug.setSelectIndex(POSED_SELECT);
-  await h.debug.pointerDown(STAGE_CX, STAGE_CY);
-  await h.advance(1);
+  // The REAL pointer, held through the frame that reads it: `state.pointer`
+  // mirrors "the position and press the pointer input reports"
+  // (`specs/instrumentation.md`), and a frame after a posed `pointerDown` an
+  // engine's input reports no press, so the real press is the reading every build
+  // agrees on.
+  await h.mousePress(STAGE_CX, STAGE_CY);
 
   const posed = await h.snapshot();
   assertNotEqual(
@@ -95,7 +99,7 @@ it("shows the title screen, at its first item, in campaign, with the pointer up"
 
   await h.debug.reset();
   const reset = await h.snapshot();
-  await h.advance(1);
+  await h.mouseRelease();
   await captureStill(h, "title");
 
   assertEqual(reset.screen, "title", "reset shows the title screen");

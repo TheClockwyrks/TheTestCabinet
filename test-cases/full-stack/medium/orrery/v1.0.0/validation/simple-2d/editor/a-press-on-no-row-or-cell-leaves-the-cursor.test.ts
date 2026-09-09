@@ -24,11 +24,14 @@
 // above. Column `7` rather than column `0`, and the first row rather than the last,
 // so a build that moved the cursor anywhere at all is caught.
 //
-// THE PRESS REALLY REACHED THE GAME. `specs/controls.md`: "`state.pointer` mirrors
-// the pointer's position and press state every frame", so after each press a frame
-// is run and `pointer` read back at the point pressed, with `down` set. A build
-// that never saw the press would leave the cursor alone too, and that reading is
-// what tells the two apart.
+// THE PRESS REALLY REACHED THE GAME. Each press is made with the REAL pointer,
+// through the frame that delivers it, and `specs/controls.md`: "`state.pointer`
+// mirrors the pointer's position and press state every frame", so `pointer` is
+// read back at the point pressed, with `down` set. A build that never saw the
+// press would leave the cursor alone too, and that reading is what tells the two
+// apart. The real pointer rather than the surface's `pointerDown` because the
+// mirror is fixed against what the pointer INPUT reports, and under an engine
+// that input never sees a posed press once a frame has run.
 //
 // THE VERDICT. After each press `editor.cursor` still names the first arm and
 // column `7`.
@@ -50,8 +53,6 @@ import {
   createHarness,
   openChallengeDocument,
   placePart,
-  pressAt,
-  releasePointer,
   type Harness,
 } from "../harness";
 
@@ -81,10 +82,9 @@ afterEach(async () => {
   await h.dispose();
 });
 
-/** Press at a point, run the frame that mirrors the pointer, and release. */
+/** Press the real pointer at a point, through the frame that mirrors it. */
 async function pressAndRead(where: StagePoint): Promise<void> {
-  await pressAt(h, where);
-  await h.advance(1);
+  await h.mousePress(where.x, where.y);
   const pointer = (await h.snapshot()).pointer;
   assertEqual(
     pointer.x,
@@ -119,7 +119,7 @@ it("leaves the cursor as it stands when a panel press lands on no row or cell", 
   await pressAndRead(NO_ROW);
   await captureStill(h, "held");
   const afterNoRow = (await h.snapshot()).editor.cursor;
-  await releasePointer(h);
+  await h.mouseRelease();
 
   assertNotNull(
     afterNoRow,
@@ -138,7 +138,7 @@ it("leaves the cursor as it stands when a panel press lands on no row or cell", 
 
   await pressAndRead(BELOW_THE_ROWS);
   const afterStrip = (await h.snapshot()).editor.cursor;
-  await releasePointer(h);
+  await h.mouseRelease();
 
   assertNotNull(
     afterStrip,

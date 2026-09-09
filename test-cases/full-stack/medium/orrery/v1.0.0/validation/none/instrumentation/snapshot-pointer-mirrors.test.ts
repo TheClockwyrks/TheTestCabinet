@@ -10,21 +10,23 @@
 // edge, and a release edge", and "`state.pointer` mirrors the pointer's position
 // and press state every frame".
 //
-// WHAT DRIVES IT HERE. The surface's own three operations, which
-// `specs/instrumentation.md` says are that same input: "`pointerDown(x, y)`,
-// `pointerMove(x, y)`, `pointerUp()` — Report a press, a move, and a release at a
-// logical stage position, feeding the same input path the player's pointer feeds",
-// each taking effect "immediately, when it is called, rather than being sampled
-// once per frame".
+// WHAT DRIVES IT HERE. The pointer input itself: the harness's real pointer, one
+// frame per sample, which is the input the field is said to mirror. The surface's
+// own `pointerDown`, `pointerMove` and `pointerUp` take effect at the call and
+// are what the editor's points drive; what a FRAME leaves in `pointer` is fixed
+// only against the input the runtime reports, and under an engine that input
+// never saw a posed press, so a mirror refreshed from it every frame, which is
+// what `specs/state.md` describes, reports the input rather than the pose. A real
+// press is the one reading every build must agree on.
 //
 // THE CONFIGURATION. A reset session on the title screen. The title's menu answers
 // a pointer of its own (`specs/ui.md`, Pointer and touch), and what a press there
 // may also have done is beside the point: `state.pointer` "mirrors the pointer's
 // position and press state every frame" (`specs/controls.md`) whatever the press
 // meant, and nothing but that mirror is read here. Four positions are reported,
-// one press and one release among them, and each is read both at the call and
-// again after a frame has run, because the field is one the game must "keep
-// honest every frame".
+// one press and one release among them, each read on the frame that delivered it
+// and again after a further frame has run, because the field is one the game
+// must "keep honest every frame".
 //
 // THE VERDICT. Every reading is the position last reported, in stage units, with
 // `down` true from the press until the release and false on either side of it.
@@ -51,14 +53,14 @@ afterEach(async () => {
 it("follows the position and the press the pointer input reports", async () => {
   await openTitle(h);
 
-  await h.debug.pointerMove(320, 180);
+  await h.mouseGlide(320, 180);
   const moved = await h.snapshot();
-  await h.advance(1);
   await captureStill(h, "pointer");
   assertEqual(moved.pointer.x, 320, "pointer.x is the position last reported");
   assertEqual(moved.pointer.y, 180, "pointer.y is the position last reported");
   assertEqual(moved.pointer.down, false, "nothing has been pressed yet");
 
+  await h.advance(1);
   const held = await h.snapshot();
   assertEqual(held.pointer.x, 320, "a frame keeps the mirrored position");
   assertEqual(held.pointer.y, 180, "a frame keeps the mirrored position");
@@ -68,37 +70,37 @@ it("follows the position and the press the pointer input reports", async () => {
     "a frame keeps the mirrored press state",
   );
 
-  await h.debug.pointerMove(1100, 640);
+  await h.mouseGlide(1100, 640);
   const again = await h.snapshot();
   assertEqual(again.pointer.x, 1100, "pointer follows a second move");
   assertEqual(again.pointer.y, 640, "pointer follows a second move");
 
-  await h.debug.pointerDown(720, 400);
+  await h.mousePress(720, 400);
   const pressed = await h.snapshot();
   assertEqual(pressed.pointer.x, 720, "a press reports its own position");
   assertEqual(pressed.pointer.y, 400, "a press reports its own position");
   assertEqual(
     pressed.pointer.down,
     true,
-    "pointer.down goes down with pointerDown",
+    "pointer.down goes down with a press",
   );
 
   await h.advance(1);
   const stillDown = await h.snapshot();
   assertEqual(stillDown.pointer.down, true, "the press stands across a frame");
 
-  await h.debug.pointerMove(760, 420);
+  await h.mouseGlide(760, 420);
   const dragged = await h.snapshot();
   assertEqual(dragged.pointer.x, 760, "pointer follows a move made while down");
   assertEqual(dragged.pointer.y, 420, "pointer follows a move made while down");
   assertEqual(dragged.pointer.down, true, "a move does not release the press");
 
-  await h.debug.pointerUp();
+  await h.mouseRelease();
   const released = await h.snapshot();
   assertEqual(
     released.pointer.down,
     false,
-    "pointer.down goes up with pointerUp",
+    "pointer.down goes up with the release",
   );
 
   await h.advance(1);

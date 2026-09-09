@@ -131,8 +131,10 @@ it("reports every documented field, at its documented type, as posed", async () 
   await takeGrip(h, arm, 0, carried);
   await h.debug.setTally(0, 2);
   await h.debug.setPaused(true);
-  await h.debug.pointerMove(300, 200);
-  await h.advance(1);
+  // The REAL pointer, through the frame that reads it: `pointer` mirrors what
+  // "the pointer input reports" (`specs/instrumentation.md`), and a frame after a
+  // posed `pointerMove` an engine's input reports no such move.
+  await h.mouseGlide(300, 200);
   await captureStill(h, "posed");
 
   const s = await h.snapshot();

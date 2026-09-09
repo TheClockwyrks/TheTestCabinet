@@ -24,10 +24,13 @@
 //
 // THE VERDICT. The machine holds those five parts and no other — the arm that was
 // standing is gone — reported in the document's order, each carrying the kind,
-// anchor, rotation, length, path and tape the document gave it.
+// anchor, rotation, length, path and tape the document gave it. That the arm is
+// gone is read as the count and the ordered kinds, never as its id: `specs/state.md`
+// grants an id "unique among the machine's parts for its lifetime", and whether a
+// rebuilt machine hands the number out again is the build's.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertDeepEqual, assertEqual, assertNull } from "../assert";
+import { assertDeepEqual, assertEqual, assertLength } from "../assert";
 import { at } from "../field";
 import {
   armPart,
@@ -43,7 +46,6 @@ import {
   createHarness,
   loadMachine,
   openChallengeDocument,
-  partById,
   placePart,
   type Harness,
 } from "../harness";
@@ -78,9 +80,14 @@ it("replaces the machine with the document's parts, in the document's order", as
   const loaded = await h.snapshot();
   const parts = loaded.editor.parts;
 
-  assertNull(
-    partById(loaded, standing),
-    "the machine that was standing is replaced rather than added to",
+  // Replaced rather than added to: the machine holds the document's parts and
+  // no more. Read as a count rather than by the standing part's id, because
+  // `specs/state.md` grants an id "unique among the machine's parts for its
+  // lifetime" and fixes nothing about whether a rebuilt machine reuses one.
+  assertLength(
+    parts,
+    DOCUMENT.parts.length,
+    `the machine that was standing is replaced rather than added to: the document's ${DOCUMENT.parts.length} parts and not the arm (id ${standing}) that stood before`,
   );
   assertDeepEqual(
     parts.map((part) => part.kind),

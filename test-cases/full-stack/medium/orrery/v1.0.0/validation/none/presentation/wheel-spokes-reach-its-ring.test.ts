@@ -21,8 +21,13 @@
 // its top-left corner, `24` units or more away on both axes.
 //
 // THE COMPARISON IS AGAINST THE SAME FRAME WITHOUT THE WHEEL, so no width, colour
-// or path shape is required of the build. The empty field reaches into none of the
-// six hexes; with the wheel placed, every one of them is reached.
+// or path shape is required of the build — and nothing is required of the bare
+// field either. `specs/field.md` asks only that the field's hexes be "visible
+// enough to place parts by" and `specs/ui.md` fixes no background, so a build may
+// trace each cell inset from its pitch, dot its centre, or scatter stars over the
+// sky, any of which names points inside a ring hex before a wheel exists. What is
+// read is the DIFFERENCE the wheel makes: the points the wheel's frame names inside
+// each ring hex that the bare frame did not.
 //
 // THE WHEEL IS PLACED INTO A LIVE RUN, which is what raises its ring: "While a run
 // is live, a part one of them adds enters the run at its rest pose holding nothing,
@@ -34,10 +39,10 @@
 // `wheelFixtureHexes` is that list, built from the `DIRS` of `specs/field.md`.
 //
 // THE VERDICT. With the wheel on the field the frame's drawing reaches inside all
-// six fixture hexes; with the field bare it reaches inside none of them.
+// six fixture hexes at points the bare field's frame did not reach.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThanOrEqual, assertLength } from "../assert";
+import { assertGreaterThanOrEqual, assertLength } from "../assert";
 import { HEX_PITCH } from "../constants";
 import { hexCenter, type Hex } from "../field";
 import { BARE, ORIGIN } from "../fixtures";
@@ -68,23 +73,26 @@ afterEach(async () => {
   await h.dispose();
 });
 
-/** How far into each fixture hex the last frame's drawing reached. */
-async function reachedRing(): Promise<number[]> {
+/** A drawn point as a key, so two frames' points can be set against each other. */
+function keyOf(point: { x: number; y: number }): string {
+  return `${point.x.toFixed(3)},${point.y.toFixed(3)}`;
+}
+
+/** The distinct points the last frame's drawing named inside each fixture hex. */
+async function reachedRing(): Promise<Set<string>[]> {
   const calls = await h.lastCalls();
-  return RING.map((hex) => pointsNear(calls, hexCenter(hex), INSIDE).length);
+  return RING.map(
+    (hex) => new Set(pointsNear(calls, hexCenter(hex), INSIDE).map(keyOf)),
+  );
 }
 
 it("draws a spoke reaching each of the wheel's six fixture hexes", async () => {
   await openBareRun(h, { challenge: BARE, paused: true });
   await h.advance(1);
 
-  for (const [index, reached] of (await reachedRing()).entries()) {
-    assertEqual(
-      reached,
-      0,
-      `with no wheel placed, nothing the frame draws reaches inside the hex (${(RING[index] as Hex).q}, ${(RING[index] as Hex).r}) a fixture would rest on`,
-    );
-  }
+  // What the bare field's frame names inside each ring hex, which is whatever the
+  // build's cells and sky put there and is not the wheel's.
+  const bare = await reachedRing();
 
   const wheel = await placePart(h, "wheel", ORIGIN, 0);
   // The editor outlines the selected part's hexes (`specs/editor.md`), which
@@ -100,10 +108,12 @@ it("draws a spoke reaching each of the wheel's six fixture hexes", async () => {
   );
 
   for (const [index, reached] of (await reachedRing()).entries()) {
+    const before = bare[index] as Set<string>;
+    const gained = [...reached].filter((key) => !before.has(key));
     assertGreaterThanOrEqual(
-      reached,
+      gained.length,
       1,
-      `the frame's drawing reaches inside the hex (${(RING[index] as Hex).q}, ${(RING[index] as Hex).r}) carrying the fixture on spoke ${index}, so the hub is drawn as carrying its ring`,
+      `points the frame's drawing names inside the hex (${(RING[index] as Hex).q}, ${(RING[index] as Hex).r}) carrying the fixture on spoke ${index} that the bare field's frame did not, so the hub is drawn as carrying its ring`,
     );
   }
 });

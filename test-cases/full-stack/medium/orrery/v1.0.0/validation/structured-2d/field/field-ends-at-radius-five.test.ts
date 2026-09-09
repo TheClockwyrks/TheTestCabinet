@@ -21,10 +21,12 @@
 // ring-`6` hexes whose WHOLE disc lies inside the field's region are read; the
 // rest are asking about somebody else's panel.
 //
-// THE VERDICT. Every sample in every one of those discs is the sky — no channel
-// of it stands `CHANNEL_EPSILON` from the sampled sky, which is the case's own
-// span for two pixels being the same colour — so nothing of the field reaches
-// ring `6`.
+// THE VERDICT. Every sample of every one of those discs is the sky — within
+// `CHANNEL_EPSILON`, the case's own span for two pixels being the same colour,
+// of the sky read beside it — so nothing of the field reaches ring `6`. A cell
+// drawn on a ring-`6` hex in any style, a filled hex or a centre dot alike,
+// puts a sample of its own there; `specs/ui.md` fixes "no background", which is
+// why the sky is read beside each hex rather than once across the stage.
 //
 // AND THE FIELD WAS REALLY DRAWN. A build that drew nothing at all would pass a
 // check that only asks for sky, so the same reading is taken the other way round
@@ -34,10 +36,13 @@
 // The pair is one statement — the field is drawn out to radius `FIELD_R` and
 // stops there.
 //
-// THE SKY IS READ AS THE DARKEST OF FOUR PATCHES of the field's region that no
-// hex of the field or of ring `6` reaches: `specs/assets.md` puts every sprite on
-// "the dark sky", so the darkest patch is the one nothing was drawn over, and
-// four of them means a build is free to seat something in any one band.
+// THE SKY IS READ BESIDE EACH DISC, at the ring-`7` hexes next to the ring-`6`
+// hex being read, one more pitch out from the field and inside the same region.
+// `specs/ui.md` fixes "no background", so a sky may shade across the stage, and a
+// sky read once at the region's edge is not the sky under a hex `288` units
+// nearer the field's centre. `specs/assets.md` puts every sprite on "the dark
+// sky" and requires that none of them "relies on a background behind it", so the
+// darkest of the neighbouring patches is the one nothing was drawn over.
 //
 // THE WORLD IS POSED, NOT SEARCHED. The challenge is loaded into the editor with
 // an empty machine and no run at all, so there is no part, no mote and no fixture
@@ -49,7 +54,7 @@ import {
   assertGreaterThan,
   assertLength,
 } from "../assert";
-import { FIELD_CX, FIELD_CY, FIELD_R, HEX_PITCH } from "../constants";
+import { FIELD_R, HEX_PITCH } from "../constants";
 import {
   at,
   contains,
@@ -86,13 +91,12 @@ function channelsApart(a: Rgb, b: Rgb): number {
 /** The radius about a ring-6 center every sample is taken within. */
 const SKY_DISC_R = 16;
 
-/** Four patches of the field's region no field hex and no ring-6 hex reaches. */
-const SKY_PATCHES: readonly StagePoint[] = [
-  { x: 286, y: FIELD_CY },
-  { x: 946, y: FIELD_CY },
-  { x: FIELD_CX, y: 58 },
-  { x: FIELD_CX, y: 550 },
-];
+/** Whether the whole sample disc about a point lies inside the field's region. */
+function discInsideField(center: StagePoint): boolean {
+  return discPoints(center.x, center.y, SKY_DISC_R).every((point) =>
+    contains(FIELD_REGION, point),
+  );
+}
 
 /** Every hex at exactly `ring` from the origin, in reading order. */
 function ringHexes(ring: number): Hex[] {
@@ -107,8 +111,8 @@ function ringHexes(ring: number): Hex[] {
   return hexes;
 }
 
-/** The six neighbours of a hex, whichever of them are on the field. */
-function fieldNeighbours(hex: Hex): Hex[] {
+/** The six neighbours of a hex. */
+function neighbours(hex: Hex): Hex[] {
   return [
     at(hex.q + 1, hex.r),
     at(hex.q, hex.r + 1),
@@ -116,7 +120,28 @@ function fieldNeighbours(hex: Hex): Hex[] {
     at(hex.q - 1, hex.r),
     at(hex.q, hex.r - 1),
     at(hex.q + 1, hex.r - 1),
-  ].filter(onField);
+  ];
+}
+
+/** The neighbours of a hex that are on the field. */
+function fieldNeighbours(hex: Hex): Hex[] {
+  return neighbours(hex).filter(onField);
+}
+
+/**
+ * The neighbours of a ring-6 hex one ring further out whose whole sample disc lies
+ * inside the field's region: the sky beside that hex.
+ */
+function skyNeighbours(hex: Hex): Hex[] {
+  return neighbours(hex).filter(
+    (near) =>
+      Math.max(
+        Math.abs(near.q),
+        Math.abs(near.r),
+        Math.abs(near.q + near.r),
+      ) ===
+        FIELD_R + 2 && discInsideField(hexCenter(near)),
+  );
 }
 
 beforeEach(async () => {
@@ -140,12 +165,8 @@ it("leaves every ring-6 hex inside the field region as bare sky", async () => {
     "the machine is empty, so nothing but the field itself is drawn on it",
   );
 
-  const sky: Rgb = await darkestOf(h, SKY_PATCHES);
-
   const beyond = ringHexes(FIELD_R + 1).filter((hex) =>
-    discPoints(hexCenter(hex).x, hexCenter(hex).y, SKY_DISC_R).every((point) =>
-      contains(FIELD_REGION, point),
-    ),
+    discInsideField(hexCenter(hex)),
   );
   assertGreaterThan(
     beyond.length,
@@ -153,29 +174,35 @@ it("leaves every ring-6 hex inside the field region as bare sky", async () => {
     "some ring-6 hex has its whole sample disc inside the field's region",
   );
 
-  const borders = new Map<string, Hex>();
+  // The sky beside each ring-6 hex, and the on-field cells bordering it, each
+  // paired with that same sky.
+  const borders = new Map<string, { hex: Hex; sky: Rgb }>();
   for (const hex of beyond) {
-    for (const neighbour of fieldNeighbours(hex)) {
-      borders.set(`${neighbour.q},${neighbour.r}`, neighbour);
-    }
-  }
+    const beside = skyNeighbours(hex);
+    assertGreaterThan(
+      beside.length,
+      0,
+      `(${hex.q}, ${hex.r}) has a ring-7 neighbour inside the field's region to read the sky beside it from`,
+    );
+    const sky: Rgb = await darkestOf(h, beside.map(hexCenter), SKY_DISC_R);
 
-  for (const hex of beyond) {
     const center = hexCenter(hex);
     const disc = discPoints(center.x, center.y, SKY_DISC_R);
     const pixels = await h.pixels(disc);
-    let worst = 0;
-    for (const pixel of pixels) {
-      worst = Math.max(worst, channelsApart(rgbOf(pixel), sky));
-    }
+    const apart = pixels.map((pixel) => channelsApart(rgbOf(pixel), sky));
     assertLessThanOrEqual(
-      worst,
+      Math.max(...apart),
       CHANNEL_EPSILON,
-      `(${hex.q}, ${hex.r}) is outside max(|q|, |r|, |q + r|) <= FIELD_R, so every sample within ${SKY_DISC_R} of its center is sky`,
+      `(${hex.q}, ${hex.r}) is outside max(|q|, |r|, |q + r|) <= FIELD_R, so the disc within ${SKY_DISC_R} of its center is the sky read beside it`,
     );
+
+    for (const neighbour of fieldNeighbours(hex)) {
+      const key = `${neighbour.q},${neighbour.r}`;
+      if (!borders.has(key)) borders.set(key, { hex: neighbour, sky });
+    }
   }
 
-  for (const hex of borders.values()) {
+  for (const { hex, sky } of borders.values()) {
     const center = hexCenter(hex);
     const pixels = await h.pixels(
       discPoints(center.x, center.y, HEX_PITCH / 2),

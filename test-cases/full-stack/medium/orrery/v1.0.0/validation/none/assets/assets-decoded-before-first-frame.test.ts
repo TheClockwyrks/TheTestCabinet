@@ -14,11 +14,11 @@
 // specification puts the whole load in front of the first frame so the game a
 // player sees is never a game still assembling itself.
 //
-// WHAT IT READS, in three readings over two untouched runs.
+// WHAT IT READS, in three readings over two runs posed alike.
 //
 //   1. THE FIRST FRAME ALREADY DRAWS PRODUCED IMAGES. The opening frame is
-//      driven, and the distinct sources it drew are counted: a build still
-//      decoding draws none of them.
+//      driven over an editor holding one arm, and the distinct sources it drew
+//      are counted: a build still decoding draws none of them.
 //   2. AND NOTHING ARRIVES AFTER IT. The same screen is drawn again many frames
 //      later, and the sources it draws are the SAME sources — the same drawn
 //      handles, in the same number. A build whose decode resolved during those
@@ -26,23 +26,31 @@
 //   3. AND NO PRODUCED FILE FAILED TO ARRIVE. Neither run's ledger of produced
 //      files the build asked for and did not get holds anything, and within the
 //      opening frames the build is emitting sound — a cue bound to its file,
-//      which on the title screen, where nothing a player did can sound, is the
-//      bed `specs/ui.md` keeps "looping on every frame the game runs".
+//      which with nothing pressed, a pose sounding nothing, is the bed
+//      `specs/ui.md` keeps "looping on every frame the game runs".
 //
 // WHY THE SOUND IS HEARD ON A SECOND RUN. A browser opens no audio context
 // without a user gesture, and the only moment it is safe to hand a build one is
 // before a harness's opening `reset` — so a harness that can hear anything has
 // already run the frames that carry the gesture, and the frame the first reading
 // calls the build's first would be its third. The readings therefore take a run
-// apiece: the unarmed one, whose opening frame is the first frame the build ever
-// drew, and an armed one opened beside it, equally untouched and only listened
-// to. Each is asked for its own ledger, at the end of its own frames, so no
-// stretch of either run goes unwatched.
+// apiece: the unarmed one, whose opening frame is the first frame this harness
+// drives, and an armed one opened beside it, posed the same way and only
+// listened to. Each is asked for its own ledger, at the end of its own frames, so
+// no stretch of either run goes unwatched.
 //
-// WHY THE TITLE SCREEN. It is where the game opens — the first frame it draws is
-// a frame of it — and no scenario has to be posed to reach it, so the frame this
-// point reads is the first frame the build ever drew rather than one some
-// arrangement drove it to.
+// WHY AN EDITOR IS POSED FIRST. The game opens on the title, which `specs/ui.md`
+// fixes as the title, the tagline and three menu items — text, with no produced
+// image required on it — so a title frame that draws no image says nothing about
+// decoding. Every pose of `specs/instrumentation.md` takes effect at the call, so
+// before any frame is driven a challenge is loaded and one arm placed on its
+// field, whose hub and gripper `specs/assets.md` fixes as produced files,
+// "centered on the part's anchor hex" and on each gripper. The first frame this
+// harness drives
+// is then a frame that MUST draw produced images, and a build still decoding
+// draws none of them. The arm rests, so the same frame is drawn again many frames
+// later, and the bed `specs/ui.md` keeps "looping on every frame the game runs,
+// on `title`, `howto`, `select`, and `editor` alike" sounds there too.
 //
 // WHAT THIS POINT DOES NOT DECIDE. What each produced file is, and whether it
 // decodes, are the sprite, system and sound points. This one decides that nothing
@@ -52,6 +60,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertGreaterThan, assertLength } from "../assert";
+import { BARE, ORIGIN } from "../fixtures";
 import {
   captureStill,
   createHarness,
@@ -87,7 +96,19 @@ afterEach(async () => {
   await h.dispose();
 });
 
+/**
+ * Stand one arm on a bare field, with no frame driven: the first frame drawn
+ * afterwards is one `specs/assets.md` requires produced images on.
+ */
+async function poseArm(target: Harness): Promise<void> {
+  await target.debug.loadChallenge(BARE);
+  await target.debug.placePart("arm", ORIGIN.q, ORIGIN.r, 0);
+  await target.debug.setSelected(null);
+  await target.debug.reconcile();
+}
+
 it("has every produced asset ready before the first frame draws", async () => {
+  await poseArm(h);
   const opening = distinctSources(await h.frameCalls());
   await captureStill(h, "first-frame");
 
@@ -111,11 +132,12 @@ it("has every produced asset ready before the first frame draws", async () => {
     `produced files the build asked for and did not get: ${JSON.stringify(h.assetFailures)}`,
   );
 
-  // And the same untouched title screen on a run that can be heard. Nothing is
-  // posed on it and nothing is pressed once it is handed over, so a sound within
-  // the bound is a cue bound to its file, which here is the bed.
+  // And the same posed editor on a run that can be heard. Nothing is pressed once
+  // it is handed over, and a pose "sounds nothing" (`specs/instrumentation.md`),
+  // so a sound within the bound is a cue bound to its file, which here is the bed.
   const armed = await createHarness({ armAudio: true });
   try {
+    await poseArm(armed);
     for (
       let frame = 0;
       frame < CUE_BOUND && (await armed.sounds()) === 0;
@@ -126,7 +148,7 @@ it("has every produced asset ready before the first frame draws", async () => {
     assertGreaterThan(
       await armed.sounds(),
       0,
-      "sounds emitted by the opening frames: a cue bound to its file, which on the title screen is the bed",
+      "sounds emitted by the opening frames: a cue bound to its file, which with nothing pressed is the bed",
     );
     // This run's own ledger, read after its own frames: the hunt above is the
     // longest stretch either run spends drawing, and a produced file that 404s

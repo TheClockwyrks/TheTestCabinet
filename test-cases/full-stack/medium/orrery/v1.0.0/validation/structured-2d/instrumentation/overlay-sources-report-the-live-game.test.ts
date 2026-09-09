@@ -173,7 +173,12 @@ async function poseTheRun(): Promise<void> {
   await h.debug.setTally(1, 11);
   await advanceFraction(h, 0.875);
   await h.debug.setPaused(true);
-  await h.debug.pointerMove(731, 219);
+  // The REAL pointer, through the frame that reads it, so the position the panel
+  // is read against is the one the pointer input keeps reporting on the frames
+  // the panel is read over: `pointer` mirrors "the position and press the pointer
+  // input reports" (`specs/instrumentation.md`), which a posed `pointerMove` is
+  // not once a frame has run under an engine.
+  await h.mouseGlide(731, 219);
 }
 
 it("moves every reported figure to the posed world rather than the one it started in", async () => {

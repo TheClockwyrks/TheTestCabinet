@@ -787,7 +787,7 @@ validation = { script = "instrumentation/snapshot-counts-derived.test.ts", outpu
 [[review.categories.items]]
 id = "snapshot-pointer-mirrors"
 title = "pointer mirrors the pointer input every frame"
-description = "pointer reports the position in the stage's logical units and the press state the pointer input last reported, so it follows pointerMove and goes down and up with pointerDown and pointerUp."
+description = "pointer reports the position in the stage's logical units and the press state the pointer input last reported, so it follows the pointer as it glides, presses and releases over the stage."
 domains = ["workshop"]
 failure_cap = "passable"
 validation = { script = "instrumentation/snapshot-pointer-mirrors.test.ts", outputs = [ { id = "pointer", name = "The reported pointer following the input", kind = "image" } ] }

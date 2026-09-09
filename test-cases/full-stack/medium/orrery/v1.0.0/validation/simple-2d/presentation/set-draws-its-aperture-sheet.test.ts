@@ -24,8 +24,10 @@
 // hex of it can be mistaken for the anchor.
 //
 // THE VERDICT. One sprite from the set sheet is drawn, centered on the set's anchor
-// hex, at its native `48 x 48`; and no frame of the RISE sheet is drawn anywhere on
-// that frame.
+// hex, at its native `48 x 48`; and no frame the rise sheet alone holds is drawn
+// anywhere on that frame. The rule fixes that "no two frames of a sheet are the
+// same image" and fixes nothing between the two sheets, so a drawn frame that
+// both sheets hold is the set's own sheet drawn.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -95,10 +97,24 @@ it("draws a frame of the set sheet on the set's anchor hex", async () => {
     if (draw.image.width !== APERTURE_SPRITE_SIZE) continue;
     const pixels = await h.imagePixels(draw.image.id);
     if (pixels === null) continue;
-    const found = sprites.findIndex((sprite) => sameAsDrawn(sprite, pixels));
-    if (found < 0) continue;
+    // The SET sheet is asked first. `specs/assets.md` fixes that no two frames
+    // OF A SHEET are the same image and says nothing of the two sheets against
+    // each other, so a build whose set frames are its rise frames in another
+    // order is within the rule; a frame both sheets hold is then the set's own
+    // sheet drawn, and only a frame the set sheet does not hold reads as the rise
+    // sheet.
+    const setFrame = sprites
+      .slice(RISE_SPRITES.length)
+      .findIndex((sprite) => sameAsDrawn(sprite, pixels));
+    const riseFrame =
+      setFrame >= 0
+        ? -1
+        : sprites
+            .slice(0, RISE_SPRITES.length)
+            .findIndex((sprite) => sameAsDrawn(sprite, pixels));
+    if (setFrame < 0 && riseFrame < 0) continue;
     drawn.push({
-      sheet: found < RISE_SPRITES.length ? "rise" : "set",
+      sheet: setFrame >= 0 ? "set" : "rise",
       x: draw.cx,
       y: draw.cy,
       size: Math.round(Math.abs(draw.dw)),

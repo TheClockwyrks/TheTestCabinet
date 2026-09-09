@@ -195,7 +195,12 @@ it("registers every diagnostic the specification asks the overlay to show", asyn
   await h.debug.setPaused(true);
   await h.debug.setFocus("tape");
   await h.debug.setMode("extras");
-  await h.debug.pointerMove(731, 219);
+  // The REAL pointer, through the frame that reads it, so the position the panel
+  // is read against is the one the pointer input keeps reporting on the frames
+  // the panel is read over: `pointer` mirrors "the position and press the pointer
+  // input reports" (`specs/instrumentation.md`), which a posed `pointerMove` is
+  // not once a frame has run under an engine.
+  await h.mouseGlide(731, 219);
 
   const posed = await h.snapshot();
   const sim = posed.sim;
