@@ -30,8 +30,7 @@
 //   they spell, and `drawnTextLines` is those runs as strings, so `FATHOM` drawn
 //   a glyph at a time reads as `FATHOM` rather than as `F | A | T | H | O | M`.
 //   Every raw string is a substring of its run, so the merge can only add a
-//   match and never take one away. `textRuns` stays the raw split for the
-//   readers that count draws rather than read them.
+//   match and never take one away.
 //
 //   HOW LONG DID A SCREEN HOLD, AND DID ANYTHING MOVE BEHIND IT? `specs/ui.md`
 //   times the countdown and the cleared interstitial on "the simulation's own
@@ -49,7 +48,6 @@ import { drawnTextLines } from "../case-harness/text";
 import { ARROW_KEY, BINDINGS } from "../constants";
 import { stageCatch } from "../fixtures";
 import type { DrawCall, FathomSnapshot, Harness } from "../harness";
-import { callsTo } from "../harness";
 
 /** The key `specs/movement.md` binds `confirm` to first: it takes a menu item. */
 export const CONFIRM_KEY = BINDINGS.confirm[0];
@@ -81,20 +79,13 @@ export async function frameOps(h: Harness): Promise<DrawCall[]> {
   return h.frameCalls();
 }
 
-/** Every string the frame put on the canvas, through `fillText` or `strokeText`. */
-export function textRuns(ops: readonly DrawCall[]): string[] {
-  return [...callsTo(ops, "fillText"), ...callsTo(ops, "strokeText")].flatMap(
-    (args) => (typeof args[0] === "string" ? [args[0]] : []),
-  );
-}
-
 /**
  * Every logical run the frame spelled, in reading order down the frame.
  *
  * The shared harness's `drawnTextLines`, which coalesces a run drawn a glyph at a
  * time back into the string it spells (the header says why). It needs each text
  * call to carry its measured width and alignment, which this harness's recorder
- * attaches; without them nothing merges and this is exactly {@link textRuns}.
+ * attaches; without them nothing merges and each `fillText` is its own run.
  */
 export function textLines(ops: readonly DrawCall[]): string[] {
   return drawnTextLines(ops);

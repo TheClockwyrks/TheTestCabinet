@@ -12,25 +12,32 @@
 // `diagnostics.sources-registered`.
 //
 // WHAT "DRAWS NOTHING UNTIL IT IS ASKED FOR" IS READ AS. The overlay is text, and
-// where a build puts it is its own, so what is measured is the whole frame: how
-// many runs of text it drew. A hidden overlay adds none; an open one adds a line
-// per source, which specs/instrumentation.md requires at least a dozen of. So the
-// reading is the count of runs before the key, after it, and after it again — up,
-// then back to where it started.
+// where a build puts it is its own, so what is measured is the whole frame: the
+// logical runs of text it drew. A hidden overlay adds none. An open one adds the
+// registered sources, and how many runs those come to is the build's — the
+// specification asks that each source be "short enough to read on a line" and
+// fixes nothing about how many share one — so what is read off the open frame is
+// not a count but the one source whose text the snapshot fixes exactly: the runs
+// the press added must spell the current `screen`, which specs/instrumentation.md
+// puts first among the sources a build registers. A second press has to take
+// every added run away again, so the frame is back to the runs it drew before
+// the first. What the rest of the sources report is `diagnostics/sources-
+// registered`'s.
 //
 // AND THE GAME UNDERNEATH IS HELD. The whole snapshot is taken at each of the
 // three moments and the three have to agree, so an overlay that advanced the game
 // to draw itself, or a toggle wired to something that poses state, fails here.
-// `simTime` is excluded from that comparison and from nothing else: every tick
-// adds to it whatever the screen (specs/state.md), and the three readings are a
-// frame apart.
+// The readings are a few driven ticks apart — the frame that reads the canvas is
+// a driven frame, and so is the press — so the two clocks the specification lets
+// a playing tick move are held to those ticks rather than to equality;
+// `diagnostics/held.ts` says which and why.
 //
 // THE BOARD IS EMPTIED OF HUNTERS AND THE FORAGER PARKED, so the only thing that
 // could move between the three readings is the overlay itself.
 
 import { afterEach, beforeEach, it } from "vitest";
 
-import { assertEqual, assertGreaterThan } from "../assert";
+import { assertEqual, assertMatches } from "../assert";
 import { OVERLAY_KEY } from "../constants";
 import { poseStraightRun } from "../fixtures";
 import {
@@ -40,26 +47,11 @@ import {
   type Harness,
 } from "../harness";
 import { parkForager } from "../scene";
-import { frameOps, textRuns } from "../states/screens";
+import { frameOps, textLines } from "../states/screens";
+import { added, assertHeld } from "./held";
 
 /** How much corridor the forager is parked on, in tiles. */
 const RUN_TILES = 8;
-
-/**
- * How many runs of text an open overlay must add to a frame.
- *
- * Four. specs/instrumentation.md names a dozen facts a build registers and asks
- * that each be "short enough to read on a line", so an overlay drawing them adds
- * far more than this; the bound is set low because how a build packs several
- * facts onto one line is its own, and what this rules out is an overlay that
- * draws nothing at all.
- */
-const OVERLAY_RUNS_MIN = 4;
-
-/** The whole snapshot, with the clock taken out: what must not move. */
-function held(snapshot: object): string {
-  return JSON.stringify({ ...snapshot, simTime: 0 });
-}
 
 let h: Harness;
 
@@ -76,44 +68,50 @@ it("draws nothing until the backtick, then draws, then goes away again", async (
   const run = await poseStraightRun(h, RUN_TILES);
   await parkForager(h, run.start);
 
-  const hidden = textRuns(await frameOps(h)).length;
+  const hidden = textLines(await frameOps(h));
   const before = await h.snapshot();
+  const tickBefore = h.tick();
 
   await h.tap(OVERLAY_KEY);
-  const open = textRuns(await frameOps(h)).length;
+  const open = textLines(await frameOps(h));
   // Before the assertions, so a failing check still leaves the overlay it read.
   await captureStill(h, "overlay");
   const opened = await h.snapshot();
+  const ticksOpened = h.tick() - tickBefore;
 
   await h.tap(OVERLAY_KEY);
-  const closed = textRuns(await frameOps(h)).length;
+  const closed = textLines(await frameOps(h));
   const after = await h.snapshot();
+  const ticksClosed = h.tick() - tickBefore;
 
-  assertGreaterThan(
-    open,
-    hidden + OVERLAY_RUNS_MIN,
-    `runs of text on the frame with the overlay open, against the ` +
-      `${String(hidden)} the same dive drew with it hidden — a Backquote press ` +
-      "draws it over the running game (specs/instrumentation.md)",
+  assertMatches(
+    added(hidden, open),
+    before.screen.toUpperCase(),
+    `the current screen, among the runs of text a Backquote press added to the ` +
+      `${String(hidden.length)} the same dive drew with the overlay hidden — ` +
+      "the press draws the registered sources over the running game, and the " +
+      "screen is the first of them (specs/instrumentation.md)",
   );
   assertEqual(
-    closed,
-    hidden,
-    `runs of text on the frame after a second Backquote, against the ` +
-      `${String(hidden)} drawn before the first — the overlay starts hidden ` +
-      "and the key takes it away again (specs/instrumentation.md)",
+    added(hidden, closed),
+    "",
+    `runs of text on the frame after a second Backquote beyond the ` +
+      `${String(hidden.length)} drawn before the first — the overlay starts ` +
+      "hidden and the key takes it away again (specs/instrumentation.md)",
+  );
+  assertEqual(
+    added(closed, hidden),
+    "",
+    "runs of text the frame drew before the first Backquote that it no longer " +
+      "draws after the second — closing the overlay takes away nothing but the " +
+      "overlay (specs/instrumentation.md)",
   );
 
-  assertEqual(
-    held(opened),
-    held(before),
-    "the whole snapshot across the overlay being opened, which draws over the " +
-      "running game without changing anything (specs/instrumentation.md)",
-  );
-  assertEqual(
-    held(after),
-    held(before),
-    "the whole snapshot across the overlay being opened and closed again " +
-      "(specs/instrumentation.md)",
+  assertHeld(before, opened, ticksOpened, "the overlay being opened");
+  assertHeld(
+    before,
+    after,
+    ticksClosed,
+    "the overlay being opened and closed again",
   );
 });

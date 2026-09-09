@@ -29,7 +29,10 @@
 // AND THE READS ARE HELD TO BE PURE. The whole snapshot is taken before the
 // sources are read and again after, and the two have to agree: a source that
 // advanced a timer, consumed a queue or moved a body would show as a snapshot that
-// changed because it was watched.
+// changed because it was watched. The two readings are the few driven ticks apart
+// that reading the frame and pressing the key cost, so the two clocks the
+// specification lets a playing tick move are held to those ticks rather than to
+// equality; `diagnostics/held.ts` says which and why.
 //
 // WHAT AN ENGINELESS BUILD CAN BE ASKED. There is no registry to read: the overlay
 // is part of the runtime this build wrote, and specs/instrumentation.md puts the
@@ -50,7 +53,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 
-import { assertEqual, assertMatches } from "../assert";
+import { assertMatches } from "../assert";
 import { OVERLAY_KEY } from "../constants";
 import { figurePattern } from "../figures";
 import { poseApart, spawnPredator } from "../fixtures";
@@ -62,6 +65,7 @@ import {
 } from "../harness";
 import { parkForager } from "../scene";
 import { frameOps, textLines } from "../states/screens";
+import { added, assertHeld } from "./held";
 
 /** The three hunters, one of each stood on the board. */
 const KINDS = ["lanternjaw", "gloamfin", "flarefish"] as const;
@@ -85,23 +89,6 @@ const RING = 4;
 
 /** Ticks run before the readings, so the light has finished revealing. */
 const SETTLE_TICKS = 8;
-
-/**
- * The runs `opened` drew that `shut` did not, counted rather than set-matched.
- *
- * Logical runs, so an overlay that letter-spaces a figure still reports it as
- * one figure rather than as a column of digits a `|` apart.
- */
-function added(shut: readonly string[], opened: readonly string[]): string {
-  const left = [...shut];
-  const extra: string[] = [];
-  for (const run of opened) {
-    const at = left.indexOf(run);
-    if (at >= 0) left.splice(at, 1);
-    else extra.push(run);
-  }
-  return extra.join(" | ").toUpperCase();
-}
 
 let h: Harness;
 
@@ -142,6 +129,7 @@ it("draws every fact the specification names, and reading it changes nothing", a
   await h.advance(SETTLE_TICKS);
 
   const before = await h.snapshot();
+  const tickBefore = h.tick();
 
   const shut = textLines(await frameOps(h));
   await h.tap(OVERLAY_KEY);
@@ -149,6 +137,7 @@ it("draws every fact the specification names, and reading it changes nothing", a
   // Before the assertions, so a failing check still leaves the overlay it read.
   await captureStill(h, "sources");
   const after = await h.snapshot();
+  const ticksRead = h.tick() - tickBefore;
 
   /**
    * A number the overlay drew, matched as a figure rather than as a substring.
@@ -204,10 +193,5 @@ it("draws every fact the specification names, and reading it changes nothing", a
   }
 
   // And every source is a pure read.
-  assertEqual(
-    JSON.stringify({ ...after, simTime: 0 }),
-    JSON.stringify({ ...before, simTime: 0 }),
-    "the whole snapshot across the overlay being opened and read, which every " +
-      "diagnostic source leaves as it is (specs/instrumentation.md)",
-  );
+  assertHeld(before, after, ticksRead, "the overlay being opened and read");
 });

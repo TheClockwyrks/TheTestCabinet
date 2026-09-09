@@ -8,13 +8,21 @@
 // down — and what a player reads off it is how much of the strip it fills.
 //
 // WHAT A GAUGE LOOKS LIKE IS THE BUILD'S, so what is measured is the strip, and
-// what is compared is each moment of the cooldown AGAINST THE READY FRAME. A
-// gauge is commonly a track with a fill inside it, and the track is drawn at its
-// full length whatever the fill is doing, so counting what is drawn reads the same
-// figure throughout. What moves is which points differ from the picture the ready
-// gauge made: many while it sits short of full, fewer as it fills back in, none
-// once it is full again. A bar, an arc, a row of pips — every one of them reads
-// that way, and none of them has to be recognised.
+// what is compared is each moment of the cooldown against TWO frames: the one the
+// ready gauge made, and the one it made the step it was spent. A gauge is
+// commonly a track with a fill inside it, and the track is drawn at its full
+// length whatever the fill is doing, so counting what is drawn reads the same
+// figure throughout. What moves is the fill's extent, and it is read from both
+// ends of the cooldown at once. Against the JUST-SPENT frame, the points that
+// have changed grow as the cooldown runs down — that is the fill coming back.
+// Against the READY frame, the points that still differ never grow — a gauge that
+// fills back up is never further from full later in the cooldown than earlier —
+// and they are gone once it is full again. specs/ui.md leaves "how it is styled"
+// to the build, so a fill that carries one tint while ready and another while it
+// is spent differs from the ready frame across its whole extent until the
+// cooldown ends, and is read by the spent-frame comparison; a fill of one color
+// throughout is read by both. A bar, an arc, a row of pips — every one of them
+// reads that way, and none of them has to be recognised.
 //
 // NOTHING ELSE IN THE STRIP MOVES WHILE ONE COOLDOWN RUNS: the lives stand, the
 // depth stands, the other gauge is left alone and ready, and the maze is above the
@@ -31,7 +39,11 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 
-import { assertGreaterThan, assertLessThan } from "../assert";
+import {
+  assertGreaterThan,
+  assertLessThan,
+  assertLessThanOrEqual,
+} from "../assert";
 import { BINDINGS, INK_COOLDOWN } from "../constants";
 import {
   captureReplay,
@@ -81,18 +93,24 @@ it("draws the ink gauge full, short of full when spent, and longer again", async
     const drawn = await drawnAcross(h, BOTTOM_STRIP);
     const ready = await stripColors(h, BOTTOM_STRIP);
     await h.tap(KEY);
-    const spent = differing(await stripColors(h, BOTTOM_STRIP), ready);
+    const spentFrame = await stripColors(h, BOTTOM_STRIP);
+    const spent = differing(spentFrame, ready);
 
+    /** Points still apart from the ready frame, at each of `ALONG`. */
     const along: number[] = [];
+    /** Points moved away from the just-spent frame, at each of `ALONG`. */
+    const refilled: number[] = [];
     let covered = 0;
     for (const target of ALONG) {
       await h.advance(Math.max(0, target - covered));
       covered = target;
-      along.push(differing(await stripColors(h, BOTTOM_STRIP), ready));
+      const frame = await stripColors(h, BOTTOM_STRIP);
+      along.push(differing(frame, ready));
+      refilled.push(differing(frame, spentFrame));
     }
     await h.advance(COOLDOWN_TICKS - covered + SETTLE_TICKS);
     const back = differing(await stripColors(h, BOTTOM_STRIP), ready);
-    return { drawn, spent, along, back };
+    return { drawn, spent, along, refilled, back };
   });
 
   assertGreaterThan(
@@ -108,13 +126,21 @@ it("draws the ink gauge full, short of full when spent, and longer again", async
       "the ability — the gauge is drawn short of full once it is spent " +
       "(specs/ui.md)",
   );
-  assertLessThan(
+  assertGreaterThan(
+    measured.refilled[1],
+    measured.refilled[0],
+    "sampled points that have changed from the just-spent gauge three quarters " +
+      `of the way down the cooldown, against the ${String(measured.refilled[0])} ` +
+      "a third of the way down — the gauge is drawn longer again as the " +
+      "cooldown runs down (specs/ui.md)",
+  );
+  assertLessThanOrEqual(
     measured.along[1],
     measured.along[0],
     "sampled points still standing apart from the ready gauge three quarters " +
       `of the way down the cooldown, against the ${String(measured.along[0])} ` +
-      "a third of the way down — the gauge is drawn longer again as the " +
-      "cooldown runs down (specs/ui.md)",
+      "a third of the way down — a gauge that fills back up is never further " +
+      "from full later in the cooldown than earlier (specs/ui.md)",
   );
   assertLessThan(
     measured.back,

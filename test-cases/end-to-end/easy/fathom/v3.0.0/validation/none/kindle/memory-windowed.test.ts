@@ -28,6 +28,18 @@
 // whose circle marks everything it covers as explored, which hides nothing on the
 // way out and leaves a maze that fills itself in as the forager swims.
 //
+// TWO BOUNDS, BECAUSE THE TWO FOG READINGS ARE TAKEN ON DIFFERENT GROUND. The
+// hidden tile at (2) stands BEYOND `R`, which specs/sensing.md paints "with the
+// same flat fog as never-revealed ground": one flat color, so it is held to
+// `MASKED_MATCH`, the mask's own bound. The never-lit tile at (4) stands INSIDE
+// the circle, where the same file has never-revealed ground "drawn as fog" and,
+// in the same list, "a soft glow in the forager's color" that "fills the
+// circle" — so the pixel there is fog under a glow whose strength the
+// specification leaves to the build. It is held to `FOG_MATCH`, the bound the
+// Kindle review items state for a tile painted with fog, which the glow at the
+// circle's edge sits well inside and which remembered terrain, drawn dim on
+// purpose, still stands off (`circle.ts` records the margin).
+//
 // THE TILE IS READ FROM THE REMEMBERED BAND, past the light pocket and inside the
 // circle, so what draws it at (1) and (3) is the circle rather than the light.
 //
@@ -250,10 +262,10 @@ it("keeps a tile remembered while the circle hides it, and draws it again on the
   );
   assertLessThanOrEqual(
     colorDistance(seen.neverLit, seen.fog),
-    MASKED_MATCH,
+    FOG_MATCH,
     "the RGB distance out of 441 between that never-lit tile inside the circle " +
       "and unrevealed fog, which is what ground the light has not reached is " +
-      "painted with",
+      "painted with, under the soft glow that fills the circle (specs/sensing.md)",
   );
 
   // 3. Drawn again, and drawn the same.
