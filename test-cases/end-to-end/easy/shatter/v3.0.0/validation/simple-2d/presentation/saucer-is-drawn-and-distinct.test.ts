@@ -12,9 +12,9 @@
 //
 // NO SILHOUETTE IS ASSERTED. `specs/saucer.md` draws the craft as "a flattened
 // disc, a flying-saucer silhouette" and collides it as a circle of `SAUCER_R`; how
-// much of that circle the drawing fills is the build's, so the bar below is set
-// for a flattened body rather than for a filled one, and nothing here reads a
-// shape.
+// much of that circle the drawing fills is the build's — a filled body, or the
+// bare outline of one — so the bar below is a presence floor rather than a fill
+// fraction, and nothing here reads a shape or an extent.
 //
 // THE POSE. An emptied, gated field, with the visit held still and disarmed:
 // `setSaucerTravel(false)` holds its centre where it stands and
@@ -50,16 +50,14 @@ import { SAUCER_SPOT, sampleField } from "./scene";
 const SENSING_FLOOR = 8;
 
 /**
- * How much of the disc of `SAUCER_R` must be painted something other than the
- * field.
+ * How many of the {@link DISC_SAMPLES} readings inside `SAUCER_R` must be the
+ * craft's.
  *
- * Three tenths. `specs/saucer.md` makes the craft a FLATTENED disc inside the
- * circle of `SAUCER_R` it collides as, so a conformant silhouette covers a
- * fraction of that circle rather than all of it: an ellipse half as tall as it is
- * wide covers a half, and one a third as tall covers a third. This admits the
- * flattest such body and still scores nothing at all for a build that drew none.
+ * A saucer drawn as a bare one-unit outline of a flattened disc marks something
+ * over fifty of these samples; the bar sits well under that, so a lightly drawn
+ * craft passes while a build that drew nothing there scores zero.
  */
-const MIN_FRACTION = 0.3;
+const MIN_MARKED = 15;
 
 let h: Harness;
 
@@ -85,7 +83,7 @@ it("paints the saucer on the field", async () => {
 
   assertGreaterThanOrEqual(
     markedCount(saucer, field, SENSING_FLOOR),
-    Math.round(MIN_FRACTION * DISC_SAMPLES),
+    MIN_MARKED,
     `of ${DISC_SAMPLES} samples inside SAUCER_R of the posed saucer, how many ` +
       `are more than ${SENSING_FLOOR} of 441 from the field the build drew ` +
       "(specs/overview.md)",

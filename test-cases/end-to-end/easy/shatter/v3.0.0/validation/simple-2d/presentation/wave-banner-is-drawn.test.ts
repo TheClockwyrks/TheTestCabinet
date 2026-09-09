@@ -26,7 +26,23 @@
 // frame would read that counter as a banner, pass the first half for the wrong
 // reason and fail the second half of a build that did nothing wrong. The banner is
 // the one the specification draws "centred on the field", so only the middle of the
-// field is read.
+// field is read. And how much of the middle is what `specs/ui.md` leaves open: it
+// fixes no placement to the unit, leaves "the layout of each screen" to the build,
+// requires every piece of text to be legible against what sits behind it, and
+// `specs/field.md` puts the star at the field's exact centre, drawn out to `180`.
+// So "centred on the field" is read as the field's central region rather than as a
+// point — the middle half of its width and the middle two thirds of its height —
+// which admits a banner set across the middle, one lifted clear of the star's halo,
+// and one stacked over two lines, while still excluding the corners the HUD is
+// drawn in.
+//
+// AND WHAT NAMES THE WAVE IN THAT REGION IS READ AGAINST THE FRAME BEFORE THE
+// BANNER. A build is free to keep a readout of its own inside the region too, so a
+// run naming the wave is the banner only if it is there while the banner runs and
+// not before: the region's wave-naming runs are read with no banner posed, and it
+// is the runs that appear beyond those that must be present while the banner runs
+// and gone once it is out. A permanent readout is in every reading and decides
+// nothing either way.
 //
 // THE POSE. An emptied, gated field on the `playing` screen. The banner is posed
 // with `setWaveBanner`, which sets the timer alone, and the wave with `setWave`,
@@ -53,37 +69,52 @@ const WAVE = 7;
 const CENTRE = { x: FIELD_W / 2, y: FIELD_H / 2 } as const;
 
 /**
- * How far from the field's centre a run may sit and still be the banner, in
- * logical units.
+ * How far from the field's centre a run's box centre may sit, each way, and still
+ * be the banner, in logical units.
  *
- * `160`, measured from the centre of the run's own box. `specs/ui.md` draws the
- * banner "centred on the field" without fixing a placement to the unit, so this
- * admits a build that sets its banner a little above or below the middle while
- * excluding the corners the HUD is drawn in — the nearest of which is more than
- * `600` away.
+ * A quarter of the field's width and a third of its height: the middle half of the
+ * field across, and its middle two thirds down. `specs/ui.md` draws the banner
+ * "centred on the field" without fixing a placement to the unit and leaves the
+ * layout to the build, and `specs/field.md` draws the star at the centre out to
+ * `180`, so this admits a banner set across the middle and one lifted clear of the
+ * halo while excluding the corners the HUD is drawn in.
  */
-const NEAR_THE_CENTRE = 160;
+const REGION = { x: FIELD_W / 4, y: FIELD_H / 3 } as const;
 
 /** The digits of a drawn run, as the number they read as; `NaN` for a run with none. */
 function digitsOf(run: TextRun): number {
   return Number.parseInt(run.text.replace(/\D/g, ""), 10);
 }
 
-/** Whether a run is drawn near the middle of the field, by its box's centre. */
+/** Whether a run is drawn in the middle region of the field, by its box's centre. */
 function nearTheCentre(run: TextRun): boolean {
   return (
-    Math.hypot(
-      (run.left + run.right) / 2 - CENTRE.x,
-      (run.top + run.bottom) / 2 - CENTRE.y,
-    ) <= NEAR_THE_CENTRE
+    Math.abs((run.left + run.right) / 2 - CENTRE.x) <= REGION.x &&
+    Math.abs((run.top + run.bottom) / 2 - CENTRE.y) <= REGION.y
   );
 }
 
-/** The runs drawn near the middle of the field naming the wave. */
-function banners(h: Harness): TextRun[] {
+/** A run as the same drawing across frames: its text, where its box sits. */
+function identity(run: TextRun): string {
+  const box = [run.left, run.top, run.right, run.bottom].map((edge) =>
+    Math.round(edge),
+  );
+  return `${run.text}@${box.join(",")}`;
+}
+
+/** The runs drawn in the middle region of the field naming the wave. */
+function wavesNamed(h: Harness): TextRun[] {
   return textRuns(h).filter(
     (run) => nearTheCentre(run) && digitsOf(run) === WAVE,
   );
+}
+
+/**
+ * The wave-naming runs of the frame just drawn that were not among `before`: the
+ * frame's own, with a readout the build keeps there in every frame set aside.
+ */
+function beyond(h: Harness, before: ReadonlySet<string>): TextRun[] {
+  return wavesNamed(h).filter((run) => !before.has(identity(run)));
 }
 
 let h: Harness;
@@ -99,17 +130,24 @@ afterEach(() => {
 it("draws text naming the wave near the field's centre while the banner runs, and none once it is out", async () => {
   startPlaying(h);
   h.debug.setWave(WAVE);
+
+  // The region with no banner posed: whatever names the wave here is the
+  // build's own readout, and is set aside from both readings below.
+  h.clearCalls();
+  await h.advance(1);
+  const readouts = new Set(wavesNamed(h).map(identity));
+
   h.debug.setWaveBanner(WAVE_BANNER_TIME);
   h.clearCalls();
   await h.advance(1);
   captureStill(h, "banner");
 
   assertGreaterThan(
-    banners(h).length,
+    beyond(h, readouts).length,
     0,
-    `how many runs of text naming wave ${WAVE} the frame drew within ` +
-      `${NEAR_THE_CENTRE} of the field's centre while the banner was running ` +
-      "(specs/ui.md)",
+    `how many runs of text naming wave ${WAVE} the frame drew in the middle ` +
+      "region of the field while the banner was running, beyond any the build " +
+      "draws there with no banner up (specs/ui.md)",
   );
 
   h.debug.setWaveBanner(0);
@@ -117,10 +155,11 @@ it("draws text naming the wave near the field's centre while the banner runs, an
   await h.advance(1);
 
   assertEqual(
-    banners(h).length,
+    beyond(h, readouts).length,
     0,
-    `how many runs of text naming wave ${WAVE} the frame drew within ` +
-      `${NEAR_THE_CENTRE} of the field's centre once the banner had run out, ` +
-      "where nothing of it may still be drawn (specs/ui.md)",
+    `how many runs of text naming wave ${WAVE} the frame drew in the middle ` +
+      "region of the field once the banner had run out, beyond any the build " +
+      "draws there with no banner up, where nothing of it may still be drawn " +
+      "(specs/ui.md)",
   );
 });

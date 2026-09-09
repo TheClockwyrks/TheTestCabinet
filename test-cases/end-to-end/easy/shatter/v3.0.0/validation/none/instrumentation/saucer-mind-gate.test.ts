@@ -33,6 +33,7 @@ import { assertCloseTo, assertTrue } from "../assert";
 import { SAUCER_SPEED, SAUCER_WEAVE_INTERVAL } from "../constants";
 import {
   captureStill,
+  clearSaucer,
   createHarness,
   poseSaucer,
   requireSaucer,
@@ -115,7 +116,7 @@ it("holds the saucer's course while its mind is shut", async () => {
 
 it("reverses the saucer's vertical direction once its mind is running", async () => {
   await startPlaying(h);
-  await h.debug.removeSaucer();
+  await clearSaucer(h);
   await poseSaucer(h, ENTRY.x, ENTRY.y, {
     mind: true,
     gun: false,

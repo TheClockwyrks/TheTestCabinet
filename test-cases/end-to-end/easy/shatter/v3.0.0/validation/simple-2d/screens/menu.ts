@@ -193,16 +193,19 @@ function renderings(value: number): string[] {
 
 /**
  * `value` as a WHOLE number — the figure written out in any of its conventional
- * forms, with no further digit and no decimal point either side of it.
+ * forms, with no further digit and no decimal point either side of it, and with
+ * any run of leading zeros a build pads the figure to.
  *
  * `specs/ui.md` shows the score "as digits" and leaves everything else about the
  * readout to the build, so a label beside it (`SCORE 4260`) reads as the number, a
- * build that groups the same figure (`4,260`) has drawn the same number, and the
- * `13` inside `1300` is still not the number `13`.
+ * build that groups the same figure (`4,260`) has drawn the same number, a build
+ * that pads it to a fixed width (`004260`) has drawn the same number, and the
+ * `13` inside `1300` or `2013` is still not the number `13`: the padding admitted
+ * is zeros alone, and nothing but the zeros may precede the figure.
  */
 export function numberPattern(value: number): RegExp {
   const forms = renderings(value).map(literal).join("|");
-  return new RegExp(`(?<![\\d.])(?:${forms})(?![\\d.])`);
+  return new RegExp(`(?<![\\d.])0*(?:${forms})(?![\\d.])`);
 }
 
 /* -------------------------------------------------------------------------- */

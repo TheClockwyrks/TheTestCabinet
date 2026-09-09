@@ -34,7 +34,13 @@ import { afterEach, beforeEach, it } from "vitest";
 import { DEG } from "../constants";
 import { assertCloseTo, assertEqual, assertLength } from "../assert";
 import { angleDelta } from "../geometry";
-import { captureStill, poseShip, startPlaying, type Harness } from "../harness";
+import {
+  captureStill,
+  clearSaucer,
+  poseShip,
+  startPlaying,
+  type Harness,
+} from "../harness";
 import {
   collectShots,
   createShotHarness,
@@ -79,7 +85,7 @@ it("fires a shot with no aim error straight along the bearing to the ship", asyn
 
   for (const [index, pose] of GUN_POSES.entries()) {
     h.debug.clearEnemyBullets();
-    h.debug.removeSaucer();
+    clearSaucer(h);
     poseGunner(h, pose);
     h.debug.setNextSaucerAim(0);
     assertCloseTo(

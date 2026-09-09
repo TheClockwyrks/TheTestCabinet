@@ -353,7 +353,7 @@ per-entity removal and the clear.
 | `addSaucer(x, y)` | Brings a saucer onto the field with its centre at a logical field position, travelling right at `SAUCER_SPEED` with no vertical component, its weave direction `1`, its fire clock at `SAUCER_FIRE_INTERVAL`, its weave clock at `SAUCER_WEAVE_INTERVAL`, its own lifetime clock at zero, and all three faculties on. It replaces any saucer already up. |
 | `setSaucerVelocity(vx, vy)` | Sets the saucer's velocity, in logical units per second. |
 | `setSaucerWeave(direction)` | Sets the saucer's weave direction, `1` for down or `-1` for up: the direction its next reroll takes while it has no vertical velocity, as `specs/saucer.md` states. It changes no velocity. |
-| `removeSaucer()` | Clears the saucer from the field. |
+| `removeSaucer()` | Clears the saucer from the field. Called with the slot already empty, it does nothing and is not an error. |
 | `setSaucerMind(enabled)` | Gates the saucer's steering decisions alone: the vertical weave it rerolls every `SAUCER_WEAVE_INTERVAL` and the steering that keeps it clear of the star's core. Off, nothing it decides changes its velocity; it still travels and still fires. |
 | `setSaucerGun(enabled)` | Gates the saucer's firing alone: the aimed shot it takes every `SAUCER_FIRE_INTERVAL`. Off, it fires nothing; it still steers and still travels. |
 | `setSaucerTravel(enabled)` | Gates the saucer's locomotion alone: its centre holds where it stands. Its mind and its gun run on, so a held saucer still rerolls its weave and still fires. |

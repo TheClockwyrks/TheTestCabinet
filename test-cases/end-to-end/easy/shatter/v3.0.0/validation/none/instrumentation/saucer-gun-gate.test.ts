@@ -29,6 +29,7 @@ import { assertGreaterThanOrEqual, assertLength, assertTrue } from "../assert";
 import { SAUCER_FIRE_INTERVAL } from "../constants";
 import {
   captureStill,
+  clearSaucer,
   createHarness,
   poseSaucer,
   startPlaying,
@@ -109,7 +110,7 @@ it("fires nothing while the gun is shut", async () => {
 
 it("fires several rounds once the gun is running", async () => {
   await startPlaying(h);
-  await h.debug.removeSaucer();
+  await clearSaucer(h);
   await poseSaucer(h, PLACE.x, PLACE.y, {
     mind: false,
     gun: true,

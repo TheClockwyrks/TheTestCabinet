@@ -1247,8 +1247,8 @@ export async function startRun(h: Harness): Promise<void> {
 }
 
 /**
- * Everything off the field: every rock, every round of either kind, the saucer,
- * and — under `warhead` — every torpedo.
+ * Everything off the field: every rock, every round of either kind, the saucer
+ * if one is up, and — under `warhead` — every torpedo.
  *
  * A harness sequence rather than a debug operation because the surface is atomic
  * by design: every line below is one of its own clears.
@@ -1265,11 +1265,28 @@ export function clearWorld(h: Harness): void {
   h.debug.clearRocks();
   h.debug.clearBullets();
   h.debug.clearEnemyBullets();
-  h.debug.removeSaucer();
+  clearSaucer(h);
   // `warhead` only. A `base` surface carries no such operation and there is
   // nothing to clear; a build that owes one and did not ship it is decided by
   // `instrumentation/clear-torpedoes`, not silently here.
   h.debug.clearTorpedoes?.();
+}
+
+/**
+ * Take the saucer off the field if one is up. A no-op, and not an error, when
+ * `snapshot().saucer` is already `null`.
+ *
+ * `specs/instrumentation.md` addresses the saucer through one slot rather than a
+ * roster, with `removeSaucer()` as "both the per-entity removal and the clear",
+ * and fixes what that does to a saucer that is up. It says nothing about a slot
+ * already empty, and its rule that no operation "returns having left the state
+ * as it was" lets a build read the empty-slot call as one it must fail loudly
+ * on. So the clear is issued only where there is something to clear;
+ * `instrumentation/remove-saucer` still decides the operation against a saucer
+ * that IS up.
+ */
+export function clearSaucer(h: Harness): void {
+  if (h.snapshot().saucer !== null) h.debug.removeSaucer();
 }
 
 /**

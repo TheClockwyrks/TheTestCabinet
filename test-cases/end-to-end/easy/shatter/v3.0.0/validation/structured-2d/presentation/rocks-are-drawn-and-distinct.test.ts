@@ -47,17 +47,17 @@ import { ROCK_SPOT, SHIP_SPOT, sampleField } from "./scene";
 const SENSING_FLOOR = 8;
 
 /**
- * How much of the disc of `ROCK_RADIUS.large` must be painted something other than
- * the field.
+ * How many of the {@link DISC_SAMPLES} readings inside a Large must be painted.
  *
- * Two fifths. `specs/rocks.md` fixes the circle a rock COLLIDES as and explicitly
- * leaves what it is drawn as to the build, so the drawn body need not fill that
- * circle: an irregular outline inscribed in it, or a body drawn a little inside
- * it, covers well over half the disc, and this leaves room for a build that draws
- * a smaller or more ragged rock. A build that drew nothing there covers none of
- * it.
+ * A Large is a disc of radius `46` (`specs/rocks.md`), and a rock drawn as a bare
+ * one-unit outline covers about four per cent of it — a little under twenty of
+ * these samples. The bar sits below that, so the thinnest legible rock passes and
+ * a build that drew nothing there, which scores zero, does not. `specs/rocks.md`
+ * fixes the circle a rock COLLIDES as and leaves what it is drawn as to the build,
+ * so the floor is a presence reading rather than a fill fraction: a filled body,
+ * a cratered one and a bare outline all clear it.
  */
-const MIN_FRACTION = 0.4;
+const MIN_MARKED = 15;
 
 let h: Harness;
 
@@ -82,7 +82,7 @@ it("paints a rock on the field", async () => {
 
   assertGreaterThanOrEqual(
     markedCount(rock, field, SENSING_FLOOR),
-    Math.round(MIN_FRACTION * DISC_SAMPLES),
+    MIN_MARKED,
     `of ${String(DISC_SAMPLES)} samples inside ROCK_RADIUS.large of a posed ` +
       `rock, how many are more than ${String(SENSING_FLOOR)} of 441 from the field ` +
       "the build drew (specs/overview.md)",

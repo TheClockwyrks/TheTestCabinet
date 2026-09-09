@@ -50,16 +50,18 @@ import { BULLET_SPOT, FAR_SHIP, sampleField } from "./scene";
 const SENSING_FLOOR = 8;
 
 /**
- * How much of the disc of `BULLET_R` must be painted something other than the
- * field.
+ * How many of the {@link DISC_SAMPLES} readings inside `BULLET_R` must be the
+ * round's.
  *
- * A quarter. `specs/weapons.md` calls the gun's ammunition "small round bullets"
- * and gives them a collision radius of `3`, but fixes no drawn size, so a build
- * that draws its round a little inside the circle it collides as is conformant: a
- * round mark of half the collision radius still covers a quarter of the disc. A
- * build that drew nothing there covers none of it.
+ * The samples oversample a disc three units across, so the count is very nearly
+ * the painted fraction of it times {@link DISC_SAMPLES}. `specs/weapons.md` calls
+ * the gun's ammunition "small round bullets" and gives them a collision radius of
+ * `3`, but fixes no drawn size. A round drawn as a single unit of ink at the
+ * centre covers about a thirtieth of that disc, which is fifteen of these
+ * samples; the bar sits just under that, a round drawn as the specification sizes
+ * it marks nearly all of them, and a build that drew nothing there scores zero.
  */
-const MIN_FRACTION = 0.25;
+const MIN_MARKED = 12;
 
 let h: Harness;
 
@@ -84,7 +86,7 @@ it("paints the disc of BULLET_R about a posed round apart from the field", async
 
   assertGreaterThanOrEqual(
     markedCount(round, field, SENSING_FLOOR),
-    Math.round(MIN_FRACTION * DISC_SAMPLES),
+    MIN_MARKED,
     `of ${DISC_SAMPLES} samples inside BULLET_R of a round posed at rest, how ` +
       `many are more than ${SENSING_FLOOR} of 441 from the field the build drew ` +
       "(specs/overview.md)",

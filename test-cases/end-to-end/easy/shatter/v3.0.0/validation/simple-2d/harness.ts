@@ -1569,8 +1569,8 @@ export function captureStill(h: Harness, outputId: string): void {
 // check itself, derived from the figure `specs/` states for it.
 
 /**
- * Empty the world: every roster cleared, the saucer removed, nothing else
- * touched.
+ * Empty the world: every roster cleared, the saucer removed if one is up,
+ * nothing else touched.
  *
  * The sequence `clearField()` would have been, which the surface deliberately
  * does not carry: *a debug API has no operation that arranges several elements
@@ -1584,8 +1584,25 @@ export function clearWorld(h: Harness): void {
   h.debug.clearRocks();
   h.debug.clearBullets();
   h.debug.clearEnemyBullets();
-  h.debug.removeSaucer();
+  clearSaucer(h);
   h.debug.clearTorpedoes?.();
+}
+
+/**
+ * Take the saucer off the field if one is up. A no-op, and not an error, when
+ * `snapshot().saucer` is already `null`.
+ *
+ * `specs/instrumentation.md` addresses the saucer through one slot rather than a
+ * roster, with `removeSaucer()` as "both the per-entity removal and the clear",
+ * and fixes what that does to a saucer that is up. It says nothing about a slot
+ * already empty, and its rule that no operation "returns having left the state
+ * as it was" lets a build read the empty-slot call as one it must fail loudly
+ * on. So the clear is issued only where there is something to clear;
+ * `instrumentation/remove-saucer` still decides the operation against a saucer
+ * that IS up.
+ */
+export function clearSaucer(h: Harness): void {
+  if (h.snapshot().saucer !== null) h.debug.removeSaucer();
 }
 
 /**

@@ -24,10 +24,16 @@
 // (140) — so what the OFF leg reports is a hold, and not a saucer that could never
 // have moved.
 //
-// The window is one fire interval rather than the single second the item names, so
-// both halves are decided on the same run: `specs/saucer.md` takes the first shot
-// one `SAUCER_FIRE_INTERVAL` (1.6 seconds) after the craft arrives, and the centre
-// is read at the one-second mark as well as at the end.
+// The window is a fire interval and a tenth rather than the single second the item
+// names, so both halves are decided on the same run: `specs/saucer.md` takes the
+// first shot one `SAUCER_FIRE_INTERVAL` (1.6 seconds) after the craft arrives, and
+// the centre is read at the one-second mark as well as at the end. The tenth is the
+// tick-boundary slack `saucer/fires-every-1p6s` names: `addSaucer` starts the fire
+// clock at a full interval, and whether a clock counted down by `TICK_DT` is due on
+// the tick it reaches zero or on the one after is a build's to answer either way,
+// so a shot read at exactly the interval would grade the rounding of the clock
+// rather than the gun. A build whose held saucer never fires still puts nothing
+// up in the window, and one that fires late by more than the tenth still fails.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { SAUCER_FIRE_INTERVAL, SAUCER_SPEED } from "../constants";
@@ -52,8 +58,14 @@ const SAUCER_PLACE = { x: 300, y: 160 } as const;
 /** The first reading, a second in, which is the moment the item names. */
 const SECOND_FRAMES = ticksFor(1);
 
-/** The whole window: one fire interval, by which a held saucer must have fired. */
-const WINDOW_FRAMES = ticksFor(SAUCER_FIRE_INTERVAL);
+/** The fraction of a fire interval run past the first shot's boundary. */
+const OVERRUN = 0.1;
+
+/**
+ * The whole window: one fire interval and the overrun, by which a held saucer must
+ * have fired.
+ */
+const WINDOW_FRAMES = ticksFor((1 + OVERRUN) * SAUCER_FIRE_INTERVAL);
 
 /**
  * The decimal places a held centre is read to.
@@ -107,7 +119,7 @@ it("holds the saucer's centre with travel off, while its gun goes on firing", as
   );
   assertCloseTo(second.y, SAUCER_PLACE.y, HELD_DIGITS, "and its centre y");
 
-  // And out to the fire interval, by which a saucer's gun has taken its first
+  // And out past the fire interval, by which a saucer's gun has taken its first
   // shot (specs/saucer.md), with the centre still where it was posed.
   await h.advance(WINDOW_FRAMES - SECOND_FRAMES);
   captureStill(h, "held");
@@ -123,8 +135,8 @@ it("holds the saucer's centre with travel off, while its gun goes on firing", as
   assertGreaterThanOrEqual(
     end.enemyBullets.length,
     1,
-    "the shots a held saucer's gun took over one SAUCER_FIRE_INTERVAL " +
-      "(specs/instrumentation.md: a held saucer still fires)",
+    "the shots a held saucer's gun took over one SAUCER_FIRE_INTERVAL and a " +
+      "tenth (specs/instrumentation.md: a held saucer still fires)",
   );
 
   // And the same pose with the gate open really does carry the craft away, so

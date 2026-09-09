@@ -678,6 +678,26 @@ export {
 export type SurfaceCall = readonly [op: string, ...args: unknown[]];
 
 /**
+ * An operation made only while the slot `snapshot()` reports under `slot` holds a
+ * body, and skipped, answering `undefined`, when that slot is `null`. The reading
+ * that decides it is taken inside the same crossing, so nothing runs between the
+ * two.
+ *
+ * THE SAUCER IS THE SLOT THIS EXISTS FOR. `specs/instrumentation.md` addresses it
+ * through one slot rather than a roster, with `removeSaucer()` as "both the
+ * per-entity removal and the clear", and fixes what that does to a saucer that is
+ * up. It says nothing about a slot already empty, and its rule that no operation
+ * "returns having left the state as it was" lets a build read the empty-slot call
+ * as one of the calls it must fail loudly on. So a clear is issued only where
+ * there is something to clear, and `instrumentation/remove-saucer` still decides
+ * the operation against a saucer that IS up.
+ */
+export type SlotCall = { readonly op: string; readonly slot: string };
+
+/** What {@link batch} accepts: an operation, or one guarded on a slot. */
+export type BatchCall = SurfaceCall | SlotCall;
+
+/**
  * Run several of the build's surface operations in one crossing, in order, and
  * hand back what each one answered.
  *
@@ -685,7 +705,9 @@ export type SurfaceCall = readonly [op: string, ...args: unknown[]];
  * names, the same arguments, in the same order, invoked on the same
  * `window.__shatter` the `debug` proxy invokes them on. What it removes is the
  * round trip between them, not a call. A build that carries no such operation
- * still throws on it, naming it, exactly as one call would.
+ * still throws on it, naming it, exactly as one call would. The one exception
+ * is a {@link SlotCall}, which is skipped when the slot it clears is already
+ * empty, for the reason given there.
  *
  * AND NOTHING RUNS IN THE GAP IT CLOSES. The harness holds the game off the wall
  * clock from the moment it is built, so no tick passes between two poses however
@@ -702,7 +724,7 @@ export type SurfaceCall = readonly [op: string, ...args: unknown[]];
  */
 export async function batch(
   h: Harness,
-  calls: readonly SurfaceCall[],
+  calls: readonly BatchCall[],
 ): Promise<unknown[]> {
   if (h.surfaceFault !== null) failSurface(h.surfaceFault);
   if (calls.length === 0) return [];
@@ -719,7 +741,34 @@ export async function batch(
       }
       const answered: unknown[] = [];
       for (const one of list) {
-        const [name, ...args] = one as [string, ...unknown[]];
+        let name: string;
+        let args: unknown[];
+        if (Array.isArray(one)) {
+          [name, ...args] = one as [string, ...unknown[]];
+        } else {
+          const guarded = one as { op: string; slot: string };
+          const read = target["snapshot"];
+          if (typeof read !== "function") {
+            throw new Error(`shatter: window.${handle} carries no snapshot()`);
+          }
+          let state: Record<string, unknown>;
+          try {
+            state = read.apply(target, []) as Record<string, unknown>;
+          } catch (error) {
+            throw new Error(
+              `shatter: window.${handle}.snapshot() threw: ${String(error)}`,
+            );
+          }
+          if (
+            state[guarded.slot] === null ||
+            state[guarded.slot] === undefined
+          ) {
+            answered.push(undefined);
+            continue;
+          }
+          name = guarded.op;
+          args = [];
+        }
         const operation = target[name];
         if (typeof operation !== "function") {
           throw new Error(`shatter: window.${handle} carries no ${name}()`);
@@ -734,7 +783,7 @@ export async function batch(
       }
       return answered;
     },
-    [HANDLE, calls as SurfaceCall[]] as const,
+    [HANDLE, calls as BatchCall[]] as const,
   );
 }
 
@@ -1141,15 +1190,30 @@ export async function clearWorld(h: Harness): Promise<void> {
 }
 
 /**
+ * The call that takes the saucer off the field if one is up, and does nothing
+ * when the slot is already empty. See {@link SlotCall} for why the clear is
+ * guarded.
+ */
+const CLEAR_SAUCER: SlotCall = { op: "removeSaucer", slot: "saucer" };
+
+/**
+ * Take the saucer off the field if one is up. A no-op, and not an error, when
+ * `snapshot().saucer` is already `null` ({@link SlotCall}).
+ */
+export async function clearSaucer(h: Harness): Promise<void> {
+  await batch(h, [CLEAR_SAUCER]);
+}
+
+/**
  * The clears {@link clearWorld} makes, as calls a caller can carry in its own
  * batch. `torpedoes` is {@link carriesTorpedoes} for the build in question.
  */
-function clearCalls(torpedoes: boolean): SurfaceCall[] {
-  const calls: SurfaceCall[] = [
+function clearCalls(torpedoes: boolean): BatchCall[] {
+  const calls: BatchCall[] = [
     ["clearRocks"],
     ["clearBullets"],
     ["clearEnemyBullets"],
-    ["removeSaucer"],
+    CLEAR_SAUCER,
   ];
   if (torpedoes) calls.push(["clearTorpedoes"]);
   return calls;
@@ -1205,7 +1269,7 @@ export async function startPlaying(
   options: { wave?: number } = {},
 ): Promise<void> {
   const torpedoes = await carriesTorpedoes(h);
-  const calls: SurfaceCall[] = [
+  const calls: BatchCall[] = [
     ...clearCalls(torpedoes),
     ["setWaveSpawning", false],
     ["setSaucerSpawning", false],
