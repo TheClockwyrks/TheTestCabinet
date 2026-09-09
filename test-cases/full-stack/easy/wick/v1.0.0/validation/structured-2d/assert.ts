@@ -113,9 +113,14 @@ function show(value: unknown): string {
 // of them closes over whichever comparison its own module declared — taking the
 // shared ones would take the shared reading with them, silently.
 
-/** Structural equality over the JSON-shaped values the suites compare. */
+/**
+ * Structural equality over the JSON-shaped values the suites compare. Leaves
+ * are read as the shared `assertEqual` reads them: by `Object.is`, with `+0`
+ * and `-0` the same value, since a figure a build reached as negative zero is
+ * the `0` a specification states.
+ */
 function deepEquals(a: unknown, b: unknown): boolean {
-  if (Object.is(a, b)) return true;
+  if (Object.is(a, b) || (a === 0 && b === 0)) return true;
   if (Array.isArray(a) && Array.isArray(b)) {
     return (
       a.length === b.length && a.every((item, i) => deepEquals(item, b[i]))

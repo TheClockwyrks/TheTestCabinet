@@ -10,12 +10,18 @@
 // facing `"right"`.
 //
 // THE DRIVE. An isolated run with Pin held and armed, the pose, one tick: one
-// Pin dart with `vx` `−600` and `vy` `0`, exact, since a launch velocity is a
-// stated speed along a unit axis.
+// Pin dart with `vx` `−600` and `vy` `0`.
+//
+// THE TOLERANCE. `REAL_EPS`: the specification fixes the direction and the
+// speed and leaves how the build forms the velocity to it, so a build that
+// turns the facing into an angle answers `sin(π) * 600`, a residue of `1e-13`,
+// where the statement says `0`. A billionth admits every such residue and
+// still fails a dart fired at any actual angle, where a single degree at 600
+// is a `vy` of about 10.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertLength } from "../assert";
-import { PIN_LEVELS } from "../constants";
+import { assertEqual, assertLength, assertNear } from "../assert";
+import { PIN_LEVELS, REAL_EPS } from "../constants";
 import {
   advanceTicks,
   armWeapon,
@@ -53,6 +59,6 @@ it("reads back left and fires the next dart toward −x", async () => {
   const fired = await captureReplay(h, "faced", () => advanceTicks(h, 1));
   const darts = projectilesOf(fired, "pin");
   assertLength(darts, PIN_LEVELS[0].amount, "Pin darts fired on the next tick");
-  assertEqual(darts[0].vx, -PIN_LEVELS[0].speed, "the dart's vx");
-  assertEqual(darts[0].vy, 0, "the dart's vy");
+  assertNear(darts[0].vx, -PIN_LEVELS[0].speed, REAL_EPS, "the dart's vx");
+  assertNear(darts[0].vy, 0, REAL_EPS, "the dart's vy");
 });

@@ -9,7 +9,9 @@
 //
 // WHAT IS READ. Two things the frame did: it drew the heading, and it drew the
 // world beneath, read as the posed moth's produced sprite landing where the
-// camera puts its world point. Which result the overlay shows has three
+// camera puts its world point — the topmost blit there, since the
+// specification fixes what is drawn where and not how many calls paint it.
+// Which result the overlay shows has three
 // points of its own; palette, font, and layout are the build's
 // (`specs/ui.md`, Presentation).
 //
@@ -24,10 +26,10 @@
 // matched within `SPRITE_TOL` device pixels of its world point.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertLength, assertTrue } from "../assert";
+import { assertEqual, assertNotNull, assertTrue } from "../assert";
 import { CHEST_TEXT } from "../constants";
 import {
-  blitsNear,
+  blitNear,
   captureStill,
   createHarness,
   isolate,
@@ -65,9 +67,8 @@ it("draws A CHEST OPENS over the held world", async () => {
     drewText(calls, CHEST_TEXT),
     `the overlay drew ${CHEST_TEXT} (specs/ui.md, chest)`,
   );
-  assertLength(
-    blitsNear(h, blits, MOTH_X, MOTH_Y, SPRITE_TOL),
-    1,
+  assertNotNull(
+    blitNear(h, blits, MOTH_X, MOTH_Y, SPRITE_TOL),
     "the moth's sprite drawn beneath the overlay",
   );
 });

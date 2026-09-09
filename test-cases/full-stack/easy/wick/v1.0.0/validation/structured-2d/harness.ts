@@ -2641,9 +2641,28 @@ export function blitsFrom(blits: readonly Blit[], path: string): Blit[] {
 }
 
 /**
+ * The blit a player sees at the WORLD point `(x, y)`: the LAST one whose
+ * center landed within `tolerance` device pixels of it, or `null` when none
+ * did. The last, because a build is free to paint a thing more than once per
+ * frame — the same sprite from two components, a shadow pass under the
+ * sprite — and the specification fixes what is drawn where, never how many
+ * calls draw it; the topmost is the one the picture shows.
+ */
+export function blitNear(
+  h: Harness,
+  blits: readonly Blit[],
+  x: number,
+  y: number,
+  tolerance: number,
+): Blit | null {
+  const found = blitsNear(h, blits, x, y, tolerance);
+  return found.length === 0 ? null : found[found.length - 1];
+}
+
+/**
  * The produced file painted nearest to and within `tolerance` device pixels
  * of the WORLD point `(x, y)`, or `null` when no blit landed there. The LAST
- * such blit, because that is the one a player sees.
+ * such blit, because that is the one a player sees ({@link blitNear}).
  */
 export function spriteNear(
   h: Harness,
@@ -2652,8 +2671,7 @@ export function spriteNear(
   y: number,
   tolerance: number,
 ): string | null {
-  const found = blitsNear(h, blits, x, y, tolerance);
-  return found.length === 0 ? null : found[found.length - 1].id;
+  return blitNear(h, blits, x, y, tolerance)?.id ?? null;
 }
 
 /**

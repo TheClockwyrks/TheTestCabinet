@@ -6,14 +6,24 @@
 // `setFacing(facing)`): "Sets `facing` to `facing`, `"left"` or `"right"`."
 // specs/weapons.md — Pin: "A dart is a circle of `radius`, fired horizontally
 // in the facing direction at `speed`"; "The facing direction is `facing` ...
-// `-x` for `"left"`". So the dart's `vx` is negative and its `vy` `0`.
+// `-x` for `"left"`". So the dart's `vx` is negative and its `vy` `0`, read
+// to `FLOAT_TOL`: the specification leaves how the build forms the velocity
+// to it, so a build that turns the facing into an angle answers `sin(π) *
+// speed`, a residue of `1e-13`, where the statement says `0`. A billionth
+// admits every such residue and still fails a dart fired at any actual angle.
 //
 // WHY THE WORLD IS POSED AS IT IS. A fresh run faces right, so the pose is a
 // change; Pin needs no target, so the firing tick creates the dart on an empty
 // night, and its velocity is read off the tick's snapshot before it moves.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
+import {
+  assertEqual,
+  assertGreaterThan,
+  assertLessThan,
+  assertNear,
+} from "../assert";
+import { FLOAT_TOL } from "../constants";
 import {
   captureReplay,
   createHarness,
@@ -60,6 +70,6 @@ it("poses the facing direction, and a dart fires that way", async () => {
   );
   for (const dart of firing.projectiles) {
     assertLessThan(dart.vx, 0, "a dart's vx, toward -x");
-    assertEqual(dart.vy, 0, "a dart's vy, horizontal");
+    assertNear(dart.vy, 0, FLOAT_TOL, "a dart's vy, horizontal");
   }
 });

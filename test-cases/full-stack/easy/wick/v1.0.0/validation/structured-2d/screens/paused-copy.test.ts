@@ -15,7 +15,9 @@
 // read as the two of its readouts that are TEXT the specification fixes the
 // form of; and it drew the world beneath, read as the posed moth's own
 // produced sprite landing at the same device pixel it landed on the `playing`
-// frame before the pause. Palette, font, and layout are the build's
+// frame before the pause. The sprite is the topmost blit near the moth's
+// world point: the specification fixes what is drawn where, not how many
+// calls a build paints it with. Palette, font, and layout are the build's
 // (`specs/ui.md`, Presentation), so nothing about how any of it looks is read,
 // and which of the two items is listed first is
 // `screens/paused-lists-items`'s point.
@@ -37,7 +39,6 @@
 import { afterEach, beforeEach, it } from "vitest";
 import {
   assertEqual,
-  assertLength,
   assertLessThan,
   assertNotNull,
   assertPointNear,
@@ -46,7 +47,7 @@ import {
 import { LEVEL_LABEL, PAUSED_TEXT, PAUSE_ITEMS, clockText } from "../constants";
 import {
   blitCenter,
-  blitsNear,
+  blitNear,
   captureStill,
   createHarness,
   isolate,
@@ -82,8 +83,9 @@ it("draws PAUSED, the pause menu beneath it, and the HUD over the frozen world",
   placeEnemy(h, "moth", MOTH_X, MOTH_Y);
 
   const playing = await h.frameDraw();
-  const onPlaying = blitsNear(h, playing.blits, MOTH_X, MOTH_Y, SPRITE_TOL);
-  assertLength(onPlaying, 1, "the moth's sprite on the playing frame");
+  const onPlaying = blitNear(h, playing.blits, MOTH_X, MOTH_Y, SPRITE_TOL);
+  assertNotNull(onPlaying, "the moth's sprite on the playing frame");
+  if (onPlaying === null) return;
 
   const after = poseScreen(h, "paused");
   const paused = await h.frameDraw();
@@ -116,16 +118,17 @@ it("draws PAUSED, the pause menu beneath it, and the HUD over the frozen world",
     );
   }
 
-  const onPaused = blitsNear(h, paused.blits, MOTH_X, MOTH_Y, SPRITE_TOL);
-  assertLength(onPaused, 1, "the moth's sprite on the paused frame");
+  const onPaused = blitNear(h, paused.blits, MOTH_X, MOTH_Y, SPRITE_TOL);
+  assertNotNull(onPaused, "the moth's sprite on the paused frame");
+  if (onPaused === null) return;
   assertEqual(
-    onPaused[0].id,
-    onPlaying[0].id,
+    onPaused.id,
+    onPlaying.id,
     "the produced file the moth was drawn from while paused",
   );
   assertPointNear(
-    blitCenter(onPaused[0]),
-    blitCenter(onPlaying[0]),
+    blitCenter(onPaused),
+    blitCenter(onPlaying),
     SPRITE_TOL,
     "where the moth was drawn while paused, against where it was drawn playing",
   );

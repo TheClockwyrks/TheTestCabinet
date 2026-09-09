@@ -33,7 +33,10 @@
 // committed tree running, so a reviewer sees that the files this point proved
 // self-contained are the ones this game is made of; no assertion reads it.
 // The world is isolated first so the frame is the posed one rather than
-// whatever a director spawn happened to put on it.
+// whatever a director spawn happened to put on it. A build whose debug
+// surface cannot pose the night loses the still and keeps the verdict: the
+// three readings below are facts of the committed tree, which the surface
+// never touches.
 //
 // THE TOLERANCE. None. Each of the three readings is a list that is empty or
 // is not.
@@ -70,9 +73,13 @@ afterEach(() => {
 it(
   "installs and rebuilds from the committed tree with no asset tool on PATH",
   async () => {
-    isolate(h);
-    await h.frameDraw();
-    captureStill(h, "built");
+    try {
+      isolate(h);
+      await h.frameDraw();
+      captureStill(h, "built");
+    } catch {
+      // Evidence only; the rebuild below carries the verdict.
+    }
 
     const lifecycle = installLifecycleToolCommands();
     if (lifecycle.length > 0) {

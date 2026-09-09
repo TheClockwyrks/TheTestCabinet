@@ -33,7 +33,9 @@
 // WHY A NIGHT IS DRIVEN AT ALL. Only for the evidence: the still is the
 // committed tree running, so a reviewer sees that the files this point proved
 // self-contained are the ones this game is made of. Nothing about the still is
-// read by an assertion.
+// read by an assertion, so a build whose debug surface cannot pose the night
+// loses the still and keeps the verdict: the three readings below are facts
+// of the committed tree, which the surface never touches.
 //
 // TOLERANCE. None. Each of the three readings is a list that is empty or is not.
 
@@ -58,9 +60,13 @@ afterEach(() => {
 it(
   "installs and rebuilds from the committed tree with no asset tool on PATH",
   async () => {
-    isolate(h);
-    await h.frameDraw();
-    captureStill(h, "built");
+    try {
+      isolate(h);
+      await h.frameDraw();
+      captureStill(h, "built");
+    } catch {
+      // Evidence only; the rebuild below carries the verdict.
+    }
 
     const lifecycle = installLifecycleToolCommands();
     if (lifecycle.length > 0) {

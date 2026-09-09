@@ -8,7 +8,9 @@
 //
 // WHAT IS READ. Two things the frame did: it drew the heading, and it drew the
 // world beneath, read as the posed moth's produced sprite landing where the
-// camera puts its world point. The offers are `screens/levelup-lists-offers`'s
+// camera puts its world point — the topmost blit there, since the
+// specification fixes what is drawn where and not how many calls paint it.
+// The offers are `screens/levelup-lists-offers`'s
 // point; palette, font, and layout are the build's (`specs/ui.md`,
 // Presentation).
 //
@@ -21,10 +23,10 @@
 // matched within `SPRITE_TOL` device pixels of its world point.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertLength, assertTrue } from "../assert";
+import { assertEqual, assertNotNull, assertTrue } from "../assert";
 import { LEVEL_UP_TEXT } from "../constants";
 import {
-  blitsNear,
+  blitNear,
   captureStill,
   createHarness,
   isolate,
@@ -62,9 +64,8 @@ it("draws THE LAMP BURNS BRIGHTER over the held world", async () => {
     drewText(calls, LEVEL_UP_TEXT),
     `the overlay drew ${LEVEL_UP_TEXT} (specs/ui.md, levelup)`,
   );
-  assertLength(
-    blitsNear(h, blits, MOTH_X, MOTH_Y, SPRITE_TOL),
-    1,
+  assertNotNull(
+    blitNear(h, blits, MOTH_X, MOTH_Y, SPRITE_TOL),
     "the moth's sprite drawn beneath the overlay",
   );
 });
