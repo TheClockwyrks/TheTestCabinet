@@ -16,12 +16,13 @@
 // the update rather than the pose.
 //
 // EVERY BOOLEAN IS POSED BOTH WAYS. A field read back once could be a constant.
-// Each of the nine flags — the worm's diving, stepping and body, the foe's hit,
-// mind and travel, and the three world gates — is set to one value, read, set to
-// the other, and read again, so a snapshot that simply always answers `true`
-// fails on the second reading. The two headings are posed the same way, `-1`
-// then `+1`, because `addWorm` starts a worm at `+1` on both (that file, The
-// worms) and a single pose of `+1` would read back on a build that ignored it.
+// Each of the nine flags — the worm's diving, stepping and body, the dropper's
+// hit, mind and travel, and the three world gates — is set to one value, read,
+// set to the other, and read again, so a snapshot that simply always answers
+// `true` fails on the second reading. The two headings are posed the same way,
+// `-1` then `+1`, because `addWorm` starts a worm at `+1` on both (that file,
+// The worms) and a single pose of `+1` would read back on a build that ignored
+// it.
 //
 // MUTE IS DELIBERATELY ABSENT. There is no `setMuted` under any engine, and
 // `muted` is "the game's copy of the runtime's mute bit" rather than a posed
@@ -140,12 +141,17 @@ it("reports every posed field back through snapshot", async () => {
   startPlaying(h);
 
   // The board the poses below are applied to: one node, one worm, one foe, one
-  // bolt. The foe is held still so the picture and the readings are of the same
-  // board; its travel is posed and read back on its own account further down.
+  // bolt. The foe is a dropper, because the hit flag is the one
+  // specs/instrumentation.md gives a dropper ("Sets the dropper's
+  // taken-its-first-bolt flag") and every foe pose is read back off the same
+  // foe. It is held still, with its laying held too, so the picture and the
+  // readings are of the same board; both faculties are posed and read back on
+  // their own account further down.
   h.debug.setNode(NODE_C, NODE_R, NODE_CHARGE);
   const worm = poseWorm(h, WORM_C, WORM_R);
-  const foe = poseFoe(h, "glitch", FOE_C, FOE_R);
+  const foe = poseFoe(h, "dropper", FOE_C, FOE_R);
   h.debug.setFoeTravel(foe, false);
+  h.debug.setFoeMind(foe, false);
   poseBolt(h, tileCX(BOLT_C), tileCY(BOLT_R));
 
   await h.advance(1);
@@ -362,7 +368,7 @@ it("reports every posed field back through snapshot", async () => {
     );
   }
 
-  // ---- The foe's velocity, its hit flag and its two faculties --------------
+  // ---- The dropper's velocity, its hit flag and its two faculties ----------
 
   h.debug.setFoeVelocity(foe, FOE_VX, FOE_VY);
   const steered = foeById(h.snapshot(), foe);

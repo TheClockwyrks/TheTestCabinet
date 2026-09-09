@@ -31,16 +31,31 @@
 // (specs/board.md gives the map both ways), so each is accepted in either
 // spelling. A worm's "head tile" is named as a tile and is read as one.
 //
-// AND TWO ARE READ AS FORMS RATHER THAN AS FIGURES. A worm's "two headings" and
-// its "diving flag" are a pair of `+1`/`-1` values and a boolean, and there is
-// no spelling of either that the specification fixes — `LU`, `left/up`,
-// `dh -1 dv -1` and `←↑` are all honest renderings of the same fact. So the worm
-// is posed heading LEFT and UP with its diving flag set, which is the reading
-// whose written forms can be enumerated (a `+1` cannot: the digit `1` falls
-// inside every other figure on the panel), and each fact is accepted in any of
-// the forms {@link HEADING_FORMS} and {@link DIVING_FORMS} list. The `none` and
-// `simple-2d` suites read the same two patterns, so the one requirement is
-// decided the same way on all three engines.
+// AND THREE ARE READ AS A DEPENDENCE RATHER THAN AS A SPELLING. A worm's "two
+// headings" and its "diving flag" are a pair of `+1`/`-1` values and a boolean,
+// and there is no spelling of any of them the specification fixes — `LU`,
+// `left/up`, `dh -1 dv -1`, `←↑`, and a mark that is there when the worm dives
+// and gone when it does not are all honest renderings. No list of forms is
+// complete, so each is read the one way that admits every honest form: the
+// panel drawn after the value is moved through the surface differs from the
+// panel drawn before it, and a panel that reports the value nowhere draws the
+// same lines twice. The board is still and the panel stays up between the two
+// readings, so the value moved is the only thing that changed under them. The
+// `none` and `simple-2d` suites read the three the same way.
+//
+// A DEPENDENCE IS READ AGAINST A CONTROL PAIR. specs/instrumentation.md fixes
+// what the overlay shows AT LEAST, so a build may register more, and a source
+// such as `simTime`, which accumulates every update's delta whatever the screen,
+// a frame count or a frame time moves with the board frozen: its line differs
+// between any two readings whatever was moved, and a difference alone proves
+// nothing. So before a value is moved the panel is read twice with nothing
+// moved, a second of the driven clock apart, and the lines that differed are
+// RESTLESS; a value answers only through a line that changed when it was moved
+// and is not one of those. A line is known by its text with every run of digits
+// masked and its rank among the lines that mask the same, rather than by its
+// index or by its text: a restless line's text is new at every reading, and an
+// index would rename every line after a mark that comes and goes. It is
+// COMPARED by its full text.
 //
 // THE PANEL IS COMPARED AGAINST THE FRAME BEFORE IT, WHICH IS ALSO THE
 // OFF-BY-DEFAULT READING. The HUD draws the score, the lives and the level in
@@ -72,6 +87,7 @@ import {
   poseFoe,
   poseWorm,
   startPlaying,
+  TICK_HZ,
   tileAtPoint,
   toggleOverlay,
   type Harness,
@@ -157,19 +173,70 @@ function mentions(lines: readonly string[], value: number): boolean {
 }
 
 /**
- * The two facts that are not numbers, and the forms a build may draw them in.
+ * How many frames apart the two CONTROL readings of the panel are taken: one
+ * second of the driven clock.
  *
- * A heading of `-1` is honestly written as a signed number, as an arrow, as a
- * word, or as the initial of a direction — `dh -1`, `←`, `left`, `L`, `LU` are
- * all the same fact — and a diving flag is written as its own name, as an arrow,
- * or as a boolean. Each pattern accepts every one of those forms.
+ * A line that moves on its own moves at its own rate. A frame time or a frame
+ * count changes every frame, and two readings one frame apart catch it; a clock
+ * drawn to whole seconds ticks once a second, and two readings one frame apart
+ * almost never straddle the tick, yet a dependence pair sometimes would. A
+ * second of frames holds every such clock to at least one tick, so the control
+ * pair names it restless before a dependence can rest on it.
  */
-const HEADING_FORMS = /-1|←|↑|◀|▲|\bleft\b|\bup\b|\bl[ud]?\b|\bu[lr]?\b/i;
-const DIVING_FORMS = /div|↓|▼|▽|\btrue\b|\byes\b|\bon\b/i;
+const CONTROL_FRAMES = TICK_HZ;
 
-/** Whether some line is drawn in one of the forms `pattern` accepts. */
-function drawnAs(lines: readonly string[], pattern: RegExp): boolean {
-  return lines.some((line) => pattern.test(line));
+/** A run of digits, which is what a line's figure is drawn as. */
+const DIGITS = /\d+/g;
+
+/**
+ * Every line of one reading of the panel, under a name that outlives its figures.
+ *
+ * The worm's two headings and its diving flag are not figures, and
+ * specs/instrumentation.md fixes no spelling for them: a heading of `-1` is
+ * honestly written as a signed number, an arrow, a word or an initial, and a
+ * flag as its name, an arrow, a boolean, or a mark that is there when it is set
+ * and gone when it is not. No list of forms is complete, so each is read as a
+ * DEPENDENCE instead: the panel drawn after the value is moved through the
+ * surface differs from the panel drawn before it, and a panel that reports the
+ * value nowhere draws the same lines twice. The board is frozen and the panel
+ * stays up between the two readings, so the value moved is the only thing that
+ * changed under them, apart from what the panel moves on its own — which the
+ * control pair names first, and which no dependence may rest on. The `none`,
+ * `simple-2d` and `structured-2d` suites read the three the same way.
+ *
+ * A LINE IS NAMED BY ITS MASKED TEXT AND ITS RANK: its text with every run of
+ * digits blanked, and how many lines before it in the reading blank to the
+ * same. A figure that moves on its own leaves its line's name alone, so the
+ * line the control pair found restless is the line a dependence pair finds
+ * changed; a panel with two worms tells its two worm lines apart by rank; and a
+ * mark that is drawn only while the worm dives is a name present in one reading
+ * and absent from the other. Only the name is masked: a line is compared by
+ * its FULL text, so a flag written `1` or `0` still changes its line.
+ */
+function nameLines(lines: readonly string[]): Map<string, string> {
+  const ranks = new Map<string, number>();
+  const named = new Map<string, string>();
+  for (const line of lines) {
+    const mask = line.replace(DIGITS, "#");
+    const rank = ranks.get(mask) ?? 0;
+    ranks.set(mask, rank + 1);
+    named.set(`${mask}\u0000${String(rank)}`, line);
+  }
+  return named;
+}
+
+/** The names of every line the two readings disagree on, either way round. */
+function changedLines(a: readonly string[], b: readonly string[]): Set<string> {
+  const namedA = nameLines(a);
+  const namedB = nameLines(b);
+  const changed = new Set<string>();
+  for (const [name, line] of namedA) {
+    if (namedB.get(name) !== line) changed.add(name);
+  }
+  for (const [name, line] of namedB) {
+    if (namedA.get(name) !== line) changed.add(name);
+  }
+  return changed;
 }
 
 /** Whether some line carries `text`, ignoring case. */
@@ -264,6 +331,44 @@ it("draws the facts the specification names and changes nothing", async () => {
       "(specs/instrumentation.md, Diagnostics)",
   );
 
+  // The worm's two headings and its diving flag, each moved through the
+  // surface with the panel up and the board still, and the panel read either
+  // side of the move.
+  const panelNow = async (): Promise<string[]> => {
+    h.calls.length = 0;
+    await h.advance(1);
+    return drawnText(h.calls).filter(
+      (line) =>
+        !drawn.has(line) &&
+        !ENGINE_WORLD_LINE.test(line) &&
+        !ENGINE_METRICS_LINE.test(line),
+    );
+  };
+
+  // The control pair: the panel read twice with nothing moved, a second of the
+  // driven clock apart. Whatever differs is what the panel moves on its own,
+  // and no dependence below may rest on it.
+  const still = await panelNow();
+  await h.advance(CONTROL_FRAMES - 1);
+  const restless = changedLines(still, await panelNow());
+
+  /** One value moved through the surface, and the panel before and after. */
+  const answersTo = async (move: () => void): Promise<boolean> => {
+    const held = await panelNow();
+    move();
+    const moved = await panelNow();
+    return [...changedLines(held, moved)].some((name) => !restless.has(name));
+  };
+  const divingAnswers = await answersTo(() =>
+    h.debug.setWormDiving(worm, false),
+  );
+  const headingAnswers = await answersTo(() =>
+    h.debug.setWormHeading(worm, -WORM_DH),
+  );
+  const descentAnswers = await answersTo(() =>
+    h.debug.setWormDescent(worm, -WORM_DV),
+  );
+
   const foeAt = after.foes.find((entry) => entry.id === foe);
   const foeTile = tileAtPoint(foeAt?.x ?? 0, foeAt?.y ?? 0);
   const cursorTile = tileAtPoint(after.cursor.x, after.cursor.y);
@@ -294,13 +399,24 @@ it("draws the facts the specification names and changes nothing", async () => {
     },
     {
       what:
-        `the worm's two headings, posed at dh ${WORM_DH} and dv ${WORM_DV}, ` +
-        `in any of the forms ${HEADING_FORMS}`,
-      found: drawnAs(panel, HEADING_FORMS),
+        `the worm's horizontal heading, read as a dependence: the panel ` +
+        `drawn with it reversed from ${WORM_DH} differs from the one before ` +
+        `in a line that held still with nothing moved`,
+      found: headingAnswers,
     },
     {
-      what: `the worm's diving flag, posed set, in any of the forms ${DIVING_FORMS}`,
-      found: drawnAs(panel, DIVING_FORMS),
+      what:
+        `the worm's vertical heading, read as a dependence: the panel ` +
+        `drawn with it reversed from ${WORM_DV} differs from the one before ` +
+        `in a line that held still with nothing moved`,
+      found: descentAnswers,
+    },
+    {
+      what:
+        "the worm's diving flag, read as a dependence: the panel drawn " +
+        "with the flag cleared differs from the one drawn with it set in a " +
+        "line that held still with nothing moved",
+      found: divingAnswers,
     },
     { what: `the foe's id, ${foe}`, found: mentions(panel, foe) },
     { what: `the foe's kind, "glitch"`, found: says(panel, "glitch") },

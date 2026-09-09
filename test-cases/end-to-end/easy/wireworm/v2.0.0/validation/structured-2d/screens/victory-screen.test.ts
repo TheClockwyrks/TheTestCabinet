@@ -115,7 +115,13 @@ it("reports the score, the twelve levels cleared, the lives and both ending item
     );
   }
 
-  // The lives, read as a dependence of the picture on the figure.
+  // The lives, read as a dependence of the picture on the figure. The control
+  // pair is taken after the screen's first frame: a build's first frame of a
+  // screen may differ from every later one on the build's own account — a
+  // context setting one frame leaves for the next, a fill the first frame lays
+  // down and later frames only repeat — and a control read across that pair
+  // measures a one-off change rather than what the screen does on its own.
+  await h.advance(1);
   const atThree = canvasPixels(h);
   await h.advance(1);
   const again = canvasPixels(h);

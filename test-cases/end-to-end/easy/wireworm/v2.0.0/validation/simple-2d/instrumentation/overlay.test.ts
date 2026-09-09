@@ -27,8 +27,24 @@
 // and an entity id are both small integers — and those are the weakest readings
 // here. HOW each value is drawn is the build's: specs/overview.md fixes no
 // palette, no typeface and no layout, and the engine formats a source's value
-// itself, so the two flags that are not numbers are accepted in any of the forms a
-// build would honestly draw them in.
+// itself, so the worm's two headings and its diving flag, which are not
+// figures, are read as a DEPENDENCE: the panel drawn after one of them is moved
+// through the surface differs from the panel drawn before, whatever spelling
+// the build chose.
+//
+// A DEPENDENCE IS READ AGAINST A CONTROL PAIR. specs/instrumentation.md fixes
+// what the overlay shows AT LEAST, so a build may register more, and a source
+// such as `simTime`, which accumulates every update's delta whatever the screen,
+// a frame count or a frame time moves with the board frozen: its line differs
+// between any two readings whatever was moved, and a difference alone proves
+// nothing. So before a value is moved the panel is read twice with nothing
+// moved, a second of the driven clock apart, and the lines that differed are
+// RESTLESS; a value answers only through a line that changed when it was moved
+// and is not one of those. A line is known by its text with every run of digits
+// masked and its rank among the lines that mask the same, rather than by its
+// index or by its text: a restless line's text is new at every reading, and an
+// index would rename every line after a mark that comes and goes. It is
+// COMPARED by its full text.
 //
 // THE BOARD IS POSED AND THEN PAUSED. specs/ui.md freezes the board behind the
 // pause menu — no worm steps, no foe moves, no bolt travels, no phase timer runs —
@@ -52,6 +68,7 @@ import {
   poseWorm,
   seconds,
   startPlaying,
+  TICK_HZ,
   type Harness,
 } from "../harness";
 
@@ -88,19 +105,71 @@ const BOLTS: ReadonlyArray<readonly [number, number]> = [
 ];
 
 /**
- * The two facts that are not numbers, and the forms a build may draw them in.
+ * How many frames apart the two CONTROL readings of the panel are taken: one
+ * second of the driven clock.
  *
- * The worm is posed heading left and up with its diving flag set, and
- * specs/instrumentation.md fixes no spelling for either fact: a heading of `-1`
- * is honestly written as a signed number, as an arrow, as a word, or as the
- * initial of a direction — `dh -1`, `←`, `left`, `L`, `LU` are all the same
- * fact — and a diving flag is written as its own name, as an arrow, or as a
- * boolean. So each pattern accepts every one of those forms, and the same pair
- * is read by the `none`, `simple-2d` and `structured-2d` suites, so the one
- * requirement is decided the same way on all three engines.
+ * A line that moves on its own moves at its own rate. A frame time or a frame
+ * count changes every frame, and two readings one frame apart catch it; a clock
+ * drawn to whole seconds ticks once a second, and two readings one frame apart
+ * almost never straddle the tick, yet a dependence pair sometimes would. A
+ * second of frames holds every such clock to at least one tick, so the control
+ * pair names it restless before a dependence can rest on it.
  */
-const HEADING_FORMS = /-1|←|↑|◀|▲|\bleft\b|\bup\b|\bl[ud]?\b|\bu[lr]?\b/i;
-const DIVING_FORMS = /div|↓|▼|▽|\btrue\b|\byes\b|\bon\b/i;
+const CONTROL_FRAMES = TICK_HZ;
+
+/** A run of digits, which is what a line's figure is drawn as. */
+const DIGITS = /\d+/g;
+
+/**
+ * Every line of one reading of the panel, under a name that outlives its figures.
+ *
+ * The worm's two headings and its diving flag are not figures, and
+ * specs/instrumentation.md fixes no spelling for them: a heading of `-1` is
+ * honestly written as a signed number, an arrow, a word or an initial, and a
+ * flag as its name, an arrow, a boolean, or a mark that is there when it is set
+ * and gone when it is not. No list of forms is complete, so each is read as a
+ * DEPENDENCE instead: the panel drawn after the value is moved through the
+ * surface differs from the panel drawn before it, and a panel that reports the
+ * value nowhere draws the same lines twice. The board is frozen and the panel
+ * stays up between the two readings, so the value moved is the only thing that
+ * changed under them, apart from what the panel moves on its own — which the
+ * control pair names first, and which no dependence may rest on. The `none`,
+ * `simple-2d` and `structured-2d` suites read the three the same way.
+ *
+ * A LINE IS NAMED BY ITS MASKED TEXT AND ITS RANK: its text with every run of
+ * digits blanked, and how many lines before it in the reading blank to the
+ * same. A figure that moves on its own leaves its line's name alone, so the
+ * line the control pair found restless is the line a dependence pair finds
+ * changed; a panel with two worms tells its two worm lines apart by rank; and a
+ * mark that is drawn only while the worm dives is a name present in one reading
+ * and absent from the other. Only the name is masked: a line is compared by
+ * its FULL text, so a flag written `1` or `0` still changes its line.
+ */
+function nameLines(lines: readonly string[]): Map<string, string> {
+  const ranks = new Map<string, number>();
+  const named = new Map<string, string>();
+  for (const line of lines) {
+    const mask = line.replace(DIGITS, "#");
+    const rank = ranks.get(mask) ?? 0;
+    ranks.set(mask, rank + 1);
+    named.set(`${mask}\u0000${String(rank)}`, line);
+  }
+  return named;
+}
+
+/** The names of every line the two readings disagree on, either way round. */
+function changedLines(a: readonly string[], b: readonly string[]): Set<string> {
+  const namedA = nameLines(a);
+  const namedB = nameLines(b);
+  const changed = new Set<string>();
+  for (const [name, line] of namedA) {
+    if (namedB.get(name) !== line) changed.add(name);
+  }
+  for (const [name, line] of namedB) {
+    if (namedA.get(name) !== line) changed.add(name);
+  }
+  return changed;
+}
 
 /** The engine's own frame-time line, which is not one of the game's sources. */
 const ENGINE_METRICS = /^\s*frame\s*:/i;
@@ -268,8 +337,6 @@ it("draws every registered value and changes nothing in the game", async () => {
   assertFigure(overlay, WORM_LENGTH, "the worm's length");
   assertFigure(overlay, WORM_C, "the column of the worm's head tile");
   assertFigure(overlay, WORM_R, "the row of the worm's head tile");
-  assertForm(overlay, HEADING_FORMS, "the worm's headings");
-  assertForm(overlay, DIVING_FORMS, "the worm's diving flag");
 
   assertFigure(overlay, foeId, "the foe's id");
   assertForm(overlay, /corruptor/i, "the foe's kind");
@@ -280,6 +347,56 @@ it("draws every registered value and changes nothing in the game", async () => {
   assertFigure(overlay, CURSOR_Y, "the y of the cursor's position");
 
   assertFigure(overlay, BOLTS.length, "how many bolts are in flight");
+
+  // ---- The two headings and the diving flag, as a dependence --------------
+
+  /** The panel's lines on the next frame, less the engine's own. */
+  const panelNow = async (): Promise<string[]> => {
+    h.calls.length = 0;
+    await h.advance(1);
+    return newLines(baseline, drawnText(h.calls)).filter(
+      (line) => !ENGINE_METRICS.test(line),
+    );
+  };
+
+  // The control pair: the panel read twice with nothing moved, a second of the
+  // driven clock apart. Whatever differs is what the panel moves on its own,
+  // and no dependence below may rest on it.
+  const still = await panelNow();
+  await h.advance(CONTROL_FRAMES - 1);
+  const restless = changedLines(still, await panelNow());
+
+  /** One value moved through the surface, and the panel before and after. */
+  const answersTo = async (move: () => void, what: string): Promise<void> => {
+    const held = await panelNow();
+    move();
+    const moved = await panelNow();
+    const answers = [...changedLines(held, moved)].some(
+      (name) => !restless.has(name),
+    );
+    if (!answers) {
+      fail(
+        `an overlay line that changes when ${what} is moved through the ` +
+          `surface and holds still with nothing moved (${String(restless.size)} ` +
+          `line(s) moved on their own), so a source reports it ` +
+          `(specs/instrumentation.md)`,
+        held,
+      );
+    }
+  };
+
+  await answersTo(
+    () => h.debug.setWormDiving(wormId, false),
+    "the worm's diving flag",
+  );
+  await answersTo(
+    () => h.debug.setWormHeading(wormId, 1),
+    "the worm's horizontal heading",
+  );
+  await answersTo(
+    () => h.debug.setWormDescent(wormId, 1),
+    "the worm's vertical heading",
+  );
 
   // ---- And the game is exactly as it was ----------------------------------
 

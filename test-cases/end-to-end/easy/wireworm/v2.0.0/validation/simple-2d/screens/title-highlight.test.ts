@@ -128,9 +128,13 @@ it("draws the menu band differently with the highlight moved", async () => {
   const baselines = TITLE_ITEMS.map((item) => baselineOf(drawn, item));
   const top = Math.min(...baselines) - BAND_PAD;
   const bottom = Math.max(...baselines) + BAND_PAD;
-  const first = bandPixels(top, bottom);
 
-  // The control: a second frame at the same highlight.
+  // The control: two frames at the same highlight, both after the screen's
+  // first frame — which a build may draw differently from every later one on
+  // its own account, a context setting one frame leaves for the next, say — so
+  // the control measures what the band does on its own rather than a one-off.
+  await h.advance(1);
+  const first = bandPixels(top, bottom);
   await h.advance(1);
   const second = bandPixels(top, bottom);
   const restless = differingPixels(first, second);
