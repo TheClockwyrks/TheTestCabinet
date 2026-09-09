@@ -137,6 +137,7 @@ function graftContext(canvas: HTMLCanvasElement): string[] {
     "drawImage",
     "save",
     "restore",
+    "clip",
   ]) {
     ctx[name] = method(name);
   }

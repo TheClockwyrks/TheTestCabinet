@@ -171,6 +171,8 @@ ratio and keeps the whole logical field visible.
 The leftover space on the long axis is split into two equal letterbox bars,
 which are the offsets. They are computed against the rounded device size the
 backing store is written at, so the two bars sum to the drawable area exactly.
+The bars hold `background` alone: the pipeline clips every component to the
+logical field, as [rendering](/engines/structured-2d/apis/rendering/) states.
 
 A degenerate input yields a `scale` of `0`: a surface measuring zero on either
 axis, or a logical size that is not finite and positive. A ratio that is not

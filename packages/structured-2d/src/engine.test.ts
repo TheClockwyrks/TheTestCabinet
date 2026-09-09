@@ -84,6 +84,7 @@ function fakeCanvas(log: string[] = []): HTMLCanvasElement {
     "drawImage",
     "save",
     "restore",
+    "clip",
   ]) {
     ctx[name] = method(name);
   }

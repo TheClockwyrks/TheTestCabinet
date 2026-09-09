@@ -11,7 +11,9 @@ The engine owns:
 
 - The frame loop and the clock that decides what each frame's delta time is.
 - Canvas sizing: the letterbox, the centring, and the device pixel ratio.
-- Clearing and transforming the drawing context before every frame.
+- Clearing and transforming the drawing context before every frame, and
+  clipping it to the logical field so the letterbox bars hold the background
+  alone.
 - Keyboard listening, action binding, and edge detection.
 - Pointer tracking, mapped into the game's own logical coordinates.
 - The Web Audio graph, cue synthesis, looping, mute, and the first-gesture unlock.

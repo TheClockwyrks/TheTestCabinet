@@ -267,6 +267,7 @@ function stubContext(canvas: HTMLCanvasElement): void {
     "drawImage",
     "save",
     "restore",
+    "clip",
     "setLineDash",
   ]) {
     ctx[name] = (): void => undefined;

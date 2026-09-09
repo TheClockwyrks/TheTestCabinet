@@ -255,14 +255,43 @@ export class RenderPipeline implements Renderer {
       world: this.drawApi(scene, camera, mode, "world"),
       screen: this.drawApi(scene, camera, mode, "screen"),
     };
-    for (const entry of collected) {
-      const component = entry.component;
-      // Anything but `screen` is world space, matching the transform applied.
-      const api = component.space === "screen" ? apis.screen : apis.world;
-      this.drawOne(scene, camera, component, api, mode);
-    }
+    // Steps 5 and 6 draw inside the logical field, so the letterbox bars hold
+    // `background` alone whatever a component draws. Restored in a `finally`
+    // so a component that throws does not leave the clip on the next frame's
+    // clear.
+    const ctx = scene.ctx;
+    ctx.save();
+    this.clipToField(scene);
+    try {
+      for (const entry of collected) {
+        const component = entry.component;
+        // Anything but `screen` is world space, matching the transform applied.
+        const api = component.space === "screen" ? apis.screen : apis.world;
+        this.drawOne(scene, camera, component, api, mode);
+      }
 
-    if (this.overlayEnabled) this.drawCollisionOverlay(scene, camera);
+      if (this.overlayEnabled) this.drawCollisionOverlay(scene, camera);
+    } finally {
+      ctx.restore();
+    }
+  }
+
+  /**
+   * Clip the context to the logical field.
+   *
+   * Set in device space through the viewport, so the transform each component
+   * is handed leaves it where it is, and a clip a component sets of its own
+   * intersects with it. The path the clip was taken from is begun anew
+   * afterwards, so a component that fills without beginning a path of its own
+   * does not fill the field.
+   */
+  private clipToField(scene: RenderScene): void {
+    const { ctx, viewport, width, height } = scene;
+    applyViewport(ctx, viewport);
+    ctx.beginPath();
+    ctx.rect(0, 0, width, height);
+    ctx.clip();
+    ctx.beginPath();
   }
 
   /**

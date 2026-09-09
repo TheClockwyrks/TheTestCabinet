@@ -53,7 +53,9 @@ screen.
 
 The leftover space on the long axis is split into two equal bars, so the field
 is centered rather than pinned to a corner. Those bars are the viewport's
-offsets, and they are what letterboxing consists of.
+offsets, and they are what letterboxing consists of. They hold the background
+alone: the pipeline clips every component to the logical field, so a world
+component projected past the field's edge stops at the bar.
 
 The device pixel ratio is folded into the scale rather than carried alongside
 it, and the backing store is sized to the reported size multiplied by that

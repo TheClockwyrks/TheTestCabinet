@@ -220,6 +220,7 @@ function fakeCanvas(): HTMLCanvasElement {
     "drawImage",
     "save",
     "restore",
+    "clip",
   ]) {
     ctx[name] = (): void => {};
   }

@@ -13,17 +13,30 @@ engine.frame(): FrameInfo;
 ## What happens in a frame
 
 1. The canvas is resynced to its element and the device pixel ratio, the frame
-   is cleared to `background`, and the viewport transform is applied.
+   is cleared to `background`, the viewport transform is applied, and the
+   context is clipped to the logical field.
 2. `update(state, api, dt)` runs, with `dt` in seconds, and the state it
    returns replaces the current one.
 3. `render(state, api)` runs over that next state, drawing in logical
    coordinates.
-4. The transform is reset, the overlay is drawn in device pixels, and the input
-   frame is closed so an edge-triggered action is consumed exactly once.
+4. The clip is lifted and the transform reset, the overlay is drawn in device
+   pixels, and the input frame is closed so an edge-triggered action is
+   consumed exactly once.
 
 Step 1 happens every frame rather than from a `resize` handler, so the fit is
 correct on first paint, after a window resize, and after a layout change no
 `resize` event fires for.
+
+The clip covers `0..width` by `0..height` in logical coordinates, so a draw that
+reaches past the field stops at the letterbox bar and the bars hold `background`
+alone. It is set with a `save` before `update` runs and lifted with the matching
+`restore` after `render` returns, so a style or transform the game sets inside a
+frame lasts until the frame closes. A `clip` the game sets intersects with it,
+and a `restore` beyond the game's own `save`s lifts it for the rest of that
+frame. A `save` the game leaves open is what the engine's `restore` pops
+instead: the clip stays in force through the next frame's clear and over the
+overlay drawn that frame, and the next frame opens on the state the game had at
+that `save`.
 
 ## `run`
 

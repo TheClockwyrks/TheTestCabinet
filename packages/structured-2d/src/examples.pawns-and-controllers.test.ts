@@ -214,6 +214,7 @@ function stubContext(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
     "drawImage",
     "save",
     "restore",
+    "clip",
   ]) {
     ctx[name] = () => undefined;
   }

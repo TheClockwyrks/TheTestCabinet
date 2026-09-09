@@ -66,7 +66,9 @@ function fitViewport(
 
 The scale is uniform: the smaller of `cssWidth / logicalWidth` and
 `cssHeight / logicalHeight`, multiplied by `dpr`. A single scale preserves the
-aspect ratio and keeps the whole logical field visible.
+aspect ratio and keeps the whole logical field visible. The context the game
+draws through is clipped to that field, so a draw that reaches past it stops at
+the bar and the bars hold `background` alone.
 
 The leftover space on the long axis is split into two equal bars, which are the
 offsets. They are computed against the rounded device size the backing store is

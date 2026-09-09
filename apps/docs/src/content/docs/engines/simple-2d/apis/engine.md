@@ -40,17 +40,17 @@ interface EngineOptions<S, D = unknown> {
 }
 ```
 
-| Field        | Default              | Meaning                                                                                                        |
-| ------------ | -------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `canvas`     | —                    | The canvas the engine sizes, clears, and renders through.                                                      |
-| `width`      | —                    | The logical design width the game draws in. Finite and positive.                                               |
-| `height`     | —                    | The logical design height the game draws in. Finite and positive.                                              |
-| `game`       | —                    | The [game](/engines/simple-2d/apis/game/) this engine drives.                                                  |
-| `background` | —                    | A CSS color cleared to before every frame. Absent, the frame is cleared to transparency.                       |
-| `layout`     | —                    | A touch layout from the [catalogue](/engines/simple-2d/apis/input/), whose vocabulary the game then registers. |
-| `clock`      | `new WallClock()`    | The [clock](/engines/simple-2d/apis/clocks/) supplying each frame's delta.                                     |
-| `surface`    | Read from the canvas | Where the engine reads its element size and device pixel ratio.                                                |
-| `assetRoot`  | `"assets/"`          | The root every [asset path](/engines/simple-2d/apis/assets/) resolves under.                                   |
+| Field        | Default              | Meaning                                                                                                                                                                                           |
+| ------------ | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `canvas`     | —                    | The canvas the engine sizes, clears, and renders through.                                                                                                                                         |
+| `width`      | —                    | The logical design width the game draws in. Finite and positive.                                                                                                                                  |
+| `height`     | —                    | The logical design height the game draws in. Finite and positive.                                                                                                                                 |
+| `game`       | —                    | The [game](/engines/simple-2d/apis/game/) this engine drives.                                                                                                                                     |
+| `background` | —                    | A CSS color cleared to before every frame. Absent, the frame is cleared to transparency. The letterbox bars hold it alone: the context is clipped to the logical field for `update` and `render`. |
+| `layout`     | —                    | A touch layout from the [catalogue](/engines/simple-2d/apis/input/), whose vocabulary the game then registers.                                                                                    |
+| `clock`      | `new WallClock()`    | The [clock](/engines/simple-2d/apis/clocks/) supplying each frame's delta.                                                                                                                        |
+| `surface`    | Read from the canvas | Where the engine reads its element size and device pixel ratio.                                                                                                                                   |
+| `assetRoot`  | `"assets/"`          | The root every [asset path](/engines/simple-2d/apis/assets/) resolves under.                                                                                                                      |
 
 ## `SurfaceMetrics`
 

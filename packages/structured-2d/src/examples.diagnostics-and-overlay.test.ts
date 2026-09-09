@@ -159,6 +159,7 @@ function recordingContext(
     "drawImage",
     "save",
     "restore",
+    "clip",
   ]) {
     ctx[name] = (): void => undefined;
   }

@@ -71,14 +71,25 @@ the next frame starts from the same blank page.
 1. The canvas is resynced to the surface's size and the current device pixel
    ratio, and the viewport is recomputed.
 2. The frame is cleared, to the configured background color or to transparency.
-3. The viewport transform is applied to the drawing context.
+3. The viewport transform is applied to the drawing context, and the context
+   is clipped to the logical field.
 4. The game's update runs, with this frame's delta in seconds.
-5. The game's render runs against that transformed context.
-6. The diagnostics overlay is drawn.
+5. The game's render runs against that transformed, clipped context.
+6. The clip is lifted and the diagnostics overlay is drawn.
 7. The input frame is closed, discarding edges nothing consumed.
 
 Because step 2 clears the whole canvas, every frame draws the complete picture,
-and a build reasons about one full redraw per frame.
+and a build reasons about one full redraw per frame. Because step 3 clips to
+the field, a draw that reaches past `0..width` or `0..height` stops at the
+letterbox bar, and the bars hold the background alone.
+
+The clip is opened with a `save` in step 3 and lifted with the matching
+`restore` in step 6, so a style or transform the game sets inside a frame lasts
+until the frame closes. A `save` the game leaves open is what that `restore`
+pops instead: the clip stays in force through the next frame's clear and over
+the overlay drawn that frame, and the next frame opens on the state the game had
+at that `save`. A `restore` beyond the game's own `save`s lifts the clip for the
+rest of that frame.
 
 ## The overlay sits outside the transform
 

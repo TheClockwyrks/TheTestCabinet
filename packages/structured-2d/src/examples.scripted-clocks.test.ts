@@ -462,6 +462,7 @@ function stubCanvas(): HTMLCanvasElement {
     "drawImage",
     "save",
     "restore",
+    "clip",
   ]) {
     ctx[name] = (): void => {};
   }

@@ -131,12 +131,18 @@ interface RecordedFrame {
 the same frame, so a frame in a recording is identified by the counter a caller
 asserts against. See `frame.md`.
 
-A build is free to call `save` on one frame and `restore` on the next, so the
-stack of saved states survives a frame boundary along with the state on top of
-it. `stack` carries those states, and a player pushes them before applying the
-frame's own state, which is what makes a `restore` among the frame's operations
-return to the state the original returned to.
+`stack` carries the states the context had saved when the frame opened, and a
+player pushes them before applying the frame's own state, which is what makes a
+`restore` among the frame's operations return to the state the original
+returned to.
 
+A frame opens on the state the engine's own `restore` left once the pipeline
+has drawn, so a component that balances its `save`s opens every frame with an
+empty `stack` and none of the style it set the frame before. A `save` the
+component leaves open is what that `restore` pops instead: the next frame opens
+on the state the component had at that `save`, with the engine's clip still in
+force, and its `stack` holds the engine's entry beneath the component's
+remaining ones.
 `stack` holds at most 64 entries. A build that saves more often than it restores
 runs deeper than that, and the entries kept are the innermost ones, because a
 `restore` pops the innermost first. The bound is what keeps an unbalanced `save`
@@ -190,7 +196,7 @@ interface PathSegment {
 | `clip`       | The clip region in force, as the segments that built it, in the order they were applied.         |
 | `path`       | The current path, as the segments holding the path operations issued since the last `beginPath`. |
 
-`properties` covers the canvas state that survives a frame boundary: the alpha,
+`properties` covers the style state a context carries: the alpha,
 the composite operation, the filter, the image smoothing, the stroke and fill
 styles, the shadow, the line settings, and the text settings. A property the
 context does not carry, or refuses to report, is omitted, so `properties` holds
@@ -211,9 +217,9 @@ issued, because a path is given in user space. Both `clip` and `path` are split
 into one segment per transform, and a player replays each segment under the
 transform that segment carries before setting the state's own.
 
-The current path survives a frame boundary, and `beginPath` and `reset` clear
-it, so a build is free to open a path on one frame and fill it on the next.
-Applying an inherited clip is what makes carrying the path unavoidable:
+The current path is kept until `beginPath` or `reset` clears it, so the path in
+force when a frame opens is carried with the frame. Applying an inherited clip
+is what makes carrying the path unavoidable:
 replaying a clip segment's path operations leaves the clip outline current, so a
 state that stopped at the clip would leave a bare `fill` among the frame's
 operations filling that outline. Applying a state therefore issues `beginPath`

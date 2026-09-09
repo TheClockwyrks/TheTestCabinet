@@ -73,6 +73,7 @@ function contextStub(width = 800, height = 450): Stub {
     "drawImage",
     "save",
     "restore",
+    "clip",
   ]) {
     base[name] = method(name);
   }
@@ -83,6 +84,14 @@ function contextStub(width = 800, height = 450): Stub {
     },
   });
   return { ctx: proxy as unknown as CanvasRenderingContext2D, log };
+}
+
+/**
+ * Where `entry` first appears after the pipeline's clip on the logical field,
+ * whose own viewport transform precedes every component's.
+ */
+function afterClip(log: string[], entry: string): number {
+  return log.indexOf(entry, log.indexOf("clip()") + 1);
 }
 
 /** A world reduced to what the pipeline reads. */
@@ -608,7 +617,7 @@ describe("the camera and the transform", () => {
     };
     new RenderPipeline().render(frame);
 
-    const start = stub.log.indexOf("setTransform(2,0,0,2,10,20)");
+    const start = afterClip(stub.log, "setTransform(2,0,0,2,10,20)");
     expect(start).toBeGreaterThan(-1);
     expect(stub.log.slice(start, start + 5)).toEqual([
       "setTransform(2,0,0,2,10,20)",
@@ -729,7 +738,7 @@ describe("screen space", () => {
     const { scene: frame, stub } = scene([hud], { world, viewport: fitted });
     new RenderPipeline().render(frame);
 
-    const start = stub.log.indexOf("setTransform(2,0,0,2,10,20)");
+    const start = afterClip(stub.log, "setTransform(2,0,0,2,10,20)");
     expect(start).toBeGreaterThan(-1);
     // The camera is never pushed on top: the viewport transform is followed
     // directly by the path, in logical coordinates.
@@ -753,8 +762,11 @@ describe("screen space", () => {
     const second = scene([hud, prop], { world: moved });
     new RenderPipeline().render(second.scene);
 
+    // The field's own `rect`, which the clip is taken from, is not a component's.
     const rects = (log: string[]): string[] =>
-      log.filter((entry) => entry.startsWith("rect("));
+      log.filter(
+        (entry, at) => entry.startsWith("rect(") && at > log.indexOf("clip()"),
+      );
     // Both frames record the same operations, in spawn order; only the
     // transform the world component draws under changed.
     expect(rects(first.stub.log)).toEqual([
@@ -783,7 +795,7 @@ describe("screen space", () => {
     const { scene: frame, stub } = scene([hud], { viewport: fitted });
     new RenderPipeline().render(frame);
 
-    const start = stub.log.indexOf("setTransform(2,0,0,2,10,20)");
+    const start = afterClip(stub.log, "setTransform(2,0,0,2,10,20)");
     expect(stub.log.slice(start, start + 5)).toEqual([
       "setTransform(2,0,0,2,10,20)",
       "translate(600,20)",

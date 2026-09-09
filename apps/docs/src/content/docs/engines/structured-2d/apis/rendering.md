@@ -67,6 +67,21 @@ Each frame, after the ticks and after any transition:
 6. The collision overlay draws, when it is enabled.
 7. The debug overlay draws in device space.
 
+Steps 5 and 6 draw inside a clip on the logical field: the context is saved,
+clipped to `0..width` by `0..height` in logical coordinates, and restored once
+the collision overlay has drawn. A world component projected past the field's
+edge and a screen component drawn outside the field both stop at the letterbox
+bar, so the bars hold `background` alone whatever the game draws. The clip is
+set in device space before any component draws, so the transform a component
+is handed leaves it where it is, and a clip a component sets of its own
+intersects with it.
+
+That `restore` closes the frame, so a style or transform a `DrawComponent` sets
+lasts until then. A `save` a component leaves open is what the `restore` pops
+instead, which keeps the clip in force through the next frame's clear and over
+the debug overlay drawn that frame, and a `restore` beyond the component's own
+`save`s lifts the clip for the rest of the frame.
+
 Step 3 reads `enabled` from the component and `visible` from its
 `RenderComponent` fields, so a component leaves the picture the moment either is
 cleared. A destroyed actor stops rendering immediately, before the end-of-frame

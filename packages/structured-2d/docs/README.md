@@ -17,7 +17,8 @@ The engine owns:
 - Canvas sizing: the letterbox, the centring, and the device pixel ratio.
 - The camera projection from world units into the logical design field.
 - The rendering pipeline: collecting render components, ordering them by layer,
-  and drawing them under one of four render modes.
+  and drawing them under one of four render modes, clipped to the logical field
+  so the letterbox bars hold the background alone.
 - Collision detection: finding pairs, reporting them with a manifold, and the
   queries. It moves nothing.
 - Keyboard listening, action binding, edge detection, and pointer tracking.

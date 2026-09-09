@@ -141,21 +141,24 @@ function isDesignSize(size: number): boolean {
  * for free:
  *
  * 1. **Before `update`** the canvas is resynced to its element and the device pixel
- *    ratio, the frame is cleared, and the viewport transform is applied. Doing this
- *    every frame rather than from a `resize` handler is what makes the fit correct
- *    on first paint, after a window resize, after a device-pixel-ratio change, and
- *    after a layout change no `resize` event fires for — with no handler at all, and
- *    no chance of the first frame drawing into a canvas that was never sized.
+ *    ratio, the frame is cleared, the viewport transform is applied, and the
+ *    context is clipped to the logical field, so the letterbox bars hold
+ *    `background` alone whatever the game draws. Doing this every frame rather
+ *    than from a `resize` handler is what makes the fit correct on first paint,
+ *    after a window resize, after a device-pixel-ratio change, and after a layout
+ *    change no `resize` event fires for — with no handler at all, and no chance of
+ *    the first frame drawing into a canvas that was never sized.
  * 2. **`update` runs with `dt` in seconds**, reading input and playing cues through
  *    an API that cannot draw.
  * 3. **`render` receives the prepared context**, so the game draws in logical
  *    coordinates and letterboxing simply does not appear in its code — through an
  *    API that cannot read input or play a cue, which is what leaves a frame's
  *    audible and observable behaviour entirely to the update.
- * 4. **After `render`** the transform is reset and the overlay is drawn in device
- *    space, so debug text stays the same physical size however far the game's own
- *    coordinates are being scaled, and the input frame is closed so an
- *    edge-triggered action is consumed exactly once.
+ * 4. **After `render`** the clip is lifted and the transform is reset, so context
+ *    state the game set inside the frame does not reach the next one, and the
+ *    overlay is drawn in device space, so debug text stays the same physical size
+ *    however far the game's own coordinates are being scaled; the input frame is
+ *    closed so an edge-triggered action is consumed exactly once.
  *
  * @throws if the design size is not finite and positive, if the canvas yields no 2D
  * context, or if `layout` is outside the catalogue. Each otherwise presents as a
@@ -332,8 +335,31 @@ export function createEngine<S, D = unknown>(
     offsetY: viewport.offsetY,
   });
 
-  /** Resize, clear, and transform, in that order — the frame's blank page. */
+  /**
+   * Whether the clip {@link prepare} set is still in force: `true` from the
+   * `save` that opens it until the `restore` that lifts it.
+   */
+  let clipped = false;
+
+  /** Lift the clip, when one is in force. */
+  const unclip = (): void => {
+    if (!clipped) return;
+    clipped = false;
+    ctx.restore();
+  };
+
+  /**
+   * Resize, clear, transform, and clip, in that order — the frame's blank page.
+   *
+   * The clip covers the logical field, so a draw that reaches past it stops at
+   * the letterbox bar and the bars hold `background` alone. It is opened with a
+   * `save` here and lifted after `render` returns; a frame whose `update` threw
+   * left its own in force, which is lifted first so the clear reaches the bars.
+   * The path the clip was taken from is begun anew, so a game that fills
+   * without beginning a path of its own does not fill the field.
+   */
   const prepare = (): void => {
+    unclip();
     viewport = syncCanvas(canvas, width, height, surface);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     if (options.background === undefined) {
@@ -343,6 +369,12 @@ export function createEngine<S, D = unknown>(
       ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
     applyViewport(ctx, viewport);
+    ctx.save();
+    clipped = true;
+    ctx.beginPath();
+    ctx.rect(0, 0, width, height);
+    ctx.clip();
+    ctx.beginPath();
   };
 
   // The three scoped APIs are built once and reused for the life of the engine,
@@ -445,7 +477,13 @@ export function createEngine<S, D = unknown>(
     // The prepared context is `renderApi.ctx`, the same object the loop would hand
     // over, so the argument is left unnamed rather than shadowing it.
     render: (): void => {
-      game.render(frameBuilt().state as DeepReadonly<S>, renderApi);
+      try {
+        game.render(frameBuilt().state as DeepReadonly<S>, renderApi);
+      } finally {
+        // Lifted whether or not the game's render threw, so the recorded frame is
+        // balanced and the overlay below draws unclipped.
+        unclip();
+      }
       // Closed here rather than in the loop's after-frame hook, so the diagnostics
       // overlay drawn there stays out of the recording: the overlay is chrome laid
       // over the finished picture, and baking a debug panel into a reviewer's

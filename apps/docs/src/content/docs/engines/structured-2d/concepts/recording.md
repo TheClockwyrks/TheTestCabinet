@@ -51,10 +51,10 @@ page the original started from.
 
 ## Per-frame inherited state
 
-A frame's own operations are not enough to draw it. A game that sets a font on
-its first frame relies on the context still carrying that font a thousand frames
-later, and a player that seeks straight to frame 900 has no earlier frame to
-have inherited it from.
+A frame's own operations are not enough to draw it. A frame opens under state
+established before its first operation, by the frame before it or by an
+engineless build that set a font a thousand frames earlier, and a player that
+seeks straight to frame 900 has no earlier frame to have inherited it from.
 
 Each frame therefore names the context state it inherited, snapshotted before
 the frame's first operation. Drawing a frame means restoring what it inherited
@@ -62,22 +62,29 @@ and replaying that frame's operations, and nothing else. Taking the snapshot at
 the end of a frame instead would record the state the frame left behind, and
 replay would draw the frame's opening operations under its closing style.
 
-The state covers what survives a frame boundary: the style properties, the
-transform, the dash pattern, the clip region, the current path, and the stack of
-states saved under it. Reads are individually guarded, because the set of
-properties a context carries differs between a browser and the native canvas a
-[validator](/engines/structured-2d/validators/overview/) builds on. A property that
-is absent is left out, which is the same outcome as a context that never had it.
+The state covers everything a context carries between operations: the style
+properties, the transform, the dash pattern, the clip region, the current path,
+and the stack of states saved under it. Reads are individually guarded, because
+the set of properties a context carries differs between a browser and the native
+canvas a [validator](/engines/structured-2d/validators/overview/) builds on.
+A property that is absent is left out, which is the same outcome as a context
+that never had it.
 
 ### The save stack
 
-A build is free to call `save` on one frame and `restore` on the next, so the
-stack of saved states survives a frame boundary along with the state on top of
-it. Each frame therefore names the states the context had saved when the frame
-opened, outermost first, and a player pushes them onto the context before
-applying the frame's own state. A `restore` among the frame's operations then
-returns to the state the original returned to.
+Each frame names the states the context had saved when the frame opened,
+outermost first, and a player pushes them onto the context before applying the
+frame's own state. A `restore` among the frame's operations then returns to the
+state the original returned to.
 
+Under the engine a frame opens on the state the engine's own `restore` left
+once the pipeline has drawn, so a component that balances its `save`s opens
+every frame with an empty stack and none of the style it set the frame before.
+A `save` the component leaves open is what that `restore` pops instead: the
+next frame opens on the state the component had at that `save`, with the
+engine's clip still in force, and its stack holds the engine's entry beneath the
+component's remaining ones. An engineless build carries its stack from one frame
+into the next as the canvas does, and the format serves both.
 The stack holds at most 64 entries and the entries kept are the innermost ones,
 because a `restore` pops the innermost first and those are the states a frame's
 own operations can still reach. The bound is what keeps an unbalanced `save`
@@ -97,13 +104,13 @@ was in force when its operations were issued, since a path is given in user
 space, and a player replays each segment under its own transform before setting
 the frame's.
 
-A canvas keeps its current path across a frame boundary, so a build is free to
-open a path on one frame and fill it on the next. Applying an inherited clip is
-what makes carrying the path unavoidable: replaying a clip segment's path
-operations leaves the clip outline current, so a frame that then issued a bare
-`fill` would fill that outline. A player therefore issues `beginPath` between
-the clip segments and the path segments, which is the same thing the original
-context did when the build called `beginPath` itself.
+A canvas keeps its current path until `beginPath` or `reset` clears it, so the
+path in force when a frame opens is part of what the frame inherits. Applying an
+inherited clip is what makes carrying the path unavoidable: replaying a clip
+segment's path operations leaves the clip outline current, so a frame that then
+issued a bare `fill` would fill that outline. A player therefore issues
+`beginPath` between the clip segments and the path segments, which is the same
+thing the original context did when the build called `beginPath` itself.
 
 The clip travels with the rest of the state through `save` and `restore`, and
 `reset` clears it. The current path sits outside the saved state and survives

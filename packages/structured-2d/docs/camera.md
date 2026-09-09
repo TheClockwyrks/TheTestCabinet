@@ -190,10 +190,12 @@ of `cssWidth / logicalWidth` and `cssHeight / logicalHeight`, multiplied by
 `dpr` — so the aspect ratio holds and the whole logical field stays visible. The
 leftover space on the long axis is split into two equal letterbox bars, computed
 against the rounded device size the backing store is written at, so the two bars
-sum to the drawable area exactly. A degenerate input — a surface measuring zero
-on either axis, or a logical size that is not finite and positive — yields a
-`scale` of `0`, which draws nothing for the frame it applies to and recovers on
-its own once the element has a size. A ratio that is not finite and positive is
+sum to the drawable area exactly. The bars hold `background` alone: the pipeline
+clips every component to the logical field, as `rendering.md` states. A
+degenerate input — a surface measuring zero on either axis, or a logical size
+that is not finite and positive — yields a `scale` of `0`, which draws nothing
+for the frame it applies to and recovers on its own once the element has a size.
+A ratio that is not finite and positive is
 read as `1`.
 
 `applyViewport` sets the context transform to the viewport, as

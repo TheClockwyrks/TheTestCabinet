@@ -23,12 +23,14 @@ it by moving its actor, and every one of those is readable back afterwards.
 
 Each frame the engine clears the canvas to the background color, or to
 transparency when the game gave none, collects every enabled, visible render
-component on the live actors, and draws the collection in order. Nothing is
-carried over from the previous frame, so a component that stops being visible
-leaves the picture at once, and a destroyed actor leaves it before it leaves
-the world. The collision overlay draws over the finished picture, and the
-diagnostics overlay draws last in device pixels, so it holds its size and its
-place whatever the camera is doing.
+component on the live actors, and draws the collection in order, clipped to
+the logical field so nothing a component draws lands in the letterbox bars.
+Nothing is carried over from the previous frame, so a component that stops
+being visible leaves the picture at once, and a destroyed actor leaves it
+before it leaves the world. The collision overlay draws over the finished
+picture, inside the same clip, and the diagnostics overlay draws last in device
+pixels and outside it, so it holds its size and its place whatever the camera
+is doing.
 
 ## Render modes belong to the pipeline
 

@@ -48,11 +48,21 @@ interface ContextStub {
  *
  * It answers `measureText` with something proportional to the text so the overlay's
  * layout arithmetic has real numbers to work with, and it keeps `save`/`restore` in
- * the log so a subsystem that leaks state can be caught.
+ * the log so a subsystem that leaks state can be caught. `save` and `restore` also
+ * stack the style properties and the transform the way a canvas does, so what a
+ * frame is left holding after the engine's own `restore` is what a canvas would
+ * hold.
  */
 function contextStub(canvas: HTMLCanvasElement): ContextStub {
   let transform: readonly number[] = [1, 0, 0, 1, 0, 0];
   const ops: RecordedOp[] = [];
+  const saved: {
+    transform: readonly number[];
+    fillStyle: string;
+    font: string;
+    textAlign: string;
+    textBaseline: string;
+  }[] = [];
   const stub = {
     canvas,
     fillStyle: "",
@@ -84,9 +94,24 @@ function contextStub(canvas: HTMLCanvasElement): ContextStub {
     },
     save(): void {
       ops.push({ op: "save", transform, fill: stub.fillStyle });
+      saved.push({
+        transform,
+        fillStyle: stub.fillStyle,
+        font: stub.font,
+        textAlign: stub.textAlign,
+        textBaseline: stub.textBaseline,
+      });
     },
     restore(): void {
       ops.push({ op: "restore", transform, fill: stub.fillStyle });
+      // A `restore` on an empty stack is a no-op, as it is on a canvas.
+      const top = saved.pop();
+      if (top === undefined) return;
+      transform = top.transform;
+      stub.fillStyle = top.fillStyle;
+      stub.font = top.font;
+      stub.textAlign = top.textAlign;
+      stub.textBaseline = top.textBaseline;
     },
     beginPath(): void {
       ops.push({ op: "beginPath", transform, fill: stub.fillStyle });
@@ -917,13 +942,21 @@ describe("the frame's own work", () => {
       "setTransform", // identity, so the clear covers the whole backing store
       "clearRect",
       "setTransform", // the viewport, so the game draws in logical coordinates
+      "save", // the clip on the logical field, lifted once the game has drawn
+      "beginPath",
+      "rect",
+      "clip",
+      "beginPath", // so a fill without a path of its own fills no field
       "fillRect", // the game's own draw
+      "restore",
       "setTransform", // identity again, so the overlay is chrome in device pixels
     ]);
-    // The game drew under the letterboxed, device-pixel-ratio-aware transform.
-    expect(stub.ops[3]?.transform).toEqual([4, 0, 0, 4, 0, 200]);
+    // The game drew under the letterboxed, device-pixel-ratio-aware transform,
+    // and the clip was taken under the same one.
+    expect(stub.ops[8]?.transform).toEqual([4, 0, 0, 4, 0, 200]);
+    expect(stub.ops[5]?.transform).toEqual([4, 0, 0, 4, 0, 200]);
     expect(stub.ops[0]?.transform).toEqual([1, 0, 0, 1, 0, 0]);
-    expect(stub.ops[4]?.transform).toEqual([1, 0, 0, 1, 0, 0]);
+    expect(stub.ops[10]?.transform).toEqual([1, 0, 0, 1, 0, 0]);
   });
 
   it("fills the background colour when one was given, in place of clearing", async () => {
@@ -937,6 +970,12 @@ describe("the frame's own work", () => {
       "setTransform",
       "fillRect",
       "setTransform",
+      "save",
+      "beginPath",
+      "rect",
+      "clip",
+      "beginPath",
+      "restore",
       "setTransform",
     ]);
     expect(stub.ops[1]?.fill).toBe("#101018");
@@ -1517,17 +1556,24 @@ describe("draw-command recording", () => {
     const recording = engine.stopRecording();
 
     // The order is the contract: a player applies each entry and saves, so a stack
-    // written the other way round restores the frame to the wrong state.
+    // written the other way round restores the frame to the wrong state. The
+    // engine's own `save`, which opens the clip on the logical field before the
+    // game draws, is the outermost entry, and its `restore` after `render`
+    // returns is what popped the innermost of the two the game left — so the
+    // second frame inherits the engine's entry and the game's outer one.
     expect(recording.frames.map((frame) => frame.stack.length)).toEqual([0, 2]);
     const saved = (recording.frames[1]?.stack ?? []).map(
       (index) => recording.states[index]?.properties["fillStyle"],
     );
-    expect(saved).toEqual(["#outer", "#inner"]);
+    expect(saved).toEqual(["", "#outer"]);
+    // The engine's `restore` popped the game's innermost `save`, so the second
+    // frame opened on the state saved there rather than on `#current`: what a
+    // game sets inside a frame lasts only until the engine closes the frame.
     expect(
       recording.states[recording.frames[1]?.state ?? -1]?.properties[
         "fillStyle"
       ],
-    ).toBe("#current");
+    ).toBe("#inner");
   });
 
   it("survives the resize its own frame preparation performs", async () => {
@@ -1595,12 +1641,13 @@ describe("draw-command recording", () => {
     expect(inherited?.clip).toEqual([]);
     expect(recording.frames[1]?.stack).toEqual([]);
     // The wipe erased the pixels the frame's own preparation had already drawn, so
-    // the frame holds only what the game issued after it.
+    // the frame holds only what the game issued after it — and the `restore`
+    // that lifts the engine's clip, which the wipe had already discarded.
     expect(
       frameOps(recording, 1).flatMap((op) =>
         op.op === "call" ? [op.method] : [],
       ),
-    ).toEqual(["fillRect"]);
+    ).toEqual(["fillRect", "restore"]);
   });
 
   it("reports the design size and background the engine was built with", async () => {
