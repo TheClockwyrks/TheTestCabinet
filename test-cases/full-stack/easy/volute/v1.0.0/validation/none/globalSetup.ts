@@ -27,4 +27,4 @@
 
 import { makeGlobalSetup } from "./case-harness/global-setup";
 
-export default makeGlobalSetup({ slug: "volute" });
+export default makeGlobalSetup({ slug: "volute", handle: "__volute" });

@@ -73,6 +73,7 @@ import { fileURLToPath } from "node:url";
 import {
   createCaseHarness,
   type Harness as BaseHarness,
+  type SurfaceCall,
   type PixelRect,
   type UntilResult as BaseUntilResult,
 } from "./case-harness/index";
@@ -325,13 +326,16 @@ const kit = createCaseHarness<VoluteSnapshot, VoluteDebugApi>({
   // fixes the copy while leaving its spacing to the build. Without the
   // measurement nothing coalesces and a letter-spaced run reads as its glyphs.
   measureText: true,
-  // FIFTEEN SECONDS RATHER THAN THE FIVE A SHORTER CASE ALLOWS, because the
+  // THIRTY SECONDS RATHER THAN THE FIVE A SHORTER CASE ALLOWS, because the
   // ceiling is not really on the build: it is on the host. This project holds
   // four pages of one browser open at once, the machine that runs it is running a
   // model's build under it, and a full-stack build loads the produced art and
-  // audio it committed before it is ready. Fifteen costs a healthy build nothing,
-  // because the poll returns the instant the global appears.
-  surfaceTimeoutMs: 15_000,
+  // audio it committed before it is ready — a build that decodes its produced
+  // cues before it installs the surface has megabytes of audio to get through
+  // first, and a host under that load has been seen to stretch a second of
+  // decoding past fifteen. Thirty costs a healthy build nothing, because the
+  // poll returns the instant the global appears.
+  surfaceTimeoutMs: 30_000,
   projectRoot: dirname(fileURLToPath(import.meta.url)),
 });
 
@@ -793,6 +797,15 @@ export const DEFAULT_LOADED: ChargeId = "olivine";
 export const DEFAULT_QUEUED: ChargeId = "garnet";
 
 /**
+ * One call of the surface a pose is assembled from.
+ *
+ * The step operation is kept out along with `snapshot`: a pose arranges the hall
+ * and advances nothing, so a step inside one would run frames the harness never
+ * counted.
+ */
+export type PoseCall = SurfaceCall<VoluteDebugApi, "snapshot" | "step">;
+
+/**
  * Pose an isolated hall, assembled from single-field poses.
  *
  * Every field is set explicitly, so what stands is exactly what the caller asked
@@ -806,6 +819,13 @@ export const DEFAULT_QUEUED: ChargeId = "garnet";
  * reading derived from what was just posed — the segments above all — into
  * agreement with the hall the check asked for.
  *
+ * ONE CROSSING, NOT FOURTEEN. The poses reach the page as one batch through the
+ * harness's `arrange`, which runs them in this order against the same surface a
+ * call at a time would, and leaves the same hall. What changes is the cost: a
+ * check that poses the hall forty times over pays forty round trips rather than
+ * five hundred, and a round trip's length is a fact about the host's load rather
+ * than about the build.
+ *
  * Nothing here decides an outcome. Every extraction, score, chain step, grant,
  * cell and clear a check reads comes from the ticks it steps afterwards.
  */
@@ -814,28 +834,31 @@ export async function poseHall(
   options: PoseOptions = {},
 ): Promise<void> {
   const level = options.level ?? 1;
-  await h.debug.setScreen(options.screen ?? "playing");
-  await h.debug.setLevel(level);
-  await h.debug.setEmission(options.emission ?? false);
-  await h.debug.setFeed(options.feed ?? true);
-  await h.debug.setQuotaRemaining(
-    options.quotaRemaining ?? levelSpec(level).quota,
-  );
-  await h.debug.setPressure(options.pressure ?? 0);
-  await h.debug.setChainStep(options.chainStep ?? 1);
-  await h.debug.setScore(options.score ?? 0);
-  await h.debug.setCells(options.cells ?? CELLS);
-  await h.debug.clearTrain();
+  const calls: PoseCall[] = [
+    ["setScreen", options.screen ?? "playing"],
+    ["setLevel", level],
+    ["setEmission", options.emission ?? false],
+    ["setFeed", options.feed ?? true],
+    ["setQuotaRemaining", options.quotaRemaining ?? levelSpec(level).quota],
+    ["setPressure", options.pressure ?? 0],
+    ["setChainStep", options.chainStep ?? 1],
+    ["setScore", options.score ?? 0],
+    ["setCells", options.cells ?? CELLS],
+    ["clearTrain"],
+  ];
   if (options.cores !== undefined && options.cores.length > 0) {
-    await h.debug.poseTrain(options.cores);
+    calls.push(["poseTrain", options.cores]);
   }
-  await h.debug.setLoaded(options.loaded ?? DEFAULT_LOADED);
-  await h.debug.setQueued(options.queued ?? DEFAULT_QUEUED);
-  await h.debug.setAim(options.aim ?? OPENING_AIM);
+  calls.push(
+    ["setLoaded", options.loaded ?? DEFAULT_LOADED],
+    ["setQueued", options.queued ?? DEFAULT_QUEUED],
+    ["setAim", options.aim ?? OPENING_AIM],
+  );
   if (options.machinery !== undefined) {
-    await h.debug.grantMachinery(options.machinery);
+    calls.push(["grantMachinery", options.machinery]);
   }
-  await h.debug.reconcile();
+  calls.push(["reconcile"]);
+  await h.arrange(calls);
 }
 
 /**
@@ -845,14 +868,18 @@ export async function poseHall(
  * control poses the score `0`, the cells at `CELLS` (`3`), and level `1` opened
  * exactly as `startLevel` opens it, and assembling that sequence from the
  * single-field poses is the harness's job rather than the surface's. A `level`
- * beyond 1 is opened after it, which leaves the score and the cells alone.
+ * beyond 1 is opened after it, which leaves the score and the cells alone. One
+ * crossing, for the reason {@link poseHall} gives.
  */
 export async function startRun(h: Harness, level = 1): Promise<void> {
-  await h.debug.setScore(0);
-  await h.debug.setCells(CELLS);
-  await h.debug.startLevel(1);
-  if (level !== 1) await h.debug.startLevel(level);
-  await h.debug.reconcile();
+  const calls: PoseCall[] = [
+    ["setScore", 0],
+    ["setCells", CELLS],
+    ["startLevel", 1],
+  ];
+  if (level !== 1) calls.push(["startLevel", level]);
+  calls.push(["reconcile"]);
+  await h.arrange(calls);
 }
 
 /**

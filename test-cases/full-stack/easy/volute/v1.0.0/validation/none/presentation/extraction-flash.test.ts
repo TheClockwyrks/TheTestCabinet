@@ -18,8 +18,16 @@
 // so the rectangle is part of the key as well. Either way the key changes when
 // the animation advances and does not when it stands still.
 //
+// WHICH RENDERS ARE READ. Every render of the window, two per tick: the step's
+// own render and the build's loop's next render of the same state (see
+// `./extract.ts`). `specs/assets.md` fixes that the sheet is animated "in the
+// game" and finishes inside the hold, not which clock its frames advance on, so a
+// build may step the sheet with each simulation tick or with the wall time its
+// loop measures between renders. Reading both renders of each tick, back to back
+// inside the page, sees the advance either way, at no mercy of the host's pace.
+//
 // THE BOUND. At least two distinct keys inside the window, drawn on different
-// ticks — which is the least that "its frames advancing across the following
+// renders — which is the least that "its frames advancing across the following
 // frames" can mean, and what separates an animated sheet from one still picture
 // held up for the whole of the flash. Nothing here reads how many frames a build
 // spends on each step: `specs/assets.md` fixes six frames and a deadline, not a
@@ -46,7 +54,7 @@ import {
 import { driveShot, nearAny, poseRun, RUN_CHARGE } from "./extract";
 import { sheetFrameKey, spriteDraws } from "./readouts";
 
-/** How many ticks the drive runs for: the flight, then the whole flash. */
+/** How many ticks the drive may run for before the shot must have landed. */
 const DRIVE_TICKS = 60;
 
 /** The flash is over by the time the recoil hold expires. */
@@ -67,7 +75,9 @@ afterEach(async () => {
 
 it("plays the produced flash sheet over the cores an extraction removes", async () => {
   await poseRun(h, RUN_CHARGE);
-  const shot = await captureReplay(h, "flash", () => driveShot(h, DRIVE_TICKS));
+  const shot = await captureReplay(h, "flash", () =>
+    driveShot(h, DRIVE_TICKS, FLASH_WINDOW - 1),
+  );
 
   assertGreaterThan(
     shot.strike,
@@ -79,43 +89,42 @@ it("plays the produced flash sheet over the cores an extraction removes", async 
     "an extraction taking the run of three off the channel",
   );
 
-  // The keys drawn on each tick of the window, indexed by tick offset from the
-  // extraction.
-  const perTick: string[][] = [];
-  for (let offset = 0; offset < FLASH_WINDOW; offset += 1) {
-    const frame = shot.frames[shot.strike - 1 + offset];
-    if (frame === undefined) break;
-    const keys = spriteDraws(frame, FLASH_SHEET_SPRITE)
+  // The keys drawn on each render of the window, in the order the renders
+  // happened: the strike tick's own render first.
+  const perRender: string[][] = [];
+  for (const render of shot.renders) {
+    if (render.tick - shot.strike >= FLASH_WINDOW) break;
+    const keys = spriteDraws(render.calls, FLASH_SHEET_SPRITE)
       .filter((draw) =>
         nearAny({ x: draw.cx, y: draw.cy }, shot.standing, FLASH_RADIUS),
       )
       .map(sheetFrameKey);
-    perTick.push([...new Set(keys)].sort());
+    perRender.push([...new Set(keys)].sort());
   }
 
-  const played = perTick.filter((keys) => keys.length > 0);
+  const played = perRender.filter((keys) => keys.length > 0);
   assertGreaterThan(
     played.length,
     0,
-    "ticks drawing a produced 48 x 48 sheet frame over the extraction",
+    "renders drawing a produced 48 x 48 sheet frame over the extraction",
   );
 
-  const distinct = new Set(perTick.flat());
+  const distinct = new Set(perRender.flat());
   assertGreaterThanOrEqual(
     distinct.size,
     2,
     "distinct frames of the produced flash sheet drawn over the extraction",
   );
 
-  const advanced = perTick.some(
+  const advanced = perRender.some(
     (keys, index) =>
       index > 0 &&
       keys.length > 0 &&
-      perTick[index - 1].length > 0 &&
-      keys.join("|") !== perTick[index - 1].join("|"),
+      perRender[index - 1].length > 0 &&
+      keys.join("|") !== perRender[index - 1].join("|"),
   );
   assertTrue(
     advanced,
-    "the sheet frame drawn over the extraction changing from one tick to the next",
+    "the sheet frame drawn over the extraction changing from one render to the next",
   );
 });

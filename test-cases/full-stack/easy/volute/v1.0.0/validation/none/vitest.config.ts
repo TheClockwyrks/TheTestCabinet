@@ -27,11 +27,15 @@
 
 import { defineValidationConfig } from "./case-harness/vitest-config";
 
+// NO DIALS. The two minutes this project used to name for `testTimeout` were
+// sized against a healthy machine, and against a cost model the harness has
+// since retired: a sweep to an emission or a pose of the hall is one crossing
+// now, and what a point spends is the build's own ticks rendered in the page —
+// a walk to a level's second mark is nine hundred of them, twelve seconds on an
+// idle host and past two minutes on a host running four such pages under a
+// model's build. The package's five minutes are sized against that load and
+// still sit well inside the runner's cap on the whole suite run, so a file can
+// only cross them on a host where the run was already lost.
 export default defineValidationConfig({
   root: new URL("..", import.meta.url).pathname,
-  // A drive that walks a level to its clear is thousands of ticks of real
-  // simulation, each of them a crossing into the page; generous here, and still
-  // seconds in practice.
-  testTimeout: 120_000,
-  hookTimeout: 60_000,
 });

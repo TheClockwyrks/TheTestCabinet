@@ -19,20 +19,32 @@
 // releases — once so the run of three completes and extracts, once so it does not
 // — and what the burst is is what the first drive drew near the extraction and the
 // second did not. Both drives fire on the same tick, from the same pose, at the
-// same simulated time, so everything else on the field is the same picture.
+// same simulated time, and are observed by the same sequence of renders, so
+// everything else on the field is the same picture render for render.
 //
-// WHAT IS COUNTED. The points a tick's GEOMETRY landed on, with every image draw
-// dropped, since the sprites are the picture the effect plays over. A point is
-// the effect's when the control's own tick put nothing within a unit of it.
+// WHY TWO RENDERS PER TICK. `specs/assets.md` advances a player "each frame with
+// that frame's delta" and `specs/instrumentation.md` has the loop keep rendering
+// while the game is off the clock, so a build may age its burst on the wall
+// clock between two steps or on simulation time at each step (see
+// `./extract.ts`). Each tick after the strike is therefore read twice, back to
+// back inside the page: the step's own render and the loop's next render of the
+// same state. Whichever clock the burst runs on, two consecutive renders of a
+// live system differ; and because nothing crosses the wire between them, the
+// reading does not depend on how fast the host let the drive run.
 //
-// THE BOUNDS. At least two ticks after the extraction carry such a point, and two
-// of those ticks disagree about where the points are. That is the least that "a
-// live particle system playing at the extraction" can mean and the least that
-// separates it from a still mark: one tick is a mark, two identical ticks are a
-// mark held up, and two that differ are motion. Nothing here counts particles or
-// measures a spread — `specs/assets.md` fixes neither, and each play varies by
-// design. The reach is 60 units of a core the removal took, which covers a throw
-// that has left the core it came from while excluding the rest of the field.
+// WHAT IS COUNTED. The points a render's GEOMETRY landed on, with every image
+// draw dropped, since the sprites are the picture the effect plays over. A point
+// is the effect's when the control's own render put nothing within a unit of it.
+//
+// THE BOUNDS. At least two renders after the strike's own carry such a point, and
+// two of those renders disagree about where the points are. That is the least
+// that "a live particle system playing at the extraction" can mean and the least
+// that separates it from a still mark: one render is a mark, two identical
+// renders are a mark held up, and two that differ are motion. Nothing here counts
+// particles or measures a spread — `specs/assets.md` fixes neither, and each play
+// varies by design. The reach is 60 units of a core the removal took, which
+// covers a throw that has left the core it came from while excluding the rest of
+// the field.
 
 import { afterEach, it } from "vitest";
 import { type Point } from "../constants";
@@ -51,7 +63,7 @@ import {
   RUN_CHARGE,
 } from "./extract";
 
-/** How many ticks each drive runs for: the flight, then the burst. */
+/** How many ticks each drive may run for before the shot must have landed. */
 const DRIVE_TICKS = 60;
 
 /** How many ticks after the extraction the burst is read over. */
@@ -80,12 +92,12 @@ it("throws live particles at the run an extraction draws out", async () => {
   const extracting = await opened();
   await poseRun(extracting, RUN_CHARGE);
   const burst = await captureReplay(extracting, "burst", () =>
-    driveShot(extracting, DRIVE_TICKS),
+    driveShot(extracting, DRIVE_TICKS, BURST_WINDOW),
   );
 
   const control = await opened();
   await poseRun(control, OTHER_CHARGE);
-  const quiet = await driveShot(control, DRIVE_TICKS);
+  const quiet = await driveShot(control, DRIVE_TICKS, BURST_WINDOW);
 
   assertGreaterThan(
     burst.strike,
@@ -106,16 +118,21 @@ it("throws live particles at the run an extraction draws out", async () => {
     "the control drive leaving every core on the channel",
   );
 
-  /** The points the extraction drew near the removal that the control did not. */
+  /**
+   * The points the extraction drew near the removal that the control did not,
+   * per render after the strike's own. Both drives observe the same sequence of
+   * renders from their strike on, so the control's render at the same index is
+   * the same state drawn by the same hand.
+   */
   const extra: Point[][] = [];
-  for (let offset = 1; offset <= BURST_WINDOW; offset += 1) {
-    const played = burst.frames[burst.strike - 1 + offset];
-    const still = quiet.frames[quiet.strike - 1 + offset];
+  for (let index = 1; index < burst.renders.length; index += 1) {
+    const played = burst.renders[index];
+    const still = quiet.renders[index];
     if (played === undefined || still === undefined) break;
-    const near = geometryPoints(played).filter((point) =>
+    const near = geometryPoints(played.calls).filter((point) =>
       nearAny(point, burst.standing, BURST_RADIUS),
     );
-    const control_ = geometryPoints(still).filter((point) =>
+    const control_ = geometryPoints(still.calls).filter((point) =>
       nearAny(point, burst.standing, BURST_RADIUS),
     );
     extra.push(
@@ -133,7 +150,7 @@ it("throws live particles at the run an extraction draws out", async () => {
   assertGreaterThanOrEqual(
     alive.length,
     2,
-    "ticks after the extraction drawing something at it the control drive did not",
+    "renders after the extraction drawing something at it the control drive did not",
   );
 
   const moved = alive.some(
@@ -142,11 +159,11 @@ it("throws live particles at the run an extraction draws out", async () => {
   );
   assertTrue(
     moved,
-    "the particles at the extraction standing somewhere new from one tick to the next",
+    "the particles at the extraction standing somewhere new from one render to the next",
   );
 });
 
-/** A tick's points as one comparable string, rounded to a tenth of a unit. */
+/** A render's points as one comparable string, rounded to a tenth of a unit. */
 function signature(points: readonly Point[]): string {
   return points
     .map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`)

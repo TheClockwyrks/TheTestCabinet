@@ -127,6 +127,9 @@ export function sheetFrameKey(draw: ImageDraw): string {
  */
 const GROUP_MARKS = [",", "'", "\u00A0", "\u202F", "\u2009"];
 
+/** The group marks as a regular-expression class, for a lookbehind. */
+const GROUP_CLASS = `[${GROUP_MARKS.map(escapeRegExp).join("")}]`;
+
 /** `text` as a pattern that matches exactly itself. */
 function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -159,10 +162,21 @@ function renderings(value: number): string[] {
  * it, so a screen showing "150" is not showing 50 and one showing "1.5" is not
  * showing 1 — the same boundary a maximal run of digits carries, held at each of
  * the ways the figure may have been grouped.
+ *
+ * Leading zeros are not part of that boundary. `specs/ui.md` fixes the score "in
+ * digits" and "no layout" around it, and a readout padded to a fixed width —
+ * "SCORE 000050", the odometer idiom `padStart` produces — is the figure 50 to a
+ * player as surely as "SCORE 50" is. So any run of zeros standing directly
+ * before the figure is absorbed into it, while a non-zero digit there still ends
+ * the reading: "000050" shows 50, "150" and "504" do not. A zero run that is
+ * itself a group of a larger grouped figure is not padding: "1,050" shows 1050,
+ * not 50.
  */
 function showsFigure(text: string, value: number): boolean {
   return renderings(value).some((drawn) =>
-    new RegExp(`(?<![\\d.])${escapeRegExp(drawn)}(?![\\d.])`).test(text),
+    new RegExp(
+      `(?<![\\d.])(?<!\\d${GROUP_CLASS})0*${escapeRegExp(drawn)}(?![\\d.])`,
+    ).test(text),
   );
 }
 
