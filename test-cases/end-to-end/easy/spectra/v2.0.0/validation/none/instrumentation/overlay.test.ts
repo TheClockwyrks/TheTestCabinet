@@ -25,6 +25,9 @@
 // score drawn as `4,271` — reads as the one number it draws, since how a panel
 // presents a figure is the build's; the ASCII space alone is not read as a
 // grouping character, because it is what stands between two figures on a line.
+// A comma between two runs of digits is ambiguous — `688,296` is one grouped
+// figure or a position's two coordinates — and the specification fixes no form
+// for a position, so a coordinate alone is accepted in both readings.
 // Two of them cannot be made unique — a bullet count and an entity id are both
 // small integers — and those are the weakest readings here. The two DURATIONS
 // are looser still, and deliberately: seconds remaining is a quantity a build may
@@ -43,14 +46,39 @@
 // held still any other way, and the overlay must report all three.
 //
 // THE STORED AND EFFECTIVE BANDS ARE SEPARATED BY THE POSE. Every drone on the
-// field stores CYAN, and two of them read as magenta by `specs/bands.md` — a Flux
-// posed mid-shimmer, which "reads as the band it is moving toward", and a Prism
-// whose shell is broken, which is read at its core. So a panel that reports only
-// the stored bands never draws the word `magenta` at all, and the reading below
-// catches it. What is NOT decided is the pairing: a panel showing only effective
-// bands draws both words too, and no line structure is fixed by any specification,
-// so this point cannot hold a build to drawing the two together. The captured
-// image is what a reviewer reads that off.
+// field stores CYAN, and `specs/bands.md` takes a stored band to the opposite once
+// for each of the shell being broken, a Flux shimmering, and an inversion being
+// active. With the inversion this field poses live, that lands on three different
+// answers from one stored band: the plain Shard reads MAGENTA, on the inversion's
+// single swap; the shimmering Flux and the shell-broken Prism each take two swaps
+// and read cyan again. So a panel that reports only the stored bands never draws
+// the word `magenta` at all, and the reading below catches it. What is NOT decided
+// is the pairing: a panel showing only effective bands draws both words too, and
+// no line structure is fixed by any specification, so this point cannot hold a
+// build to drawing the two together. The captured image is what a reviewer reads
+// that off.
+//
+// TWO FLAGS ARE READ BY CHANGING THEM, WITH THE BAND WORDS MASKED. A Flux's
+// shimmer state and a Prism's shell state are named by the specification and
+// spelled by nobody: it asks that each line be "short enough to read on a line",
+// so `shimmer`, `~`, `S:1` and `core` are all honest drawings of a flag, and no
+// pattern can accept them all. What CAN be decided is sensitivity: the posed field
+// is read again with exactly that one fact moved, through the setter
+// `specs/instrumentation.md` gives it, and the panel must differ. But each flag
+// also moves the drone's EFFECTIVE band — `specs/bands.md` takes a stored band to
+// the opposite for a shimmering Flux and for a broken shell — and the effective
+// band is a source of its own that the panel already draws, so a panel with no
+// flag on it at all would differ on the band word alone. Every band word, in the
+// spellings `CYAN_FORMS` and `MAGENTA_FORMS` accept, is therefore replaced by one
+// placeholder before two panels are compared, and what is left to differ is a
+// token that is not a band: the flag, in whatever spelling. A control reading with
+// nothing moved finds the lines a panel moves on its own — a frame counter, a
+// clock, which "Register at least" permits — and their figures are blanked in
+// every comparison, so a restless panel cannot pass for one that reports the fact.
+// Two things this reading does not separate from the flag: a panel that draws the
+// Flux's band clock as a figure, which the shimmer setter moves too; and an
+// effective band drawn as something other than a word, which the mask does not
+// reach.
 //
 // PURITY is read straight off the snapshot: identical across the toggle apart from
 // `simTime`, which is set aside because the specification does not fix whether a
@@ -62,7 +90,7 @@
 // and that the panel is off when the game starts, which is that point's too.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertDeepEqual, assertEqual, fail } from "../assert";
+import { assertDeepEqual, assertEqual, assertNotEqual, fail } from "../assert";
 import {
   FLIP_LOCKOUT,
   INVERSION_TIME,
@@ -76,6 +104,7 @@ import {
   createHarness,
   drawnTextLines,
   droneById,
+  framesFor,
   poseDrone,
   requireDrone,
   shootDrone,
@@ -184,13 +213,38 @@ const PRISM_FORMS = /\bprism\b|\bp\b/i;
  */
 const CYAN_FORMS = /\bcyan\b|\bc\b/i;
 const MAGENTA_FORMS = /\bmagenta\b|\bm\b/i;
+/**
+ * Every band word on a line, in the spellings above, as one placeholder.
+ *
+ * The two flag readings at the end move a Flux's shimmer and a Prism's shell, and
+ * `specs/bands.md` moves the drone's effective band with each of them — a source
+ * the panel draws in its own right. With the band words masked, the two panels of
+ * a reading can differ only in something that is not a band, which is the flag.
+ */
+const BAND_WORDS = new RegExp(
+  `${CYAN_FORMS.source}|${MAGENTA_FORMS.source}`,
+  "gi",
+);
+function withoutBands(line: string): string {
+  return line.replace(BAND_WORDS, "band");
+}
 const READY_FORMS = /ready|\byes\b|\btrue\b|\bon\b|\bfull\b/i;
 const INVERSION_FORMS = /invert|inversion|activ|\byes\b|\btrue\b|\bon\b/i;
-const SHIMMER_FORMS = /shimmer|\bshim\b/i;
-const SHELL_FORMS = /core|broken|shell/i;
 
 /** The scales a build may honestly print a duration in: seconds to milliseconds. */
 const DURATION_SCALES = [1, 10, 100, 1000] as const;
+
+/**
+ * How long, in seconds, each of the three flag readings runs the paused field
+ * before its panel is read.
+ *
+ * A panel may carry sources of its own beyond the list — a frame counter, a
+ * clock — and a value that ticks once a second or faster ticks inside the
+ * control's span, so it is caught there rather than mistaken for the fact moved
+ * in the reading that follows.
+ */
+const SETTLE_SPAN = 1;
+const SETTLE_FRAMES = framesFor(SETTLE_SPAN);
 
 /** The lines `after` drew beyond `before`, as a multiset difference. */
 function newLines(
@@ -207,6 +261,20 @@ function newLines(
     }
     return true;
   });
+}
+
+/**
+ * A line with every figure blanked: which line of the panel it is, whatever it
+ * reads at the moment.
+ *
+ * The control reading below finds the lines a panel moves on its own, and a
+ * frame counter or a clock is the same line from one frame to the next with a
+ * different figure on it. Such a line is compared in this blanked form rather
+ * than dropped, so a drone's line keeps its flag if a counter shares its
+ * baseline; only a flag spelled as a figure is lost with it there.
+ */
+function shapeOf(line: string): string {
+  return line.replace(/\d+/g, "#");
 }
 
 /**
@@ -229,18 +297,27 @@ const DRAWN = new RegExp(
 );
 
 /**
- * Every number the lines drew, read with any grouping taken back out.
+ * Every number the lines drew, read with any grouping taken back out — and, when
+ * `apart` is set, every run of digits inside a grouped figure as a number of its
+ * own as well.
  *
  * A figure is read whole rather than digit by digit, so a panel that drew the
  * score as `4,271` reports the one number `4271` and not the two numbers `4` and
  * `271`. `specs/ui.md` fixes no presentation for a panel it never mentions, so
- * how a build groups its digits is the build's.
+ * how a build groups its digits is the build's. The same characters also spell
+ * two figures a panel joined with a comma — a position drawn as `688,296` — and
+ * nothing in the text tells the two apart, so a reading that wants the joined
+ * figures asks for them `apart`: `688,296` then reports `688296`, `688` and
+ * `296`, and a build that never drew a coordinate still draws none of them.
  */
-function drawnNumbers(lines: readonly string[]): number[] {
+function drawnNumbers(lines: readonly string[], apart = false): number[] {
+  const grouping = new RegExp(GROUP, "g");
   return lines.flatMap((line) =>
-    (line.match(DRAWN) ?? []).map((drawn) =>
-      Number(drawn.replace(new RegExp(GROUP, "g"), "")),
-    ),
+    (line.match(DRAWN) ?? []).flatMap((drawn) => {
+      const whole = Number(drawn.replace(grouping, ""));
+      if (!apart) return [whole];
+      return [whole, ...drawn.split(new RegExp(GROUP)).map(Number)];
+    }),
   );
 }
 
@@ -251,6 +328,26 @@ function assertFigure(
   what: string,
 ): void {
   if (!drawnNumbers(lines).includes(value)) {
+    fail(`an overlay line carrying ${what} (${String(value)})`, lines);
+  }
+}
+
+/**
+ * Some line carries `value` as one coordinate of a position: a whole figure of
+ * its own, or one run of a comma-joined pair.
+ *
+ * `specs/instrumentation.md` asks for each drone's "position" and fixes no form
+ * for it, so `(688, 296)`, `x 688 y 296` and `@688,296` all draw the coordinates
+ * the reading asks for — and the last of those is the same text as the grouped
+ * figure `688296`. Only a position is read this way; the scalar figures keep the
+ * whole-figure reading, so a score drawn as `4,271` never answers for the lives.
+ */
+function assertCoordinate(
+  lines: readonly string[],
+  value: number,
+  what: string,
+): void {
+  if (!drawnNumbers(lines, true).includes(value)) {
     fail(`an overlay line carrying ${what} (${String(value)})`, lines);
   }
 }
@@ -358,7 +455,7 @@ it("draws every registered value and changes nothing in the game", async () => {
     `whether the Flux posed ${BAND_CLOCK} s into its window is shimmering at ` +
       `stage ${STAGE}, where fluxHold is ${fluxHold(STAGE)} s and the whole ` +
       `window is ${fluxWindow(STAGE)} s (specs/drones.md) — the effective ` +
-      `band the panel must draw depends on it`,
+      `band the panel must draw depends on it (specs/bands.md)`,
   );
   assertEqual(
     bursts,
@@ -376,9 +473,13 @@ it("draws every registered value and changes nothing in the game", async () => {
   const baseline = drawnTextLines(await h.frameCalls());
   const before = await h.snapshot();
 
+  /** The panel's own lines over the field as it stands, off one more frame. */
+  const panelNow = async (): Promise<string[]> =>
+    newLines(baseline, drawnTextLines(await h.frameCalls()));
+
   // …then the toggle, and the frame that draws the panel it opened.
   await toggleOverlay(h);
-  const overlay = newLines(baseline, drawnTextLines(await h.frameCalls()));
+  const overlay = await panelNow();
   // The overlay drawn over the posed field.
   await captureStill(h, "overlay");
   const after = await h.snapshot();
@@ -415,19 +516,16 @@ it("draws every registered value and changes nothing in the game", async () => {
   assertForm(
     overlay,
     MAGENTA_FORMS,
-    "an effective band — every drone on this field STORES cyan, and the " +
-      "shimmering Flux and the shell-broken Prism both read as magenta " +
-      "(specs/bands.md)",
+    "an effective band — every drone on this field STORES cyan, and under the " +
+      "live inversion the plain Shard reads as magenta (specs/bands.md)",
   );
-  assertFigure(overlay, SHARD_AT.x, "the x of the Shard's position");
-  assertFigure(overlay, SHARD_AT.y, "the y of the Shard's position");
-  assertFigure(overlay, FLUX_AT.x, "the x of the Flux's position");
-  assertFigure(overlay, FLUX_AT.y, "the y of the Flux's position");
-  assertFigure(overlay, PRISM_AT.x, "the x of the Prism's position");
-  assertFigure(overlay, PRISM_AT.y, "the y of the Prism's position");
+  assertCoordinate(overlay, SHARD_AT.x, "the x of the Shard's position");
+  assertCoordinate(overlay, SHARD_AT.y, "the y of the Shard's position");
+  assertCoordinate(overlay, FLUX_AT.x, "the x of the Flux's position");
+  assertCoordinate(overlay, FLUX_AT.y, "the y of the Flux's position");
+  assertCoordinate(overlay, PRISM_AT.x, "the x of the Prism's position");
+  assertCoordinate(overlay, PRISM_AT.y, "the y of the Prism's position");
   assertForm(overlay, /formation/i, "each drone's phase");
-  assertForm(overlay, SHIMMER_FORMS, "the Flux's shimmer state");
-  assertForm(overlay, SHELL_FORMS, "the Prism's shell state");
 
   assertFigure(overlay, bullets, "how many bullets are in flight");
   assertFigure(overlay, bursts, "how many bursts are playing");
@@ -439,5 +537,64 @@ it("draws every registered value and changes nothing in the game", async () => {
     { ...before, simTime: 0 },
     "every diagnostic source is a pure read, so watching the overlay leaves " +
       "the game as it is (specs/instrumentation.md)",
+  );
+
+  // ---- The two flags, read by changing them -------------------------------
+  //
+  // Every panel below is compared with its band words masked, because each flag
+  // moves the drone's effective band as well (specs/bands.md) and the band is
+  // already a source of its own; what has to differ is the flag.
+
+  // The control first: the same field, a second on. Nothing on it moves behind
+  // the pause menu (specs/ui.md), so a line that reads differently now is one the
+  // build moves on its own — a frame counter, a clock — and its figures are
+  // blanked in the two readings below, each of which is taken over the same span.
+  await h.advance(SETTLE_FRAMES);
+  const held = await panelNow();
+  const restless = new Set(
+    [...newLines(overlay, held), ...newLines(held, overlay)].map((line) =>
+      shapeOf(withoutBands(line)),
+    ),
+  );
+  const settled = (panel: readonly string[]): string =>
+    panel
+      .map((line) => {
+        const read = withoutBands(line);
+        return restless.has(shapeOf(read)) ? shapeOf(read) : read;
+      })
+      .join("\n");
+
+  await h.debug.setDroneBandClock(flux, 0);
+  await h.advance(SETTLE_FRAMES);
+  const fluxHolding = await panelNow();
+  assertNotEqual(
+    settled(fluxHolding),
+    settled(held),
+    `the panel's settled lines, band words masked, over the same field with ` +
+      `the Flux's band clock moved from ${String(BAND_CLOCK)} s to 0, below ` +
+      `fluxHold(${String(STAGE)}) = ${String(fluxHold(STAGE))} s, so it holds ` +
+      `its band instead of shimmering (specs/drones.md) — its effective band ` +
+      `moves with that (specs/bands.md) and is masked out, and the same drone ` +
+      `stands at the same id and position, so a panel that reports the Flux's ` +
+      `shimmer state draws something different and one that omits it cannot ` +
+      `(specs/instrumentation.md, Diagnostics); the figures of ` +
+      `${String(restless.size)} line(s) that moved with nothing changed are ` +
+      `blanked`,
+  );
+
+  await h.debug.setDroneShell(prism, true);
+  await h.advance(SETTLE_FRAMES);
+  const shellIntact = await panelNow();
+  assertNotEqual(
+    settled(shellIntact),
+    settled(fluxHolding),
+    "the panel's settled lines, band words masked, over the same field with " +
+      "the Prism's shell restored — its effective band moves with that " +
+      "(specs/bands.md) and is masked out, and the same drone stands at the " +
+      "same id and position, so a panel that reports the Prism's shell state " +
+      "draws something different and one that omits it cannot " +
+      "(specs/instrumentation.md, Diagnostics); the figures of " +
+      `${String(restless.size)} line(s) that moved with nothing changed are ` +
+      "blanked",
   );
 });
