@@ -13,32 +13,54 @@
 // field itself always shows, so every sample reads the build's own field
 // drawing and none of the play.
 //
-// WHERE IT SAMPLES. In each of the four quadrants, five angles; at each angle
-// a radial window of five points spanning 474 to 486, so a stroke of any
-// reasonable weight centered on 480 lands inside it; and, behind them, the
+// WHERE IT SAMPLES. In each of the four quadrants, the 40 degrees from 25 to
+// 65 past its axis, clear of the axes and of the HUD's strip across the top of
+// the stage; at angle columns one unit of arc apart, and at each column a
+// radial window of unit-spaced points spanning 474 to 486. Together those meet
+// every pixel of the band, so a stroke of any weight, a dash, or a dot centered
+// near 480 lands on a sampled point wherever it lies. Behind each column, the
 // open field INSIDE the circle at the same angle — radii 400 and 464, the two
 // bands `specs/field.md`'s geometry leaves clear between ring 2, ring 3, and
 // the circle. The inside on purpose: the item holds the boundary against the
 // field it encloses, and the strip outside the circle near the stage's top
-// belongs to the HUD. Each quadrant passes when some window point at some of
-// its angles differs from both field samples at that angle — so a dashed or
-// ornamented circle passes, and a circle a quadrant of which shows nothing
-// does not.
+// belongs to the HUD. A column is drawn on when some window point in it
+// differs from both field samples at its angle.
+//
+// THE FLOOR. A quadrant passes when more than `BOUNDARY_MIN_COLUMNS` of its
+// columns are drawn on. The band is read pixel by pixel, so a speck of the
+// build's own starfield that happens to sit inside it marks a column or two of
+// the roughly 330 per quadrant; the floor tolerates a few such specks and
+// still fails a quadrant of the circle that shows nothing, while a stroke, a
+// dash pattern, or a dot pattern covering one part in twenty-five of the arc
+// clears it. A tolerance, not a figure any requirement states.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan } from "../assert";
 import { FIELD_RADIUS } from "../constants";
 import { captureStill, isolate, openHarness, type Harness } from "../harness";
-import { drawnOver, polarGrid, polarPoints, samplePoints } from "./sampling";
+import {
+  drawnOver,
+  polarGrid,
+  polarPoints,
+  samplePoints,
+  unitArcAngles,
+  unitRadii,
+} from "./sampling";
 
-/** The radial window a stroke centered on 480 lands in. */
-const WINDOW_RADII = [474, 477, FIELD_RADIUS, 483, 486];
+/** The radial window a stroke centered on 480 lands in, one unit apart. */
+/** The window's inner edge, the radius its angle spacing is sized for. */
+const WINDOW_INNER = FIELD_RADIUS - 6;
+
+const WINDOW_RADII = unitRadii(WINDOW_INNER, FIELD_RADIUS + 6);
 
 /** The open-field bands inside the circle, clear of every drawn annulus. */
 const FIELD_RADII = [400, 464];
 
-/** Five angles per quadrant, clear of the axes. */
-const QUADRANT_OFFSETS = [25, 35, 45, 55, 65];
+/** The span of each quadrant that is read, in degrees past its axis. */
+const QUADRANT_SPAN = { from: 25, to: 65 };
+
+/** How many drawn-on columns a quadrant must show beyond the noise floor. */
+const BOUNDARY_MIN_COLUMNS = 12;
 
 let h: Harness;
 
@@ -56,9 +78,14 @@ it("draws the containment circle apart from the field in every quadrant", async 
   captureStill(h, "scene");
 
   for (let quadrant = 0; quadrant < 4; quadrant += 1) {
+    const axis = quadrant * 90;
+    const thetas = unitArcAngles(
+      axis + QUADRANT_SPAN.from,
+      axis + QUADRANT_SPAN.to,
+      WINDOW_INNER,
+    );
     let drawn = 0;
-    for (const offset of QUADRANT_OFFSETS) {
-      const theta = quadrant * 90 + offset;
+    for (const theta of thetas) {
       const window = samplePoints(
         h,
         polarPoints(polarGrid(WINDOW_RADII, [theta])),
@@ -67,13 +94,14 @@ it("draws the containment circle apart from the field in every quadrant", async 
         h,
         polarPoints(polarGrid(FIELD_RADII, [theta])),
       );
-      drawn += drawnOver(window, field);
+      if (drawnOver(window, field) > 0) drawn += 1;
     }
     assertGreaterThan(
       drawn,
-      0,
-      `the sampled points of the radius-480 boundary carrying something the ` +
-        `field inside it does not, across quadrant ${quadrant + 1}`,
+      BOUNDARY_MIN_COLUMNS,
+      `the angle columns of the radius-480 boundary carrying something the ` +
+        `field inside it does not, of the ${thetas.length} read across ` +
+        `quadrant ${quadrant + 1}`,
     );
   }
 });

@@ -59,6 +59,26 @@ export function polarGrid(
   return grid;
 }
 
+/** The radii from `inner` to `outer` inclusive, one unit apart. */
+export function unitRadii(inner: number, outer: number): number[] {
+  const radii: number[] = [];
+  for (let r = inner; r <= outer; r += 1) radii.push(r);
+  return radii;
+}
+
+/**
+ * The angles from `from` to `to` inclusive, spaced so that consecutive samples
+ * along the arc of radius `r` are one unit apart. A window read at these
+ * angles, at unit radii, meets every pixel of the band, so a stroke of any
+ * width, a dash, or a dot lands on a sampled point wherever it lies.
+ */
+export function unitArcAngles(from: number, to: number, r: number): number[] {
+  const step = 360 / (2 * Math.PI * r);
+  const angles: number[] = [];
+  for (let theta = from; theta <= to; theta += step) angles.push(theta);
+  return angles;
+}
+
 /** Keep a sample point on the canvas, so an edge patch still reads. */
 export function clampPt(point: Pt): Pt {
   return {

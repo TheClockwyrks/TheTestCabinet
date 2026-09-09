@@ -12,17 +12,26 @@
 // degrees of it, so every sampled point of the band (radius 86 and beyond)
 // stays outside the square the 160-pixel planet sprite may paint (the sprite
 // covers 80 units from the center along the axes, and 86 * cos 20 > 80). At
-// each column, a radial window of five points spanning 86 to 98, so a ring
-// stroke of any reasonable weight centered on 92 lands inside it. A column's
-// read is those five colors, and two reads of one column are compared point
-// for point.
+// each column, a radial window of unit-spaced points spanning 86 to 98, so a
+// ring stroke of any weight centered on 92, a hairline included, lands on a
+// sampled pixel wherever it lies. A column's read is those colors, and two
+// reads of one column are compared point for point.
 
 import { SHIELD_RADIUS } from "../constants";
 import type { Harness, Rgb } from "../harness";
-import { movedCount, polarGrid, polarPoints, samplePoints } from "./sampling";
+import {
+  movedCount,
+  polarGrid,
+  polarPoints,
+  samplePoints,
+  unitRadii,
+} from "./sampling";
 
-/** The radial window a ring stroke centered on 92 lands in. */
-export const SHIELD_WINDOW_RADII = [86, 89, SHIELD_RADIUS, 95, 98];
+/** The radial window a ring stroke centered on 92 lands in, one unit apart. */
+export const SHIELD_WINDOW_RADII = unitRadii(
+  SHIELD_RADIUS - 6,
+  SHIELD_RADIUS + 6,
+);
 
 /** Five angles about each cardinal, inside the planet sprite's clearance. */
 export const SHIELD_ANGLE_OFFSETS = [-20, -10, 0, 10, 20];
@@ -45,7 +54,7 @@ export function shieldAngles(): number[] {
   return angles;
 }
 
-/** The band's colors, one window of five per sampled angle. */
+/** The band's colors, one radial window per sampled angle. */
 export function shieldBandColumns(h: Harness): Rgb[][] {
   const columns: Rgb[][] = [];
   for (const theta of shieldAngles()) {
