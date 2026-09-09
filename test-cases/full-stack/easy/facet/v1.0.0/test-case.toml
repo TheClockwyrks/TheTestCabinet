@@ -2133,14 +2133,15 @@ validation = { script = "levels/continue-deals-a-falling-board.test.ts", outputs
 ] }
 [[review.categories.items]]
 id = "levelclear-bests-reset"
-title = "A level opens with its figures at zero"
-description = "Choosing CONTINUE returns moveScore, bestMove and bestChain to 0, so each level is measured on its own."
+title = "A level opens with its bests at zero"
+description = "Choosing CONTINUE returns bestMove and bestChain to 0, so each level is measured on its own."
 domains = ["gameplay"]
 failure_cap = "passable"
-# Automated validation: reach `levelclear` with all three figures non-zero — the
-# chain that won the level supplies `moveScore` and `bestChain`, and `bestMove`
-# is posed through `setBestMove` on top of it — take CONTINUE, and assert all
-# three read 0 on the new board. Reaching the screen with the figures actually
+# Automated validation: reach `levelclear` with both figures non-zero — the
+# chain that won the level supplies `bestChain`, and `bestMove` is posed through
+# `setBestMove` on top of it — take CONTINUE, and assert both read 0 on the new
+# board. `moveScore` is not read after CONTINUE: `specs/rules.md` returns it to 0
+# only when a swap is accepted. Reaching the screen with the figures actually
 # carrying something is the point: a build that never accumulated them would pass
 # a check that only read zeros. See
 # validation/<engine>/levels/levelclear-bests-reset.test.ts.

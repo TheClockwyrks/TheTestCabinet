@@ -110,6 +110,7 @@ import {
   drawnTextLines,
   drewTextAnywhere,
   mediaDestination as mediaPath,
+  readSurfaceFault,
   setsOf,
   type Clock,
   type DrawCall,
@@ -577,7 +578,20 @@ export interface Harness {
    */
   surface(): Promise<{ width: number; height: number; dpr: number }>;
 
-  /** Give the build a real, browser-trusted gesture, so its audio can open. */
+  /**
+   * Give the build real, browser-trusted gestures, so its audio can open.
+   *
+   * TWO GESTURES, because the specification fixes none as the one that unlocks.
+   * `specs/assets.md` has audio start only after the player has interacted with
+   * the page and `specs/ui.md` leaves the first-interaction unlock to the
+   * runtime, so a build that opens its audio from any key at all and one that
+   * opens it only from the inputs `specs/controls.md` binds — a pointer press, a
+   * bound key — are both conformant. The first gets the key `UNBOUND_KEY` names;
+   * the second gets a pointer press at a point outside every target of the
+   * current screen, which `specs/controls.md` fixes as arming nothing. The press
+   * is made on every screen but `playing`, where `specs/controls.md` reads a
+   * press against the board as well; the audio checks arm on `title`.
+   */
   armAudio(): Promise<void>;
   /**
    * Open the build's audio and drive frames until it has actually made a sound.
@@ -587,12 +601,12 @@ export interface Harness {
    * player has interacted with the page. So a build is conformant when its first
    * frames after the gesture are silent while the sound decodes, and a cue check
    * that observed the very first event would be reading the decoder rather than
-   * the build. This gives the gesture and then drives one frame at a time, each
-   * a crossing into the page that lets a decode land between them, until a
-   * sound has gone out — which under `specs/ui.md` it must, since one of the two
-   * music beds plays on every screen. The frames are counted, never timed: the
-   * cap is a failure cap on how many frames a build is given, not a stretch of
-   * real time.
+   * the build. This gives the gestures {@link Harness.armAudio} gives and then
+   * drives one frame at a time, each a crossing into the page that lets a decode
+   * land between them, until a sound has gone out — which under `specs/ui.md` it
+   * must, since one of the two music beds plays on every screen. The frames are
+   * counted, never timed: the cap is a failure cap on how many frames a build is
+   * given, not a stretch of real time.
    *
    * IT COUNTS BEDS AS WELL AS CUES, and it has to: the sound a title screen makes
    * is a LOOPING one, so a warm-up that waited for a one-shot would wait out its
@@ -639,6 +653,17 @@ export const REPLAY_BACKGROUND = "#000";
 const AUDIO_GLOBAL = "__facetCues";
 
 /**
+ * How long a page is given to install `window.__facet`, on the shared harness's
+ * own navigation and on the second one a mounted page takes.
+ *
+ * specs/assets.md makes every load the game starts part of initialization and
+ * specs/instrumentation.md puts the surface up once the game has initialized, so
+ * a build's surface can follow the document's `load` event by however long its
+ * produced files take to arrive. A failure cap on a predicate, not a pause.
+ */
+const SURFACE_TIMEOUT_MS = 15_000;
+
+/**
  * Facet, as the shared harness needs to know it.
  *
  * ONE OBJECT, and every value in it is the case's: the global the specification
@@ -654,6 +679,7 @@ const AUDIO_GLOBAL = "__facetCues";
  * addressed one level too deep, and silently, since a writer that raised on a
  * failed write would be blaming the build for the host's problem.
  */
+
 const kit = createCaseHarness<FacetSnapshot, FacetSurface>({
   slug: "facet",
   handle: HANDLE,
@@ -671,17 +697,21 @@ const kit = createCaseHarness<FacetSnapshot, FacetSurface>({
   measureText: true,
   // A GENUINE browser gesture, so the build's audio context can open: a build is
   // free to open its audio from a real DOM event alone, so a gesture delivered
-  // any other way would leave a perfectly good build silent. A KEY rather than a
-  // click, because Facet's pointer works the board and every screen's targets, so
-  // a press anywhere is a press on something. `UNBOUND_KEY` is bound to nothing
-  // in specs/controls.md's whole binding table.
+  // any other way would leave a perfectly good build silent. This is the FIRST
+  // of two gestures: a key `UNBOUND_KEY` names, which specs/controls.md's binding
+  // table binds to nothing, for a build that opens its audio from any key at
+  // all. The second, a press outside every target, is the case's own
+  // (`inertPress` below): specs/ui.md fixes no gesture as the one that unlocks,
+  // so a build that opens its audio only from the inputs the specification binds
+  // — a pointer press, a bound key — is conformant, and a key bound to nothing
+  // never reaches it.
   arm: { kind: "key", code: UNBOUND_KEY },
   // specs/assets.md makes the load part of initialization and
   // specs/instrumentation.md puts the surface up once the game has initialized,
   // so a build installs its surface once every load it started has settled. The
   // wait is therefore the generous one rather than the short one, and it is a
   // failure cap on a predicate — the surface being present — not a pause.
-  surfaceTimeoutMs: 15_000,
+  surfaceTimeoutMs: SURFACE_TIMEOUT_MS,
   specPath: SPEC_PATH,
   replayBackground: REPLAY_BACKGROUND,
   // The narrowed cue counter, and the script that installs it. `audio-cues.js`
@@ -766,6 +796,65 @@ function normalizeBasePath(basePath: string): string {
  * inside it.
  */
 const AUDIO_WARM_FRAMES = 240;
+
+/**
+ * Where an inert press is tried, in the stage's logical units: the four corners,
+ * inset, and then the middles of the four edges.
+ *
+ * specs/controls.md has every target wholly within the stage, at least
+ * `TARGET_MIN_W x TARGET_MIN_H`, and no two overlapping, and leaves where a
+ * screen puts its targets to the build, so which of these lies outside every
+ * target on a given screen is read from `snapshot().targets` rather than
+ * assumed. Whole units, inside the stage, so the press lands on the canvas
+ * wherever the fit put it.
+ */
+const INERT_PRESS_CANDIDATES: readonly Point[] = [
+  { x: 4, y: 4 },
+  { x: STAGE_W - 4, y: 4 },
+  { x: 4, y: STAGE_H - 4 },
+  { x: STAGE_W - 4, y: STAGE_H - 4 },
+  { x: STAGE_W / 2, y: 4 },
+  { x: STAGE_W / 2, y: STAGE_H - 4 },
+  { x: 4, y: STAGE_H / 2 },
+  { x: STAGE_W - 4, y: STAGE_H / 2 },
+];
+
+/** Whether `point` lies inside `rect`, edges included. */
+function insideTarget(point: Point, rect: TargetRect): boolean {
+  return (
+    point.x >= rect.x &&
+    point.x <= rect.x + rect.w &&
+    point.y >= rect.y &&
+    point.y <= rect.y + rect.h
+  );
+}
+
+/**
+ * A pointer press the specification fixes as doing nothing, delivered as a
+ * genuine browser gesture so a build that opens its audio from the pointer can
+ * open it.
+ *
+ * specs/controls.md: "A press outside every target arms nothing", and a release
+ * "anywhere else" takes nothing. On `playing` the same file reads a press against
+ * the board as well — a press far from every cell clears the selection — so no
+ * press is made there and the key gesture stands alone. Which point is outside
+ * every target is read from the screen's own targets, so a build is free to lay
+ * its menus out as it likes. Answers whether a press was made.
+ */
+async function inertPress(
+  base: BaseHarness<FacetSnapshot, FacetSurface>,
+): Promise<boolean> {
+  const snapshot = await base.snapshot();
+  if (snapshot.screen === "playing") return false;
+  const at = INERT_PRESS_CANDIDATES.find((point) =>
+    snapshot.targets.every((target) => !insideTarget(point, target)),
+  );
+  if (at === undefined) return false;
+  await base.movePointer(at.x, at.y);
+  await base.page.mouse.down();
+  await base.page.mouse.up();
+  return true;
+}
 
 /**
  * The browser, the instrumented context, and the pages this worker opened.
@@ -935,6 +1024,21 @@ export async function createHarness(
       waitUntil: "load",
     });
     if (base.surfaceFault === null) {
+      // THE SURFACE IS WAITED FOR AGAIN, the way the shared harness waited on its
+      // own navigation. `load` is the document's event, and specs/assets.md puts
+      // the surface up only once every produced file the game asked for has
+      // settled — images, clips and `system.json` fetches that `load` does not
+      // wait on — so on this navigation too the surface can follow `load` by a
+      // while. A call made into it before then is a `TypeError` from inside the
+      // page, which names nothing; a build whose surface never comes up under the
+      // mount fails the way every check fails a missing surface.
+      const mountedFault = await readSurfaceFault(
+        base.page,
+        HANDLE,
+        REQUIRED_OPS,
+        SURFACE_TIMEOUT_MS,
+      );
+      if (mountedFault !== null) failSurface(mountedFault);
       // The opening the shared harness performs on its own navigation, performed
       // again on this one: off the wall clock, back to the title screen, and a
       // recorder over the surface before a check can arm one. A build is free to
@@ -1038,6 +1142,15 @@ export async function createHarness(
   const tap = async (code: string): Promise<void> => {
     await base.tap(code);
     await noteLoops();
+  };
+
+  /** Both gestures {@link Harness.armAudio} describes: the key, then the press. */
+  const armAudio = async (): Promise<void> => {
+    await base.armAudio();
+    // The key goes out whatever the surface's state, as the shared arming does;
+    // the press needs the snapshot to find an inert point, so a build with a
+    // surface fault is left to fail on the check's own reading of it.
+    if (base.surfaceFault === null) await inertPress(base);
   };
 
   const harness: Harness = {
@@ -1204,10 +1317,10 @@ export async function createHarness(
 
     surface: () => base.surface(),
 
-    armAudio: () => base.armAudio(),
+    armAudio,
 
     async warmAudio() {
-      await base.armAudio();
+      await armAudio();
       for (let frame = 0; frame < AUDIO_WARM_FRAMES; frame += 1) {
         // A frame, so the build asks for the screen's bed and for anything else it
         // plays from `update`. Each is its own crossing into the page, so a decode

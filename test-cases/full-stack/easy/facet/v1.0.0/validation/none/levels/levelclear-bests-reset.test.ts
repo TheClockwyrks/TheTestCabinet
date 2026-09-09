@@ -1,31 +1,37 @@
-// levels/levelclear-bests-reset — a level opens with the three figures it will be
+// levels/levelclear-bests-reset — a level opens with the two figures it will be
 // measured by at zero.
 //
 // specs/rules.md: "`bestMove` and `bestChain` return to `0` when a level is
 // opened and when a round starts, so each level is measured on its own", and
 // specs/ui.md names the choice that opens it: the level-clear menu's `CONTINUE`
-// "opens the next level, as `specs/rules.md` describes". Three figures, one
+// "opens the next level, as `specs/rules.md` describes". Two figures, one
 // moment.
 //
+// `moveScore` IS NOT ONE OF THEM. specs/rules.md's CONTINUE sentence returns
+// `levelScore`, `bestChain` and `bestMove` to `0` and names no other figure, and
+// the figure table fixes `moveScore`'s one reset: "It returns to `0` when a swap
+// is accepted." A build that carries the winning move's points onto the new
+// board until its first accepted swap reads the specification as written, so
+// `moveScore` is read here only as evidence that the chain scored.
+//
 // REACHING THE SCREEN WITH THE FIGURES ACTUALLY CARRYING SOMETHING IS THE POINT.
-// A check that opened a level from a standing start would read three zeros
+// A check that opened a level from a standing start would read two zeros
 // whether the build zeroed them or never accumulated them at all, and both
 // builds would pass. So the level is won by an actual chain: the chain supplies
-// `moveScore`, which specs/rules.md accumulates over every step of the move, and
-// `bestChain`, which each step raises to its own `chainStep`. `bestMove` is then
-// posed on top with `setBestMove`, which specs/instrumentation.md says "changes
-// nothing else" — the chain's own settle already takes `bestMove` up to
-// `moveScore`, and posing a larger figure over it makes the reading afterwards
-// unambiguous about which of the two was zeroed.
+// `bestChain`, which each step raises to its own `chainStep`, and a `moveScore`
+// that shows it scored. `bestMove` is then posed on top with `setBestMove`,
+// which specs/instrumentation.md says "changes nothing else" — the chain's own
+// settle already takes `bestMove` up to `moveScore`, and posing a larger figure
+// over it makes the reading afterwards unambiguous about which of the two was
+// zeroed.
 //
-// All three are asserted NON-ZERO at the level-clear screen before the choice is
-// posed, so the reading after it is a reading of three figures that moved rather
-// than of three that never left the floor.
+// Both are asserted NON-ZERO at the level-clear screen before the choice is
+// posed, so the reading after it is a reading of two figures that moved rather
+// than of two that never left the floor.
 //
 // WHAT THIS DOES NOT DECIDE. What each figure is worth is the `scoring`
-// category's — `moveScore` accumulating across a chain, `bestMove` tracking the
-// level's biggest move, `bestChain` its deepest step. This point is only that
-// opening a level puts all three back.
+// category's — `bestMove` tracking the level's biggest move, `bestChain` its
+// deepest step. This point is only that opening a level puts both back.
 //
 // WHERE THE TARGET COMES FROM. Off the round, not out of `LEVEL_TARGET_STEP`:
 // what that figure ought to be is `levels/level-target-derived`'s point.
@@ -86,7 +92,7 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("returns moveScore, bestMove and bestChain to zero on the next level", async () => {
+it("returns bestMove and bestChain to zero on the next level", async () => {
   const posed = quietRowsWithEscape(RUN_CELLS);
   assertEqual(hasAnyRun(posed), false, "a maximal run on the posed board");
   assertTrue(
@@ -101,8 +107,7 @@ it("returns moveScore, bestMove and bestChain to zero on the next level", async 
   assertGreaterThan(opened.levelTarget, 0, "the target the round reports");
   await h.debug.setLevelScore(opened.levelTarget);
 
-  // A real chain, so the two figures the move earns are figures the build
-  // actually accumulated.
+  // A real chain, so `bestChain` is a figure the build actually accumulated.
   await swapAndStep(h, RUN_SWAP.a, RUN_SWAP.b);
   const settled = await resolveChain(h);
   assertTrue(settled.settled, "the chain returned to idle within the cap");
@@ -115,7 +120,7 @@ it("returns moveScore, bestMove and bestChain to zero on the next level", async 
   await h.debug.setBestMove(POSED_BEST_MOVE);
 
   const won = await h.snapshot();
-  assertGreaterThan(won.moveScore, 0, "the move score the winning move earned");
+  assertGreaterThan(won.moveScore, 0, "the points the winning move scored");
   assertGreaterThan(won.bestChain, 0, "the longest chain the level reached");
   assertEqual(won.bestMove, POSED_BEST_MOVE, "the best move posed over it");
 
@@ -132,7 +137,6 @@ it("returns moveScore, bestMove and bestChain to zero on the next level", async 
   const next = await h.snapshot();
   assertEqual(next.screen, "playing", "the screen CONTINUE returns to");
   assertEqual(next.level, 2, "the level CONTINUE opened");
-  assertEqual(next.moveScore, 0, "the move score the new level opens at");
   assertEqual(next.bestMove, 0, "the best move the new level opens at");
   assertEqual(next.bestChain, 0, "the longest chain the new level opens at");
 });
