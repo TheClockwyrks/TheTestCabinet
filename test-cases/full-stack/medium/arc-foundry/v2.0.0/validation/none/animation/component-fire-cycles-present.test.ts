@@ -48,10 +48,13 @@ it("produces a four-frame firing cycle for all eight base types", async () => {
   await evidence(h, "fire", async () => {
     await openYard(h);
     // One of each type standing on the yard, so the still shows the heads whose
-    // cycles are being read for.
+    // cycles are being read for. Row `10` of the Substation is clear ground three
+    // rows or more from every platform tile, so no reading of `specs/yard.md`
+    // disputes an anchor on it; a still posed against a platform's edge stood on
+    // a placement the yard points score, and lost the picture to it.
     const anchors = [6, 11, 16, 21, 26, 31, 41, 46];
     for (const [index, type] of COMPONENT_TYPES.entries()) {
-      await standComponent(h, type, 1, anchors[index]!, 15);
+      await standComponent(h, type, 1, anchors[index]!, 10);
     }
     await h.advance(1);
   });

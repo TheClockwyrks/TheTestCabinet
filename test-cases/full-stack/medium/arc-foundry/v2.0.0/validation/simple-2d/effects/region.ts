@@ -129,6 +129,37 @@ export async function motion(
   return changed;
 }
 
+/**
+ * How many of the next `frames` frames changed EACH of several regions, all of
+ * them read across the same drive.
+ *
+ * The reading for a place that is already moving on its own. A unit's idle cycle
+ * "loops while its subject is on the yard" (`specs/assets.md`) at a rate the
+ * specification leaves to the build, so a window over a standing unit changes on
+ * however many frames its cycle happened to step on — and two windows taken one
+ * after the other, the way a before-and-after `motion` pair is, can straddle a
+ * step differently by chance alone. Two units of one type parked on one frame
+ * step together, so a subject and a control read over the SAME frames differ by
+ * what was played on the subject and by at most one step of phase.
+ */
+export async function motionEach(
+  h: Harness,
+  regions: readonly (readonly Point[])[],
+  frames: number,
+): Promise<number[]> {
+  let previous = regions.map((points) => read(h, points));
+  const changed = regions.map(() => 0);
+  for (let i = 0; i < frames; i += 1) {
+    await h.advance(1);
+    const next = regions.map((points) => read(h, points));
+    next.forEach((reading, at) => {
+      if (reading !== previous[at]) changed[at] = (changed[at] ?? 0) + 1;
+    });
+    previous = next;
+  }
+  return changed;
+}
+
 /** One reading per frame over `frames` frames, the frame already drawn first. */
 export async function scan(
   h: Harness,
@@ -169,10 +200,16 @@ export async function scanWhen(
  * Write a point's declared still, and never let taking it decide the point.
  *
  * The three points that read the produced systems off disk are decided by the
- * files alone: a build whose surface cannot be driven must still pass the point
- * about whether it authored twelve systems. So the pose below is evidence for the
- * reviewer and nothing more, and a pose that throws is reported to the console
- * rather than raised.
+ * files alone: a build whose surface cannot be driven, or one that refuses the
+ * pose's own placements under a reading of `specs/yard.md` the placement points
+ * already score, must still pass the point about whether it authored twelve
+ * systems. So the pose below is evidence for the reviewer and nothing more, and
+ * a pose that throws is reported to the console rather than raised.
+ *
+ * WHAT A FAILED POSE LEAVES BEHIND IS NOTHING. The still is not taken over an
+ * un-posed frame: a picture of the wrong state under this output's name would
+ * show the reviewer something the item is not about, where an output that is not
+ * there is recorded absent and shows nothing.
  */
 export async function evidence(
   h: Harness,
@@ -182,16 +219,11 @@ export async function evidence(
   try {
     await pose();
   } catch (error) {
-    // A pose that throws must FAIL the item, not warn and carry on. Capturing
-    // the still anyway wrote a picture of an un-posed frame into the declared
-    // output, so the reviewer's evidence showed something the item was not
-    // about while the point passed on assertions that never read it. A missing
-    // still is recorded as absent; a wrong one is not, which makes it worse.
-    // `captureReplay` in the harness already works this way -- try/finally with
-    // no catch -- and this brings the still onto the same footing.
-    throw new Error(
-      `arc foundry: could not pose the still for \`${outputId}\`: ${String(error)}`,
+    console.warn(
+      `arc foundry: could not pose the still for \`${outputId}\`, so none is ` +
+        `recorded: ${String(error)}`,
     );
+    return;
   }
   captureStill(h, outputId);
 }

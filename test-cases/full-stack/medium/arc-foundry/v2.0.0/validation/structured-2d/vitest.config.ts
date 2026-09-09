@@ -48,18 +48,29 @@ export default defineEngineValidationConfig({
   // rate it chooses for the span it is covering. Those drives run in this process
   // rather than in a browser, so a file in flight is a core in use.
   //
-  // THIRTY SECONDS, WHICH IS A HANG CAP AND NOT A BUDGET. Every check in this
-  // project finishes in under three seconds on a quiet core, which is the ceiling
-  // `guides/authoring/writing-debug-apis-and-validators` sets and what the frame
-  // counts here are chosen against. The allowance is an order of magnitude above
-  // that so a check cannot lose its point to a busy machine, and a check that
-  // reaches it is hung rather than slow. The whole run is capped again from
-  // outside at forty-five minutes.
-  testTimeout: 30_000,
-  // The same allowance for a hook: a `beforeEach` here constructs an engine and
+  // FIVE MINUTES, WHICH IS A HANG CAP AND NOT A BUDGET. The frame counts here are
+  // chosen so that every check finishes in a few seconds on a quiet core against a
+  // build that draws the yard the way the reference does — and the specification
+  // fixes nothing about how a build draws it. A build that tiles the substrate as
+  // sixteen hundred separate blits a frame, each under its own transform, costs
+  // the recording canvas an order of magnitude more per frame than one that fills
+  // it with a pattern, and it is a conforming build: every check here reads the
+  // simulation and the picture, never the wall clock, so the only thing a low
+  // ceiling can take from such a build is a point it did nothing to lose. A run
+  // was measured losing exactly that — nine points across the two engine
+  // projects to "Test timed out in 30000ms", on drives of a few hundred frames
+  // that pass in ten to twenty seconds alone and in under two minutes with a
+  // whole project in flight. So the allowance is the shared harness's,
+  // `DEFAULT_TEST_TIMEOUT_MS` in `case-harness/engine/vitest-config`: a ninth of
+  // the forty-five-minute cap the runner puts on the whole run, sized so that a
+  // check reaching it is hung rather than slow. The authoring guide's ask that a
+  // validator finish in seconds still stands for what a check DRIVES; this is
+  // the ceiling, not the budget.
+  testTimeout: 300_000,
+  // The same reasoning for a hook: a `beforeEach` here constructs an engine and
   // awaits a game whose `initialize` decodes some hundred produced sprites, on a
   // host where every other worker is simulating.
-  hookTimeout: 30_000,
+  hookTimeout: 120_000,
   // ONE WORKER PER CORE, WHICH IS NEITHER OF VITEST'S TWO EASY ANSWERS.
   //
   // Left alone, vitest takes `availableParallelism() - 1` workers. On the two-core

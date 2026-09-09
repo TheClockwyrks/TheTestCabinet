@@ -576,6 +576,14 @@ const kit = createEngineCaseHarness<
   stage: { width: STAGE_W, height: STAGE_H },
   tickHz: TICK_HZ,
   surfaceRequirement: SURFACE_REQUIREMENT,
+  // BOTH WAYS A CUE STARTS SOUNDING, from the moment the engine exists. The kit
+  // subscribes at construction, before `initialize` runs, so a bed a build loops
+  // from `initialize` or its first `beginPlay` — which `specs/ui.md` has sounding
+  // "from the first build phase onward" — is in `h.cues` for `audio/music` to
+  // read, where a subscription a check takes after `createHarness` returns has
+  // already missed it. `TimedCue.looped` tells the two apart, and `audio/cues.ts`
+  // keeps the bed out of every "and no cue before it" reading.
+  cueEvents: ["cue:played", "cue:looped"],
   // Each text call measured and the transform in force at it recorded, for the
   // reason the paragraph above gives.
   recorder: { measureText: true },

@@ -16,24 +16,31 @@
 //   The entries. The frame's own text draws carry all three, by substring and
 //   ignoring case, because the layout, the palette and the type are the build's.
 //   The freeze. Ten seconds of frames are driven and the simulation clock is read.
-//   The yard behind. The canvas is sampled at the corner structure's own centre,
-//   and then sampled again at the same point with the yard emptied. If the yard
-//   is drawn behind the menu the two readings differ; if the menu paints over it,
-//   they are the same colour.
+//   The yard behind. The canvas is sampled on a lattice over the corner
+//   structure's whole `2` by `2` footprint, and then sampled again at the same
+//   points with the yard emptied. If the yard is drawn behind the menu, some
+//   point of the footprint reads differently; if the menu paints over it, every
+//   point reads the same colour. The whole footprint rather than one point,
+//   because `specs/ui.md` fixes that the yard is visible and nothing about which
+//   pixels of a structure differ from the ground under it: a head whose middle
+//   is as dark as the substrate is as visible as any other by its outline, and a
+//   scrim that dims the yard scales that one point's difference down with it.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
 import { drewText } from "../case-harness/text";
-import { PAUSE_ITEMS, structureCenter } from "../constants";
+import { FOOTPRINT, PAUSE_ITEMS, structureCenter, TILE } from "../constants";
 import {
   captureStill,
   ConstantClock,
   createHarness,
+  lattice,
+  maxDistance,
   openYard,
   standComponent,
   type Harness,
+  type Rect,
 } from "../harness";
-import { colorDistance, sampleColor } from "./reading";
 
 /** A corner of the yard a centred pause menu does not reach. */
 const CORNER = { col: 2, row: 29 };
@@ -62,17 +69,31 @@ function frozenFrames(seconds: number): number {
 const FROZEN_SECONDS = 10;
 
 /**
- * How far apart the two samples must sit before the structure counts as visible
- * behind the menu.
+ * How far apart the two samplings must read, at their furthest point, before the
+ * structure counts as visible behind the menu.
  *
  * The floor any presence reading in this project clears, and nothing over it.
  * `specs/ui.md` asks for a yard that is "visible" behind the menu and says
  * nothing about how strongly, so a build that dims the whole yard under a scrim
  * is conforming and its structure is still there to be seen. What this rules out
- * is a menu that paints the yard away entirely, which leaves the two samples
- * identical.
+ * is a menu that paints the yard away entirely, which leaves every point of the
+ * two samplings identical.
  */
 const VISIBLE_MIN = 8;
+
+/** How far apart the footprint is sampled, in logical units. */
+const FOOTPRINT_STEP = 4;
+
+/** The `2` by `2` footprint of the structure anchored at `(col, row)`. */
+function footprintOf(col: number, row: number): Rect {
+  const centre = structureCenter(col, row);
+  return {
+    x: centre.x - TILE,
+    y: centre.y - TILE,
+    w: FOOTPRINT * TILE,
+    h: FOOTPRINT * TILE,
+  };
+}
 
 let h: Harness;
 
@@ -104,15 +125,18 @@ it("draws its three entries over a yard that is visible and frozen", async () =>
   }
 
   // The yard behind: the corner structure is still on the canvas.
-  const centre = structureCenter(CORNER.col, CORNER.row);
-  const withStructure = await sampleColor(h, centre.x, centre.y);
+  const footprint = lattice(
+    footprintOf(CORNER.col, CORNER.row),
+    FOOTPRINT_STEP,
+  );
+  const withStructure = await h.pixels(footprint);
   await h.debug.clearStructures();
   await h.frameCalls();
-  const withoutStructure = await sampleColor(h, centre.x, centre.y);
+  const withoutStructure = await h.pixels(footprint);
   assertGreaterThan(
-    colorDistance(withStructure, withoutStructure),
+    maxDistance(withStructure, withoutStructure),
     VISIBLE_MIN,
-    "the colour at a structure's own centre to change when the yard is " +
+    "some point of a structure's footprint to change colour when the yard is " +
       "emptied under the pause menu, because the yard is visible behind it " +
       "(specs/ui.md)",
   );

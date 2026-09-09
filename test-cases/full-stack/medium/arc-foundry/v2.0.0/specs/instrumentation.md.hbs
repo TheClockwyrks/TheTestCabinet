@@ -193,9 +193,11 @@ Two rules cover every operation below.
   wave and the press is refined from the title screen. The transaction's OWN rules stay,
   because they are the effect rather than a gate on it: an unaffordable purchase buys
   nothing, a track already at `REFINEMENT_MAX` gains none, an illegal footprint stands
-  nothing up, and a spent allowance drops no rock. Each of those is readable in the
-  snapshot — no structure appears, no stamp is spent, no Charge leaves the bank. What no
-  operation ever does is decline quietly, leaving the game as it was with nothing said.
+  nothing up, a spent allowance drops no rock, and a combine with nothing to fold folds
+  nothing. A refusal by those rules returns normally with the game unchanged, and it is
+  readable in the snapshot: no structure appears, no stamp is spent, no Charge leaves the
+  bank. The calls that fail loudly are the ones the first rule names, an argument outside
+  its domain or a subject the operation does not take.
 
 {{#if (eq engine.slug "none")}}
 ### The clock
@@ -455,7 +457,7 @@ release it.
 | `clearCombineSet` | Empties the explicit combine set and leaves the selection as it is. |
 | `keep(id)` | Harvests a candidate as a permanent component. It is the level's harvest, so it starts the wave. `id` names a candidate; any other structure fails loudly. |
 | `downgrade(id)` | Harvests a candidate as a permanent component one quality tier lower. It is the harvest, so it starts the wave. `id` names a candidate above quality `1`, there being no tier below it; anything else fails loudly. |
-| `combine(id)` | Commits a combine from the initiating structure, as `specs/scrap-press.md` states: a quality fold of a matching pair, or a reachable recipe. It starts the wave when it consumes a candidate and leaves the phase running when it folds standing structures only. |
+| `combine(id)` | Commits a combine from the initiating structure, as `specs/scrap-press.md` states: a quality fold of a matching pair, or a reachable recipe. It starts the wave when it consumes a candidate and leaves the phase running when it folds standing structures only. `id` names any live structure; one with no matching partner and no reachable recipe, a combination tower or a blocker included, folds nothing and leaves the yard unchanged. |
 | `dismantle(id)` | Removes a structure, reopens its tiles, and recomputes the route. |
 | `setTargeting(id, priority)` | Sets a firing structure's targeting priority to one of the five of `specs/components.md`. |
 | `setComboLevel(id, level)` | Sets a combination tower's upgrade level to `level`, `0` through `COMBO_MAX_LEVEL`, and with it the damage and range that level gives. It spends no Charge. |

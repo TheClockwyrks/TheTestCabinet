@@ -18,7 +18,7 @@
 // only be about the pieces this check placed.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertLength } from "../assert";
+import { assertContains, assertEqual, assertLength } from "../assert";
 import { comboDef } from "../constants";
 import {
   captureStill,
@@ -60,6 +60,15 @@ it("offers no fold on a pair of towers and lets no tower satisfy a recipe", asyn
   await captureStill(h, "refused");
 
   const drawn = await h.debug.panelButtons();
+  // The inspector is showing the tower's own controls, so the empty offers read
+  // below are read off a drawn panel rather than off nothing: `specs/hud.md` draws
+  // every action the selected structure can ever offer in its slot for as long as
+  // it stays selected, and a standing structure can always be dismantled.
+  assertContains(
+    drawn.map((button) => button.action),
+    "dismantle",
+    `the inspector to draw the selected ${PAIR.name}'s own controls (specs/hud.md)`,
+  );
   assertLength(
     offeredFolds(drawn),
     0,
@@ -113,8 +122,14 @@ it("offers no fold on a pair of towers and lets no tower satisfy a recipe", asyn
   // Selected from a piece that IS an ingredient, so a build that let the tower
   // stand in for the third would have a reachable recipe to offer here.
   await h.debug.select(ingredient);
+  const shown = await h.debug.panelButtons();
+  assertContains(
+    shown.map((button) => button.action),
+    "dismantle",
+    "the inspector to draw the selected ingredient's own controls (specs/hud.md)",
+  );
   assertLength(
-    offeredRecipes(await h.debug.panelButtons()),
+    offeredRecipes(shown),
     0,
     `a ${REBUILT.name} does not stand in for the ` +
       `${REBUILT.recipe[0]!.type} it was built from`,

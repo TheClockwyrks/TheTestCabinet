@@ -13,6 +13,17 @@
 // a `cue:stopped` does. Both routes are accepted because both keep the bed audible,
 // and the specification asks for the sound rather than for the call.
 //
+// THE HISTORY STARTS AT THE ENGINE'S CONSTRUCTION, NOT AT THIS CHECK. The harness
+// subscribes to both starts before `initialize` runs and keeps them in `h.cues`,
+// so a build that loops the bed from `initialize` or from its first `beginPlay` —
+// frame `0`, before this check's own handlers exist — has its start on record. The
+// bed's log is seeded from that history, and the live handlers below carry it on
+// from there; a subscription taken here alone read such a build as "the bus
+// announced nothing" and failed a bed that had been sounding since frame `0`.
+// `cue:stopped` is not in the kit's history, and needs no seeding: a bed stopped
+// before this check subscribed is a bed that is not sounding through the span,
+// which the second assertion reads on its own.
+//
 // THE SPAN IS THE FILE'S OWN LENGTH, read off `assets/audio/music.wav`. A bed that
 // is still sounding after longer than its own file has run is a bed that was
 // looped: a one-shot that was started once and never restarted is over by then.
@@ -79,7 +90,12 @@ afterEach(() => {
 });
 
 it("starts the bed on the first build phase and keeps it sounding past its file", async () => {
-  const bed: BedEvent[] = [];
+  const bed: BedEvent[] = h.cues
+    .filter((cue) => cue.cue === CUES.music)
+    .map((cue) => ({
+      kind: cue.looped ? "looped" : "played",
+      frame: cue.frame,
+    }));
   const note =
     (kind: BedEvent["kind"]) =>
     ({ cue }: { cue: string }): void => {

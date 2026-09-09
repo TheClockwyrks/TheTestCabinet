@@ -113,11 +113,17 @@ export function duplicatePairs(frames: readonly Bitmap[]): string[] {
  * Write this point's declared still, and never let taking it decide the point.
  *
  * These points are decided by reading files off disk, so the game does not enter
- * into them: a build whose surface cannot be driven must still pass the point
- * about whether its cycles were produced. The pose below is evidence for the
- * reviewer and nothing more, so a pose that throws is swallowed and reported to
- * the console rather than raised, and the assertions that follow read the files
- * either way.
+ * into them: a build whose surface cannot be driven, or one that refuses the
+ * pose's own placements under a reading of `specs/yard.md` the placement points
+ * already score, must still pass the point about whether its cycles were
+ * produced. The pose below is evidence for the reviewer and nothing more, so a
+ * pose that throws is reported to the console rather than raised, and the
+ * assertions that follow read the files either way.
+ *
+ * WHAT A FAILED POSE LEAVES BEHIND IS NOTHING. The still is not taken over an
+ * un-posed frame: a picture of the wrong state under this output's name would
+ * show the reviewer something the item is not about, where an output that is not
+ * there is recorded absent and shows nothing.
  */
 export async function evidence(
   h: Harness,
@@ -127,16 +133,11 @@ export async function evidence(
   try {
     await pose();
   } catch (error) {
-    // A pose that throws must FAIL the item, not warn and carry on. Capturing
-    // the still anyway wrote a picture of an un-posed frame into the declared
-    // output, so the reviewer's evidence showed something the item was not
-    // about while the point passed on assertions that never read it. A missing
-    // still is recorded as absent; a wrong one is not, which makes it worse.
-    // `captureReplay` in the harness already works this way -- try/finally with
-    // no catch -- and this brings the still onto the same footing.
-    throw new Error(
-      `arc foundry: could not pose the still for \`${outputId}\`: ${String(error)}`,
+    console.warn(
+      `arc foundry: could not pose the still for \`${outputId}\`, so none is ` +
+        `recorded: ${String(error)}`,
     );
+    return;
   }
   await captureStill(h, outputId);
 }
