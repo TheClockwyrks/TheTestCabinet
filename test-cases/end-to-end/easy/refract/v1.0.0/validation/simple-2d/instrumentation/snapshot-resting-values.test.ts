@@ -1,15 +1,18 @@
-// Refract — instrumentation/snapshot-resting-values: fields the current mode
-// does not use report their resting values rather than going missing.
+// Refract — instrumentation/snapshot-resting-values: fields of a mode not yet
+// entered report their resting values rather than going missing.
 //
 // specs/instrumentation.md fixes the snapshot's shape whatever the mode is,
-// and gives a field the current mode does not use a resting value: boardIndex
-// 0, solvedBoards empty, unlockedCount 1, selectIndex 0, solvedCount 0, tier
-// 1. So a snapshot read in Cascade still carries the four campaign fields, at
-// rest, and one read in Campaign still carries the two cascade fields, at
-// rest — and no field of the documented shape goes missing either way.
+// and gives a field a resting value it reports until its mode is first entered
+// in the session: boardIndex 0, solvedBoards empty, unlockedCount 1,
+// selectIndex 0, solvedCount 0, tier 1. So a snapshot read in Cascade from a
+// fresh reset still carries the four campaign fields, at rest, and one read in
+// Campaign still carries the two cascade fields, at rest — and no field of the
+// documented shape goes missing either way.
 //
 // Each check resets and enters one mode from the title, the way a player does,
-// and reads the OTHER mode's fields against the resting-values table.
+// and reads the OTHER mode's fields against the resting-values table. Neither
+// enters the other mode first: a field keeps the value its mode last left it
+// with, which campaign/campaign-progress-persists is the item to decide.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertHasProperty } from "../assert";

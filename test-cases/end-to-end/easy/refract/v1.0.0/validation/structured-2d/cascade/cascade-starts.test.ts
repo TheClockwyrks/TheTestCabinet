@@ -3,9 +3,11 @@
 //
 // specs/modes/cascade.md "The sequence": starting Cascade from the main menu
 // sets state.mode to cascade, sets solvedCount to 0, sets tier to 1, generates
-// the first board, and moves to playing with every beam empty — and the fields
-// the campaign uses hold the resting values specs/state.md gives them
-// (boardIndex 0, solvedBoards empty, unlockedCount 1, selectIndex 0).
+// the first board, and moves to playing with every beam empty — and changes no
+// field the campaign uses, so from the fresh reset the harness opens on those
+// hold the resting values specs/instrumentation.md tables (boardIndex 0,
+// solvedBoards empty, unlockedCount 1, selectIndex 0). Whether campaign progress
+// survives the entry is campaign/campaign-progress-persists's question.
 //
 // The entry is the REAL path a player takes, since starting the sequence is
 // what this point decides: CASCADE is `TITLE_ITEMS[1]`, so the title's `menu-1`
@@ -63,7 +65,8 @@ it("starts the sequence on CASCADE: playing, count 0, tier 1, a fresh board", as
     "the first board arrives with every beam empty",
   );
 
-  // The campaign's fields at their resting values (specs/state.md).
+  // The campaign's fields, untouched by the entry: at their resting values,
+  // since nothing in this session has moved them (specs/instrumentation.md).
   assertEqual(snapshot.boardIndex, 0, "boardIndex rests at 0");
   assertDeepEqual(snapshot.solvedBoards, [], "solvedBoards rests empty");
   assertEqual(snapshot.unlockedCount, 1, "unlockedCount rests at 1");

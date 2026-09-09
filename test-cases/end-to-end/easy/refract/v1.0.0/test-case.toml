@@ -511,8 +511,8 @@ validation = { script = "instrumentation/snapshot-shape.test.ts", outputs = [
 ] }
 [[review.categories.items]]
 id = "snapshot-resting-values"
-title = "Fields the current mode does not use report their resting values"
-description = "The shape is fixed whatever the mode: in Cascade, boardIndex is 0, solvedBoards is empty, unlockedCount is 1, and selectIndex is 0; in Campaign, solvedCount is 0 and tier is 1. No field goes missing."
+title = "Fields of a mode not yet entered report their resting values"
+description = "The shape is fixed whatever the mode: in Cascade, with the campaign not yet entered, boardIndex is 0, solvedBoards is empty, unlockedCount is 1, and selectIndex is 0; in Campaign, with Cascade not yet entered, solvedCount is 0 and tier is 1. No field goes missing."
 domains = ["campaign", "cascade", "tracing", "presentation"]
 failure_cap = "passable"
 # Automated validation: reset into each mode in turn and read the other mode's
@@ -1343,7 +1343,7 @@ title = "Cascade"
 [[review.categories.items]]
 id = "cascade-starts"
 title = "CASCADE starts the sequence"
-description = "Choosing CASCADE from the title sets mode to cascade and goes to playing with solvedCount 0, tier 1, a board present, and every beam empty, leaving the campaign's fields at their resting values."
+description = "Choosing CASCADE from the title sets mode to cascade and goes to playing with solvedCount 0, tier 1, a board present, and every beam empty, leaving the campaign's fields as they stood, which in a fresh session is their resting values."
 domains = ["cascade"]
 failure_cap = "broken"
 validation = { script = "cascade/cascade-starts.test.ts", outputs = [

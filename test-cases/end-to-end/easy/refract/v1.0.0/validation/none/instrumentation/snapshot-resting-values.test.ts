@@ -1,14 +1,16 @@
-// Refract — instrumentation/snapshot-resting-values: fields the current mode
-// does not use report their resting values rather than going missing.
+// Refract — instrumentation/snapshot-resting-values: fields of a mode not yet
+// entered report their resting values rather than going missing.
 //
 // THE SHAPE IS FIXED WHATEVER THE MODE. `specs/instrumentation.md` gives the six
-// mode fields — four Campaign's, two Cascade's — and a resting-values table for
-// the ones the current mode does not use. A build that drops the other mode's
-// fields, or reports them as whatever its internals happen to hold, breaks every
-// reader that trusts the documented shape; a build that keeps them at their
-// resting values is what the table requires. Each mode is entered from a clean
-// progression (the harness opens on `reset`, and neither entry disturbs the
-// other mode's progression), which is exactly the state the table describes.
+// mode fields — four Campaign's, two Cascade's — and a resting-values table a
+// field reports until its mode is first entered in the session. A build that
+// drops the other mode's fields, or reports them as whatever its internals
+// happen to hold, breaks every reader that trusts the documented shape; a build
+// that keeps them at their resting values is what the table requires. Each mode
+// is entered from a clean progression (the harness opens on `reset`, and
+// neither entry disturbs the other mode's fields), which is exactly the state
+// the table describes; a field that has moved keeps its value, which
+// campaign/campaign-progress-persists is the item to decide.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertHasProperty } from "../assert";

@@ -470,8 +470,10 @@ arrives at an emptied board.
 The shape is fixed, and every field is present whatever the mode is. `select` and
 `complete` are screens Campaign reaches and Cascade does not, as
 `specs/modes/campaign.md` and `specs/modes/cascade.md` state, and the six mode
-fields belong four to Campaign and two to Cascade. A field the current mode does
-not use reports its resting value rather than going missing:
+fields belong four to Campaign and two to Cascade. Entering one mode changes no
+field of the other, so a field of the mode not being played keeps the value that
+mode last left it with, and reports the resting value below until its mode is
+first entered in the session:
 
 | Field | Resting value |
 | --- | --- |

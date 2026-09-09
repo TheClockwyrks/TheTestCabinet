@@ -37,8 +37,10 @@ is defined below. The two screens the game has beyond these, `select` and
 Starting Cascade from the main menu sets `state.mode` to `cascade`, sets the
 boards-solved count `state.solvedCount` to `0`, sets `state.tier` to `1`,
 generates the first board, and moves to `playing` with every beam empty.
-`state.mode` stays `cascade` for as long as the player is in the sequence, and
-the fields the campaign uses hold the resting values `specs/state.md` gives them.
+`state.mode` stays `cascade` for as long as the player is in the sequence.
+Starting the sequence leaves every field the campaign uses as it stands. Before
+the campaign has been entered in the session, those fields hold the values
+`specs/state.md` gives them at the start.
 
 A board becomes solved the moment rule R9 in `specs/beams.md` holds. On that
 frame:

@@ -1,16 +1,19 @@
 // Refract — instrumentation/snapshot-resting-values: the shape is fixed
-// whatever the mode. In Cascade the campaign fields report their resting
-// values — boardIndex 0, solvedBoards empty, unlockedCount 1, selectIndex 0 —
-// and in Campaign the cascade fields do — solvedCount 0, tier 1. No field
-// goes missing.
+// whatever the mode. A field of a mode not yet entered in the session reports
+// its resting value: in Cascade the campaign fields — boardIndex 0,
+// solvedBoards empty, unlockedCount 1, selectIndex 0 — and in Campaign the
+// cascade fields — solvedCount 0, tier 1. No field goes missing.
 //
 // Each mode holds live state of its own before its snapshot is read — the
 // campaign really played to one solve, the cascade run posed through
 // `setSolvedCount` and `setTier` and one posed board solved — so the fields
 // under test are the other mode's while this one demonstrably moved. A fresh
-// reset would make every field resting trivially; the item is that the
-// UNUSED mode's fields rest while the used mode's move. The resting values
-// asserted are the table in specs/instrumentation.md.
+// reset would make every field resting trivially; the item is that the fields
+// of the mode never entered rest while the played mode's move. Neither check
+// enters the other mode first: specs/instrumentation.md makes a field keep the
+// value its mode last left it with, so a field that has moved stays moved, and
+// campaign/campaign-progress-persists is the item that decides that. The
+// resting values asserted are the table in specs/instrumentation.md.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {

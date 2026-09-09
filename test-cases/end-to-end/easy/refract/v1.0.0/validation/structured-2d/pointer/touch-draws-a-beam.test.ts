@@ -6,6 +6,17 @@
 // drawn twice on the same posed board, once from each device, and the two beams
 // are compared cell for cell — so a build that reads the device anywhere it
 // should not fails here rather than at a reviewer's fingertip.
+//
+// WHEN THE DEVICE IS READ. At the pose, before the frame that draws the beam.
+// specs/state.md makes `state.pointer` the pointer as the game read it from its
+// input, refreshed every update, and specs/instrumentation.md makes a posed
+// touch reach the game's input path at the call — never the engine's own
+// pointer — so a build that refreshes the mirror from the engine's pointer
+// every update reports the engine's resting mouse one frame after the pose.
+// The specification admits that design as it admits a mirror the game's own
+// resolution writes; the two agree at the pose, where a posed touch and a posed
+// mouse "differ only in the device the state reports". The beam is read after
+// the frame like every posed route.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { R9_UNIQUE } from "../fixtures";
@@ -39,15 +50,14 @@ it("leaves the same beam a mouse leaves, drawn from a touch", async () => {
   h.debug.pointerDown(start.x, start.y, "touch");
   h.debug.pointerMove(next.x, next.y, "touch");
   h.debug.pointerUp("touch");
-  await h.advance(1);
-
-  const touched = h.snapshot();
   assertEqual(
-    touched.pointer.device,
+    h.snapshot().pointer.device,
     "touch",
     "the state reports the device that drew it",
   );
-  const drawn = touched.beams.triangle?.cells ?? [];
+  await h.advance(1);
+
+  const drawn = h.snapshot().beams.triangle?.cells ?? [];
   assertDeepEqual(
     drawn,
     [

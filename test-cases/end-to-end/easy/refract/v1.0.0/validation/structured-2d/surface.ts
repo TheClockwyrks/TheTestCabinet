@@ -120,9 +120,10 @@ export interface TargetSnapshot {
 /**
  * The plain, JSON-serializable view `snapshot()` returns.
  *
- * The shape is fixed and every field is present whatever the mode: a field the
- * current mode does not use reports its resting value rather than going
- * missing (specs/instrumentation.md gives the table). `beams` carries one
+ * The shape is fixed and every field is present whatever the mode: a field of
+ * a mode not yet entered in the session reports its resting value rather than
+ * going missing, and a field that has moved keeps the value its mode last left
+ * it with (specs/instrumentation.md gives the table). `beams` carries one
  * entry per channel present on the board and no entry for a channel the board
  * does not use. `solved` is derived from R9 in specs/beams.md.
  */
