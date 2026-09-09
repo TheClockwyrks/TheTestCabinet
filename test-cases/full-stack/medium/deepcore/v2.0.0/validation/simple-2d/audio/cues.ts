@@ -53,16 +53,26 @@ export interface FrameWindow {
 }
 
 /**
- * Record every play, loop start and loop stop the build makes from now on.
+ * Record every play, loop start and loop stop the build makes from now on, over
+ * every loop already running.
  *
  * Subscribed at the moment it is called, so a check that watches AFTER posing its
  * scene reads the drive alone. The engine's frame counter is stamped on each, and
  * it is incremented before an update runs — so a cue raised by the `n`th frame of
  * a run that opened at count `c` carries `c + n`, and a window is the half-open
  * `(from, to]` the helpers below use.
+ *
+ * A loop is announced ONCE, when it starts, and a loop running when the watch
+ * opens is sounding through every window the watch will read — a music bed the
+ * build started as the expedition opened, which `engine/audio.md` has play on
+ * across levels, is the case `specs/assets.md` names. So `looped` opens holding
+ * each loop running at this moment, with the frame it started on, read through
+ * the harness's own record of the engine's starts and stops; a loop the build
+ * has since stopped is not in it, and one it stops later lands in `stopped`.
  */
 export function watchAudio(h: Harness): AudioLog {
   const log: AudioLog = { played: [], looped: [], stopped: [] };
+  for (const running of h.loopsRunning()) log.looped.push({ ...running });
   h.engine.events.on("cue:played", ({ cue, t, gain }) => {
     log.played.push({ cue, frame: h.frame(), t, gain });
   });

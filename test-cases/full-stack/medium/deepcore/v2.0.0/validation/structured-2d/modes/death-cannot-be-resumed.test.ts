@@ -11,15 +11,21 @@
 // after every strike. `paused` is never one of the answers, and the expedition
 // ends at the Game Over screen.
 //
-// Striking stops once the summary is up, because specs/ui.md gives `pause` a
-// meaning on the Game Over screen of its own — leaving it — and this check is
-// about the span between the death and that screen.
+// How long that span is, the specs leave to the build: specs/ui.md moves
+// `in-mine` to `game-over` on "A death", and a build that shows the summary on
+// the frame the hull reads empty is as conformant as one that plays the death
+// out first. So the loop is not required to see the mine at all, and one more
+// strike lands on the Game Over screen itself. specs/ui.md lists no transition
+// out of `game-over` on `pause`, and specs/controls.md gives the action nothing
+// there beyond "go back, where the screen has a back", which that menu has not.
+// A build that answers the strike with the pause menu, or with the mine, has
+// resumed play from a death.
 //
 // ISOLATION. An empty mine, a Standard expedition so nothing about the save is
 // in play, and both faculties gated so the only thing acting is the hull check.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertContains, assertEqual } from "../assert";
+import { assertEqual } from "../assert";
 import {
   ACTION_KEY,
   captureReplay,
@@ -75,8 +81,13 @@ it("never reaches the pause menu once the death has been taken", async () => {
       screens.push(h.snapshot().screen);
     }
     const ended = h.snapshot();
+    // Once more, on whatever screen the death reached.
+    await h.tap(ACTION_KEY.pause);
+    await h.advance(1);
+    const struck: Screen[] = [h.snapshot().screen];
     await h.advance(SETTLE);
-    return { screens, ended };
+    struck.push(h.snapshot().screen);
+    return { screens, ended, struck };
   });
 
   for (const screen of seen.screens) {
@@ -86,11 +97,6 @@ it("never reaches the pause menu once the death has been taken", async () => {
       "specs/modes.md: play does not resume from a death",
     );
   }
-  assertContains(
-    seen.screens,
-    "in-mine",
-    "the key was struck while the death was still playing out",
-  );
   assertEqual(
     seen.ended.screen,
     "game-over",
@@ -101,4 +107,11 @@ it("never reaches the pause menu once the death has been taken", async () => {
     "hull-destroyed",
     "specs/modes.md: an empty hull is what ended it",
   );
+  for (const screen of seen.struck) {
+    assertEqual(
+      screen === "paused" || screen === "in-mine",
+      false,
+      "specs/modes.md: play does not resume from a death, so the pause key on the Game Over screen reaches neither the pause menu nor the mine",
+    );
+  }
 });

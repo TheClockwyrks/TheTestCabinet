@@ -3015,8 +3015,9 @@ description = "A death cannot be undone: once its cause holds, pause never reach
 domains = ["simulation"]
 failure_cap = "scuffed"
 # Automated validation: empty the hull, strike pause repeatedly while the death
-# plays out and read the screen never paused and the expedition ending at
-# game-over.
+# plays out and once more on the screen it reached, and read the screen never
+# paused, the expedition ending at game-over, and the last strike reaching
+# neither the pause menu nor the mine.
 validation = { script = "modes/death-cannot-be-resumed.test.ts", outputs = [
   { id = "over", name = "The death carrying through a pause", kind = "replay" },
 ] }

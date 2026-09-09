@@ -383,6 +383,19 @@ export interface DeepcoreModel {
   readonly cues: PlayedCue[];
   /** Every loop the build STARTED, oldest first. */
   readonly loops: PlayedCue[];
+  /**
+   * Every loop running at this moment, each as the start that opened it,
+   * oldest first.
+   *
+   * Read off the starts and stops the engine announced from the moment it was
+   * built, so a loop the build started while it loaded — a music bed started
+   * as the expedition opens, which `engine/audio.md` has play on across levels
+   * — is here with the frame it started on, and a loop the build has since
+   * stopped is not. `audio/cues.ts` seeds a watch with these, because a watch
+   * subscribes from the moment it opens and would otherwise never see a loop
+   * whose one start came before it.
+   */
+  loopsRunning(): PlayedCue[];
 
   /** One cell's state, through the case's `tileAt`. */
   tileAt(col: number, row: number): TileRead;
@@ -616,6 +629,47 @@ export function removeStorage(): void {
 
 /* ---- Building one --------------------------------------------------------- */
 
+/** One loop start or stop the engine announced, in the order announced. */
+interface LoopMark extends PlayedCue {
+  /** `true` for a start, `false` for a stop. */
+  starts: boolean;
+}
+
+/**
+ * Every loop start and stop each engine announced, oldest first, from the
+ * moment the engine was built.
+ *
+ * The kit records loop STARTS from before `initialize` but not the stops, and
+ * the engine reports whether a cue is looping to the game alone, so a loop the
+ * build started while it loaded and never stopped would be invisible to a watch
+ * opened later. Subscribed here, on the engine the kit is handed, because
+ * construction runs no game code and so nothing has been announced yet.
+ */
+const loopMarks = new WeakMap<object, LoopMark[]>();
+
+/** Subscribe `engine`'s loop starts and stops into {@link loopMarks}. */
+function watchingLoops(engine: DeepcoreEngine): DeepcoreEngine {
+  const marks: LoopMark[] = [];
+  loopMarks.set(engine, marks);
+  engine.events.on("cue:looped", ({ cue, t, gain }) => {
+    marks.push({ cue, frame: engine.frame().count, t, gain, starts: true });
+  });
+  engine.events.on("cue:stopped", ({ cue, t }) => {
+    marks.push({ cue, frame: engine.frame().count, t, gain: 0, starts: false });
+  });
+  return engine;
+}
+
+/** The loops `marks` leaves running, each as the start that opened it. */
+function runningLoops(marks: readonly LoopMark[]): PlayedCue[] {
+  const open = new Map<string, PlayedCue>();
+  for (const { cue, frame, t, gain, starts } of marks) {
+    if (starts) open.set(cue, { cue, frame, t, gain });
+    else open.delete(cue);
+  }
+  return [...open.values()].sort((a, b) => a.frame - b.frame);
+}
+
 /**
  * The package's engine machinery, bound to Deepcore on this engine.
  *
@@ -661,19 +715,21 @@ const kit = createEngineCaseHarness<
   cueEvents: ["cue:played", "cue:looped"],
   defaultClock: () => new ConstantClock(TICK_MS),
   createEngine: ({ canvas, clock, surface }) =>
-    createEngine<DeepcoreSurface>({
-      canvas,
-      width: STAGE_W,
-      height: STAGE_H,
-      game,
-      // The build's own stage background, handed to the engine exactly as the
-      // seeded `src/main.ts` hands it. NO touch layout is selected, because
-      // `src/main.ts` selects none: Deepcore is played with the keyboard and the
-      // mouse alone, and its actions are its own rather than a layout's.
-      background: BACKGROUND,
-      clock,
-      surface: surface as SurfaceMetrics,
-    }),
+    watchingLoops(
+      createEngine<DeepcoreSurface>({
+        canvas,
+        width: STAGE_W,
+        height: STAGE_H,
+        game,
+        // The build's own stage background, handed to the engine exactly as the
+        // seeded `src/main.ts` hands it. NO touch layout is selected, because
+        // `src/main.ts` selects none: Deepcore is played with the keyboard and the
+        // mouse alone, and its actions are its own rather than a layout's.
+        background: BACKGROUND,
+        clock,
+        surface: surface as SurfaceMetrics,
+      }),
+    ),
   driver: (_engine, raw) => identityDriver(raw as DeepcoreSurface),
   snapshot: (debug) => debug.snapshot(),
   extend: (base, engine, initialized) => {
@@ -700,6 +756,7 @@ const kit = createEngineCaseHarness<
       get loops() {
         return stamped.filter((cue) => cue.looped);
       },
+      loopsRunning: () => runningLoops(loopMarks.get(engine) ?? []),
 
       tileAt: (col, row) => base.debug.tileAt(col, row),
 

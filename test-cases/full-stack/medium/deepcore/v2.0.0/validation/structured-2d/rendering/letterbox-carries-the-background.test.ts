@@ -11,9 +11,12 @@
 // rather than held inside a distance. What COLOUR the build chose is the
 // build's, and nothing here compares it against a figure of any kind.
 //
-// UNDER THIS ENGINE THE BARS ARE STILL THE BUILD'S TO KEEP CLEAN. The engine
-// paints them, but a build that drew outside the stage's own `0..STAGE_W` by
-// `0..STAGE_H` box puts its own drawing into them and fails here.
+// UNDER THIS ENGINE THE BARS ARE THE ENGINE'S TO PAINT AND TO KEEP CLEAN. The
+// engine clears the whole canvas to the `BACKGROUND` the build exports and
+// clips every component to the logical field (`engine/rendering.md`), so a world
+// component projected past the stage's edge stops at the bar. What is the
+// build's here is the colour it hands over: an opaque one, the same on every
+// frame, is what reads as one background across the bars.
 //
 // THREE POINTS. The requirement names three separable things — the whole stage
 // inside the surface at its own aspect, the stage CENTRED with even bars, and the
