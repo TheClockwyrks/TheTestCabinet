@@ -52,6 +52,7 @@ import {
   bayAt,
   captureReplay,
   createHarness,
+  holdFor,
   keyFor,
   poseLane,
   startCrossing,
@@ -112,9 +113,9 @@ function emptyStrait(): void {
 }
 
 /** Drive one hop, and report the score it opened on and the strait it left. */
-async function press(direction: "up" | "left"): Promise<Press> {
+async function hopAndSettle(direction: "up" | "left"): Promise<Press> {
   const before = h.snapshot().score;
-  await h.tap(keyFor(direction));
+  await holdFor(h, keyFor(direction), 1);
   await h.advance(SETTLE_FRAMES);
   return { before, at: h.snapshot() };
 }
@@ -138,26 +139,26 @@ it("pays nothing for a hop refused by the shore, a filled bay, a vehicle or an e
     emptyStrait();
     poseLane(h, WATER_TOP, "pan", [SHORE_COL]);
     h.debug.addCritter(SHORE_COL, WATER_TOP);
-    const shore = await press("up");
+    const shore = await hopAndSettle("up");
 
     // A bay that is already filled, entered from its own column.
     emptyStrait();
     poseLane(h, WATER_TOP, "pan", [FILLED_COL]);
     h.debug.addCritter(FILLED_COL, WATER_TOP);
     h.debug.setBay(FILLED_BAY, true);
-    const bay = await press("up");
+    const bay = await hopAndSettle("up");
 
     // A vehicle covering the target tile, hopped at from the near shore below it.
     // The lane is stopped, so the vehicle sits on the column it was laid on.
     emptyStrait();
     poseLane(h, VEHICLE_ROW, "car", [VEHICLE_COL]);
     h.debug.addCritter(VEHICLE_COL, ROW_NEAR);
-    const vehicle = await press("up");
+    const vehicle = await hopAndSettle("up");
 
     // The left edge of the strait: the target tile is off the grid.
     emptyStrait();
     h.debug.addCritter(EDGE_COL, ROW_NEAR);
-    const edge = await press("left");
+    const edge = await hopAndSettle("left");
 
     return { shore, bay, vehicle, edge };
   });
