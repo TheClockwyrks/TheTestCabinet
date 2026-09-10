@@ -30,6 +30,7 @@
 //! shared auth plumbing (gg's [registry entry](crate::harness_registry) declares it as
 //! its `api_key_env`/`container_key_env`), never written into the invocation file.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use crate::RunRequest;
@@ -570,6 +571,9 @@ pub(crate) async fn run_gg_session(
         translated_events,
         terminal_status,
         gg_summary,
+        error_logs,
+        stderr_lines,
+        limit_breach,
         ..
     } = sink;
 
@@ -591,7 +595,7 @@ pub(crate) async fn run_gg_session(
                 // the way out; absent when it did not, in which case the same figures
                 // remain derivable from the persisted event stream.
                 gg_summary,
-                tool_calls: std::collections::BTreeMap::new(),
+                tool_calls: BTreeMap::new(),
                 canceled: true,
             });
         }
@@ -621,6 +625,13 @@ pub(crate) async fn run_gg_session(
     //      winds the entire run down under `internal_error`, because the tree a broken run
     //      leaves behind is not the tree that configuration produces and nothing here could
     //      tell the difference (see gg's `STATUS_INTERNAL_ERROR`).
+    //      The exit code and the status say *which* of these it was; they do not say why.
+    //      gg does: before ending `error` it logs each launch defect at error level (every
+    //      one of them, not the first — a refusal names the whole configuration's faults in
+    //      one pass), and a fatal it meets before the telemetry stream is up goes to stderr.
+    //      Those are already bridged into the run's event feed, but the feed is not what an
+    //      operator reads off a failed run's row — the status detail is — so the sink keeps
+    //      them and the classification quotes them, bounded, after the code and status.
     //    - Exit 3 means the session ran and gg stopped it on one of the five
     //      execution ceilings its own capability set armed: a turn count, the
     //      wall-clock budget, the run's spend, or either error ceiling. That is not
@@ -629,6 +640,9 @@ pub(crate) async fn run_gg_session(
     //      three above as `RunState::LimitExceeded`, which is publishable as a
     //      per-model statistic and is the one harness stop that is never retried:
     //      a second attempt on the same configuration reaches the same ceiling.
+    //      Which ceiling, and by how much, is the sentence gg logged as it raised
+    //      the breach; the sink pairs that sentence with the `limit_exceeded` event
+    //      that follows it, and the detail carries it for the same reason as above.
     //    - Exit 0 means a session ran, *including* a mid-session `model_error` (carried
     //      in the stream, exit 0). Such a run is **not** a clean success — the failure is
     //      surfaced as an Error event and the produced (likely empty) tree fails
@@ -642,7 +656,15 @@ pub(crate) async fn run_gg_session(
         });
     }
     if output.exit_code != 0 {
-        return Err(classify_exit(output.exit_code, terminal_status.as_deref()));
+        return Err(classify_exit(
+            output.exit_code,
+            terminal_status.as_deref(),
+            &ExitReasons {
+                error_logs: &error_logs,
+                stderr_lines: &stderr_lines,
+                limit_breach: limit_breach.as_deref(),
+            },
+        ));
     }
 
     Ok(HarnessOutcome {
@@ -658,7 +680,7 @@ pub(crate) async fn run_gg_session(
         // gg accounts its own per-tool activity through its telemetry (see
         // `ggToolBreakdown`), not the third-party event parser, so the parser-side
         // tally is empty for a gg run.
-        tool_calls: std::collections::BTreeMap::new(),
+        tool_calls: BTreeMap::new(),
         // This session ended on its own terms; the cancellation path returns above.
         canceled: false,
     })
@@ -679,14 +701,32 @@ pub(crate) async fn run_gg_session(
 /// retries — and a retry of a run that spent its own ceiling runs the same capability set into the
 /// same bound.
 ///
+/// The detail names the code and the status, and then — because those two say only which kind of
+/// failure it was, never *why* — quotes what gg said on its way out (see [`ExitReasons`]): the
+/// ceiling sentence for a breach, otherwise every error-level log in order, otherwise whatever
+/// reached stderr. With nothing to quote, the detail is the code and status alone. The quoted part
+/// is bounded by [`MAX_EXIT_REASON_BYTES`] so a stream that logged an error per turn for a thousand
+/// turns leaves a status detail a row can still show, not a run record padded with it — and what
+/// the bound elides is the middle, never the last message, which is the one that says why (see
+/// [`join_bounded`]).
+///
 /// A pure function so the classification is pinned without a container behind it; the caller owns
-/// everything else about the exit.
-fn classify_exit(exit_code: i32, terminal_status: Option<&str>) -> Error {
+/// everything else about the exit, including collecting the reasons off the stream.
+fn classify_exit(
+    exit_code: i32,
+    terminal_status: Option<&str>,
+    reasons: &ExitReasons<'_>,
+) -> Error {
     let status = terminal_status
         .map(|status| format!(" (session ended `{status}`)"))
         .unwrap_or_default();
-    let detail = format!("gg exited with code {exit_code}{status}");
-    if exit_code == i32::from(crate::gg::EXIT_LIMIT_EXCEEDED) {
+    let limit_exceeded = exit_code == i32::from(crate::gg::EXIT_LIMIT_EXCEEDED);
+    let why = reasons
+        .quoted(limit_exceeded)
+        .map(|why| format!(": {why}"))
+        .unwrap_or_default();
+    let detail = format!("gg exited with code {exit_code}{status}{why}");
+    if limit_exceeded {
         return Error::HarnessLimitExceeded {
             slug: GG_SLUG.to_string(),
             detail,
@@ -696,6 +736,124 @@ fn classify_exit(exit_code: i32, terminal_status: Option<&str>) -> Error {
         slug: GG_SLUG.to_string(),
         detail,
     }
+}
+
+/// The most the quoted reasons may add to a non-zero exit's status detail, in bytes.
+///
+/// A launch refusal names a handful of defects at a sentence each, which fits comfortably; the
+/// bound exists for the stream that does not stop — a session that logged an error on every one of
+/// hundreds of retried turns before gg gave up on it. The detail is a column on the run record and
+/// a line on the console's failed-run row, and neither wants a page of it.
+const MAX_EXIT_REASON_BYTES: usize = 2000;
+
+/// What gg said about a non-zero exit before it left, as the [`GgIngestSink`] collected it off the
+/// stream — handed to [`classify_exit`] rather than read from the sink inside it, so the
+/// classification stays a pure function of what it is given.
+struct ExitReasons<'a> {
+    /// Every error-level `log` message, in stream order.
+    error_logs: &'a [String],
+    /// Every non-empty stderr line, in arrival order.
+    stderr_lines: &'a [String],
+    /// The sentence gg logged for the ceiling it stopped the session on, when it stopped on one.
+    limit_breach: Option<&'a str>,
+}
+
+impl ExitReasons<'_> {
+    /// The reasons to quote after the code and status, or `None` when gg said nothing usable.
+    ///
+    /// A ceiling breach is quoted by its own sentence, because that is the one thing an operator
+    /// wants to know about a limit exit and the error logs a session left on its way to (say) the
+    /// consecutive-errors ceiling are already summarised by it. Every other exit prefers the error
+    /// logs — gg names each launch defect and each fatal there — and falls back to stderr, which
+    /// only carries a fatal gg met before its telemetry stream was up.
+    fn quoted(&self, limit_exceeded: bool) -> Option<String> {
+        if limit_exceeded && let Some(breach) = self.limit_breach {
+            return Some(breach.to_string());
+        }
+        let reasons = if self.error_logs.is_empty() {
+            self.stderr_lines
+        } else {
+            self.error_logs
+        };
+        if reasons.is_empty() {
+            return None;
+        }
+        Some(join_bounded(reasons, MAX_EXIT_REASON_BYTES))
+    }
+}
+
+/// Join `reasons` with `; ` in at most `limit` bytes.
+///
+/// When they all fit they are joined in order and nothing is elided. When they do not, the
+/// **last** reason is kept whole, the first ones are kept whole in order for as long as they fit,
+/// and the rest are replaced by a count of them between the two — so the reader learns how much
+/// was left unsaid rather than being handed a sentence cut mid-word. The last is the one that
+/// must survive because it is where gg puts the message that explains the exit: an
+/// `internal_error` logs the defect it broke on *after* the per-turn errors (a retried model
+/// call, a rejected length-capped turn) it logged on the way there, and a detail that quoted
+/// thirty retries and counted the defect among "N more" would say everything but why.
+///
+/// The one reason that may be cut is the last, when it alone is longer than the budget: saying
+/// most of the only explanation there is beats saying none of it, so it is cut on a character
+/// boundary and marked. The bound holds for any `limit` with room for the count and that mark;
+/// the one caller passes [`MAX_EXIT_REASON_BYTES`].
+fn join_bounded(reasons: &[String], limit: usize) -> String {
+    const SEPARATOR: &str = "; ";
+    let Some((last, head)) = reasons.split_last() else {
+        return String::new();
+    };
+    let joined_len = reasons.iter().map(String::len).sum::<usize>() + SEPARATOR.len() * head.len();
+    if joined_len <= limit {
+        return reasons.join(SEPARATOR);
+    }
+    if head.is_empty() {
+        return cut_to(last, limit);
+    }
+    // Something is elided, so the count is reserved first — at its widest, since how many are
+    // elided is only known once the head is filled — and the last reason is fitted to what the
+    // count leaves, whole where it can be. The head then gets whatever remains.
+    let elision = |elided: usize| format!("…and {elided} more");
+    let reserved = elision(head.len()).len() + SEPARATOR.len();
+    let tail = cut_to(last, limit.saturating_sub(reserved));
+    let budget = limit.saturating_sub(reserved + tail.len() + SEPARATOR.len());
+    let mut kept = String::new();
+    let mut kept_count = 0;
+    for reason in head {
+        let needed = if kept.is_empty() {
+            reason.len()
+        } else {
+            SEPARATOR.len() + reason.len()
+        };
+        if kept.len() + needed > budget {
+            break;
+        }
+        if !kept.is_empty() {
+            kept.push_str(SEPARATOR);
+        }
+        kept.push_str(reason);
+        kept_count += 1;
+    }
+    if !kept.is_empty() {
+        kept.push_str(SEPARATOR);
+    }
+    kept.push_str(&elision(head.len() - kept_count));
+    kept.push_str(SEPARATOR);
+    kept.push_str(&tail);
+    kept
+}
+
+/// `reason` whole when it fits in `budget` bytes, otherwise cut on a character boundary to fit
+/// with the mark that says so — the em dash gg's own messages are full of must not be split.
+fn cut_to(reason: &str, budget: usize) -> String {
+    const MARK: char = '…';
+    if reason.len() <= budget {
+        return reason.to_string();
+    }
+    let mut cut = budget.saturating_sub(MARK.len_utf8());
+    while !reason.is_char_boundary(cut) {
+        cut -= 1;
+    }
+    format!("{}{MARK}", &reason[..cut])
 }
 
 /// How a gg session's output stream ended.
@@ -795,6 +953,28 @@ struct GgIngestSink<'a> {
     /// was seen — lifted onto the run record so result aggregation need not re-parse the
     /// event stream. gg emits it once, just before `session_ended`.
     gg_summary: Option<GgSessionSummary>,
+    /// Every error-level `log` message, in stream order, so a non-zero exit can be recorded
+    /// with the reason gg gave rather than the code alone. All of them, because a launch
+    /// refusal logs one per defect before it ends the session, and an operator fixing the
+    /// configuration wants the whole list in one pass. They are bridged into the event feed
+    /// as they arrive too; this copy is for the status detail (see [`ExitReasons`]).
+    error_logs: Vec<String>,
+    /// Every non-empty stderr line, trimmed, in arrival order. gg writes to stderr only for
+    /// a fatal it meets before its telemetry stream is up, so when the session ends with no
+    /// error log this is the only account of why.
+    stderr_lines: Vec<String>,
+    /// The most recent warn-level `log` message of each agent, by the agent id on the
+    /// event's envelope, held only so that a `limit_exceeded` event can claim its own: gg
+    /// logs the ceiling sentence at warn level and emits the breach event immediately after
+    /// on the same agent's emitter, and pairing the two here is what lets the detail quote
+    /// the sentence without also quoting every unrelated warning the session raised. Per
+    /// agent rather than one for the stream, because subagents run concurrently on one sink
+    /// and nothing makes an agent's two emits adjacent: another agent's warning can land
+    /// between them, and a stream-wide "last warning" would quote that as the ceiling. A
+    /// claimed warning is removed, so a breach with no sentence of its own claims nothing.
+    last_warning_by_agent: BTreeMap<Option<String>, String>,
+    /// The ceiling sentence claimed by the last `limit_exceeded` event, when one was seen.
+    limit_breach: Option<String>,
 }
 
 impl<'a> GgIngestSink<'a> {
@@ -807,6 +987,10 @@ impl<'a> GgIngestSink<'a> {
             translated_events: Vec::new(),
             terminal_status: None,
             gg_summary: None,
+            error_logs: Vec::new(),
+            stderr_lines: Vec::new(),
+            last_warning_by_agent: BTreeMap::new(),
+            limit_breach: None,
         }
     }
 
@@ -816,8 +1000,8 @@ impl<'a> GgIngestSink<'a> {
         self.translated_events.push(event);
     }
 
-    /// Ingest one parsed gg telemetry event: fold usage/cost and the terminal status,
-    /// then bridge it to normalized events.
+    /// Ingest one parsed gg telemetry event: fold usage/cost, the terminal status and the
+    /// reasons a non-zero exit will be recorded with, then bridge it to normalized events.
     fn ingest_gg(&mut self, gg: GgTelemetryEvent) {
         match &gg.kind {
             // Per-turn usage events are incremental deltas consumers sum (there is no
@@ -833,6 +1017,22 @@ impl<'a> GgIngestSink<'a> {
             }
             GgTelemetryKind::SessionEnded { status } => {
                 self.terminal_status = Some(status.clone());
+            }
+            GgTelemetryKind::Log { level, message } => match level.to_ascii_lowercase().as_str() {
+                "error" => self.error_logs.push(message.clone()),
+                "warn" | "warning" => {
+                    self.last_warning_by_agent
+                        .insert(gg.agent_id.clone(), message.clone());
+                }
+                _ => {}
+            },
+            // The breach names the agent that observed it, which is the agent whose emitter
+            // logged the sentence just before — so that is the warning it claims, not the
+            // stream's most recent one.
+            GgTelemetryKind::LimitExceeded { breach } => {
+                self.limit_breach = self
+                    .last_warning_by_agent
+                    .remove(&Some(breach.agent_id.clone()));
             }
             _ => {}
         }
@@ -870,12 +1070,14 @@ impl OutputSink for GgIngestSink<'_> {
                     }
                 }
             }
-            // gg writes only pre-telemetry fatal diagnostics to stderr.
+            // gg writes only pre-telemetry fatal diagnostics to stderr, so each line is both
+            // a warning on the feed and, kept here, the reason the exit is recorded with.
             OutputStream::Stderr => {
                 let trimmed = line.trim();
                 if trimmed.is_empty() {
                     return;
                 }
+                self.stderr_lines.push(trimmed.to_string());
                 let event = stamped(
                     None,
                     EventKind::Warning {
