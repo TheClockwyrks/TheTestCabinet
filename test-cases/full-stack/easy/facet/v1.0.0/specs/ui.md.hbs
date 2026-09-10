@@ -50,8 +50,20 @@ it, so the menu is worked by mouse and by touch as well as by the keyboard.
 
 A round started from here is always fresh, whatever was played before it, so the
 score, the level, and the board a player is handed carry nothing over from an
-earlier round. No board is in play on this screen, so the title screen shows the
-title, the tagline, and the menu over whatever field the look puts behind them.
+earlier round. The title screen draws no board of its own: it shows the title,
+the tagline, and the menu over whatever field the look puts behind them. Whether
+a round is still standing in the state behind it depends on how the title was
+reached. `QUIT` puts the round down, as below, while `back` off `gameover`
+leaves the finished board where it stood.
+
+`QUIT` is what abandons a round and returns here, and abandoning it means
+PUTTING IT DOWN rather than walking away from it while it stands: wherever it is
+taken from, `QUIT` returns `board` to `{ cols: 0, rows: 0, cells: [] }`, returns
+`phase` to `idle` with `chainStep`, `swapTimer` and `stepTimer` at `0`, and
+clears the selection, the offer, the refusal and the armed target, so nothing of
+the round is left in play behind the title. The round's figures are not cleared
+with it — `score`, `level` and `levelScore` hold what the round left them at —
+because it is `PLAY` that makes a round fresh.
 
 ### `howto`
 
@@ -77,7 +89,13 @@ covers:
   move is left that would shatter anything;
 - the controls: that the board is played with a mouse, a pen, or a finger, and
   that the menus answer the pointer and the keys bound to the `up`, `down`,
-  `confirm`, `pause`, `mute`, and `back` actions, each named by its key.
+  `confirm`, `pause`, `mute`, and `back` actions, each named by its key. How a
+  key is written is the screen's own, since this is a player's page rather than a
+  binding table: the legend on the cap, the code `specs/controls.md` binds, and
+  the glyph a cap carries where the key has a familiar one — `↑` and `↓` for the
+  arrows, `↵` for `Enter`, `␣` for `Space`, `⎋` for `Escape` — all name it, and
+  the two arrow keys may be named together — "the arrows" names the `up` key and
+  the `down` key both.
 
 The screen carries the `back` pointer target `specs/controls.md` names, drawn as
 a control reading `BACK_LABEL` (`BACK`), so a player with only a pointer can
@@ -136,7 +154,7 @@ was left. `back` does nothing here.
 | Item | Does |
 | --- | --- |
 | `RESUME` | Sets `screen = playing`, with the board exactly as it was left. |
-| `QUIT` | Sets `screen = title` and `menuIndex = 0`, abandoning the round. |
+| `QUIT` | Sets `screen = title` and `menuIndex = 0`, abandoning the round: the board is put down and nothing of the round is left in play. |
 
 The board shows behind the menu, quieted, so a player reads the position while
 paused.
@@ -167,7 +185,7 @@ one of its two items.
 | Item | Does |
 | --- | --- |
 | `CONTINUE` | Opens the next level, as `specs/rules.md` describes, and sets `screen = playing`. |
-| `QUIT` | Sets `screen = title` and `menuIndex = 0`, abandoning the round. |
+| `QUIT` | Sets `screen = title` and `menuIndex = 0`, abandoning the round: the board is put down and nothing of the round is left in play. |
 
 The finished board shows behind the menu, quieted.
 
@@ -183,12 +201,13 @@ The end of a round, reached when the board settles with no legal move on it.
 The screen also shows the round's final `state.score` and the `state.level` it
 reached. `menuIndex` is `0` on arriving. `up` and `down` move the highlight by
 one item and wrap at both ends. `back` sets `screen = title` and
-`menuIndex = 0`.
+`menuIndex = 0`, and that is the whole of what it does: the finished board is
+left standing behind the title, since it is `QUIT` that puts a round down.
 
 | Item | Does |
 | --- | --- |
 | `PLAY AGAIN` | Starts a fresh round, as `specs/rules.md` describes, and sets `screen = playing`. |
-| `QUIT` | Sets `screen = title` and `menuIndex = 0`. |
+| `QUIT` | Sets `screen = title` and `menuIndex = 0`, putting the finished round down: the board goes with it and nothing of it is left in play. |
 
 The final board shows behind the menu, quieted.
 

@@ -19,10 +19,19 @@
 // layout-dependent character — and specs/ui.md fixes that the screen names those
 // keys while fixing no spelling at all for how a key is written on a screen: no
 // font, no layout, no wording. So both the legend on the key cap and the code
-// that identifies it answer, case-insensitively, and for the two arrow keys the
-// glyph on the cap answers as well. An action carrying two keys is named by
-// either of them, because specs/controls.md says each key of a two-key action
-// fires it on its own.
+// that identifies it answer, case-insensitively, and so does the glyph a cap
+// carries where the key has a familiar one — the glyphs specs/ui.md names, `↑`
+// and `↓` for the arrows, `↵` for `Enter`, `␣` for `Space` and `⎋` for
+// `Escape`. An action carrying two keys is named by either of them, because
+// specs/controls.md says each key of a two-key action fires it on its own.
+//
+// AND THE TWO ARROWS MAY BE NAMED TOGETHER, which specs/ui.md says in as many
+// words: "the arrows" names the `up` key and the `down` key both. That is a
+// wording a how-to written in a player's words reaches for before it reaches for
+// `ArrowUp`, and it leaves the player knowing exactly what to press. What it does
+// NOT excuse is naming one arrow and not the other: the collective is looked for
+// as the collective, so a screen spelling `ArrowUp` alone still owes the `down`
+// action its key.
 //
 // The spellings are derived from BINDINGS rather than written beside it: each
 // code the table binds carries its own spellings below, and the fixture fails if
@@ -64,17 +73,20 @@ import {
  * How each `KeyboardEvent.code` specs/controls.md binds may be written on a
  * screen.
  *
- * Two or three per key: the code itself, the legend on the physical key that
- * code identifies, and for the two arrows the glyph a build is as likely to draw
- * as the word. specs/ui.md fixes no spelling, so every one of them names that
- * key and any one of them answers.
+ * Two to four per key: the code itself, the legend on the physical key that code
+ * identifies, and the glyph a cap carries where the key has one a build is as
+ * likely to draw as the word — the four specs/ui.md names, plus `⏎` beside `↵`
+ * since the two are the same key drawn from two fonts. `KeyP` and `KeyM` carry
+ * no glyph apart from their legend, which is the letter itself. specs/ui.md
+ * fixes no spelling, so every one of them names that key and any one of them
+ * answers.
  */
 const SPELLINGS: Readonly<Record<string, readonly string[]>> = {
   ArrowUp: ["ArrowUp", "UP", "↑"],
   ArrowDown: ["ArrowDown", "DOWN", "↓"],
-  Enter: ["Enter", "Return"],
-  Space: ["Space"],
-  Escape: ["Escape", "ESC"],
+  Enter: ["Enter", "Return", "↵", "⏎"],
+  Space: ["Space", "␣"],
+  Escape: ["Escape", "ESC", "⎋"],
   KeyP: ["KeyP", "P"],
   KeyM: ["KeyM", "M"],
 };
@@ -88,6 +100,22 @@ const SPELLINGS: Readonly<Record<string, readonly string[]>> = {
  * which is what stops it answering inside `open` or `happens`.
  */
 const POINTER_WORDS: readonly string[] = ["mouse", "pen", "finger", "touch"];
+
+/**
+ * The wordings that name BOTH arrow keys at once.
+ *
+ * specs/ui.md leaves how a key is written to the screen and says the two arrows
+ * may be named together — "the arrows" names the `up` key and the `down` key
+ * both — because the how-to is a player's page rather than a binding table, and
+ * a player who reads that the menus answer the arrows knows what to press.
+ *
+ * IT IS THE COLLECTIVE THAT ANSWERS, not the word `arrow`. Both wordings here
+ * name the PAIR, so a screen that spelled one arrow and left the other unsaid —
+ * `ArrowUp` alone, or `↑` alone — still fails on the one it omitted: neither
+ * `arrows` nor `arrow keys` is a reading of `ArrowUp`, under the word boundary
+ * below or under the whitespace-folded substring the harness falls back to.
+ */
+const ARROW_PAIR_SPELLINGS: readonly string[] = ["arrows", "arrow keys"];
 
 let h: Harness;
 
@@ -113,8 +141,8 @@ let h: Harness;
  * `touchscreen`. The one- and three-character spellings keep the boundary,
  * which is what stops `PLAY` from answering for `P`.
  *
- * Every spelling is a letter, a digit or an arrow glyph, none of which carries
- * any meaning in a pattern, so each goes in as it stands.
+ * Every spelling is a letter, a digit or a key glyph, none of which carries any
+ * meaning in a pattern, so each goes in as it stands.
  */
 function namesToken(calls: readonly DrawCall[], token: string): boolean {
   const pieces = drawnTextLines(calls);
@@ -127,15 +155,22 @@ function namesToken(calls: readonly DrawCall[], token: string): boolean {
 
 /** Every spelling that names any key bound to `action`. */
 function spellingsFor(action: ActionName): string[] {
-  return BINDINGS[action].flatMap((code) => {
-    const spellings = SPELLINGS[code];
-    if (spellings === undefined) {
+  const spellings = BINDINGS[action].flatMap((code) => {
+    const found = SPELLINGS[code];
+    if (found === undefined) {
       // A fixture fault, not a build's: specs/controls.md bound a key this
       // check has no way to look for, so it would be asking for nothing.
       fail(`a spelling for the ${code} key specs/controls.md binds`, code);
     }
-    return [...spellings];
+    return [...found];
   });
+  // An action the table binds to arrow keys ALONE is also named by the wording
+  // that names the pair, which specs/ui.md allows. An action bound to anything
+  // else is not: the collective says nothing about `Escape` or `KeyM`.
+  if (BINDINGS[action].every((code) => code.startsWith("Arrow"))) {
+    spellings.push(...ARROW_PAIR_SPELLINGS);
+  }
+  return spellings;
 }
 
 beforeEach(async () => {

@@ -124,6 +124,16 @@ A refilled gem comes from above the board's top row, so `r + 1` rows is the
 least it can have traveled. Which figure at or above that each refilled gem
 carries is the build's, and it is what decides the shape a column fills in.
 
+A gem's `fell` is written by the settling that placed it and stands until that
+gem is moved again — by the swap that exchanges it, which carries it sideways or
+one row rather than falling and so leaves both swapped gems at `fell` `0`; by
+the next step R9 settles; or by a new board taking the place of the one it
+stands on. Coming to rest does not clear it: the board settling out of
+`resolving` leaves every `fell` exactly as R9 wrote it, so a gem that traveled
+three rows to reach the cell it is standing in still reports `3` once the chain
+has ended. `fell` is a fact about the gem's own last journey rather than about
+what the board is doing now.
+
 `fall` is the greatest `fell` on the board R9 left.
 
 ## Enforcement

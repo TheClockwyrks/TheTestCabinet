@@ -20,6 +20,14 @@
 // system, and a system that emits no particle over its own whole duration is not
 // an effect.
 //
+// WHY A REJECTED FILE IS NAMED IN THE FAILURE. An unplayable file and a broken
+// runtime both leave the count short, and the count alone cannot tell them
+// apart: a build whose systems are fine, read against a runtime that throws,
+// would report the same `0` as a build that shipped four empty shells. So the
+// reason each rejected file was turned away is kept as it is found and the first
+// of them are named on the `Expected:` line, where a reviewer reads the verdict.
+// Evidence only — the count is still the whole of the verdict.
+//
 // WHY THE CONTENTS ARE HASHED. Four files that are copies of one system are one
 // effect under four names, and the specification asks for four that differ from
 // one another in what they throw. Byte-identical files are counted once.
@@ -73,6 +81,12 @@ interface Effect {
   peak: RenderParticle[];
 }
 
+/** One file that counted toward nothing: what to call it, and why it did. */
+interface Rejection {
+  name: string;
+  why: string;
+}
+
 /** Every file below `root` whose name ends in `.json`, in path order. */
 function jsonUnder(root: string): string[] {
   const found: string[] = [];
@@ -86,35 +100,76 @@ function jsonUnder(root: string): string[] {
 
 /**
  * Simulate one system and keep the busiest instant of the play, or answer `null`
- * when the file is not a system the runtime can play at all.
+ * when the file is not a system the runtime can play at all — recording why into
+ * `rejected` when it is not.
  *
  * The play is driven from the system's own start over its own duration, so a
  * one-shot is read across the whole of the burst it declares rather than at an
  * instant that might fall before or after it.
+ *
+ * THE WHOLE PLAY IS GUARDED, not the construction alone. "A file that the
+ * runtime cannot construct a simulator from is not a produced system" is one
+ * half of what this function answers `null` for; the other is a file the runtime
+ * constructs and then cannot step — a system.json missing a field the runtime
+ * reads only once a particle is alive throws out of `step` or `capture` rather
+ * than out of the constructor. Both are the same verdict, an unplayable file
+ * that counts toward nothing, and letting the second escape would report the
+ * item as a raw `TypeError` instead of as the count it fell short of.
+ *
+ * THE THROW IS KEPT EVEN SO. Catching it is what makes the item report a count;
+ * writing the message down beside the file it came from is what keeps a broken
+ * runtime distinguishable from a badly authored system.json, which a bare `0`
+ * would not be. The third reason a file counts for nothing — it plays, and
+ * throws no particle at all — is recorded the same way.
  */
-function play(path: string): Effect | null {
-  let system: ParticleSystem;
-  let simulator: ParticleSimulator;
+function play(
+  path: string,
+  name: string,
+  rejected: Rejection[],
+): Effect | null {
   try {
-    system = JSON.parse(readFileSync(path, "utf8")) as ParticleSystem;
-    simulator = new ParticleSimulator(system);
-  } catch {
+    const system = JSON.parse(readFileSync(path, "utf8")) as ParticleSystem;
+    const simulator = new ParticleSimulator(system);
+    // The zero-time bursts have already fired at construction, so the opening
+    // instant counts: a one-shot that throws everything at once is at its
+    // busiest before a frame has run.
+    let peak = simulator.capture();
+    const span = Math.min(
+      Math.max(system.durationMs ?? 0, MIN_SPAN_MS),
+      MAX_SPAN_MS,
+    );
+    for (let elapsed = 0; elapsed < span; elapsed += STEP_MS) {
+      simulator.step(STEP_MS);
+      const live = simulator.capture();
+      if (live.length > peak.length) peak = live;
+    }
+    if (peak.length === 0) {
+      rejected.push({ name, why: "played, but threw no particle" });
+      return null;
+    }
+    return { path, system, peak };
+  } catch (error) {
+    rejected.push({ name, why: String(error) });
     return null;
   }
-  // The zero-time bursts have already fired at construction, so the opening
-  // instant counts: a one-shot that throws everything at once is at its busiest
-  // before a frame has run.
-  let peak = simulator.capture();
-  const span = Math.min(
-    Math.max(system.durationMs ?? 0, MIN_SPAN_MS),
-    MAX_SPAN_MS,
-  );
-  for (let elapsed = 0; elapsed < span; elapsed += STEP_MS) {
-    simulator.step(STEP_MS);
-    const live = simulator.capture();
-    if (live.length > peak.length) peak = live;
-  }
-  return peak.length > 0 ? { path, system, peak } : null;
+}
+
+/**
+ * The rejected files, worded for the `Expected:` line, or nothing at all when
+ * every file played.
+ *
+ * The first two by name, since a pair is enough to tell a runtime that throws on
+ * everything from one file a build authored badly, and the rest counted.
+ */
+function describeRejections(rejected: readonly Rejection[]): string {
+  if (rejected.length === 0) return "";
+  const named = rejected
+    .slice(0, 2)
+    .map((rejection) => `${rejection.name}: ${rejection.why}`)
+    .join("; ");
+  const rest =
+    rejected.length > 2 ? `, and ${rejected.length - 2} more like them` : "";
+  return `; turned away ${named}${rest}`;
 }
 
 /**
@@ -174,10 +229,11 @@ it("ships four distinct particle systems the runtime plays", () => {
   }
 
   const byHash = new Map<string, Effect>();
+  const rejected: Rejection[] = [];
   for (const path of jsonUnder(fx)) {
     const hash = createHash("sha256").update(readFileSync(path)).digest("hex");
     if (byHash.has(hash)) continue;
-    const effect = play(path);
+    const effect = play(path, path.slice(fx.length + 1), rejected);
     if (effect !== null) byHash.set(hash, effect);
   }
   const effects = [...byHash.values()];
@@ -187,6 +243,7 @@ it("ships four distinct particle systems the runtime plays", () => {
     effects.length,
     REQUIRED_FX_SYSTEMS,
     "distinct produced system.json files under assets/fx/ that " +
-      "@clockwyrks/particle-runtime plays and that emit a particle",
+      "@clockwyrks/particle-runtime plays and that emit a particle" +
+      describeRejections(rejected),
   );
 });

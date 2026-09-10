@@ -84,7 +84,6 @@
 import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createCanvas, type SKRSContext2D } from "@napi-rs/canvas";
 import {
   ConstantClock,
   JitterClock,
@@ -259,13 +258,16 @@ export function seconds(frames: number): number {
 //    every check in the suite over a fault the harness created.
 // 4. `OffscreenCanvas`, and a `document` that can make a canvas.
 //    `@clockwyrks/particle-runtime` composites through a context it owns, and
-//    `src/scratch.ts` asks the platform for that second surface.
+//    `src/scratch.ts` asks the platform for that second surface — the offscreen
+//    one first, the document one after it.
 //
-// THE FIRST THREE ARE THE PACKAGE'S NOW; THE FOURTH IS HALF ITS AND HALF OURS.
-// `installAssetHost` supplies the transport, the image decoder and
-// `document.createElement("canvas")`; `installAudioContext` supplies the context.
-// It supplies no `OffscreenCanvas`, and Facet is the only case in the tree that
-// stands one up, so that stub stays here — see below.
+// ALL FOUR ARE THE PACKAGE'S NOW. `installAssetHost` supplies the transport, the
+// image decoder and BOTH ways of making a scratch surface —
+// `document.createElement("canvas")` under `documentElement`, and
+// `OffscreenCanvas` under `offscreenCanvas`, which defaults to it —
+// and `installAudioContext` supplies the context. The stub that used to stand in
+// this file is gone: spectra and cascade wanted the same one, which is the moment
+// the package's README named for moving it.
 //
 // AND THEY ARE INSTALLED AT MODULE SCOPE, NOT FROM A `setupFiles` ENTRY. That is
 // a later moment: vitest evaluates a setup file before a test file's own imports,
@@ -321,6 +323,12 @@ const ASSET_ROOTS = ["dist", "build", "out", "public"] as const;
  * named it, every replay in the baseline was taken without it, and no point asks
  * for it.
  *
+ * `documentElement` and `offscreenCanvas` are the two ways a browser hands out
+ * the scratch surface `src/scratch.ts` asks for, and both are named here rather
+ * than left to the second's default: this project cannot run without one of them,
+ * and a reader of `domScratchCanvas` has to be able to find where each comes from.
+ * The offscreen one is the branch that build actually takes.
+ *
  * The handle is kept for {@link Harness.requests}: `mark()` is taken when a
  * harness is built and `requestsSince` reads the traffic from there on.
  */
@@ -331,6 +339,7 @@ const assetHost = installAssetHost({
   images: true,
   nameImageBitmap: false,
   documentElement: true,
+  offscreenCanvas: true,
   label: "facet",
 });
 
@@ -393,57 +402,6 @@ function decodeCue(bytes: Uint8Array): AudioBufferLike {
 }
 
 installAudioContext({ decode: decodeCue });
-
-/**
- * An `OffscreenCanvas`-shaped class over `@napi-rs/canvas`.
- *
- * THE ONE FACULTY THE PACKAGE DOES NOT CARRY. `installAssetHost` supplies
- * `document.createElement("canvas")` and not this, and Facet is the only case in
- * the tree that stands one up, so extracting it would be adding a member with one
- * user and no second reading to check it against. It is here rather than in the
- * package for that reason and no other.
- *
- * `src/scratch.ts` prefers an `OffscreenCanvas` where one exists and falls back
- * to a detached `<canvas>`, so without this the build would take the document
- * path in Node and the browser path in a page — two different surfaces under one
- * check. The real `getContext` is bound before the shadowing one is assigned, and
- * it is still called lazily rather than captured, because a caller is entitled to
- * ask for the context more than once.
- */
-class StubOffscreenCanvas {
-  readonly width: number;
-  readonly height: number;
-  private readonly context: (kind: "2d") => SKRSContext2D;
-
-  constructor(width: number, height: number) {
-    this.width = width;
-    this.height = height;
-    const canvas = createCanvas(Math.max(1, width), Math.max(1, height));
-    this.context = canvas.getContext.bind(canvas) as (
-      kind: "2d",
-    ) => SKRSContext2D;
-  }
-
-  getContext(): SKRSContext2D {
-    return this.context("2d");
-  }
-}
-
-/**
- * Give this process an `OffscreenCanvas` where it has none.
- *
- * A global that already exists is left exactly as it is: a host that really has
- * one is a better answer than a stub of it. Nothing takes it back down, which is
- * the same contract the package's two hosts keep — a worker that simply exits
- * leaves the shims standing, and that is what makes them cheap.
- */
-function installOffscreenCanvas(): void {
-  const globals = globalThis as unknown as Record<string, unknown>;
-  if (globals.OffscreenCanvas !== undefined) return;
-  globals.OffscreenCanvas = StubOffscreenCanvas;
-}
-
-installOffscreenCanvas();
 
 /* -------------------------------------------------------------------------- */
 /* The surface, and the two faults that make it undrivable                     */

@@ -15,12 +15,31 @@
 //
 // WHY THE DEAL RATHER THAN A CHAIN'S REFILL. A deal moves EVERY gem on the board,
 // so the reading has the whole field to work with rather than the three or four
-// cells one clear happens to empty; and a deal is posed by one operation, so no
-// swap, no clear and no strain runs anywhere near the two frames being compared.
+// cells one clear happens to empty; and a deal is the whole of what opening a
+// round does to the field, so no swap, no clear and no strain runs anywhere near
+// the two frames being compared.
 //
-// HOW TWO FRAMES DECIDE IT. The round is begun, one frame is run so the build
-// draws the deal it was handed, and the board's whole extent is read off the
-// canvas. The game is then carried past the deal's own longest fall — the
+// THE ROUND IS PLAYED INTO, NOT POSED. specs/ui.md's `PLAY` "Starts a fresh
+// round, as specs/rules.md describes", and the deal that round opens with is the
+// deal specs/ui.md has traveling into its cells. The deal a check could pose
+// instead — specs/instrumentation.md's `dealBoard` — is fixed there as a write of
+// the BOARD and of nothing else: "The board is the whole of what it writes: the
+// screen, `menuIndex`, the phase, the selection and every figure of the round
+// stand where they were." Unlike `setScreen`, it carries no clause putting the
+// game where a player's own route would put it, so a build that pours a fresh
+// board into place off a clock its round-opening starts is not answering this
+// question wrongly when a posed board sits still — it is being asked a question
+// the specification never put. The round is therefore opened the way
+// `screens/start-round-from-title` opens one: the highlight is posed onto `PLAY`
+// — `setMenuIndex` takes no item — and `confirm` is what takes it, through the
+// key specs/controls.md binds and the build's own input path. THAT the item opens
+// a fresh round is that point's business; this one only reads the frames the deal
+// it opened is drawn on.
+//
+// HOW TWO FRAMES DECIDE IT. `PLAY` is taken, which delivers `confirm` inside a
+// frame's own update, so the frame that deals the board is the frame that draws
+// it; the board's whole extent is read off the canvas. The game is then carried
+// past the deal's own longest fall — the
 // `lastFall` the snapshot reports, times `FALL_SECONDS_PER_ROW`, with the margin
 // `framesPast` adds so a build comparing `>=` and one comparing `>` both read
 // alike — and the same extent is read again. A board whose gems traveled reads
@@ -41,16 +60,19 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertBoardEquals, boardExtent } from "../board";
 import { assertEqual, assertGreaterThan } from "../assert";
-import { FALL_SECONDS_PER_ROW } from "../constants";
+import { FALL_SECONDS_PER_ROW, TITLE_ITEMS } from "../constants";
 import {
   captureReplay,
   createHarness,
   framesPast,
   patchDistance,
-  startRound,
+  takeMenuItem,
   type Harness,
   type Patch,
 } from "../harness";
+
+/** Where `PLAY` sits on the title menu, from specs/ui.md's `TITLE_ITEMS`. */
+const PLAY_INDEX = TITLE_ITEMS.indexOf("PLAY");
 
 let h: Harness;
 
@@ -89,10 +111,12 @@ afterEach(() => {
 
 it("draws the frame a board is dealt on apart from the same board once it has landed", async () => {
   const dealt = await captureReplay(h, "fall", async () => {
-    // The round begins, and one frame draws the deal the build made.
-    const round = startRound(h);
+    // The round is opened from the title the way a player opens one, and the
+    // frame that delivers `confirm` is the frame the deal is drawn on.
+    h.debug.reset();
+    assertEqual(h.snapshot().screen, "title", "the screen PLAY is taken from");
+    const round = await takeMenuItem(h, PLAY_INDEX);
     assertEqual(round.screen, "playing", "the screen a round begins on");
-    await h.advance(1);
     const arriving = readBoard();
     const board = h.board();
     const opening = h.snapshot();

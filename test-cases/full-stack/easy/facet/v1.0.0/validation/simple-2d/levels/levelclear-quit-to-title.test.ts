@@ -2,10 +2,17 @@
 // the title.
 //
 // specs/ui.md gives `levelclear` two items and this is the second: "`QUIT` — Sets
-// `screen = title` and `menuIndex = 0`, abandoning the round."
-// specs/ui.md then says what the title holds: "No board is in play on this
-// screen", and specs/instrumentation.md fixes the resting values a snapshot
-// reports for that.
+// `screen = title` and `menuIndex = 0`, abandoning the round: the board is put
+// down and nothing of the round is left in play." specs/ui.md's title section
+// says what putting it down is, once, for all three menus that offer `QUIT`:
+// "wherever it is taken from, `QUIT` returns `board` to `{ cols: 0, rows: 0,
+// cells: [] }`, returns `phase` to `idle` with `chainStep`, `swapTimer` and
+// `stepTimer` at `0`, and clears the selection, the offer, the refusal and the
+// armed target", and specs/instrumentation.md fixes the resting values a
+// snapshot reports for those. It is `QUIT` that puts the round down rather than
+// the title screen that forbids a board behind it — `back` off `gameover`
+// reaches the same screen and leaves the finished board standing — so this
+// reads the item.
 //
 // WHY IT IS ITS OWN POINT. It is the same choice `screens/quit-from-paused` and
 // `screens/quit-from-gameover` read from their own menus, offered from a THIRD

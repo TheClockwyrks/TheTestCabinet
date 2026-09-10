@@ -1,11 +1,20 @@
 // Facet — screens/quit-from-paused: QUIT on the pause menu abandons the round.
 //
 // specs/ui.md gives the pause menu's `QUIT` its effect: "Sets `screen = title`
-// and `menuIndex = 0`, abandoning the round." specs/ui.md then says what the
-// title holds: "No board is in play on this screen", and
-// specs/instrumentation.md fixes the resting values a snapshot reports for that
-// — `board` is `{ cols: 0, rows: 0, cells: [] }` while no board is in play, and
-// `selection`, `offer` and `refusal` are `null` while none stands.
+// and `menuIndex = 0`, abandoning the round: the board is put down and nothing
+// of the round is left in play." specs/ui.md's title section says what putting
+// it down is, once, for all three menus that offer `QUIT`: "wherever it is
+// taken from, `QUIT` returns `board` to `{ cols: 0, rows: 0, cells: [] }`,
+// returns `phase` to `idle` with `chainStep`, `swapTimer` and `stepTimer` at
+// `0`, and clears the selection, the offer, the refusal and the armed target".
+// specs/instrumentation.md fixes the resting values a snapshot reports for
+// those — `board` is `{ cols: 0, rows: 0, cells: [] }` while no board is in
+// play, and `selection`, `offer` and `refusal` are `null` while none stands.
+//
+// IT IS `QUIT` THAT PUTS THE ROUND DOWN, not the title screen that forbids a
+// board behind it: `back` off `gameover` reaches the same screen and leaves the
+// finished board standing. So this is read as the item's effect, and nothing
+// here is asked of any other route to the title.
 //
 // THAT LAST HALF IS THE POINT. Reaching the title is easy; leaving nothing of
 // the round behind is the part a build gets wrong, because the title screen
@@ -70,11 +79,11 @@ const PAUSED_QUIT_INDEX = PAUSED_ITEMS.indexOf("QUIT");
 
 let h: Harness;
 
-/** Every resting value the title's "no board is in play" fixes. */
+/** Every resting value putting the round down leaves behind. */
 function assertRestingTitle(state: FacetSnapshot): void {
   assertEqual(state.screen, "title", "the screen QUIT leaves");
   assertEqual(state.menuIndex, 0, "the highlighted title item");
-  // "no board is in play" — the resting board a snapshot reports for one.
+  // The board QUIT puts down — the resting board a snapshot reports for none.
   assertEqual(state.board.cols, 0, "columns of the board in play");
   assertEqual(state.board.rows, 0, "rows of the board in play");
   assertLength(state.board.cells, 0, "cells of the board in play");

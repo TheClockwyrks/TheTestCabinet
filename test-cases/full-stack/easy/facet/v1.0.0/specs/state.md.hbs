@@ -174,6 +174,8 @@ reading order from the top-left cell to the bottom-right.
   gem at `MAX_STRAIN` is flawed.
 - `fell` — how many rows the gem traveled to reach this cell, as R9 in
   `specs/rules.md` fixes it. A gem that was already standing here carries `0`.
+  The figure stands until that gem is moved again, so the board coming to rest
+  does not clear it.
 
 A gem's center on the stage is `cellX(col)` and `cellY(row)` from
 `specs/board.md`, so the state carries no coordinates. Strain and cut travel
@@ -424,6 +426,8 @@ reading order from the top-left cell to the bottom-right.
   gem at `MAX_STRAIN` is flawed.
 - `fell` — how many rows the gem traveled to reach this cell, as R9 in
   `specs/rules.md` fixes it. A gem that was already standing here carries `0`.
+  The figure stands until that gem is moved again, so the board coming to rest
+  does not clear it.
 
 A gem's center on the stage is `cellX(col)` and `cellY(row)` from
 `specs/board.md`, so the state carries no coordinates. Strain and cut travel

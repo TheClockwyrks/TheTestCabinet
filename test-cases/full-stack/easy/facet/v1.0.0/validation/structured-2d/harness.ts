@@ -83,7 +83,6 @@
 import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createCanvas, type Canvas, type SKRSContext2D } from "@napi-rs/canvas";
 import {
   ConstantClock,
   JitterClock,
@@ -613,12 +612,12 @@ const AUDIO_WARM_FRAMES = 240;
 //     entitled to compose a picture on a scratch surface of its own before it
 //     blits that surface over the frame, and a browser hands one out both ways.
 //
-// THE FIRST THREE AND THE `document` ARE THE PACKAGE'S NOW, from `installAssetHost`
-// and `installAudioContext`. THE `OffscreenCanvas` IS NOT: the package supplies
-// the document shim and not that one, because Facet is the only case in the tree
-// that stands one up and a member with one user has no second reading to check it
-// against. It is below, in this file, where it belongs until a second case wants
-// it.
+// ALL FOUR ARE THE PACKAGE'S NOW, from `installAssetHost` and
+// `installAudioContext`. The `OffscreenCanvas` used to be this file's own, because
+// Facet was the only case in the tree that stood one up; spectra and cascade
+// wanted the same one, which is the moment the package's README named for moving
+// it, so `installAssetHost`'s `offscreenCanvas` supplies it and the stub that used
+// to sit below is gone.
 //
 // WHERE THEY ARE INSTALLED, AND WHEN. At this module's scope, which under ES
 // modules is AFTER `../src/game` above has been evaluated — the setup file that
@@ -660,6 +659,11 @@ export const WORKSPACE_ROOT = resolve(PROJECT_ROOT, "..");
  * never produced, so a missing file fails the items about that file and only
  * those.
  *
+ * `documentElement` and `offscreenCanvas` are the two ways a browser hands out the
+ * scratch surface `src/scratch.ts` asks for. Both are named rather than the second
+ * left to its default, because this project cannot run without one of them and a
+ * reader of `domScratchCanvas` has to be able to find where each comes from.
+ *
  * `nameImageBitmap` is off, deliberately, and it is the one field here whose
  * default would change a recording. Naming the canvas library's decoded image as
  * `globalThis.ImageBitmap` is what lets the ENGINE's own draw-op recorder
@@ -678,6 +682,7 @@ const assetHost = installAssetHost({
   images: true,
   nameImageBitmap: false,
   documentElement: true,
+  offscreenCanvas: true,
   label: "facet",
 });
 
@@ -726,40 +731,6 @@ function decodeCue(bytes: Uint8Array): AudioBufferLike {
 }
 
 installAudioContext({ decode: decodeCue });
-
-/**
- * An `OffscreenCanvas`-shaped class over `@napi-rs/canvas`.
- *
- * THE ONE SHIM THE PACKAGE DOES NOT CARRY. `installAssetHost` supplies
- * `document.createElement("canvas")` and not this, because Facet is the only case
- * in the tree that stands one up; the package's README says so under what has not
- * been extracted, and a second case wanting it is the moment to move it.
- *
- * Installed only where the host has none, exactly as the shim this replaces did:
- * a host that really has one is a better answer than a stand-in for it.
- */
-class StubOffscreenCanvas {
-  private readonly surface: Canvas;
-  readonly width: number;
-  readonly height: number;
-
-  constructor(width: number, height: number) {
-    this.width = width;
-    this.height = height;
-    this.surface = createCanvas(Math.max(1, width), Math.max(1, height));
-  }
-
-  getContext(): SKRSContext2D {
-    return this.surface.getContext("2d");
-  }
-}
-
-{
-  const host = globalThis as unknown as Record<string, unknown>;
-  if (host.OffscreenCanvas === undefined) {
-    host.OffscreenCanvas = StubOffscreenCanvas;
-  }
-}
 
 /* -------------------------------------------------------------------------- */
 /* What one harness keeps beside the engine it built                          */

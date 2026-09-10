@@ -2,11 +2,21 @@
 // round behind.
 //
 // specs/ui.md gives the game-over menu's `QUIT` its effect: "Sets `screen =
-// title` and `menuIndex = 0`." specs/ui.md then says what the title holds: "No
-// board is in play on this screen", and specs/instrumentation.md fixes the
-// resting values a snapshot reports for that — `board` is `{ cols: 0, rows: 0,
-// cells: [] }` while no board is in play, and `selection`, `offer` and `refusal`
-// are `null` while none stands.
+// title` and `menuIndex = 0`, putting the finished round down: the board goes
+// with it and nothing of it is left in play." specs/ui.md's title section says
+// what putting it down is, once, for all three menus that offer `QUIT`:
+// "wherever it is taken from, `QUIT` returns `board` to `{ cols: 0, rows: 0,
+// cells: [] }`, returns `phase` to `idle` with `chainStep`, `swapTimer` and
+// `stepTimer` at `0`, and clears the selection, the offer, the refusal and the
+// armed target".
+// specs/instrumentation.md fixes the resting values a snapshot reports for
+// those — `board` is `{ cols: 0, rows: 0, cells: [] }` while no board is in
+// play, and `selection`, `offer` and `refusal` are `null` while none stands.
+//
+// IT IS `QUIT` THAT PUTS THE ROUND DOWN, not the title screen that forbids a
+// board behind it: `back` off THIS screen also sets `screen = title` and
+// `menuIndex = 0`, and specs/ui.md asks nothing of the board there — which is
+// `screens/back-leaves-gameover`'s point, and why this one reads the item.
 //
 // THAT LAST HALF IS THE POINT. Reaching the title is easy; putting the finished
 // board down is the part a build gets wrong, because the title screen draws none
@@ -50,11 +60,11 @@ const GAMEOVER_QUIT_INDEX = GAMEOVER_ITEMS.indexOf("QUIT");
 
 let h: Harness;
 
-/** Every resting value the title's "no board is in play" fixes. */
+/** Every resting value putting the round down leaves behind. */
 function assertRestingTitle(state: FacetSnapshot): void {
   assertEqual(state.screen, "title", "the screen QUIT leaves");
   assertEqual(state.menuIndex, 0, "the highlighted title item");
-  // "no board is in play" — the resting board a snapshot reports for one.
+  // The board QUIT puts down — the resting board a snapshot reports for none.
   assertEqual(state.board.cols, 0, "columns of the board in play");
   assertEqual(state.board.rows, 0, "rows of the board in play");
   assertLength(state.board.cells, 0, "cells of the board in play");
