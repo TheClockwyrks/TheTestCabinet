@@ -14,9 +14,13 @@
 // AND ONE PELLET STANDS ON THE RUN AT A TIME. `poseStraightRun` opens on a board
 // `clearPlankton` emptied, so the only food on the corridor is the pellet this
 // check puts on the tile ahead of the forager. Between the two grazes the forager
-// is faced into the rock across the corridor, which brings it to rest wherever it
-// stands (specs/movement.md), so the four seconds of decay cannot carry it into a
-// second mouthful and re-arm the hold under the measurement.
+// is set down at rest on the center of the tile it has just grazed, as though no
+// movement key were held (specs/instrumentation.md `setForagerTile`), so the four
+// seconds of decay cannot carry it into a second mouthful and re-arm the hold
+// under the measurement. A tile center is also where specs/movement.md has a
+// forager at rest take the direction the second graze holds: an eat lands as the
+// forager's center crosses onto its tile, part way along it, and a held direction
+// is honored from there only at the next center the forager reaches.
 //
 // THE FIXTURE'S SEALED POCKET CARRIES THE REST. Eating the plankton that leaves
 // none behind clears the maze (specs/gameplay.md), which would descend and end
@@ -99,9 +103,11 @@ it("Brightness holds, then decays", async () => {
     h.debug.setPlankton(from.tx + 1, from.ty, true);
     const eaten = await grazeOne(h, h.snapshot(), { budget: REACH_TICKS });
     const g0 = eaten.brightness;
-    // At rest for the whole of the curve below: faced into the rock across a
-    // corridor one tile wide, which is where a forager with no action held stays.
-    h.debug.setForagerDir("up");
+    // At rest for the whole of the curve below, on the center of the tile the
+    // pellet went from — the tile the forager's center is on at the eat — with
+    // its facing untouched, so the second graze opens from a tile center with
+    // the tile ahead open to it (specs/movement.md).
+    h.debug.setForagerTile(eaten.forager.tx, eaten.forager.ty);
 
     // Across the hold, then across two halvings past it. Every wait is measured
     // from the tick the pellet went, so a slow build is failed rather than

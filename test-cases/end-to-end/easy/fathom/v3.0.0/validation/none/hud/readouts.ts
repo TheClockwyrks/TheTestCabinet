@@ -76,15 +76,17 @@ export const DRAWN_MIN = 8;
 /**
  * How far apart two samples stand across a strip, in units.
  *
- * Two across and four down. A gauge reports its readiness by how far it is
+ * Two across and every row down. A gauge reports its readiness by how far it is
  * drawn, and the two readings a cooldown is compared between differ by a
  * fraction of its length: a grid coarser than the change would read the same
- * count at both and say nothing. Two units is finer than any bar a build would
- * draw a gauge as, and four down is enough rows to catch a bar wherever inside
- * the strip it sits.
+ * count at both and say nothing. Two units across is finer than the change any
+ * gauge a player can read makes over a cooldown. Down the strip every row is
+ * read, because specs/ui.md fixes no thickness for a gauge: a bar a few units
+ * tall falls between any coarser rows, ready and spent alike, and would read as
+ * nothing having moved.
  */
 const STRIP_STEP_X = 2;
-const STRIP_STEP_Y = 4;
+const STRIP_STEP_Y = 1;
 
 /** How far apart two samples stand across a run of text, in units. */
 const RUN_STEP = 2;
@@ -159,10 +161,13 @@ function runPoints(run: TextDraw): { x: number; y: number }[] {
   return points;
 }
 
-/** The points a whole strip is sampled at. */
+/**
+ * The points a whole strip is sampled at: whole rows from its top edge to the
+ * one above its bottom edge, so every sample is a pixel the strip holds.
+ */
 function stripPoints(strip: Strip): { x: number; y: number }[] {
   const points: { x: number; y: number }[] = [];
-  for (let y = strip.y0 + STRIP_STEP_Y / 2; y < strip.y1; y += STRIP_STEP_Y) {
+  for (let y = strip.y0; y < strip.y1; y += STRIP_STEP_Y) {
     for (let x = STRIP_STEP_X / 2; x < STAGE_W; x += STRIP_STEP_X) {
       points.push({ x, y });
     }

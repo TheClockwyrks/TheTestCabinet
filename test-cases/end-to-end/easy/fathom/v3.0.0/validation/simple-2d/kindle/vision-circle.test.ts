@@ -24,11 +24,9 @@
 // bringing it home. Nothing else is involved — no pulse, no flare — so this point
 // turns on the mask and not on another system's claim.
 //
-// BRIGHTNESS IS PUT BACK TO ZERO before the reading. Each berth costs the pellet
-// underfoot, and `setBrightness(g)` "arms the `BRIGHT_HOLD` (`1.0 s`) brightness
-// hold, exactly as eating a plankton does, so the value it poses is steady for
-// that full second" (specs/instrumentation.md) — so `R` and `V` hold still while
-// the pixels are read.
+// NO BERTH RAISES `G`. `poseMaze` empties the board of plankton, so resting the
+// forager at a berth eats nothing and `G` stays at the `0` a dive opens on
+// (specs/sensing.md) — so `R` and `V` hold still while the pixels are read.
 //
 // THE SAMPLED TILES KEEP THEIR PLANKTON. The forager grazes only the tile its own
 // center is on (specs/gameplay.md), so the berths and the samples are different
@@ -109,10 +107,16 @@ it("The maze is drawn only inside the circle", async () => {
   const inside = board.mark("I");
   const outside = board.mark("O");
   const unlit = board.mark("S");
+  // A plankton on each of the two tiles that are read, which is what a maze is
+  // laid out with on every corridor tile (specs/gameplay.md) and what `poseMaze`
+  // emptied the board of. Neither is ever eaten: the forager rests on its own
+  // berths and never on these.
+  h.debug.setPlankton(inside.tx, inside.ty, true);
+  h.debug.setPlankton(outside.tx, outside.ty, true);
 
   // Reveal the corridor by resting the forager along it, far end first, and
-  // bring it home. Each berth's own pellet is eaten off camera and `G` put back
-  // to zero, so no berth widens the circle the next reading is taken under.
+  // bring it home. No berth carries a pellet, so none of them raises `G` and
+  // widens the circle the next reading is taken under.
   for (const berth of [board.mark("F"), board.mark("M"), home]) {
     await parkForager(h, berth);
     await h.advance(SETTLE_TICKS);

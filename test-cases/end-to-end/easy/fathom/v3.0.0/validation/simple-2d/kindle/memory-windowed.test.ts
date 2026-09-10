@@ -43,12 +43,13 @@
 // THE TILE IS READ FROM THE REMEMBERED BAND, past the light pocket and inside the
 // circle, so what draws it at (1) and (3) is the circle rather than the light.
 //
-// THE FORAGER IS MOVED BY POSE, NOT BY SWIMMING. Every berth costs the pellet
-// underfoot and one pellet is `BRIGHT_PER_EAT` of brightness, which widens `R` by
-// `KINDLE_VISION_GAIN * 0.34` — enough to pull the far berth back inside the
-// circle. So each berth eats its own pellet off camera and puts `G` back to zero
-// (specs/instrumentation.md), and the distances are read against the `R` the
-// build reports at the moment of each reading.
+// THE FORAGER IS MOVED BY POSE, NOT BY SWIMMING. A swim between berths would
+// graze every pellet on the way, and one pellet is `BRIGHT_PER_EAT` of
+// brightness, which widens `R` by `KINDLE_VISION_GAIN * 0.34` — enough to pull
+// the far berth back inside the circle. `poseMaze` empties the board of plankton
+// and each berth is posed rather than swum to, so no berth raises `G` from the
+// `0` a dive opens on, and the distances are read against the `R` the build
+// reports at the moment of each reading.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -140,8 +141,14 @@ it("Hidden, but not forgotten", async () => {
   const unlit = board.mark("S");
   const near = board.mark("H");
   const away = board.mark("A");
+  // A plankton on the watched tile and on the never-lit one, which is what a
+  // maze is laid out with on every corridor tile (specs/gameplay.md) and what
+  // `poseMaze` emptied the board of. Neither is ever eaten: the forager rests on
+  // its own berths and never on these.
+  h.debug.setPlankton(watched.tx, watched.ty, true);
+  h.debug.setPlankton(unseen.tx, unseen.ty, true);
 
-  /** Rest the forager at a berth, put `G` back to zero, and let it draw. */
+  /** Rest the forager at a berth and let it draw. */
   const restAt = async (tile: { tx: number; ty: number }): Promise<void> => {
     await parkForager(h, tile);
     await h.advance(SETTLE_TICKS);
