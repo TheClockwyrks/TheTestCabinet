@@ -19,11 +19,12 @@
 //     that ignored the ratio, or that sized the canvas to the stage and let CSS
 //     stretch it, reads back the wrong store here.
 //   - THE FOUR CORNERS OF THE PLAY FIELD. A drone posed at each extreme has to
-//     change what is painted at its own logical centre AS THE SPECIFIED FIT MAPS
-//     IT. This is the whole of the fit in one reading: a build that stretched to
-//     fill, that cropped, that anchored the stage to a corner instead of centring
-//     it, or that drew in device pixels puts bare field under each of those four
-//     points.
+//     change what is painted over its own logical FOOTPRINT AS THE SPECIFIED FIT
+//     MAPS IT — the footprint rather than the centre, because where inside its
+//     own footprint a build puts its paint is the build's. This is the whole of
+//     the fit in one reading: a build that stretched to fill, that cropped, that
+//     anchored the stage to a corner instead of centring it, or that drew in
+//     device pixels leaves each of those four footprints untouched.
 //   - BOTH HUD STRIPS, which the item names beside the field. specs/field.md
 //     divides the stage into three full-width regions and fixes what the two
 //     strips carry — the score and the stage above, the lives, the meter, the
@@ -54,6 +55,7 @@ import {
   FIELD_TOP,
   HUD_BOTTOM_TOP,
   HUD_TOP_H,
+  SHARD_SIZE,
   STAGE_H,
   STAGE_W,
 } from "../constants";
@@ -62,12 +64,11 @@ import {
   colorDistance,
   createHarness,
   poseDrone,
-  sampleColor,
   startPosed,
   type Harness,
   type Rgb,
 } from "../harness";
-import { countApart, modeColor, readLattice } from "./canvas";
+import { countApart, countMoved, modeColor, readLattice } from "./canvas";
 
 /**
  * How far a point's colour must move between two readings of it for the point to
@@ -83,6 +84,42 @@ import { countApart, modeColor, readLattice } from "./canvas";
  * little above the rounding one composite can put on a pixel.
  */
 const PAINT_MIN = 12;
+
+/**
+ * How much of a drone's own footprint must have moved between the two readings
+ * for the drone to count as drawn there, as a share of the footprint's samples.
+ *
+ * A SIXTEENTH, and it is a floor on a COUNT rather than a fidelity bar. What is
+ * read here is a whole `SHARD_SIZE` footprint before and after a Shard is posed
+ * on it, because a single sample cannot be relied on: `specs/drones.md` fixes the
+ * footprint a Shard is drawn AT and `specs/assets.md` scales its art to that
+ * footprint, but neither says a word about what any one point inside it holds, so
+ * a build whose Shard is a bright outline around a dark middle leaves the centre
+ * and a small cluster round it sitting on the background — at some scales and not
+ * at others, which is exactly the axis this item varies. The whole footprint does
+ * not have that problem: a Shard drawn there moves most of it, and a Shard drawn
+ * clear of it, or not at all, moves none of it. A sixteenth sits far below any
+ * honest drawing — even a hollow Shard whose art is a two-unit rim around an
+ * empty middle moves a quarter of its own box — and far above the stray sample a
+ * background can move, which is why the floor is not raised to catch a smaller
+ * displacement.
+ *
+ * WHAT A FOOTPRINT READING DOES NOT RESOLVE is a small displacement. Two boxes
+ * `SHARD_SIZE` across overlap until they stand a whole `SHARD_SIZE` apart, so a
+ * Shard drawn up to about its own width off its logical point still moves a
+ * sixteenth of the box read for it. That is the right trade here, because what is
+ * graded is the FIT rather than the placement: a stage stretched to fill, cropped,
+ * anchored to a corner instead of centred, or drawn in device pixels carries these
+ * four extreme corners hundreds of units, and even a three per cent error in the
+ * scale carries the top-right corner further than the box is across, because that
+ * corner stands over a thousand units out from the origin a scale multiplies
+ * about. Where a build puts a drone within a unit or two of its own logical point
+ * is `swarm/*`'s reading and the reviewer's rating, never this one's.
+ */
+const PAINT_SHARE = 1 / 16;
+
+/** How finely a drone's footprint is read, in logical units. */
+const FOOTPRINT_STEP = 2;
 
 /**
  * How far a letterbox bar may sit from its own earlier reading and still count as
@@ -147,6 +184,21 @@ const CORNERS = [
   },
 ] as const;
 
+/** The `SHARD_SIZE` footprint a drone posed at a logical point is drawn at. */
+function footprintOf(at: { x: number; y: number }): {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+} {
+  return {
+    x: at.x - SHARD_SIZE / 2,
+    y: at.y - SHARD_SIZE / 2,
+    width: SHARD_SIZE,
+    height: SHARD_SIZE,
+  };
+}
+
 /** The two HUD strips, as specs/field.md's table of regions gives them. */
 const STRIPS = [
   {
@@ -192,11 +244,11 @@ it.each(SURFACES)(
     await startPosed(h);
     await h.advance(1);
 
-    // What each corner holds with nothing on it, so every reading below is a
-    // change the build made rather than a colour this check assumed.
-    const bare: Rgb[] = [];
+    // What each corner's own footprint holds with nothing on it, so every reading
+    // below is a change the build made rather than a colour this check assumed.
+    const bare: Rgb[][] = [];
     for (const corner of CORNERS) {
-      bare.push(await sampleColor(h, corner.x, corner.y));
+      bare.push(await readLattice(h, footprintOf(corner), FOOTPRINT_STEP));
     }
 
     // Both strips are on the canvas under the fit, with something drawn in each.
@@ -265,14 +317,15 @@ it.each(SURFACES)(
     // Every corner of the play field is on the canvas, under its own logical
     // coordinate mapped through the fit the specification requires.
     for (const [index, corner] of CORNERS.entries()) {
-      const moved = colorDistance(
-        bare[index],
-        await sampleColor(h, corner.x, corner.y),
-      );
+      const footprint = bare[index];
+      const after = await readLattice(h, footprintOf(corner), FOOTPRINT_STEP);
       assertGreaterThan(
-        moved,
-        PAINT_MIN,
-        `the drone at ${corner.where} of the play field, under the specified fit`,
+        countMoved(footprint, after, PAINT_MIN),
+        footprint.length * PAINT_SHARE,
+        `samples of the ${String(SHARD_SIZE)}-unit footprint at ` +
+          `${corner.where} of the play field that moved when a Shard was posed ` +
+          `on it, out of ${String(footprint.length)} — the footprint stands at ` +
+          `its own logical coordinate under the specified fit`,
       );
     }
 

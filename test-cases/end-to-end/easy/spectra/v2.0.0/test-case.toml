@@ -758,7 +758,7 @@ validation = { script = "instrumentation/drone-fire-gate.test.ts", outputs = [
 [[review.categories.items]]
 id = "wave-entry-gate"
 title = "Wave entry off keeps the wave's drones away"
-description = "With setWaveEntry(false), a stage entered brings no drone in over ten seconds; with it on, drones arrive."
+description = "With setWaveEntry(false), a stage entered brings no drone in over ten seconds, its first group included; with it on, drones arrive."
 domains = ["swarm"]
 failure_cap = "passable"
 validation = { script = "instrumentation/wave-entry-gate.test.ts", outputs = [
@@ -1581,7 +1581,7 @@ validation = { script = "swarm/dive-speed.test.ts", outputs = [
 [[review.categories.items]]
 id = "dive-bends-toward-player"
 title = "A dive bends toward the ship"
-description = "With the ship parked far left and again far right, each dive closes at least a third of the horizontal gap to the ship, which a fixed track cannot do in both directions."
+description = "The same dive flown with the ship parked far left and again far right comes nearer the parked ship each time, by at least the ship's own width, and closes on it, which a fixed track cannot do."
 domains = ["swarm"]
 failure_cap = "scuffed"
 validation = { script = "swarm/dive-bends-toward-player.test.ts", outputs = [

@@ -638,18 +638,24 @@ const WORKSPACE = dirname(PROJECT_ROOT);
  *    naming the canvas library's decoded image as the host's `ImageBitmap` would
  *    change what the ENGINE's own recorder captures into a replay, which is
  *    evidence this case's outputs were never sized for.
- *  - `documentElement` supplies `document.createElement("canvas")`. It is ON
- *    because specs/assets.md leaves the BAND ROUTE to the build: the tint may be
- *    "composited over the seeded PNG at draw time" or "a per-band copy is baked
- *    once at load time", and the second route composes on a scratch canvas the
- *    build asks the document for. With no document that call throws inside the
- *    build's own `initialize`, `createHarness` rejects, and EVERY check in this
- *    project fails on a fact about Node rather than about the build. The shim
- *    hands back a canvas of the same `@napi-rs/canvas` implementation every
- *    reading in this project rasterizes through, so a source a build baked is
- *    read exactly as a seeded bitmap is. Nothing else of a document is supplied,
- *    because nothing else is something the engine's own runtime would give a
- *    build either.
+ *  - `documentElement` and `offscreenCanvas` supply BOTH ways a browser hands out
+ *    a scratch surface — `document.createElement("canvas")` and
+ *    `new OffscreenCanvas(w, h)`. They are ON because specs/assets.md leaves the
+ *    BAND ROUTE to the build: the tint may be "composited over the seeded PNG at
+ *    draw time" or "a per-band copy is baked once at load time", and the second
+ *    route composes on a scratch surface the build asks the platform for. It is
+ *    free to ask either way and the specification says nothing about which, so a
+ *    host that offered one and not the other would fail a conformant build for a
+ *    coin toss: the missing call throws inside the build's own `initialize`,
+ *    `createHarness` rejects, and EVERY check in this project fails on a fact
+ *    about Node rather than about the build — which is what happened to a run
+ *    that baked through `OffscreenCanvas` before this field existed. Both hand
+ *    back a canvas of the same `@napi-rs/canvas` implementation every reading in
+ *    this project rasterizes through, and they hand back the SAME KIND of object
+ *    as each other, so a source a build baked is read exactly as a seeded bitmap
+ *    is and no check can tell which way the build asked. Nothing else of a
+ *    document is supplied, because nothing else is something the engine's own
+ *    runtime would give a build either.
  */
 function serveSeededAssets(): AssetHost {
   return installAssetHost({
@@ -659,6 +665,7 @@ function serveSeededAssets(): AssetHost {
     images: true,
     nameImageBitmap: false,
     documentElement: true,
+    offscreenCanvas: true,
     label: "spectra",
   });
 }

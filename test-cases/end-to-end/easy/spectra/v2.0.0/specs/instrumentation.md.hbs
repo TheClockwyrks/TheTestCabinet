@@ -260,7 +260,7 @@ default and restored to on by `reset`, and each is reported by `snapshot`.
 
 | Operation | Gates |
 | --- | --- |
-| `setWaveEntry(enabled)` | The wave's own release of drones: the staggered groups a stage sends in on the `ENTER_GROUP_GAP` schedule. Off, no drone arrives unless one is added. A drone already traveling its entrance flies it as usual. |
+| `setWaveEntry(enabled)` | The wave's own release of drones: the staggered groups a stage sends in on the `ENTER_GROUP_GAP` schedule, its first group included. Off, the wave's entry clock does not advance and no group is released, so no drone crosses `FIELD_TOP` into the play field unless one is added. That holds for a wave built while the gate is off, whose whole roster waits at its starting points above the field however long the stage runs. A drone already traveling its entrance flies it as usual. |
 | `setDiveLaunching(enabled)` | The assault's own choice of which formation drone dives next, and when. Off, no dive is launched. A drone already diving flies its dive as usual. |
 | `setStageClearing(enabled)` | The live stage's own end-of-stage test, which is the rule `specs/stages.md` states for a standard stage clearing and for a challenge stage ending. Off, no stage clears or ends however the field empties, and nothing else changes: drones are still destroyed, still scored, and still burst as usual. It is reported as `stageClearing`. |
 | `setShipContact(enabled)` | The ship's contact test, which is whether an enemy bullet or a drone body reaching the ship costs a life. Off, the ship still draws, still moves under input, and still fires, and no contact costs anything. It is reported as `ship.contact`. |

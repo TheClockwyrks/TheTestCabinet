@@ -32,7 +32,7 @@
 // belongs to the group that grades it. This point is about presence and type.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, RESONANCE_MAX } from "../constants";
+import { BINDINGS, DISCHARGE_TIME, RESONANCE_MAX } from "../constants";
 import {
   assertContains,
   assertEqual,
@@ -48,6 +48,7 @@ import {
   playerBullets,
   poseDrone,
   startPosed,
+  ticksFor,
   type Harness,
   type SpectraSnapshot,
 } from "../harness";
@@ -268,12 +269,51 @@ it("reports every documented field, off a field carrying one of everything", asy
     "a discharge wave is live one frame after the action was driven at " +
       `RESONANCE_MAX (${String(RESONANCE_MAX)}, specs/resonance.md)`,
   );
-  assertGreaterThan(
-    s.discharge.radius,
-    0,
-    "the live wave's radius one frame into its life (specs/resonance.md)",
-  );
 
   // And it reports the whole documented object.
   assertShape(s);
+
+  // And the radius it reports is the WAVE's rather than a constant standing in
+  // for one. It is read as a CHANGE across the wave's life, not as a figure on
+  // the frame the wave was born on: specs/resonance.md grows the radius "from
+  // `0` to `DISCHARGE_MAX_R`" over `DISCHARGE_TIME`, so `0` is where a wave
+  // legitimately starts, and whether the frame that released it has already aged
+  // the wave is an ordering the specification leaves to the build. What it does
+  // not leave is a wave that never spreads.
+  //
+  // TWICE, AND THE SECOND READING IS A QUARTER OF THE WAVE ON, so what is read is
+  // a wave SPREADING rather than a radius that moved off zero once and then stood
+  // still for the rest of its life. Both spans sit well inside `DISCHARGE_TIME`,
+  // so the wave is still live at every reading and nothing here is a reading of a
+  // wave that has already ended. This is last so that nothing above it is read off
+  // a field that has moved.
+  const born = s.discharge.radius;
+  await h.advance(1);
+  const opening = h.snapshot().discharge.radius;
+  assertGreaterThan(
+    opening,
+    born,
+    "the live wave's radius a frame on from the reading above, against the " +
+      `${String(born)} it read then — the radius grows from 0 to ` +
+      "DISCHARGE_MAX_R over DISCHARGE_TIME (specs/resonance.md), so a wave " +
+      "whose radius never moves is not spreading",
+  );
+
+  await h.advance(ticksFor(DISCHARGE_TIME / 4));
+  const spreading = h.snapshot();
+  assertTrue(
+    spreading.discharge.active,
+    `the same wave still live a quarter of DISCHARGE_TIME ` +
+      `(${String(DISCHARGE_TIME)} s) after it was released, which is the ` +
+      "span the reading below is taken over (specs/resonance.md)",
+  );
+  assertGreaterThan(
+    spreading.discharge.radius,
+    opening,
+    "the live wave's radius a quarter of DISCHARGE_TIME on, against the " +
+      `${String(opening)} it read a frame after birth — the radius grows all ` +
+      "the way from 0 to DISCHARGE_MAX_R over DISCHARGE_TIME " +
+      "(specs/resonance.md), so a wave that moved off zero once and then stood " +
+      "still is not spreading",
+  );
 });

@@ -3,9 +3,13 @@
 // drones arrive.
 //
 // `specs/instrumentation.md` gives the gate exactly one faculty:
-// `setWaveEntry(enabled)` gates "The wave's own release of drones: the staggered
-// groups a stage sends in on the `ENTER_GROUP_GAP` schedule. Off, no drone arrives
-// unless one is added. A drone already traveling its entrance flies it as usual."
+// `setWaveEntry(enabled)` gates "The wave's own release of drones: the
+// staggered groups a stage sends in on the `ENTER_GROUP_GAP` schedule, its
+// first group included. Off, the wave's entry clock does not advance and no
+// group is released, so no drone crosses `FIELD_TOP` into the play field unless
+// one is added. That holds for a wave built while the gate is off, whose whole
+// roster waits at its starting points above the field however long the stage
+// runs. A drone already traveling its entrance flies it as usual."
 //
 // WITHOUT IT, MOST OF THIS SUITE IS INVADED. `specs/swarm.md` releases a wave's
 // first group as the wave opens and each later group `ENTER_GROUP_GAP` (`0.6` s)

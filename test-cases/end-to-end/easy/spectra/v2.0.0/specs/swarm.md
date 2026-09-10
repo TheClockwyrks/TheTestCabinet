@@ -31,9 +31,11 @@ wave opens and advances with game time while the wave's entry runs. A drone's gr
 is released when that clock reaches `ENTER_GROUP_GAP` (`0.6`) seconds times the
 group's index, counted from `0`, so the first group is released as the wave opens
 and each later group `ENTER_GROUP_GAP` after the one before it. A drone that has not
-been released holds its starting point. A wave releases its drones in between two
-and eight groups; how many drones a group holds, and which slot each takes, are
-yours.
+been released holds its starting point. Releasing a group is part of the wave's entry
+running. While that entry is not running nothing is released, the first group
+included, however long the clock stands at zero. A wave releases its drones in
+between two and eight groups; how many drones a group holds, and which slot each
+takes, are yours.
 
 A released drone travels a smooth path of your design down to its slot, at
 `ENTER_SPEED` (`260`) units per second along that path. The path is continuous and
@@ -80,6 +82,13 @@ at `DIVE_SPEED` (`300`) units per second along that path. The path:
   discontinuity a dive ever holds;
 - ends either by turning back above `FIELD_BOTTOM` without ever entering the bottom
   HUD strip, or by wrapping through the bottom as above.
+
+A dive's path answers where the ship stands. Two runs of the same dive from one
+slot, one flown at a ship parked at `SHIP_X_MIN` and one at a ship parked at
+`SHIP_X_MAX`, are different paths: at either end of the ship's lane, the run flown
+at the ship parked there comes at least `SHIP_W` nearer that end than the other run
+does. Each run also comes at least `SHIP_W` nearer the ship it was flown at than the
+slot it launched from stands. How much closer than that a dive presses is yours.
 
 A dive runs no longer than eight seconds. Once the path is done the drone enters
 phase `returning` and travels back to its slot, reaching it within four seconds,

@@ -399,6 +399,21 @@ const WORKSPACE = dirname(PROJECT_ROOT);
  *     it recognizes a drawable source by `instanceof` against the host's
  *     constructors — so every replay this project writes would carry a different
  *     picture for a name that decides nothing about the build.
+ *
+ * `documentElement` and `offscreenCanvas` are the two ways a browser hands out a
+ * SCRATCH SURFACE, and they are on here for the reason the `simple-2d` project
+ * gives at length: specs/assets.md leaves the BAND ROUTE to the build — the tint
+ * may be "composited over the seeded PNG at draw time" or "a per-band copy is
+ * baked once at load time" — and the baking route composes on a surface the build
+ * asks the platform for, either way it likes. A host that offered neither fails a
+ * build that bakes with a `ReferenceError` thrown from inside the level's own
+ * `load`, and one that offered only the document's fails a build that reached for
+ * the other; both would fail every item in this project on a fact about Node. The
+ * two shims hand back the same `@napi-rs/canvas` surface as each other and as the
+ * one every reading here rasterizes through, so a variant the build baked is read
+ * exactly as a seeded bitmap is and nothing can tell which way it was asked for.
+ * The `simple-2d` project supplies both, and a build stood up under one engine
+ * must be handed what a build under the other is.
  */
 installAssetHost({
   workspaceRoot: WORKSPACE,
@@ -406,6 +421,8 @@ installAssetHost({
   onMissing: "upstream",
   images: true,
   nameImageBitmap: false,
+  documentElement: true,
+  offscreenCanvas: true,
   label: "spectra",
 });
 
