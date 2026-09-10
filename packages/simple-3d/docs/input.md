@@ -233,7 +233,10 @@ listeners go on. Each pointer listener reads `clientX`, `clientY`, `pointerId`,
 `pointerType`, `isPrimary`, `button`, and `buttons`; the wheel listener reads
 `deltaX`, `deltaY`, and `deltaMode`. Each leaves the event otherwise untouched.
 An event carrying no numeric client position is ignored, an unrecognized
-`pointerType` reads as `"mouse"`, and an absent `pointerId` reads as `0`.
+`pointerType` reads as `"mouse"`, and an absent `pointerId` reads as `0`. An
+absent `button` reads as `"primary"` on a press. A release or a cancel
+carrying no `button` names the button it drops, and the first in
+`PointerButton` order when it drops several.
 
 Dispatching a pointer-shaped event at that target drives the pointer exactly as
 a player's does. Over a surface with no `origin`, the origin reads `(0, 0)` and

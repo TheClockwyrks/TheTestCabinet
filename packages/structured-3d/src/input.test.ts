@@ -920,6 +920,48 @@ describe("InputSystem pointer buttons", () => {
     ]);
   });
 
+  it("names the primary button on a press and a release that named none", () => {
+    const { system, target } = systemWith();
+    const reader = system.createReader();
+
+    point(target, "pointerdown", 5, 5);
+    point(target, "pointermove", 6, 6);
+    point(target, "pointerup", 6, 6);
+
+    expect(reader.pointerSamples().map((sample) => sample.button)).toEqual([
+      "primary",
+      null,
+      "primary",
+    ]);
+  });
+
+  it("names the button a cancel releases", () => {
+    const { system, target } = systemWith();
+    const reader = system.createReader();
+
+    point(target, "pointerdown", 5, 5, { button: 2, buttons: 2 });
+    target.dispatchEvent(new Event("pointercancel"));
+
+    expect(reader.pointerSamples().at(-1)).toMatchObject({
+      type: "up",
+      button: "secondary",
+    });
+  });
+
+  it("names the first button in declared order when a cancel drops several", () => {
+    const { system, target } = systemWith();
+    const reader = system.createReader();
+
+    point(target, "pointerdown", 5, 5, { button: 2, buttons: 2 });
+    point(target, "pointerdown", 5, 5, { button: 0, buttons: 3 });
+    target.dispatchEvent(new Event("pointercancel"));
+
+    expect(reader.pointerSamples().at(-1)).toMatchObject({
+      type: "up",
+      button: "primary",
+    });
+  });
+
   it("maps the auxiliary button off its own index", () => {
     const { system, target } = systemWith();
     const reader = system.createReader();

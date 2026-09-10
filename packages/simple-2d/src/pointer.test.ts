@@ -249,6 +249,39 @@ describe("PointerInput", () => {
       ]);
     });
 
+    it("names the primary button on a press and a release that named none", () => {
+      pointer(target, "pointerdown", 5, 5);
+      pointer(target, "pointermove", 6, 6);
+      pointer(target, "pointerup", 6, 6);
+
+      expect(input.samples().map((s) => s.button)).toEqual([
+        "primary",
+        null,
+        "primary",
+      ]);
+    });
+
+    it("names the button a cancel releases", () => {
+      pointer(target, "pointerdown", 5, 5, { button: 2, buttons: 2 });
+      target.dispatchEvent(new Event("pointercancel"));
+
+      expect(input.samples().at(-1)).toMatchObject({
+        type: "up",
+        button: "secondary",
+      });
+    });
+
+    it("names the first button in declared order when a cancel drops several", () => {
+      pointer(target, "pointerdown", 5, 5, { button: 2, buttons: 2 });
+      pointer(target, "pointerdown", 5, 5, { button: 0, buttons: 3 });
+      target.dispatchEvent(new Event("pointercancel"));
+
+      expect(input.samples().at(-1)).toMatchObject({
+        type: "up",
+        button: "primary",
+      });
+    });
+
     it("maps the auxiliary button off its own index", () => {
       pointer(target, "pointerdown", 5, 5, { button: 1, buttons: 4 });
 

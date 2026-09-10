@@ -44,8 +44,9 @@ export type PointerEventType = "pointerdown" | "pointermove" | "pointerup";
  * `clientX`/`clientY` are CSS pixels from the surface's origin, and `isPrimary`
  * marks it the primary contact. An engine that also reads `button`, `buttons` or
  * `pointerType` finds them absent and applies its own default — a primary-button
- * contact from an unnamed device — which is the behaviour the cases that dispatch
- * this event have always been decided under.
+ * contact from an unnamed device, on its edges, in `buttons` and on the `down`
+ * and `up` samples it records — so a build reads this press exactly as a
+ * player's primary-button press.
  */
 export class PointerPositionEvent extends Event {
   readonly clientX: number;

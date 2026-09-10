@@ -172,7 +172,7 @@ export class PointerInput {
       this.#contacts.set(reading.id, contact);
       this.#surface.capturePointer?.(contact.id);
       if (contact.primary) this.#edge(pressed).pressed = true;
-      this.#record(contact, "down", reading.x, reading.y, reading.button);
+      this.#record(contact, "down", reading.x, reading.y, pressed);
       return;
     }
     // A second `pointerdown` on a pointer already in contact is a chorded
@@ -184,7 +184,7 @@ export class PointerInput {
     existing.device = reading.device;
     existing.buttons = reading.buttons ?? withButton(existing.buttons, pressed);
     if (existing.primary && chorded) this.#edge(pressed).pressed = true;
-    this.#record(existing, "move", reading.x, reading.y, reading.button);
+    this.#record(existing, "move", reading.x, reading.y, pressed);
   };
 
   readonly #onMove = (event: Event): void => {
@@ -388,6 +388,15 @@ export class PointerInput {
     button: PointerButton | null,
     remaining: readonly PointerButton[],
   ): void {
+    // The sample names the button whose state it reports. A release that named
+    // none — a hand-dispatched `pointerup`, or a `pointercancel`, which never
+    // carries one — reports the button it drops, and the first in declared order
+    // when it drops several, so an `up` sample carries a button however the
+    // release arrived.
+    const released =
+      button ??
+      contact.buttons.find((held) => !remaining.includes(held)) ??
+      null;
     if (contact.primary) {
       for (const held of contact.buttons) {
         if (!remaining.includes(held)) this.#edge(held).released = true;
@@ -395,12 +404,12 @@ export class PointerInput {
     }
     contact.buttons = [...remaining];
     if (remaining.length > 0) {
-      this.#record(contact, "move", contact.x, contact.y, button);
+      this.#record(contact, "move", contact.x, contact.y, released);
       return;
     }
     this.#contacts.delete(contact.id);
     this.#surface.releasePointerCapture?.(contact.id);
-    this.#record(contact, "up", contact.x, contact.y, button);
+    this.#record(contact, "up", contact.x, contact.y, released);
   }
 
   /**
