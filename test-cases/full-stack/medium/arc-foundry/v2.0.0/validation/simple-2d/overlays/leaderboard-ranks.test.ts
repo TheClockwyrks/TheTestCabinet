@@ -19,10 +19,14 @@
 // and a half shots a second climb past the Capacitor's one kill. The board has to
 // re-rank without anything else about the run changing.
 //
-// A row is found by the type it names — the name `specs/components.md` gives the
-// type, as `../constants` spells it — because a rank a player cannot attach to a
-// structure ranks nothing; the three types are named nowhere else on the stage
-// while the selection is clear.
+// A row is found by the type it names, because a rank a player cannot attach to
+// a structure ranks nothing. `specs/components.md` gives every type both a Type
+// (`Discharge Rig`, as `../constants` spells it) and an Identifier (`discharge`),
+// and `specs/hud.md` fixes the board's ranking, its live update and its kills
+// without fixing a row's copy, so a row naming the type by either is read. The
+// identifier is a bare word a caption might also carry, so it is only read off
+// a line that carries a figure, as every row does; the three Type names are
+// drawn nowhere else on the stage while the selection is clear.
 //
 // THE CLOCK IS THE CHECK'S. Both spans are frames spent letting cadences run
 // rather than frames anything is read on, and specs/instrumentation.md guarantees
@@ -104,12 +108,22 @@ function inRangeOf(gun: Gun): { x: number; y: number } {
   return { x: center.x + 50, y: center.y };
 }
 
+/**
+ * Whether a line of the board names that type: by the Type `specs/components.md`
+ * gives it, or, on a line carrying a figure, by its Identifier.
+ */
+function namesType(line: string, type: ComponentType): boolean {
+  return (
+    reads(line, COMPONENT_NAMES[type]) || (/\d/.test(line) && reads(line, type))
+  );
+}
+
 /** The types the board named, in the order it drew them, top first. */
 function ranked(calls: readonly DrawCall[]): ComponentType[] {
   const lines = textLines(calls, OVERLAY);
   const placed = GUNS.map((gun) => ({
     type: gun.type,
-    at: lines.findIndex((line) => reads(line, COMPONENT_NAMES[gun.type])),
+    at: lines.findIndex((line) => namesType(line, gun.type)),
   }));
   for (const one of placed) {
     if (one.at < 0) {

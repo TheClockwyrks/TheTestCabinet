@@ -4189,7 +4189,7 @@ title = "The recipe book and the damage leaderboard"
 [[review.categories.items]]
 id = "recipe-book-lists-twelve"
 title = "The recipe book lists all twelve towers"
-description = "The recipe book draws every one of the twelve combination towers with its exact recipe and its headline stats."
+description = "The recipe book draws every one of the twelve combination towers with its exact recipe, each ingredient named by its Type or Identifier, and its headline stats."
 domains = ["presentation"]
 failure_cap = "scuffed"
 # Automated validation: open the recipe book and read its text draws against
@@ -4248,7 +4248,7 @@ validation = { script = "overlays/overlays-are-inert.test.ts", outputs = [
 [[review.categories.items]]
 id = "leaderboard-ranks"
 title = "The leaderboard ranks structures by damage dealt"
-description = "The damage leaderboard draws the player's firing structures ordered by total damage dealt, highest first, with each structure's kills, and the order it draws changes live as a wave runs."
+description = "The damage leaderboard draws the player's firing structures ordered by total damage dealt, highest first, each row naming its structure's Type or Identifier with its kills, and the order it draws changes live as a wave runs."
 domains = ["presentation"]
 failure_cap = "passable"
 # Automated validation: drive known damage through three structures and read

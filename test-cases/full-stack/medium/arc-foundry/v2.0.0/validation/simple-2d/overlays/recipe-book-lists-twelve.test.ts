@@ -17,10 +17,11 @@
 // ingredient `type@tier` but fixes no notation a build must draw, and a book
 // setting Scrap as `I`, as `1`, or as the word is drawing the same recipe. What a
 // flat read of the overlay's text can decide is that the type is named; binding a
-// tier to it would grade the notation. A type is named by the name
-// `specs/components.md` gives it, as `../constants` spells it: `Arc-Node`, with
-// its hyphen, and `Discharge Rig`, with its space, are the copy, not the
-// identifiers `arcnode` and `discharge`.
+// tier to it would grade the notation. `specs/hud.md` has an ingredient name its
+// type "by the Type or the Identifier `specs/components.md` gives it", so a type
+// is read by either: `Arc-Node`, with its hyphen, and `Discharge Rig`, with its
+// space, as `../constants` spells them, or `arcnode` and `discharge`. A prefix
+// of either is not a name.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertContains, assertEqual, assertGreaterThan } from "../assert";
@@ -93,10 +94,12 @@ it("lists every one of the twelve towers with its stats", async () => {
     );
     for (const ingredient of combo.recipe) {
       assertEqual(
-        drew(drawn, OVERLAY, COMPONENT_NAMES[ingredient.type]),
+        drew(drawn, OVERLAY, COMPONENT_NAMES[ingredient.type]) ||
+          drew(drawn, OVERLAY, ingredient.type),
         true,
         `whether the recipe book names the ${COMPONENT_NAMES[ingredient.type]} ` +
-          `the ${combo.name}'s recipe calls for`,
+          `(or its identifier \`${ingredient.type}\`) the ${combo.name}'s ` +
+          "recipe calls for (specs/hud.md)",
       );
     }
 

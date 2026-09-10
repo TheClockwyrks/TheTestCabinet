@@ -111,7 +111,9 @@ The recipe book is a read-only overlay listing all twelve combination towers, ea
 its exact recipe and its headline stats, and a plain-language description shown at least
 on hover. It does not pause or alter the game, and toggling it again dismisses it.
 
-Every ingredient of every recipe is drawn in one of three states, told apart at a glance:
+Every ingredient of every recipe names its type, by the Type or the Identifier
+`specs/components.md` gives it, and is drawn in one of three states, told apart at a
+glance:
 
 | State    | When it applies                                                                                          |
 | -------- | -------------------------------------------------------------------------------------------------------- |
@@ -127,7 +129,9 @@ current selection is emphasized as a whole.
 ## The damage leaderboard
 
 The damage leaderboard is a read-only overlay ranking the player's firing structures by
-total damage dealt, updating live as a wave runs, and showing each structure's kills.
+total damage dealt, updating live as a wave runs, and showing each structure's kills. Each
+row names its structure's type, by the Type or the Identifier `specs/components.md` gives
+it.
 Pointing at a row spotlights that structure on the yard: every other piece is drawn
 desaturated so the ranked structure is unmistakable. It does not pause or alter the game,
 and toggling it again dismisses it.

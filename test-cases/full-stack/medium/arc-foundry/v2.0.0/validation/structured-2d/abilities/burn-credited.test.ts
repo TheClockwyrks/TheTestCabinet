@@ -57,6 +57,16 @@ const DPS = componentDamage("rectifier", TIER) * RECTIFIER_BURN_FRAC;
  */
 const OVERSHOOT = DPS / 30;
 
+/**
+ * What a clamped tally may fall short of the unit's health by.
+ *
+ * A build that clamps the killing tick sums the shot and every burn tick's
+ * `burnDps * dt` in floating point, and that sum lands within rounding of the
+ * health the unit carried rather than on it exactly. The slack admits rounding
+ * alone: a tally that stops at the shot is `40` short.
+ */
+const TALLY_SLACK = 1e-6;
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -101,7 +111,7 @@ it("tallies the kill and the whole health the burn finished off", async () => {
   // shot lands short of the health the unit was carrying.
   assertBetween(
     after.damageDealt,
-    POSED_HP,
+    POSED_HP - TALLY_SLACK,
     POSED_HP + OVERSHOOT,
     `the Rectifier's damage tally: the ${POSED_HP} health the unit carried, ` +
       `of which ${componentDamage("rectifier", TIER)} was the shot and the ` +

@@ -8,6 +8,11 @@
 // `specs/controls.md` has moving over the yard "snap the held footprint to the
 // tile under the pointer and update its legal read".
 //
+// WHERE THE POINTER IS PUT. At the center of the anchor tile. `specs/yard.md`
+// closes every tile's extent at both ends, so a tile corner is a pixel two tiles
+// share and "the tile under the pointer" names either of them there; the
+// center is inside exactly one tile under every reading.
+//
 // THE TWO FOOTPRINTS. One over open ground, and one over a waypoint platform,
 // which `specs/yard.md` puts out of bounds for every footprint: "all four are
 // Waypoint tiles: the Load crosses them freely and no footprint may cover any of
@@ -37,7 +42,7 @@ import {
   pressAction,
   sample,
 } from "../harness";
-import { FOOTPRINT, mapById, structureCenter, TILE } from "../constants";
+import { FOOTPRINT, mapById, TILE, tileCenter } from "../constants";
 
 /** Open ground, clear of every platform on the Substation. */
 const LEGAL = { col: 10, row: 10 };
@@ -79,7 +84,7 @@ it("draws the held footprint over a legal tile and over a platform", async () =>
     "whether pulling the press armed a rock to hold",
   );
 
-  const legalPoint = structureCenter(LEGAL.col, LEGAL.row);
+  const legalPoint = tileCenter(LEGAL.col, LEGAL.row);
   await h.debug.pointerMove(legalPoint.x, legalPoint.y);
   const legalHeld = await h.snapshot();
   assertEqual(
@@ -90,7 +95,7 @@ it("draws the held footprint over a legal tile and over a platform", async () =>
   const legalPixels = await sample(h, overLegal);
   await captureStill(h, "held");
 
-  const platformPoint = structureCenter(ILLEGAL.col, ILLEGAL.row);
+  const platformPoint = tileCenter(ILLEGAL.col, ILLEGAL.row);
   await h.debug.pointerMove(platformPoint.x, platformPoint.y);
   const platformHeld = await h.snapshot();
   assertEqual(

@@ -1570,7 +1570,11 @@ export function hoverControl(h: Harness, rect: ControlRect): Promise<void> {
  * Press at one logical point and release at another.
  *
  * The gesture `specs/ui.md` takes no entry for: "Two edges in different regions take
- * no entry, and an edge outside every region takes none."
+ * no entry, and an edge outside every region takes none." A frame runs between
+ * the press, the travel and the release, as a slide off an entry always spans
+ * frames: `specs/controls.md` gives the game a pointer position, a press edge and
+ * a release edge to read, and a game reading those once a frame sees where the
+ * press fell only if the release lands in a later frame.
  */
 export async function pointerDrag(
   h: Harness,
@@ -1579,7 +1583,9 @@ export async function pointerDrag(
 ): Promise<void> {
   h.pointerMove(from.x, from.y);
   h.pointerDown(from.x, from.y);
+  await h.advance(1);
   h.pointerMove(to.x, to.y);
+  await h.advance(1);
   h.pointerUp(to.x, to.y);
   await h.advance(1);
 }
@@ -1611,14 +1617,22 @@ export async function touchOnto(
   await h.advance(1);
 }
 
-/** Land a contact at one logical point, travel it to another, and lift it there. */
+/**
+ * Land a contact at one logical point, travel it to another, and lift it there.
+ *
+ * A frame runs between the landing, the travel and the lift, for the reason
+ * {@link pointerDrag} gives: a game reading the contact's position and edges once
+ * a frame sees where it landed only if the lift comes in a later frame.
+ */
 export async function touchDrag(
   h: Harness,
   from: Point,
   to: Point,
 ): Promise<void> {
   h.touchStart(from.x, from.y);
+  await h.advance(1);
   h.touchMove(to.x, to.y);
+  await h.advance(1);
   h.touchEnd();
   await h.advance(1);
 }
