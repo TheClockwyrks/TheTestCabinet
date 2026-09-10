@@ -48,6 +48,9 @@
 //!
 //! - `errorRateWindow >= maxTurns` — both honoured; the ceiling can just only fire on the last turn.
 //! - `minOffenders > windowWords` — armed exactly as declared, provably inert.
+//! - `windowLimit` above the model's own window — a ceiling honoured exactly as declared that
+//!   narrows nothing; the agent is measured against the model's window, which is what the record
+//!   holds (`window_ceiling_notes` in [`crate::agent`]).
 //! - An allowlist entry naming a real gg tool or operation that *this* agent's capabilities do not
 //!   offer. It grants nothing, it is not a typo, and it is the legitimate shared-document case.
 //! - An `openingTurn` entry naming a real gg module or operation that *this* agent does not hold —
@@ -730,7 +733,9 @@ const CAPABILITY_PARAMS: &[(&str, &[(&str, Requirement)])] = &[
         CAPABILITY_CONTEXT_WINDOW_OVERRIDE,
         &[(
             PARAM_WINDOW_LIMIT,
-            Requirement::Required("the window, in tokens, this agent's model is narrowed to"),
+            Requirement::Required(
+                "the ceiling, in tokens, this agent's model window is narrowed to",
+            ),
         )],
     ),
     (
@@ -1014,8 +1019,8 @@ fn arms_of(id: &str) -> Vec<&'static str> {
 pub fn validate_launch(invocation: &GgInvocation) -> Result<(), Vec<LaunchDefect>> {
     let mut report = LaunchReport::collecting();
     check_set(&invocation.capability_set, &mut report);
-    // The handful of checks that need more of the invocation than the set: a window override is a
-    // narrowing of a **model's** window, and the windows arrive beside the set rather than in it.
+    // The handful of checks that need more of the invocation than the set: a skills directory is
+    // resolved against the **workspace**, which arrives beside the set rather than in it.
     crate::agent::check_invocation(invocation, &mut report);
     let defects = report.into_defects();
     if defects.is_empty() {
@@ -1105,8 +1110,8 @@ fn check_provided_files(invocation: &GgInvocation, report: &mut LaunchReport) {
 
 /// The set-scoped half of [`validate_launch`] — everything decidable from the
 /// [capability set](GgCapabilitySet) alone, which is all of it but the
-/// [window overrides](crate::agent), whose narrowing is judged against the models the invocation
-/// carries the windows of.
+/// [skills directories](crate::agent::check_invocation), whose paths are resolved against the
+/// workspace the invocation carries.
 ///
 /// Split out because the set is what almost every check reads and what almost every test has in
 /// hand; [`validate_launch`] is the entry point that owns the whole invocation.

@@ -110,14 +110,20 @@ itself and supplies the windows a launch would have.
 
 ### Narrowing the window
 
-`windowLimit` may only make the window smaller. The model's real window is a
-hard limit, so a value above it refuses the launch, on the same rule an
-unresolvable window is refused under. A `windowLimit` of `0` refuses the launch
-too, since an override that narrows nothing is an override the run records and
-never applied. Narrowing is how a study exercises compaction against a
-million-token model without spending a million tokens of input per boundary:
-give the run a 100k window and the same summarize-and-restart behaviour plays
-out an order of magnitude sooner.
+`windowLimit` is a ceiling: the agent is measured against the smaller of its
+model's real window and the ceiling. A ceiling above the model's window narrows
+nothing and the agent is measured against the model's own window, which is what
+the run records as the model's resolved window. gg says so on the root agent's
+log at session start, naming the agent, the configured `windowLimit`, the
+model's window and the window the agent is measured against. This is what lets
+one configuration be reused across models of different sizes. A `windowLimit`
+of `0` refuses the launch, since an override with no figure is an override the
+run records and never applies.
+
+Narrowing is how a study exercises compaction against a million-token model
+without spending a million tokens of input per boundary: give the run a 100k
+window and the same summarize-and-restart behaviour plays out an order of
+magnitude sooner.
 
 Narrowing is its own capability, Context Window Override, and an enabled one
 writes the `windowLimit` it narrows to. A profile that leaves the capability off

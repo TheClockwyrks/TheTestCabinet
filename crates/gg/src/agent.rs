@@ -1070,15 +1070,23 @@ pub(crate) async fn run_with_seams(
     //
     // What is left, and the whole of what may ever be added: a ceiling armed exactly as declared
     // whose window can only close on the last turn, a detector armed exactly as declared and
-    // provably inert, and a capture journal that could not be opened (a debugging artifact, which
-    // must not fail a paid run). An allowlist entry naming a real gg call this agent's capabilities
-    // do not offer is the fourth, and it is *silent* rather than said — it grants nothing, it is not
-    // a typo, and it is how one shared document describes several configurations.
+    // provably inert, a window ceiling armed exactly as declared that sits above the model's own
+    // window and so narrows nothing, and a capture journal that could not be opened (a debugging
+    // artifact, which must not fail a paid run). An allowlist entry naming a real gg call this
+    // agent's capabilities do not offer is the fifth, and it is *silent* rather than said — it
+    // grants nothing, it is not a typo, and it is how one shared document describes several
+    // configurations.
     //
     // A new occupant of this channel needs the same defence: gg does what the document says, and the
     // line exists only because a reader would want to know. Anything else is a refusal.
     for warning in launch_warnings {
         root_emitter.emit(log("warn", warning));
+    }
+    // The window ceilings that narrow nothing are said here rather than from `build`'s resolvers,
+    // because the note wants the run's model windows beside the profile, and the windows are read
+    // off the invocation rather than off a capability.
+    for note in window_ceiling_notes(&orch.caps.agents, &orch.model_windows) {
+        root_emitter.emit(log("warn", note));
     }
     // ...and the ceilings that *are* in force, including the turn ceiling's default, so "what was
     // this run bounded by?" is answerable from the operator log as well as from the summary.
@@ -10371,10 +10379,13 @@ fn describe_turns(turns: &[u64]) -> String {
 /// 1. **The model's window**, from `windows` — the model catalog's figure for each bound
 ///    model, [pushed in with the invocation](GgInvocation::model_windows) — **narrowed** by
 ///    the [context-window-override](CAPABILITY_CONTEXT_WINDOW_OVERRIDE) capability's
-///    [`PARAM_WINDOW_LIMIT`], when that capability is enabled. The override may only make the
-///    window *smaller*, and one that would not is [refused at launch](check_window_limits)
-///    rather than clamped: a run recording a narrowing it never applied measures the model's
-///    full window under the narrowed arm's name.
+///    [`PARAM_WINDOW_LIMIT`], when that capability is enabled. The override is a **ceiling**:
+///    the window is the smaller of the model's own and the figure, so a ceiling above the
+///    model's window narrows nothing and the agent is measured against the model's own. The
+///    record stays honest either way, because [`captured_model_windows`] writes the figure
+///    *this* resolver returns rather than the configured one, and the session says so out loud
+///    at launch through [`window_ceiling_notes`]. That is what lets one configuration be reused
+///    across models of different sizes.
 /// 2. **The working window**, [reduced by the summary headroom](crate::compaction::working_window)
 ///    when compaction is on, reserving room for the summarization call itself.
 ///
@@ -10402,18 +10413,20 @@ pub(crate) fn resolve_window_limit(
     // param: an enabled capability owes a figure, and the discarding sink below may only be reached
     // where the launch pass has already proved one is written.
     //
-    // Discarding: `check_window_limits` read this same param at launch against this same model
-    // window, and refused the run if it was absent, or not a narrowing gg could apply.
+    // Discarding: `check_launch` read this same param at launch through this same resolver, and
+    // refused the run if it was absent or `0`.
     let configured = match profile
         .capability(CAPABILITY_CONTEXT_WINDOW_OVERRIDE)
         .filter(|capability| capability.enabled)
     {
         Some(_) => {
             match window_limit(profile, &mut crate::validate::LaunchReport::Discarding) {
+                // The ceiling: the model's real window is a hard limit, so a figure above it is
+                // honoured as the model's own window rather than believed.
                 Some(limit) => limit.min(model_window),
-                // An enabled override with no figure: `check_window_limits` read this same param
-                // through this same resolver and refused the run, so this measures an agent that
-                // takes no turn.
+                // An enabled override with no figure: `check_launch` read this same param through
+                // this same resolver and refused the run, so this measures an agent that takes no
+                // turn.
                 None => window_of_a_refused_launch(model_window),
             }
         }
@@ -10429,12 +10442,14 @@ pub(crate) fn resolve_window_limit(
 }
 
 /// The window an agent is measured against once the [narrowing](PARAM_WINDOW_LIMIT) it declared has
-/// refused the launch: the model's own, because there is no narrowed one to use and a
-/// [total](crate::validate#the-resolver-contract) reader must answer with something.
+/// refused the launch — an enabled override writing no figure, or a `0`: the model's own, because
+/// there is no narrowed one to use and a [total](crate::validate#the-resolver-contract) reader must
+/// answer with something.
 ///
 /// A function rather than a constant because the figure is the model's rather than gg's. It is
 /// named so the next reader of that line sees a refused launch rather than the un-narrowed arm
-/// running under the narrowed arm's name.
+/// running under the narrowed arm's name. A figure *above* the model's window is not this case:
+/// that launch runs, and the model's window is the ceiling's honest result rather than a stand-in.
 fn window_of_a_refused_launch(model_window: u64) -> u64 {
     model_window
 }
@@ -10479,63 +10494,67 @@ fn window_limit(
     }
 }
 
-/// Every profile's [window override](PARAM_WINDOW_LIMIT), read against the window of the model
-/// bound to it — the launch check that makes the narrowing exact.
+/// The launch-time `warn` lines for every agent whose [window override](PARAM_WINDOW_LIMIT) sits
+/// above its model's own window, one per agent, or none when every ceiling bites.
 ///
-/// The override **may only make the window smaller**. A value above the model's own window is
-/// refused, on the same rule an unresolvable window is refused under: clamping it would leave a run
-/// recording a narrowing it never applied and measuring the model's full window under the narrowed
-/// arm's name. A profile whose model has no window at all is left alone —
-/// [`validate_model_windows`] owns that refusal, and reporting it twice would name one defect as
-/// two.
-fn check_window_limits(
-    set: &GgCapabilitySet,
+/// Said for the reason the other occupants of the launch-warning channel are: the ceiling is
+/// honoured exactly as written, and it narrows nothing, which a reader of the operator log would
+/// want to know when a configuration authored against a 400k-window model is reused with a 262k one.
+/// Each line names the agent, the configured ceiling, the model's window, and the window the agent
+/// is actually measured against — the last from [`resolve_window_limit`], so it already carries any
+/// compaction headroom and is the same figure the record holds.
+///
+/// It is per agent because the capability is: a run may narrow its implementer's window and leave
+/// its reviewer on a bigger model whose ceiling never bites. A profile whose model has no window is
+/// skipped, because [`validate_model_windows`] refused that launch before anything could be said.
+pub(crate) fn window_ceiling_notes(
+    agents: &[GgAgentConfig],
     windows: &BTreeMap<String, u64>,
-    report: &mut crate::validate::LaunchReport,
-) {
-    for profile in &set.agents {
-        report.for_agent(&profile.slug, |report| {
-            let Some(limit) = window_limit(profile, report) else {
-                return;
-            };
-            let Some(model_window) = profile
-                .resolved_model_id()
-                .and_then(|model_id| windows.get(model_id))
-                .copied()
-            else {
-                return;
-            };
-            if limit > model_window {
-                report.report(crate::validate::LaunchDefect::run_level(
-                    crate::validate::param_locus(
-                        CAPABILITY_CONTEXT_WINDOW_OVERRIDE,
-                        PARAM_WINDOW_LIMIT,
-                    ),
-                    limit.to_string(),
-                    format!(
-                        "the `{CAPABILITY_CONTEXT_WINDOW_OVERRIDE}` capability may only make a \
-                         window smaller, and this agent's model holds {model_window} tokens. \
-                         Narrowing to the model's own window instead would record an override the \
-                         run never applied."
-                    ),
-                ));
+) -> Vec<String> {
+    agents
+        .iter()
+        .filter_map(|profile| {
+            profile
+                .capability(CAPABILITY_CONTEXT_WINDOW_OVERRIDE)
+                .filter(|capability| capability.enabled)?;
+            // Discarding: `check_launch` read this same param at launch through this same resolver
+            // and refused the run if it was absent or `0`.
+            let limit = window_limit(profile, &mut crate::validate::LaunchReport::Discarding)?;
+            let model_id = profile.resolved_model_id()?;
+            let model_window = windows.get(model_id).copied()?;
+            if limit <= model_window {
+                return None;
             }
-        });
-    }
+            let measured = resolve_window_limit(profile, windows, model_id)?;
+            Some(format!(
+                "`{}`: {} = {limit} is above the {model_window}-token window of its model \
+                 (`{model_id}`), so the ceiling narrows nothing; this agent is measured against \
+                 {measured} tokens.",
+                profile.slug,
+                crate::validate::param_locus(
+                    CAPABILITY_CONTEXT_WINDOW_OVERRIDE,
+                    PARAM_WINDOW_LIMIT
+                ),
+            ))
+        })
+        .collect()
 }
 
 /// One agent profile's contribution to the [launch pass](crate::validate::validate_launch) from this
 /// module: the per-agent levers whose resolvers live beside the loop that reads them.
 ///
-/// The window override is deliberately **not** here — it needs the run's model windows, which are on
-/// the invocation rather than on the profile, so it is checked by [`check_window_limits`] once the
-/// whole invocation is in hand.
+/// The [window override](window_limit) is read here for its figure alone — an enabled one writing
+/// none, or `0`, refuses the launch. Whether the figure is above the model's window is not a
+/// launch question: the override is a ceiling, and [`resolve_window_limit`] clamps it to the model's
+/// own once the run's windows are in hand.
 pub(crate) fn check_launch(profile: &GgAgentConfig, report: &mut crate::validate::LaunchReport) {
     resolve_top_file_views(profile, report);
     resolve_signal_threshold(profile, report);
     AutoloadSetup::resolve(profile, report);
     check_allowlists(profile, report);
     check_opening_turn(profile, report);
+    // The figure itself is not wanted here, only the refusal an unhonourable one reports.
+    let _ = window_limit(profile, report);
 }
 
 /// The run-wide half of this module's [launch pass](crate::validate::validate_launch)
@@ -10544,11 +10563,6 @@ pub(crate) fn check_invocation(
     invocation: &GgInvocation,
     report: &mut crate::validate::LaunchReport,
 ) {
-    check_window_limits(
-        &invocation.capability_set,
-        &invocation.model_windows,
-        report,
-    );
     for profile in &invocation.capability_set.agents {
         report.for_agent(&profile.slug, |report| {
             resolve_skills_dir(profile, &invocation.workspace_dir, report);

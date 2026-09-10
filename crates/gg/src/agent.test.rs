@@ -2729,12 +2729,13 @@ fn a_window_limit_of_zero_is_refused() {
         ..GgCapabilityConfig::enabled(CAPABILITY_CONTEXT_WINDOW_OVERRIDE)
     });
 
-    let defects = window_defects(&set, windows("anthropic/claude-opus-4.8", 200_000));
+    let defects = window_defects(&set);
     assert_eq!(defects.len(), 1, "{defects:?}");
     assert_eq!(
         defects[0].locus,
         "context-window-override.params.windowLimit"
     );
+    assert_eq!(defects[0].agent.as_deref(), Some("root"), "{defects:?}");
 }
 
 /// The narrowing is **per agent**, like every other capability: a run may narrow its implementer's
@@ -2812,33 +2813,162 @@ fn resolve_window_limit_ignores_the_param_on_another_capability() {
     );
 }
 
-/// The window-limit override may only *narrow* the model's window: the catalog's figure is a hard
-/// limit, so an override above it is **refused**. Clamping it silently left a run recording a
-/// narrowing it never applied and measuring the model's full window under the narrowed arm's name.
+/// The window-limit override is a **ceiling**: an override above the model's window is not a
+/// defect, and the agent is measured against the smaller of the two — the model's own window, which
+/// is the figure the record then carries. A configuration authored against a 400k-window model
+/// launches unchanged against a 262k one.
 #[test]
-fn an_override_above_the_model_window_is_refused() {
-    let mut set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
+fn an_override_above_the_model_window_is_clamped_to_it() {
+    let model_id = "anthropic/claude-opus-4.8";
+    let mut set = GgCapabilitySet::minimal(model_id);
     set.agents[0].capabilities.push(window_override(2_000_000));
+    let catalog = windows(model_id, 200_000);
 
-    let defects = window_defects(&set, windows("anthropic/claude-opus-4.8", 200_000));
-    assert_eq!(defects.len(), 1, "{defects:?}");
     assert!(
-        defects[0].message.contains("only make a window smaller"),
-        "{defects:?}"
+        window_defects(&set).is_empty(),
+        "{:?}",
+        window_defects(&set)
+    );
+    assert_eq!(
+        resolve_window_limit(set.root(), &catalog, model_id),
+        Some(200_000)
+    );
+    // The whole launch pass, with the run's windows in hand — the one hook that could compare
+    // the figure against the model's window — accepts the configuration too.
+    let dir = TempDir::new().unwrap();
+    let mut inv = invocation(dir.path(), set.clone());
+    inv.model_windows = catalog.clone();
+    assert!(
+        crate::validate::validate_launch(&inv).is_ok(),
+        "{:?}",
+        crate::validate::validate_launch(&inv)
     );
 
-    // A model the launch pushed no window for is left alone here: `validate_model_windows` owns
-    // that refusal, and naming one defect twice is worse than naming it once.
-    assert!(window_defects(&set, BTreeMap::new()).is_empty());
+    // A model the launch pushed no window for is left alone here, and said nothing about:
+    // `validate_model_windows` owns that refusal, and naming one defect twice is worse than naming
+    // it once.
+    assert_eq!(
+        resolve_window_limit(set.root(), &BTreeMap::new(), model_id),
+        None
+    );
+    assert!(window_ceiling_notes(&set.agents, &BTreeMap::new()).is_empty());
 }
 
-/// Every value gg refuses in `set`'s window overrides, judged against `catalog`.
-fn window_defects(
-    set: &GgCapabilitySet,
-    catalog: BTreeMap<String, u64>,
-) -> Vec<crate::validate::LaunchDefect> {
+/// The clamp is said out loud at launch, once per agent it applies to, naming the agent, the
+/// configured ceiling, the model's window and the window the agent is measured against — the last
+/// being the resolved figure, so an armed compaction's headroom shows in it. An override the model
+/// window honours in full says nothing, and neither does a profile with no override.
+#[test]
+fn the_launch_note_names_every_agent_whose_ceiling_narrows_nothing() {
+    let model_id = "anthropic/claude-opus-4.8";
+    let mut set = GgCapabilitySet::minimal(model_id);
+    set.agents[0].capabilities.push(window_override(2_000_000));
+    set.agents.push(GgAgentConfig {
+        slug: "reviewer".to_string(),
+        name: "Reviewer".to_string(),
+        model_id: model_id.to_string(),
+        ..GgAgentConfig::root()
+    });
+    set.agents[1].capabilities.push(window_override(50_000));
+    set.agents.push(GgAgentConfig {
+        slug: "planner".to_string(),
+        name: "Planner".to_string(),
+        model_id: model_id.to_string(),
+        ..GgAgentConfig::root()
+    });
+    let catalog = windows(model_id, 200_000);
+
+    let notes = window_ceiling_notes(&set.agents, &catalog);
+    assert_eq!(notes.len(), 1, "{notes:?}");
+    let note = &notes[0];
+    assert!(note.starts_with("`root`: "), "{note}");
+    assert!(
+        note.contains("context-window-override.params.windowLimit = 2000000"),
+        "{note}"
+    );
+    assert!(note.contains("200000-token window"), "{note}");
+    assert!(note.contains(model_id), "{note}");
+    assert!(note.contains("measured against 200000 tokens"), "{note}");
+    assert!(
+        !note.contains("reviewer") && !note.contains("planner"),
+        "{note}"
+    );
+
+    // With compaction armed, the measured figure is the model's window less the summary headroom —
+    // the same figure `resolve_window_limit` hands the fullness signal and the record.
+    crate::tools::grant(&mut set.agents[0], CAPABILITY_COMPACTION);
+    let notes = window_ceiling_notes(&set.agents, &catalog);
+    assert_eq!(notes.len(), 1, "{notes:?}");
+    assert!(
+        notes[0].contains("measured against 160000 tokens"),
+        "{}",
+        notes[0]
+    );
+}
+
+/// A session launched with a ceiling above its model's window **runs** — it is not refused — and
+/// says so once, on the root emitter at launch, before any turn: the note names the ceiling, the
+/// model's window and the window the agent is measured against, which is what every turn's
+/// breakdown then carries.
+#[tokio::test]
+async fn a_ceiling_above_the_model_window_launches_and_is_said_once() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-ceiling".to_string()), Box::new(sink.clone()));
+    let mut set = GgCapabilitySet::minimal("mock/echo");
+    set.agents[0].capabilities.push(window_override(2_000_000));
+    let inv = invocation(dir.path(), set);
+
+    assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
+    let events = sink.events();
+    assert!(error_messages(&events).is_empty(), "{events:?}");
+
+    let notes: Vec<_> = warn_messages(&events)
+        .into_iter()
+        .filter(|message| message.contains("narrows nothing"))
+        .collect();
+    assert_eq!(notes.len(), 1, "{notes:?}");
+    assert!(
+        notes[0].contains("windowLimit = 2000000")
+            && notes[0].contains(&format!("{TEST_CONTEXT_WINDOW}-token window"))
+            && notes[0].contains(&format!("measured against {TEST_CONTEXT_WINDOW} tokens")),
+        "{}",
+        notes[0]
+    );
+    // Said at launch, on the root's emitter, before the first turn.
+    let note_at = events
+        .iter()
+        .position(|e| {
+            matches!(&e.kind, GgTelemetryKind::Log { message, .. }
+            if message.contains("narrows nothing"))
+        })
+        .unwrap();
+    assert_eq!(events[note_at].agent_id.as_deref(), Some(ROOT_AGENT_ID));
+    let first_turn = events
+        .iter()
+        .position(|e| matches!(e.kind, GgTelemetryKind::TurnStarted {}))
+        .unwrap();
+    assert!(note_at < first_turn, "{note_at} vs {first_turn}");
+
+    // And the run measured the agent against the model's window, not the ceiling.
+    let window_limit = events
+        .iter()
+        .find_map(|e| match &e.kind {
+            GgTelemetryKind::ContextBreakdown { window_limit, .. } => Some(*window_limit),
+            _ => None,
+        })
+        .expect("a breakdown per turn");
+    assert_eq!(window_limit, Some(TEST_CONTEXT_WINDOW));
+}
+
+/// Every value gg refuses in `set`'s window overrides. The check reads the figure alone — whether
+/// it is above the model's window is the resolver's clamp rather than a launch question — so it
+/// needs no catalog.
+fn window_defects(set: &GgCapabilitySet) -> Vec<crate::validate::LaunchDefect> {
     let mut report = crate::validate::LaunchReport::collecting();
-    check_window_limits(set, &catalog, &mut report);
+    for profile in &set.agents {
+        report.for_agent(&profile.slug, |report| check_launch(profile, report));
+    }
     report.into_defects()
 }
 

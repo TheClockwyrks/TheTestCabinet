@@ -190,9 +190,12 @@ pub const CAPABILITY_CONTEXT_WINDOW_OVERRIDE: &str = "context-window-override";
 ///
 /// Narrowing is the whole of what the capability does, so an enabled one writes the figure it
 /// narrows to and an absent one refuses the launch — an override with no figure is an override the
-/// run would record and never apply. So does a `0`, and so does a figure above the model's own
-/// window, which is a hard limit. A profile that leaves the capability off is measured against the
-/// model's full window, and that absence is the setting.
+/// run would record and never apply. So does a `0`. The figure is a **ceiling** rather than the
+/// window itself: the agent is measured against the smaller of it and the model's own window, so
+/// one above the model's window narrows nothing and the run records the model's window as the
+/// resolved one. That is what lets one configuration be reused across models of different sizes.
+/// A profile that leaves the capability off is measured against the model's full window, and that
+/// absence is the setting.
 pub const PARAM_WINDOW_LIMIT: &str = "windowLimit";
 
 /// The stable id of the autoload-specifications capability: when on, an agent's very

@@ -64,8 +64,9 @@ window override](/gg/context-visibility/#the-window-a-run-is-measured-against)
 narrows the window a run is measured against, so a compaction arm can be
 exercised against a million-token model without spending a million tokens of
 input to reach a boundary. It can only narrow, since the model's real window is
-a hard limit, and a profile that leaves the capability off is measured against
-the model's own window.
+a hard limit: a figure above that window is clamped to it and the run proceeds
+against the model's own window. A profile that leaves the capability off is
+measured against the model's own window too.
 
 ## Agents
 
