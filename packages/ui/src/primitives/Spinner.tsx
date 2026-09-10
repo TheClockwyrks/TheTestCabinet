@@ -14,10 +14,22 @@ import squadronUrl from "./loading/arcade-squadron.svg?url";
 //                that hasn't loaded yet).
 export type SpinnerVariant = "flap" | "march" | "squadron";
 
-const SOURCES: Record<SpinnerVariant, string> = {
-  flap: flapUrl,
-  march: marchUrl,
-  squadron: squadronUrl,
+// Each mark's file and its INTRINSIC SIZE, taken from the `width`/`height` on
+// the SVG itself. The size is carried here because it has to reach the `<img>`
+// as attributes: an `<img>` with no attributes and nothing loaded yet has no
+// intrinsic ratio, so whichever axis CSS leaves as `auto` computes to zero
+// until the SVG arrives. The fitted `squadron` sizes by height, so the mark
+// laid out 0 wide — the cabinet collapsing to a thin vertical bar that sprang
+// open a moment later — and the unfitted marks, sized by width, laid out 0
+// tall. With the attributes present the browser knows the ratio from the first
+// layout and the mark is the right shape before a byte of it has arrived.
+const MARKS: Record<
+  SpinnerVariant,
+  { src: string; width: number; height: number }
+> = {
+  flap: { src: flapUrl, width: 200, height: 157 },
+  march: { src: marchUrl, width: 200, height: 48 },
+  squadron: { src: squadronUrl, width: 520, height: 520 },
 };
 
 export interface SpinnerProps {
@@ -60,11 +72,16 @@ export function Spinner({
     .filter(Boolean)
     .join(" ");
   const caption = label ?? (variant === "squadron" ? "Loading…" : undefined);
+  const mark = MARKS[variant];
   return (
     <div className={classes} role="status" aria-live="polite">
       <img
         className={styles.art}
-        src={SOURCES[variant]}
+        src={mark.src}
+        // The natural size, so the mark holds its shape before the SVG loads.
+        // CSS sizes the mark on screen; these only state the ratio.
+        width={mark.width}
+        height={mark.height}
         alt={caption ? "" : "Loading"}
         draggable={false}
       />
