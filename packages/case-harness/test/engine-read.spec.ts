@@ -66,6 +66,25 @@ it("reads the pixel that is really there", () => {
   expect(pixelAt(surface.ctx, { x: 10, y: 10 })).toEqual([32, 64, 96, 255]);
 });
 
+it("refuses a point off the backing store, naming it and the surface", () => {
+  const surface = painted("#204060");
+  // The library's own answer to any of these is `Read pixels from canvas
+  // failed`, which names neither the point nor the surface and reaches a suite
+  // as a bare failure with no expected and no actual.
+  for (const at of [
+    { x: -1, y: 0 },
+    { x: 0, y: -1 },
+    { x: 40, y: 0 },
+    { x: 0, y: 20 },
+  ]) {
+    expect(() => pixelAt(surface.ctx, at)).toThrow(
+      new RegExp(`\\(${String(at.x)}, ${String(at.y)}\\).*40 by 20`),
+    );
+  }
+  // The last pixel of each axis is still on it.
+  expect(pixelAt(surface.ctx, { x: 39, y: 19 })).toEqual([32, 64, 96, 255]);
+});
+
 it("samples a cluster, and agrees with the shared arithmetic exactly", () => {
   const reader = readerOf([10, 20, 30, 255]);
   const sampled = sampleColor(reader, 5, 5);

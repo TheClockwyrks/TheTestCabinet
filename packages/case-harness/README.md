@@ -247,7 +247,8 @@ is legible in every browser and came out of the headless frame as a row of
 identical boxes, which a pixel reading reports as no mark at all.
 
 So every 2D context this package hands a build — the screen `createRecordingCanvas`
-builds, and the scratch canvas `document.createElement("canvas")` returns under
+builds, and the scratch canvas `document.createElement("canvas")` and
+`new OffscreenCanvas(w, h)` return under
 `installAssetHost({ documentElement: true })` — resolves the font it is set
 (`engine/fonts.ts`). Each generic family is replaced by the host's face for its
 role (`monospace`/`ui-monospace`, `sans-serif`/`system-ui`/`cursive`/`fantasy`,
@@ -268,6 +269,26 @@ that saves and restores its font by hand sees its own value and the recorder's
 in force, as the CSS shorthand has a browser do, rather than thrown out of the
 frame. The default a context starts under is the page's `10px sans-serif`,
 resolved the same way.
+
+### A pixel read that leaves the surface
+
+The other place `@napi-rs/canvas` and a browser answer differently, and the one a
+check hits by accident. A browser's `getImageData` over a rectangle that is not
+wholly inside the canvas answers TRANSPARENT BLACK for the part that is outside;
+`@napi-rs/canvas` refuses the read outright, with `Read pixels from canvas failed`
+— a message that names neither the point asked for nor the surface it was asked
+of, and which reaches a suite as a bare `[fail]` with no expected and no actual,
+indistinguishable in a run's summary from a real assertion failure.
+
+Neither answer is a reading, so `engine/read.ts`'s `pixelAt` — which is
+`EngineHarness.pixel` and therefore every colour reading over an engine harness —
+refuses the point itself, with a `RangeError` naming the device point and the size
+of the backing store. What that catches is a CHECK reading somewhere the stage does
+not reach: a band worked out from a text anchor that ran off the top of the screen,
+or a box mapped out of world units through the build's own camera that reaches past
+an edge. A check whose reading is honestly larger than the stage clips its own
+rectangle to the stage first and says so — `specs/` fixes what a build draws INSIDE
+the stage and nothing about what is outside it.
 
 ### The three barrels, and what a case may not drag in
 
@@ -341,6 +362,7 @@ installAudioContext({ decode: wavAudioBuffer });
 | `createImageBitmap` + `ImageBitmap`  | the same call, `images` / `nameImageBitmap` |
 | `structuredClone`, over those images | the same call, `images`                     |
 | `document.createElement("canvas")`   | the same call, `documentElement`            |
+| `OffscreenCanvas`                    | the same call, `offscreenCanvas`            |
 | `AudioContext`, decoding only        | `engine/audio` — `installAudioContext`      |
 | The RIFF/WAVE parser                 | `engine/audio` — the two `decodeWav*` below |
 
@@ -361,6 +383,39 @@ original — and hands everything else to the platform's own clone, so a `Map`, 
 `Set`, a cycle and a shared reference come back exactly as the platform gives
 them. It is installed whether or not the type is NAMED, because a build clones
 its state either way.
+
+**A SCRATCH SURFACE COMES OUT OF BOTH DOORS, AND THEY ARE THE SAME DOOR.** A
+build is entitled to compose a picture on a surface nothing is showing and then
+blit it over the frame — a painted layer that has to survive the engine's clear
+(cascade's `specs/victory.md`), a per-band copy of a seeded sprite baked once at
+load (spectra's `specs/assets.md`), a particle burst composited at its system's
+own field size (facet's `src/scratch.ts`). A browser hands that surface out two
+ways, `document.createElement("canvas")` and `new OffscreenCanvas(w, h)`, and no
+specification in the tree says which a build must use — so a host that supplied
+one and not the other fails a conformant build with a `ReferenceError` thrown from
+inside its own `initialize`, which costs the project EVERY point for a coin toss.
+`documentElement` and `offscreenCanvas` are therefore one faculty in two fields,
+and the second defaults to the first. Both answer a `@napi-rs/canvas` surface, and
+**they answer the same KIND of surface as each other**: a real rasterizer whose
+`getContext("2d")` resolves fonts as the screen's does, whose `width`/`height`
+resize and clear as a browser's do, that `drawImage` takes as an image source, and
+that an engine's own recorder makes exactly the same of whichever way it was
+asked for. It follows that `x instanceof OffscreenCanvas` is `false` for one of
+these, as it already was for the document shim's canvases; nothing in the tree
+reads that, and the alternative — a name an engine recorder matches — would have
+a build's per-frame scratch layer re-rasterized into every replay. Neither carries
+`transferToImageBitmap`; nothing has asked for it, and a stand-in that did not
+detach its surface would be worse than its absence.
+
+`images` widens `createImageBitmap` to match: a browser takes any
+`CanvasImageSource` there, and a build that bakes a variant hands it the canvas it
+just painted. A canvas encodes itself; anything else that reports a size is drawn
+onto a surface of that size and encoded from there. Encoding rather than aliasing
+is what the browser does — the bitmap is a SNAPSHOT, so a build that repaints its
+scratch surface does not find its first bitmap changed underneath it — and
+`AssetHost.sourceOf` answers `null` for a bitmap the build painted, the URL for
+one that came off the transport, and the same URL for one re-wrapped from a
+bitmap that carried it.
 
 **A DECODE THAT THROWS COSTS THE PROJECT, NOT THE POINT.** `wavAudioBuffer` and
 `silentAudioBuffer` both parse RIFF/WAVE and **throw** on a body that is not one
@@ -961,12 +1016,6 @@ exactly the calls.
 ## What has NOT been extracted yet
 
 Stated so the next pass knows where the line is rather than rediscovering it.
-
-- **The `OffscreenCanvas` stub.** Facet's `dom-shim.ts` stands one up beside its
-  `document.createElement` shim, and it is the only case in the tree that does.
-  `installAssetHost` supplies the document shim and not this one; a second case
-  wanting it is the moment to add it, and until then adding it would be adding a
-  member with one user and no second reading to check it against.
 
 - **The `Transport`/`assetRequests` shapes a case builds ON the log.** The host
   answers `AssetRequest[]` and the URLs off it; what a case then exposes to its own

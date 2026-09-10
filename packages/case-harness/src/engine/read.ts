@@ -57,8 +57,33 @@ export function deviceOf(view: EngineViewport, x: number, y: number): Point {
   };
 }
 
-/** One device pixel, read off the context now. */
+/**
+ * One device pixel, read off the context now.
+ *
+ * A POINT OFF THE BACKING STORE IS REPORTED AS ONE. `@napi-rs/canvas` answers a
+ * `getImageData` whose rectangle is not wholly inside the surface with
+ * `Read pixels from canvas failed` — a message that names neither the point asked
+ * for nor the surface it was asked of, and that a suite reports as a bare `[fail]`
+ * with no expected and no actual. A browser is no better a teacher the other way:
+ * `CanvasRenderingContext2D` answers the same read with transparent black, so a
+ * check that walked off the stage would quietly compare a row of zeroes. Neither
+ * is a reading, so this refuses the read and says what was asked and of what,
+ * which is the difference between "this check samples off the stage" and "the
+ * canvas is broken".
+ *
+ * The bound is the BACKING STORE's, in device pixels: `deviceOf` has already
+ * carried a logical point through the engine's fit, and a stage point outside the
+ * letterbox is a point outside the surface however small the logical figure was.
+ */
 export function pixelAt(ctx: SKRSContext2D, at: Point): Pixel {
+  const { width, height } = ctx.canvas;
+  if (at.x < 0 || at.y < 0 || at.x >= width || at.y >= height) {
+    throw new RangeError(
+      `pixel (${String(at.x)}, ${String(at.y)}) lies outside the ` +
+        `${String(width)} by ${String(height)} canvas: a reading has to name a ` +
+        "point the build could have drawn on",
+    );
+  }
   const { data } = ctx.getImageData(at.x, at.y, 1, 1);
   return [
     data[0] as number,

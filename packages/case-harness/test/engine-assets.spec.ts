@@ -24,6 +24,8 @@ import {
   standingAssetHost,
   type AssetHost,
 } from "../src/engine/assets";
+import { createRecordingCanvas } from "../src/engine/canvas";
+import { callsTo, imageRef } from "../src/draw-calls";
 
 /** The workspace the fixture tree stands in for. */
 const WORKSPACE = fileURLToPath(new URL("./host/root", import.meta.url));
@@ -479,6 +481,179 @@ it("shims no document unless a case asks for one", () => {
 });
 
 /* -------------------------------------------------------------------------- */
+/* The other door onto the same scratch surface                               */
+/* -------------------------------------------------------------------------- */
+
+/** The scratch surface, as a check may read and paint it. */
+interface Scratch {
+  width: number;
+  height: number;
+  getContext(kind: string): {
+    fillStyle: string;
+    fillRect(x: number, y: number, w: number, h: number): void;
+    drawImage(source: unknown, x: number, y: number): void;
+    getImageData(
+      x: number,
+      y: number,
+      w: number,
+      h: number,
+    ): { data: Uint8ClampedArray };
+    measureText(run: string): { width: number };
+    font: string;
+  };
+}
+
+/** The installed `OffscreenCanvas`, as a check may call it. */
+function offscreen(width: number, height: number): Scratch {
+  const made = bag.OffscreenCanvas as new (w: number, h: number) => Scratch;
+  return new made(width, height);
+}
+
+/** Paint one flat colour over the whole of a scratch surface. */
+function paint(surface: Scratch, color: string): Scratch {
+  const ctx = surface.getContext("2d");
+  ctx.fillStyle = color;
+  ctx.fillRect(0, 0, surface.width, surface.height);
+  return surface;
+}
+
+it("stands an OffscreenCanvas up wherever the document shim goes", () => {
+  open({ workspaceRoot: WORKSPACE, documentElement: true });
+  const surface = offscreen(8, 4);
+  expect(surface.width).toBe(8);
+  expect(surface.height).toBe(4);
+  expect(surface.getContext("2d")).toBeTruthy();
+});
+
+it("shims no OffscreenCanvas unless a case asks for a scratch surface", () => {
+  open({ workspaceRoot: WORKSPACE, images: true });
+  expect("OffscreenCanvas" in bag).toBe(false);
+});
+
+it("takes either field on its own, in either direction", () => {
+  const only = open({ workspaceRoot: WORKSPACE, offscreenCanvas: true });
+  expect("OffscreenCanvas" in bag).toBe(true);
+  expect("document" in bag).toBe(false);
+  only.uninstall();
+
+  open({
+    workspaceRoot: WORKSPACE,
+    documentElement: true,
+    offscreenCanvas: false,
+  });
+  expect("document" in bag).toBe(true);
+  expect("OffscreenCanvas" in bag).toBe(false);
+});
+
+it("hands out the SAME KIND of surface as the document shim does", () => {
+  open({ workspaceRoot: WORKSPACE, documentElement: true });
+  const documented = (
+    bag.document as { createElement(tag: string): Scratch }
+  ).createElement("canvas");
+  expect(Object.getPrototypeOf(offscreen(2, 2))).toBe(
+    Object.getPrototypeOf(documented),
+  );
+});
+
+it("resolves a generic font family, as every context this package hands out does", () => {
+  open({ workspaceRoot: WORKSPACE, documentElement: true });
+  const ctx = offscreen(32, 32).getContext("2d");
+  ctx.font = "16px monospace";
+  // An unresolved generic falls back to whichever face loaded first and measures
+  // nothing like a monospace run; the resolution is what makes the two agree.
+  expect(ctx.measureText("MMMM").width).toBeCloseTo(
+    ctx.measureText("iiii").width,
+    5,
+  );
+});
+
+it("paints real pixels, and clears them when the surface is resized", () => {
+  open({ workspaceRoot: WORKSPACE, documentElement: true });
+  const surface = paint(offscreen(4, 4), "#ff0000");
+  expect([...surface.getContext("2d").getImageData(0, 0, 1, 1).data]).toEqual([
+    255, 0, 0, 255,
+  ]);
+  // A browser's backing store is blanked by an assignment to either size, even
+  // one that puts it back where it was. A build clears its layer that way.
+  surface.width = 4;
+  expect([...surface.getContext("2d").getImageData(0, 0, 1, 1).data]).toEqual([
+    0, 0, 0, 0,
+  ]);
+});
+
+it("blits onto the recording surface, interned as an image the record names", () => {
+  open({ workspaceRoot: WORKSPACE, documentElement: true });
+  const surface = createRecordingCanvas(
+    { cssWidth: 8, cssHeight: 8, dpr: 1 },
+    { internImages: true },
+  );
+  const scratch = paint(offscreen(4, 4), "#00ff00");
+  (
+    surface.element.getContext("2d") as unknown as {
+      drawImage(source: unknown, x: number, y: number): void;
+    }
+  ).drawImage(scratch, 0, 0);
+
+  // The pixels are the build's own, and the record names the source it drew.
+  expect([...surface.ctx.getImageData(1, 1, 1, 1).data]).toEqual([
+    0, 255, 0, 255,
+  ]);
+  const ref = imageRef(callsTo(surface.calls, "drawImage")[0]?.[0]);
+  expect(ref?.width).toBe(4);
+  expect(ref?.height).toBe(4);
+  expect(surface.images.get(ref?.id as number)).toBe(scratch);
+});
+
+it("takes a painted surface as an image source, as a browser does", async () => {
+  const host = open({
+    workspaceRoot: WORKSPACE,
+    images: true,
+    documentElement: true,
+  });
+  const baked = await createImageBitmap(
+    paint(offscreen(4, 4), "#0000ff") as unknown as ImageBitmap,
+  );
+  expect(baked.width).toBe(4);
+  // A bitmap the BUILD painted came off no URL, which is what `null` says.
+  expect(host.sourceOf(baked)).toBeNull();
+
+  const onto = createRecordingCanvas({ cssWidth: 4, cssHeight: 4, dpr: 1 });
+  onto.ctx.drawImage(baked as unknown as never, 0, 0);
+  expect([...onto.ctx.getImageData(1, 1, 1, 1).data]).toEqual([0, 0, 255, 255]);
+});
+
+it("snapshots a painted surface rather than aliasing it", async () => {
+  open({ workspaceRoot: WORKSPACE, images: true, documentElement: true });
+  const scratch = paint(offscreen(4, 4), "#0000ff");
+  const baked = await createImageBitmap(scratch as unknown as ImageBitmap);
+  paint(scratch, "#ff0000");
+
+  const onto = createRecordingCanvas({ cssWidth: 4, cssHeight: 4, dpr: 1 });
+  onto.ctx.drawImage(baked as unknown as never, 0, 0);
+  expect([...onto.ctx.getImageData(1, 1, 1, 1).data]).toEqual([0, 0, 255, 255]);
+});
+
+it("refuses an image source there is no reading, under the case's name", async () => {
+  open({ workspaceRoot: WORKSPACE, images: true, label: "spectra" });
+  await expect(createImageBitmap(7 as unknown as ImageBitmap)).rejects.toThrow(
+    /spectra: createImageBitmap cannot take a number as an image source/,
+  );
+});
+
+it("leaves a host that really has an OffscreenCanvas alone", () => {
+  const own = class Own {};
+  bag.OffscreenCanvas = own;
+  try {
+    const host = open({ workspaceRoot: WORKSPACE, documentElement: true });
+    expect(bag.OffscreenCanvas).toBe(own);
+    host.uninstall();
+    expect(bag.OffscreenCanvas).toBe(own);
+  } finally {
+    delete bag.OffscreenCanvas;
+  }
+});
+
+/* -------------------------------------------------------------------------- */
 /* Installing twice, and taking it down                                       */
 /* -------------------------------------------------------------------------- */
 
@@ -496,6 +671,7 @@ it("puts every global back exactly as it found it", () => {
   expect("ImageBitmap" in bag).toBe(false);
   expect(globalThis.structuredClone).toBe(nativeClone);
   expect("document" in bag).toBe(false);
+  expect("OffscreenCanvas" in bag).toBe(false);
   // Idempotent, so an `afterEach` that also ran in an `afterAll` is harmless.
   host.uninstall();
   expect(globalThis.fetch).toBe(before);

@@ -27,7 +27,7 @@
 // `./3d`, because both halves need it for the same reason and neither needs a
 // different one: a 2D case loads produced sprites and cues through it, a 3D case
 // loads produced glTF and cues through it, and the transport is the same
-// transport. Only the two OPT-IN shims below lean on `@napi-rs/canvas`, which
+// transport. Only the OPT-IN shims below lean on `@napi-rs/canvas`, which
 // `./canvas` already puts in the neutral barrel for a 3D case's screen layer.
 //
 // NOTHING HERE DERIVES A PATH FROM THIS PACKAGE'S OWN `import.meta.url`. The
@@ -196,6 +196,32 @@ export interface AssetHostOptions {
    * cannot tell the difference.
    */
   readonly documentElement?: boolean;
+  /**
+   * Also shim `OffscreenCanvas`. Defaults to whatever
+   * {@link AssetHostOptions.documentElement} is.
+   *
+   * THE SECOND OF THE TWO WAYS A BROWSER HANDS OUT A SCRATCH SURFACE, and the
+   * reason it defaults to the first is that a case cannot want one without
+   * wanting the other. `new OffscreenCanvas(w, h)` and
+   * `document.createElement("canvas")` make the SAME thing in a page — a canvas
+   * nothing is showing, which a build paints on and then blits over the frame —
+   * and a specification that leaves the choice to the build (spectra's
+   * `specs/assets.md` leaves the band route open, cascade's `specs/victory.md`
+   * needs a persistent painted layer) has no way to say which. A host that
+   * supplied one and not the other would fail a build that reached for the other
+   * with a `ReferenceError` thrown from inside its own `initialize`, and that
+   * fault would fail EVERY item in the project over a fact about Node.
+   *
+   * A separate field all the same, because the default can be wrong in one
+   * direction: a case whose specification names one of the two, or one whose
+   * verdicts were taken before this existed and must not move, says so here.
+   *
+   * The instances are `@napi-rs/canvas` surfaces — THE SAME object
+   * `document.createElement("canvas")` hands back, deliberately, so a check can
+   * never turn on which of the two a build asked for. See
+   * {@link HostOffscreenCanvas}.
+   */
+  readonly offscreenCanvas?: boolean;
 }
 
 /**
@@ -388,6 +414,91 @@ function servedResponse(bytes: Uint8Array, url: string): Response {
 }
 
 /* -------------------------------------------------------------------------- */
+/* The scratch surface a build paints on                                      */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The class `globalThis.OffscreenCanvas` is stood up as, over `@napi-rs/canvas`.
+ *
+ * IT ANSWERS A REAL RASTERIZER AND NOT A SHAPE. A build paints into a scratch
+ * surface and then blits it over the frame with `drawImage`, or hands it to
+ * `createImageBitmap` and blits that — so the pixels have to be there, the 2D
+ * context has to be a real one, and the surface has to be something the frame's
+ * own context will accept as an image source. A null object shaped like a canvas
+ * would satisfy the constructor and then draw nothing, which is the same verdict
+ * as the `ReferenceError` it replaced but silent.
+ *
+ * THE CONSTRUCTOR RETURNS THE CANVAS ITSELF, which is what makes an offscreen
+ * surface and a `document.createElement("canvas")` one THE SAME OBJECT here. That
+ * is deliberate and is the property worth keeping: the two are one faculty in a
+ * browser, the specifications leave a build free to reach for either, and a
+ * reading that could tell them apart would be grading the choice rather than the
+ * picture. It follows that `x instanceof OffscreenCanvas` is `false` for one of
+ * these — as it already is for the document shim's canvases, which no host type
+ * name matches either — so an engine's own recorder writes an opaque marker for a
+ * blitted scratch surface under both, rather than one under one and a captured
+ * PNG per frame under the other.
+ *
+ * What the surface carries is `@napi-rs/canvas`'s own account of a canvas, and it
+ * covers what a browser's `OffscreenCanvas` promises save for
+ * `transferToImageBitmap`: `getContext("2d")` (with this package's font
+ * resolution installed, so text measured off-screen meets the faces the frame
+ * does), `width` and `height` whose assignment RESIZES AND CLEARS the surface as
+ * a browser's does, and `convertToBlob`. Nothing in the tree has asked for
+ * `transferToImageBitmap`, and a stand-in for it that answered a canvas would be
+ * a worse answer than none: the real one detaches the surface it was called on.
+ */
+export class HostOffscreenCanvas {
+  constructor(width: number, height: number) {
+    // A browser refuses a negative or non-finite size and treats a missing one as
+    // the element default; `createCanvas` answers the same `300 x 150` for any of
+    // them, so the coercion is left to it rather than second-guessed here.
+    return createHostCanvas(width, height) as unknown as HostOffscreenCanvas;
+  }
+}
+
+/**
+ * The PNG bytes of anything `createImageBitmap` is entitled to be handed.
+ *
+ * A browser takes every `CanvasImageSource` there, and a build that bakes a
+ * per-band copy of a seeded sprite hands it the scratch canvas it just painted —
+ * so a shim that took only a `Blob` would throw `source.arrayBuffer is not a
+ * function` from inside the build's own `initialize`, which is the same class of
+ * fault as having no `OffscreenCanvas` at all.
+ *
+ * A canvas encodes itself. Anything else that reports a size is drawn onto a
+ * surface of that size and encoded from there, which is what covers a decoded
+ * image being re-wrapped. Encoding rather than aliasing is what the browser does:
+ * the bitmap is a SNAPSHOT, and a build that paints the same scratch surface
+ * twice must not find its first bitmap changed underneath it.
+ */
+async function bitmapBytes(source: unknown, label: string): Promise<Buffer> {
+  if (source instanceof Blob) return Buffer.from(await source.arrayBuffer());
+  const held = source as {
+    width?: unknown;
+    height?: unknown;
+    toBuffer?: unknown;
+  } | null;
+  if (held !== null && typeof held.toBuffer === "function") {
+    return (held.toBuffer as (mime: string) => Buffer)("image/png");
+  }
+  if (
+    held !== null &&
+    typeof held.width === "number" &&
+    typeof held.height === "number"
+  ) {
+    const surface = createHostCanvas(held.width, held.height);
+    surface
+      .getContext("2d")
+      .drawImage(source as never, 0, 0, held.width, held.height);
+    return surface.toBuffer("image/png");
+  }
+  throw new TypeError(
+    `${label}: createImageBitmap cannot take a ${typeof source} as an image source`,
+  );
+}
+
+/* -------------------------------------------------------------------------- */
 /* Installing, and taking it back down                                        */
 /* -------------------------------------------------------------------------- */
 
@@ -401,6 +512,7 @@ interface SettledOptions {
   readonly nameImageBitmap: boolean;
   readonly onlyUnder: string;
   readonly documentElement: boolean;
+  readonly offscreenCanvas: boolean;
 }
 
 /** The one installation a worker has, and everyone still holding it. */
@@ -432,6 +544,7 @@ const SETTLED_FIELDS = [
   "nameImageBitmap",
   "onlyUnder",
   "documentElement",
+  "offscreenCanvas",
 ] as const;
 
 /** Whether a second call's options say the same thing as the standing one's. */
@@ -530,10 +643,16 @@ function shim(settled: SettledOptions, installation: Installation): void {
 
   if (settled.images) {
     restores.push(
-      replaceGlobal("createImageBitmap", async (blob: Blob) => {
-        const bytes = Buffer.from(await blob.arrayBuffer());
+      replaceGlobal("createImageBitmap", async (source: Blob | object) => {
+        const bytes = await bitmapBytes(source, settled.label);
         const image = await loadImage(bytes);
-        const from = blobSource.get(blob);
+        // A bitmap decoded from a fetched body carries the URL it came from, and
+        // one re-wrapped from an image that carried a URL keeps it; a bitmap the
+        // build PAINTED carries none, which is what `sourceOf` answers `null` for.
+        const from =
+          source instanceof Blob
+            ? blobSource.get(source)
+            : imageSource.get(source);
         if (from !== undefined) imageSource.set(image, from);
         return image as unknown as ImageBitmap;
       }),
@@ -567,6 +686,14 @@ function shim(settled: SettledOptions, installation: Installation): void {
         },
       }),
     );
+  }
+
+  if (settled.offscreenCanvas) {
+    // The other way a browser hands out the same scratch surface. Defined only
+    // where the host has none, as every shim here is: a process that really has
+    // one — a browser, or a Node built with it — is a better answer than a
+    // stand-in, and a case running under one must read the same either way.
+    restores.push(defineGlobal("OffscreenCanvas", HostOffscreenCanvas));
   }
 }
 
@@ -634,6 +761,8 @@ export function installAssetHost(options: AssetHostOptions): AssetHost {
     nameImageBitmap: options.nameImageBitmap ?? options.images ?? false,
     onlyUnder: options.onlyUnder ?? "",
     documentElement: options.documentElement ?? false,
+    offscreenCanvas:
+      options.offscreenCanvas ?? options.documentElement ?? false,
   };
 
   if (standing !== null) {
