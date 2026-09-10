@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import type { RunSubject } from "@clockwyrks/run-record";
 import {
@@ -479,6 +479,20 @@ export function useLiveGallery(
   const workerClient = worker?.client ?? null;
   const workerUrl = worker?.url ?? null;
 
+  // The produced worklist, for the resolvers below to consult WITHOUT depending
+  // on it. Every callback this hook hands the gallery is keyed on by some
+  // consumer's effect or cache — the Events tab's read, the variant cache, the
+  // media memos — and the worklist is re-read (as a fresh set) on every refresh,
+  // i.e. every time a run finishes. A resolver that closed over the set would
+  // take a new identity on each of those and restart everything keyed on it,
+  // blanking a loaded tab the reader is scrolled through. Read through a ref,
+  // the resolvers change identity only when the transport behind them does
+  // (backend/worker), while still answering from the current worklist: the ref
+  // is written during render, so any resolver called during or after this
+  // render sees the set this render carries.
+  const localIdsRef = useRef(localIds);
+  localIdsRef.current = localIds;
+
   // Resolve a run's proof media URL: a produced (local) run is served by its
   // worker, any other (published) run by the backend. A worker reachable over HTTP
   // serves proofs under its base URL; a worker with no HTTP base (the built-in
@@ -489,7 +503,7 @@ export function useLiveGallery(
   const proofMediaUrl = useCallback(
     (runId: string, file: string): string | null => {
       const path = `/runs/${encodeURIComponent(runId)}/proof/${encodeURIComponent(file)}`;
-      if (localIds.has(runId)) {
+      if (localIdsRef.current.has(runId)) {
         if (workerClient?.proofMediaUrl) {
           return workerClient.proofMediaUrl(runId, file);
         }
@@ -497,7 +511,7 @@ export function useLiveGallery(
       }
       return backendUrl ? joinPath(backendUrl, path) : null;
     },
-    [backendUrl, workerUrl, workerClient, localIds],
+    [backendUrl, workerUrl, workerClient],
   );
 
   // Asset-generation run media (regenerated/preview/target/actions) resolves the
@@ -506,7 +520,7 @@ export function useLiveGallery(
   const assetMediaUrl = useCallback(
     (runId: string, file: string): string | null => {
       const path = `/runs/${encodeURIComponent(runId)}/asset/${encodeURIComponent(file)}`;
-      if (localIds.has(runId)) {
+      if (localIdsRef.current.has(runId)) {
         if (workerClient?.assetMediaUrl) {
           return workerClient.assetMediaUrl(runId, file);
         }
@@ -514,7 +528,7 @@ export function useLiveGallery(
       }
       return backendUrl ? joinPath(backendUrl, path) : null;
     },
-    [backendUrl, workerUrl, workerClient, localIds],
+    [backendUrl, workerUrl, workerClient],
   );
 
   // A run's automated-validation media (a debug script's synthesized actual/baseline
@@ -524,7 +538,7 @@ export function useLiveGallery(
   const validationMediaUrl = useCallback(
     (runId: string, file: string): string | null => {
       const path = `/runs/${encodeURIComponent(runId)}/validation/${encodeURIComponent(file)}`;
-      if (localIds.has(runId)) {
+      if (localIdsRef.current.has(runId)) {
         if (workerClient?.validationMediaUrl) {
           return workerClient.validationMediaUrl(runId, file);
         }
@@ -532,7 +546,7 @@ export function useLiveGallery(
       }
       return backendUrl ? joinPath(backendUrl, path) : null;
     },
-    [backendUrl, workerUrl, workerClient, localIds],
+    [backendUrl, workerUrl, workerClient],
   );
 
   // A run's showcase files (the carousel media, plus any image the description
@@ -542,7 +556,7 @@ export function useLiveGallery(
   const showcaseMediaUrl = useCallback(
     (runId: string, file: string): string | null => {
       const path = `/runs/${encodeURIComponent(runId)}/showcase/${encodeURIComponent(file)}`;
-      if (localIds.has(runId)) {
+      if (localIdsRef.current.has(runId)) {
         if (workerClient?.showcaseMediaUrl) {
           return workerClient.showcaseMediaUrl(runId, file);
         }
@@ -550,7 +564,7 @@ export function useLiveGallery(
       }
       return backendUrl ? joinPath(backendUrl, path) : null;
     },
-    [backendUrl, workerUrl, workerClient, localIds],
+    [backendUrl, workerUrl, workerClient],
   );
 
   // A CASE variant's authored showcase media — the case-side counterpart of the
@@ -650,7 +664,13 @@ export function useLiveGallery(
       // are unpublished). Only the local runs contribute reviews/writeups here;
       // published runs get their reviews from the lazy `readRun` per-detail fetch.
       setProducedSummaries(produced.summaries);
-      setLocalIds(produced.localIds);
+      // Keep the worklist's identity when a refresh finds the same ids: the
+      // gallery value (and everything memoized on it) is rebuilt whenever this
+      // changes, so a re-read that learned nothing new should not read as a
+      // change.
+      setLocalIds((prev) =>
+        sameIds(prev, produced.localIds) ? prev : produced.localIds,
+      );
       setWriteups(produced.writeups);
       setReviews(produced.reviews);
       setRunsLoading(false);
@@ -708,23 +728,38 @@ export function useLiveGallery(
   // The model catalog, from the backend `GET /models`. Re-fetched when the runs
   // runtime bumps its refresh token, so a model created/edited/deleted in the
   // config UI (which requests a refresh) reappears without a reload.
+  //
+  // Only the FIRST load from a backend reads as `loading`. The token is also
+  // bumped every time a run finishes, and a refresh that flipped an already-
+  // loaded catalog back to `loading` would blank every model page open at the
+  // time (the detail chrome shows its loading state while the catalog loads),
+  // for a re-read that almost always returns the same models. So a refresh
+  // re-fetches in place — the loaded catalog stays on screen until the fresh
+  // one replaces it — and a switched backend, whose catalog is a different one
+  // entirely, starts over from `loading`. `modelsBackend` records which backend
+  // the catalog on screen came from; a failed read clears it so the next
+  // attempt reads as a first load again.
+  const modelsBackend = useRef<BackendClient | null>(null);
   useEffect(() => {
     if (!backend) {
+      modelsBackend.current = null;
       setModels([]);
       setModelsStatus("error");
       return;
     }
     let active = true;
-    setModelsStatus("loading");
+    if (modelsBackend.current !== backend) setModelsStatus("loading");
     backend
       .listModels()
       .then((ms) => {
         if (!active) return;
+        modelsBackend.current = backend;
         setModels(ms.map(toModelSummary));
         setModelsStatus("ready");
       })
       .catch(() => {
         if (!active) return;
+        modelsBackend.current = null;
         setModels([]);
         setModelsStatus("error");
       });
@@ -808,7 +843,7 @@ export function useLiveGallery(
   const fetchRunEvents = useCallback(
     async (runId: string, onProgress?: ProgressCallback) => {
       try {
-        if (localIds.has(runId) && workerClient) {
+        if (localIdsRef.current.has(runId) && workerClient) {
           return await workerClient.readRunEvents(runId, onProgress);
         }
         if (backend) return await backend.readRunEvents(runId, onProgress);
@@ -821,7 +856,7 @@ export function useLiveGallery(
         throw e;
       }
     },
-    [backend, workerClient, localIds],
+    [backend, workerClient],
   );
 
   // Resolve a run's unbounded code-analysis document from the backend's store-backed
@@ -899,37 +934,82 @@ export function useLiveGallery(
     [backend, workerClient],
   );
 
-  return {
-    producedSummaries,
-    localIds,
-    writeups,
-    reviews,
-    runsLoading,
-    testCases,
-    testCasesStatus,
-    testCaseGroups,
-    readTestCase,
-    readCaseVariant,
-    models,
-    modelsStatus,
-    canExecute: true,
-    grafanaUrl,
-    queryRunSummaries,
-    getCabinetStats,
-    fetchRunEvents,
-    readCodeAnalysis,
-    readRun,
-    proofMediaUrl,
-    assetMediaUrl,
-    validationMediaUrl,
-    showcaseMediaUrl,
-    caseShowcaseMediaUrl,
-    validationBaselineUrl,
-    referenceMediaUrl,
-    runArchiveUrl,
-    arena,
-    harnessAuth,
-  };
+  // Memoized so the gallery value the app hands its provider keeps its identity
+  // across renders that changed none of it. The app shell re-renders on every
+  // runs-runtime change (each in-flight run's state transition among them), and
+  // `GalleryDataProvider` rebuilds its derived value from this object — a fresh
+  // literal per render would make every one of those renders read as a change
+  // to every consumer of the gallery.
+  return useMemo<GalleryDataInput>(
+    () => ({
+      producedSummaries,
+      localIds,
+      writeups,
+      reviews,
+      runsLoading,
+      testCases,
+      testCasesStatus,
+      testCaseGroups,
+      readTestCase,
+      readCaseVariant,
+      models,
+      modelsStatus,
+      canExecute: true,
+      grafanaUrl,
+      queryRunSummaries,
+      getCabinetStats,
+      fetchRunEvents,
+      readCodeAnalysis,
+      readRun,
+      proofMediaUrl,
+      assetMediaUrl,
+      validationMediaUrl,
+      showcaseMediaUrl,
+      caseShowcaseMediaUrl,
+      validationBaselineUrl,
+      referenceMediaUrl,
+      runArchiveUrl,
+      arena,
+      harnessAuth,
+    }),
+    [
+      producedSummaries,
+      localIds,
+      writeups,
+      reviews,
+      runsLoading,
+      testCases,
+      testCasesStatus,
+      testCaseGroups,
+      readTestCase,
+      readCaseVariant,
+      models,
+      modelsStatus,
+      grafanaUrl,
+      queryRunSummaries,
+      getCabinetStats,
+      fetchRunEvents,
+      readCodeAnalysis,
+      readRun,
+      proofMediaUrl,
+      assetMediaUrl,
+      validationMediaUrl,
+      showcaseMediaUrl,
+      caseShowcaseMediaUrl,
+      validationBaselineUrl,
+      referenceMediaUrl,
+      runArchiveUrl,
+      arena,
+      harnessAuth,
+    ],
+  );
+}
+
+/** Whether two id sets hold exactly the same ids. */
+function sameIds(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
+  if (a.size !== b.size) return false;
+  for (const id of a) if (!b.has(id)) return false;
+  return true;
 }
 
 /** Join a base URL and an absolute path, collapsing the boundary slash. */

@@ -15,9 +15,19 @@ export type RunEventsState =
   | { status: "ready"; data: RunEventStreams };
 
 // Resolve a run's recorded event streams through the host's `fetchRunEvents`,
-// tracking loading/error/unsupported and surfacing transfer progress. Re-fetches
-// when the run id or the host's fetcher changes. The fetcher is stable per host
-// (memoized), so this does not loop.
+// tracking loading/error/unsupported and surfacing transfer progress.
+//
+// The read is keyed on the run id and on the fetcher's identity, and the
+// identity is load-bearing in both directions. A host's fetcher is its
+// transport: the console's `useLiveGallery` rebuilds it only when the backend or
+// the worker connection changes (the produced worklist it consults is read
+// through a ref), and the static site's never changes — so a run finishing and
+// bumping the refresh token hands this hook the same fetcher, and a loaded feed
+// stays loaded, keeping the reader's place in the virtualized list. A switched
+// backend is a different run store whose copy of the events may be the only one,
+// and it hands this hook a new fetcher, which restarts the read; that is also the
+// only retry a read that settled as `error` or `unsupported` gets, so the
+// identity must not be held constant across a transport change either.
 export function useRunEvents(runId: string): RunEventsState {
   const { fetchRunEvents } = useGalleryData();
   const [state, setState] = useState<RunEventsState>(

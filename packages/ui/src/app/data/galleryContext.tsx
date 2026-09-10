@@ -1,5 +1,6 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -1126,29 +1127,71 @@ export function GalleryDataProvider({
   value: GalleryDataInput;
   children: ReactNode;
 }) {
-  const full = useMemo<GalleryData>(() => {
-    const {
-      writeups,
-      reviews,
-      proofMediaUrl,
-      assetMediaUrl,
-      validationMediaUrl,
-      validationBaselineUrl,
-      models,
-    } = value;
-    return {
-      ...value,
+  const {
+    writeups,
+    reviews,
+    proofMediaUrl,
+    assetMediaUrl,
+    validationMediaUrl,
+    validationBaselineUrl,
+    models,
+    readRun,
+    readTestCase,
+    readCaseVariant,
+  } = value;
+
+  // The derived methods are memoized on exactly the host inputs each closes
+  // over, NOT on `value` as a whole. A live host's value changes on every
+  // produced-run refresh (a run finishing) and on every in-flight run's state
+  // transition, and consumers key effects and caches on these methods: the
+  // variant cache keys on `fetchCaseVariant`, the detail chrome's fetch on
+  // `fetchRun`, the review surfaces' proof/validation memos on the media
+  // resolvers. Rebuilt per value change, those all restarted on every refresh —
+  // a loaded Verdict tab flipped back to loading and refetched its checklist
+  // each time any run finished. Each method now changes identity only when the
+  // input that would change its answer does.
+
+  // The record/catalog fetchers, one per host resolver. Each keys on its own
+  // resolver alone so the caches keyed on it (`useTestCase`, `useCaseVariant`)
+  // are dropped exactly when the host rebuilds that resolver — on a switched
+  // backend — and never for an unrelated field's change.
+  const fetchRun = useCallback(
+    (runId: string): Promise<RunDetail | null> =>
+      // The gallery holds no full records in memory anymore — only summary
+      // cards — so a detail view resolves the whole record lazily through the
+      // host's single-run fetcher (the console reads `GET /runs/{id}`, the static
+      // site fetches the emitted per-run record asset). A host that supplies none
+      // resolves to null.
+      readRun ? readRun(runId) : Promise.resolve(null),
+    [readRun],
+  );
+  const fetchTestCase = useCallback(
+    (slug: string): Promise<TestCaseDetail | null> =>
+      readTestCase ? readTestCase(slug) : Promise.resolve(null),
+    [readTestCase],
+  );
+  const fetchCaseVariant = useCallback(
+    (ref: CaseVariantRef): Promise<VariantSummary | null> =>
+      readCaseVariant ? readCaseVariant(ref) : Promise.resolve(null),
+    [readCaseVariant],
+  );
+
+  // The in-memory lookups over the host's loaded tables. These legitimately
+  // change with the tables they read (a refresh that found a new review, a
+  // reloaded model catalog).
+  const lookups = useMemo<
+    Pick<
+      GalleryData,
+      "findReview" | "reviewsFor" | "modelForId" | "modelForSlug"
+    >
+  >(
+    () => ({
       findReview(runId, override) {
         const raw = override?.[runId] ?? writeups[runId];
         return raw === undefined ? undefined : parseWriteup(raw);
       },
-      fetchRun(runId) {
-        // The gallery holds no full records in memory anymore — only summary
-        // cards — so a detail view resolves the whole record lazily through the
-        // host's single-run fetcher (the console reads `GET /runs/{id}`, the static
-        // site fetches the emitted per-run record asset). A host that supplies none
-        // resolves to null.
-        return value.readRun ? value.readRun(runId) : Promise.resolve(null);
+      reviewsFor(runId) {
+        return reviews[runId] ?? [];
       },
       modelForId(modelId, harnessSlug) {
         return findModelByModelId(models, modelId, harnessSlug);
@@ -1161,19 +1204,29 @@ export function GalleryDataProvider({
             model.aliases.some((a) => a.slug === slug),
         );
       },
-      reviewsFor(runId) {
-        return reviews[runId] ?? [];
-      },
-      fetchTestCase(slug) {
-        return value.readTestCase
-          ? value.readTestCase(slug)
-          : Promise.resolve(null);
-      },
-      fetchCaseVariant(ref) {
-        return value.readCaseVariant
-          ? value.readCaseVariant(ref)
-          : Promise.resolve(null);
-      },
+    }),
+    [writeups, reviews, models],
+  );
+
+  // The per-run media views, keyed on the host's URL resolvers. A live host's
+  // resolvers depend only on its transports (they consult the produced worklist
+  // through a ref), so these hold their identity across a refresh too.
+  const media = useMemo<
+    Pick<
+      GalleryData,
+      | "proofMediaFor"
+      | "validationMediaFor"
+      | "assetResultFor"
+      | "voxelResultFor"
+      | "uiResultFor"
+      | "materialResultFor"
+      | "particleResultFor"
+      | "audioResultFor"
+      | "replayResultFor"
+      | "performancePlaybackFor"
+    >
+  >(
+    () => ({
       proofMediaFor(run) {
         return run.validation.proofs.map((proof) => ({
           id: proof.id,
@@ -1471,8 +1524,24 @@ export function GalleryDataProvider({
             : null;
         return { correct: performance.correct, moduleUrl, scenarios };
       },
-    };
-  }, [value]);
+    }),
+    [proofMediaUrl, assetMediaUrl, validationMediaUrl, validationBaselineUrl],
+  );
+
+  // The value itself still changes whenever any host field does — consumers
+  // reading `localIds`, `models`, `writeups` off the context need that render —
+  // but the methods spread onto it keep their own identities across it.
+  const full = useMemo<GalleryData>(
+    () => ({
+      ...value,
+      fetchRun,
+      fetchTestCase,
+      fetchCaseVariant,
+      ...lookups,
+      ...media,
+    }),
+    [value, fetchRun, fetchTestCase, fetchCaseVariant, lookups, media],
+  );
   return (
     <GalleryDataContext.Provider value={full}>
       {children}
