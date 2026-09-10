@@ -14,9 +14,10 @@
 // brace are ordinary cycles, and a build is graded on the drawings it made rather
 // than on the order it plays them in.
 //
-// Each frame is decoded in the page the project already holds and reduced to a
-// coarse signature, so two frames count as the same drawing only when they really
-// are one, and a stray antialiased pixel cannot make two copies look different.
+// Each frame is decoded in the page the project already holds and compared pixel
+// by pixel over what either frame draws, so two frames count as the same drawing
+// only when they really are one, and a stray antialiased pixel cannot make two
+// copies look different.
 // Whether the frames carry what the table describes is a reviewer's reading; the
 // still the item captures is what they read it from.
 

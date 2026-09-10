@@ -19,10 +19,11 @@
 // HOW A SUBJECT IS READ WITHOUT FIXING THE WORDS. The specification fixes the
 // screen's CONTENT and not its prose — "The content and the navigation are fixed;
 // the layout is yours" — so each subject is read as the vocabulary the
-// SPECIFICATION ITSELF fixes for it, and nothing else: the two mode names, the
-// two material names, the two hazard names, the drill's directions, the keys
-// `specs/controls.md` binds. Every term below is one this case names somewhere,
-// so a build that writes its own prose about the right subjects passes and a
+// SPECIFICATION ITSELF fixes for it — the two mode names, the two material names,
+// the two hazard names, the drill's directions, the keys `specs/controls.md`
+// binds — together with the plain words a briefing states the same subject in,
+// as the climb home is read as the jetpack and the thrust as well as the climb.
+// So a build that writes its own prose about the right subjects passes and a
 // build that leaves a subject out does not.
 
 /** One subject the screen has to cover, and the terms that say it was covered. */
@@ -47,7 +48,10 @@ export const CONTROLS: readonly Subject[] = [
 export const LOOP: readonly Subject[] = [
   ["digging", /\bDIG\b|\bDIGS\b|\bDIGGING\b|\bDRILL/],
   ["selling", /\bSELL/],
-  ["upgrading", /\bUPGRADE/],
+  // The shop's own vocabulary is the upgrade and its tiers (`specs/upgrades.md`),
+  // and a briefing that tells the player to improve the miner's systems has
+  // covered the same subject in its own words.
+  ["upgrading", /\bUPGRAD|\bTIER\b|\bTIERS\b|\bIMPROV/],
 ];
 
 /** The budget: fuel, the climb home, and what the bay can carry. */

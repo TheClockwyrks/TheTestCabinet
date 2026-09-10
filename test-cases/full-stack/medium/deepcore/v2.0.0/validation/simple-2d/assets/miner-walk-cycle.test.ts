@@ -15,9 +15,9 @@
 // made rather than on the order it plays them in.
 //
 // Each frame is decoded with the same decoder that stands the produced sprites up
-// for the game, and reduced to a coarse signature, so two frames count as the same
-// drawing only when they really are one and a stray antialiased pixel cannot make
-// two copies look different. Whether the frames carry what the table describes is a
+// for the game, and compared pixel by pixel over what either frame draws, so two
+// frames count as the same drawing only when they really are one and a stray
+// antialiased pixel cannot make two copies look different. Whether the frames carry what the table describes is a
 // reviewer's reading; the still the item captures — the miner on screen in this
 // very state — is what they read it from.
 //

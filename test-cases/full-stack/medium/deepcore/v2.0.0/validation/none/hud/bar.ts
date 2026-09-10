@@ -229,15 +229,16 @@ export function statesNumber(
  * `specs/ui.md` requires the Core Sample's countdown drawn and says nothing about
  * its format, and the two renderings anyone writes are a plain count of seconds
  * and `m:ss`. Both are read, so a build is graded on the figure it shows rather
- * than on the shape it shows it in.
+ * than on the shape it shows it in. A plain count is read whether it is whole or
+ * carries a fraction, because `89.9s` states the seconds left as plainly as `89s`.
  */
 export function countdownOf(run: TextDraw): number | null {
   const clock = /(\d+):([0-5]\d)/.exec(run.text);
   if (clock !== null) {
     return Number.parseInt(clock[1], 10) * 60 + Number.parseInt(clock[2], 10);
   }
-  const plain = /^\D*(\d+)\D*$/.exec(run.text);
-  return plain === null ? null : Number.parseInt(plain[1], 10);
+  const plain = /^\D*(\d+(?:\.\d+)?)\D*$/.exec(run.text);
+  return plain === null ? null : Number.parseFloat(plain[1]);
 }
 
 /** Every run that states a countdown within `slack` seconds of `seconds`. */
