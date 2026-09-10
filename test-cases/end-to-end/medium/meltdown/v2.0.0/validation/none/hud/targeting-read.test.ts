@@ -64,6 +64,68 @@ const GROUND_AND_AIR: readonly TowerType[] = EMITTER_TYPES.filter(
 /** The three that must not: the air-only Flak, and the two that never fire. */
 const NOT_GROUND_AND_AIR: readonly TowerType[] = ["flak", ...MOVER_TYPES];
 
+/**
+ * Where a drawn line is cut into the fields it lays side by side, and how long a
+ * word has to be for a field to be a reading at all.
+ *
+ * A panel packs several readings onto one line and parts them with a rule of its
+ * own — a middot, a bullet, a bar, a dash, a slash, or simply a wider gap. Every
+ * one of those is a separator; `+`, `&` and `/` INSIDE a word are not, which is
+ * why the cut is on a slash only when it stands alone. A field has to carry a
+ * word of at least `MIN_LETTERS` letters, so a bare figure or a run of
+ * punctuation — `2x2`, `—`, `·` — can never be the reading a class "shares".
+ */
+const SEPARATOR = /[·•|,;]|\s[—–/]\s|\s{2,}/;
+const MIN_LETTERS = 3;
+
+/** A word long enough to make a field a reading. */
+const WORD = new RegExp(`[a-z]{${String(MIN_LETTERS)},}`);
+
+/**
+ * The fields a panel's drawn lines lay side by side.
+ *
+ * WHY FIELDS AND NOT WHOLE LINES. specs/hud.md fixes that both panels read what
+ * the tower fires on; it fixes neither the words nor the LINE the reading is
+ * drawn on. `2x2 · GROUND + AIR` and `GROUND + AIR · MASS 1.8` have each said
+ * exactly the thing, and a partition taken over whole lines fails them both for
+ * having laid the panel out differently — and the layout is the build's
+ * (specs/overview.md hands it "the palette, the type, the glow, and every other
+ * aspect of the look"). Over fields the partition is unchanged in what it
+ * decides: the five must still share a reading that the Flak and the two movers
+ * all lack, and the only thing five emitters can share that the Flak — which
+ * carries a size, a range, a fire rate, a damage, a mass, radiator faces and a
+ * redline exactly as they do, all of them different figures — does not is that
+ * they hit the ground.
+ *
+ * A WHOLE FIELD, NOT ANY RUN OF WORDS INSIDE ONE. The reading a build draws is a
+ * field it wrote as a field; a window taken at every word offset would let half
+ * of one field and half of the next stand in for it, and `THERMAL CLASS A` folded
+ * into a longer line would be a "shared read" the moment a build wrote `B` for
+ * the Flak. Cutting only at the separators the build itself wrote keeps the
+ * candidate the thing the panel drew.
+ *
+ * WHAT THIS POINT THEREFORE ACCEPTS, STATED PLAINLY. Any field the five draw and
+ * the other three do not passes it, whatever it says. A build that drew no
+ * targeting read at all but happened to print some other per-class field that
+ * separated the Flak from the other five emitters would pass — and nothing here
+ * can tell those apart, because telling them apart means naming the words, and
+ * specs/hud.md fixes none. That surface is the price of not grading a build
+ * against one vocabulary, and it is narrow: the field has to partition the eight
+ * towers exactly the way the targeting read does.
+ */
+function fieldsOf(texts: Iterable<string>): Set<string> {
+  const out = new Set<string>();
+  for (const text of texts) {
+    for (const field of text.toLowerCase().split(SEPARATOR)) {
+      const words = (field ?? "").trim().split(/\s+/).filter(Boolean);
+      if (words.length === 0) continue;
+      if (!words.some((word) => WORD.test(word))) continue;
+      out.add(words.join(" "));
+    }
+  }
+  return out;
+}
+
 /** The reads the five share and the other three lack. One is the targeting read. */
 function sharedByTheFive(panels: Map<TowerType, Set<string>>): string[] {
   const [first, ...rest] = GROUND_AND_AIR;
@@ -92,7 +154,7 @@ it("draws one read the five ground-and-air emitters share and the other three la
   const hovered = new Map<TowerType, Set<string>>();
   for (const type of TOWER_TYPES) {
     await h.debug.setHoverShop(type);
-    hovered.set(type, runTexts(await readPanel(h)));
+    hovered.set(type, fieldsOf(runTexts(await readPanel(h))));
     if (type === "flak") await captureStill(h, "targeting");
   }
   await h.debug.setHoverShop(null);
@@ -104,7 +166,7 @@ it("draws one read the five ground-and-air emitters share and the other three la
     await h.debug.clearTowers();
     const id = await poseTower(h, type, FREE_SITE.col, FREE_SITE.row);
     await h.debug.setSelected(id);
-    selected.set(type, runTexts(await readPanel(h)));
+    selected.set(type, fieldsOf(runTexts(await readPanel(h))));
   }
 
   const onHover = sharedByTheFive(hovered);

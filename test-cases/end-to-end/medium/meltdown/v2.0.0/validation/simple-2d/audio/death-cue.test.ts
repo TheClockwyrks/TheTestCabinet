@@ -30,7 +30,7 @@ import {
   watchCues,
   type Harness,
 } from "../harness";
-import { playedOn, playsOf } from "./cues";
+import { playedOn, playsOf, reachFirstInput } from "./cues";
 
 /** The tile the Arc's 2x2 footprint is anchored on: quiet floor, off every opening. */
 const TOWER = { col: 10, row: 10 } as const;
@@ -72,6 +72,9 @@ afterEach(() => {
 });
 
 it("plays the death cue on the frame the unit's hp reaches zero", async () => {
+  // The build is silent until a player has touched it (specs/audio.md), so
+  // the first input is delivered before anything is posed.
+  await reachFirstInput(h);
   startRun(h);
   posePinnedTower(h, "arc", TOWER.col, TOWER.row, PINNED_HEAT);
   poseTarget(h, "mote", TARGET.col, TARGET.row, TARGET_HP);

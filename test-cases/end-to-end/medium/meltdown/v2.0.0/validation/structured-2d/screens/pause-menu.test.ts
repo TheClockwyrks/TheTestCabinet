@@ -86,6 +86,11 @@ const SITE = { type: "lance", col: 4, row: 4 } as const;
  * the scale, so a build that dims the floor behind a heavy wash still shows its
  * tower arrive and leave. A build that painted the floor out altogether shows the
  * same pixels both times and reads 0.
+ *
+ * specs/overview.md now states the same figure for a thing being visible against
+ * what is behind it, and specs/screens.md now says the floor behind this menu is
+ * held to it. Both sentences were added after this check was written; they put
+ * into words the bar it already used rather than raising it.
  */
 const FLOOR_REDRAWN_MIN = 8;
 

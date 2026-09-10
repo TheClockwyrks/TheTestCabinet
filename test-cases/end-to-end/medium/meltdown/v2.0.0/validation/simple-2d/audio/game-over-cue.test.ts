@@ -30,7 +30,7 @@ import {
   watchCues,
   type Harness,
 } from "../harness";
-import { playedOn, playsOf, poseLeaker } from "./cues";
+import { playedOn, playsOf, poseLeaker, reachFirstInput } from "./cues";
 
 /**
  * The lives the run is posed on: the one a single Mote's leak takes away.
@@ -61,6 +61,9 @@ afterEach(() => {
 });
 
 it("plays the game-over cue on the frame the game-over screen opens", async () => {
+  // The build is silent until a player has touched it (specs/audio.md), so
+  // the first input is delivered before anything is posed.
+  await reachFirstInput(h);
   startRun(h);
   h.debug.setLives(POSED_LIVES);
   poseLeaker(h);

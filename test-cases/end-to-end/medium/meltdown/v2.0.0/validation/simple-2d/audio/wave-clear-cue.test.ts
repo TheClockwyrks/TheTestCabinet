@@ -33,7 +33,7 @@ import {
   watchCues,
   type Harness,
 } from "../harness";
-import { playedOn, playsOf, poseLeaker } from "./cues";
+import { playedOn, playsOf, poseLeaker, reachFirstInput } from "./cues";
 
 /**
  * How long the last unit is given to walk into the exhaust and clear the wave.
@@ -56,6 +56,9 @@ afterEach(() => {
 });
 
 it("plays the wave-clear cue on the frame the wave clears", async () => {
+  // The build is silent until a player has touched it (specs/audio.md), so
+  // the first input is delivered before anything is posed.
+  await reachFirstInput(h);
   startRun(h);
   // A wave phase with nothing left to release, so the one unit on the floor is
   // the wave's last live unit (specs/waves.md, Clearing a wave).

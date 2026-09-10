@@ -75,8 +75,15 @@ const PROBE_TOWER = "arc";
  * A pause screen may dim the floor behind it as heavily as it likes, and a scrim
  * that leaves a fifth of what is underneath cuts every difference on the floor to
  * a fifth as well. 6 is under one and a half per cent of the scale: below any
- * difference a tower against bare floor survives such a scrim as, and far above the
- * 0 a screen that draws no floor at all reads at every probe.
+ * difference a tower against bare floor survives such a scrim as, and far above
+ * the 0 a screen that draws no floor at all reads at every probe.
+ *
+ * It is deliberately SLACKER than the 8 specs/overview.md now states for a thing
+ * being visible against what is behind it — that sentence was added after this
+ * check was written, and this check is not tightened onto it: 6 leaves a build
+ * room at the line rather than failing it for a rounding, and what it still
+ * catches is the thing specs/screens.md forbids, a screen with no floor behind
+ * the menu at all.
  */
 const FLOOR_VISIBLE_MIN = 6;
 

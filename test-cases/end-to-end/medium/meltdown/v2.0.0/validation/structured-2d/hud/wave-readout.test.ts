@@ -28,7 +28,7 @@ import {
   startRun,
   type Harness,
 } from "../harness";
-import { readPanel, reads, saysWord } from "./panel";
+import { readPanel, reads, readsPair, saysWord } from "./panel";
 
 /** The run: Containment on Hard, whose wave count is a figure nothing equals. */
 const MODE = "containment" as const;
@@ -45,6 +45,17 @@ const SECOND = 11;
 
 /** A wave number is a whole count, so only a trailing point is allowed for. */
 const EXACT = 0.05;
+
+// THE NEGATIVE IS READ AS A PAIR, NOT AS A BARE FIGURE. specs/hud.md gives the
+// wave readout "the current wave number over the run's total", and fixes three
+// readouts and a build timer and nothing else about the strip — so the panel is
+// free to carry figures of its own, and asking whether the OLD wave number is
+// ANYWHERE on the panel reads those too: a build lettering its panel
+// `REACTOR CONTROL / 07` carries a 7 on every wave and would fail an assertion
+// that no 7 is left once the wave moved on. What the readout IS is the wave
+// beside the total, so that is what the check that it stopped reading the old
+// wave looks for. The positive readings stay bare figures: they are satisfied by
+// the readout wherever the build laid it out.
 
 let h: Harness;
 
@@ -88,9 +99,9 @@ it("reads the wave over the run's total and follows setWave", async () => {
     `the panel to read wave ${SECOND} once the wave moved to ${SECOND}`,
   );
   assertTrue(
-    !reads(second, FIRST, EXACT),
-    `the panel to have stopped reading wave ${FIRST} once the wave moved to ` +
-      `${SECOND}`,
+    !readsPair(second, FIRST, TOTAL),
+    `the panel to have stopped reading wave ${FIRST} over ${TOTAL} once the ` +
+      `wave moved to ${SECOND}`,
   );
   assertTrue(
     reads(second, TOTAL, EXACT),

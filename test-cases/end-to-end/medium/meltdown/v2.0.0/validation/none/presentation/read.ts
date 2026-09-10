@@ -283,18 +283,20 @@ export async function faceBands(
 /* A surge unit                                                               */
 /* -------------------------------------------------------------------------- */
 
-/** How far from a unit's centre its own pixels are looked for, in units. */
-const UNIT_REACH = 3;
+/** How far from a unit's centre its own pixels are looked for: half a tile. */
+const UNIT_REACH = TILE / 2;
 
 /**
- * A small cross of points on a surge unit's centre.
+ * A cross of points over the tile a surge unit stands on.
  *
  * `specs/surge.md` fixes a unit's position as its centre and fixes NOTHING about
  * how big it is drawn or what shape — "the radius the unit is drawn at" is the
- * build's. So the patch is three units either way from the centre, which the
- * smallest thing a player could be expected to see covers, and it is reduced by
- * {@link widestGap} rather than averaged, so a unit drawn as an outline reads as
- * its outline rather than as the floor showing between its edges.
+ * build's. A patch a few units wide therefore reads the FLOOR on a build that
+ * draws a big unit as a ring, so the reach is half a tile: the tile the unit
+ * stands on, short of its neighbours and of anything drawn above it. It is
+ * reduced by {@link widestGap} rather than averaged, so a unit drawn as an
+ * outline reads as its outline rather than as the floor showing between its
+ * edges.
  */
 export function unitPoints(unit: UnitView): Point[] {
   const points: Point[] = [{ x: unit.x, y: unit.y }];
@@ -304,6 +306,10 @@ export function unitPoints(unit: UnitView): Point[] {
       { x: unit.x - d, y: unit.y },
       { x: unit.x, y: unit.y + d },
       { x: unit.x, y: unit.y - d },
+      { x: unit.x + d, y: unit.y + d },
+      { x: unit.x - d, y: unit.y - d },
+      { x: unit.x + d, y: unit.y - d },
+      { x: unit.x - d, y: unit.y + d },
     );
   }
   return points;

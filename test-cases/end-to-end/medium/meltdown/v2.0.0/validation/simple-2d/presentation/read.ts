@@ -68,11 +68,14 @@ export function pixelAt(h: Harness, x: number, y: number): Rgb {
  * The colour AT a point, averaged over the centre pixel and four neighbours two
  * units out.
  *
- * For a thing smaller than a tile — a surge unit, a point in the casing band —
- * where `harness.ts`'s `sampleColor` would reach three units either side and
- * blur the floor in. Two units is the widest cluster that still sits inside the
- * smallest form a player could see at all, and it is wide enough that one stray
- * anti-aliased pixel cannot swing the reading.
+ * For a thing narrower than a tile — a point in the casing band between a vent's
+ * cut and the wall either side of it — where `harness.ts`'s `sampleColor` would
+ * reach three units either side and blur the neighbouring form in. Two units is
+ * the widest cluster that still sits inside the smallest form a player could see
+ * at all, and it is wide enough that one stray anti-aliased pixel cannot swing
+ * the reading. `vents-and-exhausts-read-apart` is its one caller; a surge unit is
+ * read over the whole TILE it stands on instead, by
+ * `surge-reads-apart-from-the-floor`'s own reader.
  */
 export function spotColor(h: Harness, x: number, y: number): Rgb {
   const offsets: readonly (readonly [number, number])[] = [

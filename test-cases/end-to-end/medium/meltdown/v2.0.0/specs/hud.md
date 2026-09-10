@@ -18,7 +18,11 @@ The panel draws three readouts at all times during a run:
 Each readout follows its value as it changes. In a build phase the panel also
 draws the seconds left on the build timer, falling as the timer does. In The
 Hundred, which runs one onslaught rather than a numbered progression, the wave
-readout reads the onslaught in place of a wave over a total.
+readout reads the onslaught in place of a wave over a total. Only what it SHOWS
+changes: the readout is still one of the three the panel draws at all times and
+it still carries its `HUD_WAVE_LABEL` label, so The Hundred's panel reads
+`WAVE` beside the onslaught where a numbered run reads `WAVE` beside a wave over
+a total.
 
 ## The shop
 

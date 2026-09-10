@@ -46,7 +46,13 @@ import {
   type Harness,
 } from "../harness";
 import { SURGE_DEFS } from "../constants";
-import { framesOtherThan, leakOut, poseAtExhaustDoor, soundsOn } from "./cues";
+import {
+  framesOtherThan,
+  leakOut,
+  poseAtExhaustDoor,
+  reachFirstInput,
+  soundsOn,
+} from "./cues";
 
 /** The unit the leak is read on: the baseline of the roster (`specs/surge.md`). */
 const TYPE = "mote" as const;
@@ -68,6 +74,9 @@ afterEach(async () => {
 });
 
 it("sounds on the frame the unit leaves through its exhaust, and on no other", async () => {
+  // The build is silent until a player has touched it (specs/audio.md), so
+  // the first input is delivered before anything is posed.
+  await reachFirstInput(h);
   await startRun(h);
   const unit = await poseWalker(h, TYPE, VENT);
   const entered = requireUnit(await h.snapshot(), unit, "the walker");

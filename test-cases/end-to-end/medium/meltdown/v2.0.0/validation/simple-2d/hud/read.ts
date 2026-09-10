@@ -222,6 +222,35 @@ const GROUPS = new RegExp(GROUP, "g");
  * two. Every spelling of a run is scanned — the run, and each span it was
  * spelled from — for the reason {@link spellingsOf} gives.
  */
+/**
+ * Whether some run reads `first` immediately followed by `second`.
+ *
+ * The shape of a readout that draws a figure OVER another — specs/hud.md's wave
+ * readout is "the current wave number over the run's total" — read as the one
+ * thing it is rather than as two figures loose on the panel. What that buys a
+ * check is a NEGATIVE it can trust: specs/hud.md fixes three readouts and a
+ * build timer and leaves the rest of the strip to the build, so a bare figure of
+ * the build's own — a title lettered `REACTOR CONTROL / 07`, a score, a tally —
+ * answers "is this number on the panel" for a number the readout no longer
+ * reads.
+ */
+export function readsPair(
+  spans: readonly Spelled[],
+  first: number,
+  second: number,
+): boolean {
+  return spans.some((span) =>
+    spellingsOf([span]).some((text) => {
+      const matches = text.match(DRAWN);
+      if (matches === null) return false;
+      const figures = matches.map((match) => Number(match.replace(GROUPS, "")));
+      return figures.some(
+        (found, index) => found === first && figures[index + 1] === second,
+      );
+    }),
+  );
+}
+
 export function numbersIn(spans: readonly Spelled[]): number[] {
   const found: number[] = [];
   for (const text of spellingsOf(spans)) {

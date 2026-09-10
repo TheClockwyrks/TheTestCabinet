@@ -41,7 +41,7 @@ import {
   watchCues,
   type Harness,
 } from "../harness";
-import { playedOn, playsOf } from "./cues";
+import { playedOn, playsOf, reachFirstInput } from "./cues";
 
 /** The tile the Stutter's 2x2 footprint is anchored on: quiet floor, off every opening. */
 const TOWER = { col: 10, row: 10 } as const;
@@ -89,6 +89,9 @@ afterEach(() => {
 });
 
 it("plays the trip cue on the frame a real shot carries the emitter over 100", async () => {
+  // The build is silent until a player has touched it (specs/audio.md), so
+  // the first input is delivered before anything is posed.
+  await reachFirstInput(h);
   startRun(h);
   const stutter = poseTower(h, "stutter", TOWER.col, TOWER.row, 0);
   h.debug.setTowerHeat(stutter, POSED_HEAT);

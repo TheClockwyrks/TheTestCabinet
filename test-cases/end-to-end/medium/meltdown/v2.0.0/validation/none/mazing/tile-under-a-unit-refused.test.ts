@@ -66,6 +66,20 @@ it("reads a footprint over the tile a unit stands on invalid", async () => {
   await h.advance(1);
   await captureStill(h, "refused");
 
+  // THE FRAME ABOVE IS THE PICTURE, NOT THE READING. A frame hands the build a
+  // frame of input, and nothing in `specs/instrumentation.md` makes a pose
+  // survive one: `specs/building.md` writes "The preview follows the pointer"
+  // as an invariant over the pointer's own `(x, y)`, so a build that
+  // re-establishes it every frame is reading that sentence rather than breaking
+  // it. So the pose is taken again for the READING, and brought into agreement
+  // through the surface's own refresher — `reconcile()` "brings every value the
+  // snapshot reports into agreement with the game as it now stands, without
+  // advancing anything", and `build.valid` is one of the derived fields it
+  // answers for (`specs/instrumentation.md`).
+  await h.debug.setArmed(TOWER_TYPE);
+  await h.debug.setPreview(STAND.col, STAND.row);
+  await h.debug.reconcile();
+
   const posed = await h.snapshot();
   const standing = requireUnit(posed, unit, "the unit under the footprint");
   const tile = { col: colAt(standing.x), row: rowAt(standing.y) };

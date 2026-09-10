@@ -549,3 +549,27 @@ export async function releaseAndLeak(
   const leak = await leakOut(h, "the released unit's leak");
   return { released, unit, leak };
 }
+
+/**
+ * Deliver the FIRST INPUT, so the build's cues are unlocked.
+ *
+ * `specs/audio.md` makes a freshly loaded build silent: "the game makes no sound
+ * at all before the first input reaches it: until then it starts no audio source
+ * and plays no clip". There is no bus in an engineless build; the build owns the
+ * unlock itself. A point that poses a floor and drives frames has delivered no
+ * input at all, so a build that keeps that rule is silent for the whole drive
+ * and the point reads the autoplay rule instead of the cue it is about. Every
+ * scenario in this group that reaches its event WITHOUT a press or a pointer of
+ * its own therefore opens with this, before it poses anything.
+ *
+ * `audio/no-autoplay` is the point that decides the rule itself, and it is the
+ * one point in this group that must never call this.
+ *
+ * The input is one `down` on the menu a freshly loaded build opens on — the same
+ * input `no-autoplay` uses, and the cheapest one a game one frame old can take.
+ * It lands before the scenario is posed and so on a frame no reading here is
+ * taken on.
+ */
+export async function reachFirstInput(h: Harness): Promise<void> {
+  await h.tap(BINDINGS.down);
+}

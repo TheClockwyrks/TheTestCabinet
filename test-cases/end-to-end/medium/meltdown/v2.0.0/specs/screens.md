@@ -125,7 +125,10 @@ its three phases and `specs/hud.md` the panel.
 ## `paused`
 
 Draws the three rows of `PAUSE_ITEMS`: `RESUME`, `RESTART`, and `QUIT TO MENU`.
-The floor is still drawn behind the menu.
+The floor is still drawn behind the menu, and a player can see it there: the menu
+may dim what is behind it as heavily as it likes, but what is left of the floor
+still reads against what is drawn over it by the step `specs/overview.md` fixes
+for anything it asks to be visible.
 
 | Row            | Where it leads                                                         |
 | -------------- | ---------------------------------------------------------------------- |

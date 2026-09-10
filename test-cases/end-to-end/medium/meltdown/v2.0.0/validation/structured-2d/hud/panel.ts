@@ -51,6 +51,7 @@ import {
   towerById,
   unitById,
   type ControlRect,
+  type SnapshotControls,
   type DrawCall,
   type Harness,
   type MeltdownSnapshot,
@@ -269,6 +270,62 @@ export function runsIn<T extends TextSpan>(
   const y1 = rect.y + rect.h + margin;
   return runs.filter(
     (run) => run.y >= y0 && run.y <= y1 && run.right >= x0 && run.left <= x1,
+  );
+}
+
+/**
+ * Every rectangle the panel reported for a control, the shop entries included.
+ */
+export function everyControl(controls: SnapshotControls): ControlRect[] {
+  const optional = [
+    controls.rotate,
+    controls.cancel,
+    controls.upgrade,
+    controls.sell,
+  ].filter((rect): rect is ControlRect => rect !== null);
+  return [
+    ...controls.shop,
+    ...optional,
+    controls.send,
+    controls.speed,
+    controls.pause,
+    controls.mute,
+  ];
+}
+
+/**
+ * The runs of the panel that are drawn on no control: the readouts and the
+ * information area.
+ *
+ * specs/hud.md gives the panel a shop of eight entries and a set of controls,
+ * each of which the build reports a rectangle for, and "one area of the panel
+ * shows tower information". Subtracting the controls is how a check reads that
+ * area without the specification having to fix where it sits — and it is not
+ * tidiness. A build is free to letter its shop rows with the digits `1` to `8`
+ * that arm them (`specs/controls.md`) and to draw each entry's build cost beside
+ * it, so a check reading a range, a level or a figure out of the WHOLE strip
+ * finds those digits and calls them the reading it was looking for. That is what
+ * a check asserting a figure is ABSENT gets wrong first: the shop is drawn at all
+ * times, so a bare `8` is always somewhere on the panel.
+ *
+ * Nothing is padded here. A run is subtracted only where its own anchor sits
+ * inside a control's box, so a caption lettered just outside its tap target
+ * stays in the information area, which is the harmless direction.
+ */
+export function infoRuns<T extends TextSpan>(
+  runs: readonly T[],
+  controls: SnapshotControls,
+): T[] {
+  const rects = everyControl(controls);
+  return runs.filter(
+    (run) =>
+      !rects.some(
+        (rect) =>
+          run.y >= rect.y &&
+          run.y <= rect.y + rect.h &&
+          run.x >= rect.x &&
+          run.x <= rect.x + rect.w,
+      ),
   );
 }
 

@@ -13,6 +13,11 @@ footprint could be placed right now. Disarming clears the preview entirely.
 
 Arming a second type replaces the held one, and the held rotation returns to `0`.
 
+Arming changes nothing but the held preview. A tower that was selected stays
+selected and a hovered shop entry stays hovered, so a run can carry a selection,
+a hover and a held preview at once; `specs/hud.md` states which of them the
+information area shows. Disarming likewise clears the preview and nothing else.
+
 ## The preview follows the pointer
 
 The held footprint is the `size x size` block nearest the pointer, clamped so

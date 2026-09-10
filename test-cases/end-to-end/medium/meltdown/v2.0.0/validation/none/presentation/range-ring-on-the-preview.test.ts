@@ -47,7 +47,11 @@
 // about the ring being drawn, at that range, around that centre.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
+import {
+  assertEqual,
+  assertGreaterThanOrEqual,
+  assertLessThanOrEqual,
+} from "../assert";
 import { TILE, TOWER_DEFS, emitterStats, footprintCentre } from "../constants";
 import type { EmitterDef, TowerType } from "../constants";
 import {
@@ -184,6 +188,22 @@ it("draws a range ring at the held type's range around the held footprint", asyn
   const centre = footprintCentre(PREVIEW_AT.col, PREVIEW_AT.row, size);
   const radius = PREVIEW_RADIUS;
 
+  // THE PREVIEW IS PUT ON ITS TILE BOTH WAYS: POSED, AND BY THE POINTER.
+  // This reading is of the FINISHED PICTURE and so needs frames to run with the
+  // preview held — and a frame hands the build a frame of input, which nothing
+  // in `specs/instrumentation.md` makes a pose survive: a build that reads
+  // `specs/building.md`'s "The preview follows the pointer" as the invariant it
+  // is written as re-derives the held footprint from the pointer on every frame,
+  // and a posed preview plus a frame would put the preview back under a pointer
+  // that never moved. So both routes are taken, and both name the same tile:
+  // `setPreview` puts the footprint's top-left there "exactly where the call
+  // names it", and the pointer is moved to the footprint's centre so a build
+  // re-deriving from `specs/controls.md`'s "the `size x size` block nearest the
+  // pointer" derives the same block. A build that keeps its pose keeps it; a
+  // build that re-derives derives this tile; and the read-back below fires only
+  // when NEITHER route put the footprint where this reading is taken. Whether
+  // the pointer alone moves the preview is `controls/pointer-moves-the-preview`,
+  // which is the point that owns it — it is not charged here as well.
   const reading = await ringReading(
     h,
     centre,
@@ -191,8 +211,26 @@ it("draws a range ring at the held type's range around the held footprint", asyn
     async () => {
       await h.debug.setArmed(PREVIEW_TYPE);
       await h.debug.setPreview(PREVIEW_AT.col, PREVIEW_AT.row);
+      await h.debug.pointerMove(centre.x, centre.y);
+      await h.advance(1);
     },
     "ring",
+  );
+
+  // The posing is read back before the picture is: a ring read around a
+  // footprint that neither the pose nor the pointer put there decides nothing.
+  const held = (await h.snapshot()).build;
+  assertEqual(
+    held?.col,
+    PREVIEW_AT.col,
+    `posing: the column the pose and the pointer both named for the held ${PREVIEW_TYPE} on ` +
+      `(specs/building.md, specs/controls.md)`,
+  );
+  assertEqual(
+    held?.row,
+    PREVIEW_AT.row,
+    `posing: the row the pose and the pointer both named for the held ${PREVIEW_TYPE} on ` +
+      `(specs/building.md, specs/controls.md)`,
   );
 
   for (let n = 0; n < BEARINGS; n += 1) {

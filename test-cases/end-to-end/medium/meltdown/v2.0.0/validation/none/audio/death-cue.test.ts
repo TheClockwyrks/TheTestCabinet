@@ -52,7 +52,13 @@ import {
 } from "../harness";
 import { MIN_HEAT_MULT, TOWER_DEFS, isEmitter } from "../constants";
 import { FREE_SITE } from "../fixtures";
-import { SHOT_CEILING, framesOutside, frameWhere, soundsOn } from "./cues";
+import {
+  SHOT_CEILING,
+  frameWhere,
+  framesOutside,
+  reachFirstInput,
+  soundsOn,
+} from "./cues";
 
 /** The heat the emitter is pinned at, where `specs/heat.md` fixes its multiplier. */
 const PINNED_HEAT = 0;
@@ -91,6 +97,9 @@ afterEach(async () => {
 });
 
 it("sounds more on the killing shot than on the shot that only wounded", async () => {
+  // The build is silent until a player has touched it (specs/audio.md), so
+  // the first input is delivered before anything is posed.
+  await reachFirstInput(h);
   await startRun(h);
   const emitter = await posePinnedTower(
     h,

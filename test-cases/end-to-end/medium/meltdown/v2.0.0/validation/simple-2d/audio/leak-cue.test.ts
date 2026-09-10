@@ -38,7 +38,7 @@ import {
   watchCues,
   type Harness,
 } from "../harness";
-import { playedBefore, playedOn, poseLeaker } from "./cues";
+import { playedBefore, playedOn, poseLeaker, reachFirstInput } from "./cues";
 
 /**
  * How long the Mote is given to walk the last tile into the exhaust.
@@ -62,6 +62,9 @@ afterEach(() => {
 });
 
 it("plays the leak cue on the frame the unit reaches its exhaust", async () => {
+  // The build is silent until a player has touched it (specs/audio.md), so
+  // the first input is delivered before anything is posed.
+  await reachFirstInput(h);
   startRun(h);
   const opened = h.snapshot();
   poseLeaker(h);

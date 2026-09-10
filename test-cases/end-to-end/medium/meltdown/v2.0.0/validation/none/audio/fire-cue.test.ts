@@ -51,7 +51,13 @@ import {
   type Harness,
 } from "../harness";
 import { FREE_SITE } from "../fixtures";
-import { SHOT_CEILING, framesOtherThan, frameWhere, soundsOn } from "./cues";
+import {
+  SHOT_CEILING,
+  frameWhere,
+  framesOtherThan,
+  reachFirstInput,
+  soundsOn,
+} from "./cues";
 
 /**
  * The heat the emitter is pinned at.
@@ -90,6 +96,9 @@ afterEach(async () => {
 });
 
 it("sounds on the frame the shot resolves, and on no other frame", async () => {
+  // The build is silent until a player has touched it (specs/audio.md), so
+  // the first input is delivered before anything is posed.
+  await reachFirstInput(h);
   await startRun(h);
   const emitter = await posePinnedTower(
     h,

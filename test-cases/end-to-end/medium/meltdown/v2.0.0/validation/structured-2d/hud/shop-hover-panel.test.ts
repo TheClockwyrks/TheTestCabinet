@@ -56,18 +56,21 @@
 // armed a placement or selected a tower on a hover fails here.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertNull, assertTrue } from "../assert";
+import { assertEqual, assertNull, assertTrue, fail } from "../assert";
 import { MIN_HEAT_MULT } from "../constants";
 import {
   captureStill,
   createHarness,
+  movePointerTo,
   posePinnedTower,
   startRun,
   type Harness,
+  type TowerType,
 } from "../harness";
 import { statsAt } from "./figures";
 import {
   emitterDef,
+  infoRuns,
   readPanel,
   reads,
   saysFace,
@@ -116,8 +119,55 @@ afterEach(() => {
   h?.dispose();
 });
 
+/**
+ * Hover a shop entry the way a player hovers one: a real pointer move into the
+ * rectangle the build reported for it.
+ *
+ * POSED AND POINTED AT BOTH, because this point reads what the panel DRAWS and
+ * drawing needs a frame. `setHoverShop` alone does not survive one: nothing in
+ * `specs/instrumentation.md` says a pose does, and `specs/controls.md` writes
+ * the hover as a fact about where the pointer is, so a build that re-derives it
+ * from the pointer on every frame is reading that sentence rather than breaking
+ * it — and it would be left hovering nothing. So the entry is posed AND the
+ * pointer is moved onto it: a build that keeps the pose keeps it, and a build
+ * that re-derives the hover derives the same entry. The rectangle is the
+ * build's own (`specs/instrumentation.md`), so nothing here fixes where the shop
+ * sits.
+ */
+async function hoverEntry(h: Harness, type: TowerType): Promise<void> {
+  h.debug.setHoverShop(type);
+  const { shop } = h.snapshot().controls;
+  const entry = shop.find((each) => each.type === type);
+  if (entry === undefined) {
+    fail(
+      `the panel to report a shop entry for the ${type} (specs/hud.md)`,
+      shop,
+    );
+  }
+  await movePointerTo(h, entry.x + entry.w / 2, entry.y + entry.h / 2);
+}
+
+/** One run's text, normalized so two readings of one line compare equal. */
+function textOf(run: { text: string }): string {
+  return run.text.trim().replace(/\s+/g, " ").toUpperCase();
+}
+
 it("shows the Bloom's level-I figures on a hover, not the level-III tower's", async () => {
   startRun(h);
+
+  // THE PANEL'S OWN CHROME, READ FIRST, ON AN EMPTY FLOOR WITH NOTHING HOVERED.
+  // specs/hud.md draws the shop "at all times", with all eight entries and their
+  // build costs, and specs/controls.md letters those entries `1` to `8`; a build
+  // may draw a legend saying so, and the three readouts are always there too. So
+  // a bare figure is on the panel whatever is hovered, and a check asserting a
+  // figure is ABSENT would read the chrome and fail a build that never drew the
+  // figure at all. What such a check is about is what the HOVER put on the
+  // panel, so the chrome is read once here and subtracted from the reading
+  // below.
+  const chrome = new Set(
+    infoRuns(await readPanel(h), h.snapshot().controls).map(textOf),
+  );
+
   const live = posePinnedTower(
     h,
     TYPE,
@@ -126,11 +176,24 @@ it("shows the Bloom's level-I figures on a hover, not the level-III tower's", as
     LIVE_HEAT,
   );
   h.debug.setTowerLevel(live, LIVE_LEVEL);
-  h.debug.setHoverShop(TYPE);
+  await hoverEntry(h, TYPE);
 
-  const runs = await readPanel(h);
+  const panel = await readPanel(h);
   captureStill(h, "hover");
   const posed = h.snapshot();
+
+  // READ OFF THE INFORMATION AREA, NOT THE WHOLE STRIP. specs/hud.md draws the
+  // shop "at all times" with all eight entries and their build costs, and
+  // specs/controls.md letters those entries `1` to `8`, so a bare figure is
+  // always somewhere on the panel — a check asserting that a figure is ABSENT
+  // reads the shop and fails a build that never drew it. `infoRuns` subtracts
+  // the rectangles the build itself reported for its controls, which is how the
+  // area specs/hud.md calls "one area of the panel" is read without the
+  // specification fixing where it sits.
+  const runs = infoRuns(panel, posed.controls);
+
+  /** What the hover ADDED to the panel: the reading every negative is over. */
+  const hovered = runs.filter((run) => !chrome.has(textOf(run)));
 
   assertEqual(
     posed.hoverShop,
@@ -183,29 +246,31 @@ it("shows the Bloom's level-I figures on a hover, not the level-III tower's", as
   // At level I, which is what makes every figure above the TYPE's and not the
   // live tower's.
   assertTrue(
-    !reads(runs, LEVEL_III.range, ROUNDED),
+    !reads(hovered, LEVEL_III.range, ROUNDED),
     `the hover panel not to draw the live tower's level-III range of ` +
       `${LEVEL_III.range}`,
   );
   assertTrue(
-    !reads(runs, LEVEL_III.baseDamage, ROUNDED),
+    !reads(hovered, LEVEL_III.baseDamage, ROUNDED),
     `the hover panel not to draw the live tower's level-III damage of ` +
       `${LEVEL_III.baseDamage}`,
   );
   assertTrue(
-    !reads(runs, LEVEL_III.fireRate, ROUNDED),
+    !reads(hovered, LEVEL_III.fireRate, ROUNDED),
     `the hover panel not to draw the live tower's level-III fire rate of ` +
       `${LEVEL_III.fireRate.toFixed(3)}`,
   );
   assertTrue(
-    !reads(runs, LIVE_HEAT, ROUNDED),
+    !reads(hovered, LIVE_HEAT, ROUNDED),
     `the hover panel to carry no live heat read, and so not to draw the live ` +
       `tower's heat of ${LIVE_HEAT}`,
   );
 
   // And THAT type's information: the second entry replaces the first's figures.
-  h.debug.setHoverShop(OTHER);
-  const second = await readPanel(h);
+  await hoverEntry(h, OTHER);
+  const second = infoRuns(await readPanel(h), h.snapshot().controls).filter(
+    (run) => !chrome.has(textOf(run)),
+  );
 
   assertTrue(
     !reads(second, LEVEL_I.range, ROUNDED),

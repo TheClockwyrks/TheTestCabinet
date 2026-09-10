@@ -43,7 +43,7 @@ import {
   waveCountOf,
   type Harness,
 } from "../harness";
-import { readPanel, readsNumber, textsOf } from "./read";
+import { readPanel, readsNumber, readsPair, textsOf } from "./read";
 
 /** The pair whose wave total is carried by nothing else on the panel. */
 const MODE = "containment";
@@ -59,6 +59,17 @@ const SECOND = 13;
 /** The money and the lives posed under the reading, carrying neither wave. */
 const MONEY = 9999;
 const LIVES = 17;
+
+// THE NEGATIVE IS READ AS A PAIR, NOT AS A BARE FIGURE. specs/hud.md gives the
+// wave readout "the current wave number over the run's total", and fixes three
+// readouts and a build timer and nothing else about the strip — so the panel is
+// free to carry figures of its own, and asking whether the OLD wave number is
+// ANYWHERE on the panel reads those too: a build lettering its panel
+// `REACTOR CONTROL / 07` carries a 7 on every wave and would fail an assertion
+// that no 7 is left once the wave moved on. What the readout IS is the wave
+// beside the total, so that is what the check that it stopped reading the old
+// wave looks for. The positive readings stay bare figures: they are satisfied by
+// the readout wherever the build laid it out.
 
 let h: Harness;
 
@@ -102,10 +113,10 @@ it("draws the current wave over the run's total, and follows the wave", async ()
       `(specs/hud.md); the panel drew ${JSON.stringify(textsOf(second))}`,
   );
   assertTrue(
-    !readsNumber(second, FIRST),
-    `no ${FIRST} left in the build panel on wave ${SECOND}: the readout shows ` +
-      `the CURRENT wave (specs/hud.md, The status readouts); the panel drew ` +
-      `${JSON.stringify(textsOf(second))}`,
+    !readsPair(second, FIRST, TOTAL),
+    `no reading of ${FIRST} over ${TOTAL} left in the build panel on wave ` +
+      `${SECOND}: the readout shows the CURRENT wave (specs/hud.md, The ` +
+      `status readouts); the panel drew ${JSON.stringify(textsOf(second))}`,
   );
   assertTrue(
     readsNumber(second, TOTAL),

@@ -102,6 +102,7 @@ import {
   TOWER_DEFS,
   TOWER_TYPES,
   type Rect,
+  TILE,
   tileCX,
   tileCY,
 } from "../constants";
@@ -194,12 +195,34 @@ const CORNERS: readonly { name: string; col: number; row: number }[] = [
   },
 ];
 
-/** The tile centres of one corner footprint: where the body must be found. */
+/**
+ * How densely a footprint is read: this many ranks each way, evenly spread over
+ * the WHOLE block rather than over its tile centres.
+ *
+ * specs/overview.md hands the build "the palette, the type, the glow, and every
+ * other aspect of the look", so nothing fixes the SHAPE a tower is drawn as. A
+ * build that draws a 2x2 emitter as a disc inscribed in its own footprint covers
+ * the middle of the block and touches none of the four tile centres — they are
+ * the corners of the square that disc is inscribed in, a whole tile's diagonal
+ * out from the middle. What the fit maps is the FOOTPRINT, so the footprint is
+ * what is read, and a tower drawn anywhere inside its own block answers. The
+ * bar, the noise margin and the removal are unchanged: a corner with nothing
+ * drawn on it still moves no sample.
+ */
+const FOOTPRINT_SAMPLES = 7;
+
+/** The points one corner footprint is read at: where the body must be found. */
 function footprintProbes(corner: { col: number; row: number }): Point[] {
+  const left = tileCX(corner.col) - TILE / 2;
+  const top = tileCY(corner.row) - TILE / 2;
+  const span = SIZE * TILE;
   const probes: Point[] = [];
-  for (let c = corner.col; c < corner.col + SIZE; c += 1) {
-    for (let r = corner.row; r < corner.row + SIZE; r += 1) {
-      probes.push({ x: tileCX(c), y: tileCY(r) });
+  for (let i = 0; i < FOOTPRINT_SAMPLES; i += 1) {
+    for (let j = 0; j < FOOTPRINT_SAMPLES; j += 1) {
+      probes.push({
+        x: left + (span * (i + 0.5)) / FOOTPRINT_SAMPLES,
+        y: top + (span * (j + 0.5)) / FOOTPRINT_SAMPLES,
+      });
     }
   }
   return probes;
@@ -392,7 +415,7 @@ it.each(SURFACES)(
     }
     const standing = await readThrough(h, inner, probes);
 
-    const perCorner = SIZE * SIZE;
+    const perCorner = FOOTPRINT_SAMPLES * FOOTPRINT_SAMPLES;
     for (const [index, corner] of CORNERS.entries()) {
       let best = 0;
       for (let n = 0; n < perCorner; n += 1) {

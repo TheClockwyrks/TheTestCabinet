@@ -48,6 +48,12 @@ export interface BarAxis {
   along(track: DrawnRect, t: number): number;
   /** A rectangle's centre on the axis the bar runs along. */
   centre(rect: DrawnRect): number;
+  /**
+   * How far a rectangle reaches ACROSS that axis, as the two edges that bound
+   * it: the pair a bar's own thickness is measured between, and the pair a
+   * check reads to ask whether some other mark sits on the bar or beside it.
+   */
+  acrossRange(rect: DrawnRect): readonly [number, number];
 }
 
 /** A coordinate as a key, to half a logical unit, so two frames agree on it. */
@@ -63,6 +69,7 @@ export const BAR_AXES: readonly BarAxis[] = [
     extent: (r) => r.w,
     along: (track, t) => track.left + track.w * t,
     centre: (r) => r.x,
+    acrossRange: (r) => [r.top, r.bottom],
   },
   {
     name: "filling leftward from its right edge",
@@ -70,6 +77,7 @@ export const BAR_AXES: readonly BarAxis[] = [
     extent: (r) => r.w,
     along: (track, t) => track.right - track.w * t,
     centre: (r) => r.x,
+    acrossRange: (r) => [r.top, r.bottom],
   },
   {
     name: "filling downward from its top edge",
@@ -77,6 +85,7 @@ export const BAR_AXES: readonly BarAxis[] = [
     extent: (r) => r.h,
     along: (track, t) => track.top + track.h * t,
     centre: (r) => r.y,
+    acrossRange: (r) => [r.left, r.right],
   },
   {
     name: "filling upward from its bottom edge",
@@ -84,6 +93,7 @@ export const BAR_AXES: readonly BarAxis[] = [
     extent: (r) => r.h,
     along: (track, t) => track.bottom - track.h * t,
     centre: (r) => r.y,
+    acrossRange: (r) => [r.left, r.right],
   },
 ];
 

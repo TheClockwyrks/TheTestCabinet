@@ -328,6 +328,14 @@ through the game's own code, so each has every consequence
 | `upgradeTower(id)` | Upgrades that tower one level through the real upgrade code, deducting its `upgradeCost` when it is affordable and the tower is below level `3`, and changing nothing otherwise. The purse and the cap are the transaction's own arithmetic; neither the panel nor the selection is asked about. |
 | `sellTower(id)` | Sells that tower through the real sell code, from wherever the game stands: it pays its `refund` into money, removes it, reopens its footprint, recomputes the routes, and clears the selection if it was selected. |
 
+A posed preview is a pose and not a pin. `specs/building.md` makes the held
+footprint follow the pointer, so the next frame of input a build runs is free to
+put the preview back under the pointer, wherever a `setPreview` had just moved
+it; a build may equally leave a posed footprint where it was until the pointer
+next moves. Both are conformant, and a check that needs the preview held over a
+particular tile ACROSS frames should move the pointer onto that tile as well as
+posing it.
+
 No operation on this surface plays a cue, and none can. A cue is raised by the
 frame that resolves the event it answers and is played from the frame loop, and
 an operation of this surface resolves outside that frame. Every cue is reached

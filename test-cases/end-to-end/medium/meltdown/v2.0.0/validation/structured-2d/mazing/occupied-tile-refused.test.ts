@@ -77,6 +77,20 @@ it("reads a footprint overlapping a tower by one tile invalid", async () => {
   await h.advance(1);
   captureStill(h, "refused");
 
+  // THE FRAME ABOVE IS THE PICTURE, NOT THE READING. A frame hands the build a
+  // frame of input, and nothing in `specs/instrumentation.md` makes a pose
+  // survive one: `specs/building.md` writes "The preview follows the pointer"
+  // as an invariant over the pointer's own `(x, y)`, so a build that
+  // re-establishes it every frame is reading that sentence rather than breaking
+  // it. So the pose is taken again for the READING, and brought into agreement
+  // through the surface's own refresher — `reconcile()` "brings every value the
+  // snapshot reports into agreement with the game as it now stands, without
+  // advancing anything", and `build.valid` is one of the derived fields it
+  // answers for (`specs/instrumentation.md`).
+  h.debug.setArmed(TOWER_TYPE);
+  h.debug.setPreview(CANDIDATE_COL, CANDIDATE_ROW);
+  h.debug.reconcile();
+
   const posed = h.snapshot();
   const held = posed.build;
   assertEqual(

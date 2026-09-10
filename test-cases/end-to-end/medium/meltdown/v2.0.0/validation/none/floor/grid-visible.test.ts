@@ -53,12 +53,13 @@ import { readPixels, type Point } from "./read";
  * How far, out of the 441 the RGB cube spans, a pixel at a tile boundary must sit
  * from the middle of the tile beside it for the boundary to count as drawn.
  *
- * A grid line is the faintest thing the specification asks a build to draw: it
- * has to be readable without competing with the towers and the surge on top of
- * it, so a build is right to keep it quiet. 8 is under two per cent of the scale
- * — about the smallest step that reads as a line on a dark ground, and low enough
- * that a deliberately understated grid is not failed for being understated. A
- * floor with no grid at all reads 0.
+ * 8 is the figure specs/overview.md states for its own legibility table: "Two
+ * colors read apart, and a thing is visible against what is behind it, when they
+ * differ by at least 8 out of the 441 an RGB distance spans." So the bar here is
+ * the specification's and not this check's. A grid line is the faintest thing
+ * that table asks a build to draw — it has to be readable without competing with
+ * the towers and the surge on top of it, so a build is right to keep it quiet —
+ * and a floor with no grid at all reads 0.
  */
 const LINE_CONTRAST_MIN = 8;
 

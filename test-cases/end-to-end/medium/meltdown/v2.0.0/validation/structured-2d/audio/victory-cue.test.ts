@@ -33,7 +33,7 @@ import {
   watchCues,
   type Harness,
 } from "../harness";
-import { playedOn, playsOf, poseLeaker } from "./cues";
+import { playedOn, playsOf, poseLeaker, reachFirstInput } from "./cues";
 
 /**
  * How long the final wave's last unit is given to walk into the exhaust.
@@ -56,6 +56,9 @@ afterEach(() => {
 });
 
 it("plays the victory cue on the frame the victory screen opens", async () => {
+  // The build is silent until a player has touched it (specs/audio.md), so
+  // the first input is delivered before anything is posed.
+  await reachFirstInput(h);
   startRun(h);
   // The run's final wave, as the mode and difficulty derive it (specs/modes.md);
   // `setWave` "rebuilds nothing, releases nothing, and clears nothing"

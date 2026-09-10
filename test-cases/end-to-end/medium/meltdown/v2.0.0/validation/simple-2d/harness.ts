@@ -1630,6 +1630,83 @@ export function drawnRects(
   return drawn;
 }
 
+/**
+ * Every straight segment a frame drew into a path, as the box it spans.
+ *
+ * WHY A MARK IS NOT ALWAYS A RECTANGLE. specs/hud.md asks a tower's heat read to
+ * carry "a marker at its redline" and fixes no drawing primitive: a tick drawn
+ * as a thin `fillRect` and the same tick drawn `moveTo`/`lineTo`/`stroke` leave
+ * the same mark on the finished picture, and specs/overview.md hands the look to
+ * the build. {@link drawnRects} sees only the three rectangle calls, so a reader
+ * looking for a MARK rather than for a bar reads these beside them.
+ *
+ * A segment is a `lineTo` closed over the point the path last named, both
+ * carried through the transform in force at the call, and it is answered in the
+ * same {@link DrawnRect} shape a rectangle is so a caller reads the two the same
+ * way. Its `method` is `lineTo`, which is how a caller tells one apart. The
+ * point a path last named is whatever `moveTo` or the previous `lineTo` set;
+ * `beginPath` ends the run, since the next call names its own start.
+ *
+ * WHETHER THE PATH WAS FILLED OR STROKED IS NOT ASKED. A path built and never
+ * painted is not a thing a build draws, and every caller here is looking for a
+ * mark it can already see in the picture; the reading a caller does about
+ * PRESENCE is a pixel reading, not this one.
+ */
+export function drawnSegments(
+  h: Harness,
+  calls: readonly DrawCall[] = h.calls,
+): DrawnRect[] {
+  const view = h.viewport();
+  const inForce = transformsInForce(calls);
+  const drawn: DrawnRect[] = [];
+  let from: { x: number; y: number } | null = null;
+  const logical = (
+    matrix: Matrix,
+    x: number,
+    y: number,
+  ): { x: number; y: number } => {
+    const at = applyMatrix(matrix, x, y);
+    return {
+      x: (at.x - view.offsetX) / view.scale,
+      y: (at.y - view.offsetY) / view.scale,
+    };
+  };
+  for (const [index, call] of calls.entries()) {
+    if (call.kind !== "call") continue;
+    const { method, args } = call;
+    if (method === "beginPath") {
+      from = null;
+      continue;
+    }
+    if (method !== "moveTo" && method !== "lineTo") continue;
+    const point = numbers(args, 2);
+    if (point === null) {
+      from = null;
+      continue;
+    }
+    const to = logical(inForce[index] as Matrix, point[0], point[1]);
+    if (method === "lineTo" && from !== null) {
+      const left = Math.min(from.x, to.x);
+      const right = Math.max(from.x, to.x);
+      const top = Math.min(from.y, to.y);
+      const bottom = Math.max(from.y, to.y);
+      drawn.push({
+        method,
+        left,
+        top,
+        right,
+        bottom,
+        x: (left + right) / 2,
+        y: (top + bottom) / 2,
+        w: right - left,
+        h: bottom - top,
+      });
+    }
+    from = to;
+  }
+  return drawn;
+}
+
 /* ---- Colour --------------------------------------------------------------- */
 
 /**

@@ -60,6 +60,12 @@ import { pixelsAt } from "./read";
  * — about the smallest step that reads as a line on a dark ground, and low enough
  * that a deliberately understated grid is not failed for being understated. A
  * floor with no grid at all reads 0.
+ *
+ * specs/overview.md now states this same figure for its legibility table, so the
+ * bar a build is held to here and the bar it is TOLD about are one number. That
+ * sentence was added to the spec after this check was written, and it is written
+ * down rather than relied upon: the reasoning above is still what fixes the
+ * figure, and a build that never saw the sentence is graded no differently.
  */
 const LINE_CONTRAST_MIN = 8;
 

@@ -84,6 +84,21 @@ it("refuses a footprint whose column reaches outside the zone", async () => {
   await h.advance(1);
   captureStill(h, "outside");
 
+  // THE FRAME ABOVE IS THE PICTURE, NOT THE READING. A frame hands the build a
+  // frame of input, and nothing in `specs/instrumentation.md` makes a pose
+  // survive one: `specs/building.md` writes "The preview follows the pointer"
+  // as an invariant over the pointer's own `(x, y)`, so a build that
+  // re-establishes it every frame is reading that sentence rather than breaking
+  // it. So the pose is taken again for the READING, and brought into agreement
+  // through the surface's own refresher — `reconcile()` "brings every value the
+  // snapshot reports into agreement with the game as it now stands, without
+  // advancing anything", and `build.valid` is one of the derived fields it
+  // answers for (`specs/instrumentation.md`).
+  h.debug.setArmed(HELD);
+  h.debug.setPreviewRotation(0);
+  h.debug.setPreview(ANCHOR.col, ANCHOR.row);
+  h.debug.reconcile();
+
   const held = h.snapshot();
   assertEqual(held.mode, MODE, "precondition: the mode the run is posed on");
   assertNotNull(held.build, "precondition: the preview the scenario holds");

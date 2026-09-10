@@ -50,6 +50,8 @@ import { TOWER_DEFS } from "../constants";
 import {
   captureStill,
   createHarness,
+  footprintCenter,
+  movePointerTo,
   sizeOf,
   startRun,
   type Harness,
@@ -74,6 +76,26 @@ import {
 const TYPE: TowerType = "lance";
 const COL = 8;
 const ROW = 22;
+
+/**
+ * Where the pointer is put to hold the preview over that tile, beside the pose.
+ *
+ * This reading is of the FINISHED PICTURE and so needs frames to run with the
+ * preview held — and a frame hands the build a frame of input, which nothing in
+ * `specs/instrumentation.md` makes a pose survive: a build that reads
+ * `specs/building.md`'s "The preview follows the pointer" as the invariant it is
+ * written as re-derives the held footprint from the pointer on every frame, and
+ * a posed preview plus a frame would put the preview back under a pointer that
+ * never moved. So the point takes both routes and both name the same tile:
+ * `setPreview` puts the footprint's top-left there, and the pointer goes to the
+ * footprint's centre, which is the point `specs/controls.md`'s "the `size x
+ * size` block nearest the pointer" is this block for. A build that keeps its
+ * pose keeps it, a build that re-derives derives this tile, and the read-back in
+ * {@link readPreview} fires only when NEITHER route put the footprint here.
+ * Whether the pointer alone moves the preview is
+ * `controls/pointer-moves-the-preview`, which is the point that owns it.
+ */
+const CENTRE = footprintCenter(TYPE, COL, ROW);
 
 /**
  * The whole footprint is read, at every pixel: a border is drawn on the
@@ -102,6 +124,20 @@ function readPreview(h: Harness, wanted: boolean, outputId: string): Rgb[] {
       `holds a build preview), which is what this point reads the drawing of`,
   );
   assertEqual(
+    held?.col,
+    COL,
+    `posing: the column the pose and the pointer both hold the ${TYPE}'s ` +
+      `footprint on, which is the patch of floor this reading is taken over ` +
+      `(specs/building.md)`,
+  );
+  assertEqual(
+    held?.row,
+    ROW,
+    `posing: the row the pose and the pointer both hold the ${TYPE}'s ` +
+      `footprint on, which is the patch of floor this reading is taken over ` +
+      `(specs/building.md)`,
+  );
+  assertEqual(
     held?.valid,
     wanted,
     `snapshot().build.valid with the money ${wanted ? "at or above" : "below"}` +
@@ -126,7 +162,7 @@ it("draws a valid footprint plainly apart from a refused one", async () => {
   startRun(h);
   h.debug.setArmed(TYPE);
   h.debug.setPreview(COL, ROW);
-  await h.advance(1);
+  await movePointerTo(h, CENTRE.x, CENTRE.y);
   const first = readFootprint(h);
 
   // How far the held preview moves on its own, with nothing changed at all.

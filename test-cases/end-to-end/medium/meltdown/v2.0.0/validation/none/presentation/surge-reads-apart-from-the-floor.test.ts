@@ -123,8 +123,9 @@ it("draws every surge type on the tile it stands on", async () => {
       gone.distance,
       noise + NOISE_MARGIN,
       `the ${type} on tile (${STANDS[type].col}, ${STANDS[type].row}): the ` +
-        `patch on its centre changes when the unit is taken away, by more ` +
-        `than the ${noise} two frames with it standing moved on their own ` +
+        `patch on the tile it stands on changes when the unit is taken away, ` +
+        `by more than the ${noise} two frames with it standing moved on ` +
+        `their own ` +
         `(specs/overview.md: the surge reads apart from the floor)`,
     );
   }

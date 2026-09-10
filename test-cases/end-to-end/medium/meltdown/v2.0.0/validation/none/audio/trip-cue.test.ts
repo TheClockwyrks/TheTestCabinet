@@ -53,7 +53,13 @@ import {
   type Harness,
 } from "../harness";
 import { FREE_SITE } from "../fixtures";
-import { TRIP_CEILING, frameWhere, peakOtherThan, soundsOn } from "./cues";
+import {
+  TRIP_CEILING,
+  frameWhere,
+  peakOtherThan,
+  reachFirstInput,
+  soundsOn,
+} from "./cues";
 
 /**
  * Where the target stands: three and a half tiles from the emitter's footprint
@@ -73,6 +79,9 @@ afterEach(async () => {
 });
 
 it("sounds more on the frame it trips than on any shot that got it there", async () => {
+  // The build is silent until a player has touched it (specs/audio.md), so
+  // the first input is delivered before anything is posed.
+  await reachFirstInput(h);
   await startRun(h);
   // An ordinary emitter: cold, online, both faculties running, exactly as
   // `addTower` leaves one (`specs/instrumentation.md`). The heat is the build's

@@ -53,7 +53,13 @@ import {
   type Harness,
 } from "../harness";
 import { SURGE_DEFS } from "../constants";
-import { framesOutside, leakOut, poseAtExhaustDoor, soundsOn } from "./cues";
+import {
+  framesOutside,
+  leakOut,
+  poseAtExhaustDoor,
+  reachFirstInput,
+  soundsOn,
+} from "./cues";
 
 /** The unit both boards lose, and what its escape costs (`specs/surge.md`). */
 const TYPE = "mote" as const;
@@ -88,6 +94,9 @@ async function leakOneUnit(lives: number) {
 }
 
 it("sounds more on the leak that ends the run than on one the run survives", async () => {
+  // The build is silent until a player has touched it (specs/audio.md), so
+  // the first input is delivered before anything is posed.
+  await reachFirstInput(h);
   await startRun(h);
   await h.armAudio();
   const played = watchCues(h);

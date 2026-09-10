@@ -47,7 +47,13 @@ import {
   assertGreaterThanOrEqual,
   assertNotNull,
 } from "../assert";
-import { TILE, TOWER_DEFS, tileLeft, tileTop } from "../constants";
+import {
+  TILE,
+  TOWER_DEFS,
+  footprintCentre,
+  tileLeft,
+  tileTop,
+} from "../constants";
 import type { TowerType } from "../constants";
 import {
   captureStill,
@@ -124,6 +130,20 @@ async function previewAt(
     `a preview of the armed type still held with ${money} money ` +
       `(specs/building.md: a held preview is cleared by disarming alone)`,
   );
+  assertEqual(
+    (held as BuildView).col,
+    AT.col,
+    `posing: the column the pose and the pointer both hold the ${TYPE}'s ` +
+      `footprint on, which is the patch of floor this reading is taken over ` +
+      `(specs/building.md)`,
+  );
+  assertEqual(
+    (held as BuildView).row,
+    AT.row,
+    `posing: the row the pose and the pointer both hold the ${TYPE}'s ` +
+      `footprint on, which is the patch of floor this reading is taken over ` +
+      `(specs/building.md)`,
+  );
   return {
     valid: (held as BuildView).valid,
     pixels: await readPixels(h, footprintPoints(AT.col, AT.row, SIZE)),
@@ -143,7 +163,26 @@ afterEach(async () => {
 it("draws a refused footprint apart from one it would accept", async () => {
   await startRun(h);
   await h.debug.setArmed(TYPE);
+  // THE PREVIEW IS PUT ON ITS TILE BOTH WAYS: POSED, AND BY THE POINTER.
+  // This reading is of the FINISHED PICTURE and so needs frames to run with the
+  // preview held — and a frame hands the build a frame of input, which nothing
+  // in `specs/instrumentation.md` makes a pose survive: a build that reads
+  // `specs/building.md`'s "The preview follows the pointer" as the invariant it
+  // is written as re-derives the held footprint from the pointer on every frame,
+  // and a posed preview plus a frame would put the preview back under a pointer
+  // that never moved. So both routes are taken, and both name the same tile:
+  // `setPreview` puts the footprint's top-left there "exactly where the call
+  // names it", and the pointer is moved to the footprint's centre so a build
+  // re-deriving from `specs/controls.md`'s "the `size x size` block nearest the
+  // pointer" derives the same block. A build that keeps its pose keeps it; a
+  // build that re-derives derives this tile; and the read-back below fires only
+  // when NEITHER route put the footprint where this reading is taken. Whether
+  // the pointer alone moves the preview is `controls/pointer-moves-the-preview`,
+  // which is the point that owns it — it is not charged here as well.
+  const centre = footprintCentre(AT.col, AT.row, SIZE);
   await h.debug.setPreview(AT.col, AT.row);
+  await h.debug.pointerMove(centre.x, centre.y);
+  await h.advance(1);
 
   const accepted = await previewAt(h, RICH, "valid");
   await h.advance(1);

@@ -98,7 +98,18 @@ it("puts the held footprint's centre on the tile the pointer moved to", async ()
   await h.debug.setMoney(BUDGET);
   await h.debug.setArmed(TYPE);
   await h.debug.setPreview(START.col, START.row);
-  await h.advance(1);
+  // THE POSED START IS BROUGHT UP THROUGH THE SURFACE, NOT THROUGH A FRAME. A
+  // frame hands the build a frame of input, and nothing in
+  // `specs/instrumentation.md` makes a pose survive one — a build that reads
+  // `specs/building.md`'s "The preview follows the pointer" as the invariant it
+  // is written as re-derives the held footprint from the pointer every frame,
+  // and a frame here would put the START back under a pointer that never moved.
+  // `reconcile()` is the surface's own refresher, which "brings every value the
+  // snapshot reports into agreement with the game as it now stands, without
+  // advancing anything" (`specs/instrumentation.md`), so the posed start is read
+  // with no frame between the pose and the reading. The MOVE below is the frame
+  // this point is about.
+  await h.debug.reconcile();
   const before = await h.snapshot();
   assertEqual(before.build?.col ?? null, START.col, "the posed preview column");
   assertEqual(before.build?.row ?? null, START.row, "the posed preview row");

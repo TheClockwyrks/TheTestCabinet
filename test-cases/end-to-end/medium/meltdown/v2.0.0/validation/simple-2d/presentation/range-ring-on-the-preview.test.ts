@@ -52,7 +52,11 @@
 // `valid-and-invalid-previews-read-apart`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
+import {
+  assertEqual,
+  assertGreaterThanOrEqual,
+  assertLessThanOrEqual,
+} from "../assert";
 import { TILE, TOWER_DEFS, emitterStats } from "../constants";
 import { footprintCentreOf, type Point } from "../geometry";
 import {
@@ -150,7 +154,7 @@ function shiftPerBearing(
  */
 async function ringReading(
   h: Harness,
-  show: () => void,
+  show: () => Promise<void>,
 ): Promise<{
   ring: number[];
   quiet: number[];
@@ -162,7 +166,7 @@ async function ringReading(
   await h.advance(1);
   const second = readPoints(h, POINTS);
 
-  show();
+  await show();
   await h.advance(1);
   captureStill(h, "ring");
   const shown = readPoints(h, POINTS);
@@ -188,10 +192,44 @@ afterEach(() => {
 
 it("draws a ring at the held type's range around a held preview", async () => {
   startRun(h);
-  const reading = await ringReading(h, () => {
+  // THE PREVIEW IS PUT ON ITS TILE BOTH WAYS: POSED, AND BY THE POINTER.
+  // This reading is of the FINISHED PICTURE and so needs frames to run with the
+  // preview held — and a frame hands the build a frame of input, which nothing
+  // in `specs/instrumentation.md` makes a pose survive: a build that reads
+  // `specs/building.md`'s "The preview follows the pointer" as the invariant it
+  // is written as re-derives the held footprint from the pointer on every frame,
+  // and a posed preview plus a frame would put the preview back under a pointer
+  // that never moved. So both routes are taken, and both name the same tile:
+  // `setPreview` puts the footprint's top-left there "exactly where the call
+  // names it", and the pointer is moved to the footprint's centre so a build
+  // re-deriving from `specs/controls.md`'s "the `size x size` block nearest the
+  // pointer" derives the same block. A build that keeps its pose keeps it; a
+  // build that re-derives derives this tile; and the read-back below fires only
+  // when NEITHER route put the footprint where this reading is taken. Whether
+  // the pointer alone moves the preview is `controls/pointer-moves-the-preview`,
+  // which is the point that owns it — it is not charged here as well.
+  const reading = await ringReading(h, async () => {
     h.debug.setArmed(TYPE);
     h.debug.setPreview(COL, ROW);
+    h.point("move", CENTRE.x, CENTRE.y);
+    await h.advance(1);
   });
+
+  // The posing is read back before the picture is: a ring read around a
+  // footprint that neither the pose nor the pointer put there decides nothing.
+  const held = h.snapshot().build;
+  assertEqual(
+    held?.col,
+    COL,
+    `posing: the column the pose and the pointer both named for the held ${TYPE} on ` +
+      `(specs/building.md, specs/controls.md)`,
+  );
+  assertEqual(
+    held?.row,
+    ROW,
+    `posing: the row the pose and the pointer both named for the held ${TYPE} on ` +
+      `(specs/building.md, specs/controls.md)`,
+  );
 
   for (let n = 0; n < BEARINGS; n += 1) {
     assertGreaterThanOrEqual(

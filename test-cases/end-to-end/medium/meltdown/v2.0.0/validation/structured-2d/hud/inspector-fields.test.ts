@@ -56,9 +56,9 @@ import {
 import { heatMultiplierOf, statsAt } from "./figures";
 import {
   emitterDef,
+  numbersIn,
   readPanel,
   reads,
-  runsReading,
   saysFace,
   saysTargeting,
   saysWord,
@@ -183,16 +183,18 @@ it("draws the selected Lance's type, level, stats, live heat and tallies", async
     reads(runs, HEAT, ROUNDED),
     `the inspector to draw a live heat read of ${HEAT}`,
   );
-  // Counted over the parts — the per-call spans — rather than the runs: two
-  // tallies drawn as two calls a word space apart on one baseline coalesce into
-  // the one run `KILLS 0 DEALT 0`, which reads 0 once where the panel drew it
-  // twice. A run drawn in one call is its own only part, so nothing is lost.
+  // COUNTED AS ZEROES, NOT AS DRAWS. A tally drawn as its own call and a tally
+  // packed onto a line with the heat read — `HEAT 66 / 0 KILLS / 0 DMG` — have
+  // each drawn the tally; only the second is one draw where the first is two,
+  // and the layout is the build's (specs/overview.md: "the palette, the type,
+  // the glow, and every other aspect of the look are yours"). So what is counted
+  // is the ZEROES the panel reads, over the per-call spans so that a coalesced
+  // run is never counted twice, which is what "a count of zeroes" above says.
   assertGreaterThanOrEqual(
-    runsReading(
-      runs.flatMap((run) => run.parts),
-      0,
-      ZERO,
-    ).length,
+    runs
+      .flatMap((run) => run.parts)
+      .flatMap((span) => numbersIn(span))
+      .filter((figure) => Math.abs(figure) <= ZERO).length,
     TALLIES,
     "the draws reading 0, which are the kill tally and the total damage dealt " +
       "of a tower that has fired nothing (specs/hud.md)",

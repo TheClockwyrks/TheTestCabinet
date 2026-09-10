@@ -55,12 +55,13 @@
 // tower on a hover fails here.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertNull, assertTrue } from "../assert";
+import { assertEqual, assertNull, assertTrue, fail } from "../assert";
 import {
   MIN_HEAT_MULT,
   TOWER_DEFS,
   emitterStats,
   isEmitter,
+  type TowerType,
 } from "../constants";
 import { FREE_SITE } from "../fixtures";
 import {
@@ -102,6 +103,36 @@ const LEVEL_III = isEmitter(DEF) ? emitterStats(DEF, LIVE_LEVEL) : null;
  */
 const ROUNDED = 0.05;
 
+/**
+ * Hover a shop entry: pose it AND move the pointer onto the rectangle the build
+ * reported for it.
+ *
+ * POSED AND POINTED AT BOTH, because this point reads what the panel DRAWS and
+ * drawing needs a frame. `setHoverShop` alone does not survive one: nothing in
+ * `specs/instrumentation.md` says a pose does, and `specs/controls.md` writes
+ * the hover as a fact about where the pointer is, so a build that re-derives it
+ * from the pointer on every frame is reading that sentence rather than breaking
+ * it — and it would be left hovering nothing. So the entry is posed AND the
+ * pointer is moved onto it: a build that keeps the pose keeps it, and a build
+ * that re-derives the hover derives the same entry. The rectangle is the
+ * build's own (`specs/instrumentation.md`), so nothing here fixes where the shop
+ * sits.
+ */
+async function hoverEntry(h: Harness, type: TowerType): Promise<void> {
+  await h.debug.setHoverShop(type);
+  const entry = (await h.snapshot()).controls.shop.find(
+    (each) => each.type === type,
+  );
+  if (entry === undefined) {
+    fail(
+      `the panel to report a shop entry for the ${type} (specs/hud.md)`,
+      null,
+    );
+  }
+  await h.debug.pointerMove(entry.x + entry.w / 2, entry.y + entry.h / 2);
+  await h.advance(1);
+}
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -127,7 +158,7 @@ it("shows the Bloom's level-I figures on a hover, not the level-III tower's", as
     LIVE_HEAT,
   );
   await h.debug.setTowerLevel(live, LIVE_LEVEL);
-  await h.debug.setHoverShop(TYPE);
+  await hoverEntry(h, TYPE);
 
   const runs = await readPanel(h);
   await captureStill(h, "hover");
@@ -195,7 +226,7 @@ it("shows the Bloom's level-I figures on a hover, not the level-III tower's", as
   );
 
   // And THAT type's information: the second entry replaces the first's figures.
-  await h.debug.setHoverShop(OTHER);
+  await hoverEntry(h, OTHER);
   const second = await readPanel(h);
 
   assertTrue(

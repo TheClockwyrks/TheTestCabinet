@@ -10,11 +10,14 @@
 // palette, the type, the glow, and every other aspect of the look are yours."
 //
 // HOW A UNIT IS READ. A unit reports its CENTRE (specs/instrumentation.md), and
-// the centre is the one part of a unit every build draws whatever shape it chose,
-// so the reading is taken there: the centre pixel and four neighbours two units
-// out, which is `spotColor` in presentation/read.ts and is deliberately tighter
-// than the harness's tile-scale `sampleColor` — a Swarm is smaller than a tile,
-// and a cluster three units either side would blur the floor into it.
+// the reading is taken over the TILE that centre stands on — the centre pixel
+// and eight rays out to half a tile, which is `unitPoints` below, reduced by the
+// widest step any one of them took. Not the centre alone: nothing fixes the
+// shape a unit is drawn as, and a build that draws a big unit as a ring leaves
+// the floor showing through the middle of it, so a centre-only reading would
+// grade the shape rather than the presence. Half a tile is short of the
+// neighbouring tiles and of anything drawn above the unit, so what answers is
+// the unit on its own tile.
 //
 // WHY THE READING IS A REMOVAL. specs/instrumentation.md gives `clearSurge`, so
 // the centre is read with the unit standing on it and again with the surge taken
@@ -35,7 +38,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThanOrEqual } from "../assert";
-import { SURGE_TYPES } from "../constants";
+import { SURGE_TYPES, TILE } from "../constants";
 import {
   captureStill,
   colorDistance,
@@ -43,8 +46,9 @@ import {
   poseTarget,
   startRun,
   type Harness,
+  type Rgb,
 } from "../harness";
-import { NOISE_MARGIN, spotColor, unitOf } from "./read";
+import { NOISE_MARGIN, readPoints, unitOf, type Point } from "./read";
 
 /** The row the six stand on, the first column, and the pitch between them. */
 const SURGE_ROW = 8;
@@ -53,6 +57,49 @@ const SURGE_PITCH = 5;
 
 /** The hp each unit is posed with, so its health bar is drawn full. */
 const TARGET_HP = 10_000;
+
+/**
+ * How far from a unit's centre its own pixels are looked for: half a tile, which
+ * is the tile it stands on.
+ *
+ * WHY NOT THE CENTRE ALONE. `specs/surge.md` fixes a unit's position as its
+ * centre and fixes nothing about the size or the SHAPE it is drawn at —
+ * specs/overview.md hands the build "the palette, the type, the glow, and every
+ * other aspect of the look". A build that draws its Hulk as a ring leaves the
+ * floor showing through the middle of it, so a reading taken on the centre alone
+ * reads the floor and grades the shape rather than the presence. Half a tile
+ * either way is the tile the unit stands on, which is what this point is about,
+ * and it stops short of the neighbouring tiles and of anything drawn above the
+ * unit, such as a health bar.
+ */
+const UNIT_REACH = TILE / 2;
+
+/** The points one unit is read at: its centre and eight rays out to that reach. */
+function unitPoints(at: { x: number; y: number }): Point[] {
+  const points: Point[] = [{ x: at.x, y: at.y }];
+  for (let d = 1; d <= UNIT_REACH; d += 1) {
+    points.push(
+      { x: at.x + d, y: at.y },
+      { x: at.x - d, y: at.y },
+      { x: at.x, y: at.y + d },
+      { x: at.x, y: at.y - d },
+      { x: at.x + d, y: at.y + d },
+      { x: at.x - d, y: at.y - d },
+      { x: at.x + d, y: at.y - d },
+      { x: at.x - d, y: at.y + d },
+    );
+  }
+  return points;
+}
+
+/** The biggest step between two readings of the same points. */
+function widest(before: readonly Rgb[], after: readonly Rgb[]): number {
+  let best = 0;
+  for (let i = 0; i < before.length; i += 1) {
+    best = Math.max(best, colorDistance(before[i], after[i]));
+  }
+  return best;
+}
 
 let h: Harness;
 
@@ -77,23 +124,27 @@ it("draws every surge type on the tile it stands on", async () => {
     return { x: unit.x, y: unit.y };
   });
 
-  const first = centres.map((at) => spotColor(h, at.x, at.y));
+  const patches = centres.map((at) => unitPoints(at));
+  const read = (): Rgb[][] => patches.map((points) => readPoints(h, points));
+
+  const first = read();
   await h.advance(1);
-  const second = centres.map((at) => spotColor(h, at.x, at.y));
+  const second = read();
   captureStill(h, "surge");
 
   h.debug.clearSurge();
   await h.advance(1);
-  const cleared = centres.map((at) => spotColor(h, at.x, at.y));
+  const cleared = read();
 
   SURGE_TYPES.forEach((type, index) => {
-    const noise = colorDistance(first[index], second[index]);
+    const noise = widest(first[index], second[index]);
     assertGreaterThanOrEqual(
-      colorDistance(second[index], cleared[index]),
+      widest(second[index], cleared[index]),
       noise + NOISE_MARGIN,
       `a ${type} on tile (${SURGE_COL0 + index * SURGE_PITCH}, ` +
-        `${SURGE_ROW}): the patch on its centre changes when the surge is ` +
-        `taken away, by more than the ${noise} two frames with it standing ` +
+        `${SURGE_ROW}): the patch on the tile it stands on changes when the ` +
+        `surge is taken away, by more than the ${noise} two frames with it ` +
+        `standing ` +
         `moved on their own (specs/overview.md: the surge reads apart from ` +
         `the floor)`,
     );

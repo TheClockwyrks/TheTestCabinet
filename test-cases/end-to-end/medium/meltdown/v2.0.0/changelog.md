@@ -226,6 +226,22 @@ Its slow is an addition to that damage rather than a replacement for it, and the
 inspector showing a slow read where an emitter shows a damage read is a display
 rule and nothing more.
 
+## Legibility is a number, and the specification states it
+
+The `presentation` items were always decided against an RGB distance rather than
+a hex value, but the figure lived in the checks and nowhere a build could read it.
+`specs/overview.md` now states it beside its legibility table: two colors read
+apart, and a thing is visible against what is behind it, when they differ by at
+least `8` out of the `441` an RGB distance spans. `specs/screens.md` holds the
+floor behind the pause menu to the same step, so a scrim heavy enough to paint the
+floor out is refused by a number the build was told.
+
+The paragraphs were added while auditing this case's validators, after the runs
+those validators were audited against were produced; those builds were seeded with
+the spec text that lacked them. No check's threshold moved with the paragraphs —
+they put into words the bars the checks already used, and the pause menu's
+`simple-2d` check stays deliberately slacker than the figure.
+
 ## The look is the build's
 
 `v1.0.0` fixed a 27-entry palette, a monospace typeface, hex values restated

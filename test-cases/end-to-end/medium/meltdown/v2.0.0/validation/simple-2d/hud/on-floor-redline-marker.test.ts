@@ -22,9 +22,23 @@
 // or from `0` to the redline, with the marker at the far end. Both are conformant,
 // so the marker is due at one of those two points along the read's own track,
 // whose full extent is the frame at `TRIP_HEAT`. What is looked for there is a
-// rectangle every one of the four frames drew identically — the marker cannot move
+// mark every one of the four frames drew identically — the marker cannot move
 // with the heat, or it would be a second read rather than a mark — whose centre
-// falls within {@link MARKER_TOLERANCE} of one of them.
+// falls within {@link MARKER_TOLERANCE} of one of them. A rectangle and a
+// straight stroked segment both count, because specs/hud.md fixes no primitive
+// for a mark and a tick drawn either way leaves the same picture.
+//
+// AND A MARK ON THE READ, NOT ONE BESIDE IT. A footprint carries a great deal
+// besides its heat read — a body, radiator faces, their ticks, level pips — and
+// any of those could land near the redline's position along the track by
+// accident. So a candidate has to be ON the read in both directions: it must
+// cross the read's own band, which is to say cover the centre line the read is
+// drawn about, and it must overlap the track along the track's length. It must
+// also be no more than {@link MARKER_THICKNESS} times the read's own thickness
+// deep, which is what tells a tick sitting on the heat bar from a radiator face
+// or an outline running the whole side of the footprint. `structured-2d`'s copy
+// of this point holds a marker to readings of the same two kinds, and to the same
+// three times.
 //
 // A LANCE, BECAUSE ITS REDLINE IS THE ONE THAT PROVES A MARKER RATHER THAN A
 // DECORATION. specs/towers.md gives it 92, so on a `0`-to-`TRIP_HEAT` read the mark
@@ -52,6 +66,7 @@ import {
   createHarness,
   drawFrame,
   drawnRects,
+  drawnSegments,
   posePinnedTower,
   startRun,
   type DrawnRect,
@@ -101,6 +116,18 @@ const STEP_MIN = 1;
  */
 const MARKER_TOLERANCE = 4;
 
+/**
+ * How much deeper than the read a mark may be and still be sitting ON it: three
+ * times.
+ *
+ * A marker drawn to overhang the bar it marks is ordinary — this Lance's own is
+ * twice the read's depth — and three times carries a generous overhang while
+ * still refusing anything as deep as the footprint, whose side is twenty-five
+ * times the read's depth. It is the figure `structured-2d`'s copy of this point
+ * holds a marker to.
+ */
+const MARKER_THICKNESS = 3;
+
 /** How far outside the footprint a rectangle may reach and still be part of the
  * read: the read is drawn ON the footprint (specs/hud.md), and a unit of slack
  * covers a border stroked on its edge. */
@@ -136,11 +163,19 @@ it("marks the Lance's redline along its heat read", async () => {
     rect.bottom <= top + span + FOOTPRINT_SLACK;
 
   const frames: DrawnRect[][] = [];
+  // The straight segments of the same frames, read beside the rectangles: a
+  // marker is a MARK, and specs/hud.md fixes no primitive for one, so a tick
+  // stroked `moveTo`/`lineTo` counts exactly as a thin rectangle does. They are
+  // kept apart from the rectangles because `findBar` below is looking for the
+  // READ — a filled block whose extent grows with the heat — and a segment is
+  // not one.
+  const segmentFrames: DrawnRect[][] = [];
   for (const heat of HEATS) {
     h.debug.setTowerHeat(id, heat);
     const calls = await drawFrame(h);
     if (heat === HEATS[2]) captureStill(h, "redline");
     frames.push(drawnRects(h, calls).filter(onFootprint));
+    segmentFrames.push(drawnSegments(h, calls).filter(onFootprint));
   }
 
   const bar = findBar(
@@ -161,7 +196,32 @@ it("marks the Lance's redline along its heat read", async () => {
   ];
   const offBy = (rect: DrawnRect): number =>
     Math.min(...marks.map((mark) => Math.abs(bar.axis.centre(rect) - mark)));
-  const fixed = drawnInEveryFrame(frames);
+  // A mark ON the read, which is what "a marker at the tower's redline" is. Three
+  // readings, all of them about the read's own track rather than about the
+  // footprint: the mark crosses the band the read is drawn in, it is no deeper
+  // than a mark on that band can be, and it sits somewhere along the track's own
+  // length. A radiator tick, a face strip, a level pip or the body fails at least
+  // one of them wherever on the footprint it is drawn.
+  const [bandNear, bandFar] = bar.axis.acrossRange(track);
+  const bandCentre = (bandNear + bandFar) / 2;
+  const bandDepth = bandFar - bandNear;
+  const trackNear = bar.axis.centre(track) - bar.axis.extent(track) / 2;
+  const trackFar = bar.axis.centre(track) + bar.axis.extent(track) / 2;
+  const onTheRead = (rect: DrawnRect): boolean => {
+    const [near, far] = bar.axis.acrossRange(rect);
+    const half = bar.axis.extent(rect) / 2;
+    return (
+      near <= bandCentre &&
+      far >= bandCentre &&
+      far - near <= MARKER_THICKNESS * bandDepth &&
+      bar.axis.centre(rect) + half >= trackNear &&
+      bar.axis.centre(rect) - half <= trackFar
+    );
+  };
+  const fixed = [
+    ...drawnInEveryFrame(frames),
+    ...drawnInEveryFrame(segmentFrames),
+  ].filter(onTheRead);
   const nearest = fixed.reduce<DrawnRect | null>(
     (best, rect) => (best === null || offBy(rect) < offBy(best) ? rect : best),
     null,

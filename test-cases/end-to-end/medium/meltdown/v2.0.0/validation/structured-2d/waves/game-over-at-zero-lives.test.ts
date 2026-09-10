@@ -76,20 +76,40 @@ it("opens the game-over screen on the frame the last life is lost, mid-wave", as
   h.debug.setLives(LIVES);
   poseLeaker(h);
 
+  // THE MID-WAVE PRECONDITION IS READ BEFORE THE DRIVE, NOT AFTER IT. What the
+  // pose is for is that the wave cannot CLEAR — it clears only "with none of it
+  // left to release" (specs/waves.md) — so what has to hold is that the run was
+  // mid-wave with units still pending when the fatal leak was walked into. Read
+  // after the drive it would be a different claim: `phase` is "the sub-phase of
+  // the `playing` screen" (specs/instrumentation.md), and once the run has ended
+  // there is no `playing` screen for it to be a sub-phase of. No spec says what
+  // it holds then, and a build that puts its state back to the title-screen
+  // default of `opening` as it opens the game-over screen has broken no rule.
+  const posed = h.snapshot();
+
   const leaked = await runUntilGone(h);
   const ended = h.snapshot();
   captureStill(h, "gameover");
 
+  assertEqual(
+    posed.phase,
+    "wave",
+    "precondition: the run was mid-wave when the leaker was let go",
+  );
+  assertEqual(
+    posed.wavePending,
+    PENDING,
+    "precondition: the wave still had units to release, so the leak could " +
+      "not clear it (specs/waves.md, Clearing a wave)",
+  );
   assertTrue(leaked, "precondition: the unit reached its exhaust");
   assertEqual(
     ended.lives,
     EXPECTED_LIVES,
     "the lives left after the leak that took the last one",
   );
-  assertEqual(
-    ended.phase,
-    "wave",
-    "precondition: the run was still mid-wave when the last life went",
-  );
+  // The one reading that decides the rule, and the one that tells the two wrong
+  // builds apart: a build that only ends its runs from the wave-clear path is
+  // still on `playing` here, and so is one that clamped its lives at 1.
   assertEqual(ended.screen, "gameover", "the screen the last life left behind");
 });

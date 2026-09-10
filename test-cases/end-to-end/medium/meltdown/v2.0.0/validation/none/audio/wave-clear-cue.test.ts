@@ -54,7 +54,12 @@ import {
   type Harness,
 } from "../harness";
 import { milestoneWaves, modeFigures } from "../constants";
-import { framesOutside, releaseAndLeak, soundsOn } from "./cues";
+import {
+  framesOutside,
+  reachFirstInput,
+  releaseAndLeak,
+  soundsOn,
+} from "./cues";
 
 /** The run both boards are posed on: the default row `startRun` uses. */
 const MODE = "containment" as const;
@@ -89,6 +94,9 @@ afterEach(async () => {
 });
 
 it("sounds more on the clearing leak than on a leak that left the wave standing", async () => {
+  // The build is silent until a player has touched it (specs/audio.md), so
+  // the first input is delivered before anything is posed.
+  await reachFirstInput(h);
   await startRun(h, MODE, DIFFICULTY);
   await h.armAudio();
   const played = watchCues(h);
