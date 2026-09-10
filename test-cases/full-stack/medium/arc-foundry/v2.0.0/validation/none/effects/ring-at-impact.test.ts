@@ -7,25 +7,36 @@
 // ring centered on an Arc-Node's impact point". `specs/components.md` fixes that
 // radius: `ARCNODE_SPLASH` is `42` at Scrap.
 //
-// WHAT IS READ, AND AT WHAT RADIUS. A circle of points about the impact point, at
-// four fifths of the Scrap splash radius. The requirement is that the ring covers
-// the splash, and the reading is taken a little inside it rather than exactly on
-// it, because a ring's particles have width of their own and an expansion that
-// eases toward its radius is still a ring covering it. Reading at the radius
-// exactly would fail a build for where its outermost spark happened to stop.
+// WHAT IS READ, AND AT WHAT RADIUS. The BAND from four fifths of the Scrap splash
+// radius out to the radius itself, sampled on a lattice. The requirement is that
+// the ring covers the splash, and the band's inner edge sits a little inside the
+// radius rather than on it, because a ring's particles have width of their own
+// and an expansion that eases toward its radius is still a ring covering it:
+// reading at the radius exactly would fail a build for where its outermost spark
+// happened to stop.
 //
-// THE CIRCLE HOLDS NOTHING ELSE. The structure stands eighty units from the impact
-// point, so its `2` by `2` footprint is nowhere near the circle; the unit is held
-// at the centre and its `20 x 20` frame is well inside it; and
-// `specs/components.md` removes the projectile at the moment it applies its damage,
-// so the shot is gone from the frame the reading starts on. The comparison is
-// against the same circle before the shot, which is the second half of the
-// requirement.
+// A BAND AND NOT A CIRCLE OF POINTS. `./region.ts` states the doctrine — "a
+// system spawns its particles at random within its emitters' shapes, so one pixel
+// is a coin toss and a lattice over the whole place the specification names is
+// not" — and a ring of two dozen sample points is that coin toss: it finds a
+// sparse ring only where a spark happens to land on one of them. The band is the
+// whole of the ground the specification names, so what decides the point is
+// whether anything was drawn out there rather than whether it was drawn at one of
+// twenty-four angles. Nothing else can be in it: the structure stands eighty
+// units from the impact point, its `2` by `2` footprint nowhere near the band; the
+// unit is held at the centre and its `20 x 20` frame is well inside the band's
+// inner edge; and `specs/components.md` removes the projectile at the moment it
+// applies its damage, so the shot is gone from the frame the reading starts on.
 //
-// THE WINDOW IS A THIRD OF A SECOND, because a ring expands: nothing fixes how
-// fast, so the reading runs from the frame of the impact until well past any pace a
-// ring covering the splash could plausibly take, and asks that the circle be drawn
-// on at some point in it.
+// THE COMPARISON IS AGAINST THE SAME BAND BEFORE THE SHOT, which is the second
+// half of the requirement.
+//
+// THE WINDOW IS A SECOND, because a ring expands and NOTHING FIXES HOW FAST. The
+// reading runs from the frame of the impact until well past any pace a ring
+// covering the splash could plausibly take, and asks that the band be drawn on at
+// some point in it. A third of a second is not that: a ring easing out to its
+// radius over half a second is a ring covering the splash, and the specification
+// gives a build every right to play one.
 //
 // A MOTE SURVIVES THE HIT. A Scrap Arc-Node deals `5` against the ten health
 // `specs/enemies.md` scales a Mote to on wave one at Medium, so no death burst can
@@ -44,7 +55,7 @@ import {
   unitById,
   type Harness,
 } from "../harness";
-import { circle, read, scan } from "./region";
+import { annulus, read, scan } from "./region";
 
 /** Clear ground, well away from the map's waypoint platforms and its chain. */
 const ANCHOR = { col: 21, row: 17 };
@@ -53,8 +64,11 @@ const HEAD = structureCenter(ANCHOR.col, ANCHOR.row);
 /** Eighty units away, inside the Scrap Arc-Node's stated range of `96`. */
 const AT = { x: HEAD.x + 80, y: HEAD.y };
 
-/** Four fifths of the Scrap splash radius of `42`. */
-const POINTS = circle(AT, 0.8 * ARCNODE_SPLASH[0]!, 24);
+/** The band from four fifths of the Scrap splash radius of `42` out to it. */
+const POINTS = annulus(AT, 0.8 * ARCNODE_SPLASH[0]!, ARCNODE_SPLASH[0]!, 3);
+
+/** How long the band is watched for after the shot lands, in seconds. */
+const WATCH_SECONDS = 1;
 
 let h: Harness;
 
@@ -79,7 +93,10 @@ it("draws out at the splash radius when an Arc-Node's shot lands", async () => {
       (s) => s.units.some((u) => u.id === unit && u.hp < full),
       { maxFrames: ticks(4) },
     );
-    return { hit: hit.hit, readings: await scan(h, POINTS, ticks(0.3)) };
+    return {
+      hit: hit.hit,
+      readings: await scan(h, POINTS, ticks(WATCH_SECONDS)),
+    };
   });
 
   assertEqual(
@@ -91,8 +108,9 @@ it("draws out at the splash radius when an Arc-Node's shot lands", async () => {
   assertGreaterThan(
     landed.readings.filter((reading) => reading !== before).length,
     0,
-    "the circle at four fifths of the Arc-Node's splash radius to be drawn on " +
-      "after its shot lands, having been bare before it, so a discharge ring " +
-      "covering the splash is played there (specs/assets.md)",
+    "the band from four fifths of the Arc-Node's splash radius out to the " +
+      "radius itself to be drawn on after its shot lands, having been bare " +
+      "before it, so a discharge ring covering the splash is played there " +
+      "(specs/assets.md)",
   );
 });

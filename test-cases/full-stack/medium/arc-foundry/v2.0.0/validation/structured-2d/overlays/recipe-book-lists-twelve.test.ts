@@ -1,17 +1,18 @@
 // overlays/recipe-book-lists-twelve — all twelve towers, with their stats.
 //
 // `specs/hud.md`: "the recipe book is a read-only overlay listing all twelve
-// combination towers, each with its exact recipe and its headline stats".
-// `specs/combinations.md` holds the twelve in `COMBOS`, each with its name, its
-// recipe, and the reference block a level-`3` tower scales toward.
+// combination towers, each with its exact recipe and its headline stats — its
+// damage, its range, and its fire rate". `specs/combinations.md` holds the twelve
+// in `COMBOS`, each with its name, its recipe, and the reference block a level-`3`
+// tower scales toward.
 //
 // WHAT IS DECIDED, AND WHAT IS NOT. Every tower's name has to be on the overlay,
 // with its range, its fire rate, and its damage, and every type its recipe calls
 // for has to be named there too. The damage is accepted at either of the two
 // figures the specification makes headline: the reference block, and the figure a
 // tower actually lands at, which is `COMBO_DAMAGE_MULT[0]` of it — `specs/hud.md`
-// says "headline stats" without choosing between them, and a build that shows a
-// player what a tower lands as has not misread it.
+// names the damage without choosing between them, and a build that shows a player
+// what a tower lands as has not misread it.
 //
 // A recipe's TIERS are not decided here. `specs/combinations.md` writes an
 // ingredient `type@tier` but fixes no notation a build must draw, and a book

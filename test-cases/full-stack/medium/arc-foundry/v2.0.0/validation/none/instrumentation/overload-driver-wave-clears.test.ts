@@ -4,10 +4,12 @@
 // `specs/instrumentation.md` gives `spawnUnit` one hold and one release: the run
 // enters "a live wave whose spawn schedule is empty. That wave clears the ordinary
 // way, when every one of those units has died or leaked, and clearing it pays the
-// ordinary wave-clear bonus and opens the next build phase." The paragraph that
-// names the Overload Dynamo names it only to say what the phase reads while it is
-// out: `"overload"` "puts the run into the finale, so `phase` reads `finale` while
-// it is on the yard". Nothing exempts it from the clear.
+// ordinary wave-clear bonus and opens the next build phase." It then says so of
+// this unit by name: "This holds whatever was released, the Overload Dynamo
+// included: what a driver-released Dynamo changes is what `phase` READS while it is
+// on the yard, and the wave underneath it is the ordinary one, so once it has gone
+// the wave clears into the next build phase on the run's own wave number and the
+// screen stays `playing`."
 //
 // WHY THIS IS ITS OWN POINT. `spawner-hold` releases an ordinary unit and reads
 // the hold and the clear. This releases the one type that changes what `phase`

@@ -6,9 +6,9 @@
 // same directory (`validation/vitest.config.ts`), so a cycle is addressed here by
 // exactly the path the specification names it at.
 //
-// WHY THE PIXELS AND NOT THE BYTES. "Four frames that are pairwise different
-// images" is a statement about what is drawn, not about how it was compressed:
-// two byte-identical encodings of the same picture are the same image, and two
+// WHY THE PIXELS AND NOT THE BYTES. "The four frames are not one image repeated"
+// is a statement about what is drawn, not about how it was compressed: two
+// byte-identical encodings of the same picture are the same image, and two
 // different encodings of the same picture are also the same image. So each frame
 // is decoded and compared as pixels. The decoder is `@napi-rs/canvas`, which the
 // workspace already carries as a development dependency for exactly this — a test
@@ -92,17 +92,29 @@ export function identical(a: Bitmap, b: Bitmap): boolean {
   return true;
 }
 
-/** Every pair of `frames` that is the same picture, named by path. */
-export function duplicatePairs(frames: readonly Bitmap[]): string[] {
-  const pairs: string[] = [];
-  for (let i = 0; i < frames.length; i += 1) {
-    for (let j = i + 1; j < frames.length; j += 1) {
-      if (identical(frames[i]!, frames[j]!)) {
-        pairs.push(`${frames[i]!.at} and ${frames[j]!.at}`);
-      }
-    }
-  }
-  return pairs;
+/**
+ * Whether a cycle's frames are ONE PICTURE REPEATED.
+ *
+ * WHAT THE SPECIFICATION ASKS OF A CYCLE, in its own words: "what the cycles must
+ * deliver is that the Load visibly crackles, a firing structure visibly charges
+ * and discharges, and the Dynamo visibly seethes". That is a floor on what a
+ * cycle DOES when it is played, and it is the only thing `specs/assets.md` fixes
+ * about the frames inside one — the surrounding sentence licenses reuse ("a body
+ * may be reused across tints") rather than forbidding it.
+ *
+ * SO PAIRWISE DIFFERENCE IS NOT THE LINE. A cycle played as a loop shows movement
+ * as soon as it holds two pictures: a ping-pong (`0`, `1`, `0`, `1`) crackles
+ * frame after frame, and a hold-strike-hold (`0`, `0`, `1`, `0`) stamps once a
+ * loop. Failing either asks for a fourfold of distinct art the specification
+ * never asks for. A cycle whose four frames are ONE picture is the case that
+ * delivers nothing however fast it is played, and that is what this answers.
+ *
+ * A cycle with no frames is not one picture; the presence points decide that.
+ */
+export function onePicture(frames: readonly Bitmap[]): boolean {
+  const first = frames[0];
+  if (first === undefined) return false;
+  return frames.every((frame) => identical(first, frame));
 }
 
 /* -------------------------------------------------------------------------- */

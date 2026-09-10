@@ -108,8 +108,9 @@ floats a tooltip describing that type.
 ## The recipe book
 
 The recipe book is a read-only overlay listing all twelve combination towers, each with
-its exact recipe and its headline stats, and a plain-language description shown at least
-on hover. It does not pause or alter the game, and toggling it again dismisses it.
+its exact recipe and its headline stats — its damage, its range, and its fire rate — and a
+plain-language description shown at least on hover. It does not pause or alter the game,
+and toggling it again dismisses it.
 
 Every ingredient of every recipe names its type, by the Type or the Identifier
 `specs/components.md` gives it, and is drawn in one of three states, told apart at a

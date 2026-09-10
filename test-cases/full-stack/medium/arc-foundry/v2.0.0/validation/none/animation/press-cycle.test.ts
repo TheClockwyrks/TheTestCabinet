@@ -1,12 +1,20 @@
 // Arc Foundry — animation/press-cycle: the press ships a four-frame stamping
-// cycle whose frames are four different pictures.
+// cycle that is more than one picture repeated.
 //
 // THE REQUIREMENT, from the animation table of `specs/assets.md`: "Press —
 // `press/0.png` .. `3.png` — the press stamping, played when a rock is placed."
-// Every cycle in that table is four frames "played as a loop", and a cycle whose
-// frames are one picture repeated shows no stamp, so this point asks both halves
-// at once: the four files exist and decode, and they are pairwise different
-// images.
+// So this point asks both halves at once: the four files exist and decode, and
+// the cycle they make is not one picture four times.
+//
+// WHAT A CYCLE HAS TO DELIVER, AND WHAT IT DOES NOT. `specs/assets.md` states the
+// floor itself: "A body may be reused across tints; what the cycles must deliver
+// is that the Load visibly crackles, a firing structure visibly charges and
+// discharges, and the Dynamo visibly seethes." The press is not one of the three,
+// so the only thing left standing over its frames is the table's own word for the
+// cycle — the press STAMPING — and a cycle that holds two pictures stamps:
+// hold, hold, strike, hold is a press that comes down once a loop. A cycle whose
+// four frames are one picture shows no stamp however fast it is played, and that
+// is the line this point draws.
 //
 // WHY BOTH HALVES ARE ONE POINT HERE. The press is a single cycle rather than a
 // family of them, so "the press has a four-frame stamping cycle" is one
@@ -18,7 +26,7 @@
 // deliberately fixes none for the press.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertDeepEqual } from "../assert";
+import { assertDeepEqual, assertEqual } from "../assert";
 import {
   createHarness,
   openYard,
@@ -28,9 +36,9 @@ import {
 import {
   cycleFrames,
   decodeAll,
-  duplicatePairs,
   evidence,
   missing,
+  onePicture,
 } from "./images";
 
 const FRAMES = cycleFrames("press");
@@ -45,7 +53,7 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("produces four different stamping frames", async () => {
+it("produces a stamping cycle that is more than one picture", async () => {
   await evidence(h, "press", async () => {
     await openYard(h);
     await standCandidate(h, "capacitor", 1, 24, 15);
@@ -58,9 +66,10 @@ it("produces four different stamping frames", async () => {
     "assets/press/0.png through 3.png on disk (specs/assets.md)",
   );
   const frames = await decodeAll(FRAMES);
-  assertDeepEqual(
-    duplicatePairs(frames),
-    [],
-    "the press's four frames to be four different pictures (specs/assets.md)",
+  assertEqual(
+    onePicture(frames),
+    false,
+    "whether the press's four frames are one picture repeated, which shows no " +
+      "stamp however fast it is played (specs/assets.md)",
   );
 });

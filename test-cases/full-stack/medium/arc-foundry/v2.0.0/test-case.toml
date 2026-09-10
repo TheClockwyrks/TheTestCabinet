@@ -4502,9 +4502,14 @@ validation = { script = "sprites/assets-load-clean.test.ts", outputs = [
 
 # --- The produced animation cycles --------------------------------------------
 # Five families of four-frame cycle, produced with `draw-sheet`. A cycle whose four
-# frames are one image repeated is not an animation, so the frames being different
-# is its own point beside the frames existing, and the last two points check that
-# the build actually plays them.
+# frames are one image repeated is not an animation, so holding more than one
+# picture is its own point beside the frames existing, and the last two points
+# check that the build actually plays them. `specs/assets.md` asks of the frames
+# inside a cycle only that playing it deliver movement — "what the cycles must
+# deliver is that the Load visibly crackles, a firing structure visibly charges
+# and discharges, and the Dynamo visibly seethes" — and licenses reuse in the
+# same breath, so a cycle that ping-pongs between two pictures is an animation
+# and a fourfold of distinct art is not asked for.
 [[review.categories]]
 id = "animation"
 title = "The produced animation cycles"
@@ -4521,12 +4526,12 @@ validation = { script = "animation/load-cycles-present.test.ts", outputs = [
 ] }
 [[review.categories.items]]
 id = "load-frames-distinct"
-title = "A Load cycle's four frames differ"
-description = "Within each Load type's cycle the four frames are pairwise different images, so the unit visibly crackles rather than holding one pose."
+title = "A Load cycle holds more than one picture"
+description = "Within each Load type's cycle the four frames are not one image repeated, so the unit visibly crackles rather than holding one pose."
 domains = ["presentation"]
 failure_cap = "scuffed"
-# Automated validation: decode each cycle's four frames and compare their
-# pixels pairwise. See validation/<engine>/animation/load-frames-
+# Automated validation: decode each cycle's four frames and ask whether all four
+# are the same picture. See validation/<engine>/animation/load-frames-
 # distinct.test.ts.
 validation = { script = "animation/load-frames-distinct.test.ts", outputs = [
   { id = "cycle", name = "One Load cycle's four frames", kind = "image" },
@@ -4544,12 +4549,12 @@ validation = { script = "animation/component-fire-cycles-present.test.ts", outpu
 ] }
 [[review.categories.items]]
 id = "component-fire-frames-distinct"
-title = "A firing cycle's four frames differ"
-description = "Within each firing cycle the four frames are pairwise different images, so a firing structure visibly charges and discharges."
+title = "A firing cycle holds more than one picture"
+description = "Within each firing cycle the four frames are not one image repeated, so a firing structure visibly charges and discharges."
 domains = ["presentation"]
 failure_cap = "scuffed"
-# Automated validation: decode each cycle's four frames and compare their
-# pixels pairwise. See validation/<engine>/animation/component-fire-frames-
+# Automated validation: decode each cycle's four frames and ask whether all four
+# are the same picture. See validation/<engine>/animation/component-fire-frames-
 # distinct.test.ts.
 validation = { script = "animation/component-fire-frames-distinct.test.ts", outputs = [
   { id = "cycle", name = "One firing cycle's four frames", kind = "image" },
@@ -4567,12 +4572,12 @@ validation = { script = "animation/combo-fire-cycles-present.test.ts", outputs =
 ] }
 [[review.categories.items]]
 id = "combo-fire-frames-distinct"
-title = "A tower's firing cycle's four frames differ"
-description = "Within each tower's firing cycle the four frames are pairwise different images."
+title = "A tower's firing cycle holds more than one picture"
+description = "Within each tower's firing cycle the four frames are not one image repeated."
 domains = ["presentation"]
 failure_cap = "passable"
-# Automated validation: decode each cycle's four frames and compare their
-# pixels pairwise. See validation/<engine>/animation/combo-fire-frames-
+# Automated validation: decode each cycle's four frames and ask whether all four
+# are the same picture. See validation/<engine>/animation/combo-fire-frames-
 # distinct.test.ts.
 validation = { script = "animation/combo-fire-frames-distinct.test.ts", outputs = [
   { id = "cycle", name = "One tower's firing cycle", kind = "image" },
@@ -4580,11 +4585,11 @@ validation = { script = "animation/combo-fire-frames-distinct.test.ts", outputs 
 [[review.categories.items]]
 id = "press-cycle"
 title = "The press has a four-frame stamping cycle"
-description = "assets/press/0.png through 3.png exist and the four frames are pairwise different images."
+description = "assets/press/0.png through 3.png exist and the four frames are not one image repeated."
 domains = ["presentation"]
 failure_cap = "passable"
-# Automated validation: read the four files and compare their pixels pairwise.
-# See validation/<engine>/animation/press-cycle.test.ts.
+# Automated validation: read the four files and ask whether all four are the
+# same picture. See validation/<engine>/animation/press-cycle.test.ts.
 validation = { script = "animation/press-cycle.test.ts", outputs = [
   { id = "press", name = "The press's produced cycle", kind = "image" },
 ] }
@@ -4671,11 +4676,11 @@ validation = { script = "effects/build-spark.test.ts", outputs = [
 [[review.categories.items]]
 id = "combine-flash"
 title = "A combine flashes at the result"
-description = "Particles are drawn at the resulting structure's footprint on the frame a combine of either kind resolves that were not drawn there on the frame before it."
+description = "Particles are drawn at the resulting structure's footprint in the moment a combine of either kind resolves that were not drawn there while the initiator stood at rest. The flash is a convergent one, so nothing fixes how long it takes to arrive on the footprint."
 domains = ["presentation"]
 failure_cap = "scuffed"
-# Automated validation: sample the initiating footprint either side of a fold.
-# See validation/<engine>/effects/combine-flash.test.ts.
+# Automated validation: sample the initiating footprint at rest and across the
+# moment after a fold. See validation/<engine>/effects/combine-flash.test.ts.
 validation = { script = "effects/combine-flash.test.ts", outputs = [
   { id = "flash", name = "The flash at a resolving combine", kind = "replay" },
 ] }
@@ -4716,12 +4721,12 @@ validation = { script = "effects/spray-on-emitter.test.ts", outputs = [
 [[review.categories.items]]
 id = "ring-at-impact"
 title = "An Arc-Node's shot lands a discharge ring"
-description = "Particles are drawn in an expanding ring centred on an Arc-Node's impact point on the frame its shot lands, covering the splash radius, and none are drawn there before it."
+description = "Particles are drawn in an expanding ring centred on an Arc-Node's impact point in the moment its shot lands, covering the splash radius, and none are drawn there before it. The ring expands, so nothing fixes how long it takes to reach the splash radius."
 domains = ["presentation"]
 failure_cap = "passable"
-# Automated validation: sample a circle at the splash radius around the impact
-# point either side of the hit. See validation/<engine>/effects/ring-at-
-# impact.test.ts.
+# Automated validation: sample the band from four fifths of the splash radius
+# out to the radius, around the impact point, before the hit and across the
+# moment after it. See validation/<engine>/effects/ring-at-impact.test.ts.
 validation = { script = "effects/ring-at-impact.test.ts", outputs = [
   { id = "ring", name = "The discharge ring at an Arc-Node's impact", kind = "replay" },
 ] }
@@ -4739,11 +4744,11 @@ validation = { script = "effects/impact-burst.test.ts", outputs = [
 [[review.categories.items]]
 id = "death-burst"
 title = "A dying unit pops"
-description = "A burst plays where a unit dies: the ground it stood on keeps moving after it is gone, over and above the ground an identical shot landed on without killing anything."
+description = "A burst plays where a unit dies: the ground it stood on keeps moving after it is gone, over and above the ground an identical shot landed on without killing anything. Each system is simulated live, so the ground a unit died on has to beat the ground where none did by more than two takes of that same shot differ from each other."
 domains = ["presentation"]
 failure_cap = "passable"
-# Automated validation: read the ground a killing shot left bare against the
-# ground the same head's non-killing shot left bare. See
+# Automated validation: read the ground a killing shot left bare against two
+# takes of the ground the same head's non-killing shot left bare. See
 # validation/<engine>/effects/death-burst.test.ts.
 validation = { script = "effects/death-burst.test.ts", outputs = [
   { id = "death", name = "The burst where a unit died", kind = "replay" },

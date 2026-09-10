@@ -30,6 +30,19 @@
 // a combinable footprint to be doing. So the initiator is read while it stands
 // alone and nothing is combinable, and the partner arrives only for the fold — by
 // the end of which the result stands alone again and is not combinable either.
+//
+// AND IT IS TAKEN ONCE THE INITIATOR HAS SETTLED. `specs/assets.md` spawns the
+// build spark "at the stamped footprint" when "a rock lands", so the footprint of
+// a structure that has JUST been stood up is a footprint with an effect playing on
+// it — which is what the item requires, and which would make the CONTROL read as
+// moving as the subject. The initiator is therefore left to settle before it is
+// read, so the resting reading is of a footprint at rest.
+//
+// THE WINDOW IS LONG ENOUGH FOR A CONVERGENT FLASH. The item is "a CONVERGENT
+// flash at the resulting structure's footprint", and a flash that converges begins
+// away from the footprint and arrives on it; nothing fixes how long it takes. A
+// tenth of a second is shorter than the convergence of a flash a reader would call
+// convergent, so it reads a conforming build as a still one.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan } from "../assert";
@@ -49,9 +62,14 @@ const ANCHOR = { col: 24, row: 18 };
 /** Its matching partner, four tiles below and clear of it. */
 const PARTNER = { col: 24, row: 22 };
 
-const POINTS = lattice(structureCenter(ANCHOR.col, ANCHOR.row), 16, 4);
+/** The `2` by `2` footprint the result lands on (`specs/scrap-press.md`). */
+const POINTS = lattice(structureCenter(ANCHOR.col, ANCHOR.row), 20, 4);
 
-const WINDOW = ticks(0.1);
+/** How much of the fold each reading covers. */
+const WINDOW = ticks(0.4);
+
+/** How long the initiator is left to settle before the resting reading. */
+const SETTLE = ticks(1.5);
 
 let h: Harness;
 
@@ -66,7 +84,7 @@ afterEach(() => {
 it("sets the result's footprint moving when a combine resolves", async () => {
   openYard(h, { wave: 1 });
   const initiator = standComponent(h, "capacitor", 1, ANCHOR.col, ANCHOR.row);
-  await h.advance(1);
+  await h.advance(SETTLE);
   const still = await motion(h, POINTS, WINDOW);
 
   const played = await captureReplay(h, "flash", async () => {

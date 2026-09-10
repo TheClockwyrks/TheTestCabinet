@@ -42,9 +42,31 @@
 // frames than the control did, which is the second system playing where the first
 // one alone played on the control. How long it plays for and how it fades are the
 // build's: `specs/assets.md` fixes no span for any of the twelve.
+//
+// AND THE CONTROL HAS TO FALL SHORT OF THE SPAN, which is why the span is two
+// seconds rather than a fraction of one. The control is a ceiling: the killed
+// ground has to move on MORE frames than it, so a control that moved on every
+// frame of its span is a control no conforming build can beat, and a span shorter
+// than the impact burst it holds saturates for exactly that reason. The span is
+// therefore long enough for a shot's own effect to finish inside it, and the
+// point says so out loud — a saturated control is reported as a span too short
+// rather than as a build that played nothing.
+//
+// THE CONTROL IS TAKEN TWICE, AND ONE FRAME MORE THAN IT IS NOT A BURST. The two
+// spans do not hold the same impact burst: `specs/assets.md` says each system "is
+// played live and simulated as it plays, so it varies from one firing to the
+// next", so the shot that kills and the shot that does not raise two DIFFERENT
+// instances of one system, and the frames they happen to change on differ a
+// little for that reason alone. A build that plays no death burst at all can
+// therefore edge a single-take control by a frame — measured, it does — so the
+// control is taken twice on the same ground from the same head, and what the kill
+// has to beat is the larger of the two takes BY MORE THAN THE TWO TAKES DIFFER
+// FROM EACH OTHER. That margin is the system's own variation, measured in the run
+// rather than assumed, and a second system playing over the first clears it by
+// far more than it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThan } from "../assert";
+import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
 import {
   captureReplay,
   createHarness,
@@ -86,11 +108,19 @@ const BURST_HZ = 60;
 /** One window, in seconds of simulation. */
 const WINDOW_SECONDS = 0.1;
 
-/** Windows read after the ground goes bare, so four tenths of a second in all. */
-const WINDOWS = 4;
+/** Windows read after the ground goes bare, so two seconds in all. */
+const WINDOWS = 20;
 
 /** Windows the empty ground is watched over before anything is played on it. */
 const BARE_WINDOWS = 2;
+
+/**
+ * How many times the control shot is taken.
+ *
+ * Two, so the spread between them measures the impact burst's own variation and
+ * the kill has to beat the larger take by more than it. See the header.
+ */
+const CONTROL_TAKES = 2;
 
 /**
  * The wave the yard is opened at, so the control Mote survives a Scrap Emitter
@@ -130,25 +160,39 @@ it("sets the ground moving where a unit died, over and above the shot that kille
 
   standComponent(h, "emitter", 1, ANCHOR.col, ANCHOR.row);
 
-  // The control: the same head, the same ground, a shot that kills nothing.
-  const tough = parkUnit(h, "mote", AT);
-  const full = unitById(h.snapshot(), tough).hp;
-  const struck = await h.until((s) => unitById(s, tough).hp < full, {
-    maxFrames: h.ticks(3),
-  });
-  assertEqual(
-    struck.hit,
-    true,
-    `a Scrap Emitter to hit a Mote eighty units away within three seconds ` +
-      "(specs/components.md)",
-  );
-  h.debug.setUnitPosition(tough, AWAY.x, AWAY.y);
-  const control = await movingFrames();
-  assertGreaterThan(
-    unitById(h.snapshot(), tough).hp,
-    0,
-    `a wave ${WAVE} Mote to survive the control shot, so the control span ` +
-      "carries no death (specs/enemies.md)",
+  // The control, taken twice: the same head, the same ground, a shot that kills
+  // nothing. Twice, because the spread between the two takes is the margin the
+  // kill has to clear — see the header.
+  const controls: number[] = [];
+  for (let take = 0; take < CONTROL_TAKES; take += 1) {
+    const tough = parkUnit(h, "mote", AT);
+    const full = unitById(h.snapshot(), tough).hp;
+    const struck = await h.until((s) => unitById(s, tough).hp < full, {
+      maxFrames: h.ticks(3),
+    });
+    assertEqual(
+      struck.hit,
+      true,
+      `a Scrap Emitter to hit a Mote eighty units away within three seconds ` +
+        "(specs/components.md)",
+    );
+    h.debug.setUnitPosition(tough, AWAY.x, AWAY.y);
+    controls.push(await movingFrames());
+    assertGreaterThan(
+      unitById(h.snapshot(), tough).hp,
+      0,
+      `a wave ${WAVE} Mote to survive the control shot, so the control span ` +
+        "carries no death (specs/enemies.md)",
+    );
+  }
+  const control = Math.max(...controls);
+  const spread = control - Math.min(...controls);
+  assertLessThan(
+    control,
+    h.ticks(WINDOW_SECONDS) * WINDOWS,
+    "the control span to end with the ground at rest, so it is a ceiling a " +
+      "burst can be read against rather than one nothing could exceed " +
+      "(specs/assets.md)",
   );
 
   // The kill: the same head, the same ground, a shot that removes the unit.
@@ -169,11 +213,13 @@ it("sets the ground moving where a unit died, over and above the shot that kille
   );
   assertGreaterThan(
     played.moving,
-    control,
+    control + spread,
     "the ground a unit DIED on to keep changing on more frames than the same " +
-      "ground did after an identical shot landed there and killed nothing, so " +
-      "a burst is played where a unit dies and not merely where a shot lands " +
-      `(specs/assets.md); the control span changed on ${control} of ` +
+      "ground did after an identical shot landed there and killed nothing — by " +
+      "more than the two control takes differed from each other, which is the " +
+      "impact burst's own variation — so a burst is played where a unit dies " +
+      "and not merely where a shot lands (specs/assets.md); the control takes " +
+      `changed on ${controls.join(" and ")} of ` +
       `${h.ticks(WINDOW_SECONDS) * WINDOWS} frames`,
   );
 });

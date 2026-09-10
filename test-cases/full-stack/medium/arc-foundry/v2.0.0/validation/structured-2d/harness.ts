@@ -2219,13 +2219,27 @@ const FIGURE = new RegExp(
 
 /** Every number a region's text draws, in reading order. */
 export function figures(calls: readonly DrawCall[], region: Region): number[] {
-  const found: number[] = [];
-  for (const line of textLines(calls, region)) {
-    for (const match of line.matchAll(FIGURE)) {
-      found.push(Number(match[0].replace(GROUPS, "")));
-    }
-  }
-  return found;
+  return figureLines(calls, region).flat();
+}
+
+/**
+ * The same numbers, kept a line at a time, top to bottom.
+ *
+ * {@link figures} answers the region's figures as one sequence, which is all a
+ * check reading a single readout needs. A check reading a ROW — a set of
+ * figures a build draws together, as against figures that merely share the
+ * region — needs to know which of them a build drew on one baseline and which
+ * it drew lines apart, and that is what this answers.
+ */
+export function figureLines(
+  calls: readonly DrawCall[],
+  region: Region,
+): number[][] {
+  return textLines(calls, region).map((line) =>
+    [...line.matchAll(FIGURE)].map((match) =>
+      Number(match[0].replace(GROUPS, "")),
+    ),
+  );
 }
 
 /**

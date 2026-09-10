@@ -14,12 +14,65 @@
 // WHICH ENTRY IS MARKED is the separate point `screens/title-marks-the-selection`
 // decides. A build that draws every word of its copy and no highlight at all should
 // fail that one and pass this one.
+//
+// THE WORDMARK AND THE TAGLINE, ACROSS LINE BREAKS. `specs/ui.md` fixes the WORDS
+// of those two elements and nothing about how they are set, so a wordmark stacked
+// over two baselines (`ARC` above `FOUNDRY`) or a tagline wrapped onto a second
+// line has drawn the copy the specification names. Their reading is therefore the
+// package's `drewTextAnywhere`, over every run of the frame joined in reading
+// order, which is the reading its own header keeps for copy a build may break
+// across lines.
+//
+// A MENU ENTRY IS READ AS AN ENTRY, NOT AS A WORD ON THE SCREEN. `drewTextAnywhere`
+// answers whether the copy is anywhere in the frame, and for `SALVAGE` that is a
+// question a title screen can answer without drawing a menu at all: a strap line
+// or a caption carrying the word satisfies it, and so does a substring reading of
+// any single baseline. `specs/ui.md` calls `TITLE_ITEMS` the screen's MENU and
+// fixes the two items and their order, so what is asked of each is that the frame
+// carry it AS ONE PIECE OF COPY — a run, or a whole baseline, that reads as the
+// entry once any marker is taken off either end, since a build is free to set a
+// marker beside the current entry. A tracked entry that comes back as one run per
+// word is caught by the baseline reading, an entry sharing its baseline with a
+// hint is caught by the run reading, and `AF / ELECTRICAL SALVAGE DIVISION` is
+// neither of those things and answers neither.
+//
+// WHAT THIS POINT DOES NOT DECIDE: which entry is marked, which is
+// `screens/title-marks-the-selection`, and nothing here reads a highlight.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { TAGLINE_TEXT, TITLE_ITEMS, TITLE_TEXT } from "../constants";
 import { assertEqual } from "../assert";
-import { drewText } from "../case-harness/text";
+import type { DrawCall } from "../case-harness/draw-calls";
+import {
+  drawnTextLines,
+  drawnTextRuns,
+  drewTextAnywhere,
+} from "../case-harness/text";
 import { captureStill, createHarness, type Harness } from "../harness";
+
+/**
+ * A menu entry's copy, compared the way the header describes.
+ *
+ * Case and whitespace fold out of both sides, as they do in the package's own
+ * copy comparisons, and anything that is not a letter or a digit comes off
+ * either END of what the frame drew — the marker `specs/ui.md` leaves a build
+ * free to set beside the current entry, a bracket, an arrow, a rule. Nothing
+ * comes out of the middle, so `HOW TO PLAY` is still `HOW TO PLAY` and
+ * `SALVAGE -> REFINE -> COMBINE` is not `SALVAGE`.
+ */
+function readsAsEntry(drawn: string, entry: string): boolean {
+  const fold = (text: string): string => text.replace(/\s+/g, "").toLowerCase();
+  const marker = /^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu;
+  return fold(drawn).replace(marker, "") === fold(entry);
+}
+
+/** Whether the frame carries `entry` as one piece of copy: a run, or a line. */
+function drewEntry(calls: readonly DrawCall[], entry: string): boolean {
+  return (
+    drawnTextRuns(calls).some((run) => readsAsEntry(run.text, entry)) ||
+    drawnTextLines(calls).some((line) => readsAsEntry(line, entry))
+  );
+}
 
 let h: Harness;
 
@@ -49,20 +102,22 @@ it("draws its title, its tagline and both menu entries", async () => {
   );
 
   assertEqual(
-    drewText(calls, TITLE_TEXT),
+    drewTextAnywhere(calls, TITLE_TEXT),
     true,
     `the title screen to draw TITLE_TEXT, ${TITLE_TEXT} (specs/ui.md)`,
   );
   assertEqual(
-    drewText(calls, TAGLINE_TEXT),
+    drewTextAnywhere(calls, TAGLINE_TEXT),
     true,
     `the title screen to draw TAGLINE_TEXT, ${TAGLINE_TEXT} (specs/ui.md)`,
   );
   for (const item of TITLE_ITEMS) {
     assertEqual(
-      drewText(calls, item),
+      drewEntry(calls, item),
       true,
-      `the title screen to draw its ${item} entry (specs/ui.md)`,
+      `the title screen to draw its ${item} entry as an entry — a run or a ` +
+        `baseline that reads as ${item} once any marker is taken off either ` +
+        `end, rather than the word somewhere in a longer line (specs/ui.md)`,
     );
   }
 });

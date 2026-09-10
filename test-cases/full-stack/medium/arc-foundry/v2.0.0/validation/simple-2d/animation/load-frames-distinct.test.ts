@@ -1,28 +1,33 @@
-// Arc Foundry — animation/load-frames-distinct: within one Load type's cycle the
-// four frames are four different pictures.
+// Arc Foundry — animation/load-frames-distinct: a Load type's idle cycle is
+// more than one picture repeated.
 //
 // THE REQUIREMENT, from `specs/assets.md`: an idle cycle "loops while its subject
 // is on the yard", and what the cycles must deliver is "that the Load visibly
-// crackles". A cycle whose four frames are the same picture cannot crackle
-// however fast it is played, so the four frames of each of the seven cycles are
-// pairwise different images.
+// crackles".
+//
+// WHAT A CYCLE HAS TO DELIVER, AND WHAT IT DOES NOT. `specs/assets.md` states the
+// floor itself: "A body may be reused across tints; what the cycles must deliver
+// is that the Load visibly crackles, a firing structure visibly charges and
+// discharges, and the Dynamo visibly seethes." That is a requirement on what the
+// cycle DOES when it is played, and it is the only thing the specification fixes
+// about the frames inside one. A cycle that holds two pictures delivers it — a
+// ping-pong loops as movement frame after frame, and a hold-strike-hold stamps
+// once a loop — and a cycle whose four frames are ONE picture delivers nothing
+// however fast it is played. So what is asked here is that the cycle not be one
+// picture repeated, and nothing about how many of the four are distinct.
 //
 // COMPARED AS PIXELS, NOT AS BYTES. Two encodings of one picture are one picture,
 // and `./images.ts` decodes each frame and compares the decoded RGBA. Frames of
-// different sizes are different pictures by definition and are not compared
-// further.
+// different sizes are different pictures by definition.
 //
-// EXACT, WITH NO TOLERANCE, AND IN ONE DIRECTION ONLY. What is asked is that the
-// pictures differ at all — a single pixel is enough. How MUCH they differ, and
-// whether the difference reads as crackle, is the aesthetic rating's, not this
-// point's. So a build that redrew one spark between frames passes and a build
-// that committed `0.png` four times fails, which is the line the review item
-// draws.
+// WHETHER THE CYCLE IS PLAYED AT ALL is a separate point:
+// `animation/load-cycle-animates` reads the pixels over a held unit, and
+// `animation/fire-cycle-plays-on-a-shot` reads the footprint of one that fires.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual } from "../assert";
 import { createHarness, type Harness, openYard, releaseUnit } from "../harness";
-import { cycleFrames, decodeAll, duplicatePairs, evidence } from "./images";
+import { cycleFrames, decodeAll, evidence, onePicture } from "./images";
 import { SPAWN_TYPES } from "../constants";
 
 let h: Harness;
@@ -35,22 +40,22 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("draws four different pictures in each Load type's cycle", async () => {
+it("holds more than one picture in each Load type's cycle", async () => {
   await evidence(h, "cycle", async () => {
     openYard(h);
     releaseUnit(h, "slug", { tile: { col: 24, row: 16 }, frozen: true });
     await h.advance(1);
   });
 
-  const repeated: string[] = [];
+  const still: string[] = [];
   for (const type of SPAWN_TYPES) {
     const frames = await decodeAll(cycleFrames(`load/${type}`));
-    repeated.push(...duplicatePairs(frames));
+    if (onePicture(frames)) still.push(`load/${type}`);
   }
   assertDeepEqual(
-    repeated,
+    still,
     [],
-    "the four frames of each Load cycle to be four different pictures, so the " +
-      "unit visibly crackles (specs/assets.md)",
+    "every Load cycle to hold more than one picture, so the unit visibly " +
+      "crackles (specs/assets.md); these cycles are one picture four times",
   );
 });

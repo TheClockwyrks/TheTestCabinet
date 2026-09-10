@@ -1,11 +1,12 @@
 // instrumentation/start-run-keeps-the-arming — an armed roll survives the run start.
 //
-// `specs/instrumentation.md` names the two ways an arming ends, and names them
+// `specs/instrumentation.md` names the ways an arming ends, and names them
 // exhaustively: `setNextRoll` "arms the NEXT rock ... The arming survives until a
-// rock consumes it or `clearNextRoll` clears it." `reset` is separately licensed
-// to end one, because its title state lists "the press unarmed" among what it
-// restores. `startRun` is not: it "gives the run the opening allocation
-// `specs/campaign.md` states and nothing more".
+// rock consumes it or `clearNextRoll` clears it, and it survives entering a run:
+// `reset` is the one other operation that ends one, because the title state it
+// restores has the press unarmed." `startRun`'s own paragraph says the same from
+// the other side — the two things it undoes are the driver's holds, and "an arming
+// `setNextRoll` made is neither, and `startRun` leaves it standing".
 //
 // WHY IT MATTERS TO EVERY OTHER POINT. Arming the press is how a check gets the
 // component it is about instead of whatever the odds rolled, and the harness

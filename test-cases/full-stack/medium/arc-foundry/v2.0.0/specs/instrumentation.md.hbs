@@ -129,7 +129,12 @@ The first is a hold on the spawner.
   wave whose spawn schedule is empty, so the units on the yard are exactly the ones a
   caller released and nothing else arrives. That wave clears the ordinary way, when
   every one of those units has died or leaked, and clearing it pays the ordinary
-  wave-clear bonus and opens the next build phase.
+  wave-clear bonus and opens the next build phase. This holds whatever was released,
+  the Overload Dynamo included: what a driver-released Dynamo changes is what `phase`
+  READS while it is on the yard, and the wave underneath it is the ordinary one, so
+  once it has gone the wave clears into the next build phase on the run's own wave
+  number and the screen stays `playing`. A driver's Dynamo leaving the yard is not the
+  finale of `specs/campaign.md` ending, and it is not a victory.
 - `startRun` and `reset` release the hold, so a run entered through either launches its
   own waves again.
 {{#if (eq engine.slug "none")}}
@@ -411,7 +416,11 @@ call was made from. `setMenuIndex` is how a caller poses any other entry.
 `startRun` gives the run the opening allocation `specs/campaign.md` states and nothing
 more, so what it arranges is what choosing a difficulty from the menu arranges. A caller
 that wants only part of that opening poses the parts it wants with the operations below
-instead.
+instead. Two things it does undo, because both are the driver's rather than the run's:
+it releases the hold on the spawner and the hold on the wave's clear, as the driver
+above states. An arming `setNextRoll` made is neither, and `startRun` leaves it standing
+— the arming ends only where `setNextRoll` below says it ends, and where `reset` returns
+the press to its title state.
 
 `setPhase` moves the run between its three phases and does nothing else. It releases no
 unit and composes no wave, so `"wave"` opens a live wave whose spawn schedule is empty
@@ -484,7 +493,9 @@ it onto the footprint of an existing blocker rerolls that blocker in place, as
 
 `setNextRoll` fixes the roll and nothing else, so the type-and-quality distribution of
 `specs/scrap-press.md` is what an unarmed press draws from. The arming survives until a
-rock consumes it or `clearNextRoll` clears it.
+rock consumes it or `clearNextRoll` clears it, and it survives entering a run: `reset` is
+the one other operation that ends one, because the title state it restores has the press
+unarmed.
 
 `setNextCrit` fixes one shot's crit roll and nothing else: the structure fires on its own
 cadence at the target its priority selects, and the shot it launches next carries

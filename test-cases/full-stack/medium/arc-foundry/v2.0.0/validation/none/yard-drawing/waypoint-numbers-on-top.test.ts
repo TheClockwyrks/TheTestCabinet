@@ -38,6 +38,23 @@ const MAP = "substation";
 /** How far a number may sit from its platform's anchor and still be its number. */
 const NEAR = 40;
 
+/**
+ * The order number a text run reads as, or `null` when it is not one.
+ *
+ * `specs/pathing.md` fixes the NUMBER each waypoint is drawn with — `1` through
+ * `6` — and fixes nothing about how it is set, so a build is free to pad it
+ * (`01`), to label it (`WP1`, `#3`) or to draw the bare digit. What is compared
+ * is therefore the FIGURE the run spells rather than its characters: `01` is
+ * waypoint one, and `10` is not. A run carrying more than one figure is not a
+ * waypoint's number and is left out, which is what keeps a readout like
+ * `3 / 6` from standing in for one.
+ */
+function orderOf(text: string): number | null {
+  const figures = text.match(/\d+/g);
+  if (figures === null || figures.length !== 1) return null;
+  return Number(figures[0]);
+}
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -76,7 +93,7 @@ it("draws every waypoint number after the yard's last blit", async () => {
     const anchor = tileCenter(waypoint.col, waypoint.row);
     const found = drawn.filter(
       (d) =>
-        d.text.trim() === order &&
+        orderOf(d.text) === i + 1 &&
         Math.hypot(d.x - anchor.x, d.y - anchor.y) <= NEAR,
     );
     if (found.length === 0) {
