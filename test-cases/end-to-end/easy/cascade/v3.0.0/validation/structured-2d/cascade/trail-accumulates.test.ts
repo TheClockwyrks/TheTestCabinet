@@ -22,6 +22,21 @@
 // a build that keeps its stamps has painted three whole swept paths by then. All
 // three are still over the table at four seconds, so neither reading is short a
 // card.
+//
+// THE FOUR SECONDS ARE STEPPED AT `RUNOUT_HZ`, AND THE DRAW LOG IS OFF. Nothing
+// here is quantised to a frame: the readings are two moments of GAME time, and
+// where the three cards meet is fixed by `x += vx * dt` at a `vx` the flight never
+// changes (specs/victory.md), so they converge on the same point however the four
+// seconds are divided. A stamp is a whole card's footprint besides, and consecutive
+// stamps overlap deeply at thirty: the fastest a card moves between two frames is
+// downward, where `GRAVITY` (`1800`) brings a card dropped from `TOP_ROW_Y` to about
+// `vy = 1420` by `FLOOR_Y` (specs/victory.md) and so some fifty units a frame against
+// `CARD_H` of a hundred and forty, while `vx` from `[180, 420]` never reaches
+// fifteen. So the swept path is the same path either way — while four seconds at
+// `CASCADE_HZ` is nine hundred and sixty renders of a table under a growing pile
+// of stamps. And the reading is PIXELS
+// from first to last, so recording every operation of those frames buys this point
+// nothing. See {@link RUNOUT_HZ}, whose argument this is.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan } from "../assert";
@@ -35,10 +50,10 @@ import {
   type Rgb,
 } from "../harness";
 import {
-  createFlightHarness,
-  flightFrames,
+  createRunoutHarness,
   openFlight,
   poseFlight,
+  runoutFrames,
   sampleGrid,
 } from "./flight";
 
@@ -57,9 +72,9 @@ const FLYERS = [
   { x: 590, y: 50, vx: 0, vy: 0, card: card("diamonds", KING) },
 ];
 
-/** The two moments the table is read at, in frames. */
-const EARLY_FRAMES = flightFrames(1);
-const LATE_FRAMES = flightFrames(4);
+/** The two moments the table is read at, in frames of the run-out clock. */
+const EARLY_FRAMES = runoutFrames(1);
+const LATE_FRAMES = runoutFrames(4);
 
 /** The grid the stage is sampled on: 960 cells, evenly spread. */
 const GRID_COLS = 40;
@@ -83,7 +98,7 @@ function paintedCells(bare: readonly Rgb[], now: readonly Rgb[]): number {
 let harness: Harness;
 
 beforeEach(async () => {
-  harness = await createFlightHarness();
+  harness = await createRunoutHarness({ recordDrawCalls: false });
 });
 
 afterEach(() => {

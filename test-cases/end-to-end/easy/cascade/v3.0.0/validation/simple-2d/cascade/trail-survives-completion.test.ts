@@ -17,11 +17,28 @@
 // none, and could not, because what a cascade covers depends on the launch
 // velocities its launches drew.
 //
-// THE CARDS IN FLIGHT ARE TAKEN OUT of the second reading. A card is drawn at its
-// position whether or not the build kept a layer at all, so a build that cleared
-// the layer every frame would otherwise read its own flyers as paint that ought to
-// have survived. By the third reading the flight is empty, so there is nothing to
-// exclude.
+// THE CARDS IN FLIGHT ARE TAKEN OUT of the second reading, AND SO IS THE GROUND
+// AROUND THEM. A card is drawn at its position whether or not the build kept a
+// layer at all, so a build that cleared the layer every frame would otherwise read
+// its own flyers as paint that ought to have survived. The exclusion is the card's
+// footprint grown by {@link CARD_HALO}, because what a build draws AROUND a card
+// is the build's too: specs/overview.md leaves the whole presentation to it, and a
+// shadow or a glow under a flying card marks the table for exactly as long as the
+// card is over it. That ink is the FLIGHT's and not the layer's, and a reading that
+// counted it would fail a build for not keeping paint it never stamped. By the
+// third reading the flight is empty, so there is nothing to exclude.
+//
+// AND THE FOUNDATIONS ARE OUT OF THE READING ALTOGETHER. The baseline is taken on
+// the cascade's first frame, with fifty-one cards still sitting on the foundations,
+// and by the second reading every one of them has launched — so each foundation's
+// own footprint reads differently from its baseline whether or not one stamp ever
+// landed there. That is the piles emptying, not the table being painted, and
+// counting it would let a build that keeps no layer at all clear the reading's
+// precondition on furniture alone. They come out grown by the same {@link
+// CARD_HALO} the flight is, and for the same reason: a card's shadow reaches past
+// its footprint, and fifty-one of them stood there on the baseline frame. The
+// other nine piles are empty at the baseline and empty at the end and change
+// nothing either way. What is left is felt, and only the layer marks felt.
 //
 // EVERY PAINTED POINT MUST SURVIVE, WITH NO SHARE AND NO FLOOR. A point the win
 // message covers is still not bare felt and still counts: specs/screens.md puts
@@ -37,11 +54,19 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
-import { CARD_H, CARD_W, DECK_SIZE, STAGE_H, STAGE_W } from "../constants";
+import {
+  CARD_H,
+  CARD_W,
+  DECK_SIZE,
+  FOUNDATION_COUNT,
+  STAGE_H,
+  STAGE_W,
+} from "../constants";
 import {
   captureStill,
   colorDistance,
   createRunoutHarness,
+  pileTopLeft,
   runoutFrames,
   sampleGrid,
   startCascade,
@@ -54,9 +79,14 @@ import {
  *
  * The frames are `RUNOUT_HZ`'s and not the suite's: what is read below is how much
  * of the table is still painted once the cascade is over, and a stamp is a whole
- * card's footprint — a flyer moving at the fastest speed the range allows still
- * covers fourteen units between two frames at thirty, against a card a hundred
- * wide, so the swath a card leaves is the same swath either way. See `RUNOUT_HZ`.
+ * card's footprint — so consecutive stamps overlap and the swath a card leaves is
+ * the same swath either way. The fastest a card ever moves between two frames is
+ * DOWNWARD and not along: `GRAVITY` (`1800`) works on a card launched at
+ * `LAUNCH_VY` from `TOP_ROW_Y` all the way to `FLOOR_Y`, which brings `vy` to about
+ * `1420` (specs/victory.md), so a frame at thirty carries it some fifty units,
+ * against `CARD_H` of a hundred and forty — while `vx`, drawn from `[180, 420]`,
+ * never reaches fifteen a frame. Two thirds of every stamp still lands on the one
+ * before it. See `RUNOUT_HZ`.
  */
 const MAX_FRAMES = runoutFrames(20);
 
@@ -69,6 +99,49 @@ const TABLE = { x: 0, y: 0, w: STAGE_W, h: STAGE_H };
 
 /** How long the finished table is left standing before it is read again. */
 const SETTLE_FRAMES = 60;
+
+/**
+ * How far outside a card's own footprint that card may still be marking the
+ * table, in logical units.
+ *
+ * A card covers `CARD_W x CARD_H` (specs/table.md) and nothing fixes what a build
+ * may draw around one: specs/overview.md leaves the whole presentation to it, and
+ * a drop shadow under a card tints the felt past every edge. That ink belongs to
+ * the card and goes when the card goes, so it is excluded wherever a card can be
+ * standing that the two readings do not agree about.
+ *
+ * IT IS SIZED FROM THE SHADOW THIS CASE'S OWN REFERENCES DRAW, and not from a
+ * round fraction of a card. Both `none` references put a `shadowBlur` of `18`
+ * under a card at a `shadowOffsetY` of `10` (`references/none/draw-one/src/
+ * cards.ts`, `references/none/draw-three/src/render.ts`), so the furthest that
+ * ink can reach past an edge is the blur plus the offset that carries it, and
+ * `28` is that sum. Measured against a build, the leak turned out far smaller
+ * still: the foundation shadows of `draw-three/simple-2d/gpt-5.6-sol` reach the
+ * sampled cells at `x = 816` and `y = 165`, four units and one unit outside the
+ * squares they sit in. The halo is kept at the references' figure rather than
+ * the measured one, and no wider — every unit of it is a cell this point stops
+ * asking about, and this point exists to ask about every cell.
+ */
+const CARD_HALO = { x: 28, y: 28 };
+
+/** The four squares the cascade empties, which are furniture and not paint. */
+const FOUNDATIONS = Array.from({ length: FOUNDATION_COUNT }, (_, index) =>
+  pileTopLeft("foundation", index),
+);
+
+/** Whether a point lies inside a card-sized footprint at `at`. */
+function inFootprint(
+  point: { x: number; y: number },
+  at: { x: number; y: number },
+  grow = { x: 0, y: 0 },
+): boolean {
+  return (
+    point.x >= at.x - grow.x &&
+    point.x < at.x + CARD_W + grow.x &&
+    point.y >= at.y - grow.y &&
+    point.y < at.y + CARD_H + grow.y
+  );
+}
 
 /** The middle of grid cell `at`, in logical units. */
 function cellCentre(at: number): { x: number; y: number } {
@@ -96,14 +169,14 @@ function paintedCells(
   const found: number[] = [];
   for (let at = 0; at < now.length && at < bare.length; at += 1) {
     const point = cellCentre(at);
-    const underFlyer = flyers.some(
-      (flyer) =>
-        point.x >= flyer.x &&
-        point.x < flyer.x + CARD_W &&
-        point.y >= flyer.y &&
-        point.y < flyer.y + CARD_H,
+    const nearFlyer = flyers.some((flyer) =>
+      inFootprint(point, flyer, CARD_HALO),
     );
-    if (underFlyer) continue;
+    if (nearFlyer) continue;
+    const nearFoundation = FOUNDATIONS.some((anchor) =>
+      inFootprint(point, anchor, CARD_HALO),
+    );
+    if (nearFoundation) continue;
     if (colorDistance(now[at], bare[at]) > 0) found.push(at);
   }
   return found;
@@ -112,7 +185,7 @@ function paintedCells(
 let harness: Harness;
 
 beforeEach(async () => {
-  harness = await createRunoutHarness();
+  harness = await createRunoutHarness({ recordDrawCalls: false });
 });
 
 afterEach(() => {
@@ -149,8 +222,8 @@ it("leaves the table painted once the cascade is done", async () => {
     before.length,
     0,
     "cells of the felt painted by the time the cascade's last cards were in " +
-      "the air, once the cards themselves are taken out — a build whose layer " +
-      "keeps nothing reads none",
+      "the air, once the cards in flight and the foundations they left are " +
+      "taken out — a build whose layer keeps nothing reads none",
   );
 
   const finished = await harness.until((seen) => seen.cascadeDone, {

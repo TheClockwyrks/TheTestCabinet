@@ -30,17 +30,29 @@
 // `drawnBoxes` maps each drawn rectangle's own corners through the transform the
 // build issued it under, so a card drawn small and scaled up, or drawn about the
 // origin under a translate, is measured where it landed on the stage.
+//
+// AND IT IS OF THE READING THAT FITS BEST, WHICH IS HOW THE PEN STAYS OUT OF IT.
+// A card drawn with a stroke has two honest sizes — the outline the build named and
+// that outline grown by half the `lineWidth`, the ink a player sees — and
+// specs/table.md fixes the footprint while saying nothing at all about the pen. So
+// the nearer of a shape's `boxReadings` is the one graded, which passes a card
+// stroked ON its footprint with a wide pen and a card stroked INSIDE it with a
+// narrow one alike, and still fails a card drawn at some other size: the two
+// readings differ by one `lineWidth`, and a build that misses the footprint misses
+// it by tens of units.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertBetween, fail } from "../assert";
 import { CARD_H, CARD_W, FOUNDATION_X, STOCK_X, TOP_ROW_Y } from "../constants";
 import {
+  boxReadings,
   captureStill,
   createHarness,
   drawFrame,
   drawnBoxes,
   openTable,
   posePile,
+  type DrawnBox,
   type Harness,
 } from "../harness";
 import { boxNear, cardCorners } from "./geometry";
@@ -69,6 +81,15 @@ const SEARCH_RADIUS = 40;
 
 /** The foundation the face-down card is posed on, well away from the stock. */
 const FOUNDATION = 2;
+
+/** Whichever of a shape's readings sits nearest the `CARD_W x CARD_H` footprint. */
+function nearestReading(box: DrawnBox): DrawnBox {
+  const missBy = (one: DrawnBox): number =>
+    Math.abs(one.w - CARD_W) + Math.abs(one.h - CARD_H);
+  return boxReadings(box).reduce((best, one) =>
+    missBy(one) < missBy(best) ? one : best,
+  );
+}
 
 let harness: Harness;
 
@@ -99,14 +120,15 @@ it("draws a card over its 100 x 140 footprint wherever it sits", async () => {
   ];
 
   for (const place of places) {
-    const drawn = boxNear(boxes, place.x, place.y, SEARCH_RADIUS);
-    if (drawn === null) {
+    const found = boxNear(boxes, place.x, place.y, SEARCH_RADIUS);
+    if (found === null) {
       fail(
         `something drawn within ${SEARCH_RADIUS} units of ` +
           `(${place.x}, ${place.y}), where ${place.what} was posed`,
         cardCorners(boxes),
       );
     }
+    const drawn = nearestReading(found);
     assertBetween(
       drawn.w,
       CARD_W - SIZE_TOLERANCE,

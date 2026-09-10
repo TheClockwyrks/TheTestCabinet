@@ -26,6 +26,23 @@
 // from and are chosen so all three are still over the table at four seconds, which is
 // what makes the later reading the larger one: a card that had drifted off would stop
 // adding to the paint.
+//
+// THE FOUR SECONDS ARE STEPPED AT `RUNOUT_HZ`, AND THE DRAW LOG IS OFF. Nothing here
+// is quantised to a frame: the readings are two moments of GAME time, and a card's
+// `x` — which is what carries it across the table and decides the swath it paints —
+// advances by `vx * dt` at a `vx` the flight never changes, so it lands in the same
+// place however the four seconds are divided. A stamp is a whole card's footprint
+// besides, and consecutive stamps overlap deeply at thirty: the fastest a card moves
+// between two frames is downward, where `GRAVITY` (`1800`) brings a card dropped from
+// `TOP_ROW_Y` to about `vy = 1420` by `FLOOR_Y` (specs/victory.md) and so some fifty
+// units a frame against `CARD_H` of a hundred and forty, while `vx` from `[180, 420]`
+// never reaches fifteen. So the band a card leaves is the same band either way,
+// while four seconds at the suite's own clock is nine hundred and sixty renders of
+// a table under a growing pile of stamps. And the reading is PIXELS from first to
+// last — the draw log is never opened — so recording
+// every operation of those frames buys this point nothing. This is `RUNOUT_HZ`'s own
+// argument, applied to a point that spends its whole length driving and reads two
+// grids at the end of it.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan } from "../assert";
@@ -33,8 +50,8 @@ import { CARD_H, CARD_W, STAGE_H, STAGE_W } from "../constants";
 import {
   captureStill,
   colorDistance,
-  createHarness,
-  framesFor,
+  createRunoutHarness,
+  runoutFrames,
   sampleGrid,
   type Harness,
   type Rgb,
@@ -54,9 +71,9 @@ const FLYERS = [
   { x: 900, y: 50, vx: 70, vy: 0, card: "KD" },
 ];
 
-/** The two moments the table is read at, in frames. */
-const EARLY_FRAMES = framesFor(1);
-const LATE_FRAMES = framesFor(4);
+/** The two moments the table is read at, in frames of the run-out clock. */
+const EARLY_FRAMES = runoutFrames(1);
+const LATE_FRAMES = runoutFrames(4);
 
 /** The grid the stage is sampled on: 960 cells, evenly spread. */
 const GRID_COLS = 40;
@@ -94,7 +111,7 @@ function paintedCells(bare: readonly Rgb[], now: readonly Rgb[]): number {
 let harness: Harness;
 
 beforeEach(async () => {
-  harness = await createHarness();
+  harness = await createRunoutHarness({ recordDrawCalls: false });
 });
 
 afterEach(() => {

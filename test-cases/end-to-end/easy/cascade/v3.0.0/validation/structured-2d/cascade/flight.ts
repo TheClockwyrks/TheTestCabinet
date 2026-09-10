@@ -53,6 +53,7 @@ import {
   type CardSpec,
   type CascadeSnapshot,
   type Harness,
+  type HarnessOptions,
   type Rgb,
   type SnapshotCard,
   type SnapshotFlyer,
@@ -83,13 +84,16 @@ export function flightSeconds(frames: number): number {
  * `CASCADE_HZ` is three thousand frames, and every one of them renders up to
  * fifty-two card faces into a real canvas — so the WAIT, and not the reading, is
  * what those three cost, and what they cost is what a busy host turns into a
- * timeout against a build that did nothing wrong.
+ * timeout against a build that did nothing wrong. `trail-accumulates` steps here
+ * too, for the same reason over a shorter drive, and so do `screens`'
+ * `won-shows-message` and `won-press-deals`, which wait out the same cascade.
  *
- * NONE OF THE THREE READS AN ACCELERATED QUANTITY, which is the whole reason this
+ * NONE OF THEM READS AN ACCELERATED QUANTITY, which is the whole reason this
  * group otherwise steps finely: they read the cascade's own end flag, the launched
- * count, the flight being empty, which card left which foundation, and how much of
- * the table is still painted — facts about where the cascade ended and what it
- * carried there, none of them quantised to a frame.
+ * count, the flight being empty, which card left which foundation, the text the
+ * frame after it drew, and how much of the table is painted — facts about where
+ * the cascade ended and what it carried there, none of them quantised to a
+ * frame.
  *
  * AND WHERE A CASCADE ENDS IS NOT A FRAME-RATE QUANTITY EITHER. Two things decide
  * it, and specs/victory.md integrates both exactly however an interval is divided
@@ -105,9 +109,18 @@ export function flightSeconds(frames: number): number {
  */
 export const RUNOUT_HZ = 30;
 
-/** A harness whose clock steps the frames a run-out is waited out in. */
-export function createRunoutHarness(): Promise<Harness> {
-  return createHarness({ hz: RUNOUT_HZ });
+/**
+ * A harness whose clock steps the frames a run-out is waited out in.
+ *
+ * `options` is everything else `createHarness` takes, minus the `hz` this fixes —
+ * which is how a run-out that reads PIXELS and never opens the draw log asks for
+ * `recordDrawCalls: false` and stops paying for a record of every one of the
+ * hundreds of thousands of operations it drives past.
+ */
+export function createRunoutHarness(
+  options: Omit<HarnessOptions, "hz"> = {},
+): Promise<Harness> {
+  return createHarness({ ...options, hz: RUNOUT_HZ });
 }
 
 /** Whole frames of the run-out clock covering `duration` seconds. */

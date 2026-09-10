@@ -303,10 +303,13 @@ export function framesFor(duration: number): number {
  * every one of them renders up to fifty-two card faces into a real canvas — so the
  * wait, and not the reading, is what those checks cost, and what they cost is what
  * a busy host turns into a timeout against a build that did nothing wrong.
+ * `cascade/trail-accumulates` steps here too, for the same reason over a shorter
+ * drive: four seconds of three cards painting is nine hundred and sixty renders of
+ * a table under a pile of stamps that grows with every one of them.
  *
- * NONE OF THE FOUR READS AN ACCELERATED QUANTITY. They read the cascade's own end
+ * NONE OF THEM READS AN ACCELERATED QUANTITY. They read the cascade's own end
  * flag, the launched count, the flight being empty, which card left which
- * foundation, the text the frame after it drew, and how much of the table is still
+ * foundation, the text the frame after it drew, and how much of the table is
  * painted — facts about where the cascade ended and what it carried there, none of
  * them quantised to a frame. `TICK_HZ`'s own note says the fine step is for the
  * checks whose tolerances are stated in frames, and these state none.
@@ -320,7 +323,7 @@ export function framesFor(duration: number): number {
  * and it is exactly what the checks stepped at {@link TICK_HZ} are for.
  *
  * Thirty is a frame length an ordinary machine really delivers, so the ending these
- * four watch is an ending a player could sit through.
+ * checks watch is an ending a player could sit through.
  */
 export const RUNOUT_HZ = 30;
 
@@ -329,9 +332,21 @@ export function runoutFrames(duration: number): number {
   return Math.ceil(duration * RUNOUT_HZ);
 }
 
-/** A harness whose clock steps the frames a run-out is waited out in. */
-export function createRunoutHarness(): Promise<Harness> {
-  return createHarness({ clock: new ConstantClock(1000 / RUNOUT_HZ) });
+/**
+ * A harness whose clock steps the frames a run-out is waited out in.
+ *
+ * `options` is everything else {@link createHarness} takes, minus the clock this
+ * fixes — which is how a run-out that reads PIXELS and never opens the draw log
+ * asks for `recordDrawCalls: false` and stops paying for a record of every one of
+ * the hundreds of thousands of operations it drives past.
+ */
+export function createRunoutHarness(
+  options: Omit<HarnessOptions, "clock"> = {},
+): Promise<Harness> {
+  return createHarness({
+    ...options,
+    clock: new ConstantClock(1000 / RUNOUT_HZ),
+  });
 }
 
 /**
@@ -1507,6 +1522,21 @@ export interface DrawnBox {
   /** The box's size, in logical units, always positive. */
   w: number;
   h: number;
+  /**
+   * How far the INK reaches outside that box, on each axis, where a stroke put
+   * it there: half the `lineWidth` in force, the ordinary canvas rule that a
+   * stroke straddles the path it follows. Absent for everything that fills,
+   * which paints the path itself and nothing beyond it.
+   *
+   * It is carried BESIDE the box rather than folded into it, because the two
+   * are answers to two different questions and a check may want either: the box
+   * is the outline the build named, which is the reading `validation/none` and
+   * `validation/structured-2d` take and the one a build's own geometry is
+   * graded against; the box grown by `grow` is what a player sees. {@link
+   * boxReadings} hands over both, and {@link cardBoxes} accepts a shape that is
+   * card-sized under either.
+   */
+  grow?: { x: number; y: number };
 }
 
 /** A source's own pixel size, where it reports one. */
@@ -1623,7 +1653,10 @@ function walkTransforms(
  * the `fill` or `stroke` that paints them are one box, and the corner points a
  * traced rounded rectangle names are its true corners, so its box is the footprint
  * exactly. This is the reading `validation/none` and `validation/structured-2d`
- * already take, and the three engines agree on it deliberately.
+ * already take, and the three engines agree on it deliberately — including for a
+ * stroke, whose box is the outline it follows here as it is there. What this
+ * engine adds is `grow` beside that box, which no reading of the box itself
+ * changes.
  *
  * A PATH IS ONE BOX, NOT ONE PER PAINT. A canvas keeps the current path across
  * `fill` and `stroke`, so the ordinary plate — fill the outline, then stroke the
@@ -1631,6 +1664,18 @@ function walkTransforms(
  * twice would let a build's edge pass for a second card in the counts that
  * `draw-one` and `draw-three` take. The path is emitted by whichever of the two
  * paints it first, and `beginPath` starts the next one.
+ *
+ * A STROKE ALSO SAYS HOW FAR ITS INK REACHES, and it says it BESIDE the box rather
+ * than inside it. A stroke straddles the path it follows, so a build that strokes a
+ * `96 x 136` outline two units wide has named a `96 x 136` shape and painted a
+ * `98 x 138` one, and neither figure is the other's error: the outline is the
+ * geometry the build chose, the ink is the mark a player sees. Moving the box to the
+ * ink would not widen that reading, it would SHIFT it — a build that strokes the
+ * footprint itself four units wide, which specs/table.md admits just as plainly,
+ * would then report `104 x 144` and miss the same tolerance from the other side. So
+ * the box stays the outline, `grow` carries the half-`lineWidth`, and the readings
+ * that ask "is this a card" ({@link cardBoxes}) accept a shape that answers yes
+ * either way. Everything that FILLS paints the path itself and carries no `grow`.
  *
  * TWO KINDS OF SHAPE ARE OUT OF SCOPE, and neither is how this game's picture is
  * made. A path built only from `arc` or `ellipse` names centres and radii rather
@@ -1649,6 +1694,9 @@ export function drawnBoxes(
   let path: Point[] = [];
   /** Whether a `fill` or a `stroke` has already emitted that path. */
   let painted = false;
+  /** The `lineWidth` in force, and the stack `save`/`restore` keeps it on. */
+  let lineWidth = 1;
+  const widths: number[] = [];
 
   /** A point in the coordinates a call was made in, placed in logical units. */
   const placed = (m: Matrix, x: unknown, y: unknown): Point | null => {
@@ -1660,25 +1708,72 @@ export function drawnBoxes(
     };
   };
 
-  /** The box a set of placed points covers, appended to the reading. */
-  const emit = (method: string, points: readonly Point[]): void => {
+  /**
+   * How far a stroke's ink reaches past the outline it follows, on each axis, in
+   * logical units — the {@link DrawnBox.grow} of a shape a stroke painted.
+   *
+   * A stroke is centred on its path, so the ink runs half the `lineWidth` either
+   * side of it: a two-unit stroke on a `96 x 136` outline covers `98 x 138`. The
+   * width is in the coordinates the call was made in, so it is carried through
+   * the same transform the corners are, and the larger of the two axes is taken
+   * under a rotated frame for the same reason the corners are all four taken
+   * there.
+   */
+  const halfStroke = (m: Matrix): Point => {
+    const origin = placed(m, 0, 0);
+    const alongX = placed(m, lineWidth / 2, 0);
+    const alongY = placed(m, 0, lineWidth / 2);
+    if (origin === null || alongX === null || alongY === null) {
+      return { x: 0, y: 0 };
+    }
+    return {
+      x: Math.max(Math.abs(alongX.x - origin.x), Math.abs(alongY.x - origin.x)),
+      y: Math.max(Math.abs(alongX.y - origin.y), Math.abs(alongY.y - origin.y)),
+    };
+  };
+
+  /**
+   * The box a set of placed points covers, appended to the reading.
+   *
+   * The box is the OUTLINE the points name, whichever call painted it. `grow` is
+   * the ink a stroke lays outside that outline; it rides along on the box and is
+   * left off entirely for everything that fills, so a filled shape's reading is
+   * byte-for-byte what it always was.
+   */
+  const emit = (
+    method: string,
+    points: readonly Point[],
+    grow?: Point,
+  ): void => {
     if (points.length === 0) return;
     const xs = points.map((point) => point.x);
     const ys = points.map((point) => point.y);
     const left = Math.min(...xs);
     const top = Math.min(...ys);
-    drawn.push({
+    const box: DrawnBox = {
       method,
       x: left,
       y: top,
       w: Math.max(...xs) - left,
       h: Math.max(...ys) - top,
-    });
+    };
+    if (grow !== undefined && (grow.x > 0 || grow.y > 0)) {
+      box.grow = { x: grow.x, y: grow.y };
+    }
+    drawn.push(box);
   };
 
   walkTransforms(calls, (call, m) => {
+    if (call.kind === "set") {
+      if (call.property === "lineWidth" && typeof call.value === "number") {
+        lineWidth = call.value;
+      }
+      return;
+    }
     if (call.kind !== "call") return;
     const { method, args } = call;
+    if (method === "save") widths.push(lineWidth);
+    if (method === "restore") lineWidth = widths.pop() ?? 1;
 
     /**
      * All FOUR corners of a rectangle the call names, placed in logical units.
@@ -1724,7 +1819,11 @@ export function drawnBoxes(
     // alone, which is what a canvas does with it.
     const single = singleCallBox(call);
     if (single !== null) {
-      emit(method, corners(single[0], single[1], single[2], single[3]));
+      emit(
+        method,
+        corners(single[0], single[1], single[2], single[3]),
+        method === "strokeRect" ? halfStroke(m) : undefined,
+      );
       return;
     }
 
@@ -1754,7 +1853,7 @@ export function drawnBoxes(
       case "fill":
       case "stroke":
         if (!painted && path.length > 0) {
-          emit(method, path);
+          emit(method, path, method === "stroke" ? halfStroke(m) : undefined);
           painted = true;
         }
         return;
@@ -1770,21 +1869,89 @@ export function drawnBoxes(
  * card, in logical units.
  *
  * A card's footprint is fixed at `CARD_W x CARD_H` (specs/table.md), so this is not
- * a size tolerance: it is room for the one unit a build may lose insetting a stroke
- * or rounding a corner, and a shape that is not a card misses by tens of units.
+ * a size tolerance: it is room for the fraction of a unit a build may lose rounding
+ * a corner or placing a card on a half-pixel, and a shape that is not a card misses
+ * by tens of units.
+ *
+ * It is deliberately NOT the room a stroke's weight takes. A pen is not an error and
+ * has no bound — a build may outline its cards one unit wide or eight — so widening
+ * this to cover one weight would only fail the next. The weight is answered where it
+ * arises instead, by {@link boxReadings}: a stroked shape is offered at its outline
+ * AND at its ink, and it is a card if either of those is a card within this same
+ * fraction of a unit.
  */
 export const CARD_BOX_TOLERANCE = 2;
 
-/** Every card-sized box among `boxes`, whichever call drew it. */
+/**
+ * The one or two boxes a drawn shape may be read at, most literal first.
+ *
+ * A filled shape has exactly one reading: the path it painted. A STROKED shape has
+ * two, and both are honest — the outline the build's own geometry names, and that
+ * outline grown by half the `lineWidth`, which is the ink a player actually sees
+ * (see {@link DrawnBox.grow}). Neither is privileged, because specs/table.md fixes
+ * a card's footprint and says nothing whatever about the pen: "A pile holding no
+ * cards draws a card-sized mark at its anchor, `CARD_W x CARD_H`" leaves a build
+ * free to lay that mark ON the footprint with a four-unit pen (ink `104 x 144`,
+ * outline `100 x 140`) or INSIDE it with a two-unit pen (outline `96 x 136`, ink
+ * `98 x 138`), and both are the card-sized mark it asked for. A check that reads
+ * only one of the two fails one of those builds for its choice of pen, which is a
+ * choice no specification here makes.
+ *
+ * The outline comes FIRST so that a shape which already reads as a card at its
+ * outline is returned exactly as it was drawn; the ink reading is what admits the
+ * shapes the outline alone would have thrown away.
+ *
+ * A KNOWN GAP, NAMED RATHER THAN PAPERED OVER. The second reading is this engine's
+ * alone: `validation/structured-2d`'s `drawnShapes` and `validation/none`'s
+ * `paintedBoxes` report a stroke at its outline, as this one does, but neither
+ * offers the ink beside it — so a build that marks its empty slots with a narrow
+ * pen inset inside the footprint is admitted here and turned away there. Closing
+ * that means carrying `grow` into those two readings as well, which is held up by
+ * a separate problem in them: `drawnShapes` emits one path's fill and its stroke
+ * as two shapes and `wastePositions` puts them back together by clustering on `x`,
+ * so a second reading has to wait until a path is one shape there too.
+ */
+export function boxReadings(box: DrawnBox): DrawnBox[] {
+  const grow = box.grow;
+  if (grow === undefined) return [box];
+  return [
+    box,
+    {
+      method: box.method,
+      x: box.x - grow.x,
+      y: box.y - grow.y,
+      w: box.w + 2 * grow.x,
+      h: box.h + 2 * grow.y,
+    },
+  ];
+}
+
+/** Whether a box's own size is the card footprint, within `tolerance`. */
+function isCardSized(box: DrawnBox, tolerance: number): boolean {
+  return (
+    Math.abs(box.w - CARD_W) <= tolerance &&
+    Math.abs(box.h - CARD_H) <= tolerance
+  );
+}
+
+/**
+ * Every card-sized box among `boxes`, whichever call drew it.
+ *
+ * A stroked shape counts when EITHER of its {@link boxReadings} is card-sized, and
+ * comes back as the reading that matched — its outline where the outline is the
+ * card, its ink where only the ink is. So this only ever ADDS to what the plain
+ * outline reading returned; no box it used to hand over comes back changed.
+ */
 export function cardBoxes(
   boxes: readonly DrawnBox[],
   tolerance = CARD_BOX_TOLERANCE,
 ): DrawnBox[] {
-  return boxes.filter(
-    (box) =>
-      Math.abs(box.w - CARD_W) <= tolerance &&
-      Math.abs(box.h - CARD_H) <= tolerance,
-  );
+  const cards: DrawnBox[] = [];
+  for (const box of boxes) {
+    const reading = boxReadings(box).find((one) => isCardSized(one, tolerance));
+    if (reading !== undefined) cards.push(reading);
+  }
+  return cards;
 }
 
 /** The first box in `boxes` whose top-left sits within `tolerance` of a point. */
