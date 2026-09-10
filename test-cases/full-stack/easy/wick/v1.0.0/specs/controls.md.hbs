@@ -111,7 +111,11 @@ its update:
    `menuIndex` not `i`, sets `menuIndex` to `i` and plays `menu-move`. The
    pointer inside no rectangle changes nothing. A touch contact never hovers:
    only a device reporting a position while out of contact moves the highlight
-   this way.
+   this way. A device is in contact while its primary button is held, and
+   neither the press edge that takes it into contact nor the release edge that
+   ends it is a report of a position out of contact, so the frame a button
+   lifts on hovers nothing: the highlight a press set stands until the device
+   next reports a position with no button held.
 2. Press and release. A primary press edge inside the rectangle of the item at
    `menuIndex` `i` sets `menuIndex` to `i`, playing `menu-move` if that changed
    it, and arms that item. That press's release edge inside the same rectangle

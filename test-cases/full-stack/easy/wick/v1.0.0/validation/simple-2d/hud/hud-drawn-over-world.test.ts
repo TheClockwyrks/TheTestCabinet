@@ -44,8 +44,13 @@
 // build whose readout the world covers differs over nothing, which is this
 // requirement failing rather than a scene the point could not pose.
 //
-// THE CONTROL. The two frames must differ SOMEWHERE, which is the moth being
-// drawn at all, so a build that draws no enemy passes nothing here.
+// THE CONTROL. The moth's own blit must be there to find, and centered where it
+// was posed, which is the moth being drawn at all, so a build that draws no
+// enemy passes nothing here. The frame's PIXELS are not the control: the HUD is
+// what this point requires to be drawn over the moth, and specs/ui.md fixes "no
+// palette, no font, and no styling for any screen", so a readout drawn opaque
+// hides the moth outright and changes no pixel, which is this requirement being
+// met rather than missed.
 //
 // TOLERANCE. DRAWN_POINT_TOLERANCE, one unit, on where the moth's sprite
 // landed, which is what a build that snaps a sprite to whole device pixels may
@@ -71,7 +76,6 @@ import {
   captureStill,
   createHarness,
   isolate,
-  pixelsDiffering,
   spawnEnemyAt,
   type Blit,
   type Harness,
@@ -144,7 +148,6 @@ it("paints the health readout over a moth standing under it", async () => {
 
   const { blits, calls } = await h.frameDraw();
   captureStill(h, "over");
-  const covered = stageRect(h);
 
   const drawn = blitsUnderDir(blits, SHEET_DIR);
   assertGreaterThan(drawn.length, 0, `blits of ${ENEMY}'s produced sheet`);
@@ -156,12 +159,6 @@ it("paints the health readout over a moth standing under it", async () => {
     Math.hypot(at.x - middle.x, at.y - middle.y),
     DRAWN_POINT_TOLERANCE,
     `how far ${ENEMY}'s sprite landed from the middle of the health readout`,
-  );
-
-  assertGreaterThan(
-    pixelsDiffering(alone, covered),
-    0,
-    `pixels of the frame the ${ENEMY} changed, so it was drawn at all`,
   );
 
   const prefix = `${assetPath(SHEET_DIR)}/`;

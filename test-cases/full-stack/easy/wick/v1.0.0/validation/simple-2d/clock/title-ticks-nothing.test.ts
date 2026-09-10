@@ -2,7 +2,10 @@
 //
 // WHAT THE SPECIFICATION FIXES, AND WHERE.
 //   - `specs/ui.md` ("What advances on each screen"): "`title`, `howto`,
-//     `almanac` | Nothing."
+//     `almanac` | Nothing of the run. `simTime` still rises, and the almanac's
+//     entry picture animates off it." What this point reads is the RUN, on
+//     `title` and `howto`, so neither `simTime` nor the almanac's picture is
+//     in scope.
 //   - `specs/instrumentation.md` ("Snapshot shape"): "`run` reports the idle
 //     run of `specs/state.md` on `title`, `howto`, and `almanac`".
 //   - `specs/state.md` ("The idle run"): "`run` holds the values below whenever

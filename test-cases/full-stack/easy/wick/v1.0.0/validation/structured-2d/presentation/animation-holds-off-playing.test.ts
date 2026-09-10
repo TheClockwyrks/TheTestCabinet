@@ -2,7 +2,10 @@
 // screen that is not `playing`.
 //
 // WHERE THE REQUIREMENT COMES FROM. `specs/assets.md`, Animation: "Every
-// animation runs on ticks, so it holds still on every screen but `playing`."
+// animation of the world runs on ticks, so the world holds still on every
+// screen but `playing`." The almanac's entry picture is the animation that
+// sentence carves out, and it is not read here: the lamplighter and three
+// enemies of the world are, on `paused`.
 // `specs/ui.md`, "What advances on each screen", is where that comes from:
 // `levelup`, `chest`, and `paused` advance "Nothing. The world beneath holds
 // exactly the tick it was at", and `specs/instrumentation.md` adds that on

@@ -27,6 +27,13 @@
 // decoded into the page BEFORE the frames are filmed, so no frame of the reading
 // is spent on it. Nothing is pressed while the two readings are taken.
 //
+// WHICH CLOCK IT RUNS ON. `specs/ui.md`, "`almanac`": "Its entry picture is
+// the exception: a picture drawn from a sheet is animated off `simTime`, which
+// every frame advances whatever the screen, so the ENEMIES tab's walk sheet
+// steps one frame per `WALK_FRAME_TIME` of frame time while the run itself
+// stands still." So the run standing at its idle tick is no answer here: one
+// frame of `WALK_FRAME_TIME` moves the picture on whether or not a tick does.
+//
 // THE TOLERANCE. One frame of the build's loop on the gap between the two
 // readings, so seven frames of `TICK_DT` are run rather than the six that carry
 // `WALK_FRAME_TIME`. `0.1` is not representable in binary floating point and six

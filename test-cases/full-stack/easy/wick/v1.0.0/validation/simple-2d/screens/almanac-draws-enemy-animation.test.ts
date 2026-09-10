@@ -27,6 +27,13 @@
 // constant clock is `TICK_DT`, so `round(WALK_FRAME_TIME × TICK_HZ)` frames is
 // exactly `WALK_FRAME_TIME` of time.
 //
+// WHICH CLOCK IT RUNS ON. `specs/ui.md`, "`almanac`": "Its entry picture is
+// the exception: a picture drawn from a sheet is animated off `simTime`, which
+// every frame advances whatever the screen, so the ENEMIES tab's walk sheet
+// steps one frame per `WALK_FRAME_TIME` of frame time while the run itself
+// stands still." So the run standing at its idle tick is no answer here: one
+// frame of `WALK_FRAME_TIME` moves the picture on whether or not a tick does.
+//
 // THE TOLERANCE. None, and none is needed: a sheet advanced at
 // `WALK_FRAME_TIME` shows `floor(t / WALK_FRAME_TIME) mod 4`, and that index
 // differs between any two moments exactly `WALK_FRAME_TIME` apart whatever

@@ -23,6 +23,15 @@
 // are items, so a build that took whatever the lift fell on leaves the title
 // too.
 //
+// WHY THE LIFT ITSELF DOES NOT MOVE THE HIGHLIGHT. Rule 1: "A device is in
+// contact while its primary button is held, and neither the press edge that
+// takes it into contact nor the release edge that ends it is a report of a
+// position out of contact, so the frame a button lifts on hovers nothing: the
+// highlight a press set stands until the device next reports a position with
+// no button held." The item the press armed is therefore the one still
+// selected after the lift, and a build that hovers the item the lift landed on
+// answers with that item instead.
+//
 // THE TOLERANCE. None: a screen name and a menu index.
 
 import { afterEach, beforeEach, it } from "vitest";

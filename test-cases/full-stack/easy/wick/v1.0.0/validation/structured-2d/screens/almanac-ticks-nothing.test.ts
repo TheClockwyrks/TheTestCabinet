@@ -1,9 +1,13 @@
 // Wick — screens/almanac-ticks-nothing: the almanac advances nothing.
 //
 // WHAT THE SPECIFICATION FIXES, AND WHERE. `specs/ui.md`, "What advances on
-// each screen", gives the row "`title`, `howto`, `almanac` | Nothing." The
-// almanac's own section says the same: "The almanac holds the idle run,
-// nothing advances while it is open".
+// each screen", gives the row "`title`, `howto`, `almanac` | Nothing of the
+// run. `simTime` still rises, and the almanac's entry picture animates off
+// it." The almanac's own section says the same: "The almanac holds the idle
+// run, nothing advances while it is open", with its entry picture named there
+// as the exception. THE RUN is what this point reads, and the exception is the
+// picture rather than the run: what animates off `simTime` is read by
+// screens/almanac-draws-enemy-animation instead.
 //
 // WHAT IS READ. `run.tick` after each of sixty frames — one second of frames
 // at the `TICK_HZ` (`60`) `specs/overview.md` fixes, long enough that a build

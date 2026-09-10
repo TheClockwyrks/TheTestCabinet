@@ -150,7 +150,11 @@ and `menuIndex − ALMANAC_ROWS + 1`, and is then held between `0` and
 holds.
 
 The almanac holds the idle run, nothing advances while it is open, and no cue
-loops on it.
+loops on it. Its entry picture is the exception: a picture drawn from a sheet
+is animated off `simTime`, which every frame advances whatever the screen, so
+the ENEMIES tab's walk sheet steps one frame per `WALK_FRAME_TIME` of frame
+time while the run itself stands still. Which frame of a cycle the picture
+starts on is yours.
 
 ### `playing`
 
@@ -351,7 +355,7 @@ screen, and input is read on every screen. The simulation is the exception:
 
 | Screen | What advances |
 | --- | --- |
-| `title`, `howto`, `almanac` | Nothing. |
+| `title`, `howto`, `almanac` | Nothing of the run. `simTime` still rises, and the almanac's entry picture animates off it. |
 | `playing` | The simulation, in whole ticks of `TICK_DT` (`1/60`) consumed from the accumulated delta time, as `specs/overview.md` states. |
 | `levelup`, `chest`, `paused` | Nothing. The world beneath holds exactly the tick it was at. |
 | `fallen`, `dawn` | Nothing. |

@@ -179,7 +179,10 @@ so a player sees at a glance that the tool has transformed.
 | Seconds each frame of a walk cycle or a spin is shown | `WALK_FRAME_TIME` | `0.1` |
 | Seconds a death puff lasts, all four frames together | `PUFF_TIME` | `0.4` |
 
-Every animation runs on ticks, so it holds still on every screen but `playing`.
+Every animation of the world runs on ticks, so the world holds still on every
+screen but `playing`. The almanac's entry picture is the one animation that is
+not the world's, and it runs on `simTime`, which every frame adds its delta
+time to whatever the screen, as `specs/ui.md` states.
 
 - The lamplighter draws the walk sheet on a tick with a non-zero movement
   direction and the idle sprite on every other tick. The walk frame is

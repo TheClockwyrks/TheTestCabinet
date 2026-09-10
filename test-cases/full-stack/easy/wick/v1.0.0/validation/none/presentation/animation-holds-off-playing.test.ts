@@ -1,10 +1,14 @@
 // presentation/animation-holds-off-playing — every animation holds still on a
 // screen that does not tick.
 //
-// THE REQUIREMENT. `specs/assets.md` — "Animation": "Every animation runs on
-// ticks, so it holds still on every screen but `playing`." `specs/ui.md` says the
-// same from the screen's side: on `levelup`, `chest` and `paused` "Nothing"
-// advances, and "The world beneath holds exactly the tick it was at."
+// THE REQUIREMENT. `specs/assets.md` — "Animation": "Every animation of the
+// world runs on ticks, so the world holds still on every screen but
+// `playing`." `specs/ui.md` says the same from the screen's side: on
+// `levelup`, `chest` and `paused` "Nothing" advances, and "The world beneath
+// holds exactly the tick it was at." The one animation that sentence carves
+// out — the almanac's entry picture, which runs on `simTime` — is not read
+// here: this point reads the lamplighter and an enemy of the WORLD, on
+// `paused`.
 //
 // THE SCENARIO, AND WHY IT IS POSED THIS WAY. Both animations the requirement
 // names have to be MID-CYCLE when the pause lands, or the point passes on a build

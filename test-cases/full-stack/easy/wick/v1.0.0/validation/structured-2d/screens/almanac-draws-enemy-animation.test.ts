@@ -24,6 +24,13 @@
 // `specs/instrumentation.md` lets a scenario hand a frame any delta, and
 // nothing on this screen ticks, so the whole of that delta is the animation's.
 //
+// WHICH CLOCK IT RUNS ON. `specs/ui.md`, "`almanac`": "Its entry picture is
+// the exception: a picture drawn from a sheet is animated off `simTime`, which
+// every frame advances whatever the screen, so the ENEMIES tab's walk sheet
+// steps one frame per `WALK_FRAME_TIME` of frame time while the run itself
+// stands still." So the run standing at its idle tick is no answer here: one
+// frame of `WALK_FRAME_TIME` moves the picture on whether or not a tick does.
+//
 // THE TOLERANCE. The gap is exactly `WALK_FRAME_TIME`, the figure the
 // specification animates the sheet at, and the reading is an equality of
 // bytes. A cycle stepping once per `WALK_FRAME_TIME` has moved on by exactly

@@ -2,7 +2,10 @@
 // screen that does not tick.
 //
 // WHERE THE THRESHOLD COMES FROM. specs/assets.md ("Animation"): "Every
-// animation runs on ticks, so it holds still on every screen but playing."
+// animation of the world runs on ticks, so the world holds still on every
+// screen but playing." The almanac's entry picture, which that sentence carves
+// out as the one animation that is not the world's, is not read here: what
+// this point reads is the lamplighter and two enemies, on `paused`.
 // specs/ui.md ("What advances on each screen") fixes that `paused` ticks
 // nothing: "levelup, chest, paused | Nothing. The world beneath holds exactly
 // the tick it was at", and ("paused") that the world is still drawn: "The world

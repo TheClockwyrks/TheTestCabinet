@@ -1,9 +1,13 @@
 // screens/almanac-ticks-nothing — the almanac advances nothing.
 //
 // WHERE THE THRESHOLD COMES FROM. specs/ui.md ("What advances on each screen"),
-// the row "`title`, `howto`, `almanac` | Nothing." specs/ui.md ("`almanac`")
-// says it again with the run it holds: "The almanac holds the idle run, nothing
-// advances while it is open, and no cue loops on it." specs/state.md fixes what
+// the row "`title`, `howto`, `almanac` | Nothing of the run. `simTime` still
+// rises, and the almanac's entry picture animates off it." specs/ui.md
+// ("`almanac`") says it again with the run it holds: "The almanac holds the
+// idle run, nothing advances while it is open". THE RUN is what this point
+// reads — its tick and its every field — so the picture the row carves out is
+// out of scope here, and the point that reads it is
+// screens/almanac-draws-enemy-animation. specs/state.md fixes what
 // the idle run is: "tick `0`, level `1`, no experience, no kills, the
 // lamplighter at the world origin facing right with `BASE_MAX_HP` (`100`)
 // health, no weapons, no passives, nothing alive, nothing dropped, no offers, no

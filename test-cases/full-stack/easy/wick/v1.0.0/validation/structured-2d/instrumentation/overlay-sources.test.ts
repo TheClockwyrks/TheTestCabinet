@@ -14,24 +14,53 @@
 // registered source, and the panel draws each as `name: value`
 // (`engine/diagnostics.md`), which is what the reading is checked against.
 //
-// THE READING. The names and the formatting are the build's, so each fact is
-// looked for as a whole token of the panel's text (`name: value` per source,
-// numbers formatted as the panel formats them) after a run is posed with
-// figures that a token search tells apart: tick 4500 (a `1:15` clock and
-// window 2), level 7 with xp 12 over 65, hp 37 over 130 (Tallow 2), 253
-// kills, the lamplighter at (311, -127) facing left, four enemies, three
-// projectiles, two zones, five gems, Ember at 3 with a 0.7 s timer and Pin
-// at 2, Bellows at 4 and Tallow at 2, six level-ups queued, and six
-// switches off beside three on. The overlay is shown for the still.
+// THE READING. The names and the formatting are the build's, so a fact the
+// specification names as a NUMBER is looked for as a figure some line of the
+// panel carries, and a fact it names as a WORD as a whole token of the panel's
+// text. A held item's level and cooldown are read on the lines that NAME the
+// item, so two items at one level are still told apart.
+//
+// WHY THE POSE COLLIDES WITH NOTHING. A figure is looked for across the whole
+// panel, so a run posed with one figure twice — an enemy count of four beside a
+// passive at level 4 — lets one line answer for a fact the panel left out
+// altogether. Every figure this point requires is therefore posed to a value no
+// other number of the posed run carries, the clock's own spellings included:
+// tick 19800 (a `5:30` clock, 330 seconds, window 11), level 7 with xp 12 over
+// 65, hp 37 over 130, 253 kills, the lamplighter at (311, -127) facing left,
+// six enemies, eight projectiles, nine zones, ten gems, and thirteen level-ups
+// queued. The loadout takes the small levels those leave free, and is read on
+// the lines that name each item rather than across the panel: Ember at 3 with a
+// 0.7 s timer and Pin at 2, Bellows at 4 and Tallow at 2 — whose two levels of
+// `+15` max health are what put `maxHp` at 130. Six switches are off beside
+// three on. The overlay is shown for the still.
+//
+// THE CLOCK IS THE ONE FIGURE WITH A UNIT OF ITS OWN. `specs/state.md` fixes
+// the run clock as `tick / TICK_HZ` seconds and nothing fixes how a panel
+// writes it, so `5:30`, `330`, `330.00s` and the tick count `19800` are one
+// clock written four ways; the `m:ss` of `specs/ui.md` is what the HUD draws,
+// not what this panel must. It is therefore looked for as any of them, a
+// written second within half of the clock's, which is what rounding to a whole
+// second moves it by. Half a second is wide enough for an unrelated figure to
+// fall inside, so the clock is read TWICE, at two posed ticks far apart —
+// `setTick` "Sets `tick` to `tick`" and the clock follows it — and the SAME
+// reading has to answer both. A reading is known across the two reads by its
+// line with every figure struck out, so `clock: 5:30 (tick 19800)` and
+// `clock: 3:45 (tick 13500)` are one reading of one source, while a figure
+// that merely fell within half a second of the first clock — a max health, a
+// kill count — is not asked for the second and could not give it.
 //
 // THE NINE SWITCHES ARE READ AS A DEPENDENCE. The specification names each
 // switch as a fact "the snapshot reports" and fixes no spelling for a reading
 // of one: a build may register the boolean itself, which the panel draws as
 // `true`, or a word of its own — `on`, `enabled`, `yes`, a `1`, a tick — and no
 // list of the words is complete, so a list would fail a build that spelled an
-// honest reading some other way. What CAN be decided is that each switch
-// reaches the panel: the readings are taken before and after the switch is
-// flipped through its own operation, and one of them must change that did not
+// honest reading some other way. Its LABEL is no more fixed than its value —
+// `specs/instrumentation.md` asks only that each source be registered and
+// "short enough to read on a line", so a line reading `spawn true events true`
+// names the same two switches a line reading `spawning: true` does. What CAN
+// be decided is that each switch reaches the panel: the readings are taken
+// before and after the switch is flipped through its own operation, and one of
+// them must change that did not
 // change between two readings taken with nothing flipped, which is what a
 // source that ticks on its own — a clock, a frame count, which "Register at
 // least" permits — would otherwise answer with. A reading is known by the name
@@ -41,7 +70,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThanOrEqual, assertTrue } from "../assert";
-import { clockText, xpToNext } from "../constants";
+import { TICK_HZ, clockText, xpToNext } from "../constants";
 import {
   SWITCH_NAMES,
   captureStill,
@@ -60,19 +89,42 @@ import {
   type Harness,
 } from "../harness";
 
-const TICK = 4500;
+const TICK = 19800;
 const LEVEL = 7;
 const XP = 12;
 const HP = 37;
 const KILLS = 253;
 const PLAYER_X = 311;
 const PLAYER_Y = -127;
-const QUEUED = 6;
+const QUEUED = 13;
 const EMBER_LEVEL = 3;
 const EMBER_COOLDOWN = 0.7;
 const PIN_LEVEL = 2;
 const BELLOWS = 4;
 const TALLOW = 2;
+
+/**
+ * The four counts, each posed to a figure no other number of the run carries,
+ * so the line that answers for one of them is the line that reports it.
+ */
+const ENEMIES = 6;
+const PROJECTILES = 8;
+const ZONES = 9;
+const GEMS = 10;
+
+/**
+ * The second tick the clock is read at, a minute and three quarters before the
+ * first, and inside the `0 … 35999` `setTick` takes.
+ */
+const TICK_B = 13500;
+
+/**
+ * How far a second written on a line may sit from the clock's and still be it:
+ * half a second, which is what rounding or truncating a figure to a whole
+ * number of seconds moves it by, and what a figure drawn to one decimal or
+ * more sits well inside.
+ */
+const CLOCK_TOLERANCE = 0.5;
 
 let h: Harness;
 
@@ -119,6 +171,50 @@ function numbersIn(line: string): number[] {
   return (line.match(NUMBER) ?? []).map((written) =>
     Number(written.replace(GROUPS, "")),
   );
+}
+
+/**
+ * Whether some line carries `figure` as a figure of its own.
+ *
+ * The specification fixes the FACTS and not their wording, so a panel writing
+ * a level as `L7`, `lv 7` or `7` reports the same seven; what it may not do is
+ * leave it out, and `17` or `0.7` is not a seven. A line is therefore read as
+ * the figures it carries — {@link numbersIn} reads a grouped figure as the one
+ * figure it is — rather than as text a token search walks, which would take a
+ * letter written against the digits for part of them.
+ */
+function showsFigure(lines: readonly string[], figure: number): boolean {
+  return lines.some((line) =>
+    numbersIn(line).some((written) => written === figure),
+  );
+}
+
+/**
+ * One line with every figure it carries struck out: what a reading is known by
+ * across two reads at two clocks, so `clock: 5:30 (tick 19800)` and
+ * `clock: 3:45 (tick 13500)` are one reading and `hp: 37.0 / 130` is another.
+ */
+function shapeOf(line: string): string {
+  return line.replace(NUMBER, "#");
+}
+
+/**
+ * The shapes of the lines that show the run clock at `tick`: as `m:ss`, as the
+ * seconds `tick / TICK_HZ` however they are written, or as the tick count.
+ */
+function clockShapes(lines: readonly string[], tick: number): Set<string> {
+  const seconds = tick / TICK_HZ;
+  const shapes = new Set<string>();
+  for (const line of lines) {
+    const shows =
+      hasToken([line], clockText(tick)) ||
+      hasToken([line], String(tick)) ||
+      numbersIn(line).some(
+        (written) => Math.abs(written - seconds) <= CLOCK_TOLERANCE,
+      );
+    if (shows) shapes.add(shapeOf(line));
+  }
+  return shapes;
 }
 
 /** A reading's value as the panel draws it (`engine/diagnostics.md`). */
@@ -179,20 +275,14 @@ it("reports every listed fact with the snapshot's live value", async () => {
   const ember = holdWeapon(h, "ember", EMBER_LEVEL);
   h.debug.setWeaponCooldown(ember, EMBER_COOLDOWN);
   holdWeapon(h, "pin", PIN_LEVEL);
-  for (const [x, y] of [
-    [600, 0],
-    [-600, 0],
-    [0, 600],
-    [0, -600],
-  ]) {
-    placeEnemy(h, "moth", PLAYER_X + x, PLAYER_Y + y);
-  }
-  for (const y of [100, 200, 300])
-    placeProjectile(h, "ember", PLAYER_X + 100, PLAYER_Y + y, 0, 0, 0);
-  placePuddle(h, "oil-splash", PLAYER_X + 400, PLAYER_Y);
-  placePuddle(h, "oil-splash", PLAYER_X - 400, PLAYER_Y);
-  for (const x of [200, 250, 300, 350, 400])
-    placeGem(h, "small", PLAYER_X + x, PLAYER_Y - 200);
+  for (let i = 0; i < ENEMIES; i += 1)
+    placeEnemy(h, "moth", PLAYER_X + 600, PLAYER_Y - 250 + i * 100);
+  for (let i = 0; i < PROJECTILES; i += 1)
+    placeProjectile(h, "ember", PLAYER_X + 100, PLAYER_Y + 60 * i, 0, 0, 0);
+  for (let i = 0; i < ZONES; i += 1)
+    placePuddle(h, "oil-splash", PLAYER_X - 700 + i * 140, PLAYER_Y + 500);
+  for (let i = 0; i < GEMS; i += 1)
+    placeGem(h, "small", PLAYER_X + 200 + i * 50, PLAYER_Y - 200);
   // `isolate` turned all nine switches off; the three on are turned on by
   // name, which leaves six off and three on for the panel to report.
   h.debug.setEvents(true);
@@ -205,36 +295,65 @@ it("reports every listed fact with the snapshot's live value", async () => {
     (reading) =>
       `${reading.name}: ${reading.error ?? valueText(reading.value)}`,
   );
-  const text = lines.join("\n");
 
   // The panel drawn over the posed run, for the still.
   await toggleOverlay(h);
   captureStill(h, "sources");
 
   assertGreaterThanOrEqual(readings.length, 1, "diagnostic sources registered");
-  const facts: Array<[string, string]> = [
+  const clockAt = clockShapes(lines, TICK);
+  assertTrue(
+    clockAt.size > 0,
+    `the run clock (${clockText(TICK)}, ${String(TICK / TICK_HZ)}s, or tick ` +
+      `${String(TICK)}) among the overlay's lines`,
+  );
+  // The clock again, at a tick far from the first, and on the SAME reading: a
+  // figure that merely sat within half a second of the first clock is not the
+  // clock, and its line does not follow the clock to the second tick.
+  h.debug.setTick(TICK_B);
+  const later = h
+    .diagnostics()
+    .map(
+      (reading) =>
+        `${reading.name}: ${reading.error ?? valueText(reading.value)}`,
+    );
+  h.debug.setTick(TICK);
+  assertTrue(
+    [...clockShapes(later, TICK_B)].some((shape) => clockAt.has(shape)),
+    `the reading that showed the run clock at ${clockText(TICK)} showing it ` +
+      `at ${clockText(TICK_B)} (${String(TICK_B / TICK_HZ)}s, or tick ` +
+      `${String(TICK_B)}) too, with the clock posed there`,
+  );
+  const words: Array<[string, string]> = [
     ["the screen", s.screen],
-    ["the run clock", clockText(TICK)],
-    ["the level", String(LEVEL)],
-    ["xp", String(XP)],
-    ["xpToNext", String(xpToNext(LEVEL))],
-    ["hp", String(HP)],
-    ["maxHp", String(s.run.maxHp)],
-    ["the kill count", String(KILLS)],
-    ["the lamplighter's x", String(PLAYER_X)],
-    ["the lamplighter's y", String(PLAYER_Y)],
     ["facing", "left"],
-    ["the enemy count", String(s.run.enemies.length)],
-    ["the spawn window", String(s.run.spawnWindow)],
-    ["the projectile count", String(s.run.projectiles.length)],
-    ["the zone count", String(s.run.zones.length)],
-    ["the gem count", String(s.run.gems.length)],
-    ["pendingLevelUps", String(QUEUED)],
   ];
-  for (const [what, token] of facts) {
+  for (const [what, token] of words) {
     assertTrue(
       hasToken(lines, token),
       `${what} (${token}) among the overlay's lines`,
+    );
+  }
+  const figures: Array<[string, number]> = [
+    ["the level", LEVEL],
+    ["xp", XP],
+    ["xpToNext", xpToNext(LEVEL)],
+    ["hp", HP],
+    ["maxHp", s.run.maxHp],
+    ["the kill count", KILLS],
+    ["the lamplighter's x", PLAYER_X],
+    ["the lamplighter's y", PLAYER_Y],
+    ["the enemy count", s.run.enemies.length],
+    ["the spawn window", s.run.spawnWindow],
+    ["the projectile count", s.run.projectiles.length],
+    ["the zone count", s.run.zones.length],
+    ["the gem count", s.run.gems.length],
+    ["pendingLevelUps", QUEUED],
+  ];
+  for (const [what, figure] of figures) {
+    assertTrue(
+      showsFigure(lines, figure),
+      `${what} (${String(figure)}) among the overlay's lines`,
     );
   }
   // A held item's line is the build's to format ("ember L3 0.70s" and
@@ -272,12 +391,6 @@ it("reports every listed fact with the snapshot's live value", async () => {
     assertTrue(
       naming.some((line) => line.includes(String(passive.level))),
       `${passive.id}'s level (${passive.level}) on a line naming it`,
-    );
-  }
-  for (const name of SWITCH_NAMES) {
-    assertTrue(
-      text.toLowerCase().includes(name.toLowerCase()),
-      `switch ${name} named among the overlay's lines`,
     );
   }
 
