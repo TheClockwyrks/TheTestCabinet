@@ -22,9 +22,36 @@
 // the entry rather than on it — a caret, a bracket pair, a bar behind the row —
 // and none of that lands inside the run of glyphs. So the band is the item's own
 // line at full stage width, which catches a marker wherever on the line it was
-// set, and it is bounded above and below by fractions of the MENU'S OWN STEP so
-// it cannot reach the second entry, whose highlight state differs between the two
-// frames and would otherwise answer for the first.
+// set, and it stops short of the second entry, whose highlight state differs
+// between the two frames and would otherwise answer for the first.
+//
+// WHICH LINE THAT IS COMES FROM `menuItemRect`, NOT FROM THE DRAWN COPY. The
+// item's line was once found by looking for a text run that CONTAINED the entry's
+// word, and that reading is not sound: `specs/ui.md` fixes only the copy, so
+// everything else a build puts on the title screen is its own, and a build that
+// captions its title `ARCADE CROSSING` or leaves a `CROSSING TIME` readout on the
+// HUD behind it has drawn `CROSS` somewhere the menu is not. The first such run
+// won, the "menu step" became the distance from the HUD to the second entry, and
+// the band ran off the top of the stage — clamped back onto it here, and refused
+// outright by the engines that do not clamp, so the reading was of a strip of
+// chrome rather than of the menu.
+//
+// `specs/instrumentation.md`'s `menuItemRect(index)` is the build's own answer to
+// where an item is: "the region a pointer or a touch contact selects that item
+// from", in logical units. `instrumentation/menu-item-rect` grades it on its own —
+// every item of every menu has one, each of real extent, each inside the stage,
+// and no two of one menu sharing a point — so this reading stands on something
+// already checked, and the six pointer and touch points already stand there too.
+// It also cannot send a band off the stage, because being inside the stage is
+// part of what that point holds it to.
+//
+// THE BAND REACHES HALFWAY INTO THE GAP BELOW AND THE SAME DISTANCE ABOVE. A hit
+// region need not be drawn to; a build may set its caret or its underline just
+// outside one, so the region alone would be a stricter reading than "the item's
+// own line". Half the gap to the next entry is as far as a band can go without
+// reaching the entry itself, and `specs/ui.md` makes the title menu vertical and
+// gives `CROSS` before `HOW TO PLAY`, so the gap is below the first entry and the
+// two never meet.
 //
 // THE STRAIT BEHIND IS EMPTIED FIRST. `specs/ui.md` allows "a dim slice of the
 // strait" behind the title, and a build is free to let it drift; the two frames
@@ -34,47 +61,35 @@
 // changes between the two frames is which item is highlighted.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThan, fail } from "../assert";
-import { STAGE_W, TITLE_ITEMS } from "../constants";
+import { assertGreaterThan } from "../assert";
+import { STAGE_H, STAGE_W, TITLE_ITEMS } from "../constants";
 import {
   captureStill,
   colorDistance,
   createHarness,
+  menuRect,
   resetTo,
   type Harness,
-  type TextSpan,
+  type MenuRect,
 } from "../harness";
-import { frameText } from "./screens";
 
-/**
- * The band of the item's line that is read, as fractions of the menu's step.
- *
- * Glyphs sit ABOVE their baseline, so the band reaches three-quarters of a step
- * up from it, which covers a face set as large as the step itself allows, and a
- * fifth of a step below it for descenders and for a bar drawn under the row. The
- * second entry's baseline is one whole step below the first's and its own glyphs
- * cannot reach more than its face's height above that, so a fifth of a step below
- * the first baseline stays clear of it for any face the line spacing leaves room
- * for.
- */
-const BAND_ABOVE = 0.75;
-const BAND_BELOW = 0.2;
+/** The entry the highlight is moved on and off: `CROSS`, `TITLE_ITEMS` index `0`. */
+const LIT_ITEM = 0;
+
+/** The entry the highlight is parked on for the second frame. */
+const PLAIN_ITEM = 1;
 
 /** The frame that draws the highlight moved off the first entry. */
 const MOVE_FRAMES = 1;
 
-/** Where the frame's copy for `text` was drawn, or a named failure. */
-function runFor(spans: readonly TextSpan[], text: string): TextSpan {
-  const found = spans.find((span) =>
-    span.text.toUpperCase().includes(text.toUpperCase()),
-  );
-  if (found === undefined) {
-    fail(
-      `the title frame to draw ${JSON.stringify(text)} (specs/ui.md)`,
-      spans.map((span) => span.text),
-    );
-  }
-  return found;
+/** How far a band reaches past its own region: half the gap to the next entry. */
+function reachOf(lit: MenuRect, next: MenuRect): number {
+  return Math.max(0, (next.y - (lit.y + lit.h)) / 2);
+}
+
+/** `value` held inside the stage's own rows, which is where a pixel exists. */
+function onStage(value: number): number {
+  return Math.min(Math.max(value, 0), STAGE_H - 1);
 }
 
 /** One horizontal band of the canvas, full stage width, as raw RGBA bytes. */
@@ -127,34 +142,38 @@ it("draws the highlighted title item apart from the same item unhighlighted", as
   h.debug.clearFish();
 
   // The first entry highlighted.
-  h.debug.setMenuIndex(0);
-  const spans = await frameText(h);
+  h.debug.setMenuIndex(LIT_ITEM);
+  await h.advance(MOVE_FRAMES);
   captureStill(h, "title");
 
-  // The line the first entry sits on, and the step to the second, read off the
-  // frame that drew both, so the band follows the build's own layout.
-  const first = runFor(spans, TITLE_ITEMS[0]);
-  const second = runFor(spans, TITLE_ITEMS[1]);
-  const step = Math.abs(second.y - first.y);
+  // The line the first entry sits on, and the gap to the second, taken from the
+  // build's own layout through `menuItemRect` (specs/instrumentation.md), so the
+  // band is the row the build itself picks that entry from.
+  const litRect = menuRect(h, LIT_ITEM);
+  const nextRect = menuRect(h, PLAIN_ITEM);
   assertGreaterThan(
-    step,
-    0,
-    "the two title items on lines of their own (specs/ui.md: a vertical menu)",
+    nextRect.y,
+    litRect.y,
+    `${TITLE_ITEMS[PLAIN_ITEM]} below ${TITLE_ITEMS[LIT_ITEM]}, the two on ` +
+      "lines of their own (specs/ui.md: a vertical menu of TITLE_ITEMS in that " +
+      "order)",
   );
 
-  const top = first.y - BAND_ABOVE * step;
-  const bottom = first.y + BAND_BELOW * step;
+  const reach = reachOf(litRect, nextRect);
+  const top = onStage(litRect.y - reach);
+  const bottom = onStage(litRect.y + litRect.h + reach);
   const lit = band(h, top, bottom);
 
   // The same line with the highlight moved off it, and nothing else changed.
-  h.debug.setMenuIndex(1);
+  h.debug.setMenuIndex(PLAIN_ITEM);
   await h.advance(MOVE_FRAMES);
   const plain = band(h, top, bottom);
 
   assertGreaterThan(
     furthestApart(lit, plain),
     0,
-    `the highlighted ${TITLE_ITEMS[0]} drawn distinctly from the plain one, ` +
+    `the highlighted ${TITLE_ITEMS[LIT_ITEM]} drawn distinctly from the plain ` +
+      `one, ` +
       `as at least one pixel of its line drawn differently between the two ` +
       `(specs/ui.md)`,
   );

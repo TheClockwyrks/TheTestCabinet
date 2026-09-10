@@ -22,6 +22,7 @@
 // Nothing here reads the build's own state: everything works off the operations
 // the build issued against its 2D context, which is the drawing itself.
 
+import { fail } from "../assert";
 import { STAGE_H, STAGE_W } from "../constants";
 import {
   RECORDER_GLOBAL,
@@ -51,15 +52,53 @@ const BOX_STEP = 4;
  */
 export const BOX_CHANGED_MIN = 24;
 
+/**
+ * The part of `box` that is ON THE STAGE, which is the part a reading can be
+ * taken over.
+ *
+ * A box is worked out from WORLD units through the build's own camera —
+ * `worldToStage` over a footprint, plus whatever headroom the reading needs above
+ * it — and `specs/world.md` leaves the camp's layout and the camera's clamping to
+ * the build, so a box that reaches above the pad or beside a column can legally
+ * run past the edge of the `STAGE_W` x `STAGE_H` field. There is no pixel there:
+ * under an engine `getImageData` refuses the read outright (`Read pixels from
+ * canvas failed`, which a suite reports as a bare failure with no expected and no
+ * actual), and in a browser it answers transparent black, which is a reading of
+ * nothing dressed as a reading of something.
+ *
+ * So the part off the stage is dropped, and the part on it is what is compared.
+ * The clip is a function of the BOX alone, so two readings of one box drop the
+ * same samples and stay comparable; and a box with no part on the stage is a
+ * scenario that never posed what it meant to, which {@link sampleBox} reports as
+ * itself rather than as an empty comparison that passes.
+ */
+function onStage(box: Box): Box {
+  const x = Math.max(box.x, 0);
+  const y = Math.max(box.y, 0);
+  return {
+    x,
+    y,
+    w: Math.min(box.x + box.w, STAGE_W) - x,
+    h: Math.min(box.y + box.h, STAGE_H) - y,
+  };
+}
+
 /** The colors inside a stage rectangle, as `r`, `g`, `b` triples end to end. */
 export async function sampleBox(
   h: Harness,
   box: Box,
   step: number = BOX_STEP,
 ): Promise<number[]> {
+  const on = onStage(box);
+  if (on.w <= 0 || on.h <= 0) {
+    fail(
+      `a reading box with a part on the ${STAGE_W} by ${STAGE_H} stage`,
+      `${JSON.stringify(box)} lies wholly off it`,
+    );
+  }
   const points: { x: number; y: number }[] = [];
-  for (let y = box.y + step / 2; y < box.y + box.h; y += step) {
-    for (let x = box.x + step / 2; x < box.x + box.w; x += step) {
+  for (let y = on.y + step / 2; y < on.y + on.h; y += step) {
+    for (let x = on.x + step / 2; x < on.x + on.w; x += step) {
       points.push({ x, y });
     }
   }
