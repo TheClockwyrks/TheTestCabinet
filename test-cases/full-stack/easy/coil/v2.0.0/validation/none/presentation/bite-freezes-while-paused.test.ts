@@ -18,11 +18,14 @@
 // is asserted is that the picture on that cell did not CHANGE, never that a
 // particular file is on it.
 //
-// WHY THE FRAME IS READ IMMEDIATELY BEFORE THE PAUSE. The frames of a bite are
-// distinct pictures (`presentation/head-frames-distinct`), so a bite that kept
-// running behind the pause leaves a different one there — whichever of `2`, `3`
-// or the resting `0` its own clock reached. Nothing is asserted about WHICH
-// frame the pause caught, only that the pause held it.
+// WHY THE FRAME IS READ IMMEDIATELY BEFORE THE PAUSE. What the reading compares
+// is the produced FILE the head's cell is painted from, and the bite plays four
+// separate files, so a bite that kept running behind the pause leaves a
+// different one there — whichever of `2`, `3` or the resting `0` its own clock
+// reached — even where two of those files hold the same picture. Whether they
+// differ as pictures is `presentation/head-frames-distinct`, a different
+// question that this does not rest on. Nothing is asserted about WHICH frame
+// the pause caught, only that the pause held it.
 //
 // The pause is posed with `setScreen` rather than pressed for: a build whose
 // pause key does not answer fails `states/pause-reachable` and `controls/*`, and

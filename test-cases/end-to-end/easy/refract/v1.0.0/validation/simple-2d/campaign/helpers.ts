@@ -85,36 +85,154 @@ function numbersIn(text: string): number[] {
 }
 
 /**
+ * How far apart two draws of one number sit and still read as one place.
+ *
+ * A build that draws one number twice in one spot is decorating it — a drop
+ * shadow, an outline, a highlight pass — and a decorating pass is offset by a
+ * fraction of the glyphs it decorates rather than by a tile, so the gap stands
+ * well clear of any of them. It costs nothing to be generous: only ONE board's
+ * matches are ever grouped, so no gap folds two boards together, and the only
+ * thing a wide one risks is putting a board's point between two drawings of
+ * its number that sit closer together than this — which is one tile by any
+ * reading of the frame.
+ */
+const REDRAW_GAP = 40;
+
+/** `matches` grouped by where they were drawn: one group per place. */
+function placesOf(matches: readonly TextSpan[]): TextSpan[][] {
+  const places: TextSpan[][] = [];
+  for (const run of matches) {
+    const x = (run.left + run.right) / 2;
+    const place = places.find(
+      (group) =>
+        Math.abs((group[0].left + group[0].right) / 2 - x) <= REDRAW_GAP &&
+        Math.abs(group[0].y - run.y) <= REDRAW_GAP,
+    );
+    if (place === undefined) places.push([run]);
+    else place.push(run);
+  }
+  return places;
+}
+
+/** Where one place sits: the mean of the draws that make it up. */
+function centreOf(place: readonly TextSpan[]): { x: number; y: number } {
+  const x =
+    place.reduce((sum, run) => sum + (run.left + run.right) / 2, 0) /
+    place.length;
+  const y = place.reduce((sum, run) => sum + run.y, 0) / place.length;
+  return { x, y };
+}
+
+/**
+ * Every place board `board`'s number was drawn in, or none at all.
+ *
+ * The search narrows a tier at a time, and stops at the first tier that finds
+ * the number anywhere. A run that IS the number once trimmed is taken first,
+ * because substring matching would put board 1 inside `"12"`. Next a run that
+ * is the number written with leading zeros and nothing else, which is what
+ * `"01"` is. Only when neither reads as the number on its own does the search
+ * widen to a run carrying exactly one integer equal to `board`, which is what
+ * `"#7"` and `"BOARD 7"` are: a label around the number is the build's own copy
+ * and font choice, and specs/modes/campaign.md asks only that each board shows
+ * its number. A run carrying a second board's digits, such as
+ * `"1 OF 24 SOLVED"`, is not that number and stays out of every tier. A figure
+ * a build groups with a thousands separator reads as the one figure it spells,
+ * so a run carrying such a figure and nothing else still carries exactly one
+ * number.
+ *
+ * The draws are grouped into places rather than returned one by one, so a
+ * number drawn more than once in one spot — a shadow pass under a highlight
+ * pass — is the single place it looks like.
+ */
+function placesForBoard(
+  runs: readonly TextSpan[],
+  board: number,
+): TextSpan[][] {
+  const bare = String(board);
+  const tiers: ((run: TextSpan) => boolean)[] = [
+    (run) => run.text.trim() === bare,
+    (run) =>
+      /^0+\d+$/.test(run.text.trim()) && Number(run.text.trim()) === board,
+    (run) => {
+      const figures = numbersIn(run.text);
+      return figures.length === 1 && figures[0] === board;
+    },
+  ];
+  for (const tier of tiers) {
+    const matches = runs.filter(tier);
+    if (matches.length > 0) return placesOf(matches);
+  }
+  return [];
+}
+
+/** A box around drawn positions. */
+interface Extent {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
+/**
+ * The box the OTHER boards' numbers were drawn in — the grid, as far as this
+ * frame is unambiguous about it — or nothing, when too few of them settle on
+ * one place apiece for a box to mean anything.
+ */
+function gridExtent(
+  runs: readonly TextSpan[],
+  board: number,
+): Extent | undefined {
+  const settled: { x: number; y: number }[] = [];
+  for (let other = 1; other <= CAMPAIGN_LENGTH; other += 1) {
+    if (other === board) continue;
+    const places = placesForBoard(runs, other);
+    if (places.length === 1) settled.push(centreOf(places[0]));
+  }
+  if (settled.length < 2) return undefined;
+  const xs = settled.map((point) => point.x);
+  const ys = settled.map((point) => point.y);
+  return {
+    left: Math.min(...xs),
+    right: Math.max(...xs),
+    top: Math.min(...ys),
+    bottom: Math.max(...ys),
+  };
+}
+
+/** Whether a place's centre sits inside `extent`. */
+function within(centre: { x: number; y: number }, extent: Extent): boolean {
+  return (
+    centre.x >= extent.left &&
+    centre.x <= extent.right &&
+    centre.y >= extent.top &&
+    centre.y <= extent.bottom
+  );
+}
+
+/**
  * Where board `board`'s number sits among one frame's runs of text.
  *
- * A run that IS the number once trimmed is taken first, because substring
- * matching would put board 1 inside `"12"`. Only when nothing reads as the
- * bare number does the search widen to a run carrying exactly one integer
- * equal to `board`, which is what `"07"`, `"#7"` and `"BOARD 7"` are: zero
- * padding or a label around the number is the build's own copy and font
- * choice, and specs/modes/campaign.md asks only that each board shows its
- * number. A run carrying a second board's digits, such as `"1 OF 24 SOLVED"`,
- * is not that number and stays out either way. A figure a build groups with a
- * thousands separator reads as the one figure it spells, so a run carrying
- * such a figure and nothing else still carries exactly one number.
+ * WHICH RUNS COUNT is {@link placesForBoard}'s tiers. WHICH PLACE IS THE TILE
+ * is decided by the layout rather than by the spelling. The boards the frame
+ * is unambiguous about are the grid, and a board's tile sits inside that grid;
+ * a second drawing of the same number elsewhere on the screen does not. A
+ * masthead reading `"EST. 001   /   LIGHT LAB"` carries exactly one integer
+ * equal to 1, and a heading naming the highlighted board carries its number
+ * again — neither is a tile, and specs/modes/campaign.md asks that each board
+ * in the grid shows its number while forbidding no other copy on the screen.
+ * So the frame is read for where its grid is, rather than searched for a
+ * spelling that nothing else on the screen happens to share.
  *
- * A build that draws a number more than once (a shadow pass, a highlight
- * redraw) draws the passes within a couple of pixels of each other, so the
- * mean of the matches names the tile's spot.
+ * Only when the layout cannot separate the candidates — two places both inside
+ * the grid, each drawn as often as the other — is the frame reported as the
+ * ambiguity it is, rather than averaged into a third place it never drew.
  */
 export function numberRun(
   runs: readonly TextSpan[],
   board: number,
 ): NumberPoint {
-  const exact = runs.filter((run) => run.text.trim() === String(board));
-  const matches =
-    exact.length > 0
-      ? exact
-      : runs.filter((run) => {
-          const figures = numbersIn(run.text);
-          return figures.length === 1 && figures[0] === board;
-        });
-  if (matches.length === 0) {
+  const places = placesForBoard(runs, board);
+  if (places.length === 0) {
     fail(
       `the select frame drawing board ${board}'s number in a run of its own ` +
         "(specs/modes/campaign.md: each board in the grid shows its number; a " +
@@ -122,13 +240,32 @@ export function numberRun(
       runs.map((run) => run.text),
     );
   }
-  const x =
-    matches.reduce((sum, run) => sum + (run.left + run.right) / 2, 0) /
-    matches.length;
-  const y = matches.reduce((sum, run) => sum + run.y, 0) / matches.length;
-  return { board, x, y };
+  let candidates = places;
+  if (candidates.length > 1) {
+    const extent = gridExtent(runs, board);
+    const inside =
+      extent === undefined
+        ? []
+        : candidates.filter((place) => within(centreOf(place), extent));
+    if (inside.length > 0) candidates = inside;
+  }
+  const ranked = [...candidates].sort((a, b) => b.length - a.length);
+  if (ranked.length > 1 && ranked[0].length === ranked[1].length) {
+    fail(
+      `board ${board}'s number drawn in one place on the select frame ` +
+        "(specs/modes/campaign.md: each board in the grid shows its number)",
+      ranked.map((place) => {
+        const centre = centreOf(place);
+        return {
+          text: place[0].text,
+          x: Math.round(centre.x),
+          y: Math.round(centre.y),
+        };
+      }),
+    );
+  }
+  return { board, ...centreOf(ranked[0]) };
 }
-
 /**
  * The gap, in logical units, that separates two clusters of drawn positions.
  *

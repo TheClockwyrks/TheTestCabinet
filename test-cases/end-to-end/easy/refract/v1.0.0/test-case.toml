@@ -1589,10 +1589,11 @@ validation = { script = "cascade/hud-tier.test.ts", outputs = [
 # This case fixes no palette, no font, no node artwork, no beam rendering and no
 # background on purpose, so there is nothing to compare a build against, and the
 # two points here are the two presentation facts the specification does fix: the
-# stage fitted whatever the window is, and the readouts clear of the board. The
+# stage fitted whatever the window is, and the board left to itself — every
+# readout drawn clear of its extent and both control targets outside it. The
 # fit is graded under `none` alone, because under an engine the engine derives
-# it and every build on that engine gets the same answer; the readouts are the
-# build's placement under every engine. How GOOD the bench looks — the design,
+# it and every build on that engine gets the same answer; the placement is the
+# build's under every engine. How GOOD the bench looks — the design,
 # the type, the originality — is the run-wide aesthetic rating's, not scored
 # here.
 [[review.categories]]
@@ -1615,8 +1616,8 @@ validation = { script = "presentation/stage-fit.test.ts", engines = ["none"], ou
 ] }
 [[review.categories.items]]
 id = "readouts-clear-of-the-board"
-title = "The readouts sit clear of the board"
-description = "On a posed 7x6 board carrying no crystal, in each mode, every text draw's bounds sit outside the board's extent — cell centers spanning x 352 to 928 and y 152 to 632 per specs/board.md, widened by NODE_R (30) — so nothing but the board, its nodes' own readouts and its beams is drawn inside that extent, as specs/ui.md states for the playing screen."
+title = "The readouts and the controls sit clear of the board"
+description = "On a posed 7x6 board carrying no crystal, in each mode, every text draw's bounds and the clear and back target rectangles sit outside the board's extent — cell centers spanning x 352 to 928 and y 152 to 632 per specs/board.md, widened by NODE_R (30) — so nothing but the board, its nodes' own readouts and its beams is drawn inside that extent and no target covers a node, as specs/ui.md and specs/controls.md state for the playing screen."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "presentation/readouts-clear-of-the-board.test.ts", outputs = [

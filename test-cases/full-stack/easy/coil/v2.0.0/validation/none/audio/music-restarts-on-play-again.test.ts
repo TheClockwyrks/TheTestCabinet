@@ -1,10 +1,11 @@
-// audio/music-restarts-on-play-again — PLAY AGAIN from the game over starts the
-// bed again.
+// audio/music-restarts-on-play-again — the round PLAY AGAIN lays out has the bed
+// under it.
 //
-// specs/ui.md fixes the event: `music` plays when "a round begins", and the bed
-// "loops under the round it began with". And of the game-over menu: "`confirm`
-// on `PLAY AGAIN` starts a fresh round in the same mode." A fresh round
-// beginning is a round beginning, so the bed sounds for it.
+// WHAT THE SPECIFICATION FIXES. `specs/ui.md` plays `music` when "a round
+// begins" and has the bed "loop under the round it began with", and of the
+// game-over menu: "`confirm` on `PLAY AGAIN` starts a fresh round in the same
+// mode." It names this path outright: "A round laid out by `RESTART` or by
+// `PLAY AGAIN` is a round beginning, so the bed sounds under it."
 //
 // WHY THIS PATH IS ITS OWN POINT. `music-cue-plays` decides the title path only:
 // it watches a bed start on the first round of a session. A build can sound the
@@ -18,31 +19,36 @@
 // title, killed by steering the head into a wall, and the game over is the one
 // the build itself reached.
 //
+// WHAT IS SOUNDING IS READ, NOT WHAT WAS ASKED FOR. `specs/ui.md` has the bed
+// stopped once a round has ended, so under a build that obeys it the bed beneath
+// the round PLAY AGAIN lays is one that started again. What is read is the bed
+// SOUNDING rather than the moment it was asked for, which is the reading
+// `music-restarts-on-pause-restart` sets out in full and the one a player has. A
+// build that left the old bed running is failing
+// `music-stops-when-the-round-ends` and is not charged for it twice here.
+//
 // WHAT IS ASSERTED. That the fresh round was actually laid — a build that merely
 // returned to `playing` has not begun a round and is failing
-// `states/gameover-play-again` rather than this — and that a `music` cue was
-// asked for from the moment PLAY AGAIN was confirmed.
+// `states/gameover-play-again` rather than this — and that the music bed is
+// sounding under that round once it has run for a few ticks.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertDeepEqual,
-  assertEqual,
-  assertGreaterThanOrEqual,
-} from "../assert";
+import { assertDeepEqual, assertEqual } from "../assert";
 import { CUES, KEY, START_CELLS } from "../constants";
 import {
   captureReplay,
   createHarness,
-  cuesNamed,
   startRoundWithKeys,
-  watchCues,
   type Harness,
 } from "../harness";
 
 /** `PLAY AGAIN` is the first item of `OVER_ITEMS` (specs/ui.md). */
 const PLAY_AGAIN_INDEX = 0;
 
-/** Ticks driven after the fresh round begins, so the clip holds play. */
+/**
+ * Ticks driven after the fresh round begins, so the clip holds play and a
+ * build that starts its bed a frame into the round has started it.
+ */
 const ROUND_TICKS = 8;
 
 /** How far the round is driven looking for the wall the head is steered into. */
@@ -58,7 +64,7 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("asks for the music cue again on the round PLAY AGAIN lays out", async () => {
+it("sounds the music bed under the round PLAY AGAIN lays out", async () => {
   await h.armAudio();
   await startRoundWithKeys(h);
 
@@ -74,9 +80,6 @@ it("asks for the music cue again on the round PLAY AGAIN lays out", async () => 
     "the item highlighted when the game over arrived",
   );
 
-  // Opened after the ending, so what it holds is the fresh round's own cues.
-  const cues = watchCues(h);
-
   const fresh = await captureReplay(h, "again", async () => {
     await h.tap(KEY.confirm);
     const begun = await h.snapshot();
@@ -90,9 +93,9 @@ it("asks for the music cue again on the round PLAY AGAIN lays out", async () => 
     START_CELLS,
     "the chain the fresh round opens on",
   );
-  assertGreaterThanOrEqual(
-    cuesNamed(cues, CUES.music).length,
-    1,
-    "music cues sounded from PLAY AGAIN onward",
+  assertEqual(
+    await h.looping(CUES.music),
+    true,
+    `whether the bed was sounding ${ROUND_TICKS} ticks into the fresh round`,
   );
 });

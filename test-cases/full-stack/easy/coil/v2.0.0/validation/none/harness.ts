@@ -389,12 +389,33 @@ export interface TimedCue extends Sound {
   t: number;
 }
 
+/** One attached watcher, and the point of the probe's log it opened on. */
+interface CueSink {
+  /**
+   * How many sounds the probe had logged when this sink attached, in flight.
+   *
+   * Read AT THE MOMENT OF ATTACHMENT rather than at the next settle, because
+   * what a watcher is promised is the cues from that moment on: the sounds of a
+   * drive the check ran before it opened the watch, and of the gesture
+   * {@link Harness.armAudio} makes before those, must not be replayed into it
+   * stamped with a frame they did not sound on. Held as the unawaited crossing
+   * so {@link watchCues} can stay synchronous.
+   */
+  from: Promise<number>;
+  /** The array the check was handed. */
+  into: TimedCue[];
+}
+
 /** The named-cue log's state, per harness. */
 interface CueLog {
-  /** How many sounds the probe held when this log last read it. */
-  cursor: number;
+  /**
+   * How many sounds the probe held when this log last read it, or `null` while
+   * it has never been read — which is where a log stays for the whole of a
+   * check that never watches, since nothing then reads the probe at all.
+   */
+  cursor: number | null;
   /** Where {@link watchCues} attaches. */
-  sinks: TimedCue[][];
+  sinks: CueSink[];
 }
 
 /** The probe's shape, as far as this side reads it. */
@@ -461,10 +482,13 @@ async function waitForCues(page: Page): Promise<void> {
 
 /**
  * Stamp what the probe logged since the log's last read with the frame the drive
- * ended on, and hand it to every watcher.
+ * ended on, and hand it to every watcher that was open when it sounded.
  *
  * Nothing is read when no watcher is attached, so a check that never asks about
- * audio pays no extra crossing.
+ * audio pays no extra crossing — and because nothing is read, there is no cursor
+ * to keep fresh either. Each sink carries the count it opened on instead, so the
+ * first read after a watch opens hands it the sounds that FOLLOWED the watch and
+ * not the whole history the probe had already logged behind it.
  */
 async function settleCues(
   page: Page,
@@ -473,27 +497,47 @@ async function settleCues(
   timeMs: number,
 ): Promise<void> {
   if (log.sinks.length === 0) return;
+  const opened = await Promise.all(log.sinks.map((sink) => sink.from));
+  const from = log.cursor ?? Math.min(...opened);
   const read = (await page.evaluate(
-    ([global, from]) => {
+    ([global, at]) => {
       const audio = (window as unknown as Record<string, AudioProbe>)[global];
-      return { plays: audio.since(from), count: audio.count() };
+      return { plays: audio.since(at), count: audio.count() };
     },
-    [AUDIO_PROBE_GLOBAL, log.cursor] as const,
+    [AUDIO_PROBE_GLOBAL, from] as const,
   )) as { plays: Sound[]; count: number };
   log.cursor = read.count;
-  for (const play of read.plays) {
-    for (const sink of log.sinks) sink.push({ ...play, frame, t: timeMs });
-  }
+  read.plays.forEach((play, offset) => {
+    // The probe's log is append-only and `since` slices it, so the sound
+    // `offset` along is the probe's `from + offset`-th, and a sink holds it
+    // exactly when it had already opened by then.
+    const at = from + offset;
+    log.sinks.forEach((sink, index) => {
+      if (opened[index]! <= at) sink.into.push({ ...play, frame, t: timeMs });
+    });
+  });
 }
 
 /**
  * Record every cue the build plays from now on, stamped with the frame of the
  * drive it played on and named by the file it came from.
+ *
+ * FROM NOW ON IS TAKEN LITERALLY. Where the probe's log stands is read here, as
+ * the watch opens, so nothing the build had already played reaches the array:
+ * not the sounds of a drive the check ran before opening the watch, and not the
+ * ones {@link Harness.armAudio}'s press and key drew out of it. The read is left
+ * in flight so this stays synchronous — it is issued before the caller's next
+ * line and awaited at the first settle after it, with no frame run in between.
  */
 export function watchCues(h: Harness): TimedCue[] {
-  const played: TimedCue[] = [];
-  cueLogOf(h).sinks.push(played);
-  return played;
+  const into: TimedCue[] = [];
+  const from = probeAudio<number>(h.page, "count");
+  // Awaited by {@link settleCues}, which every watching check reaches. This
+  // handler is only so that a page torn down before then reports its failure
+  // through that await rather than as an unhandled rejection.
+  from.catch(() => undefined);
+  cueLogOf(h).sinks.push({ from, into });
+  return into;
 }
 
 /** Every recorded play of the cue `name`, in the order they sounded. */
@@ -757,15 +801,15 @@ async function inertPress(
  * The kit's harness does everything but the log and the tick vocabulary. What
  * comes back here is that harness with every member that runs frames wrapped so
  * that, once a watcher is attached, the sounds the probe logged during the drive
- * are stamped with the drive's last frame and handed to every watcher. Nothing is
- * read when no watcher is attached, so a check that never asks about audio pays
- * no extra crossing.
+ * are stamped with the drive's last frame and handed to every watcher that was
+ * open when they sounded. Nothing is read when no watcher is attached, so a check
+ * that never asks about audio pays no extra crossing.
  */
 export async function createHarness(
   options?: HarnessOptions,
 ): Promise<Harness> {
   const base = await kit.createHarness(options);
-  const log: CueLog = { cursor: 0, sinks: [] };
+  const log: CueLog = { cursor: null, sinks: [] };
 
   /** Run `drive`, then settle the sounds it produced onto its last frame. */
   const driven = async <T>(drive: () => Promise<T>): Promise<T> => {

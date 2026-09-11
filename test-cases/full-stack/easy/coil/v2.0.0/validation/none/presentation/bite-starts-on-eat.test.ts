@@ -15,7 +15,10 @@
 // assumed to be a particular file: `specs/assets.md` fixes the four paths but
 // leaves a build free to name and order the images it loads them into, so what
 // can honestly be read is that the head STOPPED being painted with the picture
-// it rests on. That the four files differ from one another at all is
+// it rests on. What the reading compares is the produced FILE each blit came
+// from, so the frames are told apart whatever they look like. That they differ
+// as PICTURES wherever `specs/assets.md` fixes it — every pair but `1` against
+// `3`, the one pair a symmetric bite may legitimately draw the same — is
 // `presentation/head-frames-distinct`, and which pose each one holds is the
 // presentation domain's aesthetic rating.
 //

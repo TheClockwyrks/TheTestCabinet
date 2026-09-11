@@ -12,10 +12,12 @@
 //      same second segment. Refused.
 //
 // specs/beams.md R5 states the limit as a property of the node — "An emitter
-// carries at most one segment" — and R6 states the second face outright: "An
-// emitter is an end of the beam and never a pass-through." The item's own
-// description covers both, "so an emitter is never passed through or
-// re-entered", so both are asserted here.
+// carries at most one segment" — so it refuses both faces: a beam passing
+// through an emitter hangs a second segment on it exactly as a beam re-entering
+// one does. R5 is the whole of the refusal ground. R6's "An emitter is an end
+// of the beam and never a pass-through" says the same thing of a finished beam,
+// and the specification's enforcement table puts R6 among the rules "never used
+// to refuse a move", so nothing here is asserted of it.
 //
 // One requirement per validator would make these two items rather than one.
 // They are one here because this version's item set is fixed; a future version
@@ -124,9 +126,8 @@ it("refuses a second segment onto a loaded emitter, and a move out of one", asyn
   assertDeepEqual(
     held.beams.triangle?.cells,
     reversed,
-    "R5: the move out of the loaded emitter would be its second segment and " +
-      "is refused — an emitter is an end of the beam and never a " +
-      "pass-through (specs/beams.md R5, R6)",
+    "R5: the move out of the loaded emitter would be its second segment, " +
+      "which the emitter's capacity refuses (specs/beams.md R5)",
   );
   assertLiveTrace(
     held,

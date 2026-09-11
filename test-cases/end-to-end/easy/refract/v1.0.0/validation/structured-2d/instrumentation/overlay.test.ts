@@ -12,17 +12,27 @@
 // reports what each one returned.
 //
 // WHAT IS ASSERTED, AND HOW LOOSELY. The specification fixes the FACTS a source
-// must report, not the wording a build names them with, so a reading is looked
-// up by the specification's own word for its fact — `screen`, `mode`, the
-// board's `cols` and `rows`, and each channel name from specs/board.md — and
-// its VALUE is held against what the posed state implies. A beam's length is
-// honestly counted in cells or in segments, so each length is accepted under
-// either count, and a value that carries other words around the figure (a unit,
-// a completeness flag) still reports it.
+// must report, not the wording a build names them with nor how many sources it
+// spreads them over, so a reading is looked up by the specification's own word
+// for its fact — `screen`, `mode`, the board's `cols` and `rows`, and each
+// channel name from specs/board.md — in the LINE the panel shows, which is
+// the source's name and its value together. A build reporting all three beam
+// lengths under one `beams` source is read the same way as one registering a
+// source per channel, and each channel's figure is read from its own stretch of
+// that line, so no channel answers for another. A beam's length is honestly
+// counted in cells or in segments, so each length is accepted under either
+// count, and a value that carries other words around the figure (a unit, a
+// completeness flag) still reports it. A loose reading is held honest by
+// reading the three lengths in TWO states: a source is a read of the state
+// (specs/instrumentation.md: "Each source is called with the state current at
+// the read ... and reads off that argument"), so a line that names the
+// channels beside figures it does not read off the game answers correctly in
+// at most one of them.
 //
 // THE POSED STATE. A 7x6 board carrying all three channels, on the `playing`
 // screen in `campaign` mode, with a 2-cell triangle beam, a 3-cell square beam,
-// and the diamond beam left empty.
+// and the diamond beam left empty. The same board is then posed afresh, which
+// empties every beam, and the three lengths are read again.
 //
 // PURITY. Every source is a pure read, so a read leaves the snapshot exactly as
 // it was — no frame runs here, so simTime is held too — and a second read with
@@ -90,28 +100,112 @@ function lines(readings: readonly DiagnosticReading[]): string[] {
   );
 }
 
-/** The readings whose name carries any of the specification's words for a fact. */
+/** A reading's name as the text a reader of the panel sees. */
+function nameText(reading: DiagnosticReading): string {
+  return reading.name.toLowerCase();
+}
+
+/**
+ * A reading's value as the text a reader of the panel sees, with a hyphen that
+ * joins a word to a figure read as the separator it is rather than as a sign.
+ *
+ * A build grouping several facts on one line may delimit each word from its
+ * own figure with a hyphen — `triangle-1 square-2 diamond-0` — and reading
+ * that hyphen as a sign would report the triangle beam at -1 and fail a line
+ * that says 1. A hyphen anywhere a sign can stand is left exactly as it is, so
+ * `diamond:-1` and a bare `-1` still report -1, which is what a build
+ * reporting an empty beam as -1 must be shown to have said.
+ */
+function valueText(reading: DiagnosticReading): string {
+  return String(reading.value)
+    .toLowerCase()
+    .replace(/(\w)-(?=\d)/g, "$1 ");
+}
+
+/**
+ * The readings that report a fact, looked up by the specification's own word
+ * for it in the LINE the panel shows — the source's name and its value
+ * together.
+ *
+ * specs/instrumentation.md asks for the facts, not for one source per fact:
+ * "Register at least the current `screen` and `mode`, the board's `cols` and
+ * `rows`, each channel's beam length and whether it is complete". A build that
+ * groups the three beam lengths under one source does register each channel's
+ * length, and names each channel in the value rather than in the name, so a
+ * lookup that read the name alone would miss a reading that is plainly there.
+ */
 function namedFor(
   readings: readonly DiagnosticReading[],
   words: readonly string[],
 ): DiagnosticReading[] {
   return readings.filter((reading) => {
-    const name = reading.name.toLowerCase();
-    return words.some((word) => name.includes(word));
+    const line = `${nameText(reading)} ${valueText(reading)}`;
+    return words.some((word) => line.includes(word));
   });
 }
 
-/** A reading's value as the text a reader of the panel sees. */
-function valueText(reading: DiagnosticReading): string {
-  return String(reading.value).toLowerCase();
+/** Every whole number written in `text`, a leading minus sign included. */
+function figuresIn(text: string): number[] {
+  return (text.match(/-?\d+/g) ?? []).map(Number);
 }
 
-/** Every whole number written in a reading's value. */
-function figuresIn(reading: DiagnosticReading): number[] {
-  return (String(reading.value).match(/\d+/g) ?? []).map(Number);
+/**
+ * The stretch of a value each word it names reports, under one reading of the
+ * whole line.
+ *
+ * A source reporting several facts at once writes each figure beside its own
+ * word, and which side it writes it on is a wording the build chooses once for
+ * the line: `triangle:1 square:2 diamond:0` puts each figure after its word,
+ * `1 on triangle, 2 on square, 0 on diamond` before it. So both readings are
+ * laid out and the line is read under the one that gives EVERY word it names a
+ * figure of its own, which is what a line reporting each of them looks like
+ * either way round. Reading the line one word at a time instead would take a
+ * neighbour's figure for a word whose own side of it is bare.
+ */
+function stretches(
+  value: string,
+  words: readonly string[],
+): Map<string, string> {
+  const found = words
+    .map((word) => ({ word, at: value.indexOf(word) }))
+    .filter((entry) => entry.at !== -1)
+    .sort((a, b) => a.at - b.at);
+  const forward = new Map<string, string>();
+  const backward = new Map<string, string>();
+  found.forEach((entry, index) => {
+    const next = found[index + 1];
+    const previous = found[index - 1];
+    forward.set(
+      entry.word,
+      value.slice(entry.at + entry.word.length, next?.at ?? value.length),
+    );
+    backward.set(
+      entry.word,
+      value.slice(
+        previous === undefined ? 0 : previous.at + previous.word.length,
+        entry.at,
+      ),
+    );
+  });
+  const reportsEach = (spans: Map<string, string>): boolean =>
+    [...spans.values()].every((text) => figuresIn(text).length > 0);
+  return reportsEach(forward) || !reportsEach(backward) ? forward : backward;
 }
 
-/** The readings named for `requirement`, or a failure naming the whole set. */
+/** The figures a reading reports for `words`, each read in its own stretch. */
+function reportedFigures(
+  reading: DiagnosticReading,
+  words: readonly string[],
+  siblings: readonly string[],
+): number[] {
+  const value = valueText(reading);
+  const present = words.filter((word) => value.includes(word));
+  if (present.length === 0) return figuresIn(value);
+  const spans = stretches(value, siblings);
+  return present.flatMap((word) => figuresIn(spans.get(word) ?? value));
+}
+
+/** The readings reporting `requirement`, or a failure naming the whole set. */
 function sourcesFor(
   readings: readonly DiagnosticReading[],
   words: readonly string[],
@@ -119,12 +213,12 @@ function sourcesFor(
 ): DiagnosticReading[] {
   const found = namedFor(readings, words);
   if (found.length === 0) {
-    fail(`a registered diagnostic named for ${requirement}`, lines(readings));
+    fail(`a registered diagnostic reporting ${requirement}`, lines(readings));
   }
   return found;
 }
 
-/** Some source named for `requirement` reports a value carrying `token`. */
+/** Some source reporting `requirement` carries `token` in its value. */
 function assertReportsText(
   readings: readonly DiagnosticReading[],
   words: readonly string[],
@@ -137,19 +231,29 @@ function assertReportsText(
   }
 }
 
-/** Some source named for `requirement` reports one of `figures`. */
+/**
+ * Some source reporting `requirement` writes one of `figures` for it.
+ *
+ * `siblings` are the words a build may report alongside this one on a single
+ * line, which is what bounds the stretch a figure is read from: without them
+ * one channel's figure would answer every channel's question.
+ */
 function assertReportsFigure(
   readings: readonly DiagnosticReading[],
   words: readonly string[],
   figures: readonly number[],
   requirement: string,
+  siblings: readonly string[] = words,
 ): void {
   const sources = sourcesFor(readings, words, requirement);
   const reported = sources.some((reading) =>
-    figuresIn(reading).some((figure) => figures.includes(figure)),
+    reportedFigures(reading, words, siblings).some((figure) =>
+      figures.includes(figure),
+    ),
   );
   if (!reported) {
-    fail(`${requirement} reported as ${figures.join(" or ")}`, lines(sources));
+    const wanted = [...new Set(figures)].join(" or ");
+    fail(`${requirement} reported as ${wanted}`, lines(sources));
   }
 }
 
@@ -203,6 +307,7 @@ it("registers the diagnostics the specification asks for, and reading them chang
       [channel],
       [cells, Math.max(0, cells - 1)],
       `the ${channel} beam's length`,
+      CHANNELS,
     );
   }
 
@@ -220,4 +325,26 @@ it("registers the diagnostics the specification asks for, and reading them chang
     lines(readings),
     "a second read of the same state reports the same values",
   );
+
+  // Each channel's beam length once more, with the same board posed afresh so
+  // every beam on it is empty. specs/instrumentation.md fixes each source as a
+  // read OF THE STATE — "Each source is called with the state current at the
+  // read ... and reads off that argument" — and `loadBoard` "poses an
+  // arbitrary board and moves to `playing` with every beam empty", so a source
+  // reporting a beam's length reports none of it here. Reading the lengths in
+  // a second state is what separates a source that reads them off the game
+  // from a line that merely names the channels beside figures, which a reading
+  // taken in one state alone cannot tell apart. The `none` copy of this item
+  // runs the same probe the other way about, emptying one channel at a time.
+  await loadBoard(h, OVERLAY_BOARD);
+  const emptied = h.engine.diagnostics();
+  for (const channel of CHANNELS) {
+    assertReportsFigure(
+      emptied,
+      [channel],
+      [0],
+      `the ${channel} beam's length with the board posed afresh, every beam empty`,
+      CHANNELS,
+    );
+  }
 });

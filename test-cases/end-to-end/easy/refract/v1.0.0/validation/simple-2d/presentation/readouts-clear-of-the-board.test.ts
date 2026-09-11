@@ -12,6 +12,13 @@
 // a beam on the board sizes where space is tightest. GEO_7X6 carries no
 // crystal, so nothing on it draws the one readout the extent is left open for.
 //
+// The two controls are held against the same box by the RECTANGLES the build
+// reports for them, which is how specs/controls.md states their half of it:
+// "On `playing` the `clear` and `back` targets sit clear of the board, whose
+// extent is in `specs/board.md`, so a target never covers a node." A control
+// whose label is drawn clear but whose target reaches over a node takes the
+// press a player meant for that node, so both readings are needed.
+//
 // WHERE A TEXT DRAW'S BOUNDS COME FROM. The harness records every context
 // call: each fillText/strokeText carries the transform, measured width, and
 // alignment at the moment of the call, which places the run horizontally in
@@ -32,6 +39,7 @@ import {
   resetTo,
   startCampaign,
   startCascade,
+  targetById,
   type Harness,
 } from "../harness";
 
@@ -148,8 +156,8 @@ function textBoundsFrom(from: number): TextBounds[] {
   return bounds;
 }
 
-/** Every text draw of the next rendered frame sits outside the 7x6 extent. */
-async function assertReadoutsClear(mode: string): Promise<void> {
+/** One rendered frame's text draws, boxed, with the campaign still captured. */
+async function renderedText(mode: string): Promise<TextBounds[]> {
   const from = h.calls.length;
   await h.advance(1);
   if (mode === "campaign") captureStill(h, "playing");
@@ -160,7 +168,11 @@ async function assertReadoutsClear(mode: string): Promise<void> {
     0,
     `the ${mode} playing screen draws its readouts (specs/ui.md)`,
   );
+  return drawn;
+}
 
+/** Every text draw of that frame sits outside the 7x6 extent. */
+function assertReadoutsClear(drawn: readonly TextBounds[], mode: string): void {
   const extent = boardExtent(7, 6);
   for (const box of drawn) {
     const overlaps =
@@ -186,16 +198,60 @@ async function assertReadoutsClear(mode: string): Promise<void> {
   }
 }
 
-it("keeps every text draw clear of a posed 7x6 board in campaign", async () => {
+/**
+ * The two controls' targets sit outside the same extent.
+ *
+ * specs/controls.md: "On `playing` the `clear` and `back` targets sit clear of
+ * the board, whose extent is in `specs/board.md`, so a target never covers a
+ * node." The extent is the same box the draws are held against, and a target
+ * outside it covers no node of any board this screen can carry, since every
+ * node's form and its hit region are inside NODE_R of a cell center the box
+ * already holds. This reads the rectangles the build reports rather than the
+ * glyphs it drew, so a control placed over the board fails here whatever its
+ * label's font measures.
+ */
+function assertControlsClear(mode: string): void {
+  const extent = boardExtent(7, 6);
+  const snapshot = h.snapshot();
+  for (const id of ["clear", "back"]) {
+    const target = targetById(snapshot, id);
+    const overlaps =
+      target.x < extent.x1 &&
+      target.x + target.w > extent.x0 &&
+      target.y < extent.y1 &&
+      target.y + target.h > extent.y0;
+    if (overlaps) {
+      fail(
+        `the ${mode} playing screen's "${id}" target clear of the 7x6 ` +
+          `board's extent — x ${extent.x0}..${extent.x1}, ` +
+          `y ${extent.y0}..${extent.y1}, the outermost cell centers widened ` +
+          "by NODE_R (30) (specs/controls.md: a target never covers a node)",
+        {
+          id: target.id,
+          left: Math.round(target.x),
+          right: Math.round(target.x + target.w),
+          top: Math.round(target.y),
+          bottom: Math.round(target.y + target.h),
+        },
+      );
+    }
+  }
+}
+
+it("keeps every text draw and both controls clear of a 7x6 board in campaign", async () => {
   await resetTo(h);
   await startCampaign(h);
   await loadBoard(h, GEO_7X6);
-  await assertReadoutsClear("campaign");
+  const drawn = await renderedText("campaign");
+  assertControlsClear("campaign");
+  assertReadoutsClear(drawn, "campaign");
 });
 
-it("keeps every text draw clear of a posed 7x6 board in cascade", async () => {
+it("keeps every text draw and both controls clear of a 7x6 board in cascade", async () => {
   await resetTo(h);
   await startCascade(h);
   await loadBoard(h, GEO_7X6);
-  await assertReadoutsClear("cascade");
+  const drawn = await renderedText("cascade");
+  assertControlsClear("cascade");
+  assertReadoutsClear(drawn, "cascade");
 });

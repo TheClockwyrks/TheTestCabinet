@@ -11,6 +11,11 @@
 // widened box (`BOARD_EXTENT`), or it overlaps a node or a beam on the largest
 // board a player can be handed.
 //
+// The two controls are held against the same box by the RECTANGLES the build
+// reports for them, which is how specs/controls.md states their half of it: a
+// control whose label is drawn clear but whose target reaches over a node takes
+// the press a player meant for that node.
+//
 // The posed board is GEO_7X6, which carries no crystal on purpose: a crystal
 // shows its charge count, which a build may legitimately draw as a numeral at
 // the crystal's own cell, and that numeral is a readout the node itself carries
@@ -27,6 +32,7 @@ import {
   createHarness,
   loadBoard,
   startCascade,
+  targetById,
   type Harness,
 } from "../harness";
 import { measuredTextBounds, type TextBox } from "./text-bounds";
@@ -67,18 +73,52 @@ function assertClearOfBoard(boxes: TextBox[], mode: string): void {
   }
 }
 
-it("keeps every campaign playing text run outside the 7x6 board's extent", async () => {
+/**
+ * Both controls' target rectangles bound outside the same extent.
+ *
+ * specs/controls.md states their half of the requirement over the target
+ * rather than over the drawing: "On `playing` the `clear` and `back` targets
+ * sit clear of the board, whose extent is in `specs/board.md`, so a target
+ * never covers a node." A target outside the extent covers no node of any
+ * board this screen can carry, since a node's form and the region a press
+ * lands on it from are both inside `NODE_R` of a cell center the extent holds.
+ * The rectangles come from the build's own snapshot, so a control reaching
+ * over the board is caught whatever its label's glyphs measure.
+ */
+async function assertControlsClearOfBoard(mode: string): Promise<void> {
+  const snapshot = await h.snapshot();
+  for (const id of ["clear", "back"]) {
+    const target = targetById(snapshot, id);
+    const clear =
+      target.x + target.w <= BOARD_EXTENT.x0 ||
+      target.x >= BOARD_EXTENT.x1 ||
+      target.y + target.h <= BOARD_EXTENT.y0 ||
+      target.y >= BOARD_EXTENT.y1;
+    if (!clear) {
+      fail(
+        `the "${id}" target outside the board's extent x ${BOARD_EXTENT.x0}..` +
+          `${BOARD_EXTENT.x1}, y ${BOARD_EXTENT.y0}..${BOARD_EXTENT.y1} ` +
+          `(${mode} playing: specs/controls.md, a target never covers a node)`,
+        `x ${target.x.toFixed(1)}..${(target.x + target.w).toFixed(1)}, ` +
+          `y ${target.y.toFixed(1)}..${(target.y + target.h).toFixed(1)}`,
+      );
+    }
+  }
+}
+
+it("keeps every campaign text run and both controls off the 7x6 board", async () => {
   // A fresh game rests in campaign mode (specs/instrumentation.md), so the
   // posed board plays under the campaign's own readouts.
   await loadBoard(h, GEO_7X6);
   const snapshot = await h.snapshot();
   assertEqual(snapshot.mode, "campaign", "the posed board plays in campaign");
 
+  await assertControlsClearOfBoard("campaign");
   const boxes = await measuredTextBounds(h, await h.frameCalls());
   assertClearOfBoard(boxes, "campaign");
 });
 
-it("keeps every cascade playing text run outside the 7x6 board's extent", async () => {
+it("keeps every cascade text run and both controls off the 7x6 board", async () => {
   // Enter the sequence as its menu item does, then pose the largest board
   // under the cascade's readouts — the solved count and the tier.
   await startCascade(h);
@@ -88,5 +128,6 @@ it("keeps every cascade playing text run outside the 7x6 board's extent", async 
 
   await captureStill(h, "playing");
   const boxes = await measuredTextBounds(h, await h.frameCalls());
+  await assertControlsClearOfBoard("cascade");
   assertClearOfBoard(boxes, "cascade");
 });

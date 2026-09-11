@@ -2169,12 +2169,13 @@ validation = { script = "presentation/head-frames-produced.test.ts", outputs = [
 ] }
 [[review.categories.items]]
 id = "head-frames-distinct"
-title = "The four head frames differ from one another"
-description = "No two of the four head frames are the same image: each pair differs on at least one pixel, so the sheet is four poses rather than one frame repeated."
+title = "The head frames differ from one another"
+description = "The head sheet is a set of poses rather than one frame repeated: every pair of its four frames differs on at least one pixel, apart from the opening and closing frames a symmetric bite draws at one aperture."
 domains = ["presentation"]
 failure_cap = "scuffed"
-# Automated validation: decode the four head PNGs and compare every pair pixel
-# for pixel. See validation/<engine>/presentation/head-frames-distinct.test.ts.
+# Automated validation: decode the four head PNGs and compare the five pairs the
+# spec fixes, pixel for pixel. See
+# validation/<engine>/presentation/head-frames-distinct.test.ts.
 validation = { script = "presentation/head-frames-distinct.test.ts", outputs = [
   { id = "sheet", name = "The four frames of the produced head sheet", kind = "image" },
 ] }
@@ -2486,27 +2487,27 @@ validation = { script = "audio/music-cue-plays.test.ts", outputs = [
 ] }
 [[review.categories.items]]
 id = "music-restarts-on-pause-restart"
-title = "Restarting from the pause menu starts the bed again"
-description = "confirm on RESTART begins a fresh round, and the music cue is asked for again on the frame that round begins."
+title = "The bed sounds under a round restarted from the pause menu"
+description = "confirm on RESTART begins a fresh round, and the music bed is sounding under that round."
 domains = ["presentation"]
 failure_cap = "passable"
 # Automated validation: start a round from the title, pause it, confirm RESTART,
-# and read the cues the restart played. See
+# and read whether the bed is sounding under the fresh round. See
 # validation/<engine>/audio/music-restarts-on-pause-restart.test.ts.
 validation = { script = "audio/music-restarts-on-pause-restart.test.ts", outputs = [
-  { id = "restart", name = "The bed starting again on a restarted round", kind = "replay" },
+  { id = "restart", name = "The bed under a restarted round", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "music-restarts-on-play-again"
-title = "Playing again from the game over starts the bed again"
-description = "confirm on PLAY AGAIN begins a fresh round, and the music cue is asked for again on the frame that round begins."
+title = "The bed sounds under a round played again from the game over"
+description = "confirm on PLAY AGAIN begins a fresh round, and the music bed is sounding under that round."
 domains = ["presentation"]
 failure_cap = "passable"
-# Automated validation: drive a real death, confirm PLAY AGAIN, and read the cues
-# the fresh round played. See
+# Automated validation: drive a real death, confirm PLAY AGAIN, and read whether
+# the bed is sounding under the fresh round. See
 # validation/<engine>/audio/music-restarts-on-play-again.test.ts.
 validation = { script = "audio/music-restarts-on-play-again.test.ts", outputs = [
-  { id = "again", name = "The bed starting again on a round played again", kind = "replay" },
+  { id = "again", name = "The bed under a round played again", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "music-stops-when-the-round-ends"

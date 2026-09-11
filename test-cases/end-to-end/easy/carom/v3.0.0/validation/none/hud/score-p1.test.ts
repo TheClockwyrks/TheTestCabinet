@@ -18,11 +18,11 @@
 //
 // THE FIGURE'S PLACE IS THE READING, in this project and in both engine projects
 // alike. specs/overview.md fixes where each score's FIGURE is drawn, not how
-// many runs the scoreboard is: a run showing only this score is read at the
-// point its anchor names, and a run carrying both scores — a centred `7     9`
-// — is read by where this score's glyphs sit within the run's measured extent,
-// which `textDraws` carries from the harness's `measureText` recording. The
-// three projects decide the point one way.
+// many runs the scoreboard is nor how they are aligned, so every run is read by
+// where this score's GLYPHS sit within the run's measured extent, which
+// `textDraws` carries from the harness's `measureText` recording. The anchor a
+// build names is not the reading, because `textAlign` decides which part of the
+// run lands on it. The three projects decide the point one way.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
@@ -68,7 +68,8 @@ function escapeRegExp(literal: string): string {
 }
 
 /**
- * Whether one run of text shows `score` as a figure of its own.
+ * Where `score` is shown in one run of text as a figure of its own, and
+ * `null` where the run does not show it.
  *
  * specs/overview.md fixes that the two scores are drawn and leaves the
  * scoreboard's presentation to the build, so a figure carrying a label beside it
@@ -86,40 +87,41 @@ function escapeRegExp(literal: string): string {
  * into the single figure `40130`. A score short of a thousand has exactly one
  * rendering, so it is searched for as the bare digits it is.
  */
-function shows(text: string, score: number): boolean {
-  return renderings(score).some((figure) =>
-    new RegExp(`(?<![\\d.])0*${escapeRegExp(figure)}(?![\\d.])`).test(text),
-  );
+function figureMatch(text: string, score: number): RegExpExecArray | null {
+  for (const figure of renderings(score)) {
+    const hit = new RegExp(
+      `(?<![\\d.])0*${escapeRegExp(figure)}(?![\\d.])`,
+    ).exec(text);
+    if (hit !== null) return hit;
+  }
+  return null;
 }
 
 /**
  * Where, in logical x, the glyphs of `score`'s figure sit inside `span`.
  *
- * A run that carries only this score is placed where its anchor is: the point
- * the build placed the figure at. A run that carries both scores — `7     9`
- * centred on the field — places each figure by its glyphs, estimated from the
- * run's measured extent in proportion to the figure's character position: exact
- * for a centred scoreboard whose figures sit at either end, and within a glyph
- * elsewhere. A run showing neither this score, nor a measured extent to place
- * it in, places nothing.
+ * The reading is the GLYPHS, never the anchor. A build names one point per run
+ * and `textAlign` decides which part of the run lands on it, so the same drawn
+ * figure reads at three different places through `x` alone: a `7` right-aligned
+ * on the center line is drawn wholly left of it, and one left-aligned a unit
+ * short of it is drawn wholly right of it. The run's measured extent is where
+ * the glyphs landed, so the figure is placed inside that extent in proportion
+ * to its character position — exact for a run that is the figure alone, and for
+ * a centred `7     9` whose figures sit at either end, and within a glyph
+ * elsewhere.
+ *
+ * A run not showing the figure places nothing. A run the harness recorded no
+ * width for — a case that asked for no `measureText` — has no extent to place a
+ * figure inside, and stands as the point its anchor names.
  */
 function figureX(
   span: Pick<TextDraw, "text" | "x" | "left" | "right">,
   score: number,
-  other: number,
 ): number | null {
-  if (!shows(span.text, score)) return null;
-  if (!shows(span.text, other)) return span.x;
-  const hit = renderings(score)
-    .map((figure) =>
-      new RegExp(`(?<![\\d.])0*${escapeRegExp(figure)}(?![\\d.])`).exec(
-        span.text,
-      ),
-    )
-    .find((match) => match !== null);
-  if (!hit) return null;
+  const hit = figureMatch(span.text, score);
+  if (hit === null) return null;
   const width = span.right - span.left;
-  if (!(width > 0)) return null;
+  if (!(width > 0)) return span.x;
   const centre = (hit.index + hit[0].length / 2) / span.text.length;
   return span.left + width * centre;
 }
@@ -145,7 +147,7 @@ it("draws player one's score left of center", async () => {
   const played = await h.snapshot();
   assertEqual(played.screen, "playing");
   const placed = textDraws(calls)
-    .map((run) => figureX(run, SCORE.p1, SCORE.p2))
+    .map((run) => figureX(run, SCORE.p1))
     .filter((x): x is number => x !== null);
   assertGreaterThan(placed.length, 0);
   assertEqual(

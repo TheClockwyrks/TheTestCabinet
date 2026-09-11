@@ -13,6 +13,11 @@
 // least room. GEO_7X6 carries no crystal, so nothing on it draws the one
 // readout the extent is left open for.
 //
+// The two controls are held against the same region by the RECTANGLES the
+// build reports for them, which is how specs/controls.md states their half of
+// it: a control whose label is drawn clear but whose target reaches over a node
+// takes the press a player meant for that node.
+//
 // The text is read off the frame's own draw calls, each run's horizontal
 // extent recovered from the transform, measured width, and alignment it was
 // drawn with (the harness's drawnTextSpans). A run's VERTICAL extent is read
@@ -37,6 +42,7 @@ import {
   loadBoard,
   poseMode,
   resetTo,
+  targetById,
   type Harness,
   type TextSpan,
 } from "../harness";
@@ -86,6 +92,41 @@ function assertSpansClear(spans: TextSpan[], mode: string): void {
   }
 }
 
+/**
+ * Both controls' target rectangles sit outside the same region.
+ *
+ * specs/controls.md states their half of the requirement over the target
+ * rather than over the drawing: "On `playing` the `clear` and `back` targets
+ * sit clear of the board, whose extent is in `specs/board.md`, so a target
+ * never covers a node." A target outside the region covers no node of any
+ * board this screen can carry, since a node's form and the region a press
+ * lands on it from are both inside NODE_R of a cell center the region holds.
+ * The rectangles are what the build reports, so a control reaching over the
+ * board fails here whatever its label's glyphs measure.
+ */
+function assertControlsClear(mode: string): void {
+  const snapshot = h.snapshot();
+  for (const id of ["clear", "back"]) {
+    const target = targetById(snapshot, id);
+    const overlaps =
+      target.x < KEEP_OUT.right &&
+      target.x + target.w > KEEP_OUT.left &&
+      target.y < KEEP_OUT.bottom &&
+      target.y + target.h > KEEP_OUT.top;
+    if (overlaps) {
+      fail(
+        `the ${mode} playing screen's "${id}" target outside the board's ` +
+          `widened extent, x ${KEEP_OUT.left}..${KEEP_OUT.right} by y ` +
+          `${KEEP_OUT.top}..${KEEP_OUT.bottom} (specs/controls.md: a target ` +
+          `never covers a node)`,
+        `${JSON.stringify(id)} covers x ${target.x.toFixed(0)}..` +
+          `${(target.x + target.w).toFixed(0)}, y ${target.y.toFixed(0)}..` +
+          `${(target.y + target.h).toFixed(0)}`,
+      );
+    }
+  }
+}
+
 async function poseLargestBoard(mode: Mode): Promise<void> {
   await resetTo(h);
   await poseMode(h, mode);
@@ -95,16 +136,18 @@ async function poseLargestBoard(mode: Mode): Promise<void> {
   assertEqual(snapshot.mode, mode, `${mode}: the mode whose readouts show`);
 }
 
-it("keeps every campaign text draw clear of the largest board", async () => {
+it("keeps every campaign text draw and both controls clear of the board", async () => {
   await poseLargestBoard("campaign");
   const spans = await spansOfNextFrame();
   // The largest board with its readouts clear.
   captureStill(h, "playing");
+  assertControlsClear("campaign");
   assertSpansClear(spans, "campaign");
 });
 
-it("keeps every cascade text draw clear of the largest board", async () => {
+it("keeps every cascade text draw and both controls clear of the board", async () => {
   await poseLargestBoard("cascade");
+  assertControlsClear("cascade");
   const spans = await spansOfNextFrame();
   assertSpansClear(spans, "cascade");
 });

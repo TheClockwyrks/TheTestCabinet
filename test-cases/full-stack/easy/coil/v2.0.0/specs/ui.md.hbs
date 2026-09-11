@@ -211,6 +211,10 @@ ended the bed is stopped rather than left running quietly, so a player who dies,
 clears the board, or leaves the round for the title hears no bed on the screen
 they land on, and the bed sounds again only when a round next begins.
 
+A round laid out by `RESTART` or by `PLAY AGAIN` is a round beginning, so the bed
+sounds under it. The bed the paused round kept playing carries on as the
+restarted round's own.
+
 Each of the three event cues is a distinct short sound, so the three events are
 told apart by ear, and each plays on the tick its event resolves, at most once on
 that tick. A tick that both eats a pellet and raises the multiplier plays `eat`

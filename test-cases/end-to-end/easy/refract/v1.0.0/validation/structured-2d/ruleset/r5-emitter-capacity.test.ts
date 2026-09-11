@@ -1,7 +1,9 @@
 // Refract — ruleset/r5-emitter-capacity: an emitter carries one segment.
 //
-// specs/beams.md R5: "An emitter carries at most one segment", and R6 adds
-// that an emitter "is an end of the beam and never a pass-through". On
+// specs/beams.md R5: "An emitter carries at most one segment", which is what
+// refuses a pass-through as well as a re-entry; R6 says the same of a finished
+// beam and is among the rules the enforcement table puts as "never used to
+// refuse a move", so nothing here is asserted of it. On
 // R5_EMITTER the beam T(0,0)-t(1,0) is released and resumed from its T(0,0)
 // end — the resume reverses the drawn order so the emitter is the live end
 // (specs/controls.md "The drawn order and shortening") — and the extension
