@@ -696,8 +696,8 @@ export function loopsStarted(h: Harness): Promise<number> {
 /* Reading a frame back                                                       */
 /* -------------------------------------------------------------------------- */
 //
-// `specs/ui.md`: "Volute fixes no palette, no font, no layout, and no styling for
-// any screen." So nothing here reads a colour, a contrast, or how far a drawn
+// `specs/ui.md`: "Volute fixes no palette, no font, and no styling for any
+// screen." So nothing here reads a colour, a contrast, or how far a drawn
 // mark reaches. A frame is read against ANOTHER frame of the same hall, through
 // the shared package's `differingPoints` re-exported above, and what that reports
 // is where the picture changed — which is presence, the one thing a pixel may

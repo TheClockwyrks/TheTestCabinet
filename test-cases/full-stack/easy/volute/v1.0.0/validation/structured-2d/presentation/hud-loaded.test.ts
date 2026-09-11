@@ -23,10 +23,13 @@
 // WHY THE INJECTOR'S OWN CORE DOES NOT COUNT. `specs/ui.md` draws the live hall
 // with "the injector at its fixed position with the direction it is aimed
 // readable and the core it holds", so the loaded charge's sprite is on the
-// machine whether or not the HUD carries it. A draw within 36 units of `(420,
-// 330)` — the injector's 22-unit radius plus a core's 14 — is that one, and is
-// left out. The HUD "draws over the hall and hides none of them", so a
-// conformant build's readout is not inside that disc.
+// machine whether or not the HUD carries it. The same file's HUD table separates
+// the two, and separates them AS A DISTANCE: the Loaded readout "is drawn with
+// its center further from the injector center than the injector radius and
+// `CORE_RADIUS` together". That is 22 + 14 = 36 units from `(420, 330)`
+// (`specs/injector.md`, `specs/channel.md`), so a draw whose centre is inside
+// that is the machine's own picture and is left out. THIS POINT THEREFORE JUDGES
+// PLACEMENT, and only the placement that sentence fixes — see `./hud-charge.ts`.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";

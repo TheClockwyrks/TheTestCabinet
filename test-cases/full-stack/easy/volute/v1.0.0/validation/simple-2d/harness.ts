@@ -707,8 +707,28 @@ const ASSET_ROOTS = ["public", "dist", "."] as const;
  * `onMissing: "upstream"` is this case's own answer, and it is the one its
  * verdicts were taken under: a relative URL no root carries goes to the
  * platform's own `fetch`, which rejects on it, so the load fails with a parse
- * error rather than with a 404 status. No `document` shim: nothing in this build
- * asks for one, and a build that never asks cannot tell the difference.
+ * error rather than with a 404 status.
+ *
+ * NO `document` SHIM, AND THAT IS THIS PROJECT'S CHOICE RATHER THAN AN OVERSIGHT.
+ * It withholds the two scratch surfaces a browser hands out — a canvas from
+ * `document.createElement` and, with it, `OffscreenCanvas` — and it costs
+ * something real to do so: a build that guards the constructor takes a fallback
+ * path no page takes, and this case has one (`specs/assets.md` has the extraction
+ * flash "shared by every charge, tinted in the game to the charge that
+ * extracted", and a tint is composited on a surface of its own).
+ *
+ * The reason it is withheld anyway is {@link imageRef} and everything keyed on
+ * it. A decoded produced sprite is immutable, so its identity, its `width` and
+ * its `height` are the whole account of the picture that was drawn, and this
+ * project reads all three LONG AFTER THE FRAME: `spriteDraws` selects on the
+ * source's natural size, `spriteAt` and `identifyCharge` name a charge by the
+ * source's identity, `sheetFrameKey` tells one sheet frame from the next by it. A
+ * CANVAS answers those three for whatever it was last painted and last resized
+ * to, not for the picture the call drew, so every one of those readings would be
+ * unsound the moment a scratch surface could reach the frame. Hand the shim over
+ * and this project needs a call-time account of a mutable source everywhere it
+ * has a read-time one; until it has that, a build reaching the frame through a
+ * canvas is a build this project cannot read.
  *
  * The handle is kept for {@link imageRef}, which asks it where a decoded image
  * came from — that is the one thing about a drawn bitmap this project cannot read
@@ -1676,8 +1696,8 @@ export function captureStill(h: Harness, outputId: string): Promise<void> {
 /* Comparing two frames                                                       */
 /* -------------------------------------------------------------------------- */
 //
-// `specs/ui.md`: "Volute fixes no palette, no font, no layout, and no styling for
-// any screen." So nothing here reads a colour, a contrast, or how far a drawn
+// `specs/ui.md`: "Volute fixes no palette, no font, and no styling for any
+// screen." So nothing here reads a colour, a contrast, or how far a drawn
 // mark reaches. A frame is read against ANOTHER frame of the same hall, through
 // the package's `pixelsDiffering` and `differingPoints` re-exported above, and
 // what those report is where the picture changed — which is presence, the one

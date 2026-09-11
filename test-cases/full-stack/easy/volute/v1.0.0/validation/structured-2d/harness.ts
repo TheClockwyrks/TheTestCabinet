@@ -601,9 +601,31 @@ const WORKSPACE_ROOT = resolve(PROJECT_ROOT, "..");
  * the same answer, and it is what makes the engine announce `asset:failed` with a
  * status for a file the build never produced.
  *
- * No `document` shim: nothing in this build asks for one, and a build that never
- * asks cannot tell the difference. The handle is kept for {@link imageRef}, which
- * asks it where a decoded image came from.
+ * NO `document` SHIM, AND THAT IS THIS PROJECT'S CHOICE RATHER THAN AN OVERSIGHT.
+ * It withholds the two scratch surfaces a browser hands out — a canvas from
+ * `document.createElement` and, with it, `OffscreenCanvas` — and here that costs
+ * more than it does next door, because the ENGINE asks as well: `structured-2d`'s
+ * sprite tint composites through ONE shared scratch canvas, resized per sprite,
+ * and draws the sprite with no tint at all where the host has none.
+ * `specs/assets.md` has the extraction flash "shared by every charge, tinted in
+ * the game to the charge that extracted", so a conformant build does tint.
+ *
+ * The reason it is withheld anyway is {@link imageRef} and everything keyed on
+ * it. A decoded produced sprite is immutable, so its identity, its `width` and
+ * its `height` are the whole account of the picture that was drawn, and this
+ * project reads all three LONG AFTER THE FRAME: `spriteDraws` selects on the
+ * source's natural size, `spriteAt` and `identifyCharge` name a charge by the
+ * source's identity, `sheetFrameKey` tells one sheet frame from the next by it.
+ * Let the engine's tint come alive and every tinted sprite in the hall arrives as
+ * that one shared surface — one identity for all of them, and a natural size that
+ * is whatever the scratch was last resized to. Six frames of a sheet would read
+ * as one picture, five charges drawn from five produced files as one source. The
+ * shim belongs here only once this project has a CALL-TIME account of a mutable
+ * source everywhere it has a read-time one; until then, withholding it keeps the
+ * readings sound and costs only the tint.
+ *
+ * The handle is kept for {@link imageRef}, which asks it where a decoded image
+ * came from.
  */
 const assets = installAssetHost({
   workspaceRoot: WORKSPACE_ROOT,
@@ -1524,8 +1546,8 @@ export function captureStill(h: Harness, outputId: string): void {
 /* Comparing two frames                                                       */
 /* -------------------------------------------------------------------------- */
 //
-// `specs/ui.md`: "Volute fixes no palette, no font, no layout, and no styling for
-// any screen." So nothing here reads a colour, a contrast, or how far a drawn
+// `specs/ui.md`: "Volute fixes no palette, no font, and no styling for any
+// screen." So nothing here reads a colour, a contrast, or how far a drawn
 // mark reaches. A frame is read against ANOTHER frame of the same hall, through
 // the package's `pixelsDiffering` and `differingPoints` re-exported above, and
 // what those report is where the picture changed — which is presence, the one

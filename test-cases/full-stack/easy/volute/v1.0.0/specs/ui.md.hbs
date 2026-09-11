@@ -9,11 +9,12 @@ draws and plays are the produced files `specs/assets.md` lists.
 
 ## Presentation
 
-Volute fixes no palette, no font, no layout, and no styling for any screen.
-Every piece of text a screen shows is legible against whatever sits behind it
-across the whole field, the HUD included, which draws over the live hall.
-Wherever a screen names a charge it draws that charge's core, so the player
-reads which charge is meant without reading its name.
+Volute fixes no palette, no font, and no styling for any screen, and no layout
+beyond the placements the tables in this file name. Every piece of text a screen
+shows is legible against whatever sits behind it across the whole field, the HUD
+included, which draws over the live hall. Wherever a screen names a charge it
+draws that charge's core, so the player reads which charge is meant without
+reading its name.
 
 {{#if (eq engine.slug "none")}}
 The runtime you write owns the canvas fit, and every screen and the HUD are
@@ -106,8 +107,8 @@ glance:
 | Level | The number of the level in play. |
 | Cells | The cells remaining, as one produced cell icon per cell. |
 | Pressure | A gauge marked with the produced pressure icon, filled in proportion to the current pressure: empty at `0`, full at `100`. |
-| Loaded | The charge the injector holds, drawn as that charge's core. |
-| Queued | The charge that loads on the next firing, drawn as that charge's core and placed so it is never mistaken for the loaded one. |
+| Loaded | The charge the injector holds, drawn as that charge's core. The machine draws the core it holds as well, so this readout is read as the HUD's own mark: it is drawn with its center further from the injector center than the injector radius and `CORE_RADIUS` together. |
+| Queued | The charge that loads on the next firing, drawn as that charge's core, standing off the injector center in the same way and placed so it is never mistaken for the loaded one. |
 
 ## Audio
 

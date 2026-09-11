@@ -8,8 +8,8 @@
 // which is a mark on that charge's own file.
 //
 // WHAT IS READ. The draw operations one frame submitted, and no colour:
-// `specs/ui.md` — "Presentation": "Volute fixes no palette, no font, no layout,
-// and no styling for any screen", so how a build draws a charge is the reviewer's
+// `specs/ui.md` — "Presentation": "Volute fixes no palette, no font, and no
+// styling for any screen", so how a build draws a charge is the reviewer's
 // to judge. What is read here is the IDENTITY of the produced source drawn at
 // each posed core — the reading `presentation/produced-core-sprites` takes of one
 // core, taken over all five at once — and that those five identities are five

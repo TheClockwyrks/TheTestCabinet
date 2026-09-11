@@ -25,7 +25,7 @@
 // THE TOLERANCE. None: a screen name is compared exactly (test-case.toml,
 // STANDING TOLERANCES — "count, score, charge id, screen | exact"). Nothing
 // about the title's LOOK is asserted, because specs/ui.md "fixes no palette, no
-// font, no layout, and no styling for any screen"; what the title puts on the
+// font, and no styling for any screen"; what the title puts on the
 // field is the reviewer's, and the still is the evidence they read it from.
 
 import { afterEach, beforeEach, it } from "vitest";

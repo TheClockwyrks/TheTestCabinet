@@ -43,12 +43,18 @@ const BLOCK_SIZE = 3;
  * `specs/ui.md` draws the live hall with "the injector at its fixed position with
  * the direction it is aimed readable and the core it holds", so the loaded
  * charge's sprite is drawn on the machine as well as on the HUD, and a reading
- * that took either would not be about the HUD at all. The injector is a base
- * "centered on `(420, 330)`" of radius 22 (`specs/injector.md`), and a core is a
- * disc of radius 14, so a core sprite whose centre is further than 36 units from
- * the injector's centre does not touch the machine. `specs/ui.md` has the HUD
- * "draw over the hall and hide none of them", so a conformant build's readout is
- * not on top of the injector.
+ * that took either would not be about the HUD at all. The same file's HUD table
+ * says which of the two each readout is, AND SAYS IT AS THE DISTANCE THIS
+ * CONSTANT IS: the Loaded readout "is drawn with its center further from the
+ * injector center than the injector radius and `CORE_RADIUS` together", and the
+ * queued one stands "off the injector center in the same way".
+ *
+ * `specs/injector.md` puts the injector center at `(420, 330)` and the injector
+ * radius at 22 units, and `specs/channel.md` draws a core as "a disc of
+ * `CORE_RADIUS` (`14` units)", so the distance is 36. It is a distance between
+ * CENTRES, which is what the sentence fixes and the only figure this reading has:
+ * how large a build drew its readout is layout the spec leaves it, so a readout
+ * drawn smaller than a core is admitted or excluded on its centre like any other.
  */
 const OFF_THE_INJECTOR = INJECTOR_RADIUS + CORE_RADIUS;
 

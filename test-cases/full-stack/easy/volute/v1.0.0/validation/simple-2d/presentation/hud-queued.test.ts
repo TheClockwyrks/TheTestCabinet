@@ -21,10 +21,12 @@
 // bundler inlines a 28 x 28 PNG as a `data:` URI.
 //
 // WHY THE INJECTOR'S OWN DISC IS LEFT OUT. The same exclusion
-// `presentation/hud-loaded` applies, for the same reason and by symmetry: a
-// sprite inside the machine's own 36 units is the machine's picture of what it
-// holds, and `specs/ui.md` puts the queued charge on the HUD, which "draws over
-// the hall and hides none of them".
+// `presentation/hud-loaded` applies, and the same sentence fixes it: `specs/ui.md`
+// has the Queued readout drawn as its charge's core "standing off the injector
+// center in the same way", which is the Loaded row's 36 units from `(420, 330)`.
+// A sprite whose centre is inside that is the machine's picture of what it holds.
+// THIS POINT THEREFORE JUDGES PLACEMENT, and only the placement that sentence
+// fixes — see `./hud-charge.ts`.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
