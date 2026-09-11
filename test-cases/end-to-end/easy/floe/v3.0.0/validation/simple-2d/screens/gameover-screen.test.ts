@@ -6,11 +6,10 @@
 // OVER" has told the player nothing about the run they just lost.
 //
 // THE TWO FIGURES ARE POSED APART FROM EACH OTHER. The score is `472` and the
-// level reached `6`, sharing no digit run, so each is found on its own and a build
-// that drew one where the other belonged reads as a miss. The score is three
-// digits on purpose: `specs/ui.md` fixes no formatting and a build is free to
-// group a thousand with a separator, so a figure that cannot be grouped is the one
-// a substring match can fairly ask for.
+// level reached `6`, two different numbers, so each is found on its own and a
+// build that drew one where the other belonged reads as a miss. The score is an
+// arbitrary figure on purpose: it is the one of the two that a screen's own
+// decoration has no reason to carry.
 //
 // `level` IS POSED EQUAL TO `reachedLevel`, WHICH IS THE SEPARATION THIS ITEM
 // WANTS. Whether the screen reports the level REACHED rather than the level
@@ -21,18 +20,21 @@
 // two, and this point stays what its title says: that the screen reports the run
 // at all.
 //
-// THE FIGURES ARE READ AS WHOLE TOKENS, THE ENTRIES AS SUBSTRINGS. `standsAlone`
-// keeps the `6` of a level reached from being answered by a `6` inside a score; a
-// menu entry is matched loosely because a build is free to set a marker against it
-// ("> MENU <").
+// THE FIGURES ARE READ AS NUMBERS, THE ENTRIES AS SUBSTRINGS. `specs/ui.md`
+// fixes what the screen reports and leaves how it is set to the build, so
+// `screenNumbers` reads the figures the screen drew however they are set: the
+// `6` of a level reached counts, the `6` inside a score of `1650` does not, and
+// an arcade's zero-padded `000472` reports the score it reports. A menu entry
+// is matched loosely instead, because a build is free to set a marker against
+// it ("> MENU <").
 //
-// THE HUD IS NOT PART OF THIS SCREEN'S COPY, and here that matters most: the HUD
-// bar carries a score readout and a level label (`specs/ui.md`), the very figures
-// this screen must report, so a check that read the whole frame would pass a
-// game-over screen that reported nothing at all off a HUD drawn behind it. Both
-// readings here — `screenTokens` for the figures, the shared harness's
-// `drewTextAnywhere` over `screenText` for the two entries — take only what the
-// build drew over the strait.
+// THE HUD IS NOT PART OF THIS SCREEN'S COPY, and here that matters most: the
+// HUD bar carries a score readout and a level label (`specs/ui.md`), the very
+// figures this screen must report, so a check that read the whole frame would
+// pass a game-over screen that reported nothing at all off a HUD drawn behind
+// it. Both readings here — `screenNumbers` for the figures, the shared
+// harness's `drewTextAnywhere` over `screenText` for the two entries — take
+// only what the build drew over the strait.
 //
 // THE SCREEN IS POSED. That a run reaches it is `progression.game-over-at-zero`;
 // what its two entries do is `screens.gameover-play-again` and
@@ -40,9 +42,9 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
+  assertContains,
   assertEqual,
   assertGreaterThan,
-  assertMatches,
   assertTrue,
 } from "../assert";
 import { drewTextAnywhere } from "../case-harness/text";
@@ -55,19 +57,18 @@ import {
 } from "../harness";
 import {
   poseEnding,
+  screenNumbers,
   screenRuns,
   screenText,
   screenTokens,
-  standsAlone,
 } from "./screens";
 
 /**
  * The run the screen must report.
  *
- * Three digits of score so no build's thousands separator can break the match, and
- * a level reached whose digit appears nowhere in it. The lives are posed at `0`,
- * which is the state `specs/progression.md` ends a run on; the screen is not
- * required to report them and nothing below reads them.
+ * Two figures that are not the same number, so the two readings below cannot
+ * answer for one another, and a score no other copy on a screen has a reason to
+ * carry.
  */
 const SCORE = 472;
 const REACHED_LEVEL = 6;
@@ -113,16 +114,17 @@ it("draws the final score, the level reached and both entries", async () => {
     0,
     "the game-over screen to draw text over the strait at all (specs/ui.md)",
   );
-  const copy = screenTokens(h, calls);
-  assertMatches(
-    copy,
-    standsAlone(String(SCORE)),
-    "the game-over screen reports the final score (specs/ui.md)",
+  const figures = screenNumbers(h, calls);
+  const drew = ` — the strait drew ${JSON.stringify(screenTokens(h, calls))}`;
+  assertContains(
+    figures,
+    SCORE,
+    `the game-over screen reports the final score (specs/ui.md)${drew}`,
   );
-  assertMatches(
-    copy,
-    standsAlone(String(REACHED_LEVEL)),
-    "and the level reached (specs/ui.md)",
+  assertContains(
+    figures,
+    REACHED_LEVEL,
+    `and the level reached (specs/ui.md)${drew}`,
   );
   const text = screenText(h, calls);
   for (const item of ENDING_ITEMS) {

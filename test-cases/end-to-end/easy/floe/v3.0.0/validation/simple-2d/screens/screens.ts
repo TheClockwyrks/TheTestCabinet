@@ -33,10 +33,11 @@
 // included, and a build that drew a different word drew a different word.
 //
 // TWO READINGS ARE NOT COPY, AND STAY HERE. A figure an end screen reports is
-// matched as a WHOLE token (`standsAlone`), and the how-to screen's six subjects
-// as bounded words; neither is a substring a reader with the spaces folded out
-// can express, so both run over the strait's runs joined into one upper-cased
-// string (`screenTokens`).
+// read as a NUMBER (`screenNumbers`), because `specs/ui.md` fixes what the
+// screens report and leaves how it is set to the build; the how-to screen's six
+// subjects are matched as bounded words over the strait's runs joined into one
+// upper-cased string (`screenTokens`). Neither is a substring a reader with the
+// spaces folded out can express.
 
 import { HUD_H } from "../constants";
 import {
@@ -95,10 +96,11 @@ export function screenText(h: Harness, calls: readonly DrawCall[]): DrawCall[] {
 }
 
 /**
- * {@link screenRuns} joined into one upper-cased string, for the two readings
- * that match a TOKEN rather than a piece of copy: a figure matched whole by
- * {@link standsAlone}, and the how-to screen's subjects matched as bounded
- * words. The copy constants are not read off this — see {@link screenText}.
+ * {@link screenRuns} joined into one upper-cased string, for the one reading
+ * that matches a TOKEN rather than a piece of copy: the how-to screen's
+ * subjects, matched as bounded words. It is also what a check quotes back when
+ * a figure it looked for is missing. The copy constants are not read off this —
+ * see {@link screenText}.
  */
 export function screenTokens(h: Harness, calls: readonly DrawCall[]): string {
   return screenRuns(h, calls).join("  ").toUpperCase();
@@ -107,63 +109,59 @@ export function screenTokens(h: Harness, calls: readonly DrawCall[]): string {
 /**
  * The separators a build may set between a figure's digit triples.
  *
- * `Number.prototype.toLocaleString` groups by default, so a build that reaches for
- * it reports a score of `1240` as `1,240`, and another locale's grouping gives
- * `1'240` or `1\u202F240`. Every one of those reports the one figure.
+ * `Number.prototype.toLocaleString` groups by default, so a build that reaches
+ * for it reports a score of `1240` as `1,240`, and another locale's grouping
+ * gives `1'240` or `1\u202F240`. Every one of those reports the one figure, and
+ * each separator is dropped before the digits are read.
  *
- * THE ASCII SPACE IS DELIBERATELY NOT ONE OF THEM. {@link screenTokens} joins
- * separate draw runs with one, so accepting it would read the `40` of one run and
- * the `130` of the next as the single figure `40130`. `.` is left out for its own
- * reason: it is the decimal point, and a build drawing `1.5` means one and a half.
+ * THE ASCII SPACE IS DELIBERATELY NOT ONE OF THEM. A run of a screen's copy
+ * carries a label and often more than one figure separated by exactly that, so
+ * accepting it would read the `40` and the `130` of "LEVEL 40  SCORE 130" as
+ * the single figure `40130`. `.` is left out for its own reason: it is the
+ * decimal point, and a build drawing `1.5` means one and a half.
  */
-const GROUPS: readonly string[] = [",", "'", "\u00A0", "\u202F", "\u2009"];
+const GROUP = "[,'\\u00A0\\u202F\\u2009]";
 
 /**
- * Every conventional setting of `text`: the text itself, and — when it is a plain
- * figure of more than three digits — the same figure with its triples grouped by
- * each of {@link GROUPS}. A figure of three digits or fewer has exactly one
- * setting, and a phrase has exactly one too.
+ * One figure as a build may have set it: grouped, or plain.
+ *
+ * NO SIGN IS READ. Every figure this case reads as a number is a count — a
+ * score, a level, a tally of lives, the seconds left — and not one of them can
+ * be negative, so a hyphen against the digits is a separator a build set between
+ * a label and its figure rather than a minus. Taking it for a minus would lose
+ * the figure a build drawing `FINAL SCORE-472` plainly reports, and could gain
+ * nothing in exchange: no reading in this suite looks for a negative number.
  */
-function settings(text: string): string[] {
-  const figure = /^(-?)(\d+)(\.\d+)?$/.exec(text);
-  if (figure === null) return [text];
-  const [, sign, whole, fraction = ""] = figure;
-  if (whole.length <= 3) return [text];
-  return [
-    text,
-    ...GROUPS.map(
-      (group) => sign + whole.replace(/\B(?=(\d{3})+$)/g, group) + fraction,
+const DRAWN = new RegExp(
+  `\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|\\d+(?:\\.\\d+)?`,
+  "g",
+);
+
+/**
+ * Every number the screen's copy carries, in reading order over the strait.
+ *
+ * A FIGURE IS READ AS A NUMBER, NOT AS A STRING, which is how this case reads
+ * the HUD's own readouts as well. `specs/ui.md` fixes WHAT the two end screens
+ * report and leaves every question of setting to the build, so a final score of
+ * `437` is reported by `437`, by a grouped `1,240`'s sibling settings, and by an
+ * arcade's zero-padded `000437` alike; a reading that took one spelling for the
+ * figure would fail a build over its own presentation. Each run is read on its
+ * own, so a label and its figure coalesced into `SCORE437` yield `437`, and two
+ * runs are never joined into a figure neither of them drew.
+ *
+ * A NUMBER A SCREEN DRAWS FOR ITS OWN REASONS IS A NUMBER THIS RETURNS. A check
+ * that reads a figure this way therefore poses one no other copy on the screen
+ * can produce, and says in the check which ones it ruled out.
+ */
+export function screenNumbers(
+  h: Harness,
+  calls: readonly DrawCall[],
+): number[] {
+  return screenRuns(h, calls).flatMap((run) =>
+    (run.match(DRAWN) ?? []).map((figure) =>
+      Number(figure.replace(new RegExp(GROUP, "g"), "")),
     ),
-  ];
-}
-
-/**
- * `text` matched as a whole figure: with no digit against either end.
- *
- * THE BOUNDARY IS A DIGIT, NOT A LETTER OR A DIGIT. The runs a check reads are
- * coalesced by the shared `drawnTextRuns`, which concatenates side-by-side draws
- * verbatim, so a build that draws `SCORE` and then `1250` a measured space apart
- * spells the one run `SCORE1250`; a letter boundary would refuse the figure it
- * plainly reports. A digit boundary keeps every protection this reader is for.
- *
- * What the end screens' FIGURES are read with, so the `8` of "LEVELS CLEARED 8"
- * counts and the `8` of a score of `1834` does not, and so a level reached of `6`
- * is not found inside a score. A menu entry or a phrase is matched by plain
- * substring instead, because a build is free to set a marker against it
- * ("> CROSS <") and that is its own presentation.
- *
- * A FIGURE IS LOOKED FOR UNDER EVERY SETTING OF IT. `specs/ui.md` fixes what the
- * end screens report and leaves how they are set to the build, so a score of
- * `1240` may be drawn `1240` or grouped `1,240`, and the two must read alike.
- * {@link settings} lists a figure's conventional settings and the match takes any
- * of them; the boundary either side is unchanged, so `50` is still not found
- * inside `150`.
- */
-export function standsAlone(text: string): RegExp {
-  const wanted = settings(String(text))
-    .map((setting) => setting.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-    .join("|");
-  return new RegExp(`(^|[^0-9])(?:${wanted})([^0-9]|$)`, "i");
+  );
 }
 
 /**

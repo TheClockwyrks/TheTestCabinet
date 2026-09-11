@@ -7,12 +7,15 @@
 // the run they just finished.
 //
 // THE THREE FIGURES ARE POSED APART FROM EACH OTHER AND FROM THE COPY. The score
-// is `437`, the lives `2`, and the levels cleared are `TOTAL_LEVELS` (`8`) — no
-// two of them share a digit run, so each is found on its own and a build that drew
-// one figure where another belonged reads as a miss rather than as a pass. The
-// score is deliberately three digits: `specs/ui.md` fixes no formatting, and a
-// build is free to group a thousand with a separator, so a figure that cannot be
-// grouped is the one a substring match can fairly ask for.
+// is `437`, the lives `12`, and the levels cleared are `TOTAL_LEVELS` (`8`) — no
+// two of them are the same number, so each is found on its own and a build that
+// drew one figure where another belonged reads as a miss rather than as a pass.
+// The score is an arbitrary figure and the lives are in double figures, which
+// `specs/progression.md`'s bonus lives make reachable: a figure read as a number
+// is answered by any run that spells it, and a screen's own decoration carries
+// small numbers of its own. The levels cleared can be no figure but
+// `TOTAL_LEVELS`, so that reading is the weakest of the three and the other two
+// carry the point.
 //
 // THE LEVEL IS POSED AT `TOTAL_LEVELS`, WHICH IS WHERE A VICTORY HAPPENS.
 // `specs/progression.md` wins the run on the hop that clears level `8`, so a build
@@ -20,19 +23,22 @@
 // constant, and a check that posed the victory screen at level `1` would fail a
 // perfectly compliant build over its own arrangement.
 //
-// THE FIGURES ARE READ AS WHOLE TOKENS, THE ENTRIES AS SUBSTRINGS. `standsAlone`
-// keeps the `8` of "LEVELS CLEARED 8" from being answered by an `8` inside a
-// score, and the `2` of the lives from being answered by a digit of anything else;
-// a menu entry is matched loosely because a build is free to set a marker against
-// it ("> PLAY AGAIN <").
+// THE FIGURES ARE READ AS NUMBERS, THE ENTRIES AS SUBSTRINGS. `specs/ui.md`
+// fixes what the screen reports and leaves how it is set to the build, so
+// `screenNumbers` reads the figures the screen drew however they are set: the
+// `8` of "LEVELS CLEARED 8" counts, the `8` inside a score of `1834` does not,
+// and an arcade's zero-padded `000437` reports the score it reports. A menu
+// entry is matched loosely instead, because a build is free to set a marker
+// against it ("> PLAY AGAIN <").
 //
-// THE HUD IS NOT PART OF THIS SCREEN'S COPY, and here that matters most: the HUD
-// bar carries a score readout, a lives readout and a level label (`specs/ui.md`),
-// which are the very figures this screen must report. A check that read the whole
-// frame would pass a victory screen that reported nothing at all, off a HUD drawn
-// behind it. Both readings here — `screenTokens` for the figures, the shared
-// harness's `drewTextAnywhere` over `screenText` for the two entries — take only
-// what the build drew over the strait, where `specs/ui.md` puts the screens.
+// THE HUD IS NOT PART OF THIS SCREEN'S COPY, and here that matters most: the
+// HUD bar carries a score readout, a lives readout and a level label
+// (`specs/ui.md`), which are the very figures this screen must report. A check
+// that read the whole frame would pass a victory screen that reported nothing
+// at all, off a HUD drawn behind it. Both readings here — `screenNumbers` for
+// the figures, the shared harness's `drewTextAnywhere` over `screenText` for
+// the two entries — take only what the build drew over the strait, where
+// `specs/ui.md` puts the screens.
 //
 // THE SCREEN IS POSED. That a run reaches it is `progression.victory-on-level-8`;
 // what its two entries do is `screens.victory-play-again` and
@@ -40,9 +46,9 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
+  assertContains,
   assertEqual,
   assertGreaterThan,
-  assertMatches,
   assertTrue,
 } from "../assert";
 import { drewTextAnywhere } from "../case-harness/text";
@@ -55,22 +61,23 @@ import {
 } from "../harness";
 import {
   poseEnding,
+  screenNumbers,
   screenRuns,
   screenText,
   screenTokens,
-  standsAlone,
 } from "./screens";
 
 /**
  * The run the screen must report.
  *
- * Three digits of score so no build's thousands separator can break the match, and
- * a lives figure sharing no digit with it, so the three readings below cannot
- * answer for one another. The levels cleared are the specification's own
- * `TOTAL_LEVELS`.
+ * Three figures no two of which are the same number, so the three readings below
+ * cannot answer for one another, and neither of the two posed here is one a
+ * screen's own decoration carries: an arbitrary score, and lives in double
+ * figures, which `specs/progression.md`'s bonus lives make reachable. The levels
+ * cleared are the specification's own `TOTAL_LEVELS`.
  */
 const SCORE = 437;
-const LIVES = 2;
+const LIVES = 12;
 
 let h: Harness;
 
@@ -101,21 +108,22 @@ it("draws the final score, the levels cleared, the lives left and both entries",
     0,
     "the victory screen to draw text over the strait at all (specs/ui.md)",
   );
-  const copy = screenTokens(h, calls);
-  assertMatches(
-    copy,
-    standsAlone(String(SCORE)),
-    "the victory screen reports the final score (specs/ui.md)",
+  const figures = screenNumbers(h, calls);
+  const drew = ` — the strait drew ${JSON.stringify(screenTokens(h, calls))}`;
+  assertContains(
+    figures,
+    SCORE,
+    `the victory screen reports the final score (specs/ui.md)${drew}`,
   );
-  assertMatches(
-    copy,
-    standsAlone(String(TOTAL_LEVELS)),
-    "and the levels cleared, TOTAL_LEVELS (specs/ui.md)",
+  assertContains(
+    figures,
+    TOTAL_LEVELS,
+    `and the levels cleared, TOTAL_LEVELS (specs/ui.md)${drew}`,
   );
-  assertMatches(
-    copy,
-    standsAlone(String(LIVES)),
-    "and the lives remaining (specs/ui.md)",
+  assertContains(
+    figures,
+    LIVES,
+    `and the lives remaining (specs/ui.md)${drew}`,
   );
   const text = screenText(h, calls);
   for (const item of ENDING_ITEMS) {

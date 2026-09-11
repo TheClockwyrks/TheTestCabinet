@@ -26,10 +26,14 @@
 // so a check that read the whole frame could credit the end screen with a figure
 // the HUD printed. The runs are therefore filtered by where they were anchored.
 //
-// THE FIGURE IS MATCHED AS A WHOLE TOKEN. A `6` inside a score of `1650` is not
-// the level reached, so the digits must stand with no digit against either end
-// (a letter may: coalesced runs spell a label and its figure as `LEVEL6`). The score is posed to `POSED_SCORE`, which carries neither digit at
-// all, so nothing else on the screen can supply or mask one.
+// THE FIGURE IS READ AS A NUMBER. specs/ui.md fixes what the screen reports and
+// leaves how it is set to the build, so the check asks whether some run of the
+// screen's copy carries the level reached as a figure of its own, however that
+// figure is set. A `6` inside a score of `1650` is a different number and does
+// not answer for it (a letter boundary is no boundary at all: coalesced runs
+// spell a label and its figure as `LEVEL6`). The score is posed to `POSED_SCORE`,
+// which carries neither digit at all, so nothing else on the screen can supply or
+// mask one.
 //
 // It does NOT require the current level to be absent from the screen. specs/ui.md
 // fixes what the screen must report and leaves its layout to the build, and a
@@ -75,8 +79,8 @@ function screenRuns(calls: readonly DrawCall[]): string[] {
  *
  * `Number.prototype.toLocaleString` groups by default, so a build that reaches for
  * it reports the score as `1,250`, and another locale's grouping gives `1'250` or
- * `1\u202F250`. Every one of those reports the one figure, so a figure is looked for
- * under each of its conventional settings.
+ * `1\u202F250`. Every one of those reports the one figure, and each separator is
+ * dropped before the digits are read.
  *
  * THE ASCII SPACE IS DELIBERATELY NOT ONE OF THEM. A run of the screen's copy
  * carries a label and often more than one figure, separated by exactly that, so
@@ -84,39 +88,41 @@ function screenRuns(calls: readonly DrawCall[]): string[] {
  * single figure `40130`. `.` is left out for its own reason: it is the decimal
  * point, and a build drawing `1.5` means one and a half.
  */
-const GROUPS: readonly string[] = [",", "'", "\u00A0", "\u202F", "\u2009"];
+const GROUP = "[,'\\u00A0\\u202F\\u2009]";
 
 /**
- * Every conventional setting of `figure`: the plain one, and — when it runs to
- * more than three digits — the same figure with its triples grouped by each of
- * {@link GROUPS}. A figure of three digits or fewer has exactly one setting.
+ * One figure as a build may have set it: grouped, or plain.
+ *
+ * NO SIGN IS READ. Every figure this case reads as a number is a count — a
+ * score, a level, a tally of lives, the seconds left — and not one of them can
+ * be negative, so a hyphen against the digits is a separator a build set between
+ * a label and its figure rather than a minus. Taking it for a minus would lose
+ * the figure a build drawing `FINAL SCORE-472` plainly reports, and could gain
+ * nothing in exchange: no reading in this suite looks for a negative number.
  */
-function settings(figure: number): string[] {
-  const text = String(figure);
-  const parts = /^(-?)(\d+)(\.\d+)?$/.exec(text);
-  if (parts === null) return [text];
-  const [, sign, digits, fraction = ""] = parts;
-  if (digits.length <= 3) return [text];
-  return [
-    text,
-    ...GROUPS.map(
-      (group) => sign + digits.replace(/\B(?=(\d{3})+$)/g, group) + fraction,
-    ),
-  ];
-}
+const DRAWN = new RegExp(
+  `\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|\\d+(?:\\.\\d+)?`,
+  "g",
+);
 
 /**
- * Whether some run of that text carries `figure`, under any of its settings, with
- * no digit either side — so a `6` is still not found inside `1250`, while the
- * `6` of `LEVEL6` is: the runs are coalesced verbatim, so a label and its figure
- * drawn a measured space apart spell one run with no space between them.
+ * Whether some run of that text carries `figure` as a figure of its own.
+ *
+ * A FIGURE IS READ AS A NUMBER, NOT AS A STRING. specs/ui.md fixes WHAT the
+ * screen reports and leaves how it is set to the build, so a level reached of `6`
+ * is reported by `6` and by an arcade's zero-padded `06` alike, while the `6`
+ * inside a score of `1250` is a different number and answers for neither. Each
+ * run is read on its own, so two runs are never joined into a figure neither of
+ * them drew, and `LEVEL6` yields `6`: the runs are coalesced verbatim, so a label
+ * and its figure drawn a measured space apart spell one run with no space
+ * between them.
  */
 function names(runs: readonly string[], figure: number): boolean {
-  const wanted = settings(figure)
-    .map((setting) => setting.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-    .join("|");
-  const pattern = new RegExp(`(^|[^0-9])(?:${wanted})([^0-9]|$)`);
-  return runs.some((run) => pattern.test(run));
+  return runs.some((run) =>
+    (run.match(DRAWN) ?? []).some(
+      (drawn) => Number(drawn.replace(new RegExp(GROUP, "g"), "")) === figure,
+    ),
+  );
 }
 
 let h: Harness;

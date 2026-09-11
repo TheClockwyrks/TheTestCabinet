@@ -77,9 +77,18 @@ export function hudText(calls: readonly DrawCall[]): DrawCall[] {
  */
 const GROUP = "[,'\\u00A0\\u202F\\u2009]";
 
-/** One figure as a build may have set it: grouped, or plain. */
+/**
+ * One figure as a build may have set it: grouped, or plain.
+ *
+ * NO SIGN IS READ. Every figure this case reads as a number is a count — a
+ * score, a level, a tally of lives, the seconds left — and not one of them can
+ * be negative, so a hyphen against the digits is a separator a build set between
+ * a label and its figure rather than a minus. Taking it for a minus would lose
+ * the figure a build drawing `FINAL SCORE-472` plainly reports, and could gain
+ * nothing in exchange: no reading in this suite looks for a negative number.
+ */
 const DRAWN = new RegExp(
-  `-?\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|-?\\d+(?:\\.\\d+)?`,
+  `\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|\\d+(?:\\.\\d+)?`,
   "g",
 );
 
