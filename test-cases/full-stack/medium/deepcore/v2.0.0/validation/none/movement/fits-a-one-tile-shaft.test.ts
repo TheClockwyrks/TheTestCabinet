@@ -43,6 +43,21 @@ const FLOOR_ROW = 31;
 /** The drop, which leaves the miner inside the shaft when it is let go. */
 const HEIGHT = 20 * TILE;
 
+/**
+ * The floating-point slack on the floor's face, in world units.
+ *
+ * The feet come to rest ON the floor's top face and `specs/character.md` admits
+ * no overlap, so this reading is closed there. But the descent integrates a fall
+ * over hundreds of frames and the position that lands on the face is the sum of
+ * them, so its last bits fall either side: a build that comes to rest exactly on
+ * the floor reads `2480.0000000000023` as readily as `2480`, and failing it for
+ * that says nothing about the build. This is that noise and nothing physical —
+ * the smallest thing the reading discriminates against is a collision box inset
+ * from the declared one, which shows as tenths of a unit, and the smallest
+ * progress a cut can show is `TILE / 4`, twenty units.
+ */
+const SETTLE = 1e-6;
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -69,7 +84,7 @@ it("falls the length of a one-cell shaft without catching on either side", async
   assertCloseTo(miner.x, minerXOn(COL), 3, "the box's horizontal position");
   assertLessThanOrEqual(
     minerFeet(miner),
-    FLOOR_ROW * TILE,
+    FLOOR_ROW * TILE + SETTLE,
     "the miner's feet on the shaft's floor",
   );
   assertGreaterThanOrEqual(

@@ -12,7 +12,7 @@
 // to break at tier 1.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BAND_HEALTH, TILE } from "../constants";
+import { BAND_HEALTH, JETPACK_TIERS, TILE } from "../constants";
 import { assertBetween, assertEqual } from "../assert";
 import {
   ACTION_KEY,
@@ -35,8 +35,28 @@ const CEILING_ROW = ROW - 3;
 /** How long thrust is held against the ceiling, in frames. */
 const HOLD_FRAMES = 2 * TICK_HZ;
 
-/** How far the box may sit from the ceiling's underside, in world units. */
-const FLUSH = 2;
+/**
+ * How far BELOW the ceiling's underside the box may come to rest, in world
+ * units.
+ *
+ * One side of the face only. A build that advances, tests, and keeps the last
+ * position clear of the ceiling comes to rest up to a whole frame of climb short
+ * of it, and `specs/character.md` fixes no contact epsilon.
+ * `specs/instrumentation.md` integrates every rate against the frame's delta, so
+ * that frame is at most `JETPACK_TIERS[0].emptyClimb / TICK_HZ` — the
+ * tier-1 climb cap over one frame — and the band is the whole unit above it,
+ * which is enough for the miner to have climbed the shaft and come to rest at
+ * the ceiling rather than idled below it.
+ *
+ * Past the face there is no such slack to give. `specs/character.md`: "The
+ * miner's box never overlaps a cell that is not a tunnel" — and no frame of
+ * travel explains a box that has come to REST inside the ceiling, only a
+ * collision box inset from the one the specification declares. So the band is
+ * closed at the face, as every other contact reading in this case is. It is also
+ * the only reading here that holds the box's top against a ceiling at all, so
+ * opening it would leave that direction of the collision rule unread.
+ */
+const FLUSH = Math.ceil(JETPACK_TIERS[0].emptyClimb / TICK_HZ);
 
 let h: Harness;
 

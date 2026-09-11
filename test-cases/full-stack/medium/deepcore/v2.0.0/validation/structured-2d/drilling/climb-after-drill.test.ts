@@ -16,6 +16,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertBetween, assertEqual, assertLessThanOrEqual } from "../assert";
+import { TILE } from "../constants";
 import {
   ACTION_KEY,
   captureReplay,
@@ -41,10 +42,14 @@ const CLIMB_FRAMES = 300;
  * How far the box may sit from a resting position, in world units.
  *
  * A build resolves a resting contact with an epsilon of its own and
- * `specs/character.md` fixes none, so a unit of the eighty a tile spans is the
- * room the reading allows.
+ * `specs/character.md` fixes none, so this reading cannot be tighter than the
+ * settle one produces. What it discriminates against is a miner that never
+ * reached the bottom of what it cut, which is a whole cell — eighty units. The
+ * band is an eighth of that, so a shaft one cell short cannot hide inside it,
+ * while the contact epsilon that the points whose subject is contact read does
+ * not decide a point about the round trip.
  */
-const RESTING = 1;
+const RESTING = TILE / 8;
 
 let h: Harness;
 

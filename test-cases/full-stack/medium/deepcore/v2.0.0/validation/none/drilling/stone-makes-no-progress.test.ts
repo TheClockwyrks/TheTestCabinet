@@ -37,11 +37,15 @@ const HOLD_FRAMES = 4 * TICK_HZ;
  * How far the feet may sit from the cell top, in world units.
  *
  * A build resolves a resting contact with an epsilon of its own and
- * `specs/character.md` fixes none, so a unit of the eighty a tile spans is the
- * room the reading allows. One hit of the weakest drill on the shallowest band
- * would have carried the miner a quarter of a tile down.
+ * `specs/character.md` fixes none, so this reading cannot be tighter than the
+ * settle one produces. What it discriminates against is a sink: a down cut
+ * carries the feet through the cell in proportion to its progress, and one hit
+ * of the weakest drill on the shallowest band is a quarter of that cell — twenty
+ * units. The band is half of that, so no progress at all can hide inside it,
+ * while the contact epsilon that the points whose subject is contact read does
+ * not decide a point about the boulder.
  */
-const RESTING = 1;
+const RESTING = TILE / 8;
 
 let h: Harness;
 

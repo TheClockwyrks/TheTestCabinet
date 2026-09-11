@@ -15,13 +15,16 @@
 // the check about the stop. With the drill running the wall would break and the
 // miner would walk on, which is correct behaviour and a different requirement.
 //
-// THE TOLERANCE. One world unit of the eighty a tile spans, on the near side
-// alone: a walk resolved within a frame may leave the box a fraction of that
-// frame's travel short of the face, and overlapping the wall is not admitted at
-// all.
+// THE TOLERANCE. One frame of walk, on the near side alone. A build that
+// advances, tests, and keeps the last position clear of the wall comes to rest
+// up to a whole frame's travel short of the face, and `specs/character.md` fixes
+// no epsilon of its own; `specs/instrumentation.md` integrates every rate
+// against the frame's delta, so that frame is `WALK_SPEED / TICK_HZ` and the
+// band is the whole unit above it — a twenty-sixth of the eighty a tile spans.
+// Overlapping the wall is not admitted at all.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { MINER_W, TILE } from "../constants";
+import { MINER_W, TILE, WALK_SPEED } from "../constants";
 import {
   assertEqual,
   assertGreaterThanOrEqual,
@@ -37,6 +40,7 @@ import {
   openScene,
   pinDrill,
   standOn,
+  TICK_HZ,
   type Harness,
 } from "../harness";
 
@@ -46,6 +50,9 @@ const ROW = 12;
 
 /** Long enough to cross the run-up and settle against the wall. */
 const WALK_FRAMES = 300;
+
+/** How far short of the face the box may come to rest: one frame of walk. */
+const FLUSH = Math.ceil(WALK_SPEED / TICK_HZ);
 
 let h: Harness;
 
@@ -79,7 +86,7 @@ it("stops a walk with the box flush against the wall's face", async () => {
   );
   assertGreaterThanOrEqual(
     miner.x + MINER_W,
-    face - 1,
+    face - FLUSH,
     "the box's right edge against the wall's near face",
   );
 

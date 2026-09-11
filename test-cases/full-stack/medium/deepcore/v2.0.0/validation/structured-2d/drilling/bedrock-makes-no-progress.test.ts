@@ -10,7 +10,13 @@
 // cell it is aimed at is the one beside its box, not the one under its feet.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { MINER_W, PLAYABLE_COL_MAX, TILE, WORLD_COLS } from "../constants";
+import {
+  MINER_W,
+  PLAYABLE_COL_MAX,
+  TILE,
+  WALK_SPEED,
+  WORLD_COLS,
+} from "../constants";
 import { assertBetween, assertEqual } from "../assert";
 import {
   ACTION_KEY,
@@ -33,13 +39,17 @@ const BORDER_COL = WORLD_COLS - 1;
 const HOLD_FRAMES = 4 * TICK_HZ;
 
 /**
- * How far the box may sit from the border's face, in world units.
+ * How far the box may sit short of the border's face, in world units.
  *
  * A build resolves a wall contact with an epsilon of its own and
- * `specs/character.md` fixes none, so a unit of the eighty a tile spans is the
- * room the reading allows.
+ * `specs/character.md` fixes none: one that advances, tests, and keeps the last
+ * position clear of the wall comes to rest up to a whole frame of walk short of
+ * the face. `specs/instrumentation.md` integrates every rate against the frame's
+ * delta, so that frame is `WALK_SPEED / TICK_HZ`, and the band is the whole unit
+ * above it — a twenty-sixth of the eighty a tile spans. Overlapping the bedrock
+ * is not admitted at all.
  */
-const FLUSH = 1;
+const FLUSH = Math.ceil(WALK_SPEED / TICK_HZ);
 
 let h: Harness;
 
