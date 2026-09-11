@@ -29,6 +29,16 @@
 // THE SCENE IS THE EDITOR, WITH NO RUN, so nothing has spawned and what is on
 // those hexes is the set's own drawing.
 //
+// THE FIELD CARRIES A PART IN BOTH READINGS. What a build draws over an EMPTY
+// field is its own — a prompt to take a part from the tray is the obvious one,
+// and no sentence of `specs/` forbids one — but it stops being drawn the moment
+// a part is placed, which would make the two readings differ for a reason that is
+// not the set's pattern, and the square this point requires to be UNCHANGED is
+// exactly where such a prompt lands. So a `wane` is placed on `DECOY` first and
+// stands there for every reading: its footprint is one hex (`specs/sigils.md`), it
+// is four hexes from every square read here, and it leaves the set's own
+// placement free under rule 2 of `specs/parts.md`.
+//
 // THE VERDICT. Every hex of the placed set's footprint, and the midpoint of the
 // pattern's one filament, is drawn apart from the bare field there; the hex the
 // pattern would have reached unrotated is untouched.
@@ -43,11 +53,18 @@ import {
   differingShare,
   openChallengeDocument,
   partById,
+  placePart,
   placeSet,
   type Harness,
   type PixelRect,
 } from "../harness";
 import { setFootprint } from "../parts";
+
+/**
+ * A hex far from every square this point reads, where one part stands so that
+ * neither reading is taken over a bare field.
+ */
+const DECOY: Hex = at(0, 4);
 
 /** The rotation the set is placed at, so the pattern is really turned. */
 const ROTATION = 2;
@@ -102,6 +119,12 @@ it("draws the product's motes and filament at the set's placed anchor and rotati
     ORIGIN,
     0,
   );
+
+  await placePart(h, "wane", DECOY);
+  // The editor outlines the selected part's footprint (`specs/editor.md`), and the
+  // decoy is not what any square here is about.
+  await h.debug.setSelected(null);
+  await h.advance(1);
 
   const bare: PixelRect[] = [];
   for (const hex of shown) bare.push(await square(hexCenter(hex), HALF));

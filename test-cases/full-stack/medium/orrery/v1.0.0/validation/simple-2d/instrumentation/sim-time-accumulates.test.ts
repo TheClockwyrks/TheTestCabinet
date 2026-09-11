@@ -1,11 +1,10 @@
 // instrumentation/sim-time-accumulates — `simTime` is the sum of every update's
 // delta time, on every screen, and it moves for nothing else.
 //
-// THE RULE. "Three fields need the game to keep them honest every frame: `pointer`
-// mirrors the position and press the pointer input reports, `muted` mirrors the
-// runtime's mute bit, and `simTime` accumulates the delta time of every update,
-// whatever the screen" (`specs/instrumentation.md`, Snapshot shape), where the
-// field is "`simTime: <number>` — accumulated simulation time, in seconds".
+// THE RULE. "Three fields are kept honest as the frames run: ... `simTime`
+// accumulates the delta time of every update, whatever the screen"
+// (`specs/instrumentation.md`, Snapshot shape), where the field is
+// "`simTime: <number>` — accumulated simulation time, in seconds".
 // `specs/state.md` says it in one line: "`simTime` — accumulated simulation time,
 // in seconds. Every `update` adds its `dt`, whatever the screen."
 //

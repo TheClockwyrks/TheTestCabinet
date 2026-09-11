@@ -10,14 +10,22 @@
 // returns to editing, as `specs/simulation.md` states". The sentence under the
 // table settles the rest: "An action a row omits does nothing on that screen."
 //
-// THE CONFIGURATION MOVES THE HIGHLIGHT FIRST, because `menuIndex` at `0` is the
-// resting value and a build that wrongly moved it might land back on it. The
-// title menu is showing when the game opens and `TITLE_ITEMS` holds three, so
+// THE CONFIGURATION MOVES THE HIGHLIGHT FIRST, so that a build that wrongly
+// answered one of the three has somewhere to move the highlight FROM. The title
+// menu is showing when the game opens and `TITLE_ITEMS` holds three, so
 // `setMenuIndex` — which sets the highlight "from `0` and below that menu's entry
-// count" (`specs/instrumentation.md`) — puts it on the title's last item, and the
-// check reads it back once the run is faulted. From a highlight of `2`, a build
-// that answered `up` or `down` with the solved panel's own movement would show it
-// at once.
+// count" (`specs/instrumentation.md`) — puts it on the title's last item.
+//
+// WHERE THE HIGHLIGHT STANDS ONCE THE EDITOR IS OPEN IS THE BUILD'S. No sentence
+// of `specs/` carries the title menu's highlight into the editor; `specs/ui.md`
+// gives the title its own remembered `state.titleIndex` and says of each menu that
+// `menuIndex` is `0` on arriving, so a build that lands the editor at `0` is
+// conformant and so is one that leaves it where it stood. What is read is
+// therefore the value the faulted run STANDS AT, whatever it is, and that each of
+// the three presses leaves it there — a build that answered `up`, `down`, or
+// `confirm` with the solved panel's own menu, which moves the highlight "with
+// wrapping" (`specs/ui.md`, The solved panel), moves it off that value from any
+// standing value at all.
 //
 // The world is otherwise the opener every isolated check uses, spelled out so the
 // `reset` inside it cannot undo the posed highlight: `BARE` loaded through the
@@ -27,8 +35,9 @@
 // fetch — `overextended` — so the run is faulted before a cycle has run.
 //
 // THE VERDICT. After `up`, after `down`, and after `confirm`, `menuIndex` is
-// still `2`, `screen` is still `editor`, and the run is still the same faulted
-// run: the same status, the same fault, the same cycle and the same fraction.
+// still where the faulted run left it, `screen` is still `editor`, and the run is
+// still the same faulted run: the same status, the same fault, the same cycle and
+// the same fraction.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -110,11 +119,9 @@ it("leaves menuIndex, the screen and the run alone under up, down and confirm", 
     "editor",
     "the fault display is drawn on the editor rather than being a screen of its own",
   );
-  assertEqual(
-    faulted.menuIndex,
-    MOVED,
-    "the highlight really was moved off the first item, so leaving it alone says something",
-  );
+  // Where the highlight stands on the faulted editor is the build's, so it is read
+  // rather than required; what the three presses must not do is move it.
+  const stoodIndex = faulted.menuIndex;
   const stood = run(faulted);
   const fraction = faulted.sim?.fraction ?? -1;
 
@@ -129,7 +136,7 @@ it("leaves menuIndex, the screen and the run alone under up, down and confirm", 
   for (const { action, after } of seen) {
     assertEqual(
       after.menuIndex,
-      MOVED,
+      stoodIndex,
       `the editor, faulted or complete row grants ${action} only while the ` +
         "solved panel is up, so on a faulted run it moves no highlight",
     );

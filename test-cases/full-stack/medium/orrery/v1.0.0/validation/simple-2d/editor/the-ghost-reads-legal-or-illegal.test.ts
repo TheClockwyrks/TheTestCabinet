@@ -29,6 +29,15 @@
 // with the `wane` on the field and no drag live, and it must differ from the bare
 // square by less than the ghost does.
 //
+// THE FIELD CARRIES A PART IN EVERY READING. What a build draws over an EMPTY
+// field is its own — a prompt to take a part from the tray is the obvious one, and
+// no sentence of `specs/` forbids one — but it stops being drawn the moment a part
+// is placed, and the square this point requires to be UNCHANGED between the bare
+// field and the blocked one is exactly where such a prompt lands. So a `wane`
+// stands on `DECOY` from before the first reading and through all four: its
+// footprint is one hex (`specs/sigils.md`), it is three hexes from the square read
+// here, and rule 2 leaves the set's own anchor free of it.
+//
 // THE VERDICT. Three readings of that one square. The ghost's arrival changes it;
 // the blocker alone leaves it as the bare square; and the legal ghost and the
 // illegal ghost are not the same picture.
@@ -99,6 +108,12 @@ const ANCHOR: Hex = at(-2, 0);
 /** The far end of that footprint, four hexes from the anchor's centre. */
 const BLOCKER: Hex = at(1, 0);
 
+/**
+ * A hex off the set's footprint and away from the square read here, where one part
+ * stands so that no reading is taken over a bare field.
+ */
+const DECOY: Hex = at(-2, 3);
+
 /** A point inside the field region and more than `HEX_HIT_R` from every centre. */
 const OFF_EVERY_HEX: StagePoint = { x: 940, y: 304 };
 
@@ -157,12 +172,13 @@ it("draws a ghost at the targeted hex, and draws it differently where the rules 
   const patterns = { reagents: CHAINED.reagents, products: CHAINED.products };
   const ghost = setPart(0, ANCHOR.q, ANCHOR.r, 0);
   const wane = sigilPart("wane", BLOCKER.q, BLOCKER.r, 0);
+  const decoy = sigilPart("wane", DECOY.q, DECOY.r, 0);
   assertNull(
-    placementFault([ghost], patterns),
-    "the set on (-2, 0) breaks none of the six placement rules on a bare field",
+    placementFault([decoy, ghost], patterns),
+    "the set on (-2, 0) breaks none of the six placement rules with the decoy standing",
   );
   assertEqual(
-    placementFault([wane, ghost], patterns)?.rule,
+    placementFault([decoy, wane, ghost], patterns)?.rule,
     2,
     "with a wane on (1, 0) the same set breaks rule 2, footprints being pairwise disjoint",
   );
@@ -172,14 +188,18 @@ it("draws a ghost at the targeted hex, and draws it differently where the rules 
   );
 
   await openChallengeDocument(h, CHAINED);
+  await placePart(h, "wane", DECOY);
+  // The editor outlines the selected part's footprint (`specs/editor.md`), and the
+  // decoy is not what this square is about.
+  await h.debug.setSelected(null);
   await h.advance(1);
   const bare = await readAnchor();
 
   const legal = await ghostOnAnchor("legal");
   assertEqual(
     (await partIds(h)).length,
-    0,
-    "the first drag was released off every hex, so it placed nothing",
+    1,
+    "the first drag was released off every hex, so it placed nothing: the decoy is still the machine's only part",
   );
 
   await placePart(h, "wane", BLOCKER);
@@ -189,8 +209,8 @@ it("draws a ghost at the targeted hex, and draws it differently where the rules 
   const illegal = await ghostOnAnchor("illegal");
   assertEqual(
     (await partIds(h)).length,
-    1,
-    "the second drag placed nothing either: the wane is the machine's only part",
+    2,
+    "the second drag placed nothing either: the decoy and the blocking wane are the whole machine",
   );
 
   assertEqual(

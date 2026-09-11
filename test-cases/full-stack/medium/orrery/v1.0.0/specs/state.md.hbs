@@ -43,8 +43,8 @@ specification is written against them:
   gripper to a mote, each set's tally, the area bank, the fault if one was
   raised, and the metrics once complete.
 - The pointer position, in the stage's logical units, and whether the
-  pointer is currently pressed, both refreshed from the runtime layer in
-  every update.
+  pointer is currently pressed, both moved by each pointer sample the game
+  reads and left as they stand on an update that carries none.
 - The simulation time, in seconds, which every update adds its `dt` to
   whatever the screen. The snapshot reports it as `simTime`.
 - The runtime's mute bit, mirrored into the state every update and reported
@@ -373,7 +373,8 @@ them.
   directly through the surface of `specs/instrumentation.md`. Both are
   `null` away from the editor.
 - `editor`, `sim` — the machine and the run.
-- `pointer` — the pointer as of this frame, in stage units.
+- `pointer` — the pointer as of this frame, in stage units, moved by each
+  pointer sample the game reads.
 - `completion` — whether a boundary that satisfies every set's target
   completes the run, `true` while the game is played.
   `specs/instrumentation.md` states the switch and what holding it off
@@ -738,8 +739,8 @@ the fields posed and read back by reading them.
   directly through the surface of `specs/instrumentation.md`. Both are
   `null` away from the editor.
 - `editor`, `sim` — the machine and the run.
-- `pointer` — the pointer as of this frame, in stage units, refreshed by the
-  player controller every tick.
+- `pointer` — the pointer as of this frame, in stage units, moved by each
+  pointer sample the player controller reads.
 - `completion` — whether a boundary that satisfies every set's target
   completes the run, `true` while the game is played.
   `specs/instrumentation.md` states the switch and what holding it off

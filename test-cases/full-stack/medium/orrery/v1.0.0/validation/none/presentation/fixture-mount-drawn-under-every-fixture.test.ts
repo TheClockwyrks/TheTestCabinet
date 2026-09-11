@@ -13,6 +13,16 @@
 // canvas — the hub and the mount. That is what tells the mount from the hub, which
 // share a canvas and so cannot be told apart by size.
 //
+// AND WHERE THE TWO FILES ARE ONE PICTURE, THAT READING IS UNDECIDABLE. A build
+// that shipped the same picture under both names leaves no pixel by which any
+// reader, this one or a player, could say which file a draw came from: the two
+// decode alike, so the first of them answers for every draw. Where that is so, the
+// two assertions that name a FILE are skipped and said to be skipped, and the
+// count, the placement and the native size are read as they always are. Shipping
+// one picture twice is its own defect, and `assets/wheel-pieces-distinct` is the
+// point that owns it; charging it here as well would report the hub as painted on
+// the fixture hexes when it is the mount that was drawn there.
+//
 // HOW THE RING IS RAISED. The bare opener empties the field, and then the wheel is
 // placed INTO THE LIVE RUN, which is what puts its ring back: "While a run is live,
 // a part one of them adds enters the run at its rest pose holding nothing, WITH A
@@ -43,7 +53,12 @@ import {
   type Harness,
 } from "../harness";
 import { WHEEL_SPRITES, assetFile } from "../assets/files";
-import { decodeProduced, sameAsDrawn } from "../assets/sprites";
+import {
+  decodeProduced,
+  differingShare,
+  sameAsDrawn,
+  type Sprite,
+} from "../assets/sprites";
 import { wheelFixtureHexes } from "../parts";
 
 /** How near a sprite's centre must land to count as drawn on a hex. */
@@ -102,6 +117,11 @@ it("draws fixture-mount.png on each of the wheel's six fixture hexes", async () 
     });
   }
 
+  // Whether the two produced wheel files are one picture, in which case no reading
+  // of a drawn source can say which of them a draw came from.
+  const oneFile =
+    differingShare(sprites[0] as Sprite, sprites[1] as Sprite) === 0;
+
   const on = (hex: Hex): typeof drawn =>
     drawn.filter(
       (entry) =>
@@ -121,11 +141,13 @@ it("draws fixture-mount.png on each of the wheel's six fixture hexes", async () 
       1,
       `one produced 48 x 48 wheel sprite is centered on ${where}`,
     );
-    assertEqual(
-      mounts[0]?.file,
-      assetFile(FIXTURE_MOUNT_PATH),
-      `and the file drawn on ${where} is fixture-mount.png, because a mount goes on each fixture's hex`,
-    );
+    if (!oneFile) {
+      assertEqual(
+        mounts[0]?.file,
+        assetFile(FIXTURE_MOUNT_PATH),
+        `and the file drawn on ${where} is fixture-mount.png, because a mount goes on each fixture's hex`,
+      );
+    }
     assertEqual(
       mounts[0]?.size,
       WHEEL_SPRITE_SIZE,
@@ -135,11 +157,13 @@ it("draws fixture-mount.png on each of the wheel's six fixture hexes", async () 
 
   const anchor = on(ORIGIN);
   assertLength(anchor, 1, "the anchor hex carries one produced wheel sprite");
-  assertEqual(
-    anchor[0]?.file,
-    assetFile(WHEEL_HUB_PATH),
-    "and it is the hub rather than a seventh mount",
-  );
+  if (!oneFile) {
+    assertEqual(
+      anchor[0]?.file,
+      assetFile(WHEEL_HUB_PATH),
+      "and it is the hub rather than a seventh mount",
+    );
+  }
   assertLength(
     on(BEYOND_THE_RING),
     0,

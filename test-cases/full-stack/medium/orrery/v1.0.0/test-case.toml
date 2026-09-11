@@ -786,7 +786,7 @@ failure_cap = "passable"
 validation = { script = "instrumentation/snapshot-counts-derived.test.ts", outputs = [ { id = "counts", name = "The select screen behind the reported count", kind = "image" } ] }
 [[review.categories.items]]
 id = "snapshot-pointer-mirrors"
-title = "pointer mirrors the pointer input every frame"
+title = "pointer mirrors the last pointer sample the game read"
 description = "pointer reports the position in the stage's logical units and the press state the pointer input last reported, so it follows the pointer as it glides, presses and releases over the stage."
 domains = ["workshop"]
 failure_cap = "passable"

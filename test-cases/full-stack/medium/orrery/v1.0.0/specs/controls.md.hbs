@@ -45,8 +45,9 @@ contact: the contact landing is the press edge, its lift is the release edge,
 and its travel is the positions between. Nothing in the game asks which device
 drove them.
 
-`state.pointer` mirrors the pointer's position and press state every frame, as
-`specs/state.md` describes.
+`state.pointer` mirrors the pointer's position and press state, as
+`specs/state.md` describes. Each pointer sample the game reads moves it, and a
+frame carrying no sample leaves it as the last sample left it.
 
 ## Focus
 

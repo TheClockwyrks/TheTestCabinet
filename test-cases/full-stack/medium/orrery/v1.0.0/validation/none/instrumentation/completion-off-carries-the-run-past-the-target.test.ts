@@ -42,6 +42,7 @@ import {
   advanceCycles,
   captureReplay,
   createHarness,
+  moteAt,
   placeSet,
   spawnMote,
   tallyOf,
@@ -90,12 +91,18 @@ it("does not fire the completion check, and carries the run on past the target",
     const satisfied = await h.snapshot();
     for (let i = 0; i < FURTHER; i += 1) {
       // A build that wrongly completed here has no live run left to spawn onto,
-      // and `spawnMote` "requires a live run and throws an Error without one".
-      // The verdict below is what decides the point either way; this only keeps
-      // a build that broke the rule from failing on the arrangement instead of
-      // on the reading.
-      const live = (await h.snapshot()).sim;
-      if (live !== null && live.status === "running") {
+      // and `spawnMote` "requires a live run and throws an Error without one"; a
+      // build whose set never took the constellation has left it standing on the
+      // set's hex, and a spawn onto an occupied hex throws as well. The verdict
+      // below is what decides the point either way, so neither is allowed to
+      // become the failure: this only keeps a build that broke the rule from
+      // failing on the arrangement instead of on the reading.
+      const before = await h.snapshot();
+      if (
+        before.sim !== null &&
+        before.sim.status === "running" &&
+        moteAt(before, EAST) === null
+      ) {
         await spawnMote(h, EAST, "sol");
       }
       await advanceCycles(h, 1);

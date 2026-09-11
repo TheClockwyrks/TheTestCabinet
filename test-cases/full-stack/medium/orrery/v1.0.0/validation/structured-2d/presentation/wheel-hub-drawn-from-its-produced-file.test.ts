@@ -17,23 +17,31 @@
 // committed on the `48 x 48` wheel canvas — the hub and the fixture mount — so the
 // verdict names which of them landed on the anchor.
 //
-// THE RING IS OFF THE FIELD. The wheel is loaded as the machine before the run
-// starts, so `startRun` raises its six fixtures and the bare opener's `clearMotes`
-// takes them off again — "removes every mote, fixtures included", the faculty gate
-// `specs/instrumentation.md` names for a wheel's fixtures. So the hub is the only
-// thing the wheel puts on the field, and nothing else can be mistaken for it.
+// THE HUB IS FOUND BY WHERE IT LANDS. The Wheel hub row puts it "centered on the
+// wheel's anchor hex", so the draw this point reads is the one whose centre is on
+// that hex — within `ON_POINT` of it — and the rest of the frame is not its
+// business. What else a wheel puts on the stage is the ring it is drawn as
+// carrying: `specs/assets.md` has "The wheel's spokes out to its fixture ring"
+// drawn in code, and a mount on each spoke hex is `48 x 48` on the same canvas.
+// Whether a build draws that ring while `clearMotes` has taken the fixture motes
+// off the field is a question no sentence of `specs/` answers, and it is not this
+// point's: demanding the frame carry ONE wheel-canvas sprite and no other would
+// fail a conformant hub on a rule the specification never wrote.
 //
-// THE VERDICT. The frame draws exactly one sprite on the `48 x 48` wheel canvas;
-// its pixels are `wheel-hub.png`; it is centered on the wheel's anchor hex; and it
-// covers `48 x 48` logical units.
+// THE RING IS OFF THE FIELD, all the same, so nothing is standing on the anchor
+// hex but the hub. The wheel is loaded as the machine before the run starts, so
+// `startRun` raises its six fixtures and the bare opener's `clearMotes` takes them
+// off again — "removes every mote, fixtures included", the faculty gate
+// `specs/instrumentation.md` names for a wheel's fixtures.
+//
+// THE VERDICT. Exactly one sprite on the `48 x 48` wheel canvas is centered on the
+// wheel's anchor hex; its pixels are `wheel-hub.png`; and it covers `48 x 48`
+// logical units. Where a build shipped one picture under both wheel names the
+// pixels cannot tell the two apart and the file reading is answered by the first
+// of them — a defect `assets/wheel-pieces-distinct` owns and reports on its own.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertEqual,
-  assertLength,
-  assertLessThanOrEqual,
-  fail,
-} from "../assert";
+import { assertEqual, assertLength, fail } from "../assert";
 import { WHEEL_HUB_PATH, WHEEL_SPRITE_SIZE } from "../constants";
 import { distance, hexCenter } from "../field";
 import { armPart, solution } from "../formats";
@@ -110,22 +118,21 @@ it("draws wheel-hub.png at 48 x 48 on the wheel's anchor hex", async () => {
     });
   }
 
-  assertLength(
-    drawn,
-    1,
-    "a placed wheel whose ring is off the field paints one of the two produced " +
-      "48 x 48 wheel files, and only one",
+  const onAnchor = drawn.filter(
+    (entry) =>
+      distance({ x: entry.x, y: entry.y }, hexCenter(ORIGIN)) <= ON_POINT,
   );
-  const hub = drawn[0];
+  assertLength(
+    onAnchor,
+    1,
+    "one of the two produced 48 x 48 wheel files is painted centered on the " +
+      "wheel's anchor hex, and only one",
+  );
+  const hub = onAnchor[0];
   assertEqual(
     hub?.file,
     assetFile(WHEEL_HUB_PATH),
     "and the file it paints is wheel-hub.png rather than the fixture mount",
-  );
-  assertLessThanOrEqual(
-    distance({ x: hub?.x ?? 0, y: hub?.y ?? 0 }, hexCenter(ORIGIN)),
-    ON_POINT,
-    "centered on the wheel's anchor hex",
   );
   assertEqual(
     hub?.w,

@@ -1,35 +1,34 @@
 // instrumentation/snapshot-pointer-mirrors — `pointer` is what the pointer input
 // last reported, in the stage's own units.
 //
-// THE RULE. `specs/instrumentation.md`, Snapshot shape: "Three fields need the
-// game to keep them honest every frame: `pointer` mirrors the position and press
-// the pointer input reports", declared as
-// "pointer: { x: <number>, y: <number>, down: <boolean> }". `specs/controls.md`
-// fixes the units and the three things the game reads: "a pointer position in the
-// game's logical units on the `STAGE_W x STAGE_H` (`1280 x 720`) stage, a press
-// edge, and a release edge", and "`state.pointer` mirrors the pointer's position
-// and press state every frame".
+// THE RULE. `specs/instrumentation.md`, Snapshot shape: "Three fields are kept
+// honest as the frames run: `pointer` carries the position and press state of the
+// last pointer sample the game read, and stands there until the next one",
+// declared as "pointer: { x: <number>, y: <number>, down: <boolean> }".
+// `specs/controls.md` fixes the units and the three things the game reads: "a
+// pointer position in the game's logical units on the `STAGE_W x STAGE_H`
+// (`1280 x 720`) stage, a press edge, and a release edge", and "`state.pointer`
+// mirrors the pointer's position and press state ... Each pointer sample the game
+// reads moves it, and a frame carrying no sample leaves it as the last sample
+// left it".
 //
 // WHAT DRIVES IT HERE. The pointer input itself: the harness's real pointer, one
 // frame per sample, which is the input the field is said to mirror. The surface's
-// own `pointerDown`, `pointerMove` and `pointerUp` take effect at the call and
-// are what the editor's points drive; what a FRAME leaves in `pointer` is fixed
-// only against the input the runtime reports, and under an engine that input
-// never saw a posed press, so a mirror refreshed from it every frame, which is
-// what `specs/state.md` describes, reports the input rather than the pose. A real
-// press is the one reading every build must agree on.
+// own `pointerDown`, `pointerMove` and `pointerUp` are pointer samples too and
+// move the same field, and the editor's points drive those; a real press is the
+// one reading every build must agree on, so it is what this point reports.
 //
 // THE CONFIGURATION. A reset session on the title screen. The title's menu answers
 // a pointer of its own (`specs/ui.md`, Pointer and touch), and what a press there
-// may also have done is beside the point: `state.pointer` "mirrors the pointer's
-// position and press state every frame" (`specs/controls.md`) whatever the press
-// meant, and nothing but that mirror is read here. Four positions are reported,
-// one press and one release among them, each read on the frame that delivered it
-// and again after a further frame has run, because the field is one the game
-// must "keep honest every frame".
+// may also have done is beside the point: nothing but the mirror is read here.
+// Four positions are reported, one press and one release among them, each read on
+// the frame that delivered it and again after a further frame has run — which is
+// the second half of the rule, that a frame carrying no sample leaves the field as
+// the last sample left it.
 //
 // THE VERDICT. Every reading is the position last reported, in stage units, with
-// `down` true from the press until the release and false on either side of it.
+// `down` true from the press until the release and false on either side of it,
+// and each stands unchanged across a frame that reports nothing.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";

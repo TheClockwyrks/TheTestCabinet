@@ -26,12 +26,10 @@
 //
 // THE PRESS REALLY REACHED THE GAME. Each press is made with the REAL pointer,
 // through the frame that delivers it, and `specs/controls.md`: "`state.pointer`
-// mirrors the pointer's position and press state every frame", so `pointer` is
-// read back at the point pressed, with `down` set. A build that never saw the
-// press would leave the cursor alone too, and that reading is what tells the two
-// apart. The real pointer rather than the surface's `pointerDown` because the
-// mirror is fixed against what the pointer INPUT reports, and under an engine
-// that input never sees a posed press once a frame has run.
+// mirrors the pointer's position and press state ... Each pointer sample the game
+// reads moves it", so `pointer` is read back at the point pressed, with `down`
+// set. A build that never saw the press would leave the cursor alone too, and
+// that reading is what tells the two apart.
 //
 // THE VERDICT. After each press `editor.cursor` still names the first arm and
 // column `7`.

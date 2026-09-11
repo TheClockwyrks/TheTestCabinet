@@ -410,6 +410,10 @@ feeds each frame. No frame need pass between them, so a whole machine can be
 placed from code without advancing the game at all.
 {{/if}}
 
+`pointerUp()` releases at the position the last of the three reported. That
+position and its press state stand until another pointer sample reaches the
+game, whatever frames pass in between.
+
 The three sound nothing at the call, as every pose does. The cue of an edit
 one of them commits sounds on the next frame advanced, because every cue of
 `specs/ui.md` is played from a frame.
@@ -595,10 +599,11 @@ A build is free to work any of these out at the read or to keep it as a
 stored copy, and `reconcile()` is what brings a stored copy back into
 agreement after a pose.
 
-Three fields need the game to keep them honest every frame: `pointer`
-mirrors the position and press the pointer input reports, `muted` mirrors
-the runtime's mute bit, and `simTime` accumulates the delta time of every
-update, whatever the screen.
+Three fields are kept honest as the frames run: `pointer` carries the
+position and press state of the last pointer sample the game read, and stands
+there until the next one, as `specs/controls.md` states; `muted` mirrors the
+runtime's mute bit every frame; and `simTime` accumulates the delta time of
+every update, whatever the screen.
 
 ## Diagnostics
 

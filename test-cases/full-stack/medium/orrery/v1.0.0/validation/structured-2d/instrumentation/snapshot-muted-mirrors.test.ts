@@ -1,9 +1,9 @@
 // instrumentation/snapshot-muted-mirrors — `muted` is the runtime's mute bit as
 // it stands, not a figure of the game's own.
 //
-// THE RULE. `specs/instrumentation.md`, Snapshot shape: "Three fields need the
-// game to keep them honest every frame: ... `muted` mirrors the runtime's mute
-// bit", declared as "muted: <boolean>". `specs/ui.md` says which way the wiring
+// THE RULE. `specs/instrumentation.md`, Snapshot shape: "Three fields are kept
+// honest as the frames run: ... `muted` mirrors the runtime's mute bit every
+// frame", declared as "muted: <boolean>". `specs/ui.md` says which way the wiring
 // runs: the game "binds the `mute` action to the runtime's mute bit and toggles it
 // from any screen, then mirrors that bit into `state.muted` every frame".
 // `specs/controls.md` binds the action: "`mute` | `KeyM` | Toggles sound, from any
