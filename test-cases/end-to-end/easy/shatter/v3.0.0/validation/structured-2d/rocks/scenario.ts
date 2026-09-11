@@ -47,6 +47,7 @@ import {
   STAR,
   directDistance,
   shortestSeparation,
+  wrapCoordinate,
   wrapPoint,
   wrappedDistance,
   type Vec,
@@ -670,48 +671,132 @@ export async function slingAgain(h: Harness): Promise<Recycle> {
 /* -------------------------------------------------------------------------- */
 /* The edges                                                                  */
 /* -------------------------------------------------------------------------- */
+//
+// THE FIELD'S FOUR EDGES ARE TWO SEAMS. `specs/field.md`, "The wrap": "The field
+// wraps on both axes, so it is a torus. A body's position is kept in range by
+// wrapping each coordinate: `x` modulo `FIELD_W` and `y` modulo `FIELD_H`." The
+// left edge and the right edge are therefore ONE LINE — `x = 0` and `x = FIELD_W`
+// are the same coordinate once the wrap is taken — and so are the top and the
+// bottom. A build that re-places a recycled rock ON the right edge reports it at
+// `x = 0`, and one that re-places it on the bottom reports `y = 0`, because that is
+// what wrapping the coordinate does to `FIELD_W` and to `FIELD_H`.
+//
+// SO POSITION ALONE CANNOT NAME THE EDGE ON THE SEAM ITSELF, AND THE VELOCITY MUST.
+// What tells the two edges meeting at a seam apart is which way the field lies from
+// each: a rock that came back at the right edge travels in `-x`, one that came back
+// at the left travels in `+x`, and `specs/rocks.md` has every re-entry "heading
+// inward into the field", so every conforming re-entry carries that sign.
+//
+// AWAY FROM THE SEAM, THE DISTANCE DOES NAME IT. {@link distanceFromEdge} measures
+// how far INTO the field a point stands from the edge named, taken around the wrap,
+// so it reads `0` for both of a seam's edges only ON the seam — the one place the
+// two spellings `0` and `FIELD_W` coincide. Fifty units in from the left reads `50`
+// from the left edge and `1230` from the right, so a rock re-placed past the far
+// end of a seam and heading straight back out through it is read as the far edge's
+// business, not as an entry at this one. Distance for WHERE, and the inward
+// component for WHICH of a seam's two edges, is the reading the wrap admits.
 
 /** One of the four edges `specs/rocks.md` re-places a recycled rock on. */
 export interface Edge {
   name: "left" | "right" | "top" | "bottom";
-  /** How far the point is from that edge. */
+  /** How far into the field the point stands from that edge. */
   distance: number;
   /** The unit vector pointing from that edge INTO the field. */
   inward: Vec;
 }
 
-/** The edge of the field a point is nearest, and how far from it that point is. */
-export function nearestEdge(p: Vec): Edge {
-  const candidates: Edge[] = [
-    { name: "left", distance: p.x, inward: { x: 1, y: 0 } },
-    { name: "right", distance: FIELD_W - p.x, inward: { x: -1, y: 0 } },
-    { name: "top", distance: p.y, inward: { x: 0, y: 1 } },
-    { name: "bottom", distance: FIELD_H - p.y, inward: { x: 0, y: -1 } },
-  ];
-  return candidates.reduce((best, edge) =>
-    edge.distance < best.distance ? edge : best,
-  );
+/** The four edges, in the order a message names them. */
+export const FIELD_EDGES: readonly FieldEdge[] = [
+  "left",
+  "right",
+  "top",
+  "bottom",
+];
+
+/** The unit vector pointing from one named edge of the field into the field. */
+export function inwardFrom(edge: FieldEdge): Vec {
+  switch (edge) {
+    case "left":
+      return { x: 1, y: 0 };
+    case "right":
+      return { x: -1, y: 0 };
+    case "top":
+      return { x: 0, y: 1 };
+    case "bottom":
+      return { x: 0, y: -1 };
+  }
 }
 
 /**
- * How far a point stands from one named edge of the field, in units.
+ * How far a point stands INTO the field from one named edge, in units, measured
+ * around the wrap.
  *
  * The reading a posed re-entry is graded by: `specs/rocks.md` draws the point
- * uniformly along the whole length of the posed edge, so a rock coming back near
- * a corner can stand nearer to the perpendicular edge than to the one it entered
- * at, and only its distance from the edge that was posed says anything.
+ * uniformly along the whole length of the posed edge, so a rock coming back near a
+ * corner can stand nearer to the perpendicular edge than to the one it entered at,
+ * and only its distance from the edge that was posed says anything.
+ *
+ * IT IS MEASURED INWARD FROM THAT EDGE, so a rock re-placed at the right edge reads
+ * `0` whether the build wrote `x = FIELD_W` or the `x = 0` the wrap turns that into
+ * — the two spellings of the one seam. A seam's two edges therefore agree only ON
+ * the seam: fifty units in from the left reads `50` from the left edge and `1230`
+ * from the right, so a rock re-placed past the far end of a seam and heading
+ * straight back out through it does not read as an entry at this edge. Which of a
+ * seam's two edges a rock standing ON the seam came back at is read from
+ * {@link inwardFrom} and its velocity.
  */
 export function distanceFromEdge(point: Vec, edge: FieldEdge): number {
   switch (edge) {
     case "left":
-      return point.x;
+      return wrapCoordinate(point.x, FIELD_W);
     case "right":
-      return FIELD_W - point.x;
+      return wrapCoordinate(FIELD_W - point.x, FIELD_W);
     case "top":
-      return point.y;
+      return wrapCoordinate(point.y, FIELD_H);
     case "bottom":
-      return FIELD_H - point.y;
+      return wrapCoordinate(FIELD_H - point.y, FIELD_H);
   }
+}
+
+/** How far a point stands from the nearest of the field's four edges, in units. */
+export function distanceFromAnyEdge(point: Vec): number {
+  return Math.min(...FIELD_EDGES.map((edge) => distanceFromEdge(point, edge)));
+}
+
+/**
+ * The edge a body standing within `reach` of a seam came into the field at, or
+ * `null` when it stands at no edge at all.
+ *
+ * `specs/field.md` gives the field no walls and `specs/rocks.md` re-places a
+ * recycled rock at "a point on one of the four edges of the field, the edge drawn
+ * with probability `1/4` each and the point drawn uniformly along the whole length
+ * of that edge, heading inward into the field", so the reading has to be taken
+ * against the edge the rock actually came back at rather than against a fixed one.
+ *
+ * THE CANDIDATES ARE THE EDGES THE BODY STANDS ON, and the velocity picks between
+ * them. A point on the `x` seam is on the left edge and on the right edge at once;
+ * a point in a corner is on all four; and the one it came in at is the one the
+ * field lies inward of from where it is heading. Taking the greatest inward
+ * component over the candidates is exactly that, and it names no edge the body is
+ * not standing on — a rock left in the middle of the field answers `null` and a
+ * rock sliding ALONG a seam answers an edge with no inward component at all, so
+ * neither can be read as an entry.
+ */
+export function entryEdge(
+  body: Vec & { vx: number; vy: number },
+  reach: number,
+): Edge | null {
+  const candidates: Edge[] = FIELD_EDGES.map((edge) => ({
+    name: edge,
+    distance: distanceFromEdge(body, edge),
+    inward: inwardFrom(edge),
+  })).filter((edge) => edge.distance <= reach);
+  if (candidates.length === 0) return null;
+  const inwardSpeed = (edge: Edge): number =>
+    body.vx * edge.inward.x + body.vy * edge.inward.y;
+  return candidates.reduce((best, edge) =>
+    inwardSpeed(edge) > inwardSpeed(best) ? edge : best,
+  );
 }
 
 /** A Large's whole circle, as the radius a still is framed against. */

@@ -9,10 +9,20 @@
 //
 // WHY IT MUST BE READ AGAINST THE EDGE THE ROCK ACTUALLY CAME BACK AT. The entry
 // point is a random draw over all four edges (`specs/rocks.md`), so there is no
-// fixed direction "inward" means. The check finds the nearest of the four edges to
-// the re-entry point and reads the velocity's component along that edge's own
-// inward normal, which is positive for every conforming entry and negative for one
-// that would carry the rock straight back out.
+// fixed direction "inward" means. The check finds the edges the re-entry point
+// stands on and reads the velocity's component along their own inward normals,
+// which is positive for every conforming entry and negative for one that would
+// carry the rock straight back out.
+//
+// AND WHY THE POINT ALONE CANNOT NAME IT. The field is a torus and its four edges
+// are two seams (`specs/field.md`, "The wrap"), so a rock re-placed on the right
+// edge reports `x = 0` — the wrap having brought `FIELD_W` back into range — and is
+// standing on the left edge and the right edge at once. `entryEdge` therefore takes
+// every edge the rock stands within a hundred units of and reads the one the rock
+// is actually heading away from. That names no edge the rock is not standing on: a
+// rock left in the middle of the field matches none of the four and fails with that
+// said, and a rock sliding ALONG a seam carries no inward component at all and
+// fails on the reading below.
 //
 // THE FIELD HOLDS ONE ROCK AND NOTHING ELSE. `startPlaying` empties every roster
 // and shuts both world gates, and a Large is dropped from straight above the star's
@@ -27,7 +37,7 @@
 // over a tick, against an entry speed of at least `60` (`specs/rocks.md`).
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThan } from "../assert";
+import { assertGreaterThan, fail } from "../assert";
 import {
   captureStill,
   createHarness,
@@ -36,12 +46,16 @@ import {
 } from "../harness";
 import {
   componentAlong,
+  distanceFromAnyEdge,
   dropOntoTheStar,
-  nearestEdge,
+  entryEdge,
   slingIntoTheStar,
   theOneRock,
   velocityOf,
 } from "./scene";
+
+/** How far from a seam the rock may stand and still be read as standing on it. */
+const EDGE_REACH = 100;
 
 let h: Harness;
 
@@ -61,7 +75,15 @@ it("gives the re-entering rock a velocity that carries it into the field", async
   captureStill(h, "recycle");
 
   const returned = theOneRock(recycle.at, "the recycled rock");
-  const edge = nearestEdge(returned);
+  const edge = entryEdge(returned, EDGE_REACH);
+  if (edge === null) {
+    fail(
+      "the recycled rock standing on one of the field's four edges, to read " +
+        "its heading against (specs/rocks.md)",
+      `it came back ${distanceFromAnyEdge(returned).toFixed(1)} units from the ` +
+        "nearest of them",
+    );
+  }
 
   assertGreaterThan(
     componentAlong(velocityOf(returned), edge.inward),

@@ -22,6 +22,12 @@
 // more than `200` units inside a single tick, measured across the seams, which
 // nothing drifting can produce and only a re-placement can.
 //
+// THE READING IS TAKEN FROM THE SEAM. The field is a torus and its four edges are
+// two seams (`specs/field.md`, "The wrap"), so a rock re-placed on the right edge
+// reports `x = 0` rather than `x = FIELD_W` and stands `0` units from the edge it
+// came back at. `distanceFromAnyEdge` measures that, and which of the two edges
+// meeting at the seam it was is `recycle-enters-moving-inward`'s item.
+//
 // THE BOUND IS THE REVIEW ITEM'S FIGURE, `100` units from the nearest of the four
 // edges. The star's centre is `360` units from the nearest point of any edge
 // (`specs/field.md` puts it at the centre of a `1280 x 720` field), so a build that
@@ -41,7 +47,7 @@ import {
 import {
   FALL_FROM,
   FALL_SPEED,
-  nearestEdge,
+  distanceFromAnyEdge,
   poseRockAt,
   slingIntoTheStar,
   theOneRock,
@@ -74,11 +80,10 @@ it("returns the rock at one of the field's four edges rather than at the core", 
   });
 
   const returned = theOneRock(recycle.at, "the recycled rock");
-  const edge = nearestEdge(returned);
 
   assertLessThanOrEqual(
-    edge.distance,
+    distanceFromAnyEdge(returned),
     EDGE_REACH,
-    `units the re-entering rock stands from ${edge.name}, the nearest of the four (specs/rocks.md)`,
+    "units the re-entering rock stands from the nearest of the field's four edges (specs/rocks.md)",
   );
 });

@@ -20,6 +20,12 @@
 // is measured is where the star put the rock rather than where a second of drift
 // carried it.
 //
+// THE DISTANCE IS MEASURED FROM THE SEAM. The field is a torus and its four edges
+// are two seams (`specs/field.md`, "The wrap"), so a rock re-placed on the right
+// edge reports `x = 0` rather than `x = FIELD_W` and stands `0` units from the edge
+// it came back at. Which of the two edges meeting at that seam it was is
+// `rocks/recycle-enters-moving-inward`'s item, not this one's.
+//
 // THE FIELD HOLDS EXACTLY ONE ROCK, so "the rock that came back" is not a guess:
 // `startPlaying` clears everything and shuts the wave loop off, and `theOneRock`
 // fails naming the scenario if anything else turns up. The rock is followed through
@@ -43,8 +49,8 @@ import {
   type Harness,
 } from "../harness";
 import {
+  distanceFromAnyEdge,
   dropOntoTheStar,
-  nearestEdge,
   slingIntoTheStar,
   theOneRock,
 } from "./scenario";
@@ -78,13 +84,12 @@ it("re-places a rock the core took at one of the four edges", async () => {
   });
 
   const back = theOneRock(recycle.at, "the rock the star gave back");
-  const edge = nearestEdge(back);
 
   assertLessThanOrEqual(
-    edge.distance,
+    distanceFromAnyEdge(back),
     NEAR_AN_EDGE,
-    `units from the nearest edge (the ${edge.name}) the rock re-appeared at, ` +
-      `having been taken at the core: it re-enters at a random point on one ` +
+    "units from the nearest of the field's four edges the rock re-appeared at, " +
+      "having been taken at the core: it re-enters at a random point on one " +
       "of the four edges of the field (specs/rocks.md)",
   );
 });

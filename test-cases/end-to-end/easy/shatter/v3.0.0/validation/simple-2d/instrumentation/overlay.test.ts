@@ -134,6 +134,27 @@ const ROCK_ROW_STEP = 100;
  * simulation time is recognisable as itself on the panel.
  */
 const SIM_SECONDS = 23;
+/**
+ * How far the sim-time figure on the panel may sit from the seconds the run was
+ * carried to, in seconds: a microsecond.
+ *
+ * A CONFORMANT BUILD DOES NOT HOLD THE FIGURE EXACTLY. `specs/instrumentation.md`
+ * has `simTime` accumulate "every tick's `TICK_DT`, whatever the screen", and
+ * `TICK_DT` is `1 / 120`, which no double holds: adding it the 2760 times this
+ * run takes leaves `22.999999999999336` rather than `23`. A build that draws the
+ * figure through any rounding at all writes `23`, but one that draws the number it
+ * actually holds writes those digits, and reading the panel by exact equality would
+ * fail it for the build's arithmetic being correct.
+ *
+ * A MICROSECOND IS THE WHOLE OF THE SLACK, and it is `advance-is-exact`'s own
+ * `CLOCK_AGREEMENT`: the last bits of a double, four orders below one tick and ten
+ * above the error itself. Nothing else this run poses lands inside it, and a build
+ * that stopped the clock for so much as one tick is `1 / 120` short — a hundred and
+ * twenty times outside it. THAT the accumulation is right is
+ * `instrumentation/advance-is-exact`'s item and `screens/pause-freezes-the-field`'s;
+ * this item's is only that the panel carries the figure.
+ */
+const SIM_TIME_SLACK = 1e-6;
 
 /** The engine's own frame-time line, which is not one of the game's sources. */
 const ENGINE_METRICS = /^\s*frame\s*:/i;
@@ -242,6 +263,18 @@ function assertCoordinate(
   }
 }
 
+/** Some line carries a figure within `slack` of `value`; fails naming the want. */
+function assertFigureNear(
+  lines: readonly string[],
+  value: number,
+  slack: number,
+  what: string,
+): void {
+  if (!drawnNumbers(lines).some((drawn) => Math.abs(drawn - value) <= slack)) {
+    fail(`an overlay line carrying ${what} (${String(value)})`, lines);
+  }
+}
+
 /** Some line matches `pattern`; fails naming what was wanted. */
 function assertForm(
   lines: readonly string[],
@@ -331,9 +364,10 @@ it("draws every registered value the specification lists", async () => {
   assertCoordinate(overlay, SAUCER.x, "the x of the saucer that is up");
   assertCoordinate(overlay, SAUCER.y, "the y of the saucer that is up");
 
-  assertFigure(
+  assertFigureNear(
     overlay,
     SIM_SECONDS,
+    SIM_TIME_SLACK,
     "the accumulated simulation time, in seconds",
   );
 });

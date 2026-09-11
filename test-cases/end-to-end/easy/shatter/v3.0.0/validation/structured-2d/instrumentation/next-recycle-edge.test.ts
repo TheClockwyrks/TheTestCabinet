@@ -19,9 +19,23 @@
 // coming back near a corner may stand nearer the perpendicular edge than the one
 // it entered at. Which edge it is nearest is therefore not a reading of the pose;
 // how far it stands from the edge that was posed is.
+//
+// AND THE POSE IS READ FROM THE SEAM AND THE HEADING TOGETHER, because the field is
+// a torus and its four edges are two seams (`specs/field.md`, "The wrap"): a rock
+// re-placed on the right edge reports `x = 0` and one re-placed on the bottom
+// reports `y = 0`, the wrap having brought `FIELD_W` and `FIELD_H` back into range,
+// so ON the seam a distance alone cannot tell the posed edge from the one facing
+// it. What can is the direction the rock came in travelling — `specs/rocks.md` has every re-entry
+// "heading inward into the field", and inward from the bottom is upward while
+// inward from the top is downward. The pair still names one edge in four, so the two
+// slings still cost a build that ignores the pose fifteen chances in sixteen.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertLessThanOrEqual } from "../assert";
+import {
+  assertEqual,
+  assertGreaterThan,
+  assertLessThanOrEqual,
+} from "../assert";
 import {
   captureStill,
   createHarness,
@@ -32,6 +46,7 @@ import {
 import {
   distanceFromEdge,
   dropOntoTheStar,
+  inwardFrom,
   slingIntoTheStar,
   theOneRock,
 } from "../rocks/scenario";
@@ -78,8 +93,16 @@ it("returns the next recycled rock at the posed edge and consumes the pose", asy
     assertLessThanOrEqual(
       distanceFromEdge(returned, edge),
       EDGE_REACH,
-      `units the re-entering rock stands from the posed ${edge} edge ` +
-        "(specs/rocks.md)",
+      `units the re-entering rock stands inside the field from the posed ${edge} ` +
+        "edge (specs/rocks.md, specs/field.md)",
+    );
+    const inward = inwardFrom(edge);
+    assertGreaterThan(
+      returned.vx * inward.x + returned.vy * inward.y,
+      0,
+      `units per second the re-entering rock is heading into the field from the ` +
+        `posed ${edge} edge, which is what tells that edge from the one facing ` +
+        "it across the same seam (specs/rocks.md, specs/field.md)",
     );
     assertEqual(
       recycle.at.nextRecycleEdge,

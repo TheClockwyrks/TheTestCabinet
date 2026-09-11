@@ -69,10 +69,25 @@ afterEach(async () => {
 it("returns to live play on the dive it froze", async () => {
   await startPlaying(h);
   const rooms = await poseApart(h, APART_TILES, { ring: RING_TILES });
-  await spawnPredator(h, "lanternjaw", rooms.far, { state: "wander" });
-  await holdPredators(h);
+  // THE DEPTH IS POSED BEFORE THE HUNTERS, AND THE ROSTER IT LAYS OUT IS TAKEN
+  // OFF AGAIN. `setDepth` makes the roster "the one `specs/predators.md` gives
+  // for depth `d`, laid out in the den with every `released` flag false, exactly
+  // as a maze at that depth lays it out" (specs/instrumentation.md). So a call
+  // made after the spawn would sweep this hunter and the hold put on it off the
+  // board and leave the point comparing a den roster it never arranged; and the
+  // roster the call lays out here is no better a thing to read. `poseApart`
+  // poses a corridor fixture with NO den on it, so where a build stands a denned
+  // body on a denless board is the build's own business — two of the three
+  // references stack all five on the forager's own tile, which
+  // `specs/gameplay.md` reads as a contact costing a life the moment live play
+  // resumes. `clearPredators` leaves the world this check's heading describes,
+  // one hunter across solid rock, and is `fixtures.ts`'s
+  // removal-rather-than-containment rule applied here.
   await h.debug.setScore(POSED_SCORE);
   await h.debug.setDepth(POSED_DEPTH);
+  await h.debug.clearPredators();
+  await spawnPredator(h, "lanternjaw", rooms.far, { state: "wander" });
+  await holdPredators(h);
 
   await h.debug.setScreen("paused");
   await h.debug.setMenuIndex(RESUME);
