@@ -192,8 +192,23 @@ export interface AssetHostOptions {
    * blits that canvas over the frame, and a browser hands one out through
    * `document.createElement`. Nothing else of a document is supplied, because
    * nothing else is something an engine's own runtime would give a build either.
-   * Orrery installs this; volute does not, and a build that never asks for one
-   * cannot tell the difference.
+   *
+   * WITHHOLDING IT IS NOT NEUTRAL, and that is the whole of what this option
+   * decides. A host answering `undefined` does not fail a build that asks: the
+   * build guards the constructor and takes a fallback path no page ever takes, so
+   * every reading of the picture afterwards is of a build nobody will ever run.
+   * An ENGINE can ask too — `structured-2d`'s sprite tint composites through a
+   * scratch canvas and draws the sprite with no tint at all where the host has
+   * none — so the question is not only what the build's own source says.
+   *
+   * Against that stands what a scratch canvas is: ONE MUTABLE OBJECT carrying a
+   * different picture at each draw. A reading that names a drawn bitmap by its
+   * source's identity, its `width` or its `height` is a reading of an immutable
+   * bitmap, and a canvas answers all three for whatever it was last painted and
+   * resized to rather than for the picture this call drew. A case whose checks
+   * are written that way is withholding this for a reason, and the place that
+   * reason belongs is THAT CASE'S HARNESS, beside the checks it protects — no
+   * roll-call here, which would only go stale.
    */
   readonly documentElement?: boolean;
   /**

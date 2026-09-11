@@ -125,6 +125,12 @@ a `DrawComponent` receives the context already carrying the setting. The
 option is fixed for the engine's lifetime and applies under every render mode
 that draws an image.
 
+A `DrawComponent` may set `imageSmoothingEnabled` on the context it is handed,
+as it may any other style. The pipeline sets the flag once a frame rather than
+once a component, so the value a component leaves holds for every component
+drawn after it — `SpriteComponent` blits included — and the `restore` that
+closes step 6 returns it to the option's.
+
 ## `RenderMode`
 
 ```ts

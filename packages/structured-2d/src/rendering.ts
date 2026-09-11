@@ -362,10 +362,15 @@ export class RenderPipeline implements Renderer {
    * Step 2, second half: the context's image smoothing, set from the option
    * once per frame and before any component draws.
    *
-   * Once rather than per blit, so a frame records one `set` for it: the
-   * pipeline never `save`/`restore`s, so the value holds for every component
-   * of the frame, and a `DrawComponent` that changes it is expected to restore
-   * it, as it is every other style the pipeline handed over.
+   * Once rather than per blit, so a frame records one `set` for it: the value
+   * holds for every component of the frame that does not change it, and a
+   * `DrawComponent` that does change it changes it for the components drawn
+   * after it as well, `SpriteComponent` blits included — `blitSprite` sets the
+   * flag only on its own tint scratch. The pipeline takes no `save`/`restore`
+   * around a single component, so a `DrawComponent` need not put the flag back:
+   * the `restore` that closes the field clip at the end of step 6 returns it to
+   * the option's, and the next frame sets it again from here. Stated for builds
+   * in `docs/rendering.md`, under "Image smoothing".
    */
   private applySampling(scene: RenderScene): void {
     scene.ctx.imageSmoothingEnabled = scene.imageSmoothing;
@@ -660,10 +665,19 @@ export class RenderPipeline implements Renderer {
    * or `null` where the host has no second canvas to composite on.
    *
    * The scratch is a canvas of its own, so its preparation stays outside the
-   * recording; the recorded operation is the `drawImage` that blits it, whose
-   * source is a mutable canvas the recorder captures by content. The scratch
-   * samples as the frame does, so a tinted sprite and an untinted one are
-   * drawn the same way.
+   * recording; the recorded operation is the `drawImage` that blits it. The
+   * scratch samples as the frame does, so a tinted sprite and one drawn with no
+   * tint are drawn the same way.
+   *
+   * WHAT A RECORDER SEES OF A TINTED SPRITE IS THIS ONE CANVAS. There is a single
+   * scratch for the whole renderer and each tint resizes and repaints it, so
+   * every tinted sprite of every frame blits the same object, at whatever size
+   * the last tint left it. A check that names a drawn bitmap by its source's
+   * identity, `width` or `height` — all of which it necessarily reads after the
+   * frame — reads those of the scratch and not of the sprite. A case whose
+   * checks are written that way keeps the host's `document.createElement` shim
+   * withheld so this path stays dead, and one that wants both needs a call-time
+   * account of the source.
    */
   private tint(
     component: SpriteComponent,
