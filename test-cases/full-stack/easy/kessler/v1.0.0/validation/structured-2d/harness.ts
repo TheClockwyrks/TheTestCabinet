@@ -359,12 +359,22 @@ export const WORKSPACE = resolve(PROJECT_ROOT, "..");
  * cares — `assets/asset-urls-page-relative` — is decided off the REQUEST LOG,
  * rejecting any URL carrying a scheme or a leading slash whether or not it was
  * answered, so a build that constructed one is still named.
+ *
+ * `documentElement` stands up `document.createElement("canvas")`, and with it
+ * `OffscreenCanvas`: the two ways a browser hands out the scratch surface a
+ * build paints a picture on before it blits that picture over the frame. A
+ * build that reaches for one in a page reaches for it here, and a host without
+ * them either throws from inside the build's own render or — the quieter
+ * fault — sends a build that GUARDED the call down a path a browser never
+ * takes, so the picture is simply missing and the check reports the absence as
+ * the build's.
  */
 const assets = installAssetHost({
   workspaceRoot: WORKSPACE,
   roots: ["."],
   images: true,
   label: "kessler",
+  documentElement: true,
 });
 
 /**

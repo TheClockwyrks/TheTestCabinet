@@ -40,8 +40,11 @@ export interface FrameRead {
 /**
  * The frame's pixels off the build's own canvas, sampled on the stride grid
  * in one crossing into the page.
+ *
+ * The one reading that does not care HOW a mark reached the frame, which is
+ * why it is read alongside the calls rather than instead of them.
  */
-async function readPixelGrid(
+export async function readPixelGrid(
   h: Harness,
 ): Promise<{ pixels: number[]; columns: number }> {
   return h.page.evaluate((stride) => {
@@ -101,11 +104,11 @@ export async function readFrame(h: Harness): Promise<FrameRead> {
  * point (2 of the stride-4 grid's points; a legible readout at the 1000-unit
  * stage covers far more).
  */
-const MIN_EVIDENCE_DELTA = 8;
+export const MIN_EVIDENCE_DELTA = 8;
 const MIN_EVIDENCE_POINTS = 2;
 
 /** The largest single-channel difference between two packed 0xRRGGBB colors. */
-function channelDelta(a: number, b: number): number {
+export function channelDelta(a: number, b: number): number {
   return Math.max(
     Math.abs(((a >> 16) & 0xff) - ((b >> 16) & 0xff)),
     Math.abs(((a >> 8) & 0xff) - ((b >> 8) & 0xff)),

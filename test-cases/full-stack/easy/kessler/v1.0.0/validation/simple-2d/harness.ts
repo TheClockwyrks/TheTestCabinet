@@ -331,6 +331,15 @@ export const WORKSPACE = resolve(PROJECT_ROOT, "..");
  * which is what lets a produced sprite reach a recording as its pixels rather
  * than as an opaque marker — and what makes {@link AssetHost.sourceOf} able to
  * say which produced file a drawn bitmap came from.
+ *
+ * `documentElement` stands up `document.createElement("canvas")`, and with it
+ * `OffscreenCanvas`: the two ways a browser hands out the scratch surface a
+ * build paints a picture on before it blits that picture over the frame. A
+ * build that reaches for one in a page reaches for it here, and a host without
+ * them either throws from inside the build's own render or — the quieter
+ * fault — sends a build that GUARDED the call down a path a browser never
+ * takes, so the picture is simply missing and the check reports the absence as
+ * the build's.
  */
 const assets = installAssetHost({
   workspaceRoot: WORKSPACE,
@@ -338,6 +347,7 @@ const assets = installAssetHost({
   onMissing: "upstream",
   images: true,
   label: "kessler",
+  documentElement: true,
 });
 
 /**

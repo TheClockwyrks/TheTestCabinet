@@ -136,9 +136,10 @@ The context is the one `render` receives, so a live effect advances on the
 frame delta `update` was handed and sits over the frame at the position of the
 event that raised it.
 {{else}}
-A draw component is what puts a player's output on the field, so an effect
-takes its place in the layer order like any other picture, at the position of
-the event that raised it.
+A draw component is what puts a player's output on the field: the context is
+the one that component's own `draw` is handed, so an effect takes its place in
+the layer order like any other picture, at the position of the event that
+raised it.
 {{/if}}
 
 ## The sound

@@ -4,11 +4,11 @@
 // specs/assets.md fixes HOW every effect is played: "Play them through
 // `@clockwyrks/particle-runtime` ... using its `./canvas` binding: a player
 // is constructed over a parsed system and a 2D rendering context ... and it
-// simulates the system and composites the particles itself", its output put on
-// the field by a draw component. The player is a vendored, case-supplied
-// library, so the raster path a playing system takes is part of the contract
-// rather than a build's choice: it composites each particle as a soft
-// radial-gradient disc, building each with
+// simulates the system and composites the particles itself", into the context
+// "a draw component's own `draw` is handed". The player is a vendored,
+// case-supplied library, so the raster path a playing system takes is part of
+// the contract rather than a build's choice: it composites each particle as a
+// soft radial-gradient disc, building each with
 // `createRadialGradient(px, py, 0, px, py, r)` — a point gradient, its two
 // centers the same and its inner radius zero.
 //

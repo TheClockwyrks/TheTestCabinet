@@ -37,6 +37,28 @@ export interface FrameRead {
   columns: number;
 }
 
+/**
+ * The frame's pixels off the harness's canvas, sampled on the stride grid.
+ *
+ * The one reading that does not care HOW a mark reached the frame, which is
+ * why it is read alongside the calls rather than instead of them.
+ */
+export function readPixelGrid(h: Harness): {
+  pixels: number[];
+  columns: number;
+} {
+  const { width, height } = h.canvas;
+  const data = h.ctx.getImageData(0, 0, width, height).data;
+  const pixels: number[] = [];
+  for (let y = 0; y < height; y += PIXEL_STRIDE) {
+    for (let x = 0; x < width; x += PIXEL_STRIDE) {
+      const i = (y * width + x) * 4;
+      pixels.push((data[i] << 16) | (data[i + 1] << 8) | data[i + 2]);
+    }
+  }
+  return { pixels, columns: Math.ceil(width / PIXEL_STRIDE) };
+}
+
 /** Run one frame and read everything its render put on screen. */
 export async function readFrame(h: Harness): Promise<FrameRead> {
   const { calls, blits } = await h.frameDraw();
@@ -55,16 +77,8 @@ export async function readFrame(h: Harness): Promise<FrameRead> {
       { x: blit.x + blit.w / 2, y: blit.y + blit.h / 2 },
     );
   }
-  const { width, height } = h.canvas;
-  const data = h.ctx.getImageData(0, 0, width, height).data;
-  const pixels: number[] = [];
-  for (let y = 0; y < height; y += PIXEL_STRIDE) {
-    for (let x = 0; x < width; x += PIXEL_STRIDE) {
-      const i = (y * width + x) * 4;
-      pixels.push((data[i] << 16) | (data[i + 1] << 8) | data[i + 2]);
-    }
-  }
-  return { calls, marks, pixels, columns: Math.ceil(width / PIXEL_STRIDE) };
+  const { pixels, columns } = readPixelGrid(h);
+  return { calls, marks, pixels, columns };
 }
 
 /**
@@ -78,11 +92,11 @@ export async function readFrame(h: Harness): Promise<FrameRead> {
  * point (2 of the stride-4 grid's points; a legible readout at the 1000-unit
  * stage covers far more).
  */
-const MIN_EVIDENCE_DELTA = 8;
+export const MIN_EVIDENCE_DELTA = 8;
 const MIN_EVIDENCE_POINTS = 2;
 
 /** The largest single-channel difference between two packed 0xRRGGBB colors. */
-function channelDelta(a: number, b: number): number {
+export function channelDelta(a: number, b: number): number {
   return Math.max(
     Math.abs(((a >> 16) & 0xff) - ((b >> 16) & 0xff)),
     Math.abs(((a >> 8) & 0xff) - ((b >> 8) & 0xff)),
