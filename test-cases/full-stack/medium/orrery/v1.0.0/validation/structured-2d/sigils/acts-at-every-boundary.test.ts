@@ -25,6 +25,12 @@
 // and the field is empty, and the run is still running with no fault, on cycle
 // `1`, `2` and `3` in turn. A build whose sigils act once per run leaves the
 // second and the third mote resting on the maw.
+//
+// WHAT A BUILD THAT ALREADY FAILED IS FED. A mote left standing on the maw is
+// still the unbonded, unheld mote the next boundary must consume, and a second
+// one cannot be added beside it: of `spawnMote`, "A hex already holding a mote
+// throws". So a boundary that finds the maw taken feeds that mote on rather than
+// spawning, and every one of the three boundaries is read.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -40,6 +46,7 @@ import {
   advanceCycles,
   captureReplay,
   createHarness,
+  moteAt,
   moteById,
   openBareRun,
   solePartOfKind,
@@ -76,7 +83,16 @@ it("consumes a fresh mote at each of three successive boundaries", async () => {
 
   await captureReplay(h, "three", async () => {
     for (let boundary = 0; boundary < BOUNDARIES; boundary += 1) {
-      fed.push(await spawnMote(h, MAW, "dust"));
+      // A boundary that did not consume leaves its mote resting on the maw, and
+      // of `spawnMote` the spec says "A hex already holding a mote throws"
+      // (`specs/instrumentation.md`). That mote is still an unbonded, unheld
+      // mote on the maw — nothing on the field bonds it or takes hold of it — so
+      // it is what this boundary feeds, and this boundary is asked to consume it
+      // just as the last one was. What the build failed to do is then read
+      // below, where it names itself, rather than thrown out of the arrangement,
+      // where it names nothing.
+      const standing = moteAt(await h.snapshot(), MAW)?.id ?? null;
+      fed.push(standing ?? (await spawnMote(h, MAW, "dust")));
       await advanceCycles(h, 1);
       after.push(await h.snapshot());
     }

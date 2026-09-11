@@ -188,6 +188,17 @@ export function differingShare(a: Sprite, b: Sprite): number {
  * (`22`) of its center, so motes on adjacent hexes never blur together"
  * (`specs/assets.md`). The sprite is drawn centred on the mote's position, so its
  * canvas centre is that position.
+ *
+ * WHAT PUTS A PIXEL OUTSIDE. The same art bar fixes it: "The radius bounds the
+ * form drawn rather than the pixels it lands on: a form drawn to `MOTE_R` meets
+ * the bound wherever a hex center falls between two pixels, and paint sits
+ * outside the radius only where the whole of a pixel does." So a pixel is read
+ * as the unit square it covers rather than as the point at its middle, and it
+ * counts only when the WHOLE of that square is further than `radius` from the
+ * centre — which is to say when the square's nearest point is. Reading the
+ * middle instead would fail a build that drew its form exactly to `MOTE_R` and
+ * landed the edge pixel of it a fraction past, which is the reading that
+ * sentence was written to admit.
  */
 export function paintOutside(sprite: Sprite, radius: number): number {
   const { data } = sprite.pixels;
@@ -196,8 +207,10 @@ export function paintOutside(sprite: Sprite, radius: number): number {
   let outside = 0;
   for (let y = 0; y < sprite.height; y += 1) {
     for (let x = 0; x < sprite.width; x += 1) {
-      const dx = x - cx;
-      const dy = y - cy;
+      // The nearest point of the pixel's own square to the sprite's centre: its
+      // middle sits at (dx, dy) and the square reaches half a pixel each way.
+      const dx = Math.max(0, Math.abs(x - cx) - 0.5);
+      const dy = Math.max(0, Math.abs(y - cy) - 0.5);
       if (dx * dx + dy * dy <= radius * radius) continue;
       if ((data[(y * sprite.width + x) * 4 + 3] as number) > 0) outside += 1;
     }

@@ -15,6 +15,14 @@
 // that keeps its drawing inside the radius the rule names clears it whatever it
 // drew.
 //
+// WHAT PUTS A PIXEL OUTSIDE is fixed by the same art bar: "The radius bounds the
+// form drawn rather than the pixels it lands on: a form drawn to `MOTE_R` meets
+// the bound wherever a hex center falls between two pixels, and paint sits
+// outside the radius only where the whole of a pixel does." So a pixel is read as
+// the square it covers, and counts only where the whole of that square lies past
+// `MOTE_R` — a form drawn exactly to the radius is not failed by the half pixel
+// its own edge lands on.
+//
 // THE EVIDENCE is the produced files magnified over a checkerboard, where paint
 // reaching a corner of the canvas is paint outside the radius.
 

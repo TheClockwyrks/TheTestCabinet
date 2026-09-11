@@ -61,8 +61,16 @@ it("throws on a spoke the part carries no gripper on, and adds no grip", async (
   const wheel = await placePart(h, "wheel", ORIGIN, 0);
   const beside = await spawnMote(h, SPOKE_ONE_HEX, "dust");
 
+  // Clearing the wheel's own fixture off that hex is what makes room for the
+  // loose mote. A build whose wheel raised no fixture has nothing standing there
+  // to clear, and "a part or a mote no id names" is invalid and "fails loudly"
+  // (`specs/instrumentation.md`) — so the removal is skipped rather than becoming
+  // this point's failure. Either way the reading below checks that what ends up
+  // on the hex is a loose mote and not a fixture, which is the whole of what the
+  // arrangement is for.
   const raised = await h.snapshot();
-  await h.debug.removeMote(moteAt(raised, WHEEL_SPOKE_HEX)?.id ?? -1);
+  const standing = moteAt(raised, WHEEL_SPOKE_HEX)?.id ?? null;
+  if (standing !== null) await h.debug.removeMote(standing);
   const loose = await spawnMote(h, WHEEL_SPOKE_HEX, "dust");
   const before = await h.snapshot();
 

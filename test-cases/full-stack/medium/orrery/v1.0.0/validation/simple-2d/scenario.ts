@@ -461,6 +461,30 @@ export async function openSelect(
 }
 
 /**
+ * Pose the highlighted item of the menu on show, letting a refusal stand.
+ *
+ * `setMenuIndex(n)` "Sets the highlighted item of the menu the current screen
+ * shows, from `0` and below that menu's entry count"
+ * (`specs/instrumentation.md`), so a build whose menu is shorter than the one
+ * the spec fixes for that moment refuses the pose. That shortfall is the
+ * build's, and it is a reading rather than an arrangement: a refusal thrown out
+ * of the arrangement names no expectation at all, which is the least useful
+ * thing a failing check can say.
+ *
+ * SO EVERY CALLER READS THE POSED INDEX BACK before it presses anything, and a
+ * refused pose fails there, against the index it asked for. Only call this where
+ * such a reading stands; `h.debug.setMenuIndex` is the call to make where the
+ * refusal itself is the subject.
+ */
+export async function poseMenuIndex(h: Driven, index: number): Promise<void> {
+  try {
+    await h.debug.setMenuIndex(index);
+  } catch {
+    // Left for the caller's own reading of `menuIndex` to report.
+  }
+}
+
+/**
  * Open a SHIPPED challenge in the editor, and draw one frame of it.
  *
  * "The open challenge becomes that mode's shipped challenge at `index`, and the

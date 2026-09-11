@@ -35,6 +35,7 @@ import {
   createHarness,
   loadMachine,
   openChallenge,
+  poseMenuIndex,
   pressAction,
   type Harness,
 } from "../harness";
@@ -73,7 +74,7 @@ it("wraps the highlight from the last item round to the first on one down press"
     "the boundary that reached the target completed the run, which is when the panel is up",
   );
 
-  await h.debug.setMenuIndex(LAST);
+  await poseMenuIndex(h, LAST);
   const posed = await h.snapshot();
   assertEqual(
     posed.menuIndex,

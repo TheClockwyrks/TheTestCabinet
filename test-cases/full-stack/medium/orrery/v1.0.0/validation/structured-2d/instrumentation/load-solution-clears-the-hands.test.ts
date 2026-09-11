@@ -67,9 +67,17 @@ it("empties both histories and clears the selection, the cursor and the drag", a
   await dragFromTray(h, 0, at(2, 0));
   await pressAction(h, "undo");
 
-  const placed = await partIds(h);
-  await h.debug.setSelected(placed[0] ?? -1);
-  await h.debug.setCursor(placed[0] ?? -1, 3);
+  // Both poses name the part the drags left standing, and
+  // `specs/instrumentation.md` makes "a part or a mote no id names" invalid, so
+  // each "fails loudly" on one. A build whose tray drags placed nothing has no
+  // such id, so the arrangement is left un-posed rather than becoming this
+  // point's failure; the readings below decide it either way, starting with the
+  // undo history that placing nothing leaves empty.
+  const placed = (await partIds(h))[0] ?? null;
+  if (placed !== null) {
+    await h.debug.setSelected(placed);
+    await h.debug.setCursor(placed, 3);
+  }
 
   // A tray drag left live: pressed on the first entry, moved onto a hex, unreleased.
   await pressAt(h, centerOf(traySlot(0)));

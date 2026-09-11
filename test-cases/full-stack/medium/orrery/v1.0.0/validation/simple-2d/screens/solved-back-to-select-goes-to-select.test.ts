@@ -39,6 +39,7 @@ import {
   createHarness,
   loadMachine,
   openChallenge,
+  poseMenuIndex,
   pressAction,
   type Harness,
 } from "../harness";
@@ -70,7 +71,7 @@ it("goes to the current mode's select screen on confirm", async () => {
   await h.debug.startRun();
   await h.debug.setTally(0, extra(INDEX).target);
   await advanceCycles(h, 1);
-  await h.debug.setMenuIndex(BACK_ITEM);
+  await poseMenuIndex(h, BACK_ITEM);
 
   const panel = await h.snapshot();
   assertNotNull(panel.sim, "the run is still reported once it has completed");

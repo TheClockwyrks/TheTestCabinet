@@ -43,6 +43,7 @@ import {
   createHarness,
   loadMachine,
   openChallenge,
+  poseMenuIndex,
   stopRun,
   type Harness,
 } from "../harness";
@@ -82,7 +83,16 @@ it("puts the highlight on the panel's first item however far it had moved", asyn
     "the first run completed, which is the panel this check moves the highlight on",
   );
 
-  await h.debug.setMenuIndex(MOVED);
+  await poseMenuIndex(h, MOVED);
+
+  const moved = await h.snapshot();
+  assertEqual(
+    moved.menuIndex,
+    MOVED,
+    "the mode holds a challenge after this one, so the panel's menu is the " +
+      "whole of SOLVED_ITEMS and the highlight poses on its last item",
+  );
+
   await stopRun(h);
 
   const editing = await h.snapshot();

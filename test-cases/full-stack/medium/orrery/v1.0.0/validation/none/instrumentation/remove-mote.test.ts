@@ -86,8 +86,14 @@ it("removes one mote with its filaments and grips, leaving its constellation res
   await h.debug.removeMote(held);
   const after = await h.snapshot();
 
-  const fixture = fixturesOf(after, wheel)[0]?.id ?? -1;
-  await h.debug.removeMote(fixture);
+  // The fixtures clause reads a fixture the WHEEL raised: "A `wheel` is a hub on
+  // its anchor hex carrying six fixture motes" (`specs/parts.md`). A build whose
+  // wheel raised none carries no such mote, and "a part or a mote no id names"
+  // is invalid and "fails loudly" (`specs/instrumentation.md`) — so the call is
+  // not made, and the reading below, which counts the wheel's fixtures after the
+  // removal, reports the shortfall instead of the arrangement dying on it.
+  const fixture = fixturesOf(after, wheel)[0]?.id ?? null;
+  if (fixture !== null) await h.debug.removeMote(fixture);
   const unfixed = await h.snapshot();
   await h.advance(1);
   await captureStill(h, "removed");
@@ -137,8 +143,13 @@ it("removes one mote with its filaments and grips, leaving its constellation res
     5,
     "a wheel's unwanted fixture comes off the field the same way",
   );
-  assertNull(
-    moteById(unfixed, fixture),
-    "the removed fixture is out of sim.motes",
-  );
+  // Read the removed fixture by the id it was removed by, never through a
+  // sentinel: `moteById(unfixed, -1)` names nothing and would hold vacuously on
+  // the very build this reading is for. A wheel that raised none left no id to
+  // remove, and the count above has already failed on 0 against 5.
+  if (fixture !== null)
+    assertNull(
+      moteById(unfixed, fixture),
+      "the removed fixture is out of sim.motes",
+    );
 });
