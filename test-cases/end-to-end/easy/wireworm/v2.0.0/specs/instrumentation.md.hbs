@@ -243,6 +243,14 @@ pointer selects that item from, as `specs/ui.md` states. It returns `null` on
 `playing` and on `howto`, which show no menu, and when `index` names no item of
 the menu the current screen shows.
 
+`setMenuIndex` names an item of the menu the current screen shows. `playing` and
+`howto` show no menu, so no index names an item on either, and what the call does
+there is not fixed: a build may record the value and highlight nothing, or fail
+the call loudly, as it does for any other call the game has no defined state for.
+A caller that wants a highlight standing poses it on a screen whose own menu the
+index names. `menuIndex` itself is a plain field of the state, which `reset`
+restores and `snapshot` reports whatever screen is on show.
+
 `setScore` grants no bonus life, whatever boundary it carries the score across:
 the award belongs to the scoring path, and this is a precondition.
 
@@ -331,6 +339,11 @@ A worm is built one segment at a time, so no operation takes a layout.
 | `setFoeTravel(id, enabled)` | Gates the foe's locomotion alone: its position holds and its behavior runs on. |
 | `removeFoe(id)` | Removes the foe with that id. |
 | `clearFoes()` | Removes every foe, leaving the nodes, worms, and bolts standing. |
+
+`setFoeHit` sets the flag. A dropper's fall speed follows that flag
+(`specs/foes.md`), so a build that carries that speed in the foe's own velocity
+may move `vy` onto it as the flag is posed. Pose a velocity after the flag,
+never before it, to fix a foe's velocity outright.
 
 ## Snapshot shape
 

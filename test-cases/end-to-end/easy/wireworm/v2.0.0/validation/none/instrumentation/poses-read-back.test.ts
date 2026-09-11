@@ -90,9 +90,9 @@ const BOLT_R = 18;
  *
  * The screen is `paused` because the menu row is posed on it. `setMenuIndex(n)`
  * "Sets the highlighted item of whatever menu the current screen shows"
- * (specs/instrumentation.md), so the index has to name an item of that screen's
- * own menu: `paused` shows `PAUSE_ITEMS`, whose three entries run `0` to `2`
- * (specs/ui.md).
+ * (specs/instrumentation.md), and the index posed here names an item of that
+ * screen's own menu: `paused` shows `PAUSE_ITEMS`, whose three entries run `0`
+ * to `2` (specs/ui.md).
  */
 const SCREEN = "paused" as const;
 const PHASE = "respawn" as const;

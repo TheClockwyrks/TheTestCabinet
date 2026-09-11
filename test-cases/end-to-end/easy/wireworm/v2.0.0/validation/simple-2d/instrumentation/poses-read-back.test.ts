@@ -192,12 +192,20 @@ it("reports every posed value through snapshot", async () => {
   // One of them, a dropper, because the hit flag is the one specs/foes.md gives a
   // dropper and every foe pose sets one field: applying all four to the same foe
   // and reading all four back is what says so.
+  //
+  // THE VELOCITY IS POSED LAST, after the hit flag. A dropper's fall speed
+  // follows that flag (specs/foes.md), so a build carrying that speed in the
+  // foe's own velocity moves `vy` onto it as the flag is posed, and
+  // specs/instrumentation.md has the velocity posed after the flag, never
+  // before it, to fix a foe's velocity outright. Every reading below is still
+  // taken off the same foe on the same state: what changes is only the order
+  // two poses of that one foe are made in.
   h.debug.addFoe("dropper", tileCX(FOE_C), tileCY(FOE_R));
   const foeId = lastFoe(h.snapshot()).id;
-  h.debug.setFoeVelocity(foeId, FOE_VX, FOE_VY);
   h.debug.setFoeHit(foeId, true);
   h.debug.setFoeMind(foeId, false);
   h.debug.setFoeTravel(foeId, false);
+  h.debug.setFoeVelocity(foeId, FOE_VX, FOE_VY);
 
   // The one reading, taken before any frame runs.
   const posed = h.snapshot();

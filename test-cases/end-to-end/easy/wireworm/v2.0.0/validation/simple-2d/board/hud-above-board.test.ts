@@ -28,8 +28,27 @@
 //
 //   Play. Every node, worm segment and foe is drawn from the seeded sprite art
 //   (specs/overview.md's hard requirement, specs/assets.md's contract), so the
-//   frame's `drawImage` boxes ARE those entities, placed in logical units. Each
-//   one's top edge must be at `BOARD_Y` or below.
+//   frame's `drawImage` boxes carry those entities, placed in logical units. But
+//   they are not the only sprites a frame draws: specs/ui.md lets the lives
+//   readout be "a row of icons" and welcomes "a further readout of your own" on
+//   the bar, so a build whose bar is drawn from art of its own puts sprites of
+//   its own inside `[0, HUD_H]` and is entitled to. THE PLAY DRAWS ARE THEREFORE
+//   PICKED OUT BY MOVING PLAY DOWN THE BOARD AND SEEING WHAT MOVES WITH IT: two
+//   boards carry THE SAME POPULATION IN DIFFERENT PLACES — the same nodes at the
+//   same charges, the same worm at the same length, the same foe — one on the
+//   entry row right under the bar, the other `MID_ROW - TOP_ROW` rows further
+//   down. An entity drawn where the board puts it is therefore drawn on the
+//   second board at exactly the same place PLUS that many tiles, and a draw of
+//   the packed board's that has such a twin is one of ITS entities. Each of
+//   those must have its top edge at `BOARD_Y` or below.
+//
+//   Reading the twin's DISPLACEMENT rather than merely its absence is what keeps
+//   the build's own bar out of it. A readout of its own that tracks the board —
+//   a field map, a row indicator, anything drawn from what is standing — does
+//   move between the two frames, but it moves by whatever its own scale makes of
+//   a row, never by a row of the board; only what is drawn on the board moves by
+//   the board's own rows. The structured-2d and none projects read the same
+//   requirement over the bar's pixels instead.
 //
 // THE BOLT IS READ AS "GONE MEANS GONE" RATHER THAN AT THE BOUNDARY, and that is
 // deliberate. specs/cursor.md keeps a bolt in flight until its CENTRE passes
@@ -46,6 +65,7 @@ import {
   BOLT_SPEED,
   HUD_H,
   HUD_LEVEL_LABEL,
+  TILE,
   tileCX,
   tileCY,
 } from "../constants";
@@ -68,6 +88,7 @@ import {
   startPlaying,
   ticksFor,
   type DrawCall,
+  type DrawnImage,
   type Harness,
   type TextSpan,
 } from "../harness";
@@ -82,6 +103,30 @@ const POSED_SCORE = 431295;
 /** The level and the lives posed beside it, both well inside their own ranges. */
 const POSED_LEVEL = 7;
 const POSED_LIVES = 3;
+
+/**
+ * The row each of the two boards holds its population on: the topmost tile row
+ * the board has, pressed right up against the bar, and halfway down it.
+ */
+const TOP_ROW = 0;
+const MID_ROW = 8;
+
+/**
+ * How far the same entity's draw moves down between the two boards, in logical
+ * units: the rows between them, in the board's own tiles (specs/board.md).
+ */
+const ROW_DROP = (MID_ROW - TOP_ROW) * TILE;
+
+/**
+ * How far a draw may sit from where its twin puts it and still be that twin, in
+ * logical units.
+ *
+ * The two boards are the same build on the same frame of the same run, drawing
+ * the same population, so this is float noise rather than room a check depends
+ * on. It is far short of a tile, so no draw can be mistaken for the twin of one
+ * a row away.
+ */
+const BOX_SLACK = 0.5;
 
 /**
  * How far a sprite's top edge may sit above `BOARD_Y`, in logical units.
@@ -152,11 +197,16 @@ interface TextBox {
 
 let h: Harness;
 
+/** The second board the play half opens, disposed with the first. */
+let extra: Harness[] = [];
+
 beforeEach(async () => {
   h = await createHarness();
 });
 
 afterEach(() => {
+  for (const board of extra) board.dispose();
+  extra = [];
   h?.dispose();
 });
 
@@ -333,38 +383,85 @@ it("draws the score and the level readouts inside the HUD bar", async () => {
   }
 });
 
+/**
+ * Pose the same run, and the same population on `row`.
+ *
+ * Each entity is posed with only the faculty this point needs — being DRAWN — so
+ * nothing wanders out of its row between the pose and the frame, and the two
+ * boards differ in the row alone.
+ */
+function poseBoard(board: Harness, row: number): void {
+  startPlaying(board);
+  board.debug.setScore(POSED_SCORE);
+  board.debug.setLives(POSED_LIVES);
+  board.debug.setLevel(POSED_LEVEL);
+
+  for (let c = 0; c <= 10; c += 2) board.debug.setNode(c, row, 2);
+  const worm = poseWorm(board, 31, row, 10);
+  board.debug.setWormStepping(worm, false);
+  const glitch = poseFoe(board, "glitch", 36, row);
+  board.debug.setFoeMind(glitch, false);
+  board.debug.setFoeTravel(glitch, false);
+}
+
+/**
+ * Whether `moved` is the same picture as `packed`, the same size, drawn `drop`
+ * logical units further down the stage.
+ */
+function twinBelow(
+  packed: DrawnImage,
+  moved: DrawnImage,
+  drop: number,
+): boolean {
+  return (
+    Math.abs(moved.x - packed.x) <= BOX_SLACK &&
+    Math.abs(moved.y - (packed.y + drop)) <= BOX_SLACK &&
+    Math.abs(moved.w - packed.w) <= BOX_SLACK &&
+    Math.abs(moved.h - packed.h) <= BOX_SLACK
+  );
+}
+
 it("keeps every node, worm segment and foe out of the HUD bar", async () => {
-  startPlaying(h);
-  h.debug.setScore(POSED_SCORE);
-  h.debug.setLives(POSED_LIVES);
-  h.debug.setLevel(POSED_LEVEL);
+  // Row 0 is the topmost tile row the board has, so `h` is play pressed as far
+  // up against the bar as the rules allow; `mid` is the same population halfway
+  // down, and the two frames are the same frame of the same run.
+  poseBoard(h, TOP_ROW);
+  const mid = await createHarness();
+  extra.push(mid);
+  poseBoard(mid, MID_ROW);
 
-  // Row 0 is the topmost tile row the board has, so this is play pressed as far
-  // up against the bar as the rules allow. Each entity is posed with only the
-  // faculty this point needs — being DRAWN — so nothing wanders out of the row
-  // between the pose and the frame.
-  for (let c = 0; c <= 10; c += 2) h.debug.setNode(c, 0, 2);
-  const worm = poseWorm(h, 31, 0, 10);
-  h.debug.setWormStepping(worm, false);
-  const glitch = poseFoe(h, "glitch", 36, 0);
-  h.debug.setFoeMind(glitch, false);
-  h.debug.setFoeTravel(glitch, false);
-
-  const drawn = drawnImages(h, await drawFrame(h));
+  const packed = drawnImages(h, await drawFrame(h));
+  const halfway = drawnImages(mid, await drawFrame(mid));
   captureStill(h, "hud");
 
+  // A draw of the packed board's whose twin the halfway board made ROW_DROP
+  // lower is a draw the BOARD placed, and so is one of its entities. Each twin
+  // is matched off ONCE, so a build drawing four node sprites where the other
+  // board's twin count is one still has three read as play.
+  const moved = [...halfway];
+  const play = packed.filter((image) => {
+    const index = moved.findIndex((other) => twinBelow(image, other, ROW_DROP));
+    if (index === -1) return false;
+    moved.splice(index, 1);
+    return true;
+  });
+
   assertGreaterThan(
-    drawn.length,
+    play.length,
     0,
-    "the board's nodes, worm segments and foes are drawn from the seeded " +
-      "sprite art (specs/assets.md)",
+    `sprites the board on row ${TOP_ROW} drew that the same board on row ` +
+      `${MID_ROW} drew ${ROW_DROP} logical units lower — the nodes, worm ` +
+      "segments and foes are drawn from the seeded sprite art " +
+      "(specs/assets.md), so moving them down the board moves their draws " +
+      "with them, by the board's own rows",
   );
-  for (const image of drawn) {
+  for (const image of play) {
     assertGreaterThanOrEqual(
       image.y - image.h / 2,
       BOARD_Y - EDGE_EPSILON,
-      `a sprite centred at (${image.x.toFixed(1)}, ${image.y.toFixed(1)}) — ` +
-        `its top edge, against the board's own top at BOARD_Y (${BOARD_Y})`,
+      `a sprite centred at (${image.x.toFixed(1)}, ${image.y.toFixed(1)}) ` +
+        `that the board on row ${MID_ROW} drew ${ROW_DROP} units lower — its ` +
+        `top edge, against the board's own top at BOARD_Y (${BOARD_Y})`,
     );
   }
 });

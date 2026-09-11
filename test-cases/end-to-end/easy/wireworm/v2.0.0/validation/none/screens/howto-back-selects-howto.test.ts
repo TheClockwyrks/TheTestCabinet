@@ -46,8 +46,7 @@ afterEach(async () => {
 });
 
 it("returns to the title with HOW TO PLAY selected", async () => {
-  await poseHowto(h);
-  await h.debug.setMenuIndex(DESCEND_ITEM);
+  await poseHowto(h, DESCEND_ITEM);
 
   await h.tap(BACK_KEY);
   await h.advance(1);

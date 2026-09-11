@@ -1579,10 +1579,15 @@ export async function poseFoe(
     );
   }
   const id = added.id;
+  // The hit flag FIRST and the velocity after it. A dropper's fall speed follows
+  // that flag (specs/foes.md), so a build carrying that speed in the foe's own
+  // velocity moves `vy` onto it as the flag is posed; specs/instrumentation.md
+  // has a velocity posed after the flag, never before it, to fix a foe's
+  // velocity outright.
+  if (spec.hit !== undefined) await h.debug.setFoeHit(id, spec.hit);
   if (spec.vx !== undefined || spec.vy !== undefined) {
     await h.debug.setFoeVelocity(id, spec.vx ?? added.vx, spec.vy ?? added.vy);
   }
-  if (spec.hit !== undefined) await h.debug.setFoeHit(id, spec.hit);
   if (spec.mind !== undefined) await h.debug.setFoeMind(id, spec.mind);
   if (spec.travel !== undefined) await h.debug.setFoeTravel(id, spec.travel);
   return id;

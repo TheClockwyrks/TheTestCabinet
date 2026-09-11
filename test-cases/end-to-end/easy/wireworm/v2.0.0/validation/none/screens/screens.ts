@@ -82,10 +82,15 @@ export async function poseTitle(h: Harness, menuIndex = 0): Promise<void> {
  * `screens/title-howto` is the item that decides the route and a check about
  * what the how-to screen DOES must not fail over it.
  */
-export async function poseHowto(h: Harness): Promise<void> {
+export async function poseHowto(h: Harness, menuIndex = 0): Promise<void> {
   await h.debug.reset();
+  // The highlight is parked while the TITLE is still current, whose menu the
+  // index names, and the how-to screen is opened after it. `howto` shows no
+  // menu (specs/ui.md), so the screen the highlight is posed from is the
+  // title's — and every caller of this helper is about what the how-to screen
+  // does, never about what an index means on a screen showing no menu.
+  await h.debug.setMenuIndex(menuIndex);
   await h.debug.setScreen("howto");
-  await h.debug.setMenuIndex(0);
   assertEqual(
     (await h.snapshot()).screen,
     "howto",

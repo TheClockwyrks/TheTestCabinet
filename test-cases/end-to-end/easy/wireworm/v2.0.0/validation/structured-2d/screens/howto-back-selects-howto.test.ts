@@ -52,8 +52,13 @@ afterEach(() => {
 
 it("returns to the title with HOW TO PLAY selected", async () => {
   resetTo(h);
-  h.debug.setScreen("howto");
+  // The highlight is parked while the TITLE is still current, whose menu the
+  // index names, and the how-to screen is opened after it — the order
+  // `screens.howto-back` already poses this scenario in. `howto` shows no menu
+  // (specs/ui.md), and what this point is about is the title entry the return
+  // selects, not what an index means on a screen showing no menu.
   h.debug.setMenuIndex(DESCEND_ITEM);
+  h.debug.setScreen("howto");
   assertEqual(
     h.snapshot().screen,
     "howto",

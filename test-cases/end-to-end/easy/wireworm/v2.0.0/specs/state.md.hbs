@@ -296,7 +296,8 @@ export class WirewormState extends GameState {
 - `phaseTimer` — the seconds left in the current phase, counting down against
   each update's delta and resting at `0`.
 - `menuIndex` — the highlighted item on whichever vertical menu `screen` is
-  showing, counted from `0`. It rests at `0` on `playing`.
+  showing, counted from `0`. `playing` shows no menu of its own, so nothing is
+  highlighted there.
 - `score`, `lives`, `level` — the run's figures.
 - `reachedLevel` — the highest level the run has opened, which is what the end
   screens report.

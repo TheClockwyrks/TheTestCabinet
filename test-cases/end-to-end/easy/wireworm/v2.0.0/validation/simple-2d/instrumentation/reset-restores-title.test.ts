@@ -51,6 +51,13 @@ const LIVES = 1;
 const LEVEL = 6;
 const REACHED_LEVEL = 6;
 const MENU_INDEX = 1;
+
+/**
+ * The screen the highlight is posed on, and the screen the reset is called
+ * from: `paused` shows a menu of its own, `PAUSE_ITEMS`, whose three entries run
+ * `0` to `2` (specs/ui.md), so the index posed on it names one of its items.
+ */
+const SCREEN = "paused" as const;
 const PHASE_TIMER = 0.9;
 const INVULNERABLE = 1.5;
 const FIRE_COOLDOWN = 0.12;
@@ -88,7 +95,6 @@ it("restores every title value and leaves muted as it stands", async () => {
   h.debug.setLives(LIVES);
   h.debug.setLevel(LEVEL);
   h.debug.setReachedLevel(REACHED_LEVEL);
-  h.debug.setMenuIndex(MENU_INDEX);
   h.debug.setPhaseTimer(PHASE_TIMER);
   h.debug.setCursor(CURSOR_X, CURSOR_Y);
   h.debug.setCursorInvulnerable(INVULNERABLE);
@@ -108,6 +114,25 @@ it("restores every title value and leaves muted as it stands", async () => {
 
   // Let it run, so `simTime` has plainly accumulated something to be cleared.
   await h.advance(PLAY_TICKS);
+
+  // The paused screen, and the highlight posed on it — LAST, with nothing at
+  // all between the pose and the reset. `paused` shows `PAUSE_ITEMS`, whose
+  // three entries the index names (specs/ui.md), and the reset is what has to
+  // bring the highlight back to `0` from there. Posed any earlier, a screen
+  // change or a frame of play could put the field back to `0` on its own — no
+  // specification fixes the field's value on a screen showing no menu
+  // (specs/state.md, specs/instrumentation.md) — and the reading below would
+  // then be asking the reset to clear a highlight that was already clear,
+  // passing while proving nothing. The line after it says the highlight really
+  // is standing.
+  h.debug.setScreen(SCREEN);
+  h.debug.setMenuIndex(MENU_INDEX);
+  assertEqual(
+    h.snapshot().menuIndex,
+    MENU_INDEX,
+    "the highlight standing as the reset is called, which is the value the " +
+      "reading below asks the reset to return to 0",
+  );
 
   h.debug.reset();
   const title = h.snapshot();

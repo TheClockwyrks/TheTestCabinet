@@ -186,7 +186,6 @@ it("restores every declared field to its title value and leaves muted alone", as
   await h.debug.setLives(LIVES);
   await h.debug.setLevel(LEVEL);
   await h.debug.setReachedLevel(REACHED_LEVEL);
-  await h.debug.setMenuIndex(MENU_INDEX);
   await h.debug.setPhaseTimer(PHASE_TIMER);
   await h.debug.setCursor(CURSOR_X, CURSOR_Y);
   await h.debug.setCursorInvulnerable(INVULNERABLE);
@@ -200,8 +199,23 @@ it("restores every declared field to its title value and leaves muted alone", as
   await h.debug.setNextWormEntry("right");
   await h.debug.setScreen(SCREEN);
   await h.debug.setPhase(PHASE);
+  // The highlight is posed once `paused` is current, whose own menu the index
+  // names (`PAUSE_ITEMS`, specs/ui.md) — the same screen this project's
+  // `instrumentation/poses-read-back` poses a menu row on.
+  await h.debug.setMenuIndex(MENU_INDEX);
 
   const before = await h.snapshot();
+  // The highlight really is standing as the reset is called. Posed last, with
+  // nothing between the pose and the reset, it can only be missing if the pose
+  // itself did nothing — and without it the reading below would be asking the
+  // reset to clear a highlight that was already clear, passing while proving
+  // nothing.
+  assertEqual(
+    before.menuIndex,
+    MENU_INDEX,
+    "the highlight standing as the reset is called, which is the value the " +
+      "reading below asks the reset to return to 0",
+  );
   assertGreaterThan(
     before.simTime,
     0,
