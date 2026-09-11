@@ -143,6 +143,12 @@ function deepEquals(a: unknown, b: unknown): boolean {
  * `expected` — the same reading as vitest's `toBeCloseTo(expected, digits)`,
  * so a converted check keeps its tolerance. Two equal infinities are close, as
  * they are there; nothing else infinite is.
+ *
+ * THE THIRD ARGUMENT IS A DIGIT COUNT AND NOT A SPAN. A check whose tolerance
+ * is a figure in the world's own units wants {@link assertNear}: passing that
+ * figure here reads it as `0.5 * 10 ** -figure`, so a stated tolerance of
+ * `0.6` admits `0.1256` and a stated tolerance of `0.05` admits `0.4457` —
+ * neither of them the bound the check said it was applying.
  */
 export function assertCloseTo(
   actual: number,
