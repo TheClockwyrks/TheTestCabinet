@@ -28,8 +28,8 @@
 // tick by tick, by the trolley move the tape holds.
 //
 // THE RUN IS ENDED WITH AN ABORT, so no verdict of any kind has been reached when
-// the readings are taken: `abortRun` "poses the abort, ending a running run with
-// no verdict" and puts the run back to its idle placeholder
+// the readings are taken: `abortRun` "poses the abort of a run IN PROGRESS,
+// ending it with no verdict" and puts the run back to its idle placeholder
 // (`specs/instrumentation.md`).
 //
 // The yard holds one load and no obstacle, and the crane is the minimal one. The

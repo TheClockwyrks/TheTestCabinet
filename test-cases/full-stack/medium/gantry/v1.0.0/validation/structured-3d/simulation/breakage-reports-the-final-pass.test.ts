@@ -18,10 +18,10 @@
 // one.
 //
 // AND IT IS LITERALLY THE SAME CRANE. The first run is aborted rather than the
-// site reopened: `abortRun` "poses the abort, ending a running run with no
-// verdict: `run` goes back to its idle placeholder and the build screen returns"
-// (`specs/instrumentation.md`), which leaves the structure, the tape and the
-// site's loads exactly as they were and puts the screen back where a structure
+// site reopened: `abortRun` "poses the abort of a run IN PROGRESS, ending it with
+// no verdict: `run` goes back to its idle placeholder and the build screen
+// returns" (`specs/instrumentation.md`), which leaves the structure, the tape and
+// the site's loads exactly as they were and puts the screen back where a structure
 // pose applies. So the stay is taken out of the crane that stood, the second run
 // starts from the same load at the same pose, and the two runs differ in the one
 // member this check is about — rather than in fifty-three separately posed edits

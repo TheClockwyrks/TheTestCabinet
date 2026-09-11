@@ -100,13 +100,10 @@ it("leaves the screen and the run as they stand when no run is in progress", asy
   await h.advance(1);
   await h.capture("state", "The driven state this point decides");
 
-  assertEqual(
-    afterEnded.screen,
-    "run",
-    "the screen abortRun leaves on a run that has already ended: with no run " +
-      "in progress it has no abort to pose and takes no screen, and a failed " +
-      "run stays on the run screen (specs/instrumentation.md, specs/ui.md)",
-  );
+  // The run the abort found is read first, because it is the substance of what
+  // "does nothing at all" means here; the screen is the corollary. A build that
+  // wipes the ended run to the idle placeholder fails on its verdict, which says
+  // what it did, rather than on the screen, which only says where it went.
   assertEqual(
     afterEnded.run.phase,
     "failed",
@@ -121,5 +118,12 @@ it("leaves the screen and the run as they stand when no run is in progress", asy
     afterEnded.run.tick,
     failed.run.tick,
     "the run clock abortRun leaves on a run that has already ended",
+  );
+  assertEqual(
+    afterEnded.screen,
+    "run",
+    "the screen abortRun leaves on a run that has already ended: with no run " +
+      "in progress it has no abort to pose and takes no screen, and a failed " +
+      "run stays on the run screen (specs/instrumentation.md, specs/ui.md)",
   );
 });

@@ -7,8 +7,8 @@
 // thing from the run's side (`specs/program.md`): "The `back` action aborts a run
 // early and returns to the build screen; an aborted run has no verdict", and what
 // an abort leaves is the idle placeholder — `specs/state.md`: the placeholder "is
-// what the run carries before the first run of a site, and what opening a site,
-// aborting a run, and a `reset` put back."
+// what the run carries before the first run of a site, and what opening a site, a
+// `reset`, and aborting a run IN PROGRESS put back."
 //
 // THE RUN IS A REAL ONE, started by the surface's own `startRun`, which "poses
 // the `run` action: the same refusals, the same `run-start`, and the same move to

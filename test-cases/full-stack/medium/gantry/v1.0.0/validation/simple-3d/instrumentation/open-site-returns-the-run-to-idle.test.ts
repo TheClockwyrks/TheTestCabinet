@@ -6,7 +6,8 @@
 // binds `openSite` to that list — it "carries the effects `specs/state.md` states
 // for opening a site". § Snapshot shape's resting-value table says the same from
 // the reading's side: `run` is the idle placeholder "before a site's first run,
-// and again whenever a site is opened, a run is aborted, or `reset` is called".
+// and again whenever a site is opened, a run IN PROGRESS is aborted, or `reset`
+// is called".
 //
 // The placeholder is `specs/state.md`'s: "phase `idle`, no cause, a zero tick,
 // step index, and speed index, no live step, […] no attachment, and an empty load,

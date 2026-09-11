@@ -37,12 +37,12 @@
 //
 // THE CRANE AND THE YARD ARE STOOD UP ONCE and both runs are taken on them. The
 // two runs differ only in the tape's second step, and the run between them is
-// ended with `abortRun`, which "poses the abort, ending a running run with no
-// verdict" and puts the run back to its idle placeholder — so the second run
-// starts from the same authored state the first did (`specs/program.md`: "every
-// run begins from the same authored state"). Building the crane a second time
-// would put sixty more edits on the route to a scenario that is about the order
-// of two stages within one tick.
+// ended with `abortRun`, which "poses the abort of a run IN PROGRESS, ending it
+// with no verdict" and puts the run back to its idle placeholder — so the second
+// run starts from the same authored state the first did (`specs/program.md`:
+// "every run begins from the same authored state"). Building the crane a second
+// time would put sixty more edits on the route to a scenario that is about the
+// order of two stages within one tick.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {

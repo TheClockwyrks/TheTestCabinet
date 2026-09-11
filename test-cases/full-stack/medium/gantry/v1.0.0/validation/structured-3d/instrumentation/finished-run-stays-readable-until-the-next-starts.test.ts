@@ -3,11 +3,11 @@
 //
 // specs/instrumentation.md § Snapshot shape gives `run` its resting value: "the
 // idle placeholder `specs/state.md` gives it before a site's first run, and again
-// whenever a site is opened, a run is aborted, or `reset` is called; otherwise the
-// run last started, left as it ended until the next one starts." specs/state.md
-// says what that buys: "A run that ends is left as it ended until the next one
-// starts: its verdict, its cause, its clock, and its broken list stay readable...
-// and going back to the build screen leaves them as they are."
+// whenever a site is opened, a run IN PROGRESS is aborted, or `reset` is called;
+// otherwise the run last started, left as it ended until the next one starts."
+// specs/state.md says what that buys: "A run that ends is left as it ended until
+// the next one starts: its verdict, its cause, its clock, and its broken list stay
+// readable... and going back to the build screen leaves them as they are."
 //
 // So the reading is the same four fields three times over: on the screen the run
 // ended on, on the build screen the player goes back to, and on the program screen

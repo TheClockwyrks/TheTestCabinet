@@ -136,7 +136,9 @@ speed index, no live step, the four axes at the run-start posture
 `specs/program.md` fixes with no command and zero rate, a zero pivot, a bob at
 the origin with zero velocity, no attachment, and an empty load, force, and
 broken list. It is what the run carries before the first run of a site, and what
-opening a site, aborting a run, and a `reset` put back.
+opening a site, a `reset`, and aborting a run IN PROGRESS put back. Where there
+is no run in progress there is no abort to take and nothing is put back: an idle
+run stays idle, and a run that has ended stays as the paragraph below leaves it.
 
 A run that ends is left as it ended until the next one starts: its verdict, its
 cause, its clock, and its broken list stay readable while the results screen
@@ -546,12 +548,14 @@ and `stepIndex` `0`, `stepLive` `false`, the four axes at the run-start posture
 `specs/program.md` fixes with zero rate and no command, `pivot` and both parts
 of `bob` the zero vector, `attached` `null`, and `loads`, `forces`, and `broken`
 empty. It is what `run` carries before the first run of a site, and what opening
-a site, `abortRun`, and a `reset` put back. A run that ends is left as it ended
-until the next one starts, so the results screen and a failed run's screen both
-read their figures off it (`specs/ui.md`), and going back to the build screen
-leaves them as they are. Its `broken` belongs to the run that broke those
-members; the structure itself is untouched, so the build screen and its check
-read every member.
+a site, a `reset`, and an `abortRun` that ends a run IN PROGRESS put back; with
+no run in progress there is no abort to pose and nothing is put back
+(`specs/instrumentation.md`). A run that ends is left as it ended until the next
+one starts, so the results screen and a failed run's screen both read their
+figures off it (`specs/ui.md`), and going back to the build screen leaves them
+as they are. Its `broken` belongs to the run that broke those members; the
+structure itself is untouched, so the build screen and its check read every
+member.
 
 At the moment a run starts, however it was started, `run` carries:
 
@@ -1054,12 +1058,14 @@ first.
   broke.
 
 The initializer above is the idle placeholder: what `run` carries before the
-first run of a site, and what opening a site, `abortRun`, and a `reset` put
-back. A run that ends is left as it ended until the next one starts, so the
-results screen and a failed run's screen both read their figures off it
-(`specs/ui.md`), and going back to the build screen leaves them as they are.
-Its `broken` belongs to the run that broke those members; the structure itself
-is untouched, so the build screen and its check read every member.
+first run of a site, and what opening a site, a `reset`, and an `abortRun` that
+ends a run IN PROGRESS put back; with no run in progress there is no abort to
+pose and nothing is put back (`specs/instrumentation.md`). A run that ends is
+left as it ended until the next one starts, so the results screen and a failed
+run's screen both read their figures off it (`specs/ui.md`), and going back to
+the build screen leaves them as they are. Its `broken` belongs to the run that
+broke those members; the structure itself is untouched, so the build screen and
+its check read every member.
 
 At the moment a run starts, however it was started, `run` carries:
 

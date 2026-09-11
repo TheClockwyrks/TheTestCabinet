@@ -2,10 +2,10 @@
 // screen again.
 //
 // `specs/instrumentation.md` § The run and the screens gives `abortRun` as
-// "Poses the abort, ending a running run with no verdict: `run` goes back to its
-// idle placeholder and the build screen returns", which is the surface's half of
-// what `specs/program.md` states for the player: "The `back` action aborts a run
-// early and returns to the build screen."
+// "Poses the abort of a run IN PROGRESS, ending it with no verdict: `run` goes
+// back to its idle placeholder and the build screen returns", which is the
+// surface's half of what `specs/program.md` states for the player: "The `back`
+// action aborts a run early and returns to the build screen."
 //
 // The scenario is a run genuinely in progress, since that is the only state the
 // pose applies in: the minimal crane on an emptied yard and a tape that moves one

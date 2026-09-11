@@ -2,13 +2,13 @@
 // verdict.
 //
 // `specs/instrumentation.md` § The run and the screens: `abortRun` "Poses the
-// abort, ending a running run with no verdict: `run` goes back to its idle
-// placeholder". `specs/state.md` fixes what that placeholder is — "phase `idle`,
-// no cause, a zero tick, step index, and speed index, no live step, the four axes
-// at the run-start posture `specs/program.md` fixes with no command and zero rate,
-// a zero pivot, a bob at the origin with zero velocity, no attachment, and an
-// empty load, force, and broken list" — and names the abort as one of the three
-// things that put it back.
+// abort of a run IN PROGRESS, ending it with no verdict: `run` goes back to its
+// idle placeholder". `specs/state.md` fixes what that placeholder is — "phase
+// `idle`, no cause, a zero tick, step index, and speed index, no live step, the
+// four axes at the run-start posture `specs/program.md` fixes with no command and
+// zero rate, a zero pivot, a bob at the origin with zero velocity, no attachment,
+// and an empty load, force, and broken list" — and names the abort of a run in
+// progress as one of the three things that put it back.
 //
 // The abort has to land on a run that has moved, or an idle reading afterwards
 // would say nothing: the minimal crane runs a tape that drives the hoist, and the

@@ -81,7 +81,10 @@ The surface is not a player, and it never asks whether one could have reached
 what it is doing. Which screen is showing, whether a run is in progress, which
 tool is selected, and whether a control is drawn are how a player reaches an
 effect; none of them is a condition on an operation, and every operation acts
-from wherever the game stands.
+from wherever the game stands. The one operation a run in progress figures in
+is `abortRun`, where it is the act rather than a condition on reaching it: the
+abort IS the ending of a run in progress, so with no run in progress there is
+no abort to pose and the operations below say what it does then.
 
 The surface is inert during normal play, doing nothing until something calls
 it.
@@ -186,7 +189,11 @@ Three rules cover every operation below.
   a structure pose edits the open site's structure with the program screen up,
   and a tape pose edits its tape with the build screen up. Nothing an operation
   is asked to do is passed over because of where the game stands; the edit
-  rules of the bullet above are the only thing that refuses an edit.
+  rules of the bullet above are the only thing that refuses an edit. The one
+  operation a run in progress figures in is `abortRun`, and it is not a gate
+  there either: the abort IS the ending of a run in progress, so it is the act
+  itself rather than a condition on reaching it, and where there is no run in
+  progress there is no abort to pose. Its own row below says what it does then.
 
 {{#if (eq engine.slug "none")}}
 ### The clock
@@ -352,7 +359,7 @@ picks none.
 | `clearBest(index)` | Returns site `index` to having no recorded score. |
 | `setCamera(yaw, pitch, dist)` | Sets the orbit camera's pose. The pitch and the distance limits `specs/controls.md` fixes are constants, so they are this operation's domain and a value outside either fails loudly; the yaw is unbounded and wraps to at or above `0` and below `360`. |
 | `startRun` | Poses the `run` action: the same refusals, the same `run-start`, and the same move to the run screen as `specs/program.md` states. |
-| `abortRun` | Poses the abort, ending a running run with no verdict: `run` goes back to its idle placeholder and the build screen returns. |
+| `abortRun` | Poses the abort of a run IN PROGRESS, ending it with no verdict: `run` goes back to its idle placeholder and the build screen returns. With no run in progress there is no abort to pose, and nothing changes at all, as below. |
 | `showCheck` | Poses the `check` action: computes the static check and leaves it showing, exactly as the action does (`specs/structure.md`), from whatever screen it is called on. |
 
 `openSite` carries exactly the effects `specs/state.md` states for opening a
@@ -731,7 +738,7 @@ gives the value each rests at.
 | `pointer` | `{ x: 0, y: 0, down: false, pressX: 0, pressY: 0, dragging: false }` before the pointer has been used; after that, what the pointer table under `reset` above gives each field |
 | `pick` | `{ node: null, member: null }` on every screen but `build`, and where nothing is in range |
 | `checkResult` | `null` while the build screen is showing no check result |
-| `run` | the idle placeholder `specs/state.md` gives it before a site's first run, and again whenever a site is opened, a run is aborted, or `reset` is called; otherwise the run last started, left as it ended until the next one starts |
+| `run` | the idle placeholder `specs/state.md` gives it before a site's first run, and again whenever a site is opened, a run IN PROGRESS is aborted, or `reset` is called; otherwise the run last started, left as it ended until the next one starts |
 
 - `site.name`, `site.envelope`, `site.anchors`, `site.budget`, and `site.par`
   are the open site's own figures, read by `siteIndex` against

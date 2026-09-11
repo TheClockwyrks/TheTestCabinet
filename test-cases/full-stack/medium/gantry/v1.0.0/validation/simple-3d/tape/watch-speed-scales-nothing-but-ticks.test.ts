@@ -30,9 +30,9 @@
 // `SLEW_MAX_RATE` takes some seconds, and eight ticks is an eighth of one.
 //
 // The second run is started fresh from the same structure and the same tape —
-// `abortRun` "poses the abort, ending a running run with no verdict" and puts the
-// run back to its idle placeholder — so what is compared is two runs from the
-// same start rather than one run continued.
+// `abortRun` "poses the abort of a run IN PROGRESS, ending it with no verdict"
+// and puts the run back to its idle placeholder — so what is compared is two runs
+// from the same start rather than one run continued.
 //
 // The yard is emptied and the crane is the minimal one: the requirement is about
 // the watch speed, and nothing else belongs in the world it is read in.

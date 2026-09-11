@@ -5,8 +5,8 @@
 // load the run started with, in that order (`specs/state.md`); the idle
 // placeholder carries no load entries." specs/state.md says the same from the
 // state's side and names what puts the placeholder back: "It is what the run
-// carries before the first run of a site, and what opening a site, aborting a
-// run, and a `reset` put back."
+// carries before the first run of a site, and what opening a site, a `reset`,
+// and aborting a run IN PROGRESS put back."
 //
 // So the three ways to the placeholder are the three readings here, and the yard
 // under every one of them is site 2's, which specs/sites.md authors with TWO
