@@ -285,6 +285,24 @@ what was actually drawn rather than what it stands for, so a model drawn at the
 wrong scale reports the wrong size. A `text` entry's `name` is the build's own,
 so what identifies a readout is the `text` it drew and not what the build calls
 it.
+
+`size` is an EXTENT and not a frame, and the `[width, height, depth]` above is
+the extent of a thing standing square to the world. A thing drawn along a line
+that leans — a member, the hoist cable — has no such box, and may report either
+the box its two ends span or the cross-section and length it was drawn with;
+nothing here chooses between them, and neither carries THE DIRECTION IT LEANS
+IN, because `yaw` turns a thing about the vertical (`specs/world.md`) and says
+nothing about a lean. What the two do agree on is the figure a reading of such
+a thing needs, which is the extent's own length; and a bar drawn between two
+points is drawn at the middle of them, so what an entry fixes about a thing
+spanning two world positions is that length and that middle.
+
+A `mark` standing for a LOAD POSE — `pad`, `pad-yaw`, `load-start` — carries
+that pose's `x` and `z`, and a `y` anywhere between the surface the load rests
+on and the lift point above it. The marking is drawn on the surface while the
+pose it names is the lift point (`specs/world.md`), and a build may report
+either, so what such an entry fixes is which surface the mark sits on rather
+than its exact height.
 {{#if (eq engine.slug "none")}}
 The one exception is the debug overlay, which is not one of the game's readouts
 at all: Diagnostics below fixes the `name` its lines are reported under.
@@ -364,9 +382,14 @@ four screens carrying no menu — `howto`, `build`, `program`, and `run` — the
 is no entry to name and the call fails loudly. `startRun` still carries the
 `run` action's own refusals, which are the structure's readiness and not a
 screen: it is refused exactly as the action is, leaving the state as it was, and
-`check` says why it would refuse. `abortRun` with no run in progress finds the
-run already idle and leaves it there. `showCheck` computes the check and leaves
-it showing wherever it is called. A run that begins is the ordinary run, and it
+`check` says why it would refuse. `abortRun` WITH NO RUN IN PROGRESS HAS NO
+ABORT TO POSE AND DOES NOTHING AT ALL: a run already idle stays idle, a run that
+has ended keeps its phase, its cause, its clock and its broken list, and the
+screen stays exactly where it was. The build screen the row above returns to is
+the screen the abort itself takes, and where there is no abort there is no
+screen to take — so an ended run read on the run screen is still read there
+afterwards. `showCheck` computes the check and leaves it showing wherever it is
+called. A run that begins is the ordinary run, and it
 starts as `specs/state.md` says a run starts: nothing has ticked at the call, so `run.tick` reads `0` immediately
 after it, and the axes, the pivot, and the bob stand at the run-start values
 that file gives.

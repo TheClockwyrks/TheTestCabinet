@@ -112,10 +112,15 @@ it("lists the six sites in order, each row showing its index plus one", async ()
   );
 
   // Every other run of text belongs to the row it was drawn nearest.
+  // Nearest ON THE STAGE, not down it: a build that sets the six sites out in a
+  // grid draws two names on one baseline, and a reading that compared baselines
+  // alone would hand every run of one grid row to whichever of its two names
+  // happened to be drawn first.
+  const away = (a: TextDraw, b: TextDraw): number =>
+    Math.hypot(a.x - b.x, a.y - b.y);
   const nearest = (one: TextDraw): TextDraw =>
     rows.reduce(
-      (best, other) =>
-        Math.abs(other.y - one.y) < Math.abs(best.y - one.y) ? other : best,
+      (best, other) => (away(other, one) < away(best, one) ? other : best),
       rows[0] as TextDraw,
     );
   for (const [index, row] of rows.entries()) {

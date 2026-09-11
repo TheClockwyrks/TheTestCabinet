@@ -25,9 +25,10 @@ import { createHarness, type Harness } from "../harness";
 
 /**
  * The counterweight, in the words a player's own account of it would reach for.
- * A build is free to call it a weight; it is not free to leave it out.
+ * A build is free to call it a weight or a ballast — the yard's own name for a
+ * weight hung to balance a crane — but not to leave it out.
  */
-const TERMS = [/\bcounter-?weights?\b/i, /\bweights?\b/i];
+const TERMS = [/\bcounter-?weights?\b/i, /\bweights?\b/i, /\bballasts?\b/i];
 
 /* -------------------------------------------------------------------------- */
 /* Reading the copy the how-to screen drew                                    */

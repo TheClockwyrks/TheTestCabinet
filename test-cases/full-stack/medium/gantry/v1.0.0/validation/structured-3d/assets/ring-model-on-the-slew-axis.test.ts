@@ -13,7 +13,7 @@
 // stands ON the axis, which is a fact about `x` and `z`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertCloseTo, assertTrue } from "../assert";
+import { assertClose, assertTrue } from "../assert";
 import { LATTICE_PITCH } from "../constants";
 import {
   clearAll,
@@ -57,13 +57,13 @@ it("draws the ring model centred on the slew axis", async () => {
   await h.capture("ring", "The ring drawn on the slew axis");
 
   assertTrue(rings.length > 0, "a ring model among what the frame drew");
-  assertCloseTo(
+  assertClose(
     rings[0]!.x,
     AXIS.x,
     TOLERANCE,
     "the ring's drawn x against the slew axis (specs/structure.md)",
   );
-  assertCloseTo(
+  assertClose(
     rings[0]!.z,
     AXIS.z,
     TOLERANCE,

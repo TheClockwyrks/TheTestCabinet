@@ -6,11 +6,14 @@
 // the bar a player sees is the one they placed, between the nodes they placed it
 // between, and not somewhere else on the lattice.
 //
-// THE READING IS THE EXTENT THE FRAME REPORTS COVERING. `drawn()` gives a
-// member's world position and the extent it was drawn at
-// (`specs/instrumentation.md`), so the check compares them against the nodes the
-// snapshot says the member joins: the drawing sits at the midpoint of the two,
-// and covers the span between them.
+// THE READING IS THE MIDDLE AND THE LENGTH. `drawn()` gives a member's world
+// position and the extent it was drawn at, and `specs/instrumentation.md` fixes
+// exactly those two of a thing drawn along a line — "a bar drawn between two
+// points is drawn at the middle of them, so what an entry fixes about a thing
+// spanning two world positions is that length and that middle" — because the
+// extent may be written as the box the two ends span or as the cross-section and
+// length the bar was drawn with. So the drawing has to sit at the midpoint of the
+// nodes the snapshot says it joins, and to be as long as they are apart.
 //
 // THE TOLERANCE IS THE BAR'S OWN THICKNESS. `size` is what was drawn rather than
 // the bare span, and a bar is drawn with a cross-section, so two fifths of a
@@ -18,7 +21,7 @@
 // two-unit lattice pitch that would put it on the wrong nodes.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertCloseTo, assertTrue } from "../assert";
+import { assertClose, assertTrue } from "../assert";
 import {
   clearAll,
   createHarness,
@@ -58,13 +61,14 @@ it("draws a member along the span between the nodes it joins", async () => {
 
   assertTrue(members.length > 0, "a strut among what the frame drew");
   const drawn = members[0]!;
-  assertCloseTo(drawn.x, (A.x + B.x) / 2, TOLERANCE, "the member's drawn x");
-  assertCloseTo(drawn.y, (A.y + B.y) / 2, TOLERANCE, "the member's drawn y");
-  assertCloseTo(drawn.z, (A.z + B.z) / 2, TOLERANCE, "the member's drawn z");
-  assertCloseTo(
-    drawn.size[1],
-    Math.abs(B.y - A.y),
+  assertClose(drawn.x, (A.x + B.x) / 2, TOLERANCE, "the member's drawn x");
+  assertClose(drawn.y, (A.y + B.y) / 2, TOLERANCE, "the member's drawn y");
+  assertClose(drawn.z, (A.z + B.z) / 2, TOLERANCE, "the member's drawn z");
+  assertClose(
+    Math.hypot(drawn.size[0]!, drawn.size[1]!, drawn.size[2]!),
+    Math.hypot(B.x - A.x, B.y - A.y, B.z - A.z),
     TOLERANCE,
-    "the member's drawn height against the span it joins (specs/structure.md)",
+    "the length of the extent the member reports covering, against the span " +
+      "it joins (specs/structure.md)",
   );
 });

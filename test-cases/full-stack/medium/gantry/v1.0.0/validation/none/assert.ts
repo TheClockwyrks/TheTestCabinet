@@ -30,6 +30,12 @@ import type { Vec3 } from "./surface";
  * engineless project uses; Gantry's suites read `assertClose`, and the two are
  * the same function rather than two tolerances. Both are exported so a check
  * copied from another case still compiles.
+ *
+ * IT IS NOT `assertCloseTo`, whose third argument is a DIGIT COUNT. Every
+ * tolerance this case states is a span in world units, so `assertCloseTo` would
+ * read a stated `0.6` as `0.5 * 10 ** -0.6`, a bound of `0.1256` that no
+ * specification here sets — which is why the drawn-geometry points all assert
+ * through this one.
  */
 export const assertClose = assertNear;
 

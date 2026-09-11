@@ -106,11 +106,14 @@ it("lists the six sites in order, each row showing its index plus one", async ()
   for (const [index, row] of rows.entries()) {
     /** Whether text drawn at `placed` belongs to this row: the one it sits nearest. */
     const owned = (placed: TextDraw): boolean => {
+      // Nearest ON THE STAGE, not down it: a build that sets the six sites out in a
+      // grid draws two names on one baseline, and a reading that compared baselines
+      // alone would hand every run of one grid row to whichever of its two names
+      // happened to be drawn first.
+      const away = (other: TextDraw): number =>
+        Math.hypot(other.x - placed.x, other.y - placed.y);
       const nearest = rows.reduce(
-        (best, other) =>
-          Math.abs(other.y - placed.y) < Math.abs(best.y - placed.y)
-            ? other
-            : best,
+        (best, other) => (away(other) < away(best) ? other : best),
         rows[0] as TextDraw,
       );
       return nearest === row;

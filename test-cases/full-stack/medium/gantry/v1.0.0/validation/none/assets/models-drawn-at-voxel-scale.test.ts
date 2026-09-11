@@ -14,7 +14,7 @@
 // (`specs/instrumentation.md`). The requirement is the ratio between them.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertCloseTo, assertTrue } from "../assert";
+import { assertClose, assertTrue } from "../assert";
 import { VOXELS_PER_UNIT } from "../constants";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -82,7 +82,7 @@ it("draws a produced model at one unit per VOXELS_PER_UNIT of its sculpt", async
   ];
   for (const [axis, voxels, units] of axes) {
     const wanted = voxels / VOXELS_PER_UNIT;
-    assertCloseTo(
+    assertClose(
       units,
       wanted,
       Math.max(wanted * TOLERANCE_SHARE, 0.05),

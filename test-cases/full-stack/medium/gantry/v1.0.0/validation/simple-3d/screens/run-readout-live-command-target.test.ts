@@ -19,14 +19,15 @@
 // travel to reach them decides nothing, and travel this reading does not use is
 // only more of the axis controller standing between the point and its verdict.
 //
-// THE FIGURE IS LOOKED FOR ON THE SLEW'S OWN LINE. `specs/ui.md` puts the target
-// beside its axis's value, so a readout that names the axis fixes the line, and
-// the target has to be on it — which is also what stops another axis's readout
-// from standing in for the one under test.
+// THE FIGURE IS LOOKED FOR ON THE SLEW'S OWN READOUT. `specs/ui.md` puts the
+// target with its axis's value and fixes no more than that, so the axis's own
+// name anchors the readout and `./axis-readout` gathers the figures nearest that
+// name — which is also what stops another axis's readout from standing in for
+// the one under test.
 
 import { afterEach, beforeEach, it } from "vitest";
 
-import { figureRuns, figuresAcross, type FigureRun } from "./figures";
+import { axisReadouts, everythingDrawn } from "./axis-readout";
 import { assertEqual, assertTrue, fail } from "../assert";
 import {
   GRIP_MAX_RATE,
@@ -82,9 +83,6 @@ const CARRY = 40;
 /** How far a drawn figure may sit from the target it reads: whole units. */
 const FIGURE_TOL = 0.5;
 
-/** Runs of text this far apart in `y` are on one line of the readout. */
-const LINE_SLOP = 10;
-
 let h: Harness;
 
 beforeEach(async () => {
@@ -94,49 +92,6 @@ beforeEach(async () => {
 afterEach(async () => {
   await h.dispose();
 });
-
-/**
- * Every run of text the frame the page last drew put on its readout layer.
- *
- * The runs are the LOGICAL ones the frame spells, each placed where its first
- * draw was, never the `fillText` split: a build that letter-spaces a label or
- * a figure draws a glyph per call, which is the only portable way to
- * letter-space canvas text, and a line assembled from those glyphs reads `1 2`
- * where the screen says `12`. `screenCalls` carries the measured geometry the
- * shared merge rule (`case-harness/text.ts`) needs to put side-by-side glyphs
- * on one baseline back together, and every raw string is a substring of its
- * run, so coalescing can only add a match.
- *
- * Each run comes back carrying the raw draws that spelled it as well, because
- * a figure is read off BOTH (`./figures`): a space the BUILD wrote inside one
- * draw groups the figure it sits in — this case's own reference sets a cost
- * that way — while a space the MERGE wrote between two draws groups nothing,
- * since the two figures either side of it were drawn apart.
- */
-async function readoutText(harness: Harness): Promise<FigureRun[]> {
-  return figureRuns(await harness.screenCalls());
-}
-
-/** What a line reads as, its runs laid out in the order they were drawn. */
-function reads(line: readonly FigureRun[]): string {
-  return line.map((run) => run.text).join(" ");
-}
-
-/** The readout line the named axis is drawn on, run by run. */
-function axisLine(draws: readonly FigureRun[], axis: string): FigureRun[] {
-  const named = draws.find((draw) => draw.text.toLowerCase().includes(axis));
-  if (named === undefined) {
-    fail(
-      `the run screen to name the ${axis} axis, so its target reads as that ` +
-        "axis's (specs/ui.md)",
-      `no run of drawn text carries "${axis}": ` +
-        `[${draws.map((draw) => draw.text.trim()).join(" | ")}]`,
-    );
-  }
-  return draws
-    .filter((draw) => Math.abs(draw.y - named.y) <= LINE_SLOP)
-    .sort((one, two) => one.x - two.x);
-}
 
 it("draws the live command's target on that axis's readout", async () => {
   await openSite(h, 0);
@@ -163,20 +118,27 @@ it("draws the live command's target on that axis's readout", async () => {
     "the target the slew's live command carries (specs/program.md)",
   );
 
-  const line = axisLine(await readoutText(h), "slew");
-  // Run by run rather than off the joined line, which is the same answer:
-  // no figure is read across two runs either way, because the space a join
-  // writes between them is not one the build drew.
-  const shown = figuresAcross(line).some(
-    (figure) => Math.abs(figure - SLEW_TARGET) <= FIGURE_TOL,
-  );
+  const calls = await h.screenCalls();
+  const readout = axisReadouts(calls).slew;
   await h.capture("run-target", "The live command target");
 
+  if (!readout.named) {
+    fail(
+      "the run screen to name the slew axis, so its target reads as that " +
+        "axis's (specs/ui.md)",
+      "no run of drawn text names it, in full or by its initial: " +
+        `[${everythingDrawn(calls)}]`,
+    );
+  }
+  const shown = readout.figures.some(
+    (figure) => Math.abs(figure - SLEW_TARGET) <= FIGURE_TOL,
+  );
   if (!shown) {
     fail(
       `the slew's live command target, ${SLEW_TARGET}, drawn on the slew's ` +
-        "own readout line (specs/ui.md)",
-      `that line reads "${reads(line).trim()}"`,
+        "own readout (specs/ui.md)",
+      `that readout reads [${readout.reads}] and carries ` +
+        `[${readout.figures.join(", ")}]`,
     );
   }
 });

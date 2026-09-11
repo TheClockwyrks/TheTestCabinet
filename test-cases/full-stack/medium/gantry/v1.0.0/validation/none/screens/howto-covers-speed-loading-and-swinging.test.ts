@@ -21,7 +21,9 @@
 // swings the bob on the pivot the trolley and the arm carry, so what the copy
 // owes a player is that a brisker command works the structure harder and swings
 // the load wider. Each is asked for as its own vocabulary — the structure, its
-// members, the crane; the swing — with no wording imposed on either.
+// members, the crane, and the FORCE specs/statics.md says every member carries;
+// the swing, and the PENDULUM specs/rigging.md calls it — with no wording
+// imposed on either.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
@@ -49,13 +51,20 @@ const CONSEQUENCES = [
       /\bmembers?\b/i,
       /\bcrane\b/i,
       /\bsteel\b/i,
+      /\bforces?\b/i,
       /\bstress/i,
       /\bstrain/i,
     ],
   },
   {
     topic: "the load swinging",
-    terms: [/\bswing/i, /\bswung\b/i, /\bsways?\b/i, /\bswaying\b/i],
+    terms: [
+      /\bswing/i,
+      /\bswung\b/i,
+      /\bsways?\b/i,
+      /\bswaying\b/i,
+      /\bpendulum\b/i,
+    ],
   },
 ];
 

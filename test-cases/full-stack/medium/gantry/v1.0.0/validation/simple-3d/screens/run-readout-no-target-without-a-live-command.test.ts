@@ -25,13 +25,16 @@
 // mid-run moves the pivot or the cable a whole unit between two ticks, and the
 // pendulum that follows (`specs/rigging.md`) snaps the cable and ends the run.
 //
-// EACH LINE IS THE ONE ITS AXIS IS NAMED ON, and the reading is of the WHOLE
-// line: a target drawn beside the value would put a second figure there, and
-// that is exactly what this refuses.
+// EACH READOUT IS THE ONE ITS AXIS'S NAME ANCHORS, and the reading is of the
+// WHOLE readout: a target drawn with the value would put a second figure there,
+// and that is exactly what this refuses. `./axis-readout` gathers a readout as
+// the figures nearest the axis's own name, so a build drawing the four axes as
+// four rows and one drawing them along a single line are read the same way —
+// each axis answering for its own figures and for no other axis's.
 
 import { afterEach, beforeEach, it } from "vitest";
 
-import { figureRuns, figuresAcross, type FigureRun } from "./figures";
+import { axisReadouts, everythingDrawn } from "./axis-readout";
 import { assertTrue, fail } from "../assert";
 import {
   GRIP_MAX_RATE,
@@ -88,9 +91,6 @@ const CARRY = 40;
 /** How far a drawn figure may sit from the value it reads: whole units. */
 const FIGURE_TOL = 0.5;
 
-/** Runs of text this far apart in `y` are on one line of the readout. */
-const LINE_SLOP = 10;
-
 let h: Harness;
 
 beforeEach(async () => {
@@ -100,49 +100,6 @@ beforeEach(async () => {
 afterEach(async () => {
   await h.dispose();
 });
-
-/**
- * Every run of text the frame the page last drew put on its readout layer.
- *
- * The runs are the LOGICAL ones the frame spells, each placed where its first
- * draw was, never the `fillText` split: a build that letter-spaces a label or
- * a figure draws a glyph per call, which is the only portable way to
- * letter-space canvas text, and a line assembled from those glyphs reads `1 2`
- * where the screen says `12`. `screenCalls` carries the measured geometry the
- * shared merge rule (`case-harness/text.ts`) needs to put side-by-side glyphs
- * on one baseline back together, and every raw string is a substring of its
- * run, so coalescing can only add a match.
- *
- * Each run comes back carrying the raw draws that spelled it as well, because
- * a figure is read off BOTH (`./figures`): a space the BUILD wrote inside one
- * draw groups the figure it sits in — this case's own reference sets a cost
- * that way — while a space the MERGE wrote between two draws groups nothing,
- * since the two figures either side of it were drawn apart.
- */
-async function readoutText(harness: Harness): Promise<FigureRun[]> {
-  return figureRuns(await harness.screenCalls());
-}
-
-/** What a line reads as, its runs laid out in the order they were drawn. */
-function reads(line: readonly FigureRun[]): string {
-  return line.map((run) => run.text).join(" ");
-}
-
-/** The readout line the named axis is drawn on, run by run. */
-function axisLine(draws: readonly FigureRun[], axis: string): FigureRun[] {
-  const named = draws.find((draw) => draw.text.toLowerCase().includes(axis));
-  if (named === undefined) {
-    fail(
-      `the run screen to name the ${axis} axis, so what is drawn beside it ` +
-        "reads as that axis's (specs/ui.md)",
-      `no run of drawn text carries "${axis}": ` +
-        `[${draws.map((draw) => draw.text.trim()).join(" | ")}]`,
-    );
-  }
-  return draws
-    .filter((draw) => Math.abs(draw.y - named.y) <= LINE_SLOP)
-    .sort((one, two) => one.x - two.x);
-}
 
 it("draws no target beside an axis carrying no live command", async () => {
   await openSite(h, 0);
@@ -171,17 +128,26 @@ it("draws no target beside an axis carrying no live command", async () => {
     );
   }
 
-  const draws = await readoutText(h);
+  const calls = await h.screenCalls();
+  const readouts = axisReadouts(calls);
   await h.capture("axis-readout", "The axis readouts with one command live");
 
   for (const axis of QUIET) {
     const value = state.run.axes[axis].value;
-    const line = axisLine(draws, axis);
-    // Every figure the line shows under EITHER reading (`./figures`) is a
+    const readout = readouts[axis];
+    if (!readout.named) {
+      fail(
+        `the run screen to name the ${axis} axis, so what is drawn beside it ` +
+          "reads as that axis's (specs/ui.md)",
+        "no run of drawn text names it, in full or by its initial: " +
+          `[${everythingDrawn(calls)}]`,
+      );
+    }
+    // Every figure the readout shows under EITHER reading (`./figures`) is a
     // figure this axis's readout draws, so a build that groups its figures
     // with a space is held to the same rule as one that groups with a comma:
     // a target no command set is a stray however the build sets it.
-    const stray = figuresAcross(line).filter(
+    const stray = readout.figures.filter(
       (figure) => Math.abs(figure - value) > FIGURE_TOL,
     );
     if (stray.length > 0) {
@@ -189,7 +155,7 @@ it("draws no target beside an axis carrying no live command", async () => {
         `the ${axis} axis's readout to carry its value, ` +
           `${value.toFixed(2)}, and no target: no command is live on it ` +
           "(specs/ui.md)",
-        `that line reads "${reads(line).trim()}", carrying ` +
+        `that readout reads [${readout.reads}], carrying ` +
           `[${stray.join(", ")}] besides`,
       );
     }

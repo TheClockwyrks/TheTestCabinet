@@ -18,24 +18,23 @@
 // THE READING IS TAKEN EARLY, while every axis is still a long way from its
 // target, so a screen that drew the four TARGETS and no value could not pass.
 //
-// EACH VALUE IS LOOKED FOR ON A LINE THAT NAMES ITS OWN AXIS rather than
-// anywhere on the screen. A readout that shows "each axis's value" names the axis
-// it belongs to, so a run of text carrying the axis's name fixes a line and the
-// figure has to be on one of those lines. That is what keeps one axis's value
-// from being read as another's, and it is why the tolerance below can be as loose
-// as a build rounding to whole units needs.
+// EACH VALUE IS LOOKED FOR ON ITS OWN AXIS'S READOUT rather than anywhere on the
+// screen. A readout that shows "each axis's value" says which axis it belongs to,
+// so the axis's own name anchors it and `./axis-readout` gathers the figures
+// nearest that name — which is what keeps one axis's value from being read as
+// another's, and why the tolerance below can be as loose as a build rounding to
+// whole units needs.
 //
-// EVERY LINE THAT NAMES THE AXIS IS CONSIDERED, not the first one drawn. A run
-// screen is free to draw more than one thing that names an axis — `specs/ui.md`
-// fixes the readouts it must carry and forbids nothing else, and a build that
-// also writes out the live step's commands names all four axes in that one line.
-// Taking the first would grade the order a build happens to draw its readouts in,
-// which no part of the specification fixes.
+// EVERY NAMING OF THE AXIS COUNTS, not the first one drawn. A run screen is free
+// to draw more than one thing that names an axis — `specs/ui.md` fixes the
+// readouts it must carry and forbids nothing else, and a build that also writes
+// out the live step's commands names all four axes in that one line. Taking the
+// first would grade the order a build happens to draw its readouts in, which no
+// part of the specification fixes.
 
 import { afterEach, beforeEach, it } from "vitest";
 
-import { drawnTextRuns, type TextDraw } from "../case-harness/text";
-import { drawnFigures, type DrawnFigure } from "./figures";
+import { AXES, axisReadouts, everythingDrawn } from "./axis-readout";
 import { assertTrue, fail } from "../assert";
 import {
   GRIP_MAX_RATE,
@@ -51,13 +50,9 @@ import {
   runTicks,
   standMinimalCrane,
   startRun,
-  type AxisName,
   type Harness,
   type TapeStepSpec,
 } from "../harness";
-
-/** The four axes `specs/program.md` tabulates, in that order. */
-const AXES: readonly AxisName[] = ["slew", "trolley", "hoist", "grip"];
 
 /**
  * One move step commanding all four axes, each a long way off.
@@ -92,9 +87,6 @@ const SETTLE = 30;
  */
 const FIGURE_TOL = 0.5;
 
-/** Runs of text this far apart in `y` are on one line of the readout. */
-const LINE_SLOP = 10;
-
 let h: Harness;
 
 beforeEach(async () => {
@@ -104,81 +96,6 @@ beforeEach(async () => {
 afterEach(async () => {
   await h.dispose();
 });
-
-/**
- * What the frame the page last drew put on its readout layer: the runs of text
- * it spells, and the figures those runs show.
- *
- * The runs are the LOGICAL ones the frame spells, each placed where its first
- * draw was, never the `fillText` split: a build that letter-spaces a label or
- * a figure draws a glyph per call, which is the only portable way to
- * letter-space canvas text, and a line assembled from those glyphs reads `1 2`
- * where the screen says `12`. `screenCalls` carries the measured geometry the
- * shared merge rule (`case-harness/text.ts`) needs to put side-by-side glyphs
- * on one baseline back together, and every raw string is a substring of its
- * run, so coalescing can only add a match.
- *
- * The FIGURES come off the same operations through `./figures`, this
- * directory's one reading of a number, which reads the merged runs and the raw
- * draws they were coalesced from together — so a figure a build grouped with a
- * plain space inside one `fillText` reads as the figure, while the space the
- * merge itself writes between two draws still separates two of them. Every
- * figure keeps the run it was read inside, which is what puts it on a baseline
- * and so on one axis's readout line rather than loose on the screen.
- */
-interface ReadoutReading {
-  /** Every logical run the frame spelled, placed where it was drawn. */
-  readonly runs: TextDraw[];
-  /** Every figure those runs show, each carrying its run. */
-  readonly figures: DrawnFigure[];
-}
-
-async function readoutText(harness: Harness): Promise<ReadoutReading> {
-  const calls = await harness.screenCalls();
-  return { runs: drawnTextRuns(calls), figures: drawnFigures(calls) };
-}
-
-/** One readout line: everything drawn on a baseline, and the figures on it. */
-interface AxisLine {
-  /** The runs on that baseline, left to right, joined with a space each.
-   *
-   * Joined only to be READ BACK in a failure message and to be searched for the
-   * axis's name — never for its figures, which come off `./figures` and so are
-   * never fused across the space this join writes.
-   */
-  readonly text: string;
-  /** Every figure drawn on that baseline. */
-  readonly figures: number[];
-}
-
-/** Every readout line the axis's name is drawn on. */
-function axisLines(read: ReadoutReading, axis: AxisName): AxisLine[] {
-  const named = read.runs.filter((draw) =>
-    draw.text.toLowerCase().includes(axis),
-  );
-  if (named.length === 0) {
-    fail(
-      `the run screen to name the ${axis} axis, so its value reads as that ` +
-        "axis's (specs/ui.md)",
-      `no run of drawn text carries "${axis}": ` +
-        `[${read.runs.map((draw) => draw.text.trim()).join(" | ")}]`,
-    );
-  }
-  const lines = new Map<number, AxisLine>();
-  for (const anchor of named) {
-    lines.set(Math.round(anchor.y), {
-      text: read.runs
-        .filter((draw) => Math.abs(draw.y - anchor.y) <= LINE_SLOP)
-        .sort((one, two) => one.x - two.x)
-        .map((draw) => draw.text)
-        .join(" "),
-      figures: read.figures
-        .filter((figure) => Math.abs(figure.run.y - anchor.y) <= LINE_SLOP)
-        .map((figure) => figure.value),
-    });
-  }
-  return [...lines.values()];
-}
 
 it("draws every one of the four axes' values on the run screen", async () => {
   await openSite(h, 0);
@@ -194,21 +111,30 @@ it("draws every one of the four axes' values on the run screen", async () => {
       `specs/ui.md lists (screen "${state.screen}", run "${state.run.phase}")`,
   );
 
-  const draws = await readoutText(h);
+  const calls = await h.screenCalls();
+  const readouts = axisReadouts(calls);
   await h.capture("run-axes", "The four axis values");
 
   for (const axis of AXES) {
     const value = state.run.axes[axis].value;
-    const lines = axisLines(draws, axis);
-    const shown = lines.some((line) =>
-      line.figures.some((figure) => Math.abs(figure - value) <= FIGURE_TOL),
+    const readout = readouts[axis];
+    if (!readout.named) {
+      fail(
+        `the run screen to name the ${axis} axis, so its value reads as that ` +
+          "axis's (specs/ui.md)",
+        "no run of drawn text names it, in full or by its initial: " +
+          `[${everythingDrawn(calls)}]`,
+      );
+    }
+    const shown = readout.figures.some(
+      (figure) => Math.abs(figure - value) <= FIGURE_TOL,
     );
     if (!shown) {
       fail(
-        `the ${axis} axis's value, ${value.toFixed(2)}, drawn on a readout ` +
-          "line that names that axis (specs/ui.md)",
-        `the ${lines.length} line(s) naming it read ` +
-          `[${lines.map((line) => line.text.trim()).join(" | ")}]`,
+        `the ${axis} axis's value, ${value.toFixed(2)}, drawn on the readout ` +
+          "its own name anchors (specs/ui.md)",
+        `that readout reads [${readout.reads}] and carries ` +
+          `[${readout.figures.join(", ")}]`,
       );
     }
   }

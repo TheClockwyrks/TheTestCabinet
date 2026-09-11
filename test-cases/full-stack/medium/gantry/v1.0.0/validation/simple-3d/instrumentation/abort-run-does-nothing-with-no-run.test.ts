@@ -1,13 +1,18 @@
 // instrumentation/abort-run-does-nothing-with-no-run — abortRun outside a run in
 // progress changes nothing.
 //
-// `specs/instrumentation.md` § The run and the screens: "`startRun` applies on
-// the build and program screens, where the `run` action does, and `abortRun`
-// while a run is in progress", over the rule three paragraphs above it — "Each
-// pose applies on the screens its section names and does nothing on any other,
-// exactly as the control it stands for does." So a call with no run in progress
-// is inert, and the two ways to have no run in progress are the two halves of
-// this check: an idle run, and a run that has already ended.
+// `specs/instrumentation.md` § The run and the screens states it outright:
+// "`abortRun` WITH NO RUN IN PROGRESS HAS NO ABORT TO POSE AND DOES NOTHING AT
+// ALL: a run already idle stays idle, a run that has ended keeps its phase, its
+// cause, its clock and its broken list, and the screen stays exactly where it
+// was." That follows from what the pose IS — "`startRun` and `abortRun` do move
+// the screen, because each poses a player's ACT rather than a state transition
+// … `abortRun` is the abort, and each takes the screen its act takes" — so the
+// build screen the operation's own row returns to is the screen the ABORT takes,
+// and with nothing to abort there is no act and no screen to take.
+//
+// The two ways to have no run in progress are the two halves of this check: an
+// idle run, and a run that has already ended.
 //
 // The second half needs a run that has genuinely ended, so the tape's one move
 // commands the hoist past `HOIST_MAX` (`40`). `specs/program.md`: "A step whose
@@ -98,8 +103,9 @@ it("leaves the screen and the run as they stand when no run is in progress", asy
   assertEqual(
     afterEnded.screen,
     "run",
-    "the screen abortRun leaves on a run that has already ended, a failed run " +
-      "staying on the run screen (specs/program.md)",
+    "the screen abortRun leaves on a run that has already ended: with no run " +
+      "in progress it has no abort to pose and takes no screen, and a failed " +
+      "run stays on the run screen (specs/instrumentation.md, specs/ui.md)",
   );
   assertEqual(
     afterEnded.run.phase,

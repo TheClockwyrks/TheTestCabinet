@@ -53,11 +53,12 @@ import { runStarting } from "./reading";
 // walked raw, below: that is a comparison of marks and styles between two
 // readings of one row, not a reading of copy, and it is not a package reader.
 
-/** One row of the list: the axis the rows run along, and the band it occupies. */
+/** One row of the list: where its name was drawn, and the band it occupies. */
 interface Row {
-  readonly axis: "x" | "y";
-  readonly at: number;
-  readonly half: number;
+  readonly at: { readonly x: number; readonly y: number };
+  /** Half the gap to the next row on each axis; `Infinity` where rows do not
+   * differ on that axis at all, which is a list rather than a grid. */
+  readonly half: { readonly x: number; readonly y: number };
 }
 
 /**
@@ -69,6 +70,15 @@ interface Row {
  * its name and is as wide as half the gap to its neighbours, which reads a list
  * laid out down the stage or across it and holds the list's own heading and
  * footer outside every band.
+ *
+ * A GRID IS A LIST TOO. `specs/ui.md` fixes that the six sites are listed in
+ * order and nothing about how they are arranged, so a build is free to set them
+ * out two columns by three — and then no single axis tells the six names apart,
+ * three of them sharing each column and two each row. The one axis is tried
+ * first, which is what a list down the stage or across it reads as; only where
+ * it leaves two names in one band is the other axis brought in, and then a row
+ * is the cell where the two bands cross. Six names in one place is the only
+ * arrangement left with no rows in it, and that is what the failure below says.
  */
 function siteRows(order: readonly TextDraw[]): Row[] {
   const anchors = SITE_NAMES.map((name, index) => {
@@ -84,28 +94,52 @@ function siteRows(order: readonly TextDraw[]): Row[] {
   });
   const spread = (values: number[]): number =>
     Math.max(...values) - Math.min(...values);
-  const axis: "x" | "y" =
-    spread(anchors.map((a) => a.y)) >= spread(anchors.map((a) => a.x))
-      ? "y"
-      : "x";
-  const along = anchors.map((a) => (axis === "y" ? a.y : a.x));
+  const gapAlong = (values: number[]): number => {
+    const sorted = [...values].sort((p, q) => p - q);
+    let gap = Number.POSITIVE_INFINITY;
+    for (let i = 1; i < sorted.length; i += 1) {
+      const apart = sorted[i]! - sorted[i - 1]!;
+      if (apart > 0) gap = Math.min(gap, apart);
+    }
+    return gap;
+  };
+  const xs = anchors.map((a) => a.x);
+  const ys = anchors.map((a) => a.y);
+  // The one axis first: the one the names are most spread along, which is the
+  // list read down the stage or across it. Its band is half the gap between
+  // neighbouring names, and where that gap is positive for every pair the
+  // reading is the list's, with nothing bounding the row's own width.
+  const alone: "x" | "y" = spread(ys) >= spread(xs) ? "y" : "x";
+  const along = alone === "y" ? ys : xs;
   const sorted = [...along].sort((p, q) => p - q);
-  let gap = Number.POSITIVE_INFINITY;
+  let least = Number.POSITIVE_INFINITY;
   for (let i = 1; i < sorted.length; i += 1) {
-    gap = Math.min(gap, sorted[i]! - sorted[i - 1]!);
+    least = Math.min(least, sorted[i]! - sorted[i - 1]!);
   }
-  if (!(gap > 0) || !Number.isFinite(gap)) {
+  const half =
+    least > 0 && Number.isFinite(least)
+      ? {
+          x: alone === "x" ? least / 2 : Number.POSITIVE_INFINITY,
+          y: alone === "y" ? least / 2 : Number.POSITIVE_INFINITY,
+        }
+      : { x: gapAlong(xs) / 2, y: gapAlong(ys) / 2 };
+  // Neither axis bounding a row is six names in one place: nothing separates
+  // them, so there are no rows to read.
+  if (!Number.isFinite(half.x) && !Number.isFinite(half.y)) {
     fail(
       "the six sites listed one row apart (specs/ui.md)",
       "two rows' names were drawn at the same place",
     );
   }
-  return along.map((a) => ({ axis, at: a, half: gap / 2 }));
+  return anchors.map((a) => ({ at: { x: a.x, y: a.y }, half }));
 }
 
 /** Whether something drawn at `p` belongs to `row`. */
 function inRow(row: Row, p: { x: number; y: number }): boolean {
-  return Math.abs((row.axis === "y" ? p.y : p.x) - row.at) <= row.half;
+  return (
+    Math.abs(p.x - row.at.x) <= row.half.x &&
+    Math.abs(p.y - row.at.y) <= row.half.y
+  );
 }
 
 /* ---- What one row draws --------------------------------------------------- */
@@ -212,12 +246,12 @@ function rowMarks(
       if (text === "") continue;
     }
     last = index;
+    // Placed against the row's OWN name, on both axes, so two rows' marks
+    // compare wherever a build put the rows — down the stage, across it, or in
+    // a grid. In a list every row's names share a coordinate, so taking the
+    // difference on that axis too shifts every row alike and compares the same.
     const where = points
-      .map((p) =>
-        row.axis === "y"
-          ? `${round(p.x)},${round(p.y - row.at)}`
-          : `${round(p.x - row.at)},${round(p.y)}`,
-      )
+      .map((p) => `${round(p.x - row.at.x)},${round(p.y - row.at.y)}`)
       .join(" ");
     const set = props.map((p) => `${p}=${String(style.get(p))}`).join(";");
     marks[index]!.push(`${method}|${text ?? ""}|${where}|${set}`);

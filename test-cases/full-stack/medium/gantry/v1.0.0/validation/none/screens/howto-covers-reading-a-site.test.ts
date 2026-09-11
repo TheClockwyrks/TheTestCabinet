@@ -7,19 +7,33 @@
 // WHAT A SITE IS is fixed by specs/sites.md, which opens "This file is
 // authoritative for every site: the build envelope, the anchors, the budget, the
 // loads, the obstacles, and the par figures the results screen shows". Reading a
-// site is reading those, so the copy is asked to name the ones a player acts on
-// while building and running: the anchors the crane is fixed to, the budget the
-// cost is held against, and the loads with the pads they have to reach.
+// site is reading those — and specs/ui.md FIXES NO LIST, it says "reading a site"
+// and stops. So every item below is one this check chose, and what it chose is
+// the least the copy can leave out and still have explained the job a site sets:
+// what the crane is fixed to (the anchors), what has to be moved (the loads), and
+// where it has to go (the pads they reach).
 //
-// THE BUILD ENVELOPE IS DELIBERATELY NOT ASKED FOR. specs/ui.md says only
-// "reading a site" and fixes no list, and while the envelope is one of a site's
-// figures it is also the one a player meets as a drawn aid on the build screen
-// rather than as a word — so requiring the word would be this check inventing a
-// requirement rather than reading one.
+// THE OTHER THREE ARE LEFT OUT, EACH ON ITS OWN TERMS, said item by item so this
+// is not one rule for the items a build happened to name and another for the one
+// it missed:
+//
+//   - THE BUILD ENVELOPE and THE BUDGET are limits on what may be BUILT rather
+//     than the job the site sets. A player meets the envelope as a drawn aid in
+//     the yard and the budget as a figure on the build readout — specs/ui.md
+//     § Build shows "the cost against the budget" — and the copy explains both
+//     wherever it explains the tools and what they cost.
+//   - THE OBSTACLES are in the yard, but a site may have none at all
+//     (specs/sites.md, Site 1: "No obstacles."), so copy that never says the word
+//     has still explained how to read a site.
+//   - THE PAR FIGURES are shown beside a clear's score on the results screen and
+//     "gate nothing" (specs/sites.md).
+//
+// Requiring any of those words HERE would be this check inventing a requirement
+// rather than reading one.
 //
 // The whole of the copy is searched rather than one section of it: how the
-// explanation is divided up is the build's, and a build that covered the budget
-// under its building section has explained the budget.
+// explanation is divided up is the build's, and a build that covered the pads
+// under its setting-down section has explained the pads.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
@@ -31,10 +45,6 @@ const TOPICS = [
   {
     topic: "the anchors",
     terms: [/\banchors?\b/i, /\banchored\b/i, /\bmounts?\b/i, /\bfootings?\b/i],
-  },
-  {
-    topic: "the budget",
-    terms: [/\bbudgets?\b/i, /\ballowance\b/i, /\bspend\b/i],
   },
   { topic: "the loads", terms: [/\bloads?\b/i] },
   {
@@ -106,7 +116,7 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("names the anchors, the budget, and the loads and their pads", async () => {
+it("names the anchors, and the loads and their pads", async () => {
   const copy = await howtoCopy(h);
   await h.capture("howto-site", "The how-to copy on reading a site");
 
@@ -119,7 +129,7 @@ it("names the anchors, the budget, and the loads and their pads", async () => {
   assertEqual(
     unnamed(copy, TOPICS),
     "",
-    "what the how-to copy leaves unnamed of the anchors, the budget, and the " +
-      "loads and their pads (specs/ui.md, specs/sites.md)",
+    "what the how-to copy leaves unnamed of the anchors, and the loads and " +
+      "their pads (specs/ui.md, specs/sites.md)",
   );
 });
