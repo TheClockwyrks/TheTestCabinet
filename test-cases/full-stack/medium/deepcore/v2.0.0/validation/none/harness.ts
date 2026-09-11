@@ -92,11 +92,14 @@ import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   ConstantClock,
+  clusterPoints,
   createCaseHarness,
+  meanOf,
   sampleColor as sampleColorOf,
   type Clock,
   type Harness as BaseHarness,
   type HarnessOptions,
+  type Point,
   type Rgb,
   type UntilOptions,
   type UntilResult as BaseUntilResult,
@@ -1420,6 +1423,58 @@ export async function sampleCell(
   const centre = cellCenter(col, row);
   const at = worldToStage(snapshot, centre.x, centre.y);
   return sampleColor(h, at.x, at.y);
+}
+
+/**
+ * How far from a cell's centre {@link sampleCellInterior}'s grid of samples
+ * reaches, in logical units.
+ *
+ * Thirty of the tile's forty, so the outermost sample and the
+ * {@link SAMPLE_RADIUS} cluster spread about it stay four units inside the cell's
+ * edge and read that cell rather than its neighbour.
+ */
+const INTERIOR_REACH = 30;
+
+/** How far apart the samples of that grid sit, in logical units. */
+const INTERIOR_STEP = 6;
+
+/** How many points one colour sample is averaged over. */
+const CLUSTER_POINTS = clusterPoints(0, 0, SAMPLE_RADIUS).length;
+
+/**
+ * A WORLD cell's whole interior, sampled on a fixed grid, through the camera the
+ * snapshot reports.
+ *
+ * What {@link sampleCell} is to a check about the cell's BODY, this is to a check
+ * about whether something was drawn INSIDE one. The specification lets a build
+ * lay such a thing where it likes within the cell — an ore smear feathers into
+ * the rock and leaves band rock showing through — so a reading taken only at the
+ * middle can miss a drawing that is plainly there. Two of these are compared
+ * point by point, in the order the grid is walked.
+ *
+ * The whole grid in ONE crossing into the page: a cluster for every point of it
+ * goes over together, and the means are taken back here.
+ */
+export async function sampleCellInterior(
+  h: Harness,
+  snapshot: DeepcoreSnapshot,
+  col: number,
+  row: number,
+): Promise<Rgb[]> {
+  const centre = cellCenter(col, row);
+  const points: Point[] = [];
+  for (let dy = -INTERIOR_REACH; dy <= INTERIOR_REACH; dy += INTERIOR_STEP) {
+    for (let dx = -INTERIOR_REACH; dx <= INTERIOR_REACH; dx += INTERIOR_STEP) {
+      const at = worldToStage(snapshot, centre.x + dx, centre.y + dy);
+      points.push(...clusterPoints(at.x, at.y, SAMPLE_RADIUS));
+    }
+  }
+  const read = await h.pixels(points);
+  const colors: Rgb[] = [];
+  for (let at = 0; at < read.length; at += CLUSTER_POINTS) {
+    colors.push(meanOf(read.slice(at, at + CLUSTER_POINTS)));
+  }
+  return colors;
 }
 
 /* -------------------------------------------------------------------------- */
