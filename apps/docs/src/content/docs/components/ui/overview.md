@@ -120,6 +120,27 @@ read the artifact, arena, snapshot, and Grafana URLs the backend reports from
 `GET /config`. Both consoles mount these transports. The desktop app supplies
 its own arena transport, because its arena runs in-process.
 
+## Immutable asset caching
+
+A produced run's artifacts do not change once created, so the app resolves each
+by URL through a process-wide cache that survives a component unmounting.
+Leaving a view and returning to it re-reads the cache rather than the network,
+and a cache hit renders without a loading state. A failed fetch is evicted from
+the cache so it is retried.
+
+## Loading, absence and failure
+
+A surface shows a loading state while its data is in flight, and names an entity
+as not found once the read has settled without it. A read that failed is
+reported as a failure, distinct from both.
+
+## Numeric fields
+
+A form's numeric input holds what the operator typed, including nothing at all,
+so a value is replaced by clearing the field and typing. The form reports an
+empty or out-of-range field as invalid and refuses to submit it, and the backend
+validates the same bounds.
+
 ## Submit outcomes
 
 Every save, launch and publish reports its outcome, covering the failure that

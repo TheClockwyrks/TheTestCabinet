@@ -16,8 +16,10 @@ A comparison is a set of configurations run against one held-constant test. The
 stored shape is `ComparisonConfig` (`crates/core/src/comparison.rs`).
 
 The controls, held constant across all arms, are the test case slug, version,
-and variant, the [orchestrator](/orchestrators/overview/), and an optional
-pinned container build.
+and variant, the [engine](/engines/overview/), the
+[orchestrator](/orchestrators/overview/), and an optional pinned container
+build. The operator selects the engine from the engines the anchored version
+supports, and every arm's runs are launched under it.
 
 Each arm is one configuration:
 
@@ -32,7 +34,9 @@ model comparison, all in the same experiment type.
 
 Each arm is run `N` times. Multiple runs are mandatory, because [the spread
 across runs is large](/comparisons/statistics/). The operator picks `N`, and
-every view carries an arm's observed count beside its desired one.
+every view carries an arm's observed count beside its desired one. The backend
+validates `N` as at least 1 and at most 50, and a comparison carries at least
+two arms.
 
 ### Per-arm model selection
 
@@ -64,7 +68,9 @@ classes and cost fields.
 
 A comparison reuses the existing launch paths rather than adding a run queue of
 its own. Its "trigger missing runs" action tops each arm up to `N`, counting off
-the run ids the arm already records.
+the runs the arm records that still exist. The arm's recorded run ids are pruned
+of runs that no longer exist, so a run deleted after it was launched is
+triggered again.
 
 - A harness arm launches through the shared batch path, `launchBatch()` →
   `POST /jobs/batch` (`packages/ui/src/app/pages/runs/launchBatch.ts`), with the
@@ -95,6 +101,9 @@ The endpoints are per-account, attributed to the bearer token's account:
 - `GET /comparisons` and `POST /comparisons`
 - `GET`, `PUT`, and `DELETE` on `/comparisons/{id}`
 - `POST /comparisons/{id}/publish`
+
+A comparison is deleted from the console's comparison list and detail pages,
+through the shared [confirmation dialog](/components/ui/overview/#dialogs).
 
 ## Automated-only scoring
 

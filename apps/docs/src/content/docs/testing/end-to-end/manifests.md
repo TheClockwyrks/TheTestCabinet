@@ -549,8 +549,9 @@ recorded number.
 
 The case's build config must write both files. `reporters: ["default", "json"]`
 with `outputFile: { json: "coverage/test-report.json" }` produces the run's
-results: the totals, a row per test file, and each failure with its message.
-Coverage declared as `provider: "istanbul"` with
+results: the totals, a row per test file, each failure with its message, and the
+individual tests the runner reported, each with its name, the file it came from,
+its status, and its duration. Coverage declared as `provider: "istanbul"` with
 `reporter: ["json-summary"]` produces `coverage/coverage-summary.json`, which
 carries istanbul's four metrics for the whole measured source and per file.
 `reportOnFailure: true` is what makes a failing suite write its coverage at all.
@@ -570,10 +571,10 @@ own linter, so the seeded specs stay as the case authored them.
 
 The toolchain stage reads both files after the command finishes and whatever it
 exited with, because a failing suite is the one whose coverage is most worth
-having. What is recorded is bounded: per-file rows are capped and flagged when
-they are cut, and every failure message has its stack frames stripped and its
-length capped, since frames carry host paths that mean nothing on a published
-record.
+having. What is recorded is bounded: per-file rows and per-test entries are
+capped and flagged when they are cut, and every failure message has its stack
+frames stripped and its length capped, since frames carry host paths that mean
+nothing on a published record.
 
 A case whose configuration writes no report files records no figures. Absence
 means not reported, which a console renders as no widget rather than an empty

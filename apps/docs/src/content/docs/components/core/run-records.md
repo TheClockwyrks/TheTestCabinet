@@ -210,6 +210,37 @@ before its driver noticed the kill is not destroyed, but it still records
 nothing: the backend accepts no terminal status on a canceled job other than a
 driver's `canceled` acknowledgement, so the record it posts is turned away.
 
+#### Failure detail style
+
+A failure detail reports the error, not the error handling. It is one terse
+declarative clause that reads on its own, naming its own subject rather than
+borrowing one from the caller that wraps it. Exactly one layer supplies the
+verb that claims the failure: a wrapping layer names the stage it was running
+and leaves that verb to the layer inside it, as in `run failed: collecting run
+artifacts: {detail}`, and a layer that wraps nothing keeps the verb itself, as
+in `seeding {dest} in run pod {pod} failed: {detail}`.
+
+Parentheses carry figures and a bare inner clause, and a colon introduces a
+nested message that is itself a sentence. The subsystem word is carried wherever
+the slug alone leaves the failing part ambiguous, and the slug stands alone
+where the rest of the clause already names the subsystem, as in `gg execution
+ceiling hit`.
+
+Every figure the failure carries is kept, covering limits, thresholds, observed
+values, ids, exit codes, statuses, environment variable names, config keys, file
+paths, and the command that resolves the condition. `set TCAB_CONTAINER_RUNTIME
+to override` is data about the error and stays, while `stopping rather than
+spending the rest of the run on the same failure` narrates the handling and is
+dropped. A message carries at least one figure, and when the inner layer
+supplies none the outer layer contributes the ones it holds, such as an exit
+code or a terminal status. Where one function renders several variants of a
+single condition, covering ceilings on turns, runtime, spend, error rate, and
+consecutive errors, the variants share one grammar and each names both the
+observed value and the configured limit.
+
+A gg execution-ceiling stop reads `run failed: gg execution ceiling hit (5
+consecutive turns failed)`.
+
 ### Recorded context
 
 - The seed commit: the hash of the single commit made after the specs, assets,

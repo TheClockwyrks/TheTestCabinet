@@ -146,8 +146,8 @@ turning a rate down, still records.
 
 ```
 particle-3d: this system would hold about 35200 particles alive at once, over the
-10000-particle budget an effect has to fit in (every consumer simulates the system
-live, every frame). ...
+10000-particle budget; lower --rate, --lifetime, or --burst, including any
+sub-emitter child's --burst
 
 What the system spends its particles on:
   flood                ~32000 live
