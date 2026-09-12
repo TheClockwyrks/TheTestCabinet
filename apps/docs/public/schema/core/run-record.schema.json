@@ -2272,6 +2272,30 @@
       "required": ["install", "typecheck"],
       "type": "object"
     },
+    "ToolchainTest": {
+      "description": "One test the runner reported, named and timed.\n\nThe per-file rows say how many tests a file passed and failed; these say which\ntests those were. Counts and the first ten failures cannot show a reader the suite\nitself — which tests a build wrote, which of them it skipped, and which one took a\nsecond and a half.",
+      "properties": {
+        "durationMs": {
+          "description": "How long it took, in milliseconds, when the runner timed it. Absent when it\nreported no duration, which is the ordinary case for a test that never ran:\nabsence is *not timed*, never zero.",
+          "format": "double",
+          "type": ["number", "null"]
+        },
+        "file": {
+          "description": "The test file's repo-relative path, forward slashed: the\n[`path`](ToolchainTestFile::path) of the row this test is counted in.",
+          "type": "string"
+        },
+        "name": {
+          "description": "The test's full name — its `describe` chain and its own title, as the reporter\njoined them; its bare title when it has no chain.",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/ToolchainTestStatus",
+          "description": "What the runner decided about it."
+        }
+      },
+      "required": ["file", "name", "status"],
+      "type": "object"
+    },
     "ToolchainTestFailure": {
       "description": "One failing test, named and explained.",
       "properties": {
@@ -2357,6 +2381,26 @@
       "required": ["result"],
       "type": "object"
     },
+    "ToolchainTestStatus": {
+      "description": "What the runner decided about one test.\n\nThe three states the reporter's own statuses collapse to. `skipped`, `pending` and\n`todo` are one state seen from three spellings — a test the runner declined to\ndecide — and they are held together here exactly as [`ToolchainTestFile::skipped`]\ncounts them together.",
+      "oneOf": [
+        {
+          "const": "passed",
+          "description": "The test ran and passed.",
+          "type": "string"
+        },
+        {
+          "const": "failed",
+          "description": "The test ran and failed. Why it failed is on the matching\n[`ToolchainTestFailure`], when it is among the first\n[`TOOLCHAIN_TEST_FAILURE_LIMIT`].",
+          "type": "string"
+        },
+        {
+          "const": "skipped",
+          "description": "The test did not run: skipped, pending or todo.",
+          "type": "string"
+        }
+      ]
+    },
     "ToolchainTests": {
       "description": "What the runner reported, read from [`TOOLCHAIN_TEST_REPORT_PATH`].\n\nPresent only when that file was written and parsed. A suite that ran and found no\ntests reports zeroes here — that is a figure the runner actually produced, and it\nis exactly the signal that a build shipped no tests. The difference between \"no\ntests\" and \"not reported\" is the difference between this block being present with\nzeroes and being absent.",
       "properties": {
@@ -2416,6 +2460,17 @@
           "description": "Whether the runner called the whole invocation a success.",
           "type": "boolean"
         },
+        "tests": {
+          "description": "The first [`TOOLCHAIN_TEST_ENTRY_LIMIT`] tests the runner reported, in its own\norder: file by file as the report lists them and, within a file, the order they\nran in. A prefix of that order rather than a sample of it, so two reads of one\nreport retain the same entries. The order is the reporter's rather than the\npath sort [`files`](Self::files) is in, because a suite reads as the runner ran\nit.",
+          "items": {
+            "$ref": "#/$defs/ToolchainTest"
+          },
+          "type": "array"
+        },
+        "testsTruncated": {
+          "description": "Whether [`tests`](Self::tests) was cut short by the cap.\n[`total`](Self::total) is always the true count regardless.",
+          "type": "boolean"
+        },
         "total": {
           "description": "Every test the runner ran, in every file.",
           "format": "uint32",
@@ -2434,7 +2489,9 @@
         "files",
         "filesTruncated",
         "failures",
-        "failuresTruncated"
+        "failuresTruncated",
+        "tests",
+        "testsTruncated"
       ],
       "type": "object"
     },

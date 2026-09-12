@@ -354,14 +354,12 @@ fn detect_runtime() -> Result<Runtime, String> {
 
     Err(
         if find_on_path("podman").is_some() || find_on_path("docker").is_some() {
-            "A container runtime is installed but not running. The Test Cabinet stands its \
-         services up on a local cluster, which needs a running Docker- or \
-         Podman-compatible runtime. Start it and try again."
+            "A container runtime is installed but not running; the local cluster needs a \
+         running Docker- or Podman-compatible runtime."
                 .to_string()
         } else {
-            "No container runtime found. The Test Cabinet stands its services up on a local \
-         cluster, which needs Docker or Podman installed and running. Install one, start \
-         it, and try again."
+            "No container runtime found; the local cluster needs Docker or Podman \
+         installed and running."
                 .to_string()
         },
     )
@@ -383,12 +381,10 @@ fn runtime_running(binary: &str) -> bool {
 
 /// The error shown when the only running runtime is a rootless Podman machine, which
 /// can't run k3s. Names the underlying cgroup failure so it's recognizable.
-const ROOTLESS_PODMAN_MESSAGE: &str = "Podman is running, but its machine is rootless — \
-    k3s can't start there (its server node fails with \"failed to find cpuset cgroup \
-    (v2)\", because rootless cgroup v2 delegation withholds the cpuset controller). Make \
-    the machine rootful: run `podman machine stop && podman machine set --rootful && \
-    podman machine start`, then try again. (Or start a Docker-compatible runtime, or set \
-    TCAB_CONTAINER_RUNTIME to force a specific one.)";
+const ROOTLESS_PODMAN_MESSAGE: &str = "Podman's machine is rootless, and k3s fails there \
+    with \"failed to find cpuset cgroup (v2)\". Make the machine rootful: `podman machine \
+    stop && podman machine set --rootful && podman machine start`, or start a \
+    Docker-compatible runtime, or set TCAB_CONTAINER_RUNTIME to force one.";
 
 /// The `DOCKER_HOST` value that points k3d at Podman's API socket. Returns `None`
 /// when the environment already sets `DOCKER_HOST` (respect it) or no socket can be
@@ -784,9 +780,7 @@ fn start_forwards(app: &AppHandle, kubeconfig: &Path) -> Result<(), String> {
     for (service, port) in FORWARDS {
         if port_in_use(*port) {
             return Err(format!(
-                "local port {port} (the {service} forward) is already in use{}. Another \
-                 process holds it — an editor's automatic port-forwarding is a common \
-                 culprit — so free the port and try again.",
+                "local port {port} (the {service} forward) is already in use{}",
                 port_occupant_hint(*port),
             ));
         }

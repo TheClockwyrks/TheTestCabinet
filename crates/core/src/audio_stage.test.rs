@@ -463,7 +463,7 @@ fn an_asset_generation_case_is_staged_only_its_binarys_kind_of_pack() {
     .expect_err("a music case is not staged a sample pack");
     assert_eq!(
         err.to_string(),
-        "failed to seed run repository: audio pack `combat-core@0.1.0` is a sample-pack; \
+        "seeding the run repository: audio pack `combat-core@0.1.0` is a sample-pack; \
          a `music` case declares an instrument-bank",
     );
 
@@ -475,7 +475,7 @@ fn an_asset_generation_case_is_staged_only_its_binarys_kind_of_pack() {
     .expect_err("an sfx-sample case is not staged an instrument bank");
     assert_eq!(
         err.to_string(),
-        "failed to seed run repository: audio pack `gm-lite@0.1.0` is an instrument-bank; \
+        "seeding the run repository: audio pack `gm-lite@0.1.0` is an instrument-bank; \
          a `sfx-sample` case declares a sample-pack",
     );
 

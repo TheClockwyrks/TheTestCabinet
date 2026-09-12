@@ -107,7 +107,7 @@ pub enum ForfeitReason {
     #[error("{0}")]
     Invoke(#[source] InvokeError),
     /// The JSON parsed but was not a contract-valid action for the team.
-    #[error("returned a contract-invalid action: {0}")]
+    #[error("controller returned a contract-invalid action: {0}")]
     Contract(#[source] ContractError),
 }
 

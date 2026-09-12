@@ -713,9 +713,9 @@ fn stage_project(project: &Path, dest: &Path) -> Result<(), String> {
 fn stage_case_harness(dest: &Path) -> Result<(), String> {
     let source = case_harness_source().ok_or_else(|| {
         format!(
-            "the shared validator harness `{CASE_HARNESS_PACKAGE}` was not found in the package \
-             store at `{}` — the driver image bakes it there; for a local checkout run \
-             `node scripts/stage-tcab-packages.mjs` or point `TCAB_PACKAGE_STORE` at a staged copy",
+            "shared validator harness `{CASE_HARNESS_PACKAGE}` not found in the package store \
+             at `{}`; run `node scripts/stage-tcab-packages.mjs` or point \
+             `TCAB_PACKAGE_STORE` at a staged copy",
             crate::seeding::package_store_dir().display(),
         )
     })?;
@@ -907,8 +907,7 @@ fn run_bounded(
         if Instant::now() >= deadline {
             stop(&mut child);
             return Err(RunnerFailure::timed_out(format!(
-                "the {tag} step exceeded the {} second cap and was stopped, so the \
-                 validators decided nothing about this build",
+                "the {tag} step exceeded its {}s cap",
                 timeout.as_secs(),
             )));
         }

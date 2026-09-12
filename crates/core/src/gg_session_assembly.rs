@@ -169,9 +169,7 @@ pub fn assemble_journal_to_gz(journal: &Path, output: &Path) -> Result<GgSession
                         journal,
                         format!(
                             "is in journal format {format_version}, which this build does not \
-                             assemble (it writes {GG_SESSION_FORMAT_VERSION}); a journal in a \
-                             format this build does not understand is refused rather than \
-                             guessed at"
+                             assemble (it writes {GG_SESSION_FORMAT_VERSION})"
                         ),
                     ));
                 }
@@ -445,8 +443,8 @@ fn expect_next_index(journal: &Path, pool: &str, index: u32, next: u64) -> Resul
     Err(journal_error(
         journal,
         format!(
-            "has a gap in its {pool} pool: a line claims index {index} but {next} {pool} \
-             entries have been read, so every later reference would resolve to the wrong body"
+            "has a gap in its {pool} pool (a line claims index {index}, but {next} {pool} \
+             entries have been read)"
         ),
     ))
 }

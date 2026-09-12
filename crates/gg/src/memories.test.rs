@@ -354,7 +354,9 @@ fn an_enabled_capability_short_of_a_limit_is_refused() {
             assert_eq!(defects.len(), 1, "{key} -> {defects:?}");
             assert_eq!(defects[0].locus, format!("memories.params.{key}"));
             assert!(
-                defects[0].message.contains("substitutes nothing"),
+                defects[0]
+                    .message
+                    .contains(&format!("is on and writes no `{key}`")),
                 "{}",
                 defects[0].message
             );

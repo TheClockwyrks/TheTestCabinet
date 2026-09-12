@@ -350,7 +350,12 @@ const SCHEMA_BASE_URL: &str = "https://docs.testcabinet.ai/schema/";
 /// included, and a required field added there stops every gg record stored before it
 /// from deserializing exactly as one added to `RunRecord` itself would.
 ///
-/// Generation 2 is the gg agent profile's `openingTurn` becoming required: every gg
+/// Generation 3 is the toolchain summary's `ToolchainTests` gaining `tests` and
+/// `testsTruncated` — the per-test entries beside the per-file rows. Neither is
+/// optional or defaulted, so a record stored with a test report before this change
+/// lacks both keys and no longer reads.
+///
+/// Generation 2 was the gg agent profile's `openingTurn` becoming required: every gg
 /// record stored before it lacks the key and no longer reads. Its digest last moved
 /// when the validation summary's `StepResult` gained `output` and `attempts` and the
 /// toolchain's `ToolchainCommandResult` gained `attempts` (the verified, retried
@@ -366,6 +371,10 @@ const RECORD_SHAPES: &[(u32, &str)] = &[
     (
         2,
         "9417274233742e26a223882d852690c729844f5c63cd05166f218176f648c879",
+    ),
+    (
+        3,
+        "2707edd64ece861874831f882691417cb2133e1db7c898a93959fb94c57750d4",
     ),
 ];
 

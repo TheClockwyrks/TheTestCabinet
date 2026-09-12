@@ -2,7 +2,7 @@
 //! automated-only score and pass rate, summed diagnostics, and confound detection —
 //! and two harnesses' arms never merge.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use super::*;
 use crate::comparison::{ComparisonArm, ComparisonConfig, ComparisonControls};
@@ -13,6 +13,16 @@ use crate::run_record::{
 };
 use crate::test_case::{ReviewItem, TestType};
 use crate::validation::{AutoVerdict, DebugScriptResult, ValidationSummary};
+
+/// Every id the config's arms record: the liveness set of a store where nothing has
+/// been deleted, which is what most of these tests are about.
+fn all_live(config: &ComparisonConfig) -> BTreeSet<String> {
+    config
+        .arms
+        .iter()
+        .flat_map(|arm| arm.run_ids.iter().cloned())
+        .collect()
+}
 
 /// A binary review item worth `weight`.
 fn item(id: &str, weight: u32) -> ReviewItem {
@@ -233,7 +243,7 @@ fn folds_each_arm_into_its_own_distribution_and_never_merges_them() {
     }
 
     let config = pi_vs_kilo();
-    let arms = aggregate_comparison(&config, &items, &runs);
+    let arms = aggregate_comparison(&config, &items, &runs, &all_live(&config));
     assert_eq!(arms.len(), 2);
 
     let pi = &arms[0];
@@ -301,7 +311,7 @@ fn a_run_that_drifts_from_a_control_is_surfaced_as_a_confound() {
     config.arms.truncate(1);
     config.arms[0].run_ids = vec!["pi-1".into(), "pi-2".into()];
 
-    let arms = aggregate_comparison(&config, &items, &runs);
+    let arms = aggregate_comparison(&config, &items, &runs, &all_live(&config));
     let confound = arms[0]
         .confounds
         .iter()
@@ -368,7 +378,7 @@ fn a_harness_arm_and_a_gg_arm_are_aggregated_side_by_side() {
         run_ids: vec!["gg-1".into(), "gg-2".into()],
     });
 
-    let arms = aggregate_comparison(&config, &items, &runs);
+    let arms = aggregate_comparison(&config, &items, &runs, &all_live(&config));
     assert_eq!(arms.len(), 2);
     // Each arm keeps its own runs and its own distribution — never merged.
     assert_eq!(arms[0].n_observed, 1);
@@ -402,7 +412,7 @@ fn a_run_under_a_different_harness_than_the_arm_declares_is_a_confound() {
     config.arms.truncate(1);
     config.arms[0].run_ids = vec!["pi-1".into()];
 
-    let arms = aggregate_comparison(&config, &items, &runs);
+    let arms = aggregate_comparison(&config, &items, &runs, &all_live(&config));
     let confound = arms[0]
         .confounds
         .iter()
@@ -416,7 +426,7 @@ fn an_arm_with_no_present_runs_summarizes_to_nothing() {
     let items = [item("a", 3)];
     let runs: BTreeMap<String, RunRecord> = BTreeMap::new();
     let config = pi_vs_kilo();
-    let arms = aggregate_comparison(&config, &items, &runs);
+    let arms = aggregate_comparison(&config, &items, &runs, &all_live(&config));
     assert_eq!(arms[0].n_observed, 0);
     assert!(arms[0].cost.is_none());
     assert!(arms[0].score.is_none());
@@ -469,7 +479,7 @@ fn a_run_on_a_different_engine_than_the_comparison_declares_is_a_confound() {
     config.arms.truncate(1);
     config.arms[0].run_ids = vec!["pi-1".into(), "pi-2".into()];
 
-    let arms = aggregate_comparison(&config, &items, &runs);
+    let arms = aggregate_comparison(&config, &items, &runs, &all_live(&config));
     let confound = arms[0]
         .confounds
         .iter()
@@ -513,10 +523,61 @@ fn an_arm_whose_runs_all_ran_the_declared_engine_is_not_confounded() {
     config.arms.truncate(1);
     config.arms[0].run_ids = vec!["pi-1".into(), "pi-2".into()];
 
-    let arms = aggregate_comparison(&config, &items, &runs);
+    let arms = aggregate_comparison(&config, &items, &runs, &all_live(&config));
     assert!(
         arms[0].confounds.is_empty(),
         "an arm that held every control constant must report nothing: {:?}",
         arms[0].confounds
     );
+}
+
+/// An arm reports the recorded ids that still exist, in launch order, and it is a
+/// wider set than the runs it aggregates: a run launched a minute ago has no record
+/// yet, so a top-up counted off the reported runs alone would launch it twice.
+#[test]
+fn an_arm_reports_the_recorded_ids_that_still_exist() {
+    let items = [item("a", 3)];
+    let mut runs = BTreeMap::new();
+    runs.insert(
+        "pi-1".into(),
+        record(Run {
+            id: "pi-1",
+            harness: HarnessSlug::Pi,
+            model: "anthropic/claude-opus-4.8",
+            cost: 0.5,
+            tokens: 100,
+            tool_calls: &[],
+            scripts: vec![script("a", true)],
+            auth: AuthMode::ApiKey,
+        }),
+    );
+
+    // `pi-1` has reported back, `pi-3` is still in flight, and `pi-2` was deleted.
+    let config = pi_vs_kilo();
+    let live = BTreeSet::from(["pi-1".to_string(), "pi-3".to_string()]);
+    let arms = aggregate_comparison(&config, &items, &runs, &live);
+
+    // Launch order, not sorted order, and not the order the records happened to land.
+    assert_eq!(arms[0].live_run_ids, vec!["pi-1", "pi-3"]);
+    // The three figures are three different questions: what was ever launched, what
+    // exists now, and what has reported back.
+    assert_eq!(arms[0].arm.run_ids.len(), 3);
+    assert_eq!(arms[0].n_observed, 1);
+    assert_eq!(arms[0].n_desired, 3);
+    // An arm whose every run is gone reports none, which is what lets it be
+    // relaunched from nothing.
+    assert!(arms[1].live_run_ids.is_empty());
+}
+
+/// An id another arm records is not folded into this one: liveness is looked up in a
+/// shared set, but an arm only ever reports its own.
+#[test]
+fn an_arm_reports_only_its_own_live_ids() {
+    let items = [item("a", 3)];
+    let runs = BTreeMap::new();
+    let config = pi_vs_kilo();
+    let live = BTreeSet::from(["pi-2".to_string(), "kilo-1".to_string()]);
+    let arms = aggregate_comparison(&config, &items, &runs, &live);
+    assert_eq!(arms[0].live_run_ids, vec!["pi-2"]);
+    assert_eq!(arms[1].live_run_ids, vec!["kilo-1"]);
 }

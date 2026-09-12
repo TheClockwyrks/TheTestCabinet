@@ -105,17 +105,13 @@ pub async fn publish(args: PublishArgs) -> Result<()> {
         }
     }
     if !refused.is_empty() {
-        eprintln!(
-            "Refusing to publish: {} run(s) lack a review.",
-            refused.len()
-        );
+        eprintln!("{} run(s) lack a review:", refused.len());
         for (id, reason) in &refused {
             eprintln!("  {id} — {reason}");
         }
         bail!(
-            "every legacy run must have a `<run-id>.md` writeup with a rating in the working \
-             directory (only a validator-rated run publishes without one, which the backend \
-             decides from the run's case version); author the missing reviews and retry"
+            "every legacy run needs a `<run-id>.md` writeup with a rating in the working \
+             directory"
         );
     }
 
@@ -225,10 +221,7 @@ async fn publish_one(client: &HttpBackendClient, run_id: &str, plan: &PublishPla
     // The stream closes only after the terminal result; its absence means the watch
     // ended early (a dropped connection), which is a failure to observe the publish.
     let result = terminal.with_context(|| {
-        format!(
-            "the publish stream for run {run_id} ended before reporting a result — \
-             re-run to observe it to completion"
-        )
+        format!("the publish stream for run {run_id} ended before reporting a result")
     })?;
     report_result(run_id, &result)
 }

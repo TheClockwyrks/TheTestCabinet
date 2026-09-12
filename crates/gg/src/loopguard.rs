@@ -772,9 +772,7 @@ fn read_knob(
                     "",
                     format!(
                         "the detector is armed and this profile writes no {knob}, which is \
-                         {configures}. What the rule trips on is its five terms together, so gg \
-                         substitutes no figure for one nobody wrote: an armed detector states all \
-                         five."
+                         {configures}; an armed detector states all five of its terms"
                     ),
                 ));
             }
@@ -801,11 +799,7 @@ fn positive_knob(
             report.report(crate::validate::LaunchDefect::run_level(
                 knob_locus(knob),
                 "0",
-                format!(
-                    "{knob} cannot bound anything at zero ({consequence}), and gg will not run a \
-                     detector on a figure of its own under the name of the one this profile \
-                     configured."
-                ),
+                format!("{knob} cannot bound anything at zero ({consequence})"),
             ));
             None
         }

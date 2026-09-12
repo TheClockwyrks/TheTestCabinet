@@ -137,9 +137,8 @@ pub async fn execute(args: SeedArgs) -> anyhow::Result<()> {
     // scripting `tcab seed` must be able to detect the partial result.
     if missing_references > 0 {
         anyhow::bail!(
-            "incomplete seed: {missing_references} of {reference_count} reference \
-             image(s) failed to render (a headless browser is required to produce \
-             the seeded reference images)"
+            "{missing_references} of {reference_count} reference image(s) failed to \
+             render; a headless browser is required"
         );
     }
 

@@ -590,7 +590,7 @@ fn classify_failure_only_runtime_cap_is_a_timeout() {
     assert_eq!(
         RunState::classify_failure(&crate::Error::HarnessLimitExceeded {
             slug: "gg".to_string(),
-            detail: "gg exited with code 3 (session ended `limit_exceeded`)".to_string(),
+            detail: "5 consecutive turns failed".to_string(),
         }),
         RunState::LimitExceeded
     );

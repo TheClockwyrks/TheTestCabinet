@@ -382,7 +382,7 @@ pub enum ModelError {
     },
     /// The client retried a transient failure (`429`, `5xx`, or transport error) up to
     /// its policy and exhausted every attempt. Retryable at the turn level.
-    #[error("model request failed after {attempts} attempt(s); last error: {last}")]
+    #[error("model request failed after {attempts} attempt(s): {last}")]
     RetryExhausted {
         /// How many attempts were made before giving up.
         attempts: u32,
@@ -426,8 +426,7 @@ pub enum ModelError {
     /// [`ModelRetryExhausted`](TurnErrorType::ModelRetryExhausted) — see
     /// [`turn_error_type`](Self::turn_error_type).
     #[error(
-        "model looped: {detail}; discarded {} response(s) totalling {} characters of generated \
-         output",
+        "model looped: {detail} ({} response(s) discarded, {} characters)",
         .discarded.attempts,
         .discarded.chars
     )]
@@ -454,7 +453,7 @@ pub enum ModelError {
     /// [`ModelTimeout`](TurnErrorType::ModelTimeout) error and asks again, so the retry that
     /// bounds a stalled endpoint is the turn-level one the error ceilings govern.
     #[error(
-        "model call timed out after {}s with no complete reply{}",
+        "model call timed out after {}s{}",
         .after.as_secs(),
         .provider.as_deref().map(|provider| format!(" (provider: {provider})")).unwrap_or_default()
     )]

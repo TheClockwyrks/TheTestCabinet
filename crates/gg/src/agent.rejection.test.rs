@@ -410,7 +410,8 @@ async fn a_timed_out_model_call_is_an_error_turn_and_the_turn_is_retried() {
         vec![(GgTurnErrorType::ModelTimeout, 1)],
         "the timeout is recorded as an error turn against the ceilings"
     );
-    // The operator's line says what happened and what happens next, naming the provider.
+    // The operator's line says what happened, naming the provider. That the turn is retried is
+    // what gg does about it rather than the failure, and is read off the turn record instead.
     assert!(
         events.iter().any(|e| matches!(
             &e.kind,
@@ -418,7 +419,6 @@ async fn a_timed_out_model_call_is_an_error_turn_and_the_turn_is_retried() {
                 if level == "error"
                     && message.contains("timed out")
                     && message.contains("stalled-provider")
-                    && message.contains("retried")
         )),
         "the timeout is a logged error naming the provider"
     );

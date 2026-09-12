@@ -1430,8 +1430,7 @@ pub fn resolve_program_language(
                 written,
                 format!(
                     "the `{PARAM_LANGUAGE}` param names the language this agent writes its \
-                     programs in; gg cannot drive that one, and driving the run in one gg picked \
-                     instead would record it under a language nobody chose."
+                     programs in, and gg cannot drive that one"
                 ),
             )
             .known(all_languages().map(|language| language.id().id())),

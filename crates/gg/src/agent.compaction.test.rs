@@ -505,7 +505,8 @@ async fn a_handoff_model_that_will_not_resolve_ends_the_run() {
     assert!(
         errors
             .iter()
-            .any(|message| message.contains("mock/compactor") && message.contains("ends here")),
+            .any(|message| message.contains("mock/compactor")
+                && message.contains("could not be resolved")),
         "the run says which model it could not reach: {errors:?}"
     );
     // No boundary was crossed on the working model, which is the substitution that used to happen.

@@ -174,7 +174,7 @@ pub(crate) fn agent_from_input(
     if !is_valid_agent_slug(&slug) {
         return Err(ApiError::bad_request(
             "a gg agent needs a slug of lowercase letters and digits in groups separated by \
-             single hyphens; the model is shown this name and passes it back",
+             single hyphens",
         ));
     }
     agent.slug = slug;

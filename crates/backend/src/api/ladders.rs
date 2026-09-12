@@ -1306,12 +1306,7 @@ pub async fn set_outcome(
         let runs = rung_runs(&state, &user.0.id, &case, &member).await?;
         let target = rung.runs_override.unwrap_or(ladder.runs_per_cell);
         let decided = LadderOutcomeKind::from_gate(gate::evaluate(&runs, target, &ladder.gate))
-            .ok_or_else(|| {
-                ApiError::conflict(
-                    "this rung has no verdict yet — there is nothing to promote past. \
-                     Wait for its runs and reviews, or hold the climber to stop it here.",
-                )
-            })?;
+            .ok_or_else(|| ApiError::conflict("this rung has no verdict yet"))?;
         state
             .db
             .record_ladder_outcome(&id, &rung.id, &key, &rung.version, decided, &now)
@@ -2034,9 +2029,7 @@ fn ladder_from_input(
     updated_at: &str,
 ) -> Result<StoredLadder, ApiError> {
     if input.rungs.is_empty() {
-        return Err(ApiError::bad_request(
-            "a ladder needs at least one rung — an empty climb has nothing to gate",
-        ));
+        return Err(ApiError::bad_request("a ladder needs at least one rung"));
     }
     if input.rungs.len() > MAX_LADDER_RUNGS {
         return Err(ApiError::bad_request(format!(
@@ -2056,8 +2049,7 @@ fn ladder_from_input(
         let rung_id = rung.id.unwrap_or_else(new_id);
         if seen_ids.iter().any(|seen| seen == &rung_id) {
             return Err(ApiError::bad_request(format!(
-                "rung id `{rung_id}` is listed twice; two rungs sharing an id would share \
-                 one set of recorded verdicts"
+                "rung id `{rung_id}` is listed twice"
             )));
         }
         seen_ids.push(rung_id.clone());
@@ -2102,18 +2094,11 @@ fn reject_ineligible_rungs(state: &AppState, rungs: &[StoredLadderRung]) -> Resu
             continue;
         }
         let reason = match manifest.test_type {
-            TestType::Performance => {
-                "it is graded automatically and never appears in a review queue, so its runs \
-                 would stay unjudged forever"
-            }
-            _ => {
-                "it is reviewed on a graded category scale and records no domain rating for a \
-                 gate to compare against its floor"
-            }
+            TestType::Performance => "it is graded automatically and never enters a review queue",
+            _ => "it is reviewed on a graded category scale and records no domain rating",
         };
         return Err(ApiError::bad_request(format!(
-            "`{}` is a {} case and cannot be a ladder rung: {reason}. Cover it with a coverage \
-             plan instead.",
+            "`{}` is a {} case and cannot be a ladder rung: {reason}",
             rung.slug,
             manifest.test_type.as_str()
         )));

@@ -61,9 +61,8 @@ impl Projection {
     pub fn over_budget_message(&self) -> String {
         let mut message = format!(
             "this system would hold about {} particles alive at once, over the \
-             {MAX_LIVE_PARTICLES}-particle budget an effect has to fit in (every \
-             consumer simulates the system live, every frame). A denser-looking effect \
-             comes from particle size, opacity, and color, not from particle count.",
+             {MAX_LIVE_PARTICLES}-particle budget; lower --rate, --lifetime, or \
+             --burst, including any sub-emitter child's --burst",
             self.total.round() as u64
         );
         if !self.contributions.is_empty() {
@@ -76,12 +75,6 @@ impl Projection {
                 ));
             }
         }
-        message.push_str(
-            "\n\nLower --rate (particles per second), --lifetime (how long each one \
-             lives), or --burst, and the burst count of any sub-emitter child, until \
-             the projected total fits. An emitter holds roughly `rate x lifetime` \
-             particles alive at once: --rate 2000 --lifetime 1500 is ~3000 live.",
-        );
         message
     }
 }

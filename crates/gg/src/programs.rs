@@ -485,8 +485,7 @@ fn bounded_id_length(length: u64, report: &mut crate::validate::LaunchReport) ->
         length.to_string(),
         format!(
             "the `{CAPABILITY_PROGRAM_LIBRARY}` capability's `{PARAM_ID_LENGTH}` must be from \
-             {ID_LENGTH_MIN} to {ID_LENGTH_MAX}; gg substitutes no length for one it cannot mint \
-             ids at."
+             {ID_LENGTH_MIN} to {ID_LENGTH_MAX}"
         ),
     ));
     None

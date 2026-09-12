@@ -149,10 +149,9 @@ fn resolve_max_parallel(
                 format!("limits.{LIMIT_MAX_PARALLEL}"),
                 "",
                 format!(
-                    "the run writes no `{LIMIT_MAX_PARALLEL}`, which is how many of its agents may \
-                     run at once. gg substitutes nothing for a value nobody wrote, and this ceiling \
-                     has no \"off\": every run has a concurrency, so an unwritten one would be one \
-                     gg chose."
+                    "the run writes no `{LIMIT_MAX_PARALLEL}`, which is how many of its agents \
+                     may run at once: every run has a concurrency, so this ceiling has no \
+                     \"off\""
                 ),
             ));
             REFUSED_MAX_PARALLEL

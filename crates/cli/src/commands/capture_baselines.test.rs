@@ -204,7 +204,7 @@ fn select_targets_rejects_a_case_with_no_references_at_all() {
         .expect_err("a case with no reference implementations has nothing to do");
 
     assert!(
-        format!("{err:#}").contains("nothing to do"),
+        format!("{err:#}").contains("declares a `reference_implementation`"),
         "unexpected error: {err:#}"
     );
 }

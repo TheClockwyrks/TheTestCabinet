@@ -36,7 +36,7 @@ pub enum StoreError {
     Io(#[from] std::io::Error),
     /// The uploaded tarball contained an entry whose path escaped the run's
     /// directory (a `..` segment or absolute path) — a traversal attempt, refused.
-    #[error("rejected artifact entry `{0}`: path escapes the run directory")]
+    #[error("artifact entry `{0}` escapes the run directory")]
     Traversal(String),
     /// A read was requested for a run with no stored tree. Distinct from an I/O
     /// fault so the HTTP layer can map it to a `404` rather than a `500`.

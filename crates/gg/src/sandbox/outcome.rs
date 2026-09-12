@@ -423,7 +423,7 @@ pub enum SandboxError {
     /// stopped by it.
     #[error("{}", with_guest_stderr(
         format!(
-            "the program ran longer than its {}s execution timeout and was stopped",
+            "the program ran longer than its {}s execution timeout",
             limit.as_secs_f64()
         ),
         said,
@@ -438,15 +438,12 @@ pub enum SandboxError {
     },
     /// The guest's linear memory grew past the cap.
     ///
-    /// The cap bounds the guest's **whole** linear memory, so what the parenthetical says is true of
-    /// every arm. It used to name the sandbox's JavaScript engine and its ~10 MiB floor, which is a
-    /// fact about one arm out of eleven and reads as misdirection on the ten compiled and
-    /// interpreted arms that have no JavaScript engine in them at all.
+    /// The cap bounds the guest's **whole** linear memory — the language runtime the program runs
+    /// in as well as the program's own data. That is documentation rather than an error, so it is
+    /// stated here and in the [sandbox limits](super::limits) rather than in the message, which
+    /// carries the cap and nothing else.
     #[error("{}", with_guest_stderr(
-        format!(
-            "the program exceeded its {limit}-byte memory cap (the cap covers the language runtime \
-             the program runs in as well as the program's own data)"
-        ),
+        format!("the program exceeded its {limit}-byte memory cap"),
         said,
     ))]
     OutOfMemory {

@@ -71,9 +71,8 @@ pub(super) async fn execute(
     // the bucket is echoed below so a publish into the wrong one is visible
     // immediately rather than after the site fails to show the reference.
     let config = R2Config::from_env().context(
-        "publishing an asset-generation reference needs the R2 credentials for the target \
-         environment (TCAB_R2_ACCOUNT_ID, TCAB_R2_BUCKET, TCAB_R2_ACCESS_KEY_ID, \
-         TCAB_R2_SECRET_ACCESS_KEY)",
+        "the target environment's R2 credentials are unset (TCAB_R2_ACCOUNT_ID, \
+         TCAB_R2_BUCKET, TCAB_R2_ACCESS_KEY_ID, TCAB_R2_SECRET_ACCESS_KEY)",
     )?;
     println!(
         "  uploading to bucket `{}` (env `{}`)",

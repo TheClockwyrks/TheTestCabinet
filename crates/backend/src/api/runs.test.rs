@@ -158,7 +158,7 @@ fn a_validator_rated_review_accepts_a_partial_checklist_of_binary_overrides() {
         .push(verdict("serve", VerdictStatus::Great));
     let err = validate_validator_rated_review(&graded, &items).unwrap_err();
     assert_eq!(err.status, StatusCode::UNPROCESSABLE_ENTITY);
-    assert!(err.message.contains("binary"), "{}", err.message);
+    assert!(err.message.contains("pass or fail"), "{}", err.message);
 }
 
 // --- The run detail's score and functional rating ---------------------------------

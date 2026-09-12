@@ -1,5 +1,5 @@
 use super::*;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::store::CaseNames;
 use test_cabinet_core::metrics::RunMetrics;
@@ -7978,4 +7978,136 @@ async fn a_validator_rated_run_stays_in_the_unreviewed_worklist_until_reviewed()
     .unwrap();
     let stored = db.get_run("r1").await.unwrap().unwrap();
     assert_eq!(stored.reviews.len(), 1);
+}
+
+/// The three ways a comparison arm's recorded id still names something that exists.
+/// A comparison tops an arm up to `n` by counting these off, so each one it misses is
+/// a run relaunched for nothing.
+#[tokio::test]
+async fn live_run_ids_counts_stored_runs_jobs_in_flight_and_jobs_whose_run_landed() {
+    let db = Db::connect_in_memory().await.unwrap();
+
+    // A run recorded under the id the arm holds.
+    db.push(&record("r1"), &links(), None, None).await.unwrap();
+
+    // A job still in the queue: no record yet, and relaunching it would double the
+    // arm.
+    db.enqueue_job(new_job("queued", "2026-06-23T00:00:00Z"))
+        .await
+        .unwrap();
+
+    // A job that has finished. The arm recorded the id the launch handed back — the
+    // job id — while the run the driver produced carries an id of its own minting,
+    // so only `job.record_id` ties the two together.
+    db.enqueue_job(new_job("finished", "2026-06-23T00:01:00Z"))
+        .await
+        .unwrap();
+    db.push(&record("produced"), &links(), None, None)
+        .await
+        .unwrap();
+    db.set_job_state(
+        "finished",
+        "succeeded",
+        "2026-06-23T00:30:00Z",
+        None,
+        Some("produced"),
+    )
+    .await
+    .unwrap();
+
+    let live = db
+        .live_run_ids(&[
+            "r1".to_string(),
+            "queued".to_string(),
+            "finished".to_string(),
+            "never-existed".to_string(),
+        ])
+        .await
+        .unwrap();
+
+    assert_eq!(
+        live,
+        BTreeSet::from([
+            "r1".to_string(),
+            "queued".to_string(),
+            "finished".to_string(),
+        ])
+    );
+}
+
+/// Every in-flight state counts, including the two the queue has not dispatched yet.
+#[tokio::test]
+async fn live_run_ids_counts_a_job_in_every_in_flight_state() {
+    let db = Db::connect_in_memory().await.unwrap();
+    for (i, state) in IN_FLIGHT_STATES.iter().enumerate() {
+        db.enqueue_job(new_job(state, &format!("2026-06-23T00:0{i}:00Z")))
+            .await
+            .unwrap();
+        db.set_job_state(state, state, "2026-06-23T00:10:00Z", None, None)
+            .await
+            .unwrap();
+    }
+    let ids: Vec<String> = IN_FLIGHT_STATES.iter().map(|s| s.to_string()).collect();
+    let live = db.live_run_ids(&ids).await.unwrap();
+    assert_eq!(live, ids.into_iter().collect::<BTreeSet<_>>());
+}
+
+/// The defect this exists for: an operator launched an arm's runs, deleted them, and
+/// came back. Both the run id and the job id the arm might hold are dead, so the arm
+/// can be topped back up.
+#[tokio::test]
+async fn live_run_ids_drops_an_id_whose_run_was_deleted() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.push(&record("r1"), &links(), None, None).await.unwrap();
+    db.enqueue_job(new_job("j1", "2026-06-23T00:00:00Z"))
+        .await
+        .unwrap();
+    db.set_job_state("j1", "succeeded", "2026-06-23T00:30:00Z", None, Some("r1"))
+        .await
+        .unwrap();
+
+    db.delete_run("r1").await.unwrap();
+
+    let live = db
+        .live_run_ids(&["r1".to_string(), "j1".to_string()])
+        .await
+        .unwrap();
+    assert!(live.is_empty(), "{live:?}");
+}
+
+/// A job that ended without producing a record is dead too — nothing was recorded and
+/// nothing is still running, so the run it stood for has to be launched again.
+#[tokio::test]
+async fn live_run_ids_drops_a_terminal_job_that_produced_no_record() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.enqueue_job(new_job("failed", "2026-06-23T00:00:00Z"))
+        .await
+        .unwrap();
+    db.set_job_state(
+        "failed",
+        "failed",
+        "2026-06-23T00:05:00Z",
+        Some("could not pull the run image"),
+        None,
+    )
+    .await
+    .unwrap();
+    db.enqueue_job(new_job("canceled", "2026-06-23T00:01:00Z"))
+        .await
+        .unwrap();
+    db.set_job_state("canceled", "canceled", "2026-06-23T00:06:00Z", None, None)
+        .await
+        .unwrap();
+
+    let live = db
+        .live_run_ids(&["failed".to_string(), "canceled".to_string()])
+        .await
+        .unwrap();
+    assert!(live.is_empty(), "{live:?}");
+}
+
+#[tokio::test]
+async fn live_run_ids_of_nothing_is_empty() {
+    let db = Db::connect_in_memory().await.unwrap();
+    assert!(db.live_run_ids(&[]).await.unwrap().is_empty());
 }

@@ -819,10 +819,9 @@ fn an_armed_declaration_naming_no_knob_is_refused_at_every_one() {
     );
     assert_eq!(
         defects[0].to_string(),
-        "loopDetection.windowWords — the detector is armed and this profile writes no windowWords, \
-         which is the lookback the frequency rule is measured over. What the rule trips on is its \
-         five terms together, so gg substitutes no figure for one nobody wrote: an armed detector \
-         states all five."
+        "loopDetection.windowWords — the detector is armed and this profile writes no \
+         windowWords, which is the lookback the frequency rule is measured over; an armed \
+         detector states all five of its terms"
     );
 }
 

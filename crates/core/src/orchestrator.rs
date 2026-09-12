@@ -193,7 +193,7 @@ impl OrchestratorCatalog {
     fn load_builtin(slug: &str) -> Result<Orchestrator> {
         let built_in = built_in(slug).ok_or_else(|| {
             Error::Orchestrator(format!(
-                "unknown orchestrator `{slug}` (built-in orchestrators: {})",
+                "unknown slug `{slug}` (built-in: {})",
                 BUILT_IN_SLUGS.join(", ")
             ))
         })?;
@@ -640,7 +640,7 @@ pub(crate) async fn drive_orchestrator(
     // is what keeps the run's terminal state honest.
     if streamed.output.idle_timed_out {
         let detail = format!(
-            "orchestrator `{}` runner produced no output for {}s and was stopped as hung",
+            "orchestrator `{}` runner produced no output for {}s",
             orchestrator.slug(),
             HARNESS_IDLE_TIMEOUT.as_secs()
         );
@@ -675,9 +675,9 @@ pub(crate) async fn drive_orchestrator(
             });
         }
         let detail = format!(
-            "orchestrator `{}` runner exited with code {}",
+            "code {} from orchestrator `{}`'s runner",
+            streamed.output.exit_code,
             orchestrator.slug(),
-            streamed.output.exit_code
         );
         events.emit(&crate::event::HarnessEvent {
             timestamp: now_timestamp(),
@@ -728,9 +728,8 @@ pub(crate) async fn drive_orchestrator(
     let truncated = segments.iter().filter(|s| !s.terminated).count();
     if truncated > 0 || segments.is_empty() {
         let message = format!(
-            "the token usage recorded for this run is incomplete: {truncated} of {} \
-             harness session(s) read from the {source} ended without their closing \
-             marker, so the harness's final usage report did not survive",
+            "recorded token usage is incomplete: {truncated} of {} harness sessions read \
+             from the {source} ended without their closing marker",
             segments.len()
         );
         tracing::warn!(
@@ -786,9 +785,11 @@ async fn resolve_home(
     let output = runtime.exec(container, &command).await?;
     let home = output.stdout.trim();
     if output.exit_code != 0 || home.is_empty() {
-        return Err(Error::Orchestrator(
-            "could not resolve the run user's home directory in the container".to_string(),
-        ));
+        return Err(Error::Orchestrator(format!(
+            "could not resolve the run user's home directory in the container (exit {}, \
+             $HOME {home:?})",
+            output.exit_code
+        )));
     }
     Ok(home.to_string())
 }

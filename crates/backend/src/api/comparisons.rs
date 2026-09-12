@@ -29,7 +29,7 @@ use time::format_description::well_known::Rfc3339;
 
 use test_cabinet_core::comparison::{Comparison, ComparisonConfig};
 use test_cabinet_core::comparison_aggregate::aggregate_comparison;
-use test_cabinet_core::run_record::RunRecord;
+use test_cabinet_core::run_record::{HarnessSlug, RunRecord};
 
 use crate::auth::AuthUser;
 use crate::db::{NewPublishJob, StoredComparison};
@@ -42,6 +42,18 @@ const MAX_NAME_LEN: usize = 80;
 
 /// The longest a comparison's description may be — a one-line note, not a document.
 const MAX_DESCRIPTION_LEN: usize = 280;
+
+/// The fewest runs per arm a comparison may ask for. One run says almost nothing
+/// (the spread across runs is large), but it is a legitimate first look.
+const MIN_N: u32 = 1;
+
+/// The most runs per arm a comparison may ask for. Every run is a container, a
+/// model session, and a bill, and an arm launches `n` of them at a time.
+const MAX_N: u32 = 50;
+
+/// The fewest arms a comparison may carry: a comparison of one configuration
+/// compares it against nothing.
+const MIN_ARMS: usize = 2;
 
 /// The create/update body for a comparison (the server assigns the id and
 /// timestamps, and owns the published state).
@@ -88,6 +100,7 @@ pub async fn create_comparison(
     Json(input): Json<ComparisonInput>,
 ) -> Result<Json<Comparison>, ApiError> {
     let now = now()?;
+    ensure_engine_control_supported(&state.store, &input.config)?;
     let stored = stored_from_input(new_id(), &user.0.id, input, &now, &now)?;
     state
         .db
@@ -141,6 +154,7 @@ pub async fn update_comparison(
     else {
         return Err(ApiError::not_found("comparison not found"));
     };
+    ensure_engine_control_supported(&state.store, &input.config)?;
     let stored = stored_from_input(id, &user.0.id, input, &existing.created_at, &now()?)?;
     let updated = state
         .db
@@ -281,7 +295,11 @@ pub(crate) async fn assemble_comparison(
     store: &crate::store::DefinitionStore,
     stored: StoredComparison,
 ) -> crate::error::Result<Comparison> {
-    let runs = load_arm_runs(db, &stored.config).await?;
+    let run_ids = arm_run_ids(&stored.config);
+    let runs = load_arm_runs(db, &run_ids).await?;
+    // What still exists, in flight or finished, so the console tops each arm up
+    // against reality rather than against the ids it once recorded.
+    let live = db.live_run_ids(&run_ids).await?;
     let arms = match store.read_manifest(
         &stored.config.controls.case_slug,
         &stored.config.controls.version,
@@ -296,7 +314,7 @@ pub(crate) async fn assemble_comparison(
                 &stored.config.controls.variant,
                 &stored.config.controls.engine_slug,
             );
-            aggregate_comparison(&stored.config, &items, &runs)
+            aggregate_comparison(&stored.config, &items, &runs, &live)
         }
         Err(_) => Vec::new(),
     };
@@ -314,21 +332,32 @@ pub(crate) async fn assemble_comparison(
     })
 }
 
-/// Load the run records named by every arm's `run_ids` into a lookup, skipping any
-/// that are no longer stored.
-async fn load_arm_runs(
-    db: &crate::db::Db,
-    config: &ComparisonConfig,
-) -> crate::error::Result<BTreeMap<String, RunRecord>> {
-    let mut runs = BTreeMap::new();
+/// Every run id the config's arms record, deduplicated, in arm and launch order.
+/// Two arms never share a run in practice, but nothing enforces it, so the one list
+/// both the record load and the liveness query read is built once.
+fn arm_run_ids(config: &ComparisonConfig) -> Vec<String> {
+    let mut seen = BTreeSet::new();
+    let mut ids = Vec::new();
     for arm in &config.arms {
         for id in &arm.run_ids {
-            if runs.contains_key(id) {
-                continue;
+            if seen.insert(id.clone()) {
+                ids.push(id.clone());
             }
-            if let Some(stored) = db.get_run(id).await? {
-                runs.insert(id.clone(), stored.record);
-            }
+        }
+    }
+    ids
+}
+
+/// Load the run records named by `ids` into a lookup, skipping any that are no
+/// longer stored.
+async fn load_arm_runs(
+    db: &crate::db::Db,
+    ids: &[String],
+) -> crate::error::Result<BTreeMap<String, RunRecord>> {
+    let mut runs = BTreeMap::new();
+    for id in ids {
+        if let Some(stored) = db.get_run(id).await? {
+            runs.insert(id.clone(), stored.record);
         }
     }
     Ok(runs)
@@ -346,9 +375,126 @@ fn now() -> Result<String, ApiError> {
         .map_err(|e| ApiError::internal(format!("formatting timestamp: {e}")))
 }
 
-/// Build a stored comparison from a create/update body, validating the name and
-/// description. `created_at` is the row's original creation time (preserved on
-/// update); `updated_at` is now. A new comparison starts unpublished.
+/// Hold the comparison's [engine](test_cabinet_core::engine) control against the
+/// engines its anchored case version declares support for, the same gate a run is
+/// held to before any container starts
+/// ([`test_cabinet_core::ensure_engine_supported`]) and worded the same way.
+///
+/// The engine is a control, so every arm's runs launch under it and the review
+/// checklist `assemble_comparison` resolves is the one that engine carries. A
+/// comparison anchored to an engine the case never declared would therefore score
+/// every arm against points written for a different runtime, and would do it after
+/// the runs were paid for.
+///
+/// The slug half of the gate only: the engine *version* a run stages is a property of
+/// the host that runs it, not of the comparison, so a comparison pins none and has
+/// nothing to hold against the declared range.
+///
+/// A case version the store cannot resolve (de-ingested since the comparison was
+/// saved) is not checked, matching [`assemble_comparison`]: a stale comparison stays
+/// editable and deletable rather than becoming a row nobody can save.
+fn ensure_engine_control_supported(
+    store: &crate::store::DefinitionStore,
+    config: &ComparisonConfig,
+) -> Result<(), ApiError> {
+    let controls = &config.controls;
+    let Ok(manifest) = store.read_manifest(&controls.case_slug, &controls.version) else {
+        return Ok(());
+    };
+    if manifest
+        .engines
+        .iter()
+        .any(|engine| engine.slug == controls.engine_slug)
+    {
+        return Ok(());
+    }
+    let supported: Vec<&str> = manifest
+        .engines
+        .iter()
+        .map(|engine| engine.slug.as_str())
+        .collect();
+    Err(ApiError::bad_request(format!(
+        "engine `{}` is not supported by test case `{}` {} (supported engines: {})",
+        controls.engine_slug,
+        controls.case_slug,
+        controls.version,
+        supported.join(", "),
+    )))
+}
+
+/// Hold a comparison's stored config to the shape every reader of it assumes: a
+/// sample size the queue can carry, at least two configurations to compare, arm ids
+/// that identify an arm, and an arm that names something launchable.
+///
+/// Every one of these is otherwise discovered far downstream — an arm naming no
+/// harness launches nothing, two arms sharing an id share one set of runs — so they
+/// are refused at the save.
+fn validate_config(config: &ComparisonConfig) -> Result<(), ApiError> {
+    if config.n < MIN_N {
+        return Err(ApiError::bad_request(format!(
+            "a comparison runs at least {MIN_N} run per arm (got {})",
+            config.n
+        )));
+    }
+    if config.n > MAX_N {
+        return Err(ApiError::bad_request(format!(
+            "a comparison runs at most {MAX_N} runs per arm (got {})",
+            config.n
+        )));
+    }
+    if config.arms.len() < MIN_ARMS {
+        return Err(ApiError::bad_request(format!(
+            "a comparison needs at least {MIN_ARMS} arms (got {})",
+            config.arms.len()
+        )));
+    }
+    let mut seen = BTreeSet::new();
+    for arm in &config.arms {
+        if !seen.insert(arm.id.as_str()) {
+            return Err(ApiError::bad_request(format!(
+                "arm id `{}` is listed twice",
+                arm.id
+            )));
+        }
+        // A gg arm is one that names a gg configuration; a harness arm is anything
+        // else, and it launches through the batch path on its own harness and model.
+        // An arm running gg without a configuration is neither: gg has no launch to
+        // make without a capability set.
+        if arm.gg_config_id.is_some() {
+            continue;
+        }
+        if arm.harness_slug == Some(HarnessSlug::Gg) {
+            return Err(ApiError::bad_request(format!(
+                "gg arm `{}` names no configuration",
+                arm.id
+            )));
+        }
+        if arm.harness_slug.is_none() {
+            return Err(ApiError::bad_request(format!(
+                "arm `{}` names neither a harness nor a gg configuration",
+                arm.id
+            )));
+        }
+        if arm
+            .model_id
+            .as_deref()
+            .unwrap_or_default()
+            .trim()
+            .is_empty()
+        {
+            return Err(ApiError::bad_request(format!(
+                "harness arm `{}` names no model",
+                arm.id
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// Build a stored comparison from a create/update body, validating the name, the
+/// description, and the [config](validate_config). `created_at` is the row's original
+/// creation time (preserved on update); `updated_at` is now. A new comparison starts
+/// unpublished.
 fn stored_from_input(
     id: String,
     user_id: &str,
@@ -371,6 +517,7 @@ fn stored_from_input(
             "a comparison description may be at most {MAX_DESCRIPTION_LEN} characters"
         )));
     }
+    validate_config(&input.config)?;
     Ok(StoredComparison {
         id,
         user_id: user_id.to_string(),

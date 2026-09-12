@@ -266,9 +266,8 @@ impl SkillLibrary {
                     path,
                     &skill.name,
                     format!(
-                        "two entries of the skills directory claim the name `{}`; a skill is \
-                         listed and read by name, so one of them could never be reached and the \
-                         model would be offered one line for two guides. Rename one.",
+                        "two entries of the skills directory claim the name `{}`, and a skill \
+                         is listed and read by name. Rename one.",
                         existing.name,
                     ),
                 ));
@@ -745,9 +744,8 @@ fn load_one(path: &Path, report: &mut LaunchReport) -> Option<Skill> {
                     path,
                     "",
                     format!(
-                        "a skill directory must carry a `{SKILL_MANIFEST}`; the name and the \
-                         description in its front matter are what the catalogue the model reads is \
-                         made of, and gg will not invent them from a directory name."
+                        "a skill directory must carry a `{SKILL_MANIFEST}`, whose front matter \
+                         is where the catalogue's name and description are read from"
                     ),
                 ));
                 return None;
@@ -782,9 +780,7 @@ fn load_one(path: &Path, report: &mut LaunchReport) -> Option<Skill> {
             path,
             "",
             format!(
-                "this is neither a `<name>.{SKILL_EXTENSION}` prose skill nor a skill directory, \
-                 so gg would load nothing from it; a guide written here would be one the model is \
-                 never offered."
+                "this is neither a `<name>.{SKILL_EXTENSION}` prose skill nor a skill directory"
             ),
         ));
         return None;
@@ -836,8 +832,8 @@ pub(crate) fn parse_skill(raw: &str) -> Result<Skill, String> {
             .filter(|value| !value.is_empty())
             .ok_or_else(|| {
                 format!(
-                    "this skill's front matter carries no `{key}`; a skill is listed to the model \
-                     by its name and its description, and gg will not invent either."
+                    "this skill's front matter carries no `{key}`, and a skill is listed to the \
+                     model by its name and its description"
                 )
             })
     };
@@ -874,8 +870,8 @@ fn split_front_matter(raw: &str) -> Result<(FrontMatter, String), String> {
 
     if !lines.first().is_some_and(|line| is_fence(line)) {
         return Err(
-            "this skill has no front matter; a skill opens with a `---` block naming it (`name`) \
-             and saying what it is for (`description`), which is the line the model is offered."
+            "this skill has no front matter; a skill opens with a `---` block naming it \
+             (`name`) and saying what it is for (`description`)"
                 .to_string(),
         );
     }

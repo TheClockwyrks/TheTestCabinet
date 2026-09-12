@@ -182,11 +182,11 @@ impl CollectListener {
         loop {
             let (stream, peer) = match timeout(self.idle, self.listener.accept()).await {
                 Ok(accepted) => accepted.map_err(|err| {
-                    Error::ArtifactCollection(format!("accepting the collection connection: {err}"))
+                    Error::ArtifactCollection(format!("accepting the upload connection: {err}"))
                 })?,
                 Err(_elapsed) => {
                     return Err(Error::ArtifactCollection(format!(
-                        "the collection uploader did not connect within {}s",
+                        "no uploader connected within {}s",
                         self.idle.as_secs()
                     )));
                 }
@@ -228,9 +228,9 @@ async fn receive_upload(
         return Ok(None);
     }
 
-    let file = tokio::fs::File::create(archive).await.map_err(|err| {
-        Error::ArtifactCollection(format!("creating the collected archive: {err}"))
-    })?;
+    let file = tokio::fs::File::create(archive)
+        .await
+        .map_err(|err| Error::ArtifactCollection(format!("creating the archive: {err}")))?;
     let mut writer = BufWriter::with_capacity(1024 * 1024, file);
     let mut hasher = Sha256::new();
     let mut received: u64 = 0;
@@ -248,7 +248,7 @@ async fn receive_upload(
         ]);
         if len > MAX_FRAME_LEN {
             return Err(Error::ArtifactCollection(format!(
-                "the collection stream carried a {len}-byte frame, beyond the {MAX_FRAME_LEN}-byte cap; refusing it as corrupt"
+                "upload frame over the size cap ({len} bytes, cap {MAX_FRAME_LEN})"
             )));
         }
         match kind {
@@ -259,7 +259,7 @@ async fn receive_upload(
                     read_exactly(&mut reader, &mut chunk[..want], received, idle).await?;
                     hasher.update(&chunk[..want]);
                     writer.write_all(&chunk[..want]).await.map_err(|err| {
-                        Error::ArtifactCollection(format!("writing the collected archive: {err}"))
+                        Error::ArtifactCollection(format!("writing the archive: {err}"))
                     })?;
                     received += want as u64;
                     remaining -= want;
@@ -268,7 +268,7 @@ async fn receive_upload(
             KIND_END => {
                 if len != END_PAYLOAD_LEN {
                     return Err(Error::ArtifactCollection(format!(
-                        "the collection stream's terminator was {len} bytes, not {END_PAYLOAD_LEN}; refusing it as corrupt"
+                        "upload terminator is {len} bytes, not {END_PAYLOAD_LEN}"
                     )));
                 }
                 let mut payload = [0u8; END_PAYLOAD_LEN as usize];
@@ -276,20 +276,20 @@ async fn receive_upload(
                 let claimed = u64::from_be_bytes(payload[..8].try_into().expect("8 bytes"));
                 if claimed != received {
                     return Err(Error::ArtifactCollection(format!(
-                        "the collected archive is {received} bytes but the uploader sent {claimed}; the stream did not arrive whole"
+                        "upload byte count mismatch (received {received}, uploader claimed {claimed})"
                     )));
                 }
                 let digest = hasher.finalize();
                 if digest.as_slice() != &payload[8..] {
                     return Err(Error::ArtifactCollection(format!(
-                        "the collected archive's SHA-256 digest does not match the uploader's after {received} bytes; the stream was corrupted in transit"
+                        "upload SHA-256 digest mismatch (over {received} bytes)"
                     )));
                 }
                 writer.flush().await.map_err(|err| {
-                    Error::ArtifactCollection(format!("flushing the collected archive: {err}"))
+                    Error::ArtifactCollection(format!("flushing the archive: {err}"))
                 })?;
                 writer.into_inner().sync_all().await.map_err(|err| {
-                    Error::ArtifactCollection(format!("syncing the collected archive: {err}"))
+                    Error::ArtifactCollection(format!("syncing the archive: {err}"))
                 })?;
                 // The acknowledgement is what lets the uploader exit 0; a lost reply
                 // costs nothing here, since the archive is already verified.
@@ -308,7 +308,7 @@ async fn receive_upload(
             }
             other => {
                 return Err(Error::ArtifactCollection(format!(
-                    "the collection stream carried an unknown frame kind {other}; refusing it as corrupt"
+                    "unknown upload frame kind {other}"
                 )));
             }
         }
@@ -327,14 +327,14 @@ async fn read_exactly(
         Ok(Ok(_)) => Ok(()),
         Ok(Err(err)) if err.kind() == std::io::ErrorKind::UnexpectedEof => {
             Err(Error::ArtifactCollection(format!(
-                "the collection connection ended after {received} bytes without its terminator; the stream did not arrive whole"
+                "upload ended without its terminator (after {received} bytes)"
             )))
         }
         Ok(Err(err)) => Err(Error::ArtifactCollection(format!(
-            "reading the collection stream after {received} bytes: {err}"
+            "reading the upload after {received} bytes: {err}"
         ))),
         Err(_elapsed) => Err(Error::ArtifactCollection(format!(
-            "the collection stream stalled after {received} bytes for {}s",
+            "upload stalled for {}s (after {received} bytes)",
             idle.as_secs()
         ))),
     }

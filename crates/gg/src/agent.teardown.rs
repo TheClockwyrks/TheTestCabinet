@@ -282,10 +282,7 @@ impl AgentTeardown {
             emitter.emit(log(
                 "error",
                 format!(
-                    "agent `{}` (profile `{}`) {detail}. It cannot reach another turn boundary to \
-                     wind itself down, so the run is ended from outside it — and it is ended as \
-                     `{STATUS_INTERNAL_ERROR}`, because a panic in gg's own machinery is our \
-                     defect and never the model's.",
+                    "agent `{}` (profile `{}`) {detail} — `{STATUS_INTERNAL_ERROR}` (gg defect)",
                     self.agent.id, self.agent.profile_id
                 ),
             ));

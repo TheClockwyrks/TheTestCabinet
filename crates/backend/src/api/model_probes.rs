@@ -186,7 +186,7 @@ pub async fn trigger(
         return Err(ApiError::new(
             StatusCode::SERVICE_UNAVAILABLE,
             "openrouter_key_missing",
-            "model probes are disabled: this backend has no TCAB_OPENROUTER_API_KEY configured",
+            "TCAB_OPENROUTER_API_KEY is not configured on this backend",
         ));
     };
     let Json(input) = input.unwrap_or_default();
@@ -370,7 +370,7 @@ async fn resolve_openrouter_slug(state: &AppState, slug: &str) -> Result<String,
         return Ok(slug.to_string());
     }
     Err(ApiError::unprocessable(format!(
-        "model `{slug}` has no OpenRouter slug to probe; set one in its configuration"
+        "model `{slug}` has no OpenRouter slug"
     )))
 }
 

@@ -465,9 +465,8 @@ async fn a_session_whose_succession_cannot_be_built_ends_as_gg_s_defect() {
     );
     let errors = error_messages(&events);
     assert!(
-        errors
-            .iter()
-            .any(|message| message.contains("`after`") && message.contains("exits non-zero")),
+        errors.iter().any(|message| message.contains("`after`")
+            && message.contains(&format!("`{STATUS_INTERNAL_ERROR}`"))),
         "the run-level diagnostic must name the profile gg could not resolve: {errors:?}"
     );
 }
@@ -1128,7 +1127,7 @@ async fn a_session_whose_issue_agent_cannot_be_built_ends_as_gg_s_defect() {
             .iter()
             .any(|message| message.contains(UNGROUPED_ISSUE_ID)
                 && message.contains(&format!("`{CODER_PROFILE_ID}`"))
-                && message.contains("exits non-zero")),
+                && message.contains(&format!("`{STATUS_INTERNAL_ERROR}`"))),
         "the run-level diagnostic must name the issue and the assignee gg could not stand up: \
          {errors:?}"
     );

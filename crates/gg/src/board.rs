@@ -404,9 +404,7 @@ fn resolve_require_reviewers(
                     crate::validate::as_written(declared),
                     format!(
                         "the `{CAPABILITY_PROJECT_MANAGEMENT}` capability's `{PARAM_REVIEWERS}` \
-                         switches a feature on or off, so gg reads it as `true` or `false`; \
-                         reading this as `false` would leave the agent filing issues with no \
-                         reviewer while the configuration says it may not."
+                         switches a feature on or off, so gg reads it as `true` or `false`"
                     ),
                 )
                 .known(["true", "false"]),

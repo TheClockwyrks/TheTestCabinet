@@ -128,7 +128,7 @@ async fn run(config: &Config, client: &PublishJobClient) -> Result<ReleasedLinks
         tracing::warn!(
             run_id = %config.run_id,
             publish_job_id = %config.publish_job_id,
-            "run is already published; skipping the release rather than deploying it again"
+            "run is already published"
         );
         progress(client, "run is already published — skipping the release").await;
         return Ok(ReleasedLinks {

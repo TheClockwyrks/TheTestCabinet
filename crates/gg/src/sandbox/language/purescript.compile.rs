@@ -698,9 +698,8 @@ fn version_verdict(observed: &str, purs: &str) -> Result<(), String> {
         return Ok(());
     }
     Err(format!(
-        "gg's PureScript library tree was compiled by purs {} and `{purs}` reports {observed}. \
-         Externs are a compiler-version-private format, so this compiler cannot read that tree and \
-         every program would be refused over gg's own library files. Install the pinned release \
+        "gg's PureScript library tree was compiled by purs {} and `{purs}` reports {observed}, \
+         and externs are a compiler-version-private format. Install the pinned release \
          (containers/gg-toolchains, from packages/gg-sandbox-purescript/purescript-version.sh) or \
          point {PURS_ENV} at it.",
         compiler_version(),

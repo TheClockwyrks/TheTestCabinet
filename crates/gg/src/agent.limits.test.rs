@@ -2070,3 +2070,62 @@ fn a_profiles_loop_detection_travels_on_its_binding() {
         "a profile that declared nothing is not watched because another one is"
     );
 }
+
+// ---------------------------------------------------------------------------
+// The one grammar the five ceilings report in
+// ---------------------------------------------------------------------------
+
+/// **Every ceiling reports in one grammar, and the end-to-end sentence is pinned here.**
+///
+/// `core`'s `gg_exec` tests assert the sentence a benchmark reader sees — `run failed: gg execution
+/// ceiling hit (5 consecutive turns failed)` — against a literal of their own, with nothing tying
+/// that literal to the code that renders it. This is that tie: the consecutive-errors line below is
+/// the exact string those tests quote, so a change to this grammar that would silently break the
+/// end-to-end sentence fails here first, in the crate that owns the wording.
+#[test]
+fn the_five_ceilings_report_in_one_grammar() {
+    let breach = |limit, threshold: f64, observed: f64, turns, window| GgLimitBreach {
+        limit,
+        threshold,
+        observed,
+        turns,
+        agent_id: "root".to_string(),
+        window,
+    };
+
+    // The turn and consecutive-error ceilings are counted in whole steps of one and checked at
+    // `>=`, so the breaching observation always lands exactly on the threshold. Naming the limit
+    // beside it would print the same characters twice, so the clause drops.
+    assert_eq!(
+        breach_message(&breach(GgLimitKind::Turns, 200.0, 200.0, 200, None)),
+        "200 turns taken"
+    );
+    assert_eq!(
+        breach_message(&breach(GgLimitKind::ConsecutiveErrors, 5.0, 5.0, 12, None)),
+        "5 consecutive turns failed",
+        "the figures `core`'s gg_exec tests quote in the run's failure detail"
+    );
+
+    // The other three are crossed by a margin nothing bounds, so each names the ceiling beside the
+    // observation — in the ceiling's own unit, on both figures.
+    assert_eq!(
+        breach_message(&breach(GgLimitKind::Runtime, 3600.0, 3612.0, 12, None)),
+        "3612s elapsed after 12 turns, ceiling 3600s"
+    );
+    assert_eq!(
+        breach_message(&breach(GgLimitKind::ErrorRate, 0.5, 0.6, 10, Some(10))),
+        "60% of the last 10 turns failed, ceiling 50%"
+    );
+    assert_eq!(
+        breach_message(&breach(GgLimitKind::Cost, 5.0, 5.12, 30, None)),
+        "$5.1200 spent, ceiling $5.0000"
+    );
+
+    // The elision is a property of the figures, not of the arm: a spend ceiling crossed by less
+    // than a hundredth of a cent renders both figures identically, and drops the clause for the
+    // same reason the counted ceilings always do.
+    assert_eq!(
+        breach_message(&breach(GgLimitKind::Cost, 5.0, 5.000_01, 30, None)),
+        "$5.0000 spent"
+    );
+}

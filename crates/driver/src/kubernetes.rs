@@ -1086,7 +1086,7 @@ impl KubernetesArtifactCollector {
                 match tokio::time::timeout(UPLOAD_AFTER_EXIT_GRACE, &mut receive).await {
                     Ok(received) => received,
                     Err(_elapsed) => Err(Error::ArtifactCollection(format!(
-                        "the collection uploader exited {} without completing an upload: {}",
+                        "the uploader exited {} with no completed upload: {}",
                         exec.exit_code,
                         exec.stderr.trim()
                     ))),
@@ -1105,14 +1105,14 @@ impl ArtifactCollector for KubernetesArtifactCollector {
         // only once its terminator's byte count and digest match what arrived. A
         // driver without its pod IP has no address to offer the sandbox and cannot
         // collect at all; the dispatcher wires it in through the downward API.
-        let host = self.runtime.config.pod_ip.clone().ok_or_else(|| {
-            Error::ArtifactCollection(
-                "TCAB_K8S_POD_IP is unset, so the sandbox has no address to upload the run tree to"
-                    .to_string(),
-            )
-        })?;
+        let host = self
+            .runtime
+            .config
+            .pod_ip
+            .clone()
+            .ok_or_else(|| Error::ArtifactCollection("TCAB_K8S_POD_IP is unset".to_string()))?;
         let listener = CollectListener::bind().await.map_err(|err| {
-            Error::ArtifactCollection(format!("binding the collection listener: {err}"))
+            Error::ArtifactCollection(format!("binding the upload listener: {err}"))
         })?;
         let command = uploader_command(
             &host,

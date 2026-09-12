@@ -255,21 +255,19 @@ fn reference(directory: &Path) -> Result<&'static Loaded, ApiError> {
 
 /// The `503` a deployment with no reference documents answers with.
 ///
-/// It names **the two things that fix it**, because this is the one failure the move to
-/// run-time files introduced and a blank page would be a worse trade than the drift it
-/// replaced. `service_unavailable` rather than `internal`: nothing went wrong with the
-/// request, and nothing about this backend's actual work is affected — the operator is
-/// missing a file that ships beside the binary.
+/// It names the resolved directory and the command that writes the documents, because this is
+/// the one failure the move to run-time files introduced and a blank page would be a worse
+/// trade than the drift it replaced. `service_unavailable` rather than `internal`: nothing went
+/// wrong with the request, and nothing about this backend's actual work is affected — the
+/// operator is missing a file that ships beside the binary.
 fn unavailable(directory: &Path, err: &ReferenceError) -> ApiError {
     ApiError::new(
         StatusCode::SERVICE_UNAVAILABLE,
         "gg_reference_unavailable",
         format!(
-            "gg's reference documents are not available ({err}). They are written by \
-             `gg reference --out <dir>`: the backend image bakes them and points \
-             TCAB_GG_REFERENCE at them, and from a checkout `scripts/gg-reference.sh` \
-             writes them to the default location. TCAB_GG_REFERENCE currently resolves to \
-             {}.",
+            "gg's reference documents are not available at {} ({err}); write them with \
+             `scripts/gg-reference.sh`, or point TCAB_GG_REFERENCE at a directory \
+             `gg reference --out` produced",
             directory.display()
         ),
     )
@@ -293,7 +291,7 @@ fn arm<'a>(loaded: &'a Loaded, id: &str) -> Result<&'a GgReferenceApi, ApiError>
                 .collect::<Vec<_>>()
                 .join(", ");
             ApiError::not_found(format!(
-                "no gg reference document for `{id}`; this deployment serves: {present}"
+                "no gg reference document `{id}` (this deployment serves: {present})"
             ))
         })
 }

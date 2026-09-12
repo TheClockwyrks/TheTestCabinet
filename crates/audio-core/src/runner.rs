@@ -102,8 +102,7 @@ pub fn load_library(config: &AudioConfig, kind: PackKind) -> Result<SampleLibrar
             None => Ok(SampleLibrary::empty()),
             Some(reference) => Err(format!(
                 "{} `{reference}`: this run was staged with no audio packs ({} is \
-                 missing). A run container is given the packs its test case declares \
-                 in `[audio] packs`.",
+                 missing; a test case declares its packs in `[audio] packs`)",
                 kind.label(),
                 root.join(crate::staged::PACKS_MANIFEST).display()
             )),
@@ -151,8 +150,7 @@ fn check_identity(
         }
         None => {
             return Err(format!(
-                "the pack staged at {} declares no `name`, so it cannot be checked \
-                 against this run's pin",
+                "the pack staged at {} declares no `name`; this run pins `{wanted_name}`",
                 dir.display()
             ));
         }
@@ -167,8 +165,7 @@ fn check_identity(
             "the staged `{wanted_name}` is version {staged}, not the pinned {wanted_version}"
         )),
         None => Err(format!(
-            "the pack staged at {} declares no `version`, so the pinned \
-             {wanted_version} cannot be checked",
+            "the pack staged at {} declares no `version`; this run pins {wanted_version}",
             dir.display()
         )),
     }

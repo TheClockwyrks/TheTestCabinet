@@ -700,9 +700,7 @@ pub async fn cancel(
         if current == JobState::Canceled {
             return Ok(Json(job_status_out(&job)));
         }
-        return Err(ApiError::conflict(format!(
-            "job `{id}` already finished and cannot be canceled"
-        )));
+        return Err(ApiError::conflict(format!("job `{id}` already finished")));
     }
 
     let now = now_rfc3339()?;

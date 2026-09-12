@@ -430,11 +430,7 @@ pub(crate) fn missing_required_param(capability: &str, key: &str) -> LaunchDefec
     LaunchDefect::run_level(
         param_locus(capability, key),
         "",
-        format!(
-            "the `{capability}` capability is on and writes no `{key}`, which is {configures}. gg \
-             substitutes nothing for a value nobody wrote, so an enabled capability states every \
-             param it requires."
-        ),
+        format!("the `{capability}` capability is on and writes no `{key}`, which is {configures}"),
     )
 }
 
@@ -505,10 +501,7 @@ fn read_count(
     report.report(LaunchDefect::run_level(
         param_locus(capability, key),
         value.to_string(),
-        format!(
-            "the `{capability}` capability's `{key}` must be a whole number of zero or more; gg \
-             cannot read this as one, and gg substitutes no figure for one it cannot read."
-        ),
+        format!("the `{capability}` capability's `{key}` must be a whole number of zero or more"),
     ));
     None
 }
@@ -570,10 +563,7 @@ fn at_least_one(
     report.report(LaunchDefect::run_level(
         param_locus(capability, key),
         count.to_string(),
-        format!(
-            "the `{capability}` capability's `{key}` must be one or more; {consequence}, and gg \
-             substitutes no ceiling for one it cannot honour."
-        ),
+        format!("the `{capability}` capability's `{key}` must be one or more ({consequence})"),
     ));
     None
 }
@@ -629,8 +619,8 @@ pub fn percent_param(
         param_locus(capability, key),
         percent.to_string(),
         format!(
-            "the `{capability}` capability's `{key}` is a percentage, so it must be between 0 and \
-             100; gg substitutes no share for one it cannot honour."
+            "the `{capability}` capability's `{key}` is a percentage, so it must be between 0 \
+             and 100"
         ),
     ));
     None
@@ -1099,9 +1089,7 @@ fn check_provided_files(invocation: &GgInvocation, report: &mut LaunchReport) {
             "",
             format!(
                 "the `{CAPABILITY_AUTOLOAD_SPECS}` capability seeds every file the test case \
-                 provided into an agent's opening context, and gg cannot read this one at \
-                 `{}`. Its promise is the *whole* brief, so a run that opened with part of it \
-                 would answer a question about a specification nobody wrote.",
+                 provided, and gg cannot read this one at `{}`",
                 full.display(),
             ),
         ));
@@ -1277,9 +1265,8 @@ fn check_slot_declarations(set: &GgCapabilitySet, report: &mut LaunchReport) {
                 "id",
                 id,
                 format!(
-                    "the `{}` agent still carries an internal id; launching rewrites every \
-                     reference to a profile's slug and drops the ids, so one still on the document \
-                     means the launch was incomplete.",
+                    "the `{}` agent still carries an internal id; launching drops the ids, so \
+                     this launch was incomplete",
                     agent.slug
                 ),
             ));
@@ -1292,7 +1279,7 @@ fn check_slot_declarations(set: &GgCapabilitySet, report: &mut LaunchReport) {
             &slot.name,
             format!(
                 "the set still declares the `{}` model slot; a bound launch resolves every slot \
-                 and carries none, so one still on the document means the launch was incomplete.",
+                 and carries none, so this launch was incomplete",
                 slot.name
             ),
         ));
@@ -1388,9 +1375,8 @@ fn check_profile_ids(set: &GgCapabilitySet, report: &mut LaunchReport) {
                 format!("agents[{index}].id"),
                 id,
                 format!(
-                    "the `{id}` profile id is declared more than once; a reference is resolved by \
-                     id and the first profile that has it answers, so nothing could ever address \
-                     this one."
+                    "the `{id}` profile id is declared more than once; a reference resolves to \
+                     the first profile that has it"
                 ),
             ));
         }
@@ -1439,10 +1425,8 @@ fn check_capabilities(agent: &GgAgentConfig, report: &mut LaunchReport) {
                 format!("capabilities[{index}].id"),
                 &capability.id,
                 format!(
-                    "the `{}` capability is declared more than once on this agent; a capability is \
-                     read by id and the first declaration answers, so everything on this one — its \
-                     switch, its arm and its params — would configure nothing while the run's \
-                     record carried it.",
+                    "the `{}` capability is declared more than once on this agent; a capability \
+                     is read by id and the first declaration answers",
                     capability.id
                 ),
             ));
@@ -1483,8 +1467,7 @@ fn check_implementation(
             named,
             format!(
                 "the `{}` capability does one thing and offers no implementations to choose \
-                 between; `{named}` names nothing gg could select, and the run's own record would \
-                 carry it as though it had.",
+                 between; `{named}` names nothing gg could select",
                 capability.id
             ),
         )),
@@ -1701,14 +1684,13 @@ fn check_run_level_params(set: &GgCapabilitySet, report: &mut LaunchReport) {
                 as_written(&value),
                 match &in_force {
                     Some(in_force) => format!(
-                        "{why}, so gg reads `{key}` off the `{}` agent, and this run's is `{}`. \
-                         This declaration would configure nothing.",
+                        "{why}, so gg reads `{key}` off the `{}` agent, and this run's is `{}`",
                         reader.slug,
                         as_written(in_force),
                     ),
                     None => format!(
-                        "{why}, so gg reads `{key}` off the `{}` agent, which declares none — and \
-                         this declaration would configure nothing. Declare it there.",
+                        "{why}, so gg reads `{key}` off the `{}` agent, which declares none. \
+                         Declare it there.",
                         reader.slug,
                     ),
                 },
@@ -1749,9 +1731,8 @@ fn check_rosters(set: &GgCapabilitySet, report: &mut LaunchReport) {
                         format!("subagents[{index}].scopes"),
                         "",
                         format!(
-                            "the `{}` agent's roster entry for `{}` names no scope, so it permits \
-                             nothing; what a target may be used for is the whole of what a roster \
-                             entry says, and gg grants none of the three on an operator's behalf.",
+                            "the `{}` agent's roster entry for `{}` names no scope, and what a \
+                             target may be used for is the whole of what a roster entry says",
                             agent.slug, reference.agent_id
                         ),
                     )
@@ -1888,10 +1869,9 @@ fn check_merge_agent_declarations(set: &GgCapabilitySet, locus: &str, report: &m
                 locus,
                 as_written(raw),
                 format!(
-                    "the `{PROJECT_MANAGEMENT_PARAM_MERGE_AGENT}` names the agent that resolves a \
-                     conflicting merge, so it must be the id of a declared profile. gg cannot read \
-                     one here, and skipping it would hand the run whichever profile happened to \
-                     name one next."
+                    "the `{PROJECT_MANAGEMENT_PARAM_MERGE_AGENT}` names the agent that resolves \
+                     a conflicting merge, so it must be the id of a declared profile, and gg \
+                     cannot read one here"
                 ),
             )),
         }
@@ -1909,8 +1889,7 @@ fn check_merge_agent_declarations(set: &GgCapabilitySet, locus: &str, report: &m
             id,
             format!(
                 "the board is the run's, so it has one merge agent, and `{first_agent}` already \
-                 names `{first}`. gg would read the first of the two and this declaration would \
-                 configure nothing."
+                 names `{first}`"
             ),
         ));
     }

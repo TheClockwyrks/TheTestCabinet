@@ -245,10 +245,8 @@ pub fn check_scoping(set: &GgCapabilitySet, report: &mut LaunchReport) {
                     crate::validate::implementation_locus(CAPABILITY_MEMORIES),
                     child_strategy.id(),
                     format!(
-                        "`{child_id}` ({}) inherits its memories from `{}` ({}), which organizes \
-                         them as `{}`; a store is read by the calls its strategy offers, so gg \
-                         could only give `{child_id}` an instance of its own — which is not the \
-                         run this configuration describes. Organize both the same way, or scope \
+                        "`{child_id}` ({}) inherits its memories from `{}` ({}), which \
+                         organizes them as `{}`. Organize both the same way, or scope \
                          `{child_id}` `{}`.",
                         child.name,
                         agent.slug,
@@ -294,8 +292,7 @@ pub fn inherited_strategy_conflict(
     let spawner = ctx.inherited.memories_organized_differently(strategy)?;
     Some(format!(
         "agent `{}` ({}) is scoped `{scope}` and organizes its memories as `{}`, but the agent \
-         that spawned it organizes them as `{}`; a store is read by the calls its own strategy \
-         offers, so there is no handle onto it this agent could be given",
+         that spawned it organizes them as `{}`",
         profile.slug,
         profile.name,
         strategy.id(),

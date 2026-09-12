@@ -158,9 +158,7 @@ fn breach_line(agent: &str) -> String {
 }
 
 /// The sentence gg logs for the consecutive-errors ceiling the tests breach.
-const BREACH_SENTENCE: &str = "5 consecutive turns failed to carry out the work they declared, \
-                               reaching the configured ceiling of 5; stopping rather than \
-                               spending the rest of the run on the same failure.";
+const BREACH_SENTENCE: &str = "5 consecutive turns failed";
 
 /// One gg `session_ended` telemetry line with `status`.
 fn session_ended_line(status: &str) -> String {
@@ -729,9 +727,15 @@ fn a_breached_ceiling_is_classified_apart_from_every_other_non_zero_exit() {
         &SILENT,
     );
     assert!(
+        // Nothing to quote: the breach sentence would have displaced the code and the
+        // status, and with no sentence to quote they are the figures the failure has.
         matches!(&ceiling, Error::HarnessLimitExceeded { slug, detail }
-            if slug == GG_SLUG && detail.contains("limit_exceeded")),
+            if slug == GG_SLUG && detail == "code 3, session ended `limit_exceeded`"),
         "{ceiling:?}",
+    );
+    assert_eq!(
+        ceiling.to_string(),
+        "gg execution ceiling hit (code 3, session ended `limit_exceeded`)",
     );
     assert_eq!(
         crate::run_record::RunState::classify_failure(&ceiling),
@@ -757,7 +761,7 @@ fn an_exit_with_no_terminal_status_still_names_its_code() {
     // A session killed before it emitted a `session_ended` reports nothing to quote, and the
     // detail has to stay useful anyway.
     let detail = invocation_detail(classify_exit(1, None, &SILENT));
-    assert_eq!(detail, "gg exited with code 1");
+    assert_eq!(detail, "code 1");
 }
 
 #[test]
@@ -766,7 +770,7 @@ fn a_session_that_said_nothing_is_recorded_as_before() {
     // and no ceiling there is nothing to quote and the code and status stand alone.
     let (_emitted, result) = ingest(&session_ended_line("error"));
     let detail = invocation_detail(result.classify(1));
-    assert_eq!(detail, "gg exited with code 1 (session ended `error`)");
+    assert_eq!(detail, "code 1, session ended `error`");
 }
 
 #[test]
@@ -791,10 +795,7 @@ fn a_launch_refusal_is_recorded_with_the_defect_gg_logged() {
         1,
     );
     let detail = invocation_detail(result.classify(1));
-    assert_eq!(
-        detail,
-        format!("gg exited with code 1 (session ended `error`): {defect}"),
-    );
+    assert_eq!(detail, format!("code 1, session ended `error`; {defect}"),);
 }
 
 #[test]
@@ -817,7 +818,7 @@ fn every_launch_defect_is_named_in_order() {
     let detail = invocation_detail(result.classify(1));
     assert_eq!(
         detail,
-        "gg exited with code 1 (session ended `error`): \
+        "code 1, session ended `error`; \
          agent `rac`: unknown tool `frobnicate`; \
          agent `rac`: context-window-override.params.windowLimit = `400000`; \
          profile `reviewer`: no model bound",
@@ -838,7 +839,7 @@ fn a_pre_telemetry_fatal_on_stderr_is_the_reason_when_there_is_no_error_log() {
     let detail = invocation_detail(result.classify(1));
     assert_eq!(
         detail,
-        "gg exited with code 1: \
+        "code 1; \
          error: could not read capability set: /work/.gg/set.json: No such file; \
          hint: seed the workspace before launching",
     );
@@ -859,7 +860,7 @@ fn error_logs_take_precedence_over_stderr() {
     let detail = invocation_detail(result.classify(1));
     assert_eq!(
         detail,
-        "gg exited with code 1 (session ended `error`): profile `root`: no model bound",
+        "code 1, session ended `error`; profile `root`: no model bound",
     );
 }
 
@@ -886,9 +887,27 @@ fn a_ceiling_exit_quotes_the_breach_sentence_gg_logged() {
         Error::HarnessLimitExceeded { detail, .. } => detail,
         other => panic!("{other:?}"),
     };
+    assert_eq!(detail, BREACH_SENTENCE);
+}
+
+#[test]
+fn a_ceiling_stop_reads_as_one_clause_end_to_end() {
+    // The composed sentence is what an operator reads off a failed run, and every layer that
+    // contributes to it states its fact once: gg's own breach sentence carries the figures,
+    // this crate's classification adds nothing to it, and the error names the subsystem. The
+    // driver prefixes `run failed: ` to what is asserted here.
+    let ceiling = classify_exit(
+        i32::from(crate::gg::EXIT_LIMIT_EXCEEDED),
+        Some("limit_exceeded"),
+        &ExitReasons {
+            error_logs: &[],
+            stderr_lines: &[],
+            limit_breach: Some(BREACH_SENTENCE),
+        },
+    );
     assert_eq!(
-        detail,
-        format!("gg exited with code 3 (session ended `limit_exceeded`): {BREACH_SENTENCE}"),
+        ceiling.to_string(),
+        "gg execution ceiling hit (5 consecutive turns failed)",
     );
 }
 
@@ -908,7 +927,8 @@ fn a_concurrent_agents_warning_is_not_mistaken_for_the_ceiling() {
     assert_eq!(result.limit_breach.as_deref(), Some(BREACH_SENTENCE));
 
     // And a breach whose agent never logged a sentence claims nobody else's, however recent:
-    // the detail is the code and status alone rather than a warning about something else.
+    // the run is recorded as a ceiling stop with nothing quoted, rather than with a warning
+    // about something else.
     let stream = [
         agent_log_line("root", "warn", "a view call was refused: not a file"),
         breach_line("worker-1"),
@@ -920,9 +940,10 @@ fn a_concurrent_agents_warning_is_not_mistaken_for_the_ceiling() {
 }
 
 #[test]
-fn a_ceiling_exit_without_a_breach_sentence_reads_as_before() {
+fn a_ceiling_exit_without_a_breach_sentence_falls_back_to_the_exit_figures() {
     // The pairing is best-effort: a stream that ended `limit_exceeded` with no breach event to
-    // claim a sentence keeps the detail it always had rather than quoting a stray warning.
+    // claim a sentence quotes no stray warning in its place — but it still carries the figures
+    // this layer holds, so the reader is never handed a failure with no figure at all.
     let stream = [
         log_line("warn", "skills library is empty"),
         session_ended_line("limit_exceeded"),
@@ -933,10 +954,7 @@ fn a_ceiling_exit_without_a_breach_sentence_reads_as_before() {
         Error::HarnessLimitExceeded { detail, .. } => detail,
         other => panic!("{other:?}"),
     };
-    assert_eq!(
-        detail,
-        "gg exited with code 3 (session ended `limit_exceeded`)"
-    );
+    assert_eq!(detail, "code 3, session ended `limit_exceeded`");
 }
 
 #[test]
@@ -957,7 +975,7 @@ fn the_quoted_reasons_are_bounded_and_the_rest_are_counted() {
     assert_eq!(result.error_logs.len(), 500);
 
     let detail = invocation_detail(result.classify(1));
-    let prefix = "gg exited with code 1 (session ended `internal_error`): ";
+    let prefix = "code 1, session ended `internal_error`; ";
     let quoted = detail
         .strip_prefix(prefix)
         .expect("the code and status still lead");

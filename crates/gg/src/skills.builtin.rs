@@ -347,20 +347,15 @@ fn withheld_families(
                 format!("{}.{id}", locus()),
                 crate::validate::as_written(on),
                 format!(
-                    "a built-in skill is withheld with `false` and offered with `true`; gg cannot \
-                     read this as either, and offering `{id}` anyway would hand the agent a skill \
-                     this line was written to take away."
+                    "a built-in skill is withheld with `false` and offered with `true`, and gg \
+                     cannot read `{id}`'s as either"
                 ),
             )),
             (false, _) => report.report(
                 crate::validate::LaunchDefect::run_level(
                     format!("{}.{id}", locus()),
                     crate::validate::as_written(on),
-                    format!(
-                        "`{id}` names no built-in skill family, so it withholds nothing; the agent \
-                         would be offered every family while the configuration says one was held \
-                         back."
-                    ),
+                    format!("`{id}` names no built-in skill family"),
                 )
                 .known(FAMILIES.iter().map(|family| family.id)),
             ),

@@ -255,17 +255,12 @@ pub(crate) fn authored_capability_set_defect(set: &GgCapabilitySet) -> Option<St
             .unwrap_or_default()
             .is_empty()
         {
-            return Some(format!(
-                "the `{}` agent carries no internal id; every reference in a stored configuration \
-                 points at one, which is what lets a profile be renamed without breaking them",
-                agent.slug
-            ));
+            return Some(format!("the `{}` agent carries no internal id", agent.slug));
         }
     }
     if let Some(duplicate) = set.duplicate_agent_keys().first() {
         return Some(format!(
-            "two agent profiles carry the internal id `{duplicate}`, so a reference to either \
-             would name both"
+            "two agent profiles carry the internal id `{duplicate}`"
         ));
     }
     set.slot_defects().into_iter().next()
@@ -284,15 +279,12 @@ pub(crate) fn launched_capability_set_defect(set: &GgCapabilitySet) -> Option<St
     }
     if let Some(unresolved) = set.unresolved_agent_keys().first() {
         return Some(format!(
-            "the `{unresolved}` agent still carries an internal id; launching rewrites every \
-             reference to a profile's slug and drops the ids, so one still here means the launch \
-             was incomplete"
+            "the `{unresolved}` agent still carries an internal id"
         ));
     }
     if let Some(slot) = set.model_slots.first() {
         return Some(format!(
-            "the set still declares the `{}` model slot; a bound launch resolves every slot and \
-             carries none",
+            "the set still declares the `{}` model slot",
             slot.name
         ));
     }
@@ -305,17 +297,13 @@ fn slug_defect(set: &GgCapabilitySet) -> Option<String> {
     for agent in &set.agents {
         if !is_valid_agent_slug(agent.slug.trim()) {
             return Some(format!(
-                "the `{}` agent's slug is not lowercase letters and digits in groups separated by \
-                 single hyphens; the model is shown this name and passes it back",
+                "the `{}` agent's slug is not lowercase letters and digits in groups separated \
+                 by single hyphens",
                 agent.name
             ));
         }
     }
-    set.duplicate_agent_slugs().first().map(|duplicate| {
-        format!(
-            "two agent profiles carry the slug `{duplicate}`; the model is shown this name and \
-             every reference a run records resolves by it, so rename one of them or override the \
-             imported profile's slug"
-        )
-    })
+    set.duplicate_agent_slugs()
+        .first()
+        .map(|duplicate| format!("two agent profiles carry the slug `{duplicate}`"))
 }

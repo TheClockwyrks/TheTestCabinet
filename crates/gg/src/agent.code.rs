@@ -848,9 +848,8 @@ fn sandbox_failure_decision(
         error if error.is_toolchain_defect() => CodeTurnOutcome::Fatal {
             fault: FatalFault::Toolchain,
             message: format!(
-                "the model's program was never read ({error}); this is a fault in the run's \
-                 environment rather than in the model's program, and the run ends here rather \
-                 than charging it to the model."
+                "the model's program was never read ({error}) — a fault in the run's environment \
+                 rather than in the model's program"
             ),
         },
         // The language's own diagnostic, with nothing wrapped around it. `SandboxError::Prepare`'s
@@ -1270,11 +1269,9 @@ fn report_discovery_to_operator(
         "warn",
         format!(
             "the model called {named} without ever having opened the documentation of any of \
-             them. A function's signature is only knowable here from a documentation view opened \
+             them; a function's signature is only knowable here from a documentation view opened \
              on an earlier turn, so this model is writing calls from memory rather than \
-             discovering the surface, which is a strong signal against giving it responses as \
-             code at all. Every such call is counted on its turn's `code_execution` event and \
-             rolled up on the session summary; this line is written once per run."
+             discovering the surface"
         ),
     ));
 }

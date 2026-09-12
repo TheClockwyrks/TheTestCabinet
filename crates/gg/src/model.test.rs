@@ -213,9 +213,9 @@ fn a_response_loop_reports_what_looped_and_how_much_was_discarded() {
         message.contains("the reply passed 250001 characters without finishing"),
         "{message}"
     );
-    assert!(message.contains("discarded 3 response(s)"), "{message}");
+    assert!(message.contains("3 response(s) discarded"), "{message}");
     assert!(
-        message.contains("750003 characters of generated output"),
+        message.contains("750003 characters"),
         "the size of what was thrown away is named beside the count: {message}"
     );
     assert!(!error.is_auth_failure());

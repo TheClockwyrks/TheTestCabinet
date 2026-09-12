@@ -54,8 +54,8 @@ use super::AppState;
 pub async fn catalog(State(state): State<AppState>) -> Result<Json<CatalogResponse>, ApiError> {
     if state.store.needs_reingest() {
         return Err(ApiError::unavailable(
-            "the definition store was written in another record format and holds no \
-             version this build can read; re-ingest the catalog",
+            "the definition store holds no version in a record format this build can read; \
+             re-ingest the catalog",
         ));
     }
     let mut cases = Vec::new();

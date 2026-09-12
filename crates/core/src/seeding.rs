@@ -142,12 +142,10 @@ impl FsRepoSeeder {
                     crate::execution::ENGINE_DOCS_DIR
                 );
                 return Err(Error::Seeding(format!(
-                    "engine `{}` declares a docs directory `{docs}`, but it is missing \
-                     from the staged package at `{}` — the rendered prompt points the \
-                     build at `{in_container}`, so seeding without it would send the \
-                     model to read documentation that is not there; rebuild the package \
-                     (`npm run build:packages`) and restage it \
-                     (`node scripts/stage-tcab-packages.mjs`)",
+                    "engine `{}` declares a docs directory `{docs}` that is missing from \
+                     the staged package at `{}` (the prompt points the build at \
+                     `{in_container}`); rebuild the package (`npm run build:packages`) and \
+                     restage it (`node scripts/stage-tcab-packages.mjs`)",
                     engine.slug(),
                     src.display(),
                 )));
@@ -181,10 +179,10 @@ impl FsRepoSeeder {
             let src = self.package_store.join(&name);
             if !src.is_dir() {
                 return Err(Error::Seeding(format!(
-                    "runtime package `{name}` not found in the package store at `{}` — \
-                     the driver image bakes it under `{}`; for a local checkout, stage \
-                     the packages there (`node scripts/stage-tcab-packages.mjs`) or point \
-                     `TCAB_PACKAGE_STORE` at a staged copy",
+                    "runtime package `{name}` not found in the package store at `{}` (the driver \
+                     image bakes it under `{}`); stage the packages \
+                     (`node scripts/stage-tcab-packages.mjs`) or point `TCAB_PACKAGE_STORE` \
+                     at a staged copy",
                     self.package_store.display(),
                     crate::test_case::TCAB_PACKAGES_DIR,
                 )));
@@ -1449,10 +1447,8 @@ pub(crate) fn staged_package_version(package_dir: &Path, package: &str) -> Resul
         .map(str::to_string)
         .ok_or_else(|| {
             Error::Seeding(format!(
-                "staged package `{package}` declares no `version` string in `{}` — the \
-                 engine version is recorded on the run, so a run must never record a \
-                 version that is not real; rebuild the package \
-                 (`npm run build:packages`) and restage it \
+                "staged package `{package}` declares no `version` string in `{}`; rebuild \
+                 the package (`npm run build:packages`) and restage it \
                  (`node scripts/stage-tcab-packages.mjs`)",
                 manifest.display(),
             ))
@@ -1493,9 +1489,8 @@ fn add_engine_dependency(repo: &Path, package: &str) -> Result<()> {
     let manifest = repo.join("package.json");
     let raw = fs::read_to_string(&manifest).map_err(|err| {
         Error::Seeding(format!(
-            "reading the seeded workspace `package.json` at `{}`: {err} — a case that \
-             supports any engine other than `{}` must ship one, because the engine \
-             dependency is written into it",
+            "reading the seeded workspace `package.json` at `{}`: {err} (a case supporting \
+             any engine other than `{}` must ship one)",
             manifest.display(),
             crate::engine::NONE_SLUG,
         ))

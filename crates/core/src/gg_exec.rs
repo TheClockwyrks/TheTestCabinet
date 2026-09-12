@@ -254,8 +254,13 @@ fn resolve_install_with(
             let host = locate_local()?.ok_or_else(|| Error::HarnessUnavailable {
                 slug: GG_SLUG.to_string(),
                 detail: format!(
-                    "{ENV_INSTALL_MODE}=local was set but no gg binary was found \
-                     (set {ENV_BINARY} or build gg)"
+                    "{ENV_INSTALL_MODE}=local but no gg binary exists at {}; set {ENV_BINARY} \
+                     or build gg",
+                    default_local_candidates()
+                        .iter()
+                        .map(|candidate| candidate.display().to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
                 ),
             })?;
             Ok(local(host))
@@ -443,7 +448,7 @@ pub(crate) async fn prepare_gg(
                 return Err(Error::HarnessInstall {
                     slug: GG_SLUG.to_string(),
                     detail: format!(
-                        "downloading the gg {version} release failed (exit {}): {}",
+                        "downloading the {version} release exited {}: {}",
                         output.exit_code,
                         output.stderr.trim()
                     ),
@@ -701,10 +706,16 @@ pub(crate) async fn run_gg_session(
 /// retries — and a retry of a run that spent its own ceiling runs the same capability set into the
 /// same bound.
 ///
-/// The detail names the code and the status, and then — because those two say only which kind of
-/// failure it was, never *why* — quotes what gg said on its way out (see [`ExitReasons`]): the
-/// ceiling sentence for a breach, otherwise every error-level log in order, otherwise whatever
-/// reached stderr. With nothing to quote, the detail is the code and status alone. The quoted part
+/// Both branches carry the same figures — the code gg left and the status the session ended under
+/// — and differ only in what they quote on top of them. A breach quotes the ceiling sentence
+/// *instead of* those figures: [`HarnessLimitExceeded`](Error::HarnessLimitExceeded) already says a
+/// ceiling stopped the run, which is all the code `3` and the `limit_exceeded` status say, and the
+/// sentence is the only thing here that names which ceiling and by how much. Pairing that sentence
+/// to the agent that raised it is best-effort, though, so a breach nobody logged a sentence for
+/// falls back to the figures rather than leaving a failure with no figure at all. Every other exit
+/// keeps the figures and adds what gg said on its way out (see [`ExitReasons`]): every error-level
+/// log in order, otherwise whatever reached stderr. With nothing to quote, the figures stand alone.
+/// The quoted part
 /// is bounded by [`MAX_EXIT_REASON_BYTES`] so a stream that logged an error per turn for a thousand
 /// turns leaves a status detail a row can still show, not a run record padded with it — and what
 /// the bound elides is the middle, never the last message, which is the one that says why (see
@@ -717,24 +728,33 @@ fn classify_exit(
     terminal_status: Option<&str>,
     reasons: &ExitReasons<'_>,
 ) -> Error {
-    let status = terminal_status
-        .map(|status| format!(" (session ended `{status}`)"))
-        .unwrap_or_default();
     let limit_exceeded = exit_code == i32::from(crate::gg::EXIT_LIMIT_EXCEEDED);
-    let why = reasons
-        .quoted(limit_exceeded)
-        .map(|why| format!(": {why}"))
+    let why = reasons.quoted(limit_exceeded);
+    // The figures this layer holds whichever branch takes them, composed once so the two
+    // read identically: the code gg left, and the status the session ended under when it
+    // got far enough to report one. Both variants name the harness themselves, so neither
+    // repeats it here.
+    let status = terminal_status
+        .map(|status| format!(", session ended `{status}`"))
         .unwrap_or_default();
-    let detail = format!("gg exited with code {exit_code}{status}{why}");
+    let figures = format!("code {exit_code}{status}");
     if limit_exceeded {
+        // The code and the status both say "a ceiling stopped this", which is what
+        // `HarnessLimitExceeded` itself says, so the breach sentence displaces them when
+        // there is one. When no agent logged one they are what this failure has.
         return Error::HarnessLimitExceeded {
             slug: GG_SLUG.to_string(),
-            detail,
+            detail: why.unwrap_or(figures),
         };
     }
     Error::HarnessInvocation {
         slug: GG_SLUG.to_string(),
-        detail,
+        // The harness is named by the variant, so the detail carries only the figures:
+        // the code, the status, and what gg said on its way out.
+        detail: match why {
+            Some(why) => format!("{figures}; {why}"),
+            None => figures,
+        },
     }
 }
 

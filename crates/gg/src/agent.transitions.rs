@@ -555,8 +555,8 @@ pub(super) fn dispatch_forks(
             Err(err) => emitter.emit(log(
                 "warn",
                 format!(
-                    "the copy `{}` this agent forked could not be started ({err}); the agent has \
-                     already been told it exists, so it may wait for a child that never runs.",
+                    "the copy `{}` this agent forked could not be started ({err}); the agent \
+                     has already been told it exists",
                     fork.id
                 ),
             )),
@@ -816,8 +816,7 @@ pub(crate) fn check_launch(set: &GgCapabilitySet, report: &mut crate::validate::
                 "",
                 format!(
                     "the `{}` ({}) agent enables `{CAPABILITY_EXEC}` but lists no agents it may \
-                     use, so there is nothing for `{EXEC_TOOL}` to become and the call is not \
-                     offered. Add the agents it may continue as to its roster, or switch \
+                     use. Add the agents it may continue as to its roster, or switch \
                      `{CAPABILITY_EXEC}` off.",
                     profile.slug, profile.name,
                 ),
@@ -831,8 +830,7 @@ pub(crate) fn check_launch(set: &GgCapabilitySet, report: &mut crate::validate::
                 format!(
                     "the `{}` ({}) agent enables `{CAPABILITY_FORK}` but not \
                      `{CAPABILITY_SUBAGENTS}`, which is what offers `wait_for_subagents` and \
-                     `send_message` — so a copy of it could never be waited on or messaged, and \
-                     `{FORK_TOOL}` is not offered. Enable `{CAPABILITY_SUBAGENTS}`, or switch \
+                     `send_message`. Enable `{CAPABILITY_SUBAGENTS}`, or switch \
                      `{CAPABILITY_FORK}` off.",
                     profile.slug, profile.name,
                 ),
@@ -844,10 +842,9 @@ pub(crate) fn check_launch(set: &GgCapabilitySet, report: &mut crate::validate::
                 locus(CAPABILITY_EXEC),
                 "",
                 format!(
-                    "the `{}` ({}) agent enables `{CAPABILITY_EXEC}` and is run as the state of a \
-                     machine, so it is not offered `{EXEC_TOOL}` — inside a machine the next move \
-                     is `{TRANSITION_STATE_TOOL}`'s. Switch `{CAPABILITY_EXEC}` off on it, or run \
-                     it outside the machine. `{FORK_TOOL}` is unaffected.",
+                    "the `{}` ({}) agent enables `{CAPABILITY_EXEC}` and is run as the state of \
+                     a machine, where the next move is `{TRANSITION_STATE_TOOL}`'s. Switch \
+                     `{CAPABILITY_EXEC}` off on it, or run it outside the machine.",
                     profile.slug, profile.name,
                 ),
             ));

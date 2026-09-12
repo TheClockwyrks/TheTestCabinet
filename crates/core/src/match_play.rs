@@ -268,15 +268,31 @@ pub fn canonical_match_setup(
         test_case.sandbox.as_ref(),
         test_case.simulation.as_ref(),
     ) else {
-        return Err(Error::Validation(
-            "an adversarial match requires [contract], [sandbox], and [simulation]".to_string(),
-        ));
+        // Name the sections that are actually absent rather than the three an adversarial
+        // match needs: which ones are missing is the whole of what this failure knows.
+        let missing: Vec<&str> = [
+            ("[contract]", test_case.contract.is_none()),
+            ("[sandbox]", test_case.sandbox.is_none()),
+            ("[simulation]", test_case.simulation.is_none()),
+        ]
+        .into_iter()
+        .filter_map(|(section, absent)| absent.then_some(section))
+        .collect();
+        return Err(Error::Validation(format!(
+            "test case `{}@{}` declares no {} for its adversarial match",
+            test_case.slug,
+            test_case.version,
+            missing.join(", ")
+        )));
     };
     // An adversarial case's resolved `[sandbox]` always carries `fuel_per_tick`
     // (resolution requires it for this type and forbids the performance
     // `fuel_limit`); guard the invariant rather than unwrapping blind.
     let fuel_per_tick = sandbox.fuel_per_tick.ok_or_else(|| {
-        Error::Validation("an adversarial match requires sandbox.fuel_per_tick".to_string())
+        Error::Validation(format!(
+            "test case `{}@{}` declares no sandbox.fuel_per_tick for its adversarial match",
+            test_case.slug, test_case.version
+        ))
     })?;
     Ok(MatchSetup {
         entry: contract.entry.clone(),

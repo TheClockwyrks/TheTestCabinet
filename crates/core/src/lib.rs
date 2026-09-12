@@ -194,9 +194,10 @@ pub use test_case_group::{TestCaseGroup, TestCaseGroupCatalog};
 pub use toolchain::{
     CoverageFile, CoverageMetric, CoverageMetrics, TOOLCHAIN_COVERAGE_FILE_LIMIT,
     TOOLCHAIN_COVERAGE_SUMMARY_PATH, TOOLCHAIN_FAILURE_MESSAGE_LIMIT, TOOLCHAIN_OUTPUT_LIMIT,
-    TOOLCHAIN_TEST_FAILURE_LIMIT, TOOLCHAIN_TEST_FILE_LIMIT, TOOLCHAIN_TEST_REPORT_PATH,
-    ToolchainCommandResult, ToolchainCommands, ToolchainCoverage, ToolchainSmokeResult,
-    ToolchainSummary, ToolchainTestFailure, ToolchainTestFile, ToolchainTestRun, ToolchainTests,
+    TOOLCHAIN_TEST_ENTRY_LIMIT, TOOLCHAIN_TEST_FAILURE_LIMIT, TOOLCHAIN_TEST_FILE_LIMIT,
+    TOOLCHAIN_TEST_REPORT_PATH, ToolchainCommandResult, ToolchainCommands, ToolchainCoverage,
+    ToolchainSmokeResult, ToolchainSummary, ToolchainTest, ToolchainTestFailure, ToolchainTestFile,
+    ToolchainTestRun, ToolchainTestStatus, ToolchainTests,
 };
 pub use toolchain_report::{read_coverage_summary, read_test_report};
 pub use toolchain_stage::ToolchainStage;
@@ -363,8 +364,7 @@ impl RunRequest {
             return Ok(());
         }
         Err(Error::GgConfiguration(format!(
-            "no context window was resolved for the model(s) {} — a gg run is measured against \
-             the model catalog's window for each model it binds, and none is assumed",
+            "no context window resolved for model(s) {}",
             missing
                 .iter()
                 .map(|id| format!("`{id}`"))
@@ -1418,12 +1418,9 @@ where
             return Ok(());
         }
         Err(Error::ContainerRuntime(format!(
-            "the run image `{image}` does not accept staged audio: `{marker}` is \
-             absent or is not `{expected}`. That image predates the change that moved \
-             the audio palette out of the image and into the run, so it would ignore \
-             the packs this case declares and use whatever it bakes. Pull a newer run \
-             image, or pin `TCAB_CONTAINER_TAG` to a commit at or after the one that \
-             publishes it."
+            "run image `{image}` does not accept staged audio (`{marker}` is absent or is \
+             not `{expected}`); pull a newer run image, or pin `TCAB_CONTAINER_TAG` to a \
+             commit at or after the one that publishes it"
         )))
     }
 

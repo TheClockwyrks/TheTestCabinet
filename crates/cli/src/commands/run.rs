@@ -31,8 +31,8 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
     let harness: HarnessSlug = args.harness.into();
 
     let backend = config::backend_url().context(
-        "TCAB_BACKEND_URL is not set; `tcab run` now enqueues runs on the backend (the k3d \
-         stack) — set it to the backend's address (for example http://127.0.0.1:8787)",
+        "TCAB_BACKEND_URL is not set; set it to the backend's address (for example \
+         http://127.0.0.1:8787)",
     )?;
     // The enqueue is gated on the launching account, so a launch requires a stored
     // login token even though plain reads do not.
@@ -174,8 +174,7 @@ async fn finish(
         // means the watch ended early (a dropped connection); treat it as a failure
         // to observe the run rather than a silent success.
         other => bail!(
-            "watch for job {job_id} ended while the run was still {} — re-run to observe it to \
-             completion",
+            "watch for job {job_id} ended while the run was still {}",
             state_label(other)
         ),
     }

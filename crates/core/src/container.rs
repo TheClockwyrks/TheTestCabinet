@@ -109,8 +109,8 @@ impl CliContainerRuntime {
             .await?;
         if !listed.status.success() {
             return Err(Error::ContainerRuntime(format!(
-                "listing run containers for job `{job_id}` failed: {}",
-                String::from_utf8_lossy(&listed.stderr).trim()
+                "listing run containers for job `{job_id}` failed{}",
+                run_failure(&listed)
             )));
         }
         let ids: Vec<String> = String::from_utf8_lossy(&listed.stdout)
@@ -129,8 +129,8 @@ impl CliContainerRuntime {
         let removed = self.run(&args).await?;
         if !removed.status.success() {
             return Err(Error::ContainerRuntime(format!(
-                "removing the run containers for job `{job_id}` failed: {}",
-                String::from_utf8_lossy(&removed.stderr).trim()
+                "removing the run containers for job `{job_id}` failed{}",
+                run_failure(&removed)
             )));
         }
         Ok(())
@@ -151,8 +151,8 @@ impl CliContainerRuntime {
             }
         }
         Err(Error::ContainerRuntime(
-            "no container runtime found on PATH (looked for podman, docker); \
-             set TCAB_CONTAINER_RUNTIME to override"
+            "no container runtime on PATH (looked for podman, docker); set \
+             TCAB_CONTAINER_RUNTIME to override"
                 .to_string(),
         ))
     }
@@ -230,8 +230,8 @@ impl CliContainerRuntime {
         let output = self.run(&copy).await?;
         if !output.status.success() {
             return Err(Error::ContainerRuntime(format!(
-                "seeding `{WORK_DIR}` from `{source}` failed: {}",
-                String::from_utf8_lossy(&output.stderr).trim()
+                "seeding `{WORK_DIR}` from `{source}` failed{}",
+                run_failure(&output)
             )));
         }
 
@@ -248,8 +248,8 @@ impl CliContainerRuntime {
         let output = self.run(&chown).await?;
         if !output.status.success() {
             return Err(Error::ContainerRuntime(format!(
-                "handing `{WORK_DIR}` to `{RUN_USER}` failed: {}",
-                String::from_utf8_lossy(&output.stderr).trim()
+                "handing `{WORK_DIR}` to `{RUN_USER}` failed{}",
+                run_failure(&output)
             )));
         }
         Ok(())
@@ -281,9 +281,9 @@ impl CliContainerRuntime {
                 .await?;
             if !output.status.success() {
                 return Err(Error::ContainerRuntime(format!(
-                    "copying `{source}` to `{}` in the container failed: {}",
+                    "copying `{source}` to `{}` in the container failed{}",
                     dir.container_path,
-                    String::from_utf8_lossy(&output.stderr).trim()
+                    run_failure(&output)
                 )));
             }
 
@@ -292,9 +292,9 @@ impl CliContainerRuntime {
                 .await?;
             if !output.status.success() {
                 return Err(Error::ContainerRuntime(format!(
-                    "handing `{}` to `{RUN_USER}` failed: {}",
+                    "handing `{}` to `{RUN_USER}` failed{}",
                     dir.container_path,
-                    String::from_utf8_lossy(&output.stderr).trim()
+                    run_failure(&output)
                 )));
             }
         }
@@ -334,8 +334,8 @@ impl CliContainerRuntime {
                 let output = self.run(&mkdir).await?;
                 if !output.status.success() {
                     return Err(Error::ContainerRuntime(format!(
-                        "creating `{parent}` in the container failed: {}",
-                        String::from_utf8_lossy(&output.stderr).trim()
+                        "creating `{parent}` in the container failed{}",
+                        run_failure(&output)
                     )));
                 }
             }
@@ -363,9 +363,9 @@ impl CliContainerRuntime {
             let output = self.run(&copy).await?;
             if !output.status.success() {
                 return Err(Error::ContainerRuntime(format!(
-                    "copying a file to `{}` in the container failed: {}",
+                    "copying a file to `{}` in the container failed{}",
                     file.container_path,
-                    String::from_utf8_lossy(&output.stderr).trim()
+                    run_failure(&output)
                 )));
             }
 
@@ -388,9 +388,9 @@ impl CliContainerRuntime {
             let output = self.run(&fixup).await?;
             if !output.status.success() {
                 return Err(Error::ContainerRuntime(format!(
-                    "setting ownership and mode on `{}` in the container failed: {}",
+                    "setting ownership and mode on `{}` in the container failed{}",
                     file.container_path,
-                    String::from_utf8_lossy(&output.stderr).trim()
+                    run_failure(&output)
                 )));
             }
         }
@@ -485,6 +485,21 @@ fn run_args(spec: &ContainerSpec, job_id: Option<&str>) -> Vec<String> {
     args
 }
 
+/// How a failed runtime command reads in the message that reports it: what it wrote to
+/// stderr, trimmed, with its exit code in parentheses after — or the code alone when it
+/// wrote nothing. The code is carried even when stderr explains the failure, because it is
+/// what separates a command the runtime refused from one it never ran.
+fn run_failure(output: &std::process::Output) -> String {
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stderr = stderr.trim();
+    let code = output.status.code().unwrap_or(-1);
+    if stderr.is_empty() {
+        format!(" (exit {code})")
+    } else {
+        format!(": {stderr} (exit {code})")
+    }
+}
+
 #[cfg(test)]
 #[path = "container.test.rs"]
 mod tests;
@@ -511,9 +526,9 @@ impl ContainerRuntime for CliContainerRuntime {
         let output = self.run(&args).await?;
         if !output.status.success() {
             return Err(Error::ContainerRuntime(format!(
-                "starting container from `{}` failed: {}",
+                "starting container from `{}` failed{}",
                 spec.image,
-                String::from_utf8_lossy(&output.stderr).trim()
+                run_failure(&output)
             )));
         }
         let handle = ContainerHandle {
@@ -651,9 +666,9 @@ impl ContainerRuntime for CliContainerRuntime {
         let output = self.run(&args).await?;
         if !output.status.success() {
             return Err(Error::ContainerRuntime(format!(
-                "removing container `{}` failed: {}",
+                "removing container `{}` failed{}",
                 container.id,
-                String::from_utf8_lossy(&output.stderr).trim()
+                run_failure(&output)
             )));
         }
         Ok(())
@@ -671,9 +686,9 @@ impl ContainerRuntime for CliContainerRuntime {
         let output = self.run(&args).await?;
         if !output.status.success() {
             return Err(Error::ContainerRuntime(format!(
-                "pulling image `{}` failed: {}",
+                "pulling image `{}` failed{}",
                 image,
-                String::from_utf8_lossy(&output.stderr).trim()
+                run_failure(&output)
             )));
         }
         Ok(())
@@ -743,9 +758,9 @@ impl ArtifactCollector for CliArtifactCollector {
         let output = self.runtime.run(&args).await?;
         if !output.status.success() {
             return Err(Error::ArtifactCollection(format!(
-                "copying `{WORK_DIR}` from container `{}` failed: {}",
+                "copying `{WORK_DIR}` from container `{}` failed{}",
                 container.id,
-                String::from_utf8_lossy(&output.stderr).trim()
+                run_failure(&output)
             )));
         }
         Ok(ArtifactCollection::new(dest))

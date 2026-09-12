@@ -665,10 +665,12 @@ fn only_the_engine_and_host_failures_are_ggs_own_fault() {
 /// resource failures name their ceiling, and both put **what the guest said** first. The exit's own
 /// sentence is asserted where it is composed, in the classifier's tests.
 ///
-/// The memory sentence is asserted for what it does **not** say as hard as for what it does. It used
-/// to name the sandbox's JavaScript engine and its ~10 MiB floor, which is true of one arm out of
-/// eleven: on Rust, Swift, C# and C++ a model was told its program had outgrown a heap belonging to
-/// an engine that is not in its guest at all. What replaced it is true of every arm.
+/// The memory sentence is asserted for what it does **not** say as hard as for what it does. It
+/// once named the sandbox's JavaScript engine and its ~10 MiB floor, which is true of one arm out
+/// of eleven: on Rust, Swift, C# and C++ a model was told its program had outgrown a heap belonging
+/// to an engine that is not in its guest at all. It then carried a parenthetical saying the cap
+/// covers the language runtime too, which is true of every arm and is documentation rather than an
+/// error. Now it carries the cap and nothing else.
 #[test]
 fn every_sandbox_error_renders_something_actionable() {
     assert_eq!(
@@ -693,7 +695,7 @@ fn every_sandbox_error_renders_something_actionable() {
             said: String::new(),
         }
         .to_string(),
-        "the program ran longer than its 30s execution timeout and was stopped"
+        "the program ran longer than its 30s execution timeout"
     );
     let memory = SandboxError::OutOfMemory {
         limit: 4_194_304,
@@ -705,9 +707,9 @@ fn every_sandbox_error_renders_something_actionable() {
         !memory.contains("JavaScript") && !memory.contains("10 MiB"),
         "the memory sentence names one arm's engine and one arm's floor to eleven arms: {memory}"
     );
-    assert!(
-        memory.contains("language runtime"),
-        "the memory sentence must still say why a program well under the cap can reach it: {memory}"
+    assert_eq!(
+        memory, "the program exceeded its 4194304-byte memory cap",
+        "the cap is the error; what the cap covers is documentation, and lives in the doc comment"
     );
     // **What the guest said comes first**, on every failure it can have spoken before. A model reads
     // the first line, and on an arm with no exception mechanism that line is the only account of the

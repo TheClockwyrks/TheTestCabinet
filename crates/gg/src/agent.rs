@@ -665,11 +665,11 @@ impl SlotAccounting {
 fn profile_binding(set: &GgCapabilitySet, profile: &str) -> Result<GgSlotBinding, String> {
     let agent = set
         .dispatched_agent(profile)
-        .map_err(|err| format!("{err}; there is no model to run"))?;
+        .map_err(|err| err.to_string())?;
     let profile_id = agent.slug.as_str();
-    let model_id = agent.resolved_model_id().ok_or_else(|| {
-        format!("the `{profile_id}` agent profile has no model bound; there is no model to run")
-    })?;
+    let model_id = agent
+        .resolved_model_id()
+        .ok_or_else(|| format!("the `{profile_id}` agent profile has no model bound"))?;
     Ok(GgSlotBinding::new(profile_id, model_id)
         .with_prompt_cache_ttl(agent.prompt_cache_ttl)
         .with_loop_detection(agent.loop_detection))
@@ -708,21 +708,17 @@ struct UnresolvedProfile {
 }
 
 impl UnresolvedProfile {
-    /// How the `error` line ends: what this failure costs beyond the agent that met it.
+    /// **Whose failure this was**, in the two words the `error` line carries it as.
     ///
-    /// The two halves of the split cost different amounts, so a single sentence for both would be
-    /// wrong for one of them. gg's defect takes the whole run down; a refused credential ends this
-    /// agent and leaves the run to carry on, which is a thing an operator reading the stream mid-run
-    /// needs to be told rather than left to infer from the status word.
+    /// The split matters — gg's defect takes the whole run down, a refused credential ends this
+    /// agent alone — but which of those gg then does about it is the handling, not the error, and
+    /// is read off the run's status rather than narrated in the line. What the line owes the
+    /// operator is the attribution, so that is all this is.
     fn consequence(&self) -> &'static str {
         if self.status == STATUS_INTERNAL_ERROR {
-            "this agent's loop ends here rather than continuing as its predecessor, and the run \
-             ends with it: gg's own defect had a hand in whatever tree this run would leave behind, \
-             and a tree like that cannot be scored against the model"
+            "gg defect"
         } else {
-            "this agent's loop ends here rather than continuing as its predecessor. The run's other \
-             agents carry on: a credential is the operator's to supply, and a run that lost one \
-             agent to a refused key is still a run the model produced"
+            "credential refused"
         }
     }
 }
@@ -1045,9 +1041,8 @@ pub(crate) async fn run_with_seams(
             root_emitter.emit(log(
                 "error",
                 format!(
-                    "gg could not build this run ({err}), after its own launch validation accepted \
-                     the configuration. This is a gg defect, not a problem with the configuration: \
-                     the session ends here rather than running with part of what was declared."
+                    "gg could not build this run after its own launch validation accepted the \
+                     configuration ({err})"
                 ),
             ));
             root_emitter.emit(session_ended("error"));
@@ -1240,14 +1235,7 @@ pub(crate) async fn run_with_seams(
     // starts from "why did this run fail?" is standing. Without it the answer would be a status
     // with no attribution — barely better than a run that lied.
     if let Some(fault) = fault {
-        root_emitter.emit(log(
-            "error",
-            format!(
-                "{fault}. The run ends `{STATUS_INTERNAL_ERROR}` and exits non-zero: a run gg's \
-                 own machinery broke is not a run the model produced, so there is nothing here to \
-                 score or to compare against a clean run."
-            ),
-        ));
+        root_emitter.emit(log("error", format!("{fault} (`{STATUS_INTERNAL_ERROR}`)")));
     }
 
     // Stream the per-slot rollups the whole run accumulated (the root plus every subagent, keyed by
@@ -1431,8 +1419,7 @@ fn start_session_capture(
         Ok(recorder) => Some(Arc::new(recorder)),
         Err(err) => {
             warnings.push(format!(
-                "session capture: could not open the journal `{}`: {err}. The run proceeds with no \
-                 session record.",
+                "session capture: could not open the journal `{}`: {err}",
                 path.display()
             ));
             None
@@ -1577,8 +1564,7 @@ fn report_session_capture(recorder: &GgRecorder, emitter: &Emitter) {
         _ => emitter.emit(log(
             "warn",
             format!(
-                "session capture: stopped after {} input(s) ({} byte(s)){}{}. The record is \
-                 marked truncated.",
+                "session capture: stopped after {} input(s) ({} byte(s)){}{}",
                 report.entries,
                 report.bytes,
                 report
@@ -2321,7 +2307,7 @@ impl Orchestrator {
                     "error",
                     format!(
                         "could not read the workspace `HEAD` to branch issue `{issue_id}` from: \
-                         {err}; it will work directly in the shared workspace."
+                         {err}"
                     ),
                 ));
                 return None;
@@ -2335,10 +2321,7 @@ impl Orchestrator {
         {
             emitter.emit(log(
                 "error",
-                format!(
-                    "could not create an isolated worktree for issue `{issue_id}`: {err}; it will \
-                     work directly in the shared workspace."
-                ),
+                format!("could not create an isolated worktree for issue `{issue_id}`: {err}"),
             ));
             return None;
         }
@@ -2748,12 +2731,12 @@ impl Orchestrator {
             .map(|slot| format!(" on the `{slot}` slot"))
             .unwrap_or_default();
         let consequence = match whose {
-            DispatchFault::Gg => "marking it failed, and the run ends with it: this is a gg defect",
-            DispatchFault::Credential => "marking it failed",
+            DispatchFault::Gg => "gg defect",
+            DispatchFault::Credential => "credential refused",
         };
         emitter.emit(log(
             "error",
-            format!("cannot dispatch issue `{issue_id}`{on_slot}: {err}; {consequence}."),
+            format!("cannot dispatch issue `{issue_id}`{on_slot}: {err} ({consequence})"),
         ));
         if matches!(whose, DispatchFault::Gg) {
             self.fault.in_dispatch(issue_id, slot, err);
@@ -3530,14 +3513,7 @@ async fn drive_agent(
                 "agent profile `{}` is not declared by this run, so there is nothing to run it as",
                 agent.profile_id
             );
-            emitter.emit(log(
-                "error",
-                format!(
-                    "{detail}; this agent's loop ends here — and the run with it — rather than \
-                     running it as another profile. This is a gg defect: launch validation accepts \
-                     no reference to an undeclared profile."
-                ),
-            ));
+            emitter.emit(log("error", detail.clone()));
             orch.fault.in_agent(&agent.id, &agent.profile_id, detail);
             break (
                 LoopEnd {
@@ -3659,15 +3635,7 @@ async fn drive_agent(
                 if let Some(detail) =
                     crate::memories::inherited_strategy_conflict(&profile, &module_ctx)
                 {
-                    emitter.emit(log(
-                        "error",
-                        format!(
-                            "{detail}. This is a gg defect, not a problem with the configuration: \
-                             giving this agent a private notebook instead would leave the run's \
-                             record saying it shared its spawner's while it never read a word of \
-                             it. This agent's loop ends here, and the run with it."
-                        ),
-                    ));
+                    emitter.emit(log("error", detail.clone()));
                     orch.fault.in_agent(&agent.id, &agent.profile_id, &detail);
                     break (
                         LoopEnd {
@@ -3923,13 +3891,7 @@ async fn drive_agent(
             );
             emitter.emit(log(
                 "error",
-                format!(
-                    "{detail}; condensing with the `{}` strategy instead would run one arm of a \
-                     compaction study under the other's name. This agent's loop ends here, and the \
-                     run with it — give the profile writable memories, or name a strategy that \
-                     condenses in prose.",
-                    compaction.strategy.id(),
-                ),
+                format!("{detail} (strategy `{}`)", compaction.strategy.id(),),
             ));
             orch.fault.in_agent(&agent.id, &agent.profile_id, &detail);
             break (
@@ -4000,14 +3962,7 @@ async fn drive_agent(
                         "compaction hands off to the model `{model}`, which could not be resolved \
                          ({err}); there is no second model to condense this agent's thread with"
                     );
-                    emitter.emit(log(
-                        "error",
-                        format!(
-                            "{detail}, and compacting on this agent's own model instead would run \
-                             the self-summarization arm while every record of this run named the \
-                             handoff one. This agent's loop ends here, and the run with it."
-                        ),
-                    ));
+                    emitter.emit(log("error", detail.clone()));
                     orch.fault.in_agent(&agent.id, &agent.profile_id, &detail);
                     break (
                         LoopEnd {
@@ -4250,14 +4205,7 @@ async fn drive_agent(
                 "the `{successor_profile_id}` agent is not declared by this run, so there is nothing to \
                  succeed into"
             );
-            emitter.emit(log(
-                "error",
-                format!(
-                    "{detail}; this agent's loop ends here — and the run with it — rather than \
-                     succeeding into another profile. This is a gg defect: launch validation \
-                     accepts no reference to an undeclared profile."
-                ),
-            ));
+            emitter.emit(log("error", detail.clone()));
             orch.fault.in_agent(&agent.id, &agent.profile_id, detail);
             break (
                 LoopEnd {
@@ -4292,9 +4240,10 @@ async fn drive_agent(
                 emitter.emit(log(
                     "error",
                     format!(
-                        "the `{successor_profile_id}` agent could not be resolved to a model ({}); {}.",
-                        unresolved.detail,
-                        unresolved.consequence()
+                        "the `{successor_profile_id}` agent could not be resolved to a model — \
+                         {} ({})",
+                        unresolved.consequence(),
+                        unresolved.detail
                     ),
                 ));
                 // As above: gg's half of the resolution ends the run, the operator's refused
@@ -4352,15 +4301,7 @@ async fn drive_agent(
         // reason rather than the handoff that went ahead anyway.
         if let Some(detail) = report.defects.first() {
             for defect in &report.defects {
-                emitter.emit(log(
-                    "error",
-                    format!(
-                        "{defect}. This is a gg defect: every transfer list a machine declares is \
-                         read at launch against the module set the outgoing state's profile holds, \
-                         and one naming a module that profile does not hold refuses the run before \
-                         its first turn."
-                    ),
-                ));
+                emitter.emit(log("error", defect.clone()));
             }
             orch.fault.in_agent(&agent.id, &agent.profile_id, detail);
             break (
@@ -4695,9 +4636,7 @@ fn provider_label_for(orch: &Orchestrator, profile: &str) -> String {
     match profile_binding(&orch.caps, profile) {
         Ok(binding) => format!("{} provider", provider_label(&binding)),
         Err(err) => {
-            format!(
-                "provider unknown: gg could not resolve this profile — {err}. This is a gg defect"
-            )
+            format!("provider unknown: gg could not resolve this profile — {err}")
         }
     }
 }
@@ -4843,11 +4782,7 @@ impl From<DispatchError> for ToolOutcome {
 /// this sentence is for is the record: the spawner's turn says what gg met rather than accusing the
 /// model of it.
 fn ggs_spawn_defect(slot: &str, err: &impl std::fmt::Display) -> String {
-    format!(
-        "cannot spawn agent `{slot}`: {err}. This is a gg defect: the run declares this agent and \
-         launch validation accepts no profile it cannot stand up, so the run ends here rather than \
-         continuing without the work this agent was for."
-    )
+    format!("cannot spawn agent `{slot}`: {err} (gg defect)")
 }
 
 /// Resolve and validate the `agent` argument of a model-invoked delegation call
@@ -4875,8 +4810,7 @@ fn resolve_delegation_target(
             ToolFailure::Refused,
             format!(
                 "agent profile `{}` is not declared by this run, so there is no roster to spawn \
-                 from. This is a gg defect: launch validation accepts no reference to an \
-                 undeclared profile.",
+                 from (gg defect)",
                 spawner.profile_id
             ),
         ));
@@ -5488,10 +5422,7 @@ async fn reconcile_issue(
         orch.board.fail_issue(issue_id);
         emitter.emit(log(
             "warn",
-            format!(
-                "issue `{issue_id}` could not be completed after {} attempt(s); marking it failed.",
-                retry + 1
-            ),
+            format!("issue `{issue_id}` failed after {} attempt(s)", retry + 1),
         ));
         discard_issue_worktree(orch, issue_id, emitter).await;
     }
@@ -5587,10 +5518,7 @@ async fn run_issue_review(
         Err(err) => {
             emitter.emit(log(
                 "error",
-                format!(
-                    "cannot review issue `{issue_id}`: {err}; failing the issue rather than \
-                     accepting work no reviewer gated, and ending the run: this is a gg defect."
-                ),
+                format!("cannot review issue `{issue_id}`: {err}"),
             ));
             orch.fault.in_dispatch(issue_id, None, &err);
             return RoundOutcome::Aborted(err);
@@ -5735,7 +5663,7 @@ async fn accept_issue(orch: &Arc<Orchestrator>, issue_id: &str, emitter: &Emitte
             "error",
             format!(
                 "issue `{issue_id}` was approved but its work could not be merged into the main \
-                 workspace; marking it failed so anything depending on it stays blocked."
+                 workspace"
             ),
         ));
     }
@@ -5851,7 +5779,7 @@ async fn resolve_merge_conflict(
             "error",
             format!(
                 "issue `{issue_id}` conflicts with the main workspace and no merge agent is \
-                 configured to resolve it."
+                 configured"
             ),
         ));
         return false;
@@ -5900,7 +5828,7 @@ async fn resolve_merge_conflict(
             "error",
             format!(
                 "the merge agent did not finish the merge of issue `{issue_id}` (the workspace is \
-                 still mid-merge); aborting it and leaving the main workspace unchanged."
+                 still mid-merge)"
             ),
         ));
         return false;
@@ -6003,7 +5931,7 @@ fn run_detached_agent<'a>(
         // whose merge never ran both leave a tree that cannot be compared with a clean one.
         let binding = profile_binding(&orch.caps, profile).map_err(|err| {
             latch_detached_dispatch(orch, &agent_id, profile, issue_id.as_deref(), &err);
-            format!("could not be dispatched: {err}; this is a gg defect, so the run ends with it")
+            format!("could not be dispatched: {err} (gg defect)")
         })?;
         // The dispatch already carries this agent's origin — a reviewer's issue/round/position, or
         // a merge agent's issue/ordinal — because it is the only thing that knows it. Both are
@@ -6031,8 +5959,7 @@ fn run_detached_agent<'a>(
                     &format!("(model `{}`) {err}", binding.model_id),
                 );
                 format!(
-                    "could not be dispatched (model `{}`): {err}; this is a gg defect, so the run \
-                     ends with it",
+                    "could not be dispatched (model `{}`): {err} (gg defect)",
                     binding.model_id
                 )
             })?;
@@ -8938,9 +8865,7 @@ impl Agent {
         emitter.emit(log(
             "error",
             format!(
-                "agent `{}` stopped at a turn boundary after {turns} turns: {diagnostic}. The whole \
-                 run ends here, because a tree a gg defect stopped is not a tree the model produced \
-                 and must not be scored as one.",
+                "agent `{}` stopped at a turn boundary after {turns} turns: {diagnostic}",
                 self.id
             ),
         ));
@@ -8970,9 +8895,9 @@ impl Agent {
     /// ending in the ceilings' column.
     ///
     /// The `error` line names how many boundaries fired, the threshold none of them got under, and
-    /// the allowance that is now spent — which is both halves of what an operator needs: what
-    /// happened, and which figure to move. What each boundary actually produced is on the run's own
-    /// compaction records, so it is not restated here.
+    /// the allowance that is now spent — the figures, and nothing about what gg then did with them.
+    /// What each boundary actually produced is on the run's own compaction records, so it is not
+    /// restated here.
     #[allow(clippy::too_many_arguments)]
     fn stop_on_stuck_compaction(
         &self,
@@ -8991,9 +8916,8 @@ impl Agent {
         emitter.emit(log(
             "error",
             format!(
-                "agent `{}` stopped after {turns} turns: {} with the `{}` strategy left the window \
-                 at or above the compaction threshold of {:.0}%, and the retry allowance \
-                 (`maxRetries` = {}) is spent. There is no window left for this agent to work in.",
+                "agent `{}` stopped after {turns} turns: {} with the `{}` strategy left the \
+                 window at or above the compaction threshold of {:.0}% (`maxRetries` = {})",
                 self.id,
                 plural(fired as usize, "compaction"),
                 setup.strategy.id(),
@@ -9032,40 +8956,65 @@ fn status_for_breach(limit: GgLimitKind) -> &'static str {
     }
 }
 
-/// The operator-facing `warn` line for one [breach](GgLimitBreach): what was breached, and at what
-/// value.
+/// The operator-facing `warn` line for one [breach](GgLimitBreach), and — through
+/// [`ExitReasons::quoted`](test_cabinet_core::gg_exec) — the figures the run's failure detail is
+/// built from.
 ///
-/// One sentence per ceiling rather than one generic template, because the five are measured in five
-/// different units and a sentence that said "observed 5400 against a ceiling of 5400" would leave
-/// the reader to guess whether that was turns, seconds or dollars.
+/// **Figures only.** This is the innermost of four layers that compose the sentence a benchmark
+/// reader sees (`run failed: gg execution ceiling hit (5 consecutive turns failed)`), and the three
+/// above it already say the run failed, that gg stopped it, and that a ceiling is what stopped it.
+/// Repeating any of that here is what made the old sentence a paragraph, so each arm contributes
+/// the one thing only this layer knows: the numbers, in the unit the ceiling is measured in.
+///
+/// **One grammar, five units.** Every arm reads `{observed} {what happened}, ceiling {limit}`, so a
+/// reader who has learned one ceiling's line can read all five, and each names both the figure
+/// observed and the figure configured. The unit travels *with* each figure rather than being left
+/// to the reader, which is what a single generic template ("observed 5400 against a ceiling of
+/// 5400") could not do across a turn count, a number of seconds, a fraction and an amount of money.
+///
+/// The `ceiling` clause is dropped when it would render the **same characters** as the observation,
+/// because then the observed figure *is* the configured one and a second copy of it names nothing
+/// new. That is not a special case for one arm: it is a property of how each ceiling fires. A turn
+/// ceiling and a consecutive-error ceiling are counted in whole steps of one and checked at `>=`,
+/// so the breaching observation always lands exactly on the threshold and the clause always drops;
+/// a runtime, rate or spend ceiling is crossed by an unpredictable margin and the clause almost
+/// always stays, dropping only when the overshoot is smaller than the figure's own precision — at
+/// which point printing it twice would still tell the reader nothing.
 fn breach_message(breach: &GgLimitBreach) -> String {
-    match breach.limit {
-        GgLimitKind::Turns => format!(
-            "reached the {}-turn ceiling without the model finishing.",
-            breach.threshold
+    let (observed, happened, ceiling) = match breach.limit {
+        GgLimitKind::Turns => (
+            format!("{} turns", breach.observed),
+            "taken".to_string(),
+            format!("{} turns", breach.threshold),
         ),
-        GgLimitKind::Runtime => format!(
-            "wall-clock budget exceeded after {} turn(s); stopping.",
-            breach.turns
+        GgLimitKind::Runtime => (
+            format!("{:.0}s", breach.observed),
+            format!("elapsed after {}", plural(breach.turns as usize, "turn")),
+            format!("{:.0}s", breach.threshold),
         ),
-        GgLimitKind::ConsecutiveErrors => format!(
-            "{} consecutive turns failed to carry out the work they declared, reaching the \
-             configured ceiling of {}; stopping rather than spending the rest of the run on the \
-             same failure.",
-            breach.observed, breach.threshold
+        GgLimitKind::ConsecutiveErrors => (
+            format!("{} consecutive turns", breach.observed),
+            "failed".to_string(),
+            format!("{} consecutive turns", breach.threshold),
         ),
-        GgLimitKind::ErrorRate => format!(
-            "{:.0}% of the last {} turns were errors, above the configured ceiling of {:.0}%; \
-             stopping.",
-            breach.observed * 100.0,
-            breach.window.unwrap_or_default(),
-            breach.threshold * 100.0
+        GgLimitKind::ErrorRate => (
+            format!("{:.0}%", breach.observed * 100.0),
+            format!(
+                "of the last {} turns failed",
+                breach.window.unwrap_or_default()
+            ),
+            format!("{:.0}%", breach.threshold * 100.0),
         ),
-        GgLimitKind::Cost => format!(
-            "the run has spent ${:.4}, at or above the configured ceiling of ${:.4}; stopping \
-             before starting another turn.",
-            breach.observed, breach.threshold
+        GgLimitKind::Cost => (
+            format!("${:.4}", breach.observed),
+            "spent".to_string(),
+            format!("${:.4}", breach.threshold),
         ),
+    };
+    if observed == ceiling {
+        format!("{observed} {happened}")
+    } else {
+        format!("{observed} {happened}, ceiling {ceiling}")
     }
 }
 
@@ -9097,9 +9046,8 @@ fn model_call_failed(
 ) -> String {
     if status == STATUS_INTERNAL_ERROR {
         return format!(
-            "gg had already broken this run when model turn {turn} failed, so the agent ends \
-             `{STATUS_INTERNAL_ERROR}` — what the call itself reported ({}: {err}) is not \
-             evidence about the model.",
+            "model turn {turn} failed on a run gg had already broken — \
+             `{STATUS_INTERNAL_ERROR}` ({}: {err})",
             error_type.phrase(),
         );
     }
@@ -9108,30 +9056,29 @@ fn model_call_failed(
 
 /// The operator's `error` line for a **timed-out model call** — the recoverable failure the loop
 /// answers by recording an error turn and asking again, unlike [`model_call_failed`]'s, which end
-/// the session. It says what happens next, because a timeout line that stopped at the symptom
-/// would read like the run is over.
+/// the session. That the turn is retried, and the ceilings that bound how often, are gg's handling
+/// of the failure rather than the failure, so the line reports the symptom and stops there.
 fn model_call_retried(turn: usize, err: &ModelError) -> String {
     format!(
-        "model turn {turn} — {}: {err}; the turn will be retried (the error ceilings bound how \
-         often).",
-        err.turn_error_type().phrase(),
+        "model turn {turn} — {}: {err}",
+        err.turn_error_type().phrase()
     )
 }
 
 /// The operator's `error` line for a **length-capped reply** the loop rejected whole: what came
-/// back, what it cost, and that none of it reaches the context or the run's metrics.
+/// back and what it cost. That the reply never enters the context, that its usage is tallied under
+/// rejected responses, and that the turn is retried are all what gg does about it, and are read off
+/// the run's own records rather than restated in the line.
 fn length_capped_rejected(turn: usize, size: ResponseSize, response: &ModelResponse) -> String {
     format!(
-        "model turn {turn} — length-capped reply rejected: the reply hit the provider's output \
-         cap ({} characters, {} completion tokens{}); it never enters the context, its usage is \
-         excluded from the run's metrics (tallied under rejected responses), and the turn will \
-         be retried (the error ceilings bound how often).",
+        "model turn {turn} — reply hit the provider's output cap ({} characters, {} completion \
+         tokens{})",
         size.chars,
         size.output_tokens,
         response
             .provider
             .as_deref()
-            .map(|provider| format!("; provider: {provider}"))
+            .map(|provider| format!(", provider: {provider}"))
             .unwrap_or_default(),
     )
 }
@@ -9491,8 +9438,7 @@ impl AutoloadSetup {
                         other,
                         format!(
                             "the `{CAPABILITY_AUTOLOAD_SPECS}` capability has one lever, and \
-                             `{other}` is not it; reading it as the default would leave the \
-                             seeded specifications droppable on a run that asked for them pinned."
+                             `{other}` is not it"
                         ),
                     )
                     .known([AUTOLOAD_LOCKED_IMPL]),
@@ -9562,8 +9508,7 @@ impl AutoloadSetup {
                         format!(
                             "the `{CAPABILITY_AUTOLOAD_SPECS}` capability's \
                              `{AUTOLOAD_PARAM_IMAGES}` switches picture attachment on or off, so \
-                             gg reads it as `true` or `false`; reading this as `false` would seed \
-                             the opening context with captions on a run that asked for pictures."
+                             gg reads it as `true` or `false`"
                         ),
                     )
                     .known(["true", "false"]),
@@ -9707,11 +9652,7 @@ fn setup_broke(
     let detail = detail.to_string();
     emitter.emit(log(
         "error",
-        format!(
-            "{detail}. gg could not stand this agent up as it is configured: this agent's loop \
-             ends here — and the run with it — rather than running it under something other than \
-             what it was configured as."
-        ),
+        format!("gg could not stand this agent up as it is configured: {detail}"),
     ));
     limits.fault.in_agent(&agent.id, &agent.profile_id, &detail);
     LoopEnd {
@@ -10835,10 +10776,8 @@ fn resolve_skills_dir(
             crate::validate::param_locus(CAPABILITY_SKILLS, PARAM_SKILLS_DIR),
             crate::validate::as_written(declared),
             format!(
-                "the `{CAPABILITY_SKILLS}` capability's `{PARAM_SKILLS_DIR}` names the directory \
-                 the agent `{}` loads its skills from, and gg cannot read a path here; it reaches \
-                 for no directory of its own, so the agent would open with a library nobody \
-                 authored.",
+                "the `{CAPABILITY_SKILLS}` capability's `{PARAM_SKILLS_DIR}` names the \
+                 directory the agent `{}` loads its skills from, and gg cannot read a path here",
                 profile.slug,
             ),
         ));
@@ -10970,11 +10909,7 @@ async fn resolve_worktrees(
     if !git::git_available().await {
         emitter.emit(log(
             "error",
-            format!(
-                "{reason}, but the `git` binary is not available; worktree isolation is disabled. \
-                 Issues run directly in the shared workspace (nothing is merged, and reviews see \
-                 an empty diff). (The rest of the run is unaffected.)"
-            ),
+            format!("{reason}, but the `git` binary is not available"),
         ));
         return WorktreesSetup {
             baseline_commit: None,
@@ -10993,8 +10928,7 @@ async fn resolve_worktrees(
             emitter.emit(log(
                 "error",
                 format!(
-                    "{reason}, but git could not initialize a baseline of the workspace: {err}; \
-                     worktree isolation is disabled for this run."
+                    "{reason}, but git could not initialize a baseline of the workspace: {err}"
                 ),
             ));
             return WorktreesSetup {
@@ -11012,7 +10946,7 @@ async fn resolve_worktrees(
                 "error",
                 format!(
                     "a workspace baseline was committed, but the worktree root `{}` could not \
-                     be created: {err}; worktree isolation is disabled for this run.",
+                     be created: {err}",
                     root.display()
                 ),
             ));

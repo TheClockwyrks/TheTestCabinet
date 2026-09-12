@@ -1864,7 +1864,9 @@ fn a_board_ceiling_that_diverges_from_the_board_owners_is_refused() {
     assert_eq!(diverging[0].agent.as_deref(), Some("implementer"));
     assert_eq!(diverging[0].found, "9");
     assert!(
-        diverging[0].message.contains("configure nothing"),
+        diverging[0]
+            .message
+            .contains("gg reads `maxRetries` off the `root` agent, and this run's is `2`"),
         "{}",
         diverging[0].message
     );

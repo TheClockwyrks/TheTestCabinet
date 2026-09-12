@@ -141,10 +141,8 @@ fn an_absent_limits_block_arms_nothing_and_owes_the_journal_ceiling() {
     assert_eq!(defects.len(), 1, "{defects:?}");
     assert_eq!(
         defects[0].to_string(),
-        "limits.replayMaxBytes — the run writes no `replayMaxBytes`, which is the byte ceiling gg \
-         writes this run's capture journal under. gg substitutes nothing for a value nobody wrote, \
-         and every run is conducted under this one, so there is no absence for gg to read as \
-         \"off\"."
+        "limits.replayMaxBytes — the run writes no `replayMaxBytes`, which is the byte ceiling \
+         gg writes this run's capture journal under, and has no absence gg reads as \"off\""
     );
 }
 
@@ -262,7 +260,7 @@ fn a_count_past_what_gg_holds_it_in_is_refused() {
             max_consecutive_errors: Some(u64::from(u32::MAX) + 1),
             ..required_only()
         })
-        .contains("cannot hold a ceiling above 4294967295")
+        .contains("a consecutive-error ceiling cannot exceed 4294967295")
     );
 }
 
@@ -286,11 +284,9 @@ fn a_rate_without_a_window_is_refused() {
     assert_eq!(limits.error_rate, None);
     assert_eq!(
         sole_refusal(declared),
-        "limits.errorRateWindow — `maxErrorRate` is declared and `errorRateWindow` is not. \
+        "limits.errorRateWindow — `maxErrorRate` is declared and `errorRateWindow` is not; \
          `errorRateWindow` is the lookback the rate is measured over, and the minimum sample \
-         before it can fire, and the two halves stand or fall together: write both to arm the \
-         ceiling, or neither to leave it unarmed. gg will not complete a half-written ceiling with \
-         a figure of its own."
+         before it can fire. Write both to arm the ceiling, or neither to leave it unarmed."
     );
 }
 
@@ -305,7 +301,7 @@ fn a_window_without_a_rate_is_refused() {
     assert_eq!(limits.error_rate, None);
     assert!(
         sole_refusal(declared).starts_with(
-            "limits.maxErrorRate — `errorRateWindow` is declared and `maxErrorRate` is not."
+            "limits.maxErrorRate — `errorRateWindow` is declared and `maxErrorRate` is not;"
         ),
         "{}",
         sole_refusal(declared)
@@ -447,7 +443,7 @@ fn an_absent_journal_ceiling_is_refused() {
         "{refusal}"
     );
     assert!(
-        refusal.contains("no absence for gg to read as \"off\""),
+        refusal.contains("has no absence gg reads as \"off\""),
         "{refusal}"
     );
 }

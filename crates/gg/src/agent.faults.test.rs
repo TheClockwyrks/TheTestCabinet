@@ -467,9 +467,9 @@ async fn an_issue_agents_host_fault_ends_the_run() {
             .any(|(agent, message)| agent.as_deref() == Some(ROOT_AGENT_ID)
             && message.contains(&format!("`{CODER_PROFILE_ID}`"))
             && message.contains("gg's own plumbing")
-            // The epilogue's own sentence, which no agent's wind-down line carries: the run-level
+            // The epilogue's own mark, which no agent's wind-down line carries: the run-level
             // statement has to be there whether or not the root was still running to make one.
-            && message.contains("exits non-zero")),
+            && message.contains(&format!("`{STATUS_INTERNAL_ERROR}`"))),
         "the run-level diagnostic must name the implementer and the fault: {errors:?}"
     );
 }
@@ -1605,7 +1605,7 @@ async fn a_turn_gg_broke_under_is_recorded_as_ggs_rather_than_the_models() {
         errors.iter().any(|(agent, message)| {
             agent.as_deref() == Some(ROOT_AGENT_ID)
                 && message.contains("`subagent`")
-                && message.contains("exits non-zero")
+                && message.contains(&format!("`{STATUS_INTERNAL_ERROR}`"))
         }),
         "the run-level diagnostic must name the profile gg could not spawn: {errors:?}"
     );

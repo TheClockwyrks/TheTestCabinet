@@ -160,10 +160,9 @@ fn an_authored_set_is_refused_unless_every_profile_carries_its_own_internal_id()
     }
     let defect = authored_capability_set_defect(&twinned).expect("a repeated id is refused");
     assert!(defect.contains("k-twin"), "unexpected defect: {defect}");
-    // Named as the ambiguity it is — a reference to it names both profiles — rather than as
-    // untidiness.
+    // Named as the shared internal id it is, which is the ambiguity, rather than as untidiness.
     assert!(
-        defect.contains("would name both"),
+        defect.contains("carry the internal id"),
         "unexpected defect: {defect}"
     );
 }

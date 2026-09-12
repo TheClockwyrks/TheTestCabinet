@@ -119,6 +119,19 @@ pub const TOOLCHAIN_TEST_FILE_LIMIT: usize = 100;
 /// really were.
 pub const TOOLCHAIN_TEST_FAILURE_LIMIT: usize = 10;
 
+/// The most individual test entries retained on the record.
+///
+/// A suite holds far more tests than files, so the file cap's number would clip an
+/// ordinary suite rather than an exceptional one: the largest reference solution in
+/// the repository runs about 650 tests over 45 files, some fifteen tests per file.
+/// 1000 holds that suite whole with half again in headroom, which keeps truncation
+/// the exceptional event the flag beside the array reports. It is not higher because
+/// this rides on the run record, which is deserialized on every run listing (see
+/// [`TOOLCHAIN_OUTPUT_LIMIT`]): at roughly 120 bytes of JSON per entry, 1000 entries
+/// is ~120 KB, and this list is already the largest block the toolchain summary
+/// contributes.
+pub const TOOLCHAIN_TEST_ENTRY_LIMIT: usize = 1000;
+
 /// The most bytes retained of one failure message, after stack frames are stripped.
 ///
 /// A vitest diff of two large objects runs to kilobytes. 1 KiB carries the assertion
@@ -398,6 +411,52 @@ pub struct ToolchainTestFailure {
     pub message: Option<String>,
 }
 
+/// What the runner decided about one test.
+///
+/// The three states the reporter's own statuses collapse to. `skipped`, `pending` and
+/// `todo` are one state seen from three spellings — a test the runner declined to
+/// decide — and they are held together here exactly as [`ToolchainTestFile::skipped`]
+/// counts them together.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum ToolchainTestStatus {
+    /// The test ran and passed.
+    Passed,
+    /// The test ran and failed. Why it failed is on the matching
+    /// [`ToolchainTestFailure`], when it is among the first
+    /// [`TOOLCHAIN_TEST_FAILURE_LIMIT`].
+    Failed,
+    /// The test did not run: skipped, pending or todo.
+    Skipped,
+}
+
+/// One test the runner reported, named and timed.
+///
+/// The per-file rows say how many tests a file passed and failed; these say which
+/// tests those were. Counts and the first ten failures cannot show a reader the suite
+/// itself — which tests a build wrote, which of them it skipped, and which one took a
+/// second and a half.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct ToolchainTest {
+    /// The test file's repo-relative path, forward slashed: the
+    /// [`path`](ToolchainTestFile::path) of the row this test is counted in.
+    pub file: String,
+    /// The test's full name — its `describe` chain and its own title, as the reporter
+    /// joined them; its bare title when it has no chain.
+    pub name: String,
+    /// What the runner decided about it.
+    pub status: ToolchainTestStatus,
+    /// How long it took, in milliseconds, when the runner timed it. Absent when it
+    /// reported no duration, which is the ordinary case for a test that never ran:
+    /// absence is *not timed*, never zero.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub duration_ms: Option<f64>,
+}
+
 /// What the runner reported, read from [`TOOLCHAIN_TEST_REPORT_PATH`].
 ///
 /// Present only when that file was written and parsed. A suite that ran and found no
@@ -434,6 +493,16 @@ pub struct ToolchainTests {
     /// Whether [`failures`](Self::failures) was cut short by the cap.
     /// [`failed`](Self::failed) is always the true count regardless.
     pub failures_truncated: bool,
+    /// The first [`TOOLCHAIN_TEST_ENTRY_LIMIT`] tests the runner reported, in its own
+    /// order: file by file as the report lists them and, within a file, the order they
+    /// ran in. A prefix of that order rather than a sample of it, so two reads of one
+    /// report retain the same entries. The order is the reporter's rather than the
+    /// path sort [`files`](Self::files) is in, because a suite reads as the runner ran
+    /// it.
+    pub tests: Vec<ToolchainTest>,
+    /// Whether [`tests`](Self::tests) was cut short by the cap.
+    /// [`total`](Self::total) is always the true count regardless.
+    pub tests_truncated: bool,
 }
 
 /// The optional `test` command's result, plus the figures its REPORT FILES carried.

@@ -899,9 +899,7 @@ pub(crate) fn check_launch(
         // the refusal is about to edit it, and a Handlebars parse error is reported by position.
         template,
         format!(
-            "the `{SYSTEM_PROMPT_TEMPLATE_FIELD}` override is not a Handlebars template ({err}); \
-             gg would have to run this agent under its own built-in prompt instead, which is the \
-             one thing an overriding profile is configured not to do."
+            "the `{SYSTEM_PROMPT_TEMPLATE_FIELD}` override is not a Handlebars template ({err})"
         ),
     ));
 }

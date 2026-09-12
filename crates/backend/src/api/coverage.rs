@@ -1820,9 +1820,8 @@ fn gg_member_drift(config: &GgConfig, library: &GgLibrary) -> Option<String> {
     let saved = library.stale_import(config)?;
     Some(format!(
         "the `{}` gg configuration imports the saved agent `{}`, which has been edited since \
-         the configuration was last saved; open `{}` and save it so a scheduled run carries \
-         the same agents a launch by hand would",
-        config.name, saved.name, config.name
+         the configuration was last saved",
+        config.name, saved.name
     ))
 }
 
@@ -1839,15 +1838,11 @@ fn gg_member_drift(config: &GgConfig, library: &GgLibrary) -> Option<String> {
 pub(super) fn gg_member_defect(combo: &ReviewPlanCombo, library: &GgLibrary) -> Option<String> {
     let id = combo.gg_config_ref()?;
     let Some(config) = library.config(id) else {
-        return Some(format!(
-            "no gg configuration `{id}` on this account; a member names a configuration the \
-             account owns"
-        ));
+        return Some(format!("no gg configuration `{id}` on this account"));
     };
     let slot = unbound_launch_slot(&config.capability_set, &combo.gg_bindings())?;
     Some(format!(
-        "the `{slot}` launch slot of the `{}` gg configuration has no model bound; a member \
-         binds a model to every slot its configuration declares",
+        "the `{slot}` launch slot of the `{}` gg configuration has no model bound",
         config.name
     ))
 }

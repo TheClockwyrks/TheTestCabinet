@@ -324,8 +324,7 @@ fn split_ref(reference: &str) -> Result<(&str, &str)> {
 /// name the ref, the store, and the two ways a store gets onto the machine.
 fn missing_pack(reference: &str, store: &Path) -> Error {
     Error::Seeding(format!(
-        "audio pack `{reference}` not found in the audio store at `{}` — the driver \
-         image carries the store; for a local checkout, fetch it \
+        "audio pack `{reference}` not found in the audio store at `{}`; fetch a store \
          (`scripts/fetch-audio-store.sh`) or point `TCAB_AUDIO_STORE` at a fetched copy",
         store.display()
     ))
@@ -479,8 +478,7 @@ fn object_key(reference: &str, clip: &str) -> Result<String> {
         }
         _ => Err(Error::Seeding(format!(
             "audio pack `{reference}` names the clip `{clip}`, which is not a published \
-             object's `<clip-id>.<profile-id>.wav` name, so it cannot be checked against \
-             `{OBJECTS_LOCK}`"
+             object's `<clip-id>.<profile-id>.wav` name"
         ))),
     }
 }
@@ -495,10 +493,8 @@ fn read_lock(store: &Path) -> Result<BTreeMap<String, LockEntry>> {
     let raw = std::fs::read_to_string(&path).map_err(|err| {
         if err.kind() == std::io::ErrorKind::NotFound {
             Error::Seeding(format!(
-                "the audio store at `{}` holds no `{OBJECTS_LOCK}`, so the clips it \
-                 carries cannot be checked against what was published — fetch a \
-                 complete store (`scripts/fetch-audio-store.sh`) or point \
-                 `TCAB_AUDIO_STORE` at one",
+                "audio store at `{}` holds no `{OBJECTS_LOCK}`; fetch a complete store \
+                 (`scripts/fetch-audio-store.sh`) or point `TCAB_AUDIO_STORE` at one",
                 store.display()
             ))
         } else {

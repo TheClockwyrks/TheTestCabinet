@@ -443,8 +443,7 @@ fn read_type_toggles(
                     crate::validate::as_written(value),
                     format!(
                         "the `{}` documentation-view type is opened or withheld with `true` or \
-                         `false`; gg cannot read this as either, and it opens no amount of \
-                         documentation an operator did not write.",
+                         `false`, and gg cannot read this as either",
                         flag.id()
                     ),
                 ))
@@ -453,10 +452,7 @@ fn read_type_toggles(
                 crate::validate::LaunchDefect::run_level(
                     format!("{}.{key}", doc_view_types_locus()),
                     crate::validate::as_written(value),
-                    format!(
-                        "`{key}` names no documentation-view type, so it opens and withholds \
-                         nothing; the agent would read a set of types nobody wrote."
-                    ),
+                    format!("`{key}` names no documentation-view type"),
                 )
                 .known(DocViewType::ALL.map(DocViewType::id)),
             ),
@@ -469,9 +465,7 @@ fn read_type_toggles(
                 "",
                 format!(
                     "the `{PARAM_DOC_VIEW_TYPES}` object does not name `{}`, so nothing says \
-                     whether the type is opened. How much documentation one lookup places is an \
-                     axis a study slices on, so a set naming two of the three has not said what \
-                     the third arm was.",
+                     whether the type is opened",
                     flag.id()
                 ),
             ));

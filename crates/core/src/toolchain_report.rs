@@ -45,8 +45,9 @@
 //! # Bounded before it is stored
 //!
 //! Both readers cap what they retain ([`TOOLCHAIN_COVERAGE_FILE_LIMIT`],
-//! [`TOOLCHAIN_TEST_FILE_LIMIT`], [`TOOLCHAIN_TEST_FAILURE_LIMIT`],
-//! [`TOOLCHAIN_FAILURE_MESSAGE_LIMIT`]) and set the flag that says they did. The test
+//! [`TOOLCHAIN_TEST_FILE_LIMIT`], [`TOOLCHAIN_TEST_ENTRY_LIMIT`],
+//! [`TOOLCHAIN_TEST_FAILURE_LIMIT`], [`TOOLCHAIN_FAILURE_MESSAGE_LIMIT`]) and set the
+//! flag that says they did. The test
 //! report also embeds istanbul's entire `coverageMap` when coverage is on —
 //! `statementMap`, `fnMap`, `branchMap` and the per-file hit counters — which is why
 //! no struct here names that field and why the coverage figures are taken from the
@@ -59,9 +60,10 @@ use serde::{Deserialize, Deserializer};
 
 use crate::toolchain::{
     CoverageFile, CoverageMetric, CoverageMetrics, TOOLCHAIN_COVERAGE_FILE_LIMIT,
-    TOOLCHAIN_COVERAGE_SUMMARY_PATH, TOOLCHAIN_FAILURE_MESSAGE_LIMIT, TOOLCHAIN_TEST_FAILURE_LIMIT,
-    TOOLCHAIN_TEST_FILE_LIMIT, TOOLCHAIN_TEST_REPORT_PATH, ToolchainCoverage, ToolchainTestFailure,
-    ToolchainTestFile, ToolchainTests,
+    TOOLCHAIN_COVERAGE_SUMMARY_PATH, TOOLCHAIN_FAILURE_MESSAGE_LIMIT, TOOLCHAIN_TEST_ENTRY_LIMIT,
+    TOOLCHAIN_TEST_FAILURE_LIMIT, TOOLCHAIN_TEST_FILE_LIMIT, TOOLCHAIN_TEST_REPORT_PATH,
+    ToolchainCoverage, ToolchainTest, ToolchainTestFailure, ToolchainTestFile, ToolchainTestStatus,
+    ToolchainTests,
 };
 
 /// The most bytes of a report file that will be read at all.
@@ -113,7 +115,7 @@ pub fn read_test_report(repo: &Path) -> Option<ToolchainTests> {
             tracing::debug!(
                 path = TOOLCHAIN_TEST_REPORT_PATH,
                 error = %err,
-                "the test report could not be parsed; recording no test results",
+                "the test report could not be parsed",
             );
             return None;
         }
@@ -121,6 +123,8 @@ pub fn read_test_report(repo: &Path) -> Option<ToolchainTests> {
 
     let roots = report_roots(repo);
     let mut files = Vec::new();
+    let mut tests = Vec::new();
+    let mut tests_truncated = false;
     let mut failures = Vec::new();
     let mut failures_truncated = false;
     let mut files_failed = 0u32;
@@ -132,7 +136,7 @@ pub fn read_test_report(repo: &Path) -> Option<ToolchainTests> {
         let Some(path) = relative_under(&file.name, &roots) else {
             tracing::debug!(
                 name = %file.name,
-                "the test report named a file outside the implementation; dropping it",
+                "the test report named a file outside the implementation",
             );
             continue;
         };
@@ -140,9 +144,10 @@ pub fn read_test_report(repo: &Path) -> Option<ToolchainTests> {
         let mut failed = 0u32;
         let mut skipped = 0u32;
         for test in file.assertion_results {
-            match test.status.as_str() {
-                "passed" => passed += 1,
-                "failed" => {
+            let status = test.status();
+            match status {
+                ToolchainTestStatus::Passed => passed += 1,
+                ToolchainTestStatus::Failed => {
                     failed += 1;
                     // The reporter's own order is kept: a reader wants what broke
                     // first, not the alphabetically first thing that broke.
@@ -165,9 +170,20 @@ pub fn read_test_report(repo: &Path) -> Option<ToolchainTests> {
                         failures_truncated = true;
                     }
                 }
-                // `skipped`, `pending` and `todo` are the same thing seen from three
-                // spellings: a test the runner declined to decide.
-                _ => skipped += 1,
+                ToolchainTestStatus::Skipped => skipped += 1,
+            }
+            // Capped on the way in and in the reporter's order, so what is retained is
+            // the head of the suite as it ran rather than whichever entries a later
+            // pass happened to keep.
+            if tests.len() < TOOLCHAIN_TEST_ENTRY_LIMIT {
+                tests.push(ToolchainTest {
+                    file: path.clone(),
+                    name: test.label(),
+                    status,
+                    duration_ms: test.duration,
+                });
+            } else {
+                tests_truncated = true;
             }
         }
         // A file that failed to load ran no tests at all, so its failure lives in the
@@ -213,6 +229,8 @@ pub fn read_test_report(repo: &Path) -> Option<ToolchainTests> {
         files_truncated,
         failures,
         failures_truncated,
+        tests,
+        tests_truncated,
     })
 }
 
@@ -230,7 +248,7 @@ pub fn read_coverage_summary(repo: &Path) -> Option<ToolchainCoverage> {
             tracing::debug!(
                 path = TOOLCHAIN_COVERAGE_SUMMARY_PATH,
                 error = %err,
-                "the coverage summary could not be parsed; recording no coverage",
+                "the coverage summary could not be parsed",
             );
             return None;
         }
@@ -277,7 +295,7 @@ fn read_report(repo: &Path, relative: &str) -> Option<String> {
             path = %path.display(),
             size,
             limit = REPORT_SIZE_LIMIT,
-            "a toolchain report file is implausibly large; refusing to read it",
+            "a toolchain report file is implausibly large",
         );
         return None;
     }
@@ -291,7 +309,7 @@ fn read_report(repo: &Path, relative: &str) -> Option<String> {
         Ok(_) => {
             tracing::debug!(
                 path = %path.display(),
-                "a toolchain report file is not a JSON object; recording nothing from it",
+                "a toolchain report file is not a JSON object",
             );
             None
         }
@@ -413,6 +431,11 @@ struct TestReportAssertion {
     title: String,
     #[serde(default)]
     status: String,
+    /// How long the test took, in milliseconds. Vitest writes the test's own
+    /// `duration`, which it omits for a test that produced no result at all — a
+    /// skipped or todo one — so the field is absent as often as it is present.
+    #[serde(default, deserialize_with = "lenient_duration")]
+    duration: Option<f64>,
     #[serde(default)]
     failure_messages: Vec<String>,
 }
@@ -425,6 +448,18 @@ impl TestReportAssertion {
             self.title.clone()
         } else {
             self.full_name.clone()
+        }
+    }
+
+    /// The test's status. `skipped`, `pending` and `todo` are the same thing seen from
+    /// three spellings — a test the runner declined to decide — and so is any spelling
+    /// a future reporter invents: the two decided states are the ones that must be
+    /// recognised by name.
+    fn status(&self) -> ToolchainTestStatus {
+        match self.status.as_str() {
+            "passed" => ToolchainTestStatus::Passed,
+            "failed" => ToolchainTestStatus::Failed,
+            _ => ToolchainTestStatus::Skipped,
         }
     }
 }
@@ -489,6 +524,18 @@ fn lenient_pct<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<f64>
         .as_ref()
         .and_then(serde_json::Value::as_f64)
         .filter(|pct| pct.is_finite()))
+}
+
+/// A duration a runner omits, nulls, or writes as something other than a number is an
+/// absence, not a zero, and must not fail the document around it: one unreadable
+/// figure on one test would otherwise cost the record every figure in the report. A
+/// negative duration is not a measurement either.
+fn lenient_duration<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<f64>, D::Error> {
+    let value = Option::<serde_json::Value>::deserialize(deserializer)?;
+    Ok(value
+        .as_ref()
+        .and_then(serde_json::Value::as_f64)
+        .filter(|duration| duration.is_finite() && *duration >= 0.0))
 }
 
 #[cfg(test)]

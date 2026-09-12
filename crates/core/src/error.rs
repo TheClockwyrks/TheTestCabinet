@@ -16,7 +16,7 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 #[non_exhaustive]
 pub enum Error {
     /// A requested test case slug was not present in the catalog.
-    #[error("test case `{slug}` was not found in the catalog")]
+    #[error("test case `{slug}` not found in the catalog")]
     TestCaseNotFound {
         /// The slug that could not be resolved.
         slug: String,
@@ -25,9 +25,7 @@ pub enum Error {
     /// Two catalog folders declared the same `slug`, so the identity is
     /// ambiguous. A slug is a case's stable identity and must be unique across the
     /// whole catalog.
-    #[error(
-        "slug `{slug}` is declared by more than one test-case folder (`{folder_a}` and `{folder_b}`); a slug must be unique across the catalog"
-    )]
+    #[error("slug `{slug}` is declared by two test-case folders (`{folder_a}`, `{folder_b}`)")]
     DuplicateSlug {
         /// The slug declared by two folders.
         slug: String,
@@ -38,7 +36,7 @@ pub enum Error {
     },
 
     /// A requested test case version did not exist for an existing slug.
-    #[error("version `{version}` of test case `{slug}` was not found")]
+    #[error("version `{version}` of test case `{slug}` not found")]
     TestCaseVersionNotFound {
         /// The test case slug.
         slug: String,
@@ -59,7 +57,7 @@ pub enum Error {
     },
 
     /// A requested variant did not exist for a resolved test case version.
-    #[error("variant `{variant}` of test case `{slug}@{version}` was not found")]
+    #[error("variant `{variant}` of test case `{slug}@{version}` not found")]
     VariantNotFound {
         /// The test case slug.
         slug: String,
@@ -70,7 +68,7 @@ pub enum Error {
     },
 
     /// Rendering a test case's prompt template failed.
-    #[error("failed to render prompt for `{slug}@{version}`: {detail}")]
+    #[error("rendering the prompt for `{slug}@{version}`: {detail}")]
     PromptRender {
         /// The test case slug.
         slug: String,
@@ -81,7 +79,7 @@ pub enum Error {
     },
 
     /// Rendering a test case's `.hbs` spec template failed during seeding.
-    #[error("failed to render spec `{spec}` for `{slug}@{version}`: {detail}")]
+    #[error("rendering spec `{spec}` for `{slug}@{version}`: {detail}")]
     SpecRender {
         /// The test case slug.
         slug: String,
@@ -103,8 +101,7 @@ pub enum Error {
     /// per-view failures are surfaced as warnings as they happen (see
     /// [`crate::reference`]).
     #[error(
-        "could not render every reference view for `{slug}@{version}` \
-         (missing: {}); refusing to start the run — see the warnings above",
+        "could not render every reference view for `{slug}@{version}` (missing: {})",
         .missing.join(", ")
     )]
     ReferenceRenderIncomplete {
@@ -117,7 +114,7 @@ pub enum Error {
     },
 
     /// The requested agent harness could not be located on the host.
-    #[error("agent harness `{slug}` is not available: {detail}")]
+    #[error("{slug} harness unavailable: {detail}")]
     HarnessUnavailable {
         /// The harness slug that was requested.
         slug: String,
@@ -126,7 +123,12 @@ pub enum Error {
     },
 
     /// The agent harness was located but failed while running.
-    #[error("agent harness `{slug}` invocation failed: {detail}")]
+    ///
+    /// The clause claims the failure once — `failed` would only repeat the `run failed: `
+    /// the driver wraps it in, so it says what actually happened instead — and the detail
+    /// is figures alone: the code, the terminal status, whatever the harness said on its
+    /// way out, carried in parentheses after it.
+    #[error("{slug} harness exited nonzero{}", parenthesized(.detail))]
     HarnessInvocation {
         /// The harness slug that was invoked.
         slug: String,
@@ -148,9 +150,12 @@ pub enum Error {
     /// the same ceiling.
     ///
     /// Only [gg](crate::gg) reports it, because gg is the only harness whose ceilings
-    /// the Test Cabinet configures. The detail carries the terminal status the session
-    /// ended under, which is where the breached ceiling and its figures are recorded.
-    #[error("agent harness `{slug}` stopped the run on a configured execution ceiling: {detail}")]
+    /// the Test Cabinet configures. The detail is the sentence gg logged as it raised the
+    /// breach, which is where the ceiling and its figures are. Pairing that sentence to the
+    /// agent that raised it is best-effort, so when no agent logged one the detail carries
+    /// the figures this layer does hold instead — the exit code and the terminal status —
+    /// rather than leaving a failure with no figure at all.
+    #[error("{slug} execution ceiling hit{}", parenthesized(.detail))]
     HarnessLimitExceeded {
         /// The harness slug whose ceiling stopped the run.
         slug: String,
@@ -167,7 +172,7 @@ pub enum Error {
     /// slot until an external limit reaped it. See
     /// [`exec_stream`](crate::exec_stream) for the watchdog that detects this and
     /// why the run must end on our timer rather than the platform's.
-    #[error("agent harness `{slug}` produced no output for {seconds}s and was stopped as hung")]
+    #[error("{slug} harness produced no output for {seconds}s")]
     HarnessHung {
         /// The harness slug that stopped responding.
         slug: String,
@@ -182,7 +187,7 @@ pub enum Error {
     /// `max_runtime_hours` manifest field, overridable per invocation (for
     /// example by `tcab run --max-runtime`). When it elapses the run container is
     /// torn down and the run aborts with this error.
-    #[error("agent harness `{slug}` exceeded the maximum runtime of {seconds}s and was stopped")]
+    #[error("{slug} harness exceeded the maximum runtime of {seconds}s")]
     RunTimedOut {
         /// The harness slug whose session was stopped.
         slug: String,
@@ -198,14 +203,14 @@ pub enum Error {
     /// session launch, ends the run here instead: the sandbox it started is stopped
     /// and nothing is recorded. The [driver](https://docs.testcabinet.ai/components/driver/overview/#cancellation)
     /// treats this exactly as it treats a destroyed third-party run.
-    #[error("the run was canceled before its harness session was launched")]
+    #[error("canceled before the harness session launched")]
     CanceledBeforeSession,
 
     /// The harness's install command failed inside the run container before the
     /// session could start. The detail carries the exit code and captured output
     /// so a broken install can be diagnosed. The container is torn down before
     /// this is returned.
-    #[error("harness `{slug}` install failed: {detail}")]
+    #[error("{slug} harness install failed: {detail}")]
     HarnessInstall {
         /// The harness slug whose install command failed.
         slug: String,
@@ -215,7 +220,7 @@ pub enum Error {
 
     /// The harness's install command exceeded the run's maximum runtime before
     /// it finished. The container is torn down before this is returned.
-    #[error("harness `{slug}` install exceeded the maximum runtime of {seconds}s and was stopped")]
+    #[error("{slug} harness install exceeded the maximum runtime of {seconds}s")]
     HarnessInstallTimedOut {
         /// The harness slug whose install command was stopped.
         slug: String,
@@ -231,22 +236,22 @@ pub enum Error {
 
     /// The test case's init command exceeded the run's maximum runtime before it
     /// finished. The container is torn down before this is returned.
-    #[error("init command exceeded the maximum runtime of {seconds}s and was stopped")]
+    #[error("init command exceeded the maximum runtime of {seconds}s")]
     InitTimedOut {
         /// The maximum runtime, in seconds, that was exceeded.
         seconds: u64,
     },
 
     /// The container runtime abstraction reported a failure.
-    #[error("container runtime error: {0}")]
+    #[error("container runtime: {0}")]
     ContainerRuntime(String),
 
     /// Seeding the run's repository failed.
-    #[error("failed to seed run repository: {0}")]
+    #[error("seeding the run repository: {0}")]
     Seeding(String),
 
     /// Collecting the produced artifacts failed.
-    #[error("failed to collect run artifacts: {0}")]
+    #[error("collecting run artifacts: {0}")]
     ArtifactCollection(String),
 
     /// Validation could not be carried out (distinct from validation finding
@@ -286,9 +291,7 @@ pub enum Error {
     /// end-to-end test type; every other type always runs `one-shot`. The run is
     /// refused before any container is started.
     #[error(
-        "orchestrator `{slug}` is not supported for the {test_type} test type \
-         (orchestrator selection is limited to end-to-end test cases; other test \
-         types always run one-shot)"
+        "orchestrator `{slug}` is not supported for the {test_type} test type (end-to-end only)"
     )]
     OrchestratorUnsupportedForTestType {
         /// The requested orchestrator slug (empty for an external directory).
@@ -342,8 +345,8 @@ pub enum Error {
     /// version that would have been staged *and* the range, because the fix is
     /// either restaging the engine or running a case version that accepts it.
     #[error(
-        "engine `{slug}` version {engine_version} is outside the versions test case \
-         `{test_case}` {version} supports ({range})"
+        "engine `{slug}` {engine_version} is outside the range test case \
+         `{test_case}` {version} declares ({range})"
     )]
     EngineVersionUnsupportedForCase {
         /// The requested engine slug.
@@ -370,10 +373,9 @@ pub enum Error {
     /// unaffected — there is nothing to check — and the seeder refuses the same
     /// store with the restaging instructions once a run gets that far.
     #[error(
-        "engine `{slug}` has no staged version in the host package store, so it cannot be \
-         checked against the range test case `{test_case}` {version} declares for it \
-         ({range}); rebuild the packages (`npm run build:packages`) and restage them \
-         (`node scripts/stage-tcab-packages.mjs`)"
+        "engine `{slug}` has no staged version in the host package store \
+         (test case `{test_case}` {version} declares {range}); rebuild the packages \
+         (`npm run build:packages`) and restage them (`node scripts/stage-tcab-packages.mjs`)"
     )]
     EngineVersionUnknown {
         /// The requested engine slug.
@@ -452,4 +454,20 @@ pub enum Error {
     /// An underlying I/O operation failed.
     #[error("io error: {0}")]
     Io(#[from] io::Error),
+}
+
+/// Render a supporting detail as a trailing parenthetical, or nothing at all when there
+/// is none.
+///
+/// A failure message states the failure in one clause and puts its figures in parentheses
+/// after it, so a layer that names only *which* subsystem stopped the run (`gg execution
+/// ceiling hit`) reads as a whole sentence whether or not the layer beneath it had
+/// anything to add.
+fn parenthesized(detail: &str) -> String {
+    let detail = detail.trim();
+    if detail.is_empty() {
+        String::new()
+    } else {
+        format!(" ({detail})")
+    }
 }

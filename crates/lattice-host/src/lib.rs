@@ -236,7 +236,7 @@ pub fn score_against(expected: &[Snapshot], run: &SubmissionRun) -> Score {
                 first_mismatch_tick: Some(want.tick),
                 detail: Some(format!(
                     "snapshot tick {}: the reported checksum {} is not the checksum of the \
-                     state returned with it ({}) — the state, not the claim, is what is graded",
+                     state returned with it ({})",
                     want.tick, got.checksum, derived
                 )),
             };
@@ -297,12 +297,15 @@ pub enum RunError {
     #[error("failed to encode the scenario JSON: {0}")]
     Encode(String),
     /// The submission module failed to load (compile/instantiate/missing export).
-    #[error("submission failed to load: {0}")]
-    Load(#[source] LoadError),
+    /// [`LoadError`] names the submission itself, so this layer adds no second
+    /// subject or verb.
+    #[error(transparent)]
+    Load(LoadError),
     /// The submission failed during its single `simulate` call (trap, fuel/memory
-    /// exhaustion, bad region, or malformed `state` JSON).
-    #[error("submission failed during the run: {0}")]
-    Invoke(#[source] InvokeError),
+    /// exhaustion, bad region, or malformed `state` JSON). [`InvokeError`] names the
+    /// submission itself, so this layer adds no second subject or verb.
+    #[error(transparent)]
+    Invoke(InvokeError),
 }
 
 #[cfg(test)]

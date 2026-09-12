@@ -80,10 +80,10 @@ pub async fn execute(args: CaptureBaselinesArgs) -> Result<()> {
         return Ok(());
     }
 
-    let build = test_case.build.as_ref().context(
-        "this case declares no [build] table, so its reference implementation cannot be built \
-         (only end-to-end cases have buildable references)",
-    )?;
+    let build = test_case
+        .build
+        .as_ref()
+        .context("this case declares no [build] table")?;
 
     let runner = SystemCommandRunner;
 
@@ -341,8 +341,7 @@ fn generate_baseline(
             // reason the `None` arm below refuses its own version of it.
             if !units.is_empty() && units.len() == unclean.len() {
                 bail!(
-                    "no validator ran against the reference implementation for `{}`, so it \
-                     has no baseline media (see the faults above)",
+                    "no validator ran against the reference implementation for `{}`",
                     target.label()
                 );
             }
@@ -366,8 +365,7 @@ fn generate_baseline(
                     });
             if has_units {
                 bail!(
-                    "could not drive the reference implementation for `{}` to \
-                     synthesize its baseline media (is a browser available?)",
+                    "driving the reference implementation for `{}` needs a browser",
                     target.label()
                 );
             }
@@ -500,12 +498,12 @@ pub(super) fn select_targets<'a>(
         match engine {
             Some(engine) => bail!(
                 "no variant of {}@{} declares a `reference_implementation` for engine \
-                 `{engine}`; nothing to do",
+                 `{engine}`",
                 test_case.slug,
                 test_case.version
             ),
             None => bail!(
-                "no variant of {}@{} declares a `reference_implementation`; nothing to do",
+                "no variant of {}@{} declares a `reference_implementation`",
                 test_case.slug,
                 test_case.version
             ),

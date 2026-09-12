@@ -301,8 +301,7 @@ fn read_identity(dir: &Path, relative: String) -> Result<StagedPack, String> {
     let (Some(name), Some(version), Some(kind)) = (identity.name, identity.version, identity.kind)
     else {
         return Err(format!(
-            "the pack manifest {} declares no `name`, `version`, or `kind`, so the \
-             pack it holds cannot be addressed by ref",
+            "the pack manifest {} declares no `name`, `version`, or `kind`",
             path.display()
         ));
     };

@@ -170,11 +170,9 @@ impl OffloadPolicy {
                     crate::validate::LaunchDefect::run_level(
                         locus.to_string(),
                         unknown,
-                        format!(
-                            "the `output` field names where a hook command's output goes; gg has \
-                             no such mode, and reading it as `{SHELL_OUTPUT_OFFLOAD}` would cut a \
-                             hook's output to a tail nobody asked for."
-                        ),
+                        "the `output` field names where a hook command's output goes, and \
+                         gg has no such mode"
+                            .to_string(),
                     )
                     .known(SHELL_OUTPUT_MODES),
                 );
@@ -190,9 +188,9 @@ impl OffloadPolicy {
                     locus.to_string(),
                     mode.trim(),
                     format!(
-                        "the `output` field asks for a mode that returns a tail of the command's \
-                         output, and this agent's own `{CAPABILITY_SHELL}` capability declares no \
-                         ceiling for that tail to be measured against; gg substitutes none."
+                        "the `output` field asks for a mode that returns a tail of the \
+                         command's output, and this agent's own `{CAPABILITY_SHELL}` capability \
+                         declares no ceiling for that tail to be measured against"
                     ),
                 ));
             }
@@ -251,10 +249,9 @@ impl OffloadPolicy {
                         crate::validate::implementation_locus(CAPABILITY_SHELL),
                         unknown,
                         format!(
-                            "the `{CAPABILITY_SHELL}` capability's implementation names how much \
-                             of a command's output comes back inline; gg has no such mode, and \
-                             reading it as `{SHELL_OUTPUT_OFFLOAD}` would run one arm of the \
-                             offloading experiment under another's name."
+                            "the `{CAPABILITY_SHELL}` capability's implementation names how \
+                             much of a command's output comes back inline, and gg has no such \
+                             mode"
                         ),
                     )
                     .known(SHELL_OUTPUT_MODES),

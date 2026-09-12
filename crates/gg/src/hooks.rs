@@ -537,7 +537,7 @@ impl HookRuntime {
                         hook: hook.label.clone(),
                         detail: format!(
                             "gg ships no source for the built-in `{script}`, which the launch \
-                             pass accepted. This is a gg defect."
+                             pass accepted (gg defect)"
                         ),
                     });
                 };
@@ -918,9 +918,7 @@ fn check_actions(
                     report.report(crate::validate::LaunchDefect::run_level(
                         format!("hooks[{label}].command"),
                         command.clone(),
-                        "a command hook runs a command line, and this one is blank; it would run \
-                         `sh -c` on nothing, exit 0 and print nothing — a gate that always passes."
-                            .to_string(),
+                        "a command hook runs a command line, and this one is blank".to_string(),
                     ));
                 }
                 check_timeout(&label, *timeout_secs, report);
@@ -970,9 +968,8 @@ fn check_timeout(
         report.report(crate::validate::LaunchDefect::run_level(
             locus(),
             "",
-            "a command hook names how long its command may run before it is killed, and this one \
-             names none; gg substitutes no ceiling, because a hook killed at a figure nobody wrote \
-             reports a failure the workspace did not have."
+            "a command hook names how long its command may run before it is killed, and this \
+             one names none"
                 .to_string(),
         ));
         return;
@@ -983,8 +980,8 @@ fn check_timeout(
     report.report(crate::validate::LaunchDefect::run_level(
         locus(),
         format!("{secs}"),
-        "a hook's `timeoutSecs` is how long its command may run before it is killed, so it must be \
-         a positive number of seconds; this names no length of time gg could run the command under."
+        "a hook's `timeoutSecs` is how long its command may run before it is killed, so it must \
+         be a positive number of seconds"
             .to_string(),
     ));
 }

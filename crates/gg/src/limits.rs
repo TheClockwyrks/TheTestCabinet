@@ -732,9 +732,8 @@ fn unwritten(key: &str, configures: impl fmt::Display) -> crate::validate::Launc
         locus(key),
         "",
         format!(
-            "the run writes no `{key}`, which is {configures}. gg substitutes nothing for a value \
-             nobody wrote, and every run is conducted under this one, so there is no absence for \
-             gg to read as \"off\"."
+            "the run writes no `{key}`, which is {configures}, and has no absence gg reads as \
+             \"off\""
         ),
     )
 }
@@ -750,9 +749,8 @@ fn unpaired(missing: &str, written: &str, configures: &str) -> crate::validate::
         locus(missing),
         "",
         format!(
-            "`{written}` is declared and `{missing}` is not. `{missing}` is {configures}, and the \
-             two halves stand or fall together: write both to arm the ceiling, or neither to leave \
-             it unarmed. gg will not complete a half-written ceiling with a figure of its own."
+            "`{written}` is declared and `{missing}` is not; `{missing}` is {configures}. Write \
+             both to arm the ceiling, or neither to leave it unarmed."
         ),
     )
 }
@@ -845,11 +843,7 @@ pub fn resolve_run_limits(
                 report.report(unarmable(
                     LIMIT_MAX_CONSECUTIVE_ERRORS,
                     max,
-                    format!(
-                        "gg counts an agent's consecutive errors in a 32-bit number, so it cannot \
-                         hold a ceiling above {}",
-                        u32::MAX
-                    ),
+                    format!("a consecutive-error ceiling cannot exceed {}", u32::MAX),
                 ));
                 refused_ceiling()
             }

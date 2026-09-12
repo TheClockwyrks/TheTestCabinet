@@ -87,8 +87,8 @@ pub async fn add_review(
             .read_manifest(&subject.test_case_slug, &subject.test_case_version)
             .map_err(|err| {
                 ApiError::unprocessable(format!(
-                    "run `{id}` is validator-rated but its case version `{}@{}` cannot be \
-                     resolved from the definition store: {err}",
+                    "case version `{}@{}` of validator-rated run `{id}` is not in the \
+                     definition store: {err}",
                     subject.test_case_slug, subject.test_case_version
                 ))
             })?;
@@ -104,8 +104,7 @@ pub async fn add_review(
     } else {
         if request.aesthetic.is_some() {
             return Err(ApiError::unprocessable(
-                "review carries an aesthetic rating, but only a review of a validator-rated run \
-                 (a case version on the engine manifest format) rates the aesthetic channel",
+                "an aesthetic rating is only accepted on a validator-rated run",
             ));
         }
         None
@@ -167,13 +166,12 @@ fn validate_validator_rated_review(
 ) -> Result<(), ApiError> {
     if !request.ratings.is_empty() {
         return Err(ApiError::unprocessable(
-            "review carries functional ratings, but on a validator-rated run the functional \
-             rating is decided by the validators — override individual verdicts instead",
+            "functional ratings are not accepted on a validator-rated run",
         ));
     }
     if request.aesthetic.is_none() {
         return Err(ApiError::unprocessable(
-            "review must rate the aesthetic channel: one run-wide tier for the whole build",
+            "review must rate the aesthetic channel",
         ));
     }
     let declared: Vec<String> = items.iter().flat_map(|item| item.verdict_ids()).collect();
@@ -197,8 +195,7 @@ fn validate_validator_rated_review(
         .collect();
     if !graded.is_empty() {
         return Err(ApiError::unprocessable(format!(
-            "review overrides a verdict with a graded tier, but an override is binary — \
-             pass or fail: {}",
+            "override verdicts must be pass or fail, not a graded tier: {}",
             graded.join(", ")
         )));
     }

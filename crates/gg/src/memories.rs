@@ -227,11 +227,7 @@ impl MemoryStrategy {
                     LaunchDefect::run_level(
                         crate::validate::implementation_locus(CAPABILITY_MEMORIES),
                         other,
-                        format!(
-                            "`{other}` is not a way gg can organize memories; the strategy decides \
-                             which calls the agent is offered and what its window carries, so gg \
-                             will not pick one for it."
-                        ),
+                        format!("`{other}` is not a way gg can organize memories"),
                     )
                     .known(Self::ALL.map(Self::id)),
                 );

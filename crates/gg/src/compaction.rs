@@ -256,10 +256,7 @@ impl CompactionStrategy {
                     LaunchDefect::run_level(
                         crate::validate::implementation_locus(CAPABILITY_COMPACTION),
                         other,
-                        format!(
-                            "`{other}` is not a compaction strategy gg offers; the strategy is what \
-                             a compaction study varies, so gg will not pick one for it."
-                        ),
+                        format!("`{other}` is not a compaction strategy gg offers"),
                     )
                     .known(Self::ALL.map(Self::id)),
                 );
@@ -917,8 +914,7 @@ fn read_summary_headroom(raw: &Value, report: &mut LaunchReport) -> Option<f64> 
             headroom.to_string(),
             format!(
                 "`{PARAM_SUMMARY_HEADROOM}` must be a fraction between 0.0 and \
-                 {MAX_SUMMARY_HEADROOM}; reserving more than that would leave the agent no \
-                 window to work in, and reserving a negative share is not a thing gg can do."
+                 {MAX_SUMMARY_HEADROOM}"
             ),
         ));
         return None;
@@ -1086,8 +1082,7 @@ pub fn handoff_model_id(set: &GgAgentConfig, report: &mut LaunchReport) -> Optio
             crate::validate::as_written(raw),
             format!(
                 "`{COMPACTION_PARAM_MODEL}` must be the id of the model the `{}` strategy hands \
-                 the thread to; gg reads nothing here, and condensing on the agent's own model \
-                 instead would record one arm and run another.",
+                 the thread to, and gg reads nothing here",
                 strategy.id(),
             ),
         ));
@@ -1133,9 +1128,8 @@ pub fn check_launch(profile: &GgAgentConfig, report: &mut LaunchReport) {
             crate::validate::as_written(slot),
             format!(
                 "a bound launch replaces `{COMPACTION_PARAM_MODEL_SLOT}` with the model it \
-                 collected; one still on the document means the slot was never filled, and gg has \
-                 no slot table to fill it from. Bind it at launch, or name the model outright in \
-                 `{COMPACTION_PARAM_MODEL}`."
+                 collected, and one still on the document means the slot was never filled. Bind \
+                 it at launch, or name the model outright in `{COMPACTION_PARAM_MODEL}`."
             ),
         ));
     }

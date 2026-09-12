@@ -159,10 +159,10 @@ pub async fn execute(args: PublishReferenceArgs) -> Result<()> {
     // The build commands come from the case's `[build]` table — the same install +
     // build a run's validator uses. A case without one (an asset-generation case,
     // say) cannot have a buildable reference implementation, so this is a hard error.
-    let build = test_case.build.as_ref().context(
-        "this case declares no [build] table, so its reference implementation cannot be built \
-         (only end-to-end and full-stack cases have buildable references)",
-    )?;
+    let build = test_case
+        .build
+        .as_ref()
+        .context("this case declares no [build] table")?;
 
     let runner = SystemCommandRunner;
 

@@ -247,6 +247,210 @@ fn more_test_files_than_the_cap_are_sorted_and_truncated() {
     assert_eq!(tests.files[0].path, "src/f000.test.ts");
 }
 
+/// The per-test entries are the suite itself: every test the runner reported, with the
+/// name a reader recognises, the file it came from, what the runner decided, and how
+/// long it took. The counts, the per-file rows and the failure list are unchanged
+/// beside them — the entries are an addition to the block, not a replacement for any
+/// of it.
+#[test]
+fn every_test_is_recorded_with_its_name_file_status_and_duration() {
+    let repo = tree();
+    let game = inside(repo.path(), "src/game.test.ts");
+    let hud = inside(repo.path(), "src/hud.test.ts");
+    let json = format!(
+        r#"{{"numTotalTests":4,"numPassedTests":2,"numFailedTests":1,"numPendingTests":1,
+            "numTodoTests":0,"success":false,
+            "testResults":[
+              {{"name":{game},"message":"","assertionResults":[
+                {{"ancestorTitles":["the engine"],"fullName":"the engine advances",
+                  "title":"advances","status":"passed","duration":12.5,"failureMessages":[]}},
+                {{"ancestorTitles":["the engine"],"fullName":"the engine settles",
+                  "title":"settles","status":"skipped","duration":null,"failureMessages":[]}}]}},
+              {{"name":{hud},"message":"","assertionResults":[
+                {{"ancestorTitles":["the hud"],"fullName":"the hud draws a score",
+                  "title":"draws a score","status":"failed","duration":3,
+                  "failureMessages":["AssertionError: expected 0 to be 7"]}},
+                {{"ancestorTitles":[],"fullName":"","title":"boots","status":"passed",
+                  "duration":0.25,"failureMessages":[]}}]}}]}}"#,
+        game = serde_json::to_string(&game).unwrap(),
+        hud = serde_json::to_string(&hud).unwrap(),
+    );
+    write_report(repo.path(), TOOLCHAIN_TEST_REPORT_PATH, &json);
+
+    let tests = read_test_report(repo.path()).expect("a report that parsed is reported");
+    let recorded: Vec<(&str, &str, ToolchainTestStatus, Option<f64>)> = tests
+        .tests
+        .iter()
+        .map(|test| {
+            (
+                test.file.as_str(),
+                test.name.as_str(),
+                test.status,
+                test.duration_ms,
+            )
+        })
+        .collect();
+    assert_eq!(
+        recorded,
+        [
+            (
+                "src/game.test.ts",
+                "the engine advances",
+                ToolchainTestStatus::Passed,
+                Some(12.5),
+            ),
+            (
+                "src/game.test.ts",
+                "the engine settles",
+                ToolchainTestStatus::Skipped,
+                None,
+            ),
+            (
+                "src/hud.test.ts",
+                "the hud draws a score",
+                ToolchainTestStatus::Failed,
+                Some(3.0),
+            ),
+            // A top-level `it` has no `describe` chain to join, so the reporter writes
+            // an empty `fullName` and the bare title is the name.
+            (
+                "src/hud.test.ts",
+                "boots",
+                ToolchainTestStatus::Passed,
+                Some(0.25)
+            ),
+        ],
+        "in the reporter's own order, file by file",
+    );
+    assert!(!tests.tests_truncated);
+
+    // Everything the block already carried still reads exactly as it did.
+    assert_eq!(
+        (tests.total, tests.passed, tests.failed, tests.skipped),
+        (4, 2, 1, 1)
+    );
+    assert_eq!((tests.files_run, tests.files_failed), (2, 1));
+    assert!(!tests.succeeded);
+    let paths: Vec<&str> = tests.files.iter().map(|f| f.path.as_str()).collect();
+    assert_eq!(paths, ["src/game.test.ts", "src/hud.test.ts"]);
+    assert_eq!((tests.files[0].passed, tests.files[0].skipped), (1, 1));
+    assert_eq!(tests.files[1].failed, 1);
+    assert_eq!(tests.failures.len(), 1);
+    assert_eq!(tests.failures[0].name, "the hud draws a score");
+    assert_eq!(
+        tests.failures[0].message.as_deref(),
+        Some("AssertionError: expected 0 to be 7")
+    );
+}
+
+/// A duration the runner did not report is an absence, never a zero: vitest omits the
+/// field for a test that produced no result at all, and a recorded `0.0` would say the
+/// test ran instantaneously. A figure that is not a measurement — a null, a string, a
+/// negative — is the same absence, and must not cost the document every other figure
+/// in it.
+#[test]
+fn a_test_the_runner_did_not_time_records_no_duration() {
+    let repo = tree();
+    let file = inside(repo.path(), "src/game.test.ts");
+    let json = format!(
+        r#"{{"numTotalTests":4,"numPassedTests":4,"success":true,"testResults":[
+            {{"name":{file},"message":"","assertionResults":[
+              {{"fullName":"omitted","title":"omitted","status":"passed","failureMessages":[]}},
+              {{"fullName":"nulled","title":"nulled","status":"passed","duration":null,
+                "failureMessages":[]}},
+              {{"fullName":"worded","title":"worded","status":"passed","duration":"fast",
+                "failureMessages":[]}},
+              {{"fullName":"timed","title":"timed","status":"passed","duration":7.5,
+                "failureMessages":[]}}]}}]}}"#,
+        file = serde_json::to_string(&file).unwrap(),
+    );
+    write_report(repo.path(), TOOLCHAIN_TEST_REPORT_PATH, &json);
+
+    let tests = read_test_report(repo.path()).expect("a report that parsed is reported");
+    let durations: Vec<Option<f64>> = tests.tests.iter().map(|test| test.duration_ms).collect();
+    assert_eq!(durations, [None, None, None, Some(7.5)]);
+    assert_eq!(
+        tests.total, 4,
+        "one unreadable duration costs the record nothing else"
+    );
+
+    // An absent duration is absent from the JSON too, so a console can tell *not
+    // timed* from *took no time*.
+    let json = serde_json::to_value(&tests.tests[0]).expect("an entry serializes");
+    assert!(
+        json.get("durationMs").is_none(),
+        "an untimed test carries no duration key: {json}"
+    );
+    assert_eq!(
+        serde_json::to_value(&tests.tests[3]).expect("an entry serializes")["durationMs"],
+        7.5
+    );
+}
+
+/// More tests than the cap keeps the first ones in the reporter's own order — a prefix
+/// of the suite as it ran, so two reads of one report retain the same entries — flags
+/// the truncation, and leaves the true count and every other list alone.
+#[test]
+fn more_tests_than_the_cap_are_truncated_at_a_reproducible_prefix() {
+    let repo = tree();
+    // Reported last-path-first, so a list that came out path-sorted would be visible:
+    // the entries follow the report, while the per-file rows are sorted as they always
+    // were.
+    let later = inside(repo.path(), "src/zephyr.test.ts");
+    let earlier = inside(repo.path(), "src/anvil.test.ts");
+    let overflow = 3;
+    let in_later = TOOLCHAIN_TEST_ENTRY_LIMIT - 1;
+    let in_earlier = overflow + 1;
+    let assertions = |prefix: &str, count: usize| {
+        (0..count)
+            .map(|index| {
+                format!(
+                    r#"{{"fullName":"{prefix} {index}","title":"{index}","status":"passed",
+                        "duration":1,"failureMessages":[]}}"#
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(",")
+    };
+    let json = format!(
+        r#"{{"numTotalTests":{count},"numPassedTests":{count},"success":true,"testResults":[
+            {{"name":{later},"message":"","assertionResults":[{late_assertions}]}},
+            {{"name":{earlier},"message":"","assertionResults":[{early_assertions}]}}]}}"#,
+        count = in_later + in_earlier,
+        later = serde_json::to_string(&later).unwrap(),
+        earlier = serde_json::to_string(&earlier).unwrap(),
+        late_assertions = assertions("zephyr", in_later),
+        early_assertions = assertions("anvil", in_earlier),
+    );
+    write_report(repo.path(), TOOLCHAIN_TEST_REPORT_PATH, &json);
+
+    let tests = read_test_report(repo.path()).expect("a report that parsed is reported");
+    assert_eq!(tests.tests.len(), TOOLCHAIN_TEST_ENTRY_LIMIT);
+    assert!(tests.tests_truncated);
+    assert_eq!(
+        tests.total as usize,
+        TOOLCHAIN_TEST_ENTRY_LIMIT + overflow,
+        "the count is the truth even when the list is not the whole of it"
+    );
+    assert_eq!(
+        tests.tests.first().map(|test| test.name.as_str()),
+        Some("zephyr 0"),
+        "the first test reported is the first test kept",
+    );
+    assert_eq!(
+        tests.tests.last().map(|test| test.name.as_str()),
+        Some("anvil 0"),
+        "and the cut lands where the cap does, not at a file boundary",
+    );
+
+    // The rows and the counts are untouched by a cap that only bounds the entries.
+    let paths: Vec<&str> = tests.files.iter().map(|f| f.path.as_str()).collect();
+    assert_eq!(paths, ["src/anvil.test.ts", "src/zephyr.test.ts"]);
+    assert_eq!(tests.files[0].passed as usize, in_earlier);
+    assert_eq!(tests.files[1].passed as usize, in_later);
+    assert!(!tests.files_truncated && !tests.failures_truncated);
+}
+
 /// A report naming a file outside the tree is not describing the model's code, so the
 /// row is dropped rather than stored under a host path that joins to nothing.
 #[test]

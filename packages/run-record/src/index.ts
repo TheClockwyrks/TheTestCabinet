@@ -2032,6 +2032,47 @@ export type ToolchainTestFailure = {
 };
 
 /**
+ * What the runner decided about one test.
+ *
+ * The three states the reporter's own statuses collapse to. `skipped`, `pending` and
+ * `todo` are one state seen from three spellings — a test the runner declined to
+ * decide — and they are held together here exactly as [`ToolchainTestFile::skipped`]
+ * counts them together.
+ */
+export type ToolchainTestStatus = "passed" | "failed" | "skipped";
+
+/**
+ * One test the runner reported, named and timed.
+ *
+ * The per-file rows say how many tests a file passed and failed; these say which
+ * tests those were. Counts and the first ten failures cannot show a reader the suite
+ * itself — which tests a build wrote, which of them it skipped, and which one took a
+ * second and a half.
+ */
+export type ToolchainTest = {
+  /**
+   * The test file's repo-relative path, forward slashed: the
+   * [`path`](ToolchainTestFile::path) of the row this test is counted in.
+   */
+  file: string;
+  /**
+   * The test's full name — its `describe` chain and its own title, as the reporter
+   * joined them; its bare title when it has no chain.
+   */
+  name: string;
+  /**
+   * What the runner decided about it.
+   */
+  status: ToolchainTestStatus;
+  /**
+   * How long it took, in milliseconds, when the runner timed it. Absent when it
+   * reported no duration, which is the ordinary case for a test that never ran:
+   * absence is *not timed*, never zero.
+   */
+  durationMs?: number;
+};
+
+/**
  * What the runner reported, read from [`TOOLCHAIN_TEST_REPORT_PATH`].
  *
  * Present only when that file was written and parsed. A suite that ran and found no
@@ -2088,6 +2129,20 @@ export type ToolchainTests = {
    * [`failed`](Self::failed) is always the true count regardless.
    */
   failuresTruncated: boolean;
+  /**
+   * The first [`TOOLCHAIN_TEST_ENTRY_LIMIT`] tests the runner reported, in its own
+   * order: file by file as the report lists them and, within a file, the order they
+   * ran in. A prefix of that order rather than a sample of it, so two reads of one
+   * report retain the same entries. The order is the reporter's rather than the
+   * path sort [`files`](Self::files) is in, because a suite reads as the runner ran
+   * it.
+   */
+  tests: Array<ToolchainTest>;
+  /**
+   * Whether [`tests`](Self::tests) was cut short by the cap.
+   * [`total`](Self::total) is always the true count regardless.
+   */
+  testsTruncated: boolean;
 };
 
 /**

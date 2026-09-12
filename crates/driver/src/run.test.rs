@@ -15,7 +15,7 @@ fn a_launch_refused_for_a_killed_run_is_flagged_and_classified_canceled() {
     assert_eq!(failure.state, RunState::Canceled);
     assert_eq!(
         failure.detail,
-        "run failed: the run was canceled before its harness session was launched",
+        "run failed: canceled before the harness session launched",
     );
 }
 

@@ -30,15 +30,23 @@ const FULL_MARKS_EPSILON: f64 = 1e-9;
 /// comparison holds the case and variant constant. `runs` maps run id → record; an
 /// arm reads exactly the runs its [`run_ids`](ComparisonArm::run_ids) name that are
 /// present in the map.
+///
+/// `live` is every recorded id that still exists — a run still stored, or a job still
+/// queued or running — which is a wider set than `runs`: a run launched a minute ago
+/// has no record yet but must not be launched again. The caller resolves it against
+/// the store (statistics are computed here; existence is not a question this module
+/// can answer), and each arm reports its own share as
+/// [`live_run_ids`](ComparisonArmResult::live_run_ids).
 pub fn aggregate_comparison(
     config: &ComparisonConfig,
     items: &[ReviewItem],
     runs: &BTreeMap<String, RunRecord>,
+    live: &BTreeSet<String>,
 ) -> Vec<ComparisonArmResult> {
     config
         .arms
         .iter()
-        .map(|arm| aggregate_arm(config, arm, items, runs))
+        .map(|arm| aggregate_arm(config, arm, items, runs, live))
         .collect()
 }
 
@@ -48,6 +56,7 @@ fn aggregate_arm(
     arm: &ComparisonArm,
     items: &[ReviewItem],
     runs: &BTreeMap<String, RunRecord>,
+    live: &BTreeSet<String>,
 ) -> ComparisonArmResult {
     // The arm's present runs, in a deterministic sorted-id order so the bootstrap
     // seed and every derived figure are independent of arrival order.
@@ -60,6 +69,16 @@ fn aggregate_arm(
     ids.sort();
     let arm_runs: Vec<&RunRecord> = ids.iter().map(|id| &runs[id]).collect();
     let seed = seed_from_run_ids(&ids);
+
+    // The arm's still-existing ids, in launch order rather than sorted: this is what a
+    // top-up counts off, and the order it was launched in is the order a reader reads
+    // it in. Wider than `ids` above — a run that has not reported back yet exists.
+    let live_run_ids: Vec<String> = arm
+        .run_ids
+        .iter()
+        .filter(|id| live.contains(*id))
+        .cloned()
+        .collect();
 
     // Cost (comparable USD) and total-token distributions, over the runs that
     // report each metric — a run missing the figure is left out rather than folded
@@ -113,6 +132,7 @@ fn aggregate_arm(
         arm: arm.clone(),
         n_desired: config.n,
         n_observed: arm_runs.len(),
+        live_run_ids,
         cost,
         tokens: tokens_summary,
         score,

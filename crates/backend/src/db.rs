@@ -170,7 +170,7 @@ const PUBLISH_JOB_STALE_AFTER: time::Duration = time::Duration::hours(1);
 /// fields leaves every stored record readable and needs no bump. The pin in the
 /// readability tests holds the whole tree's shape against this constant, so a
 /// change anywhere in it forces the decision.
-pub const RUN_RECORD_FORMAT: u32 = 2;
+pub const RUN_RECORD_FORMAT: u32 = 3;
 
 /// The `run` query narrowed to the rows this build can read — the single seam
 /// every run listing starts from, so a listing's `COUNT(*)` and the page it serves
@@ -959,7 +959,7 @@ impl Db {
 
         if run.published && run.record_readable {
             return Err(crate::error::BackendError::Unprocessable(format!(
-                "run `{run_id}` is published and cannot be deleted; only an unpublished run can be deleted"
+                "run `{run_id}` is published and cannot be deleted"
             )));
         }
 
@@ -2063,12 +2063,12 @@ async fn gate_publishable<C: ConnectionTrait>(
 ) -> Result<()> {
     if never_publishable_states().contains(&run_state) {
         let reason = if run_state == "canceled" {
-            "was canceled by an operator"
+            "canceled by an operator"
         } else {
-            "is an infrastructure failure"
+            "an infrastructure failure"
         };
         return Err(crate::error::BackendError::Unprocessable(format!(
-            "run `{run_id}` {reason} and can never be published"
+            "run `{run_id}` is not publishable: {reason}"
         )));
     }
     let is_publishable_failure = publishable_failure_states().contains(&run_state);
@@ -2089,7 +2089,7 @@ async fn gate_publishable<C: ConnectionTrait>(
             let waived = allow_auto_validated && run_has_auto_verdicts(conn, run_id).await?;
             if !waived {
                 return Err(crate::error::BackendError::Unprocessable(format!(
-                    "run `{run_id}` has no reviews — a run needs at least one review before it can be published"
+                    "run `{run_id}` has no reviews"
                 )));
             }
         }
@@ -3321,6 +3321,69 @@ impl Db {
             .exec(&self.conn())
             .await?;
         Ok(res.rows_affected > 0)
+    }
+
+    /// Which of `ids` still exist as runs: the ones a `run` row is stored for, the
+    /// ones a `job` still holds in flight (`queued`, `pending`, `dispatched`,
+    /// `starting`, or `running`), and the ones whose job produced a `run` row that is
+    /// still stored.
+    ///
+    /// Three ways because the id a launch hands back is the **job** id, and the record
+    /// the driver mints later carries an id of its own ([`test_cabinet_core::mint_run_id`]);
+    /// `job.record_id` is the only link between the two. So a recorded id is live while
+    /// its job sits in the queue, live once the run it produced is stored, and dead
+    /// once that run is deleted — which is the whole question a comparison asks before
+    /// topping an arm back up to `n`.
+    ///
+    /// Ids that match nothing are simply absent, so the result is a subset of `ids`.
+    pub async fn live_run_ids(&self, ids: &[String]) -> Result<std::collections::BTreeSet<String>> {
+        use std::collections::BTreeSet;
+        if ids.is_empty() {
+            return Ok(BTreeSet::new());
+        }
+        let conn = self.conn();
+        let requested: BTreeSet<String> = ids.iter().cloned().collect();
+
+        // Every job enqueued under one of the ids, with the state that says whether it
+        // is still in flight and the record it produced if it has finished.
+        let jobs: Vec<(String, String, Option<String>)> = job::Entity::find()
+            .select_only()
+            .column(job::Column::Id)
+            .column(job::Column::State)
+            .column(job::Column::RecordId)
+            .filter(job::Column::Id.is_in(ids.to_vec()))
+            .into_tuple()
+            .all(&conn)
+            .await?;
+
+        // The run rows to look for: the ids themselves (a recorded id that is already a
+        // run id), plus the record each matched job produced (the row a recorded job id
+        // resolves to once its run landed).
+        let mut wanted = requested.clone();
+        for (_, _, record_id) in &jobs {
+            if let Some(record_id) = record_id {
+                wanted.insert(record_id.clone());
+            }
+        }
+        let stored: BTreeSet<String> = run::Entity::find()
+            .select_only()
+            .column(run::Column::Id)
+            .filter(run::Column::Id.is_in(wanted.into_iter().collect::<Vec<_>>()))
+            .into_tuple::<String>()
+            .all(&conn)
+            .await?
+            .into_iter()
+            .collect();
+
+        let mut live: BTreeSet<String> = requested.intersection(&stored).cloned().collect();
+        for (job_id, state, record_id) in jobs {
+            let in_flight = IN_FLIGHT_STATES.contains(&state.as_str());
+            let produced_a_stored_run = record_id.is_some_and(|id| stored.contains(&id));
+            if in_flight || produced_a_stored_run {
+                live.insert(job_id);
+            }
+        }
+        Ok(live)
     }
 
     /// The legacy single-per-account plans that the startup backfill has not yet

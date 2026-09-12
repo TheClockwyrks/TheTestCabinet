@@ -70,8 +70,8 @@ pub enum Error {
     /// A required Workload Identity environment variable is unset — the pod is not
     /// configured for managed-identity auth (missing the SA federation / label).
     #[error(
-        "Azure Workload Identity is not configured: environment variable `{0}` is unset \
-         (the pod needs the `azure.workload.identity/use` label and a federated ServiceAccount)"
+        "Azure Workload Identity environment variable `{0}` is unset (the pod needs the \
+         `azure.workload.identity/use` label and a federated ServiceAccount)"
     )]
     MissingEnv(&'static str),
     /// The projected federated token file could not be read.

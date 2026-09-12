@@ -218,6 +218,18 @@ pub struct ComparisonArmResult {
     pub n_desired: u32,
     /// The number of runs actually observed for this arm.
     pub n_observed: usize,
+    /// The arm's recorded [run ids](ComparisonArm::run_ids) that **still exist**:
+    /// each one a run is still stored for, or a job is still queued or running for.
+    /// In the arm's launch order.
+    ///
+    /// This is the count a "trigger missing runs" tops up against, and neither figure
+    /// beside it can serve. [`ComparisonArm::run_ids`] records every run ever
+    /// launched, so an arm whose runs were deleted keeps counting dead ids and can
+    /// never be topped up again. [`n_observed`](Self::n_observed) counts only the runs
+    /// whose record has landed, so topping up against it relaunches every run still in
+    /// flight. This counts the runs that exist right now, in flight or finished.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub live_run_ids: Vec<String>,
     /// The comparable-cost (USD) distribution across the arm's runs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]

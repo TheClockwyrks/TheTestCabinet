@@ -486,15 +486,14 @@ pub(crate) async fn run_streamed_translation(
     })
 }
 
-/// Build a detailed failure message from a harness invocation that exited non
-/// zero.
+/// The figures a harness invocation that exited non-zero is reported with.
 ///
-/// The previous behavior kept only the first line of standard error, which threw
-/// away the harness's actual complaint. This keeps the tail of whichever stream
-/// carried output — standard error first, then standard output — so the real
-/// cause survives, capped so a runaway log cannot dominate the error.
+/// [`HarnessInvocation`](Error::HarnessInvocation) states the failure itself, so this is
+/// figures alone: the exit code, then the tail of whichever stream carried output —
+/// standard error first, then standard output — so the harness's own complaint survives,
+/// capped so a runaway log cannot dominate the error.
 fn failure_detail(output: &ExecOutput) -> String {
-    let exit = format!("harness exited with code {}", output.exit_code);
+    let exit = format!("code {}", output.exit_code);
     let tail = last_lines(&output.stderr, 20).or_else(|| last_lines(&output.stdout, 20));
     match tail {
         Some(tail) => format!("{exit}\n{tail}"),

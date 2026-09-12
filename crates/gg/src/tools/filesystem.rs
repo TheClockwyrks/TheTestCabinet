@@ -223,9 +223,7 @@ impl ReadPolicy {
                         unknown,
                         format!(
                             "the `{CAPABILITY_READ_FILE}` capability's implementation names how \
-                             much of a file one call returns; gg has no such mode, and reading it \
-                             as `{READ_MODE_UNLIMITED}` would hand this agent uncapped reads under \
-                             the capped arm's name."
+                             much of a file one call returns, and gg has no such mode"
                         ),
                     )
                     .known(READ_MODES),

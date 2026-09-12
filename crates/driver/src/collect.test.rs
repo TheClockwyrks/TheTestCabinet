@@ -175,10 +175,7 @@ async fn a_stream_that_ends_without_its_terminator_is_reported_truncated() {
     let (received, ()) = tokio::join!(listener.receive(&archive), client);
     let err = received.expect_err("truncated");
     let message = err.to_string();
-    assert!(
-        message.contains("failed to collect run artifacts"),
-        "{message}"
-    );
+    assert!(message.contains("collecting run artifacts"), "{message}");
     assert!(message.contains("without its terminator"), "{message}");
     // The count is of whole chunks landed: the first frame, not the fragment of
     // the second that the drop cut through.
@@ -214,7 +211,7 @@ async fn a_terminator_whose_count_disagrees_is_refused() {
     let err = received.expect_err("count mismatch");
     assert!(
         err.to_string()
-            .contains("1000 bytes but the uploader sent 1500"),
+            .contains("received 1000, uploader claimed 1500"),
         "{err}"
     );
     assert_eq!(reply, "", "no acknowledgement for a refused upload");
@@ -244,7 +241,7 @@ async fn a_terminator_whose_digest_disagrees_is_refused() {
     };
     let (received, ()) = tokio::join!(listener.receive(&archive), client);
     let err = received.expect_err("digest mismatch");
-    assert!(err.to_string().contains("digest does not match"), "{err}");
+    assert!(err.to_string().contains("SHA-256 digest mismatch"), "{err}");
 }
 
 #[tokio::test]
@@ -348,7 +345,7 @@ async fn an_oversized_frame_is_refused_before_it_is_read() {
     };
     let (received, ()) = tokio::join!(listener.receive(&archive), client);
     let err = received.expect_err("oversized");
-    assert!(err.to_string().contains("beyond the"), "{err}");
+    assert!(err.to_string().contains("over the size cap"), "{err}");
 }
 
 #[test]
@@ -413,7 +410,7 @@ async fn an_uploader_that_never_connects_fails_the_attempt_within_the_idle_bound
         .receive(&archive)
         .await
         .expect_err("nobody connected");
-    assert!(err.to_string().contains("did not connect"), "{err}");
+    assert!(err.to_string().contains("no uploader connected"), "{err}");
     assert!(started.elapsed() < Duration::from_secs(5));
     assert!(!archive.exists());
 }
@@ -444,9 +441,8 @@ async fn a_stream_that_stalls_fails_the_attempt_within_the_idle_bound() {
         (err, started.elapsed())
     };
     let ((err, elapsed), ()) = tokio::join!(receive, client);
-    assert!(
-        err.to_string().contains("stalled after 1024 bytes"),
-        "{err}"
-    );
+    let message = err.to_string();
+    assert!(message.contains("upload stalled for"), "{message}");
+    assert!(message.contains("after 1024 bytes"), "{message}");
     assert!(elapsed < Duration::from_secs(2), "{elapsed:?}");
 }
