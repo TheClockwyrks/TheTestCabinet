@@ -525,14 +525,6 @@ frozen test-case versions, which `scripts/format-check.mjs` derives from their
 `.frozen` markers on each run. Azure DevOps runs it through
 `scripts/ci/format-check.sh`.
 
-Of the ~74k files git tracks, only the ~33k prettier has a parser for are handed
-to it — the rest are PNG, webm, glb and gzip — and those are split across every
-core. Each shard remembers, under `node_modules/.cache/format-check/`, which
-files it has already seen formatted, keyed on their contents, so a re-run only
-pays for what changed; a full pass takes seconds either way. Pass `--no-cache` to
-`scripts/format-check.mjs` to ignore what it remembers, and delete that directory
-to reset it.
-
 ## Generating the data contract
 
 The run-record (and arena, job-API, backend) data contract has a single source of
