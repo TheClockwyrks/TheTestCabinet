@@ -525,14 +525,14 @@ impl KnowledgeError {
         match &self.error {
             PrepareFailure::Program(_) => None,
             PrepareFailure::Toolchain(detail) => Some(format!(
-                "the `{}` of {} `{}` was not compiled: {detail}",
+                "the `{}` of {} `{}` was not compiled: {detail} (run environment fault)",
                 self.half,
                 self.origin.noun(),
                 self.name,
             )),
             PrepareFailure::Lowering(detail) => Some(format!(
-                "the `{}` of {} `{}` was accepted and then could not be prepared, which is a gg \
-                 defect: {detail}",
+                "the `{}` of {} `{}` was accepted and then could not be prepared: {detail} \
+                 (gg defect)",
                 self.half,
                 self.origin.noun(),
                 self.name,

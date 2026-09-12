@@ -1,4 +1,5 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, type MouseEvent } from "react";
+import { useNavigate } from "react-router";
 import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import {
   canonicalModelId,
@@ -25,7 +26,13 @@ import {
   UNKNOWN_PROVIDER_COLOR,
 } from "../../../data/providerColor";
 import { LoadingState } from "../../../components/LoadingState";
-import { formatCompact, formatUsd, totalTokens } from "../../../format";
+import {
+  formatCompact,
+  formatTimestamp,
+  formatUsd,
+  totalTokens,
+} from "../../../format";
+import { routes } from "../../../routes";
 import {
   TestCaseDetailLayout,
   type DetailTabContext,
@@ -33,7 +40,12 @@ import {
 import { resolveRunScore } from "./TestCaseLeaderboardPage";
 import styles from "./TestCaseMetricsPage.module.scss";
 
-// A box plot needs more than one observation to show a spread.
+// A box plot needs more than one observation to show a spread, and so does a
+// scatter: one dot sitting on its own average says nothing a bar did not. The
+// gate is on the scoped cohort rather than per bar, so a chart is drawn or it is
+// not — a single-run BAR inside a charted cohort is legitimate and draws itself
+// honestly (its distribution collapses to a point, and its tooltip says "1 run"
+// rather than dressing one observation up as a spread).
 const MIN_RUNS = 2;
 
 // Compact d3-format for the token axis so large counts (100k, 1.2M) stay short
@@ -52,6 +64,37 @@ const tokensValue = (run: RunSummary): number | null =>
 // as zero.
 const costValue = (run: RunSummary): number | null =>
   run.metrics.cost.comparable;
+
+// Where a run's dot in a scatter chart links. Every run these charts fold is
+// `completed` (see `variantRuns`), so a run's page is always its detail page —
+// there is no in-flight run here to send to a monitor instead.
+const runHref = (run: RunSummary): string => routes.runDetail(run.id);
+
+// The line that tells two runs of one model apart in a scatter tooltip: when the
+// run started. The widget already names the pair, the figure and the run id;
+// this is the part only the app can format.
+const describeRun = (run: RunSummary): string => formatTimestamp(run.startedAt);
+
+// The namespace Observable Plot writes a mark's link into. Plot renders an
+// `href` channel as an SVG `<a>` carrying the deprecated-but-universally-honored
+// `xlink:href`, and nothing else — so a plain `a[href]` selector finds nothing
+// and the attribute has to be read out of its namespace.
+const XLINK_NS = "http://www.w3.org/1999/xlink";
+
+// The in-app path a click landed on, or null when it did not land on a chart's
+// run link (or when the reader asked for a new tab/window, which is the
+// browser's business and not ours to intercept).
+function chartLinkTarget(event: MouseEvent<HTMLElement>): string | null {
+  if (event.defaultPrevented || event.button !== 0) return null;
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+    return null;
+  }
+  const anchor = (event.target as Element | null)?.closest?.("a");
+  const href = anchor?.getAttributeNS(XLINK_NS, "href") ?? null;
+  // Only our own routes. An absolute URL is somebody else's page and must leave
+  // the app the way it says it will.
+  return href?.startsWith("/") ? href : null;
+}
 
 // The bar label every chart on this tab agrees on: the model's display name and
 // the harness that ran it, plus — only on a board widened across engines — the
@@ -314,8 +357,29 @@ export function MetricsContent({ ctx }: { ctx: DetailTabContext }) {
   // One order for the whole tab. Every chart renders its own copy of the control
   // bound to this state, so moving any one slider moves all of them — the charts
   // describe one roster and are only comparable while they agree on its order.
+  //
+  // The display mode is deliberately NOT lifted this way: each chart owns its own
+  // Bar/Scatter choice, because how a chart draws its own spread does not have to
+  // agree with its neighbour's for the two to be read together.
   const [sort, setSort] = useState<ChartSort>("alphabetical");
   const sortControl = <ChartSortControl value={sort} onChange={setSort} />;
+
+  // A run's dot in a scatter chart is a real link — middle-clickable, copyable,
+  // openable in a new tab — but Plot builds that anchor outside React's tree, so
+  // a plain left click on one would leave the app and reload it from the server.
+  // Catching the click on the way up and routing it restores the in-app
+  // navigation every other link on the page performs. If this never fires the
+  // anchor still works; the reader just pays for a reload.
+  const navigate = useNavigate();
+  const followChartLink = useCallback(
+    (event: MouseEvent<HTMLDivElement>) => {
+      const path = chartLinkTarget(event);
+      if (path === null) return;
+      event.preventDefault();
+      navigate(path);
+    },
+    [navigate],
+  );
 
   // Whether some narrowing is in effect that widening could undo — what decides
   // if the empty state should suggest widening the scope. The controls stay
@@ -355,7 +419,9 @@ export function MetricsContent({ ctx }: { ctx: DetailTabContext }) {
         </Panel>
       ) : (
         // One full-width widget per metric, each grouping the scoped runs by model.
-        <div className={styles.widgets}>
+        // The click handler is on the container rather than on each chart because
+        // the anchors it catches are inside DOM Plot owns; see `chartLinkTarget`.
+        <div className={styles.widgets} onClick={followChartLink}>
           <RatingsChartWidget
             title="Ratings"
             models={ratingModels}
@@ -380,6 +446,13 @@ export function MetricsContent({ ctx }: { ctx: DetailTabContext }) {
             actions={sortControl}
             empty={`No scored runs of ${variant.name} yet. Points appear once runs have been reviewed.`}
           />
+          {/* The two resource metrics carry the Bar/Scatter control. They are the
+              skewed ones — a run has a cost floor and a long upper tail — so the
+              mean a bar draws sits above the typical run and the spread behind it
+              is the interesting part. Points and Ratings deliberately do not: a
+              points bar is a bounded fraction of one checklist and the Ratings
+              chart is already a stacked count of every run, which is the same
+              information a scatter would add. */}
           <MetricChartWidget
             title="Average tokens"
             runs={scopedRuns}
@@ -388,9 +461,12 @@ export function MetricsContent({ ctx }: { ctx: DetailTabContext }) {
             unit="tokens"
             yTickFormat={TOKEN_TICKS}
             barMode="meanByModel"
+            distributionModes
             colorForModel={colorForModel}
             labelForModel={labelForModel}
             formatValue={formatCompact}
+            runHref={runHref}
+            describeRun={describeRun}
             sort={sort}
             tieBreak={tieBreak}
             actions={sortControl}
@@ -402,9 +478,12 @@ export function MetricsContent({ ctx }: { ctx: DetailTabContext }) {
             value={costValue}
             unit="USD"
             barMode="meanByModel"
+            distributionModes
             colorForModel={colorForModel}
             labelForModel={labelForModel}
             formatValue={formatUsd}
+            runHref={runHref}
+            describeRun={describeRun}
             sort={sort}
             tieBreak={tieBreak}
             actions={sortControl}

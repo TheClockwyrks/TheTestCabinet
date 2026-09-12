@@ -169,6 +169,40 @@ describe("LadderEditPage round trip", () => {
     ]);
   });
 
+  // The report this was built for: "3" could not be replaced by "5" without
+  // selecting it, because clearing the field snapped it back to 1 under the caret.
+  it("lets the run target be cleared and retyped, and refuses to save while it is empty", async () => {
+    await renderEditor();
+    const runs = screen.getByLabelText("Runs per rung") as HTMLInputElement;
+    expect(runs.value).toBe("3");
+
+    fireEvent.change(runs, { target: { value: "" } });
+    expect(runs.value).toBe("");
+    expect(runs).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByText("Runs per rung is required.")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Save ladder" })).toBeDisabled();
+    await save();
+    expect(saved).toBeNull();
+
+    fireEvent.change(runs, { target: { value: "5" } });
+    expect(runs.value).toBe("5");
+    await save();
+    expect(saved?.runsPerCell).toBe(5);
+  });
+
+  it("refuses to save a run target outside the range a rung may ask for", async () => {
+    await renderEditor();
+    const runs = screen.getByLabelText("Runs per rung") as HTMLInputElement;
+
+    fireEvent.change(runs, { target: { value: "0" } });
+    // Held as typed rather than corrected to the floor behind the operator's back.
+    expect(runs.value).toBe("0");
+    expect(screen.getByText("Runs per rung must be 1 or more.")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Save ladder" })).toBeDisabled();
+    await save();
+    expect(saved).toBeNull();
+  });
+
   it("keeps every rung's stable id, so recorded verdicts stay attached", async () => {
     await renderEditor();
     await save();

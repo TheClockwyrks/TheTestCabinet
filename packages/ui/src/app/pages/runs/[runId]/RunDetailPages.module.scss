@@ -345,6 +345,26 @@
   color: t.$color-text-muted;
 }
 
+// The failure tier's consequence, sat under the "no result" note on the Verdict
+// tab. Muted and small: it is reference knowledge about the tier, not the run's
+// own failure detail (which leads the banner above in full-strength text).
+.failureConsequence {
+  margin: t.$space-sm 0 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+// The link out to the run-record contract behind the tier list. Accent, so it
+// reads as the one actionable thing in a muted paragraph.
+.docsLink {
+  color: t.$color-accent;
+  white-space: nowrap;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
 // The reviewer checklist: the case-declared items the reviewer worked through,
 // each with the recorded verdict. Sits beneath the writeup body in the Verdict
 // tab's panel.

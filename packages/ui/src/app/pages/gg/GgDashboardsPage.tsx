@@ -25,6 +25,7 @@ import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
 import { useConfirm } from "../../components/ConfirmDialog";
 import { LoadingState } from "../../components/LoadingState";
+import { NumberField, readNumberField } from "../../components/NumberField";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
 import { routes } from "../../routes";
@@ -35,14 +36,38 @@ import styles from "./dashboards/GgDashboards.module.scss";
 import { SubmitNotice } from "../../components/SubmitNotice";
 import exec from "../runs/RunExec.module.scss";
 
+/** What a panel's width may be, declared once so the field and the save agree. */
+const PANEL_WIDTH = {
+  label: "A panel’s width",
+  min: 1,
+  max: 12,
+  integer: true,
+} as const;
+
+/** The width a panel opens on: half the twelve-column flow. */
+const DEFAULT_PANEL_WIDTH = "6";
+
+// The editor's own shape of a board. It differs from the wire's in one place: a
+// panel's width is held as the **text** the operator typed, so the field can be
+// cleared and retyped rather than snapping to a column count nobody asked for. The
+// save reads a number back out of that text, and refuses while any panel's text
+// names none. See components/NumberField.
+type PanelDraft = Omit<GgDashboardPanel, "width"> & { width: string };
+type BoardDraft = Omit<GgDashboardInput, "panels"> & { panels: PanelDraft[] };
+
+/** A blank panel, at the width a new one opens on. */
+function blankPanel(): PanelDraft {
+  return { title: "", query: "", width: DEFAULT_PANEL_WIDTH };
+}
+
 /** A board's starting shape in the editor: one empty panel, because a board with no
  *  panels teaches nobody what a panel is. */
-function blankBoard(): GgDashboardInput {
+function blankBoard(): BoardDraft {
   return {
     name: "",
     description: "",
     rangeId: "all",
-    panels: [{ title: "", query: "", width: 6 }],
+    panels: [blankPanel()],
   };
 }
 
@@ -54,7 +79,7 @@ export function GgDashboardsPage() {
   const [error, setError] = useState<string | null>(null);
   // `null` when no editor is open; otherwise the draft, with `editing` naming the board
   // it will replace (or `null` for a create).
-  const [draft, setDraft] = useState<GgDashboardInput | null>(null);
+  const [draft, setDraft] = useState<BoardDraft | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -81,13 +106,32 @@ export function GgDashboardsPage() {
 
   const save = useCallback(async () => {
     if (!draft || !token) return;
+    // Read every width back out of its text. The button is already disabled while
+    // one of them names nothing usable; this refuses the save outright, so a
+    // keyboard submit cannot get a half-typed width past the gate either.
+    const panels: GgDashboardPanel[] = [];
+    for (const panel of draft.panels) {
+      const width = readNumberField(panel.width, PANEL_WIDTH);
+      if (width.value === undefined) return;
+      panels.push({
+        title: panel.title,
+        query: panel.query,
+        width: width.value,
+      });
+    }
+    const input: GgDashboardInput = {
+      name: draft.name,
+      description: draft.description,
+      rangeId: draft.rangeId,
+      panels,
+    };
     setBusy(true);
     setError(null);
     try {
       if (editing && backend?.updateGgDashboard) {
-        await backend.updateGgDashboard(editing, draft, token);
+        await backend.updateGgDashboard(editing, input, token);
       } else if (backend?.createGgDashboard) {
-        await backend.createGgDashboard(draft, token);
+        await backend.createGgDashboard(input, token);
       }
       setDraft(null);
       setEditing(null);
@@ -133,12 +177,22 @@ export function GgDashboardsPage() {
       name: id ? board.name : `${board.name} (copy)`,
       description: board.description,
       rangeId: board.rangeId,
-      panels: board.panels.map((panel) => ({ ...panel })),
+      panels: board.panels.map((panel) => ({
+        ...panel,
+        width: String(panel.width),
+      })),
     });
     setEditing(id);
   };
 
-  const patchPanel = (index: number, patch: Partial<GgDashboardPanel>) =>
+  // Why the board will not save: the first panel whose width names no usable column
+  // span. Derived from the same reading the save performs, so the two cannot drift.
+  const widthProblem =
+    draft?.panels
+      .map((panel) => readNumberField(panel.width, PANEL_WIDTH))
+      .find((width) => !width.valid)?.message ?? null;
+
+  const patchPanel = (index: number, patch: Partial<PanelDraft>) =>
     setDraft((current) =>
       current
         ? {
@@ -228,16 +282,16 @@ export function GgDashboardsPage() {
                 value={panel.query}
                 onChange={(e) => patchPanel(index, { query: e.target.value })}
               />
-              <input
+              {/* The row is one grid line, with no room under it for a sentence;
+                  the action row below says why a board will not save. */}
+              <NumberField
                 className={styles.input}
-                aria-label={`Panel ${index + 1} width`}
-                type="number"
-                min={1}
-                max={12}
+                ariaLabel={`Panel ${index + 1} width`}
+                showProblem={false}
+                title="How many of the twelve columns the panel spans, 1 to 12."
+                {...PANEL_WIDTH}
                 value={panel.width}
-                onChange={(e) =>
-                  patchPanel(index, { width: Number(e.target.value) || 1 })
-                }
+                onChange={(width) => patchPanel(index, { width })}
               />
               <button
                 type="button"
@@ -254,6 +308,13 @@ export function GgDashboardsPage() {
             </div>
           ))}
 
+          {/* Static rather than a SubmitNotice: it is the state of the form, not the
+              outcome of a press, so it must not scroll the page to itself as the
+              operator types. */}
+          {widthProblem && (
+            <p className={`${exec.notice} ${exec.warn}`}>{widthProblem}</p>
+          )}
+
           <div className={styles.formActions}>
             <button
               type="button"
@@ -261,7 +322,7 @@ export function GgDashboardsPage() {
               onClick={() =>
                 setDraft({
                   ...draft,
-                  panels: [...draft.panels, { title: "", query: "", width: 6 }],
+                  panels: [...draft.panels, blankPanel()],
                 })
               }
             >
@@ -270,7 +331,7 @@ export function GgDashboardsPage() {
             <button
               type="button"
               className={exec.primary}
-              disabled={busy}
+              disabled={busy || widthProblem !== null}
               onClick={() => void save()}
             >
               {editing ? "Save dashboard" : "Create dashboard"}

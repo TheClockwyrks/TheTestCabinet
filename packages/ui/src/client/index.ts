@@ -5,5 +5,6 @@ export * from "./types";
 export * from "./clients";
 export * from "./context";
 export * from "./auth";
+export * from "./absence";
 export * from "./progress";
 export * from "./runPhase";

@@ -200,9 +200,8 @@ fn find_toolchain() -> Result<Toolchain, String> {
         .or_else(|| library_dir(&roots))
         .ok_or_else(|| {
             format!(
-                "gg found no TeaVM jars. They are installed in {IMAGE_ROOT}/libs by \
-                 containers/gg-toolchains and under ~/{HOME_ROOT}/libs by \
-                 scripts/ci/install-java.sh; {TEAVM_ENV} names another directory."
+                "gg found no TeaVM jars in {IMAGE_ROOT}/libs (containers/gg-toolchains), under \
+                 ~/{HOME_ROOT}/libs (scripts/ci/install-java.sh), or named by {TEAVM_ENV}"
             )
         })?;
 

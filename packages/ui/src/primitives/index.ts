@@ -21,8 +21,9 @@ export { SegmentedControl, type SegmentedOption } from "./SegmentedControl";
 export { MetricTile } from "./MetricTile";
 export { SpecAccordion, type AccordionEntry } from "./SpecAccordion";
 export { Chart } from "./Chart";
-export { ChartWidget } from "./ChartWidget";
+export { ChartWidget, SectionWidget } from "./ChartWidget";
 export { ChartSortControl } from "./ChartSortControl";
+export { ChartModeControl, type ChartMode } from "./ChartModeControl";
 export {
   orderBars,
   type BetterIs,
@@ -30,7 +31,7 @@ export {
   type ChartTieBreak,
 } from "./chartSort";
 export { DonutChartWidget, type DonutSegment } from "./DonutChartWidget";
-export { MetricChartWidget } from "./MetricChartWidget";
+export { MetricChartWidget, type BarBuildOptions } from "./MetricChartWidget";
 export { RatingsChartWidget, type RatingCounts } from "./RatingsChartWidget";
 export {
   ReliabilityRingWidget,
@@ -53,7 +54,11 @@ export {
   metricLineChart,
   timeSeriesChart,
   distributionChart,
+  scatterChart,
   type BarPoint,
+  type BarDistribution,
+  type ScatterGroup,
+  type ScatterLabels,
   type HorizontalBarPoint,
   type HorizontalBarLabels,
   type StackedBarSegment,
@@ -72,4 +77,9 @@ export {
   readChartPalette,
   type ChartPalette,
 } from "./plot/theme";
+export {
+  quantile,
+  summarizeValues,
+  type DistributionStats,
+} from "./plot/distribution";
 export { CATEGORICAL_COLORS, categoricalColor } from "./plot/palette";

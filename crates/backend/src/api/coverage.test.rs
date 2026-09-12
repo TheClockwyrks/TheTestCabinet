@@ -678,40 +678,48 @@ fn unreviewed_runs_hold_the_buffer_closed_even_when_nothing_is_in_flight() {
     );
 }
 
-#[test]
-fn a_plan_input_clamps_its_target_and_keeps_the_schedule_separate() {
-    let input = CoveragePlanInput {
-        name: "wide".to_string(),
-        runs_per_cell: 9_999,
+/// A plan body at the given target, carrying no members and the given schedule.
+fn plan_input(
+    name: &str,
+    runs_per_cell: u32,
+    schedule: Option<CoverageSchedule>,
+) -> CoveragePlanInput {
+    CoveragePlanInput {
+        name: name.to_string(),
+        runs_per_cell,
         combo_group_ids: vec![],
         case_group_ids: vec![],
         combos: vec![],
         cases: vec![],
-        schedule: None,
-    };
-    let (plan, schedule) = plan_from_input("p1".to_string(), input, "2026-08-15T00:00:00Z");
+        schedule,
+    }
+}
+
+#[test]
+fn a_plan_input_keeps_its_target_and_the_schedule_separate() {
+    let input = plan_input("wide", MAX_RUNS_PER_CELL, None);
+    let (plan, schedule) =
+        plan_from_input("p1".to_string(), input, "2026-08-15T00:00:00Z").expect("in range");
+    // The ceiling itself is storable — it is what falls outside the range that is
+    // refused — and it is stored as sent.
     assert_eq!(plan.runs_per_cell, MAX_RUNS_PER_CELL);
     // No schedule in the body means "leave it alone" on update and "the default" on
     // create — never a silently written one.
     assert!(schedule.is_none());
 
-    let input = CoveragePlanInput {
-        name: "narrow".to_string(),
-        runs_per_cell: 0,
-        combo_group_ids: vec![],
-        case_group_ids: vec![],
-        combos: vec![],
-        cases: vec![],
-        schedule: Some(CoverageSchedule {
+    let input = plan_input(
+        "scheduled",
+        7,
+        Some(CoverageSchedule {
             outer_axis: CoverageAxis::Combination,
             paused: true,
             auto_top_up: true,
             buffer_target: Some(BufferTarget::Bounded { runs: 99_999 }),
         }),
-    };
-    let (plan, schedule) = plan_from_input("p2".to_string(), input, "2026-08-15T00:00:00Z");
-    // A target of zero would declare a cell nobody wants; one run is the floor.
-    assert_eq!(plan.runs_per_cell, 1);
+    );
+    let (plan, schedule) =
+        plan_from_input("p2".to_string(), input, "2026-08-15T00:00:00Z").expect("in range");
+    assert_eq!(plan.runs_per_cell, 7);
     let schedule = schedule.expect("the body carried a schedule");
     assert_eq!(schedule.outer_axis, CoverageAxis::Combination);
     assert!(schedule.paused);
@@ -723,6 +731,44 @@ fn a_plan_input_clamps_its_target_and_keeps_the_schedule_separate() {
             runs: MAX_BUFFER_TARGET
         })
     );
+}
+
+#[test]
+fn a_target_off_the_range_is_rejected_naming_the_bound_and_the_value() {
+    // Storing a number other than the one that was sent, under a `200`, leaves the plan
+    // filling cells to a target the reviewer never chose and never hears about. The
+    // console's own field refuses the same two values before it submits.
+    let err = plan_from_input(
+        "p1".to_string(),
+        plan_input("wide", 9_999, None),
+        "2026-08-15T00:00:00Z",
+    )
+    .expect_err("above the ceiling");
+    assert_eq!(err.status, StatusCode::BAD_REQUEST);
+    assert_eq!(
+        err.message,
+        "a plan runs at most 100 runs per cell (got 9999)"
+    );
+
+    // A target of zero would declare a cell nobody wants; one run is the floor.
+    let err = plan_from_input(
+        "p2".to_string(),
+        plan_input("empty", 0, None),
+        "2026-08-15T00:00:00Z",
+    )
+    .expect_err("below the floor");
+    assert_eq!(err.status, StatusCode::BAD_REQUEST);
+    assert_eq!(err.message, "a plan runs at least 1 run per cell (got 0)");
+}
+
+#[test]
+fn a_derived_target_is_still_normalized_rather_than_refused() {
+    // The clamp stays for the values the backend produces or has already stored — a
+    // ladder rung's override, a legacy row being migrated — where there is no request
+    // to answer with a rejection.
+    assert_eq!(clamp_runs_per_cell(0), MIN_RUNS_PER_CELL);
+    assert_eq!(clamp_runs_per_cell(9_999), MAX_RUNS_PER_CELL);
+    assert_eq!(clamp_runs_per_cell(7), 7);
 }
 
 #[test]

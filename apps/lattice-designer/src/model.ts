@@ -187,6 +187,16 @@ export const RECIPES: Record<string, Recipe> = {
 };
 
 /**
+ * The board dimensions the editor accepts, in cells.
+ *
+ * These live with the model rather than with the toolbar that types them, because
+ * the same pair bounds the field, the Apply gate, and any other caller that has to
+ * decide whether a size is a size at all.
+ */
+export const MIN_BOARD_DIM = 4;
+export const MAX_BOARD_DIM = 120;
+
+/**
  * Board-size presets matching the case's scored scenarios (`cases/*.json`), so a
  * design targets a real grid rather than a guessed one.
  */
@@ -460,6 +470,123 @@ export function entityAt(design: Design, x: number, y: number): number {
       return i;
   }
   return -1;
+}
+
+// --- Resizing --------------------------------------------------------------
+
+/**
+ * A component a shrink took off the board, and where it sat in the design's order.
+ *
+ * A resize used to DELETE whatever no longer fitted, and the designer has no undo,
+ * so a board typed a digit too small took the layout with it. Nothing is deleted
+ * now: a component that falls outside is set aside, keeping its slot in the order,
+ * and the board growing back over it puts it back.
+ */
+export interface AsideEntity {
+  /** Its index in the full ordered list (board + set aside) when it was set aside. */
+  at: number;
+  entity: DesignEntity;
+}
+
+/** What a resize did: the new board, what is still set aside, and what moved. */
+export interface ResizeResult {
+  design: Design;
+  aside: AsideEntity[];
+  /** How many components this resize took off the board. */
+  setAside: number;
+  /** How many it put back on it. */
+  restored: number;
+}
+
+/**
+ * Resize the board without losing anything.
+ *
+ * The set-aside components are merged back into the order they were taken from
+ * first, so the result is judged as one list and placement order — which the
+ * canonical state is keyed on — survives a shrink-and-grow round trip. Then:
+ *
+ * - a component already on the board keeps its place if it still fits, and is set
+ *   aside if it does not;
+ * - a set-aside component comes back only where it both fits AND its tiles are
+ *   free, since the board may have been built on while it was away. One that is
+ *   blocked stays aside rather than evicting what is standing there.
+ *
+ * `at` is recorded against the merged list, so a component set aside and restored
+ * with no other edits in between lands exactly where it was. Placing or deleting
+ * components while others are set aside shifts the slots, so a later restore lands
+ * near — not necessarily at — the original index; the export is re-read by the
+ * oracle after any layout change, which is the step that settles the order.
+ */
+export function resizeBoard(
+  design: Design,
+  aside: readonly AsideEntity[],
+  width: number,
+  height: number,
+): ResizeResult {
+  const grid = { width, height };
+  const merged = mergeAside(design.entities, aside);
+
+  // Everything staying on the board reserves its tiles before any restore is
+  // considered, so a returning component can never displace a standing one.
+  const occupied = new Set<string>();
+  for (const slot of merged) {
+    if (!slot.wasAside && inBounds(slot.entity, grid))
+      reserve(occupied, slot.entity);
+  }
+
+  const entities: DesignEntity[] = [];
+  const nextAside: AsideEntity[] = [];
+  let setAside = 0;
+  let restored = 0;
+
+  merged.forEach((slot, index) => {
+    const { entity, wasAside } = slot;
+    if (!wasAside) {
+      if (inBounds(entity, grid)) {
+        entities.push(entity);
+      } else {
+        nextAside.push({ at: index, entity });
+        setAside++;
+      }
+      return;
+    }
+    if (canPlace(entity, grid, occupied)) {
+      reserve(occupied, entity);
+      entities.push(entity);
+      restored++;
+    } else {
+      nextAside.push({ at: index, entity });
+    }
+  });
+
+  return { design: { grid, entities }, aside: nextAside, setAside, restored };
+}
+
+/** One component in the merged ordering, and whether it was off the board. */
+interface Slot {
+  entity: DesignEntity;
+  wasAside: boolean;
+}
+
+/** The board's components and the set-aside ones as one list in placement order. */
+function mergeAside(
+  entities: readonly DesignEntity[],
+  aside: readonly AsideEntity[],
+): Slot[] {
+  const slots: Slot[] = entities.map((entity) => ({ entity, wasAside: false }));
+  // Ascending, so each insert lands before the ones recorded after it.
+  for (const { at, entity } of [...aside].sort((a, b) => a.at - b.at)) {
+    slots.splice(Math.min(Math.max(at, 0), slots.length), 0, {
+      entity,
+      wasAside: true,
+    });
+  }
+  return slots;
+}
+
+/** Mark every tile an entity covers as taken. */
+function reserve(occupied: Set<string>, entity: DesignEntity): void {
+  for (const [tx, ty] of footprint(entity)) occupied.add(tileKey(tx, ty));
 }
 
 // --- Scenario projection ---------------------------------------------------

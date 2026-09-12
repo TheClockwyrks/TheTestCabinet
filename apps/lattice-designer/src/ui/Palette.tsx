@@ -19,6 +19,7 @@ import {
   type ToolOptions,
 } from "../model";
 import type { Tool } from "./App";
+import { NumberInput } from "./NumberInput";
 import { RecipeInfo } from "./RecipeInfo";
 
 interface PaletteProps {
@@ -123,13 +124,12 @@ export function Palette({ tool, onKind, onRotate, onOpts }: PaletteProps) {
             </select>
           </Field>
           <Field label="Period (ticks)">
-            <input
-              type="number"
+            <NumberInput
+              label="The source’s period"
               min={1}
+              ariaLabel="Source period in ticks"
               value={tool.opts.period}
-              onChange={(e) =>
-                onOpts({ period: Math.max(1, Number(e.target.value) || 1) })
-              }
+              onCommit={(period) => onOpts({ period })}
             />
           </Field>
         </>

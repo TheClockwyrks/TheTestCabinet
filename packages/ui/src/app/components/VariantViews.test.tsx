@@ -128,6 +128,47 @@ describe("VariantInputsView", () => {
     );
   });
 
+  it("re-shows a workspace file already read, with no spinner and no refetch", async () => {
+    // A file's bytes are content-addressed and therefore immutable, and selecting
+    // one mounts a fresh body — so going back to a file just read must not put a
+    // loading state over text the session is still holding.
+    const fetchMock = vi.fn(async (url: string) => ({
+      ok: true,
+      text: async () => `// ${url}\n`,
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { container } = render(
+      <VariantInputsView
+        variant={variant({
+          workspace: [
+            { path: "src/first.ts", url: "https://cdn.example/first.ts" },
+            { path: "src/second.ts", url: "https://cdn.example/second.ts" },
+          ],
+        })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "src/first.ts" }));
+    await waitFor(() =>
+      expect(container.querySelector("code")?.textContent).toBe(
+        "// https://cdn.example/first.ts\n",
+      ),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "src/second.ts" }));
+    await waitFor(() =>
+      expect(container.querySelector("code")?.textContent).toBe(
+        "// https://cdn.example/second.ts\n",
+      ),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "src/first.ts" }));
+    expect(screen.queryByText("Loading file…")).not.toBeInTheDocument();
+    expect(container.querySelector("code")?.textContent).toBe(
+      "// https://cdn.example/first.ts\n",
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it("says a workspace file failed rather than staging a blank pane", async () => {
     // A URL of its own: successful fetches are cached module-wide by URL, so
     // reusing the lazy-fetch test's URL would replay its cached success here.

@@ -101,9 +101,9 @@ pub async fn build(config: Config) -> error::Result<Backend> {
     if !config.gg_reference.join("index.json").exists() {
         tracing::warn!(
             directory = %config.gg_reference.display(),
-            "no gg reference documents (index.json) — GET /gg/reference will answer 503; \
+            "no gg reference documents (index.json), so GET /gg/reference answers 503; \
              write them with `scripts/gg-reference.sh` or point TCAB_GG_REFERENCE at a \
-             directory `gg reference --out` produced"
+             `gg reference --out` directory"
         );
     }
 
@@ -318,8 +318,8 @@ pub async fn build(config: Config) -> error::Result<Backend> {
     if config.artifacts_public_url.is_some() && config.artifacts_internal_url.is_none() {
         tracing::warn!(
             "TCAB_ARTIFACTS_URL is unset while an artifact service is advertised to consoles; \
-             a deleted run's tree will not be pruned, the reclamation sweep will not run, and \
-             the snapshot's artifact media fallback is disabled"
+             tree pruning, the reclamation sweep and the snapshot's artifact media fallback \
+             are all off"
         );
     }
 

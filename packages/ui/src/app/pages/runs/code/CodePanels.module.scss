@@ -478,14 +478,126 @@
   }
 }
 
-// A file-level note in the per-file test table — the message a test file that failed to
-// load carries. The only cell on the page allowed to wrap, because it is a sentence
-// rather than a figure, and it is bounded so one long message cannot set the table's
-// width.
-.noteCell {
-  white-space: normal !important;
-  max-width: 32rem;
+// --- The recorded tests ------------------------------------------------------
+//
+// The verdict card is the disclosure: its headline is the summary a reader already
+// reads, and the list of individual tests opens underneath it. Nothing here invents a
+// new surface — the rows sit inside the card the verdict already draws.
+
+// The verdict headline as a toggle: a full-width button reset to read as the card's own
+// title, with the twisty on the left and the recorded count pinned right. The same
+// furniture the validation lists on the sibling run tabs use.
+.statusToggle {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-xs;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+
+  &:hover {
+    color: t.$color-accent;
+  }
+}
+
+.twisty {
+  display: inline-block;
+  width: 1em;
+  flex-shrink: 0;
   color: t.$color-text-muted;
+}
+
+// How many tests are folded away, so the closed row still says how much is behind it.
+.disclosureCount {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: t.$font-sm;
+  font-weight: 400;
+  color: t.$color-text-muted;
+  white-space: nowrap;
+}
+
+// The disclosure body: the status filter, the rows, and the caps they were subject to.
+.testList {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+  margin-top: t.$space-sm;
+  min-width: 0;
+}
+
+.testRows {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+// The virtualized form of the same rows, past the threshold where putting every row in
+// the DOM costs more than the scroll box does. It scrolls inside its own box so the page
+// body never scrolls sideways or grows by a thousand rows.
+.testScroller {
+  height: min(60vh, 26rem);
+  border-radius: t.$radius-sm;
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-border 45%, transparent);
+  background: color-mix(in srgb, t.$color-surface 40%, transparent);
+}
+
+// One recorded test: the outcome glyph, the name over its file, and the duration pinned
+// right. Rows are separated by a hairline rather than boxed, so a thousand of them read
+// as one list.
+.testRow {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-sm;
+  padding: t.$space-xs t.$space-sm;
+  min-width: 0;
+  border-top: t.$border-hairline solid
+    color-mix(in srgb, t.$color-border 35%, transparent);
+
+  &:first-child {
+    border-top: none;
+  }
+
+  // The glyph already says what happened; this only makes the failing rows findable
+  // when the filter is off, and it is never the only statement of the outcome.
+  &[data-status="failed"] {
+    background: color-mix(in srgb, t.$color-negative 8%, transparent);
+  }
+}
+
+.testMain {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.testName {
+  color: t.$color-text;
+  font-size: t.$font-sm;
+  overflow-wrap: anywhere;
+}
+
+.testFile {
+  color: t.$color-text-muted;
+  font-size: 0.72rem;
+  overflow-wrap: anywhere;
+}
+
+// The duration, in a column of durations, so it wears tabular figures. An unmeasured one
+// is the page's em dash, which carries the word as its accessible name.
+.testDuration {
+  flex-shrink: 0;
+  color: t.$color-text-muted;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .coverageMetrics {

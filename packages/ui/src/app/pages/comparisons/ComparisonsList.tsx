@@ -1,11 +1,17 @@
+import { useCallback, useState } from "react";
 import { Link } from "react-router";
 import { Panel } from "@clockwyrks/ui";
+import type { Comparison } from "@clockwyrks/run-record/comparison";
 import { useAuth } from "../../../client/auth";
+import { useOptionalBackend } from "../../../client/context";
 import { LoadingState } from "../../components/LoadingState";
+import { SubmitNotice } from "../../components/SubmitNotice";
+import { useConfirm } from "../../components/ConfirmDialog";
 import { useGalleryData } from "../../data/galleryContext";
 import { useTestCaseName } from "../../data/useTestCaseName";
 import { routes } from "../../routes";
 import { useComparisons } from "../../data/useComparisons";
+import exec from "../runs/RunExec.module.scss";
 import styles from "./Comparisons.module.scss";
 
 // The Comparisons list body (`/runs/comparisons`): the signed-in account's saved
@@ -19,8 +25,50 @@ import styles from "./Comparisons.module.scss";
 export function ComparisonsList() {
   const { token } = useAuth();
   const { canExecute } = useGalleryData();
-  const { comparisons, loading, error } = useComparisons();
+  // Optional: the read-only static site mounts no backend provider at all, and
+  // renders this list off the published snapshot. No client ⇒ nothing to delete.
+  const backend = useOptionalBackend()?.client ?? null;
+  const { comparisons, loading, error, reload } = useComparisons();
   const testCaseName = useTestCaseName();
+  const { confirm } = useConfirm();
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  // Deleting is a per-account mutation, so it is console-only and signed-in —
+  // the public gallery renders the same list without the affordance.
+  const canDelete = Boolean(canExecute && token && backend?.deleteComparison);
+
+  const deleteComparison = useCallback(
+    async (comparison: Comparison) => {
+      if (!backend?.deleteComparison || !token) return;
+      // Destructive, so it asks through the app's own themed dialog rather than
+      // the browser's `confirm()` (docs/components/ui/overview.md, "Dialogs").
+      const confirmed = await confirm({
+        title: "Delete comparison",
+        message: (
+          <>
+            Delete <strong>{comparison.name}</strong>? Its configuration and
+            every figure computed from it are removed. The runs it launched are
+            ordinary runs and are <strong>not</strong> deleted. This cannot be
+            undone.
+          </>
+        ),
+        confirmLabel: "Delete comparison",
+      });
+      if (!confirmed) return;
+      setBusy(true);
+      setActionError(null);
+      try {
+        await backend.deleteComparison(comparison.id, token);
+        await reload();
+      } catch (e) {
+        setActionError(String(e));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [backend, token, confirm, reload],
+  );
 
   // A console (can execute) needs a signed-in account, since comparisons are saved
   // per-account. A read-only host (the static site) renders the published set with
@@ -65,33 +113,57 @@ export function ComparisonsList() {
   }
 
   return (
-    <div className={styles.list}>
-      {comparisons.map((comparison) => (
-        <Link
-          key={comparison.id}
-          className={styles.rowCard}
-          to={routes.comparisonDetail(comparison.id)}
-        >
-          <div className={styles.rowMain}>
-            <span className={styles.rowTitleLink}>{comparison.name}</span>
-            <span className={styles.rowSub}>
-              {testCaseName(comparison.config.controls.caseSlug)} ·{" "}
-              {comparison.config.controls.variant} ·{" "}
-              {comparison.config.controls.version}
-            </span>
+    <>
+      <SubmitNotice message={actionError} />
+      <div className={styles.list}>
+        {comparisons.map((comparison) => (
+          // The card element is not an anchor — a card-wide `<a>` cannot hold a
+          // delete button (interactive content inside a link), and it dragged
+          // the global `a:hover` underline across every span in the row. The
+          // whole card still navigates and still lights up on hover: the title
+          // link stretches an invisible overlay across it in CSS
+          // (`.rowTitleLink::after`), so the row keeps one link, the underline
+          // stays on the name alone, and the delete button sits above the
+          // overlay.
+          <div key={comparison.id} className={styles.rowCard}>
+            <div className={styles.rowMain}>
+              <Link
+                className={styles.rowTitleLink}
+                to={routes.comparisonDetail(comparison.id)}
+              >
+                {comparison.name}
+              </Link>
+              <span className={styles.rowSub}>
+                {testCaseName(comparison.config.controls.caseSlug)} ·{" "}
+                {comparison.config.controls.variant} ·{" "}
+                {comparison.config.controls.version}
+              </span>
+            </div>
+            <div className={styles.rowRight}>
+              <span className={styles.rowStat}>
+                {comparison.config.arms.length}{" "}
+                {comparison.config.arms.length === 1 ? "arm" : "arms"}
+              </span>
+              <span className={styles.rowStat}>N={comparison.config.n}</span>
+              {comparison.published && (
+                <span className={styles.publishedBadge}>Published</span>
+              )}
+              {canDelete && (
+                <span className={styles.rowActions}>
+                  <button
+                    type="button"
+                    className={exec.danger}
+                    disabled={busy}
+                    onClick={() => deleteComparison(comparison)}
+                  >
+                    Delete
+                  </button>
+                </span>
+              )}
+            </div>
           </div>
-          <div className={styles.rowRight}>
-            <span className={styles.rowStat}>
-              {comparison.config.arms.length}{" "}
-              {comparison.config.arms.length === 1 ? "arm" : "arms"}
-            </span>
-            <span className={styles.rowStat}>N={comparison.config.n}</span>
-            {comparison.published && (
-              <span className={styles.publishedBadge}>Published</span>
-            )}
-          </div>
-        </Link>
-      ))}
-    </div>
+        ))}
+      </div>
+    </>
   );
 }

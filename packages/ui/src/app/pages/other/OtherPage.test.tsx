@@ -66,6 +66,17 @@ function ready(
   });
 }
 
+// Seed the catalog with a read that did not settle: `status` without a resolved
+// catalog (a first load in flight, or one that failed) and, for the stale case, a
+// catalog that IS held with a failed re-read over it.
+function unsettled(
+  status: "loading" | "error",
+  testCases: TestCaseSummary[] = [],
+) {
+  useTestCases.mockReturnValue({ testCases, status });
+  useGalleryData.mockReturnValue({ canExecute: true, arena: {} });
+}
+
 function renderPage(tab: OtherTab = "game-jams") {
   const to =
     tab === "game-jams" ? routes.otherGameJams() : routes.otherTournaments();
@@ -137,5 +148,36 @@ describe("OtherPage", () => {
       routes.gameJamDetail("comfort-zone"),
     );
     expect(screen.queryByText("Sunfront")).not.toBeInTheDocument();
+  });
+
+  // Render order, the same rule the models catalog follows: the jams the page
+  // holds decide, and the read state only speaks when it holds none.
+  it("keeps listing the jams it holds when a re-read fails", () => {
+    unsettled("error", [testCase("Comfort Zone", "game-jam")]);
+
+    renderPage("game-jams");
+
+    expect(screen.getByRole("link", { name: /Comfort Zone/ })).toBeTruthy();
+    expect(screen.getByRole("alert").textContent).toMatch(/out of date/i);
+    expect(screen.queryByText(/catalog is unavailable/i)).toBeNull();
+    expect(screen.queryByText("No game jams yet.")).not.toBeInTheDocument();
+  });
+
+  it("waits rather than saying there are no jams while the catalog loads", () => {
+    unsettled("loading");
+
+    renderPage("game-jams");
+
+    expect(screen.queryByText("No game jams yet.")).not.toBeInTheDocument();
+    expect(screen.getByText(/Loading catalog/i)).toBeTruthy();
+  });
+
+  it("reports an unreadable catalog as a failure, not as an empty one", () => {
+    unsettled("error");
+
+    renderPage("game-jams");
+
+    expect(screen.queryByText("No game jams yet.")).not.toBeInTheDocument();
+    expect(screen.getByText(/catalog is unavailable/i)).toBeTruthy();
   });
 });

@@ -575,10 +575,7 @@ fn a_runtime_that_could_not_start_is_reported_with_what_it_actually_said() {
          Please install libicu using your package manager and try again. Alternatively you can set \
          the configuration flag System.Globalization.Invariant to true.\n",
     );
-    let message = arrangement_failure(
-        "gg's own C# SDK did not compile, which is a defect in gg rather than in the program",
-        &aborted,
-    );
+    let message = arrangement_failure("gg's own C# SDK did not compile", &aborted);
     assert!(
         message.contains("was killed by signal 6"),
         "the report does not say how the process ended: {message}"
@@ -608,11 +605,7 @@ fn the_parse_classifiers_own_failure_carries_the_same_evidence() {
         "",
         "Process terminated. Couldn't find a valid ICU package installed on the system.\n",
     );
-    let message = arrangement_failure(
-        "csc could not build gg's own C# parse classifier, which is gg's arrangement failing \
-         rather than any program's",
-        &aborted,
-    );
+    let message = arrangement_failure("csc could not build gg's own C# parse classifier", &aborted);
     assert!(
         message.contains("was killed by signal 6") && message.contains("valid ICU package"),
         "the classifier's failure does not carry the status and the stderr: {message}"

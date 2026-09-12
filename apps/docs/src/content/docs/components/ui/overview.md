@@ -98,6 +98,27 @@ queued time out of it, and the count begins when the run reaches `starting`. It
 advances off one clock the whole log shares, and the log holds that clock only
 while a duration is moving.
 
+### Deleting a run
+
+An unpublished run is deletable and a published one is not, which is the rule the
+backend enforces and the only one there is. A surface offering the action decides
+from the run's own publish state, read off the record or the summary card it has
+already resolved, rather than from the console's produced worklist — that worklist
+is a cache of the runs it has caught up with, and it lags a run whose record is
+still being written, which a canceled run's is for as long as its driver takes to
+stop the harness, drain telemetry and hand the partial record back. A surface
+holding nothing but a run id falls back to the worklist.
+
+The affordance is hidden only where the host can delete no run at all, and is
+shown disabled with its reason wherever the host could delete but this run
+currently cannot be, so a state that will pass on its own is visible rather than
+absent.
+
+A cancellation's follow-up read is deferred accordingly: every refresh fired when
+the cancel returns is premature, so the console watches the canceled runs for the
+records their drivers hand back and re-reads as they land, whether the
+cancellation came from one run's control or from a bulk sweep.
+
 ## Asset viewers
 
 A produced asset is rendered interactively rather than as a still image. A voxel
@@ -133,6 +154,18 @@ the cache so it is retried.
 A surface shows a loading state while its data is in flight, and names an entity
 as not found once the read has settled without it. A read that failed is
 reported as a failure, distinct from both.
+
+Those three states decide only what a surface with nothing to show renders. Data
+already resolved is rendered whatever the latest read did: a read that failed
+over a list already on screen is stale data, reported beside the rows rather
+than in place of them. A source keeps what it has resolved rather than emptying
+it on a refresh that failed, and a surface reads its own data before it reads
+that source's load state.
+
+A resolver reports the same three outcomes to the surface above it. It resolves
+to nothing only where the store answered and holds no such entity — the store's
+own `404` — and fails for every other unanswered read, so no host turns an
+unreachable store into an absence.
 
 ## Numeric fields
 

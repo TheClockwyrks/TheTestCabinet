@@ -3,7 +3,7 @@ import type { RunRecord, RunSubject } from "@clockwyrks/run-record";
 import type { CodeAnalysisDocument } from "@clockwyrks/run-record/code-analysis";
 import type { Comparison } from "@clockwyrks/run-record/comparison";
 import type { HarnessEvent, ProgressCallback } from "@clockwyrks/ui/client";
-import { readTextWithProgress } from "@clockwyrks/ui/client";
+import { readOutcome, readTextWithProgress } from "@clockwyrks/ui/client";
 import {
   DEFAULT_ENGINE_SLUG,
   findModelByModelId,
@@ -222,25 +222,26 @@ export function useStaticGallery(): GalleryDataInput {
   // The Events tab's data source on the static site: a published run's normalized
   // event stream, emitted at build time as a per-run static asset by
   // vite-plugin-snapshot (raw harness output is never published). A run without
-  // events (or one published before they were captured) resolves to an empty
-  // stream rather than failing. Stable identity so the Events tab doesn't refetch
-  // on every render.
+  // events (or one published before they were captured) has no asset at all, and
+  // that 404 is an absence: an empty stream, which the tab renders as a run that
+  // recorded none. Every other outcome — offline, a 500, a truncated body that
+  // won't parse — is a read that FAILED and is thrown, so the tab reports the
+  // failure instead of showing an empty feed for events that exist. Stable
+  // identity so the Events tab doesn't refetch on every render.
   const fetchRunEvents = useCallback(
     async (runId: string, onProgress?: ProgressCallback) => {
       const url = `${import.meta.env.BASE_URL}run-events/${encodeURIComponent(
         runId,
       )}.json`;
-      try {
-        const response = await fetch(url);
-        if (!response.ok) return { events: [], raw: null };
-        // The published event asset can be large, so stream it with transfer
-        // progress for the Events tab's progress bar.
-        const text = await readTextWithProgress(response, onProgress);
-        const events = JSON.parse(text) as HarnessEvent[];
-        return { events, raw: null };
-      } catch {
+      const response = await fetch(url);
+      if (readOutcome(response, `events for run ${runId}`) === "absent") {
         return { events: [], raw: null };
       }
+      // The published event asset can be large, so stream it with transfer
+      // progress for the Events tab's progress bar.
+      const text = await readTextWithProgress(response, onProgress);
+      const events = JSON.parse(text) as HarnessEvent[];
+      return { events, raw: null };
     },
     [],
   );
@@ -258,10 +259,10 @@ export function useStaticGallery(): GalleryDataInput {
     const url = publishedCodeAnalysisUrls[runId];
     if (!url) return null;
     const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(
-        `code analysis fetch failed: ${response.status} ${response.statusText}`,
-      );
+    // A listed object the store no longer holds is still an absence ("never
+    // analysed"); a read that failed for any other reason is reported as one.
+    if (readOutcome(response, `code analysis for run ${runId}`) === "absent") {
+      return null;
     }
     return (await response.json()) as CodeAnalysisDocument;
   }, []);
@@ -298,26 +299,28 @@ export function useStaticGallery(): GalleryDataInput {
       const url = `${import.meta.env.BASE_URL}runs/${encodeURIComponent(
         runId,
       )}.json`;
-      try {
-        const response = await fetch(url);
-        if (!response.ok) return null;
-        const record = (await response.json()) as RunRecord;
-        // The published summary card carries the store's word on the two rating
-        // channels and whether the run is validator-rated — the same fields the
-        // console reads off `GET /runs/{id}`.
-        const summary = publishedRunSummaries.find((s) => s.id === runId);
-        return {
-          record,
-          reviews: runReviews,
-          published: true,
-          validatorRated: summary?.validatorRated ?? false,
-          rating: summary?.rating ?? null,
-          aesthetic: summary?.aesthetic ?? null,
-          showcase: record.showcase ?? null,
-        };
-      } catch {
-        return null;
-      }
+      const response = await fetch(url);
+      // Only the store's own 404 means this gallery holds no such run, which is
+      // what the run-detail layout prints as "No run found". An offline visitor,
+      // a 500 from the CDN, or a body that won't parse is a read that FAILED and
+      // throws, so the layout reports the failure instead — the same contract
+      // the console's `readRun` follows, and the reason this host must not
+      // collapse the two into one null.
+      if (readOutcome(response, `run ${runId}`) === "absent") return null;
+      const record = (await response.json()) as RunRecord;
+      // The published summary card carries the store's word on the two rating
+      // channels and whether the run is validator-rated — the same fields the
+      // console reads off `GET /runs/{id}`.
+      const summary = publishedRunSummaries.find((s) => s.id === runId);
+      return {
+        record,
+        reviews: runReviews,
+        published: true,
+        validatorRated: summary?.validatorRated ?? false,
+        rating: summary?.rating ?? null,
+        aesthetic: summary?.aesthetic ?? null,
+        showcase: record.showcase ?? null,
+      };
     },
     // `localById` is rebuilt each render, but its only varying input is the loaded
     // local runs (the published set is no longer inlined); key on that.

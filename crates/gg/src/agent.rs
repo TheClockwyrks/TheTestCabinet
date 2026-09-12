@@ -1202,9 +1202,8 @@ pub(crate) async fn run_with_seams(
             Err(join) => root_emitter.emit(log(
                 "warn",
                 format!(
-                    "warming up the code sandbox's {name} interpreter component panicked ({join}); \
-                     the first turn that writes a {name} program will meet the same defect and end \
-                     the run as gg's."
+                    "warming up the code sandbox's {name} interpreter component panicked: {join} \
+                     (gg defect)"
                 ),
             )),
         }
@@ -4240,10 +4239,10 @@ async fn drive_agent(
                 emitter.emit(log(
                     "error",
                     format!(
-                        "the `{successor_profile_id}` agent could not be resolved to a model — \
-                         {} ({})",
-                        unresolved.consequence(),
-                        unresolved.detail
+                        "the `{successor_profile_id}` agent could not be resolved to a model: {} \
+                         ({})",
+                        unresolved.detail,
+                        unresolved.consequence()
                     ),
                 ));
                 // As above: gg's half of the resolution ends the run, the operator's refused
@@ -4253,7 +4252,7 @@ async fn drive_agent(
                 // detail, and is the more useful half of the sentence anyway.
                 if unresolved.status == STATUS_INTERNAL_ERROR {
                     let detail = format!(
-                        "the `{successor_profile_id}` agent could not be resolved to a model ({})",
+                        "the `{successor_profile_id}` agent could not be resolved to a model: {}",
                         unresolved.detail
                     );
                     orch.fault.in_agent(&agent.id, &agent.profile_id, detail);
@@ -10578,8 +10577,7 @@ pub(crate) fn check_workspace(
                         format!(
                             "the `{CAPABILITY_SKILLS}` capability names this directory as the one \
                              the agent `{}` loads its skills from, and there is no such directory \
-                             in the workspace; that agent would open with a library nobody \
-                             authored.",
+                             in the workspace",
                             profile.slug,
                         ),
                     ));
@@ -10640,9 +10638,8 @@ fn check_skill_languages(
                 .collect::<Vec<_>>()
                 .join(", "),
             format!(
-                "the skill `{}` carries code spelled only this way, and the agent reading it \
-                 writes {}; the skill would load as prose and its module would never be loaded, \
-                 which is indistinguishable from an agent with no code skills at all.",
+                "the skill `{}` carries code spelled only this way and the agent reading it \
+                 writes {}, so its module would never be loaded",
                 skill.name(),
                 language.display_name(),
             ),
@@ -10673,9 +10670,8 @@ fn validate_model_windows(
         return Ok(());
     }
     Err(format!(
-        "the invocation carries no context window for the model(s) {} — a gg run is measured \
-         against the model catalog's window and will not guess one; re-launch once the catalog \
-         knows the model",
+        "the invocation carries no context window for the model(s) {}: re-launch once the model \
+         catalog knows them",
         missing
             .iter()
             .map(|id| format!("`{id}`"))
@@ -11146,10 +11142,7 @@ fn check_allowlists(profile: &GgAgentConfig, report: &mut crate::validate::Launc
         report.report(crate::validate::LaunchDefect::run_level(
             format!("tools[{index}]"),
             name,
-            format!(
-                "`{name}` is not a gg tool{hint}. The `tools` allowlist grants nothing for it, and \
-                 an agent narrowed by accident is indistinguishable from one narrowed on purpose."
-            ),
+            format!("`{name}` is not a gg tool{hint}; the `tools` allowlist grants nothing for it"),
         ));
     }
     let (_, unknown) =
@@ -11167,9 +11160,8 @@ fn check_allowlists(profile: &GgAgentConfig, report: &mut crate::validate::Launc
             format!("operations[{index}]"),
             name,
             format!(
-                "`{name}` is not a gg operation{hint}. The `operations` allowlist grants nothing \
-                 for it, and an agent narrowed by accident is indistinguishable from one narrowed \
-                 on purpose."
+                "`{name}` is not a gg operation{hint}; the `operations` allowlist grants nothing \
+                 for it"
             ),
         ));
     }
@@ -11206,11 +11198,7 @@ fn check_opening_turn(profile: &GgAgentConfig, report: &mut crate::validate::Lau
         report.report(crate::validate::LaunchDefect::run_level(
             format!("openingTurn.modules[{index}]"),
             id,
-            format!(
-                "`{id}` is not a gg module{hint}. The opening turn could list nothing for it, and a \
-                 window opened on less by accident is indistinguishable from one opened on less on \
-                 purpose."
-            ),
+            format!("`{id}` is not a gg module{hint}; the opening turn could list nothing for it"),
         ));
     }
     for (index, id) in profile.opening_turn.functions.iter().enumerate() {
@@ -11227,9 +11215,8 @@ fn check_opening_turn(profile: &GgAgentConfig, report: &mut crate::validate::Lau
                 locus,
                 id,
                 format!(
-                    "`{id}` is not a gg operation{hint}. The opening turn could open nothing for it, \
-                     and a window opened on less by accident is indistinguishable from one opened \
-                     on less on purpose."
+                    "`{id}` is not a gg operation{hint}; the opening turn could open nothing for \
+                     it"
                 ),
             ));
             continue;
@@ -11893,9 +11880,8 @@ async fn autoload_specifications(
         let outcome = reader.invoke(json!({ "path": rel }), tool_ctx).await;
         if !outcome.ok {
             return Err(format!(
-                "the `{CAPABILITY_AUTOLOAD_SPECS}` capability seeds this agent's opening context \
-                 with the whole of what the test case provided, and `{rel}` could not be read \
-                 ({}); opening on part of the brief would measure a specification nobody wrote",
+                "the `{CAPABILITY_AUTOLOAD_SPECS}` capability seeds every file the test case \
+                 provided, and gg cannot read `{rel}`: {}",
                 outcome.output.trim(),
             ));
         }

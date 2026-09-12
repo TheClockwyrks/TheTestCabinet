@@ -339,6 +339,41 @@ describe("GateEditor", () => {
     );
   });
 
+  // The report this was built for: "1" could not be replaced by "3" without
+  // selecting it, because clearing the field snapped it back to the floor.
+  it("can be cleared and retyped, leaving the gate on its last figure meanwhile", () => {
+    const onChange = renderEditor(gate());
+    const amount = screen.getByLabelText(
+      "How many must clear it",
+    ) as HTMLInputElement;
+    expect(amount.value).toBe("1");
+
+    fireEvent.change(amount, { target: { value: "" } });
+    expect(amount.value).toBe("");
+    expect(onChange).not.toHaveBeenCalled();
+
+    fireEvent.change(amount, { target: { value: "3" } });
+    expect(onChange).toHaveBeenCalledWith(
+      gate({ threshold: { kind: "count", runs: 3 } }),
+    );
+  });
+
+  it("writes no threshold outside the range, and restores the gate's on blur", () => {
+    const onChange = renderEditor(gate());
+    const amount = screen.getByLabelText(
+      "How many must clear it",
+    ) as HTMLInputElement;
+
+    fireEvent.change(amount, { target: { value: "9999" } });
+    // Held as typed rather than clamped behind the reviewer's back, and not written.
+    expect(amount.value).toBe("9999");
+    expect(amount).toHaveAttribute("aria-invalid", "true");
+    expect(onChange).not.toHaveBeenCalled();
+
+    fireEvent.blur(amount);
+    expect(amount.value).toBe("1");
+  });
+
   it("defaults unloaded-as-broken on and early stop off", () => {
     renderEditor(gate());
     expect(

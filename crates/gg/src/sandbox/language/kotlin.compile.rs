@@ -619,7 +619,8 @@ pub(crate) fn verdict(report: &Report, file: &str) -> Result<(), PrepareFailure>
             ))));
         }
         return Err(PrepareFailure::Toolchain(format!(
-            "the Kotlin toolchain refused a file gg generated rather than the program: {rendered}"
+            "the Kotlin toolchain rejected gg's own guest rather than the model's program: \
+             {rendered}"
         )));
     }
 
@@ -742,9 +743,9 @@ impl KotlinCompiler {
             })
             .map_err(|error| {
                 format!(
-                    "gg compiles every Kotlin program with the Kotlin compiler and the TeaVM jars \
-                     in the gg run image, and needs them in {IMAGE_ROOT}, under ~/{HOME_ROOT} \
-                     (scripts/ci/install-kotlin.sh), or named by {KOTLIN_ENV}: {error}"
+                    "gg found no Kotlin toolchain — the Kotlin compiler and the TeaVM jars — in \
+                     {IMAGE_ROOT}, under ~/{HOME_ROOT} (scripts/ci/install-kotlin.sh), or named by \
+                     {KOTLIN_ENV}: {error}"
                 )
             })
     }
@@ -892,9 +893,8 @@ fn find_toolchain() -> Result<Toolchain, String> {
         })
         .ok_or_else(|| {
             format!(
-                "gg found no Kotlin compiler. It is installed in {IMAGE_ROOT} by \
-                 containers/gg-toolchains and under ~/{HOME_ROOT} by \
-                 scripts/ci/install-kotlin.sh; {KOTLIN_ENV} names another directory."
+                "gg found no Kotlin compiler in {IMAGE_ROOT} (containers/gg-toolchains), under \
+                 ~/{HOME_ROOT} (scripts/ci/install-kotlin.sh), or named by {KOTLIN_ENV}"
             )
         })?;
     let kotlin = jvm::jars(&root.join("libs"))?;

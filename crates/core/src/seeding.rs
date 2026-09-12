@@ -142,10 +142,9 @@ impl FsRepoSeeder {
                     crate::execution::ENGINE_DOCS_DIR
                 );
                 return Err(Error::Seeding(format!(
-                    "engine `{}` declares a docs directory `{docs}` that is missing from \
-                     the staged package at `{}` (the prompt points the build at \
-                     `{in_container}`); rebuild the package (`npm run build:packages`) and \
-                     restage it (`node scripts/stage-tcab-packages.mjs`)",
+                    "engine `{}` docs `{docs}` are missing from the staged package at `{}` \
+                     (the build is pointed at `{in_container}`); rebuild and restage the \
+                     package (`npm run build:packages`; `node scripts/stage-tcab-packages.mjs`)",
                     engine.slug(),
                     src.display(),
                 )));
@@ -179,10 +178,10 @@ impl FsRepoSeeder {
             let src = self.package_store.join(&name);
             if !src.is_dir() {
                 return Err(Error::Seeding(format!(
-                    "runtime package `{name}` not found in the package store at `{}` (the driver \
+                    "runtime package `{name}` is not in the package store at `{}` (the driver \
                      image bakes it under `{}`); stage the packages \
                      (`node scripts/stage-tcab-packages.mjs`) or point `TCAB_PACKAGE_STORE` \
-                     at a staged copy",
+                     at one",
                     self.package_store.display(),
                     crate::test_case::TCAB_PACKAGES_DIR,
                 )));
@@ -1448,8 +1447,8 @@ pub(crate) fn staged_package_version(package_dir: &Path, package: &str) -> Resul
         .ok_or_else(|| {
             Error::Seeding(format!(
                 "staged package `{package}` declares no `version` string in `{}`; rebuild \
-                 the package (`npm run build:packages`) and restage it \
-                 (`node scripts/stage-tcab-packages.mjs`)",
+                 and restage it (`npm run build:packages`; \
+                 `node scripts/stage-tcab-packages.mjs`)",
                 manifest.display(),
             ))
         })

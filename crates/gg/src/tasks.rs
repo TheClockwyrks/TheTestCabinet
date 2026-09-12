@@ -159,8 +159,7 @@ impl TaskMode {
                         raw,
                         format!(
                             "the `{CAPABILITY_TASKS}` capability's `{PARAM_MODE}` names a list \
-                             shape gg does not have; reading it as either shape would hold every \
-                             task in the run to one nobody configured."
+                             shape gg does not have"
                         ),
                     )
                     .known(Self::ALL),
@@ -206,7 +205,7 @@ fn read_task_mode(declared: &Value, report: &mut crate::validate::LaunchReport) 
                     crate::validate::as_written(other),
                     format!(
                         "the `{CAPABILITY_TASKS}` capability's `{PARAM_MODE}` names a list shape, \
-                         which gg reads as a string; there is nothing here it can read one from."
+                         which gg reads as a string"
                     ),
                 )
                 .known(TaskMode::ALL),

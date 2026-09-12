@@ -1368,8 +1368,7 @@ pub fn transfer(
             if !old.has(*kind) {
                 report.defects.push(format!(
                     "the transfer list names the `{kind}` module, which the outgoing agent does \
-                     not hold, so the successor would start with an empty one under a \
-                     configuration that says it continues"
+                     not hold"
                 ));
             }
         }

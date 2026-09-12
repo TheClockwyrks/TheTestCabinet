@@ -1,0 +1,33 @@
+@use "../styles/tokens" as t;
+
+// The field is its input plus the sentence naming what is wrong with it, stacked.
+// `inline-flex` so a field dropped into a row keeps the width the row gives it,
+// and `min-width: 0` so the input can shrink inside a grid cell instead of
+// forcing the cell wider than the column.
+.field {
+  display: inline-flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+  min-width: 0;
+}
+
+// The control itself carries no look of its own: a call site passes the class the
+// surrounding form styles its inputs with, and this adds only the invalid state on
+// top of it. Two classes deep so the decoration wins over that form's single-class
+// rules — including its `:focus` border — whichever stylesheet the bundler emits
+// first.
+.input {
+  width: 100%;
+}
+
+.input.invalid,
+.input.invalid:focus {
+  border-color: t.$color-negative;
+  box-shadow: 0 0 0.75rem color-mix(in srgb, t.$color-negative 35%, transparent);
+}
+
+// Why the field is refused, in the same negative the border takes.
+.problem {
+  font-size: t.$font-sm;
+  color: t.$color-negative;
+}

@@ -2103,12 +2103,34 @@ describe("the Opening Turn tab", () => {
     expect(treeDepth().value).toBe("2");
   });
 
-  it("writes no tree depth gg would refuse", () => {
+  // The depth is held as a number, so the field keeps the typing and the draft keeps
+  // the last depth gg would honour: nothing out of range is ever written, and nothing
+  // is corrected under the caret either. Leaving the field puts the held depth back.
+  it("writes no tree depth gg would refuse, and corrects none as it is typed", () => {
     renderWithTree();
+
     fireEvent.change(treeDepth(), { target: { value: "40" } });
-    expect(treeDepth().value).toBe("10");
+    expect(treeDepth().value).toBe("40");
+    expect(treeDepth()).toHaveAttribute("aria-invalid", "true");
+    fireEvent.blur(treeDepth());
+    expect(treeDepth().value).toBe("2");
+
     fireEvent.change(treeDepth(), { target: { value: "0" } });
-    expect(treeDepth().value).toBe("1");
+    expect(treeDepth().value).toBe("0");
+    fireEvent.blur(treeDepth());
+    expect(treeDepth().value).toBe("2");
+  });
+
+  // The report this was built for: a depth of 4 could not be replaced by 8 without
+  // selecting it, because clearing the field snapped it back.
+  it("can be cleared and retyped", () => {
+    renderWithTree();
+    fireEvent.change(treeDepth(), { target: { value: "" } });
+    expect(treeDepth().value).toBe("");
+    fireEvent.change(treeDepth(), { target: { value: "8" } });
+    expect(treeDepth().value).toBe("8");
+    fireEvent.blur(treeDepth());
+    expect(treeDepth().value).toBe("8");
   });
 
   it("says which capability offers each function, or that every agent holds it", () => {

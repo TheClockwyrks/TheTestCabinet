@@ -7,6 +7,7 @@ import {
   type WorkerClient,
 } from "../../client/clients";
 import { useBackend, useWorkers } from "../../client/context";
+import { isAbsence } from "../../client/absence";
 import {
   fetchGrafanaUrl,
   fetchSnapshotUrl,
@@ -655,10 +656,21 @@ export function useLiveGallery(
     (async () => {
       // Only the small produced (local) worklist is read here; the published set is
       // paged over the wire by each page through `queryRunSummaries`, never drained.
+      //
+      // A read that FAILED resolves null, and is not the same as a worker holding
+      // nothing. This is re-read on every refresh token — every run that finishes,
+      // every cancel, every publish — so one unreachable moment used to empty the
+      // whole worklist, which is what decides (among other things) which runs the
+      // console offers to delete. A failed re-read now leaves what is on screen
+      // alone; the next token re-reads it.
       const produced = workerClient
-        ? await fetchProducedRuns(workerClient).catch(() => emptyProduced())
+        ? await fetchProducedRuns(workerClient).catch(() => null)
         : emptyProduced();
       if (!active) return;
+      if (produced === null) {
+        setRunsLoading(false);
+        return;
+      }
       // The produced (local) cards, which a paged page pins ahead of the queried
       // published window (the backend's numbered listing never returns them — they
       // are unpublished). Only the local runs contribute reviews/writeups here;
@@ -680,24 +692,41 @@ export function useLiveGallery(
     };
   }, [workerClient, refreshToken]);
 
+  // Which backend the test-case catalog on screen was read from, exactly as
+  // `modelsBackend` does for the models below: it is what tells a failed FIRST
+  // load (nothing to keep, so the section starts over) apart from a failed
+  // RE-READ of a catalog that is already on screen (keep it — the pages that
+  // hold it must not be blanked by one unreachable moment).
+  const testCasesBackend = useRef<BackendClient | null>(null);
   useEffect(() => {
     // No backend configured is the same broken state as an unreachable one: the
     // catalog can't be resolved, so it reads as an error rather than empty.
     if (!backend) {
+      testCasesBackend.current = null;
       setTestCases([]);
       setTestCasesStatus("error");
       return;
     }
     let active = true;
-    setTestCasesStatus("loading");
+    if (testCasesBackend.current !== backend) setTestCasesStatus("loading");
     fetchTestCases(backend)
       .then((cs) => {
         if (!active) return;
+        testCasesBackend.current = backend;
         setTestCases(cs);
         setTestCasesStatus("ready");
       })
       .catch(() => {
         if (!active) return;
+        // A failed READ is never an empty catalog (see the models effect below
+        // for the same split). A re-read that failed over a catalog already read
+        // from this backend keeps every case on screen and only reports the
+        // failure; a failed first load has nothing to keep.
+        if (testCasesBackend.current === backend) {
+          setTestCasesStatus("error");
+          return;
+        }
+        testCasesBackend.current = null;
         setTestCases([]);
         setTestCasesStatus("error");
       });
@@ -737,11 +766,15 @@ export function useLiveGallery(
   // re-fetches in place — the loaded catalog stays on screen until the fresh
   // one replaces it — and a switched backend, whose catalog is a different one
   // entirely, starts over from `loading`. `modelsBackend` records which backend
-  // the catalog on screen came from; a failed read clears it so the next
-  // attempt reads as a first load again.
+  // the catalog on screen came from, which is also what tells a failed FIRST
+  // load (nothing to keep) apart from a failed REFRESH (keep what is loaded).
   const modelsBackend = useRef<BackendClient | null>(null);
   useEffect(() => {
     if (!backend) {
+      // A console with no backend has no catalog to show and no read to wait on.
+      // There is nothing on screen to keep here: a catalog belongs to the backend
+      // it was read from, so this is `error` (the catalog is unavailable), never
+      // `ready` with an empty list (the cabinet curates no models).
       modelsBackend.current = null;
       setModels([]);
       setModelsStatus("error");
@@ -759,6 +792,24 @@ export function useLiveGallery(
       })
       .catch(() => {
         if (!active) return;
+        // A failed READ is never an empty catalog. Which of the two this is
+        // depends on whether a catalog from this backend is already on screen:
+        //
+        // - A REFRESH failed. The token is bumped on every finished run, so a
+        //   single network blip used to blank the catalog under an open model
+        //   page — and every "if loading show a spinner, else show unknown"
+        //   branch in the app then reported a model the cabinet holds as one it
+        //   has never heard of. The loaded catalog stays exactly as it is and the
+        //   failure is reported alongside it; `modelsBackend` still names this
+        //   backend, so the next refresh re-reads in place rather than flipping
+        //   the whole section back to a spinner.
+        // - A FIRST load failed. Nothing was ever resolvable from this backend,
+        //   so there is nothing to keep, and the next attempt is a first load
+        //   again.
+        if (modelsBackend.current === backend) {
+          setModelsStatus("error");
+          return;
+        }
         modelsBackend.current = null;
         setModels([]);
         setModelsStatus("error");
@@ -927,8 +978,27 @@ export function useLiveGallery(
         if (backend) return toDetail(await backend.readRun(runId));
         return null;
       } catch (e) {
+        // A host whose transport cannot resolve a run by id has none to resolve,
+        // which is an absence and resolves to null.
         if (e instanceof NotSupportedError) return null;
-        return null;
+        // Everything else is a read that FAILED, and only the store's own 404 is
+        // the store saying it holds no such run. Collapsing the two here is what
+        // made an unreachable backend render as "No run found for <id>" — the
+        // page claiming a run does not exist on the strength of a request that
+        // never got an answer.
+        //
+        // The status is read off the error's own `status` field (`isAbsence`,
+        // the shared seam in `client/absence`), never out of its message. This
+        // line used to match `/\bHTTP 404\b/` against `String(e)`, and the
+        // transports' message is `<path>: HTTP <status>: <detail>` where `detail`
+        // is the backend's own envelope sentence — free to quote a URL or an
+        // upstream's reply. A 500 whose message mentioned "HTTP 404" was
+        // therefore reported as an absence: the same defect, back through the
+        // string channel. An error carrying no status at all — a network failure,
+        // an abort, a transport that never reached a store — is a FAILURE and
+        // rethrows.
+        if (isAbsence(e)) return null;
+        throw e;
       }
     },
     [backend, workerClient],

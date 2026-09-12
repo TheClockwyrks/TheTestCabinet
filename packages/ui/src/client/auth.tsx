@@ -88,8 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const register = useCallback(
     async (username: string, password: string, displayName: string) => {
-      if (!client)
-        throw new Error("No worker connected to authenticate against.");
+      if (!client) throw new Error("no worker connected to register against");
       persist(await client.register(username, password, displayName));
     },
     [client, persist],
@@ -97,8 +96,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(
     async (username: string, password: string) => {
-      if (!client)
-        throw new Error("No worker connected to authenticate against.");
+      if (!client) throw new Error("no worker connected to sign in against");
       persist(await client.login(username, password));
     },
     [client, persist],
@@ -128,10 +126,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  // The two guards are separate conditions with separate causes — no session to
+  // attach the change to, or a worker whose transport serves no profile pictures
+  // — so each reports itself rather than sharing one message that names neither.
   const setProfilePicture = useCallback(
     async (picture: Blob) => {
-      if (!client?.setProfilePicture || !stored) {
-        throw new Error("Cannot set a profile picture here.");
+      if (!stored) throw new Error("not signed in");
+      if (!client?.setProfilePicture) {
+        throw new Error("the connected worker serves no profile pictures");
       }
       updateAccount(await client.setProfilePicture(picture, stored.token));
     },
@@ -139,8 +141,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const removeProfilePicture = useCallback(async () => {
-    if (!client?.removeProfilePicture || !stored) {
-      throw new Error("Cannot change the profile picture here.");
+    if (!stored) throw new Error("not signed in");
+    if (!client?.removeProfilePicture) {
+      throw new Error("the connected worker serves no profile pictures");
     }
     updateAccount(await client.removeProfilePicture(stored.token));
   }, [client, stored, updateAccount]);
@@ -167,16 +170,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 export function useAuth(): AuthContextValue {
   const ctx = useContext(AuthContext);
   if (ctx) return ctx;
+  // One message for all four actions: the cause is the same in every case, and it
+  // names the missing piece rather than the vague "here".
+  const noProvider = () =>
+    Promise.reject(new Error("no <AuthProvider> is mounted"));
   return {
     account: null,
     token: null,
-    register: () =>
-      Promise.reject(new Error("Accounts are not available here.")),
-    login: () => Promise.reject(new Error("Accounts are not available here.")),
+    register: noProvider,
+    login: noProvider,
     logout: () => {},
-    setProfilePicture: () =>
-      Promise.reject(new Error("Accounts are not available here.")),
-    removeProfilePicture: () =>
-      Promise.reject(new Error("Accounts are not available here.")),
+    setProfilePicture: noProvider,
+    removeProfilePicture: noProvider,
   };
 }

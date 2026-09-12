@@ -16,6 +16,7 @@ import type {
   NotificationSubscription,
 } from "../client";
 import { runPhase } from "../client/runPhase";
+import { readOutcome } from "../client/absence";
 import type {
   AssetKind,
   AssetPreview,
@@ -1485,11 +1486,11 @@ export function createHttpBackend(baseUrl: string): BackendClient {
         joinUrl(baseUrl, `/runs/${encodeURIComponent(id)}/code-analysis`),
         { headers: { accept: "application/json" } },
       );
-      if (res.status === 404) return null;
-      if (!res.ok) {
-        throw new Error(
-          `code analysis fetch failed: ${res.status} ${res.statusText}`,
-        );
+      // Classified through the shared seam, so this resolver's `null` means the
+      // one thing it is allowed to mean and its failures carry their status as
+      // data like every other read's.
+      if (readOutcome(res, `code analysis for run ${id}`) === "absent") {
+        return null;
       }
       return (await res.json()) as CodeAnalysisDocument;
     },
@@ -2540,8 +2541,16 @@ async function readLiveStream(
       signal,
     },
   );
-  if (!res.ok || !res.body) {
-    throw new Error(`live stream failed: ${res.status}`);
+  // Split, because a 2xx with no readable body is a different condition from a
+  // refused request and the merged message reported the wrong one ("live stream
+  // failed: 200").
+  if (!res.ok) {
+    throw new Error(
+      `live stream failed for run ${runId}: HTTP ${res.status} ${res.statusText}`,
+    );
+  }
+  if (!res.body) {
+    throw new Error(`live stream for run ${runId} carried no body`);
   }
   // Previews are not counted: the backend replays only the latest frame per
   // kind, and re-delivering one is harmless.
@@ -2712,8 +2721,15 @@ async function streamPublish(
   const res = await fetch(joinUrl(backendUrl, liveUrl), {
     headers: { accept: "application/x-ndjson" },
   });
-  if (!res.ok || !res.body) {
-    throw new Error(`publish stream failed: ${res.status}`);
+  // Split for the same reason as the live stream: a 2xx with no readable body is
+  // its own condition, and reporting it as the status would name a success.
+  if (!res.ok) {
+    throw new Error(
+      `publish stream failed: HTTP ${res.status} ${res.statusText}`,
+    );
+  }
+  if (!res.body) {
+    throw new Error("publish stream carried no body");
   }
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
@@ -2740,7 +2756,9 @@ async function streamPublish(
     }
     if (parsed.type === "result") {
       if (parsed.state === "failed") {
-        throw new Error(parsed.detail ?? "Publish failed.");
+        // The publisher's own reason where it gave one; it already reads as a
+        // sentence, so it is not re-wrapped.
+        throw new Error(parsed.detail ?? "publish failed");
       }
       terminal = {
         published: true,
@@ -2767,9 +2785,7 @@ async function streamPublish(
   // The stream closes only after the terminal result; its absence means the
   // connection dropped before the publish reported an outcome.
   if (!terminal) {
-    throw new Error(
-      "The publish stream ended before reporting a result. Retry to observe it.",
-    );
+    throw new Error("publish stream ended before reporting a result");
   }
   return terminal;
 }

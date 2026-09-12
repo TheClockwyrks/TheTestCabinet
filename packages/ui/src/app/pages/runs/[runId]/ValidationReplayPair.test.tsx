@@ -1,7 +1,8 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ValidationMedia } from "../../../data/galleryContext";
-import { RECORDING_FORMAT } from "../replay/format";
+import { clearRecordingCache, RECORDING_FORMAT } from "../replay/format";
+import { clearPreparedRecordingCache } from "../replay/ReplayPlayer";
 import * as webm from "../replay/replayWebm";
 import * as download from "./download";
 import { ValidationReplayPair } from "./ValidationReplayPair";
@@ -78,9 +79,20 @@ function serve(baseline: number, actual: number): void {
   );
 }
 
+// A recording is immutable, so a URL loaded once is answered from the process-wide
+// cache for the rest of the session — which is the point of the cache and a trap for
+// a suite that serves a different body at the same two URLs in every case. Each case
+// starts cold.
+beforeEach(() => {
+  clearRecordingCache();
+  clearPreparedRecordingCache();
+});
+
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  clearRecordingCache();
+  clearPreparedRecordingCache();
 });
 
 describe("the replay comparison", () => {

@@ -288,9 +288,8 @@ impl ProgramLibrary {
         }
         Err(ProgramIdExhausted {
             message: format!(
-                "the program library could not mint a fresh program id: every one of {ID_ATTEMPTS} \
-                 ids of length {} it rolled had already been issued ({} issued so far). This is a \
-                 gg defect in the id source, not a fault in the program submitted.",
+                "the program library could not mint a fresh program id: all {ID_ATTEMPTS} ids of \
+                 length {} it rolled were already issued, {} issued so far (gg defect)",
                 self.id_length,
                 self.issued.len()
             ),

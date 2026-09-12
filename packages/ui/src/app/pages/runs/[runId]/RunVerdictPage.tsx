@@ -11,6 +11,7 @@ import { useGalleryData, type ReviewModel } from "../../../data/galleryContext";
 import { useReviewModel } from "../../../data/useRunVariant";
 import {
   describeRunState,
+  RUN_STATE_DOCS_URL,
   type RunStatePresentation,
 } from "../../../data/runState";
 import { LoadingState } from "../../../components/LoadingState";
@@ -47,6 +48,23 @@ function FailureNote({ presentation }: { presentation: RunStatePresentation }) {
     <Panel>
       <p className={styles.empty}>
         {note} See the reason above, and the Events tab for what was recorded.
+      </p>
+      {/* What the tier itself means — publishability, what a publish releases,
+          whether it counts towards the model's statistics. It is deliberately not
+          folded into the banner's failure detail, which reports the error and
+          nothing about how the system treats it; a reader of the gallery still
+          needs the consequence, so it is stated here once per tier with the
+          contract behind it a link away. */}
+      <p className={styles.failureConsequence}>
+        {presentation.consequence}{" "}
+        <a
+          className={styles.docsLink}
+          href={RUN_STATE_DOCS_URL}
+          target="_blank"
+          rel="noreferrer"
+        >
+          Terminal states ↗
+        </a>
       </p>
     </Panel>
   );

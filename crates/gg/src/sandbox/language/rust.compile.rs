@@ -622,8 +622,8 @@ fn tool(variable: &str, name: &str) -> String {
 /// actually fix: the toolchain is not where gg looked.
 fn spawn_prefix(tool: &str) -> String {
     format!(
-        "gg compiles every Rust program with the toolchain in the gg run image and needs `{tool}` \
-         on PATH, in {TOOLCHAIN_BIN}, or {RUSTC_ENV} pointing at it: "
+        "gg found no Rust toolchain (`{tool}` on PATH, in {TOOLCHAIN_BIN}, or named by \
+         {RUSTC_ENV}): "
     )
 }
 

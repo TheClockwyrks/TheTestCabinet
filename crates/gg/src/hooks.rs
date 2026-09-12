@@ -755,15 +755,15 @@ fn parse_outcome(stdout: &str) -> Result<GgHookOutcomeKind, String> {
         .map(str::trim)
         .find(|line| !line.is_empty())
         .ok_or_else(|| {
-            "the script printed nothing. A hook script must print one decision object, such as \
-             `{\"action\":\"continue\"}`."
+            "the script printed nothing, and a hook script prints one decision object such as \
+             `{\"action\":\"continue\"}`"
                 .to_string()
         })?;
     serde_json::from_str::<GgHookOutcomeKind>(line).map_err(|err| {
         format!(
-            "the script's last line of output is not a decision object ({err}). Print one of \
-             `{{\"action\":\"continue\"}}`, `{{\"action\":\"block\",\"reason\":\"…\"}}`, or \
-             `{{\"action\":\"message\",\"message\":\"…\"}}`. It printed: {line}"
+            "the script's last line of output is not a decision object ({err}): {line}. gg \
+             reads `{{\"action\":\"continue\"}}`, `{{\"action\":\"block\",\"reason\":\"…\"}}` \
+             and `{{\"action\":\"message\",\"message\":\"…\"}}`"
         )
     })
 }
@@ -936,8 +936,7 @@ fn check_actions(
                         format!("hooks[{label}].source"),
                         "",
                         "a custom hook is the script the configuration carries, and this one \
-                         carries none; gg would write an empty file, run it, and end the run \
-                         because it printed no decision — on the first operation the hook gates."
+                         carries none"
                             .to_string(),
                     ));
                 }

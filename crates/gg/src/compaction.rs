@@ -1127,9 +1127,9 @@ pub fn check_launch(profile: &GgAgentConfig, report: &mut LaunchReport) {
             crate::validate::param_locus(CAPABILITY_COMPACTION, COMPACTION_PARAM_MODEL_SLOT),
             crate::validate::as_written(slot),
             format!(
-                "a bound launch replaces `{COMPACTION_PARAM_MODEL_SLOT}` with the model it \
-                 collected, and one still on the document means the slot was never filled. Bind \
-                 it at launch, or name the model outright in `{COMPACTION_PARAM_MODEL}`."
+                "`{COMPACTION_PARAM_MODEL_SLOT}` survived the launch, so the slot was never \
+                 bound. Bind it at launch, or name the model outright in \
+                 `{COMPACTION_PARAM_MODEL}`."
             ),
         ));
     }

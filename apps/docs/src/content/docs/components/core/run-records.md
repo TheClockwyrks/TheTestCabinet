@@ -218,7 +218,10 @@ borrowing one from the caller that wraps it. Exactly one layer supplies the
 verb that claims the failure: a wrapping layer names the stage it was running
 and leaves that verb to the layer inside it, as in `run failed: collecting run
 artifacts: {detail}`, and a layer that wraps nothing keeps the verb itself, as
-in `seeding {dest} in run pod {pod} failed: {detail}`.
+in `seeding {dest} in run pod {pod} failed: {detail}`. Every wrapping layer
+names its stage the same way, as a bare noun phrase carrying no `error` noun, so
+`validating the run: {detail}` and `collecting run artifacts: {detail}` read as
+one grammar.
 
 Parentheses carry figures and a bare inner clause, and a colon introduces a
 nested message that is itself a sentence. The subsystem word is carried wherever
@@ -240,6 +243,10 @@ observed value and the configured limit.
 
 A gg execution-ceiling stop reads `run failed: gg execution ceiling hit (5
 consecutive turns failed)`.
+
+A manifest-validation diagnostic addressed to a test-case author is not a
+failure detail and is governed by the authoring guides rather than by this
+style.
 
 ### Recorded context
 

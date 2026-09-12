@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  clearRecordingCache,
   fetchRecording,
   parseRecording,
   RECORDING_FORMAT,
@@ -151,11 +152,18 @@ describe("refusing a recording", () => {
     const parsed = parseRecording(recording({ format: RECORDING_FORMAT + 1 }));
     expect(parsed.ok).toBe(false);
     if (parsed.ok) return;
-    // The reviewer has to be able to act on this: which number the file states, and
-    // that there is only one recording format, so the file is not a recording.
+    // The reviewer has to be able to act on this, so both figures are kept: the
+    // number the file states and the one recording format there is. And it is one
+    // terse declarative clause about the FILE — what the console decided to do
+    // about it ("cannot be played", "probably not a recording") is error handling
+    // rather than the error, and the anchored match is what keeps it out: a
+    // sentence that grew a second clause fails here rather than passing on the two
+    // figures alone.
     expect(parsed.message).toContain(String(RECORDING_FORMAT + 1));
     expect(parsed.message).toContain(String(RECORDING_FORMAT));
-    expect(parsed.message).toMatch(/not produced by an engine recorder/i);
+    expect(parsed.message).toMatch(
+      /^This file states recording format \d+, not \d+\.$/,
+    );
   });
 
   it("refuses a file that does not declare a format at all", () => {
@@ -751,8 +759,16 @@ describe("refusing a recording", () => {
  * reaches the reviewer as a sentence rather than as a blank player.
  */
 describe("fetching a recording", () => {
+  // A recording is immutable, so a URL fetched once is answered from the cache for
+  // the rest of the session — which is the point of the cache and a trap for a test
+  // that serves a different body at the same URL. Each case starts cold.
+  beforeEach(() => {
+    clearRecordingCache();
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
+    clearRecordingCache();
   });
 
   /** Answer the next fetch with `body`, as a 200. */

@@ -231,3 +231,22 @@ export function toolchainTests(run: RunRecord): ToolchainTests | null {
 export function toolchainCoverage(run: RunRecord): ToolchainCoverage | null {
   return run.toolchain?.test?.coverage ?? null;
 }
+
+/**
+ * How long one recorded test took, as the runner timed it — or `null` when it did not.
+ *
+ * An absent duration is NOT TIMED, never zero: the runner reports none for a test it
+ * never ran, and rendering that as `0 ms` would claim a measurement the report does not
+ * carry. A recorded zero IS a measurement and formats as one.
+ *
+ * The scale follows the figure: seconds past a second and whole milliseconds below it,
+ * with a decimal kept on a fractional sub-ten-millisecond figure so a test the runner
+ * timed at 0.4 ms does not read as having taken no time at all.
+ */
+export function formatTestDuration(ms: number | undefined): string | null {
+  if (typeof ms !== "number" || !Number.isFinite(ms) || ms < 0) return null;
+  if (ms >= 10000) return `${Math.round(ms / 1000)} s`;
+  if (ms >= 1000) return `${(ms / 1000).toFixed(1)} s`;
+  if (ms >= 10 || Number.isInteger(ms)) return `${Math.round(ms)} ms`;
+  return `${ms.toFixed(1)} ms`;
+}

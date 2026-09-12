@@ -164,6 +164,54 @@ describe("GgDashboardsPage", () => {
     expect(createGgDashboard).not.toHaveBeenCalled();
   });
 
+  // The report this was built for: a width of 6 could not be replaced by 4 without
+  // selecting it, because clearing the field snapped it back to one column.
+  it("lets a panel's width be cleared and retyped, and refuses to save while it is empty", async () => {
+    listGgDashboards.mockResolvedValue([STORED]);
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Edit" })).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+
+    const width = screen.getByLabelText("Panel 1 width") as HTMLInputElement;
+    expect(width.value).toBe("6");
+
+    fireEvent.change(width, { target: { value: "" } });
+    expect(width.value).toBe("");
+    expect(width).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByText(/width is required\./)).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Save dashboard" }),
+    ).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Save dashboard" }));
+    expect(updateGgDashboard).not.toHaveBeenCalled();
+
+    fireEvent.change(width, { target: { value: "4" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save dashboard" }));
+    await waitFor(() => expect(updateGgDashboard).toHaveBeenCalled());
+    expect(updateGgDashboard.mock.calls[0]?.[1].panels[0].width).toBe(4);
+  });
+
+  it("refuses a panel width the twelve-column flow has no room for", async () => {
+    listGgDashboards.mockResolvedValue([STORED]);
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Edit" })).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+
+    const width = screen.getByLabelText("Panel 1 width") as HTMLInputElement;
+    fireEvent.change(width, { target: { value: "40" } });
+    // Held as typed rather than clamped behind the operator's back.
+    expect(width.value).toBe("40");
+    expect(screen.getByText(/width must be 12 or less\./)).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Save dashboard" }),
+    ).toBeDisabled();
+    expect(updateGgDashboard).not.toHaveBeenCalled();
+  });
+
   it("adds and removes panels from the board being edited", async () => {
     renderPage();
     await waitFor(() => expect(listGgDashboards).toHaveBeenCalled());

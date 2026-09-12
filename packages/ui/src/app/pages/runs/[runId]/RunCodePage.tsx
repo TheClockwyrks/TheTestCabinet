@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { MetricTile, Panel, Spinner } from "@clockwyrks/ui";
 import type { RunRecord } from "@clockwyrks/run-record";
 import type { CodeAnalysisDocument } from "@clockwyrks/run-record/code-analysis";
+import { HelpTip } from "../../../components/HelpTip";
 import { RunDetailLayout } from "../../../layouts/runs/RunDetailLayout";
 import { useGalleryData } from "../../../data/galleryContext";
 import {
@@ -204,6 +205,16 @@ function RunCodeBody({ run }: { run: RunRecord }) {
   );
 }
 
+/** The distinction a reviewer must not get wrong, kept off the band lead and behind the
+ * "?" beside it: the same reviewer sees the test case's validator verdicts on a sibling
+ * surface, and the two have nothing to do with each other. */
+const TESTS_HELP =
+  "Read from the report file the run produced. The test case's validators are a separate suite that grades this run: nothing they do is counted here, and nothing here affects this run's rating, score or verdict.";
+
+/** Coverage's own version of the same distinction. */
+const COVERAGE_HELP =
+  "The validators' suite has coverage disabled by design, so nothing it executed appears in these figures. Descriptive only: coverage gates nothing.";
+
 /**
  * The two executed bands: the model's own test suite, and its coverage of the model's own
  * code.
@@ -219,11 +230,10 @@ function RunCodeBody({ run }: { run: RunRecord }) {
  * The two are gated independently because they come from two files, and a config can
  * write one without the other.
  *
- * The lead sentences are the most important copy on this page. A reviewer looking at a
- * run sees the test case's validator verdicts on a sibling surface, and must never be
- * able to read these figures as those. So each band states, in words, that this is the
- * suite the MODEL wrote over the code the MODEL wrote, and that the validators contribute
- * nothing to it.
+ * Each band's lead is one line: whose tests these are, and what ran them. The rest of
+ * what a reviewer must not get wrong — that the test case's validators are a different
+ * suite entirely — is behind the "?" beside it rather than deleted, because a lead
+ * paragraph longer than the widget under it is the complaint this page answers.
  */
 function ExecutedTier({ run }: { run: RunRecord }) {
   const tests = toolchainTests(run);
@@ -234,12 +244,9 @@ function ExecutedTier({ run }: { run: RunRecord }) {
         <div className={styles.band}>
           <h3 className={styles.sectionHeading}>Tests the model wrote</h3>
           <p className={styles.bandLead}>
-            The build&rsquo;s own suite, executed: the tests the model wrote,
-            run over the code the model wrote by the case&rsquo;s{" "}
-            <code>test</code> command, and read from the report file that run
-            produced. The test case&rsquo;s validators are a separate suite that
-            grades this run &mdash; nothing they do is counted here, and nothing
-            here affects this run&rsquo;s rating, score or verdict.
+            The tests the model wrote, run over the code the model wrote by the
+            case&rsquo;s <code>test</code> command.{" "}
+            <HelpTip text={TESTS_HELP} />
           </p>
           <ToolchainTests tests={tests} />
         </div>
@@ -251,12 +258,8 @@ function ExecutedTier({ run }: { run: RunRecord }) {
             Coverage of the code the model wrote
           </h3>
           <p className={styles.bandLead}>
-            What the model&rsquo;s own tests reached in the model&rsquo;s own{" "}
-            <code>src/</code>, measured by istanbul during that same run. The
-            validators&rsquo; suite has coverage disabled by design &mdash; a
-            grader&rsquo;s tests cannot flatter the build&rsquo;s coverage
-            &mdash; so nothing it executed appears in these figures. Descriptive
-            only: coverage gates nothing.
+            What those tests reached in the model&rsquo;s own <code>src/</code>,
+            measured by istanbul. <HelpTip text={COVERAGE_HELP} />
           </p>
           <ToolchainCoverage coverage={coverage} />
         </div>

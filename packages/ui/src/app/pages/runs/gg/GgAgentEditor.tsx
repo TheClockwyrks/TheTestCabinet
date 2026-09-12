@@ -7,6 +7,7 @@ import type { GgSubagentScope } from "@clockwyrks/run-record/gg";
 import { SegmentedControl } from "@clockwyrks/ui";
 import type { Model } from "../../../../client/types";
 import { ModelCombobox } from "../../../components/ModelCombobox";
+import { NumberValueField } from "../../../components/NumberField";
 import { ResetControl } from "../../../components/ResetControl";
 import { familyOf } from "../../../data/families";
 import {
@@ -75,20 +76,6 @@ const AGENT_MODE_OPTIONS = AGENT_MODES.map((mode) => ({
   value: mode.value,
   label: mode.label,
 }));
-
-/**
- * A typed depth for the opening tree's field: a whole number inside the range gg honours.
- *
- * The field is clamped rather than validated because every value outside `1..=`
- * [MAX_OPENING_TREE_DEPTH] refuses the launch, and a form that can write one is a form
- * that saves a configuration nothing will run. A field cleared to nothing reads as the
- * default rather than as zero.
- */
-function clampTreeDepth(written: string): number {
-  const parsed = Number.parseInt(written, 10);
-  if (!Number.isFinite(parsed)) return DEFAULT_OPENING_TURN.tree.depth;
-  return Math.min(Math.max(parsed, 1), MAX_OPENING_TREE_DEPTH);
-}
 
 /** The per-agent editor's sections. */
 type AgentTab =
@@ -999,20 +986,24 @@ export function GgAgentEditor({
                       }
                     >
                       {(id) => (
-                        <input
+                        // The depth is held on the draft as a number, so the typing
+                        // lives in the field: clearing it leaves the draft on its
+                        // last depth and the field empty for the next one, and the
+                        // held depth comes back on blur. Nothing outside the range
+                        // gg honours is ever committed, so the configuration this
+                        // saves is always one that will run.
+                        <NumberValueField
                           id={id}
                           className={runExec.input}
-                          type="number"
+                          label="The opening tree’s depth"
                           min={1}
                           max={MAX_OPENING_TREE_DEPTH}
-                          step={1}
+                          integer
+                          showProblem={false}
+                          title={`Between 1 and ${MAX_OPENING_TREE_DEPTH} levels.`}
                           value={agent.openingTurn.tree.depth}
                           disabled={readOnly}
-                          onChange={(e) =>
-                            setOpeningTree({
-                              depth: clampTreeDepth(e.target.value),
-                            })
-                          }
+                          onCommit={(depth) => setOpeningTree({ depth })}
                         />
                       )}
                     </CapField>

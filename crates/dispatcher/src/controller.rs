@@ -87,7 +87,11 @@ impl Dispatcher {
                 }
                 Ok(_) => {}
                 Err(err) => {
-                    tracing::warn!(error = %err, "dispatcher tick failed; backing off");
+                    tracing::warn!(
+                        error = %err,
+                        poll_interval_secs = self.config.poll_interval.as_secs_f64(),
+                        "dispatcher tick failed"
+                    );
                 }
             }
             sleep(self.config.poll_interval).await;
@@ -218,14 +222,14 @@ impl Dispatcher {
             }
 
             let detail = self.kube.failure_detail(&job.name).await;
-            tracing::warn!(job_id, detail = %detail, "driver Job failed before reporting; reporting death");
+            tracing::warn!(job_id, detail = %detail, "driver Job failed before reporting its own outcome");
             match self.backend.report_failed(job_id, &token, detail).await {
                 Ok(()) => {
                     self.reported_dead.insert(job_id.to_string());
                     self.tokens.remove(job_id);
                 }
                 Err(err) => {
-                    tracing::warn!(job_id, error = %err, "reporting driver-pod death failed; will retry");
+                    tracing::warn!(job_id, error = %err, "reporting the driver pod's death to the backend failed");
                 }
             }
         }
@@ -258,7 +262,7 @@ impl Dispatcher {
                 }
             }
             Err(err) => {
-                tracing::warn!(job_id, error = %err, "reaping the dead driver's sandbox pods failed; will retry");
+                tracing::warn!(job_id, error = %err, "reaping the dead driver's sandbox pods failed");
             }
         }
     }

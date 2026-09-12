@@ -1,4 +1,5 @@
 import type { Ref } from "react";
+import { createAssetCache } from "../data/assetCache";
 import type { MediaKind } from "../../client/types";
 import type { StoredImageResolver } from "../pages/runs/replay/drawFrame";
 import { ReplayPlayer } from "../pages/runs/replay/ReplayPlayer";
@@ -66,12 +67,51 @@ export function MediaView({
     return <ReplayPlayer url={url} label={alt} storeUrl={storeUrl} />;
   }
   if (kind === "image") {
-    return <img className={styles.media} src={url} alt={alt} loading="lazy" />;
+    return <MediaImage url={url} alt={alt} />;
   }
   return (
     <p className={styles.unsupported}>
       This console cannot show {String(kind)} media. Open the run in a newer
       build to see it.
     </p>
+  );
+}
+
+// The picture URLs this session has already painted.
+//
+// A produced image is immutable and the browser's own cache already holds its
+// bytes, so what is worth remembering here is not the picture — it is that this URL
+// has been through the browser once. `loading="lazy"` defers a picture until the
+// layout says it is near the viewport, which is right the first time a long page of
+// references scrolls past and wrong on the way back: every tab of a run's detail
+// page is its own route, so returning to one remounts the image, and deferring a
+// picture whose bytes are already in hand shows the reviewer an empty box while an
+// intersection observer catches up. A URL already painted is therefore loaded
+// eagerly and decoded synchronously, which is what makes it appear in the frame it
+// mounts in.
+//
+// Bounded at 512 URLs, which is far more pictures than a session puts on screen and
+// costs a string each — this holds no pixels, so the bound is about not remembering
+// a gallery's worth of URLs forever rather than about memory the pictures occupy.
+const shownImages = createAssetCache<true>({
+  name: "shown image",
+  maxEntries: 512,
+});
+
+/** One picture, deferred the first time it is shown and immediate after that. */
+function MediaImage({ url, alt }: { url: string; alt: string }) {
+  // Read during render deliberately: `peek` is pure, and the answer has to be in
+  // hand before the element is created — switching an `<img>` from lazy to eager
+  // after it has mounted does not un-defer it.
+  const shown = shownImages.peek(url) === true;
+  return (
+    <img
+      className={styles.media}
+      src={url}
+      alt={alt}
+      loading={shown ? "eager" : "lazy"}
+      decoding={shown ? "sync" : "async"}
+      onLoad={() => shownImages.put(url, true)}
+    />
   );
 }

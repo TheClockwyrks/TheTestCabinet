@@ -698,10 +698,9 @@ fn version_verdict(observed: &str, purs: &str) -> Result<(), String> {
         return Ok(());
     }
     Err(format!(
-        "gg's PureScript library tree was compiled by purs {} and `{purs}` reports {observed}, \
-         and externs are a compiler-version-private format. Install the pinned release \
-         (containers/gg-toolchains, from packages/gg-sandbox-purescript/purescript-version.sh) or \
-         point {PURS_ENV} at it.",
+        "gg's PureScript library tree was compiled by purs {} and `{purs}` reports {observed} \
+         (install the pinned release with containers/gg-toolchains, from \
+         packages/gg-sandbox-purescript/purescript-version.sh, or point {PURS_ENV} at it)",
         compiler_version(),
     ))
 }
@@ -793,8 +792,8 @@ fn tool(variable: &str, name: &str) -> String {
 /// operator can actually fix: the toolchain is not where gg looked.
 fn spawn_prefix(tool: &str, variable: &str) -> String {
     format!(
-        "gg compiles every PureScript program with the toolchain in the gg run image and needs \
-         `{tool}` on PATH, in {TOOLCHAIN_BIN}, or {variable} pointing at it: "
+        "gg found no PureScript toolchain (`{tool}` on PATH, in {TOOLCHAIN_BIN}, or named by \
+         {variable}): "
     )
 }
 

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { RunSubject } from "@clockwyrks/run-record";
-import { renderHook, waitFor } from "@testing-library/react";
+import { render, renderHook, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import {
   GalleryDataProvider,
@@ -112,6 +112,62 @@ describe("useRunVariant", () => {
 
     expect(result.current.status).toBe("loading");
     expect(result.current.variant).toBeUndefined();
+  });
+
+  // A case version with runs against it is frozen, so a variant resolved once is
+  // the variant forever. The Inputs tab is its own route: leaving it and coming
+  // back remounts this hook, and reporting `loading` on that first frame would put
+  // a spinner over text the console is still holding.
+  it("reports a variant it has already resolved as ready on the first frame", async () => {
+    const { readCaseVariant, wrapper: Wrapper } = hostResolving(() =>
+      variant("the brief"),
+    );
+    // Every status this hook reported, in render order — the frame count is the
+    // property, not just where it ends up.
+    const reported: string[] = [];
+    function Probe() {
+      const { status, variant: resolved } = useRunVariant(subject());
+      reported.push(status);
+      return <p>{resolved?.prompt ?? status}</p>;
+    }
+
+    // The tab switch, as the console performs it: the provider stays mounted and
+    // the tab body is unmounted and mounted again.
+    const view = render(
+      <Wrapper>
+        <Probe />
+      </Wrapper>,
+    );
+    await waitFor(() => expect(screen.getByText("the brief")).toBeTruthy());
+    view.rerender(<Wrapper>{null}</Wrapper>);
+    reported.length = 0;
+
+    view.rerender(
+      <Wrapper>
+        <Probe />
+      </Wrapper>,
+    );
+    expect(reported[0]).toBe("ready");
+    expect(reported).not.toContain("loading");
+    expect(screen.getByText("the brief")).toBeTruthy();
+    expect(readCaseVariant).toHaveBeenCalledTimes(1);
+  });
+
+  // Keying the cache on the host's own resolver is what makes that safe: pointing
+  // the console at another backend must not serve this one's answers.
+  it("resolves afresh against a host that answers differently", async () => {
+    const staging = hostResolving(() => variant("staging brief"));
+    const first = renderHook(() => useRunVariant(subject()), {
+      wrapper: staging.wrapper,
+    });
+    await waitFor(() => expect(first.result.current.status).toBe("ready"));
+
+    const production = hostResolving(() => variant("production brief"));
+    const second = renderHook(() => useRunVariant(subject()), {
+      wrapper: production.wrapper,
+    });
+    await waitFor(() => expect(second.result.current.status).toBe("ready"));
+    expect(second.result.current.variant?.prompt).toBe("production brief");
   });
 });
 

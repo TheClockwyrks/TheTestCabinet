@@ -59,17 +59,22 @@ function galleryValue(): GalleryDataInput {
   } as unknown as GalleryDataInput;
 }
 
-function renderPage(runs: UnreadableRun[], opts: { total?: number } = {}) {
+function renderPage(
+  runs: UnreadableRun[],
+  opts: { total?: number; fail?: string; hang?: boolean } = {},
+) {
   localStorage.setItem(
     "tcab.auth",
     JSON.stringify({ token: "tok", account: { username: "zach" } }),
   );
   const deleteRun = vi.fn(async () => {});
   const listUnreadableRuns = vi.fn(
-    async (_opts?: { limit?: number; offset?: number }) => ({
-      runs,
-      total: opts.total ?? runs.length,
-    }),
+    async (_opts?: { limit?: number; offset?: number }) => {
+      if (opts.fail) throw new Error(opts.fail);
+      // A read that never settles, for the state the page shows while it waits.
+      if (opts.hang) return new Promise<never>(() => {});
+      return { runs, total: opts.total ?? runs.length };
+    },
   );
   const client = {
     listUnreadableRuns,
@@ -176,6 +181,27 @@ describe("UnreadableRunsPage", () => {
       expect(screen.getByText("missing field `interp`")).toBeTruthy(),
     );
     expect(screen.queryByRole("navigation", { name: "Pagination" })).toBeNull();
+  });
+
+  // The reported rule, on this page: "if data is loading, the page must NEVER
+  // claim that the entity is not found". This page declared a loading flag,
+  // used it to drive its pager, and then rendered "No unreadable runs are
+  // stored." straight through the wait.
+  it("shows the loading state rather than an empty cabinet while it reads", () => {
+    renderPage([], { hang: true });
+    expect(screen.getByText("Loading unreadable runs…")).toBeTruthy();
+    expect(screen.queryByText("No unreadable runs are stored.")).toBeNull();
+  });
+
+  // A read that failed says nothing about what the cabinet holds, so it must not
+  // be reported as a cabinet that holds nothing.
+  it("reports a failed read as a failure, not as an empty cabinet", async () => {
+    renderPage([], { fail: "HTTP 503: gateway" });
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("Could not load");
+    expect(alert.textContent).toContain("HTTP 503");
+    expect(screen.queryByText("No unreadable runs are stored.")).toBeNull();
   });
 
   it("shows the empty state when the cabinet holds none", async () => {

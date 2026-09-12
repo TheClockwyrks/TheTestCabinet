@@ -125,7 +125,14 @@ export function OtherPage({ tab }: OtherPageProps) {
       </div>
 
       {tab === "game-jams" ? (
-        <GameJamsList jams={jams} status={status} />
+        <GameJamsList
+          jams={jams}
+          status={status}
+          // Whether a catalog is resolved at all, which is what decides the body
+          // below — not the last read's outcome. A catalog kept across a failed
+          // re-read still lists its jams.
+          haveCatalog={testCases.length > 0 || status === "ready"}
+        />
       ) : (
         <TournamentsList />
       )}
@@ -142,45 +149,65 @@ export function OtherPage({ tab }: OtherPageProps) {
 function GameJamsList({
   jams,
   status,
+  haveCatalog,
 }: {
   jams: TestCaseSummary[];
   status: ReturnType<typeof useTestCases>["status"];
+  haveCatalog: boolean;
 }) {
-  if (status === "loading") {
-    return <LoadingState label="Loading catalog…" />;
-  }
-  if (status === "error") {
-    return (
+  // Render order: the catalog this list HAS decides, and the read state only
+  // speaks when there is none. A catalog kept across a failed re-read lists its
+  // jams with the failure said above them; "No game jams yet" is reserved for a
+  // catalog that resolved and holds none.
+  if (!haveCatalog) {
+    return status === "loading" ? (
+      <LoadingState label="Loading catalog…" />
+    ) : (
       <p className={styles.error}>
         Couldn&apos;t reach the backend, so the game-jam catalog is unavailable.
       </p>
     );
   }
+
+  const stale = status === "error" && (
+    <p className={styles.error} role="alert">
+      Couldn&apos;t reach the backend, so this catalog may be out of date.
+    </p>
+  );
+
   if (jams.length === 0) {
-    return <p className={styles.empty}>No game jams yet.</p>;
+    return (
+      <>
+        {stale}
+        <p className={styles.empty}>No game jams yet.</p>
+      </>
+    );
   }
 
   return (
-    <ul className={styles.list}>
-      {jams.map((jam) => (
-        <li key={jam.slug}>
-          <Link to={routes.gameJamDetail(jam.slug)} className={styles.card}>
-            <div className={styles.cardHeader}>
-              <h2 className={styles.cardTitle}>{jam.name}</h2>
-            </div>
-            {jam.summary && <p className={styles.summary}>{jam.summary}</p>}
-            {jam.tags.length > 0 && (
-              <ul className={styles.tags}>
-                {jam.tags.map((value) => (
-                  <li key={value} className={styles.tag}>
-                    {value}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Link>
-        </li>
-      ))}
-    </ul>
+    <>
+      {stale}
+      <ul className={styles.list}>
+        {jams.map((jam) => (
+          <li key={jam.slug}>
+            <Link to={routes.gameJamDetail(jam.slug)} className={styles.card}>
+              <div className={styles.cardHeader}>
+                <h2 className={styles.cardTitle}>{jam.name}</h2>
+              </div>
+              {jam.summary && <p className={styles.summary}>{jam.summary}</p>}
+              {jam.tags.length > 0 && (
+                <ul className={styles.tags}>
+                  {jam.tags.map((value) => (
+                    <li key={value} className={styles.tag}>
+                      {value}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </>
   );
 }

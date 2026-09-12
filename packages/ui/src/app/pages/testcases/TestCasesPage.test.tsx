@@ -110,6 +110,20 @@ function ready(
   });
 }
 
+// The same host, with a catalog read that has NOT settled: `loading` or `error`,
+// optionally over a catalog the page is already holding (which is what a failed
+// re-read leaves behind).
+function unsettled(
+  status: "loading" | "error",
+  testCases: TestCaseSummary[] = [],
+) {
+  useTestCases.mockReturnValue({ testCases, status });
+  useGalleryData.mockReturnValue({
+    canExecute: true,
+    caseShowcaseMediaUrl: undefined,
+  });
+}
+
 // Render the page at a given tab, with the router's location set to that tab's
 // route so the tab bar's active link resolves.
 function renderPage(tab: CatalogTab = "end-to-end") {
@@ -620,5 +634,38 @@ describe("TestCasesPage", () => {
     expect(
       screen.queryByRole("region", { name: "Case preview" }),
     ).not.toBeInTheDocument();
+  });
+
+  // Render order: the catalog the page HOLDS decides, and the read state only
+  // speaks when it holds none. A failed re-read over a loaded catalog is stale
+  // data — the rows stay and the failure is said above them — and a read still
+  // in flight is never reported as a catalog with nothing in it.
+  it("keeps the catalog on screen when a re-read fails", () => {
+    unsettled("error", [testCase("Sunfront", "end-to-end")]);
+
+    renderPage("end-to-end");
+
+    expect(indexTitles()).toEqual(["Sunfront"]);
+    expect(screen.getByRole("alert").textContent).toMatch(/out of date/i);
+    expect(screen.queryByText(/catalog is unavailable/i)).toBeNull();
+  });
+
+  it("waits rather than reporting an unavailable catalog while it loads", () => {
+    unsettled("loading");
+
+    renderPage("end-to-end");
+
+    expect(screen.queryByText(/catalog is unavailable/i)).toBeNull();
+    expect(screen.queryByText("No test cases match.")).not.toBeInTheDocument();
+    expect(screen.getByText(/Loading catalog/i)).toBeTruthy();
+  });
+
+  it("reports an unreadable catalog as a failure, never as an empty one", () => {
+    unsettled("error");
+
+    renderPage("end-to-end");
+
+    expect(screen.getByText(/catalog is unavailable/i)).toBeTruthy();
+    expect(screen.queryByText("No test cases match.")).not.toBeInTheDocument();
   });
 });

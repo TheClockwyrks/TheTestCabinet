@@ -18,6 +18,11 @@ import { firstDrift } from "../lattice/drift";
 import { fitZoom, MAX_ZOOM, MIN_ZOOM, stepZoom } from "../lattice/zoom";
 import type { PlaybackWorkerResponse } from "../lattice/playbackWorker";
 import { formatInteger } from "../../../format";
+import {
+  fetchAssetBlob,
+  fetchAssetBytes,
+  fetchAssetJson,
+} from "../../../data/producedAssets";
 import styles from "./LatticePlaybackSection.module.scss";
 
 // The sprite sheet ships with the bundle as one set, not per run — rendering is the
@@ -55,43 +60,6 @@ const LOAD_TIMEOUT_MS = 8000;
  * point on it. */
 function clamp01(value: number): number {
   return Math.min(Math.max(value, 0), 1);
-}
-
-// Load a bundled `?url` asset's bytes, tolerating both emitted file URLs and inlined
-// `data:` URLs. WebKit's WKWebView (the macOS Tauri webview) cannot `fetch()` a
-// `data:` URL, so decoding them ourselves keeps Vite's inlining while letting the
-// player work in the desktop shell. Mirrors the adversarial player.
-function decodeDataUrl(url: string): {
-  mime: string;
-  bytes: Uint8Array<ArrayBuffer>;
-} {
-  const comma = url.indexOf(",");
-  const meta = url.slice("data:".length, comma);
-  const isBase64 = /;base64$/i.test(meta);
-  const mime = meta.replace(/;base64$/i, "") || "application/octet-stream";
-  const data = url.slice(comma + 1);
-  const source = isBase64
-    ? Uint8Array.from(atob(data), (c) => c.charCodeAt(0))
-    : new TextEncoder().encode(decodeURIComponent(data));
-  return { mime, bytes: new Uint8Array(source) };
-}
-
-async function fetchAssetBytes(url: string): Promise<ArrayBuffer> {
-  if (url.startsWith("data:")) return decodeDataUrl(url).bytes.buffer;
-  const r = await fetch(url);
-  // Without this check a 404 (e.g. a run whose engine module was never published)
-  // would hand the error-page body to `WebAssembly.instantiate`, which fails with a
-  // cryptic "failed to match magic number" instead of a legible fetch error.
-  if (!r.ok) throw new Error(`engine module ${r.status}`);
-  return r.arrayBuffer();
-}
-
-async function fetchAssetBlob(url: string): Promise<Blob> {
-  if (url.startsWith("data:")) {
-    const { mime, bytes } = decodeDataUrl(url);
-    return new Blob([bytes], { type: mime });
-  }
-  return fetch(url).then((r) => r.blob());
 }
 
 /**
@@ -206,8 +174,14 @@ export function PlaybackOverlay({
   // substituting another engine's factory.
   useEffect(() => {
     if (!moduleUrl || !scenarioUrl) {
+      // Which of the two is missing is the whole content of this failure, and the
+      // surrounding chrome already says playback could not happen.
       setError(
-        "Playback is unavailable: no engine module or scenario to play.",
+        !moduleUrl && !scenarioUrl
+          ? "no engine module and no scenario recorded"
+          : !moduleUrl
+            ? "no engine module recorded"
+            : "no scenario recorded",
       );
       return;
     }
@@ -225,13 +199,21 @@ export function PlaybackOverlay({
 
     (async () => {
       try {
+        // All three go through the shared produced-asset caches
+        // (`../../../data/producedAssets`), which decode a `data:` URL themselves —
+        // WKWebView cannot `fetch()` one and Vite inlines the sprite sheet — and
+        // check the status before any body is read, so a run whose engine module was
+        // never published reports the miss rather than handing an error page to
+        // `WebAssembly.instantiate` for a cryptic "failed to match magic number".
+        //
+        // A submission's module and a case's scenarios are fixed once produced, so
+        // stepping to the next scored scenario of the same run, or relaunching one
+        // just watched, re-reads the cache instead of the network — the module is
+        // the same file for every scenario of the run.
         const [wasm, sheetBlob, scenarioJson] = await Promise.all([
-          fetchAssetBytes(moduleUrl),
-          fetchAssetBlob(sheetPngUrl),
-          fetch(scenarioUrl).then((r) => {
-            if (!r.ok) throw new Error(`scenario ${r.status}`);
-            return r.json();
-          }),
+          fetchAssetBytes(moduleUrl, "engine module"),
+          fetchAssetBlob(sheetPngUrl, "sprite sheet"),
+          fetchAssetJson<unknown>(scenarioUrl, "scenario"),
         ]);
         if (cancelled) return;
         const sheet: Sheet = await loadSheet(
@@ -253,7 +235,11 @@ export function PlaybackOverlay({
         timeout = setTimeout(() => {
           worker?.terminate();
           if (workerRef.current === worker) workerRef.current = null;
-          setError("The engine did not start in time.");
+          // The budget is the datum that makes the report actionable, so it is
+          // carried rather than left as "in time".
+          setError(
+            `the engine did not start within ${LOAD_TIMEOUT_MS / 1000}s`,
+          );
         }, LOAD_TIMEOUT_MS);
 
         // The drift gate (see `../lattice/drift.ts` for what it does and does not
@@ -308,10 +294,17 @@ export function PlaybackOverlay({
           }
         };
 
-        // Transfer the wasm buffer — the main thread has no further use for it.
-        worker.postMessage({ type: "init", wasm, scenario: scenarioJson }, [
-          wasm,
-        ]);
+        // A COPY of the module is what gets transferred, never the cached buffer
+        // itself. Transferring detaches the buffer on this side, so handing the
+        // worker the cached one would empty the cache entry and leave the next
+        // launch of this run instantiating zero bytes. The copy is a memcpy of a few
+        // megabytes against a download that is orders of magnitude dearer, and the
+        // worker still owns its buffer outright.
+        const owned = wasm.slice(0);
+        worker.postMessage(
+          { type: "init", wasm: owned, scenario: scenarioJson },
+          [owned],
+        );
       } catch (err) {
         if (!cancelled)
           setError(err instanceof Error ? err.message : String(err));

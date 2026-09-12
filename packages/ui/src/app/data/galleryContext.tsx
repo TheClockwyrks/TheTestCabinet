@@ -45,6 +45,11 @@ import {
   parseWriteup,
   subItemVerdictId,
 } from "./ratings";
+import {
+  assetErrorMessage,
+  createAssetCache,
+  useCachedAsset,
+} from "./assetCache";
 import { extensionFor } from "./proofMedia";
 import { findModelByModelId, type ModelSummary } from "./models";
 import type {
@@ -1552,7 +1557,7 @@ export function GalleryDataProvider({
 export function useGalleryData(): GalleryData {
   const ctx = useContext(GalleryDataContext);
   if (!ctx) {
-    throw new Error("useGalleryData must be used within a GalleryDataProvider");
+    throw new Error("useGalleryData called outside a <GalleryDataProvider>");
   }
   return ctx;
 }
@@ -1569,7 +1574,27 @@ export function useGalleryDataOptional(): GalleryData | null {
 // A process-wide cache of fetched per-part `.glb` files, keyed by their resolved URL.
 // Mesh geometry is immutable per published/produced run, so a file fetched once
 // (for the viewer, its fallback, or a re-mount) is reused rather than re-fetched.
-const meshFileCache = new Map<string, PartMesh>();
+//
+// Bounded at 256 parts / 128 MB. A voxel rig is tens of parts and a decoded part is
+// vertex arrays rather than the compressed `.glb` that carried them, so the byte
+// budget is what actually binds: 128 MB holds the rigs of the several runs a
+// reviewer flips between while a session that walks a whole gallery drops the ones
+// it left behind.
+const meshFiles = createAssetCache<PartMesh>({
+  name: "voxel part mesh",
+  maxEntries: 256,
+  maxBytes: 128 * 1024 * 1024,
+  weigh: (mesh) =>
+    (mesh.positions.length + mesh.normals.length + mesh.colors.length) * 4 +
+    mesh.indices.length * 4,
+  load: async (url) => {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`mesh fetch failed: HTTP ${response.status} (${url})`);
+    }
+    return parseGlb(await response.arrayBuffer());
+  },
+});
 
 /** The load state of a set of voxel artifacts (see {@link useVoxelArtifacts}). */
 export interface VoxelArtifacts {
@@ -1598,19 +1623,37 @@ export async function fetchMeshesByPart(
   const servable = parts.filter((p) => p.meshUrl);
   const entries = await Promise.all(
     servable.map(async (part) => {
-      const url = part.meshUrl!;
-      const cached = meshFileCache.get(url);
-      if (cached) return [part.name, cached] as const;
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error(`${part.name}: ${response.status}`);
-      }
-      const file = parseGlb(await response.arrayBuffer());
-      meshFileCache.set(url, file);
+      // The part's name rides on the failure, because the shared loader knows only
+      // the URL and a rig's reviewer needs to know which part of it is missing.
+      const file = await meshFiles
+        .load(part.meshUrl!)
+        .catch((cause: unknown) => {
+          throw new Error(`part ${part.name}: ${assetErrorMessage(cause)}`);
+        });
       return [part.name, file] as const;
     }),
   );
   return Object.fromEntries(entries);
+}
+
+/**
+ * The complete set of meshes for `parts` if every servable one is already cached,
+ * else null — how {@link useVoxelArtifacts} renders a rig it has already built
+ * without a loading state (see "Immutable asset caching" in the UI component doc).
+ * A partial set is no set: the viewer builds one complete rig rather than
+ * flickering part by part.
+ */
+function peekMeshesByPart(
+  parts: readonly { name: string; meshUrl: string | null }[],
+): Record<string, PartMesh> | null {
+  const meshes: Record<string, PartMesh> = {};
+  for (const part of parts) {
+    if (!part.meshUrl) continue;
+    const cached = meshFiles.peek(part.meshUrl);
+    if (cached === undefined) return null;
+    meshes[part.name] = cached;
+  }
+  return meshes;
 }
 
 /**
@@ -1621,37 +1664,78 @@ export async function fetchMeshesByPart(
  * `meshesByPart` stays null until every servable part has resolved, so the viewer
  * builds one complete rig rather than flickering part-by-part.
  */
+/** The state a rig starts in: resolved where every part is already cached. */
+function seedVoxel(
+  parts: readonly { name: string; meshUrl: string | null }[],
+): VoxelArtifacts {
+  const cached = peekMeshesByPart(parts);
+  return cached === null
+    ? { meshesByPart: null, loading: true, error: null }
+    : { meshesByPart: cached, loading: false, error: null };
+}
+
+/** Whether two resolved sets name the same parts and the same mesh objects. */
+function sameMeshes(
+  a: Record<string, PartMesh>,
+  b: Record<string, PartMesh>,
+): boolean {
+  const names = Object.keys(a);
+  if (names.length !== Object.keys(b).length) return false;
+  return names.every((name) => a[name] === b[name]);
+}
+
 export function useVoxelArtifacts(
   parts: readonly { name: string; meshUrl: string | null }[],
 ): VoxelArtifacts {
   // A stable dependency key: the ordered name→url pairs as one string.
   const key = parts.map((p) => `${p.name}=${p.meshUrl ?? ""}`).join("|");
-  const [state, setState] = useState<VoxelArtifacts>({
-    meshesByPart: null,
-    loading: true,
-    error: null,
-  });
+  // Seeded from the cache, and re-seeded during the render that sees a new key
+  // rather than in the effect below: a rig this session has already fetched renders
+  // on the very first frame of a remount, with no spinner over geometry the console
+  // is still holding. Every tab of a run's detail page is its own route, so leaving
+  // the model view and coming back is exactly that remount.
+  const [seenKey, setSeenKey] = useState(key);
+  const [state, setState] = useState<VoxelArtifacts>(() => seedVoxel(parts));
+  if (key !== seenKey) {
+    setSeenKey(key);
+    setState(seedVoxel(parts));
+  }
 
   useEffect(() => {
     const servable = parts.filter((p) => p.meshUrl);
     if (servable.length === 0) {
-      setState({ meshesByPart: {}, loading: false, error: null });
+      // The seed already settled this — a rig with nothing to fetch is resolved on
+      // sight — so a fresh empty record here would only have the viewer rebuild.
+      setState((prev) =>
+        prev.meshesByPart !== null && !prev.loading && prev.error === null
+          ? prev
+          : { meshesByPart: {}, loading: false, error: null },
+      );
       return;
     }
     let cancelled = false;
-    setState({ meshesByPart: null, loading: true, error: null });
 
     fetchMeshesByPart(servable)
       .then((meshesByPart) => {
         if (cancelled) return;
-        setState({ meshesByPart, loading: false, error: null });
+        // A seeded set resolves to the same mesh objects, so it is kept: handing
+        // the viewer a fresh record of identical parts would have it tear the rig
+        // down and rebuild it for nothing.
+        setState((prev) =>
+          prev.meshesByPart !== null &&
+          !prev.loading &&
+          prev.error === null &&
+          sameMeshes(prev.meshesByPart, meshesByPart)
+            ? prev
+            : { meshesByPart, loading: false, error: null },
+        );
       })
       .catch((cause: unknown) => {
         if (cancelled) return;
         setState({
           meshesByPart: null,
           loading: false,
-          error: cause instanceof Error ? cause.message : String(cause),
+          error: assetErrorMessage(cause),
         });
       });
 
@@ -1668,22 +1752,28 @@ export function useVoxelArtifacts(
 
 // A process-wide cache of fetched `system.json` definitions, keyed by resolved URL.
 // A published/produced run's system is immutable, so it is fetched at most once and
-// reused by the live viewer across mounts.
-const particleSystemCache = new Map<string, ParticleSystem>();
+// reused by the live viewer across mounts. An authored emitter/force/curve
+// definition is a small document, so 64 of them — more runs than a reviewer holds
+// in play — is the whole bound.
+const particleSystems = createAssetCache<ParticleSystem>({
+  name: "particle system",
+  maxEntries: 64,
+  load: async (url) => {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(
+        `system.json fetch failed: HTTP ${response.status} (${url})`,
+      );
+    }
+    return (await response.json()) as ParticleSystem;
+  },
+});
 
 /** Fetch (and cache) a particle run's emitted `system.json` — the authored
  * emitter/force/curve definition the viewer simulates live. Rejects on a failed
  * fetch or malformed JSON. */
-export async function fetchParticleSystem(
-  url: string,
-): Promise<ParticleSystem> {
-  const cached = particleSystemCache.get(url);
-  if (cached) return cached;
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`system.json: ${response.status}`);
-  const system = (await response.json()) as ParticleSystem;
-  particleSystemCache.set(url, system);
-  return system;
+export function fetchParticleSystem(url: string): Promise<ParticleSystem> {
+  return particleSystems.load(url);
 }
 
 /** The load state of a fetched particle `system.json`. */
@@ -1699,54 +1789,46 @@ export interface ParticleSystemState {
  * the WebGL guard promotes). `system` stays null until the fetch resolves.
  */
 export function useParticleSystem(url: string | null): ParticleSystemState {
-  const [state, setState] = useState<ParticleSystemState>({
-    system: null,
-    loading: url !== null,
-    error: null,
-  });
-
-  useEffect(() => {
-    if (url === null) {
-      setState({ system: null, loading: false, error: null });
-      return;
-    }
-    let cancelled = false;
-    setState({ system: null, loading: true, error: null });
-    fetchParticleSystem(url)
-      .then((system) => {
-        if (!cancelled) setState({ system, loading: false, error: null });
-      })
-      .catch((cause: unknown) => {
-        if (cancelled) return;
-        setState({
-          system: null,
-          loading: false,
-          error: cause instanceof Error ? cause.message : String(cause),
-        });
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [url]);
-
-  return state;
+  const { data, loading, error } = useCachedAsset(particleSystems, url);
+  return useMemo(
+    () => ({ system: data, loading, error }),
+    [data, loading, error],
+  );
 }
 
 // A process-wide cache of decoded skinned meshes, keyed by resolved `.glb` URL. Like
-// {@link meshFileCache}, mesh geometry is immutable per run, so each file is decoded
-// at most once.
-const skinnedMeshCache = new Map<string, SkinnedMesh>();
+// {@link meshFiles}, mesh geometry is immutable per run, so each file is decoded at
+// most once. A skinned run is ONE mesh rather than a rig of parts, but that one mesh
+// carries per-vertex joints and weights on top of the geometry, so this is bounded
+// by bytes on the same reasoning: 96 MB is the several runs a reviewer compares.
+const skinnedMeshes = createAssetCache<SkinnedMesh>({
+  name: "skinned mesh",
+  maxEntries: 32,
+  maxBytes: 96 * 1024 * 1024,
+  weigh: (mesh) =>
+    (mesh.positions.length +
+      mesh.normals.length +
+      mesh.colors.length +
+      mesh.indices.length +
+      mesh.joints.length +
+      mesh.weights.length) *
+      4 +
+    mesh.bones.length * 128,
+  load: async (url) => {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(
+        `mesh.glb fetch failed: HTTP ${response.status} (${url})`,
+      );
+    }
+    return parseSkinnedGlb(await response.arrayBuffer());
+  },
+});
 
 /** Fetch (and cache) a skinned run's single `mesh.glb` and decode it into a
  * {@link SkinnedMesh} with `parseSkinnedGlb`. Rejects on a failed fetch or decode. */
-export async function fetchSkinnedMesh(url: string): Promise<SkinnedMesh> {
-  const cached = skinnedMeshCache.get(url);
-  if (cached) return cached;
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`mesh.glb: ${response.status}`);
-  const mesh = parseSkinnedGlb(await response.arrayBuffer());
-  skinnedMeshCache.set(url, mesh);
-  return mesh;
+export function fetchSkinnedMesh(url: string): Promise<SkinnedMesh> {
+  return skinnedMeshes.load(url);
 }
 
 /** The load state of a decoded skinned mesh. */
@@ -1762,35 +1844,9 @@ export interface SkinnedMeshState {
  * `skinnedMeshUrl` (or null to fetch nothing). `mesh` stays null until it resolves.
  */
 export function useSkinnedMesh(url: string | null): SkinnedMeshState {
-  const [state, setState] = useState<SkinnedMeshState>({
-    mesh: null,
-    loading: url !== null,
-    error: null,
-  });
-
-  useEffect(() => {
-    if (url === null) {
-      setState({ mesh: null, loading: false, error: null });
-      return;
-    }
-    let cancelled = false;
-    setState({ mesh: null, loading: true, error: null });
-    fetchSkinnedMesh(url)
-      .then((mesh) => {
-        if (!cancelled) setState({ mesh, loading: false, error: null });
-      })
-      .catch((cause: unknown) => {
-        if (cancelled) return;
-        setState({
-          mesh: null,
-          loading: false,
-          error: cause instanceof Error ? cause.message : String(cause),
-        });
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [url]);
-
-  return state;
+  const { data, loading, error } = useCachedAsset(skinnedMeshes, url);
+  return useMemo(
+    () => ({ mesh: data, loading, error }),
+    [data, loading, error],
+  );
 }

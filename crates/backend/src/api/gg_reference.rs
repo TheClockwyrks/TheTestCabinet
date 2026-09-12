@@ -266,8 +266,8 @@ fn unavailable(directory: &Path, err: &ReferenceError) -> ApiError {
         "gg_reference_unavailable",
         format!(
             "gg's reference documents are not available at {} ({err}); write them with \
-             `scripts/gg-reference.sh`, or point TCAB_GG_REFERENCE at a directory \
-             `gg reference --out` produced",
+             `scripts/gg-reference.sh` or point TCAB_GG_REFERENCE at a \
+             `gg reference --out` directory",
             directory.display()
         ),
     )

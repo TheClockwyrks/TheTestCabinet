@@ -2,10 +2,15 @@ import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import { describe, expect, it } from "vitest";
 import { meanBars, runBars } from "./MetricChartWidget";
 
-// A run summary carrying only the fields the bar builders read: its subject's
-// harness + model, and whatever the `value` accessor pulls out.
+// A run summary carrying only the fields the bar builders read: its id, its
+// subject's harness + model, and whatever the `value` accessor pulls out. The id
+// is generated so every run in a fixture is distinguishable — a mean bar now
+// keeps its observations, and two runs sharing an id would hide a fold bug.
+let nextRunId = 0;
 function run(harnessSlug: string, modelId: string, tokens: number): RunSummary {
+  nextRunId += 1;
   return {
+    id: `run-${nextRunId}`,
     subject: { harnessSlug, modelId },
     metrics: { tokens },
   } as unknown as RunSummary;
@@ -72,8 +77,12 @@ describe("meanBars — the harness split", () => {
       [run("pi", "anthropic/claude-opus-4.8", 300)],
       value,
       fmt,
-      (id) => (id === "anthropic/claude-opus-4.8" ? "#abc" : null),
-      (id) => (id === "anthropic/claude-opus-4.8" ? "Opus 4.8" : null),
+      {
+        colorForModel: (id) =>
+          id === "anthropic/claude-opus-4.8" ? "#abc" : null,
+        labelForModel: (id) =>
+          id === "anthropic/claude-opus-4.8" ? "Opus 4.8" : null,
+      },
     );
     expect(bars[0]?.color).toBe("#abc");
     expect(bars[0]?.label).toBe("Opus 4.8 · pi");
@@ -109,9 +118,7 @@ describe("meanBars — the subgroup split", () => {
       ],
       value,
       fmt,
-      undefined,
-      undefined,
-      engineOf,
+      { subgroup: engineOf },
     );
     expect(bars).toHaveLength(2);
     const byLabel = new Map(bars.map((b) => [b.label, b.value]));
@@ -129,9 +136,7 @@ describe("meanBars — the subgroup split", () => {
       ],
       value,
       fmt,
-      undefined,
-      undefined,
-      engineOf,
+      { subgroup: engineOf },
     );
     expect(bars).toHaveLength(1);
     expect(bars[0]?.label).toBe("anthropic/claude-opus-4.8 · pi · simple-2d");
@@ -162,5 +167,126 @@ describe("runBars — the harness split", () => {
       fmt,
     );
     expect(bars).toHaveLength(0);
+  });
+});
+
+describe("meanBars — the runs behind the mean", () => {
+  it("keeps every observation a bar averaged, in fold order", () => {
+    // The bar height alone cannot produce a box plot or a scatter. Folding the
+    // runs away is what used to make both impossible.
+    const runs = [
+      run("pi", "alpha", 1),
+      run("pi", "alpha", 2),
+      run("pi", "alpha", 9),
+    ];
+    const [bar] = meanBars(runs, value, fmt);
+    expect(bar?.value).toBe(4);
+    expect(bar?.distribution?.points.map((p) => p.value)).toEqual([1, 2, 9]);
+    expect(bar?.distribution?.points.map((p) => p.runId)).toEqual(
+      runs.map((r) => r.id),
+    );
+  });
+
+  it("summarizes the bar on the repository's quartile convention", () => {
+    const [bar] = meanBars(
+      [run("pi", "alpha", 1), run("pi", "alpha", 2), run("pi", "alpha", 9)],
+      value,
+      fmt,
+    );
+    expect(bar?.distribution).toMatchObject({
+      n: 3,
+      mean: 4,
+      median: 2,
+      min: 1,
+      max: 9,
+      q1: 1.5,
+      q3: 5.5,
+    });
+  });
+
+  it("splits the observations by the same fold key the bars use", () => {
+    // Two harnesses of one model are two bars, so they are also two samples —
+    // a shared observation list would be the merged average by another route.
+    const bars = meanBars(
+      [run("pi", "alpha", 10), run("kilo", "alpha", 20)],
+      value,
+      fmt,
+    );
+    expect(bars.map((b) => b.distribution?.points.map((p) => p.value))).toEqual(
+      [[10], [20]],
+    );
+  });
+
+  it("states the spread in the bar's tooltip, alongside n", () => {
+    const [bar] = meanBars(
+      [run("pi", "alpha", 1), run("pi", "alpha", 2), run("pi", "alpha", 9)],
+      value,
+      fmt,
+    );
+    expect(bar?.title).toBe(
+      [
+        "alpha · pi · 3 runs",
+        "Mean: 4",
+        "Median: 2",
+        "IQR: 1.5 – 5.5",
+        "Range: 1 – 9",
+      ].join("\n"),
+    );
+  });
+
+  it("says a one-run bar is one run and claims no spread for it", () => {
+    // At n = 1 the distribution collapses to a point. Printing "Median" and
+    // "Range" over one observation would dress a single number up as a summary.
+    const [bar] = meanBars([run("pi", "alpha", 7)], value, fmt);
+    expect(bar?.title).toBe("alpha · pi · 1 run\n7");
+    expect(bar?.distribution).toMatchObject({
+      n: 1,
+      mean: 7,
+      median: 7,
+      min: 7,
+      max: 7,
+      q1: 7,
+      q3: 7,
+    });
+  });
+
+  it("identifies each observation for its own tooltip and links it", () => {
+    const runs = [run("pi", "alpha", 2), run("pi", "alpha", 4)];
+    const [bar] = meanBars(runs, value, fmt, {
+      runHref: (r) => `/runs/${r.id}`,
+      describeRun: (r) => `started ${r.id}`,
+    });
+    const [first] = bar?.distribution?.points ?? [];
+    expect(first?.href).toBe(`/runs/${runs[0]!.id}`);
+    expect(first?.title).toBe(
+      [
+        "alpha · pi",
+        "2",
+        `started ${runs[0]!.id}`,
+        "Group mean: 3 · 2 runs",
+        `run ${runs[0]!.id}`,
+      ].join("\n"),
+    );
+  });
+
+  it("leaves a run whose value is unknown out of the sample entirely", () => {
+    // Excluded from the mean AND from the points, so a dropped run cannot
+    // reappear in the scatter as a zero.
+    const bars = meanBars(
+      [run("pi", "alpha", 4), run("pi", "alpha", 8)],
+      (r) => (value(r) === 4 ? null : value(r)),
+      fmt,
+    );
+    expect(bars[0]?.distribution?.points.map((p) => p.value)).toEqual([8]);
+    expect(bars[0]?.distribution?.n).toBe(1);
+  });
+});
+
+describe("runBars — no fabricated spread", () => {
+  it("gives a per-run bar no distribution", () => {
+    // A bar that IS one observation has nothing behind it. Asserting a spread
+    // of zero would be a claim the data does not make.
+    const bars = runBars([run("pi", "alpha", 300)], value, fmt);
+    expect(bars[0]?.distribution).toBeUndefined();
   });
 });

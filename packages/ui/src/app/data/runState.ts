@@ -1,5 +1,13 @@
 import type { RunRecord, RunState } from "@clockwyrks/run-record";
 
+/**
+ * Where a reader goes for the full contract behind a terminal state — the tier
+ * list itself, and what each one means for publishing. Linked rather than
+ * restated, so the gallery and the contract cannot drift.
+ */
+export const RUN_STATE_DOCS_URL =
+  "https://docs.testcabinet.ai/components/core/run-records/#status";
+
 // How a run's terminal state reads in the UI. The Rust contract
 // (`crates/core/src/run_record.rs`) is the source of truth for the states
 // themselves; this is the single place the gallery turns one into user-facing
@@ -9,8 +17,24 @@ export interface RunStatePresentation {
   label: string;
   /** Compact label for a card's status chip (e.g. "catastrophic"). */
   chip: string;
-  /** One-line explanation for the failure banner body. */
+  /**
+   * What went wrong, as one terse declarative clause. It reports the *error*,
+   * never what the system decided to do about it, per the failure-detail style
+   * in the run-record contract; the tier's consequences live in
+   * {@link RunStatePresentation.consequence}. Stands in for the failure banner's
+   * body when the record carries no `status.detail` of its own.
+   */
   description: string;
+  /**
+   * What the tier means for the run's outcome: whether it is publishable, what a
+   * publish releases, and whether it counts towards a model's statistics. This is
+   * documented contract knowledge a reader of the gallery needs, not part of the
+   * error, which is why it is a field of its own rather than a tail on
+   * {@link RunStatePresentation.description}. Surfaced on demand — a `HelpTip`
+   * beside the tier chip on the Publish-failures worklist, and the Verdict tab's
+   * failure note — with {@link RUN_STATE_DOCS_URL} behind it for the rest.
+   */
+  consequence: string;
   /** Whether this state is any failure tier (not a clean completion). */
   isFailure: boolean;
   /**
@@ -31,6 +55,8 @@ export function describeRunState(state: RunState): RunStatePresentation {
         label: "Completed",
         chip: "completed",
         description: "The run produced a usable, evaluable implementation.",
+        consequence:
+          "Scored on the reviewer checklist: by its validators on a validator-rated run, overlaid with any reviewer overrides, and by its reviewers on a legacy run. A validator-rated run is publishable the moment it completes; a legacy run publishes through review.",
         isFailure: false,
         isPublishableFailure: false,
       };
@@ -39,7 +65,9 @@ export function describeRunState(state: RunState): RunStatePresentation {
         label: "Catastrophic failure",
         chip: "catastrophic",
         description:
-          "The model claimed completion, but the output could not be built or evaluated, so it produced no playable build. Its broken source is kept so the failure can be inspected.",
+          "The harness exited cleanly, claiming completion, but the output did not build or load.",
+        consequence:
+          "Publishable model signal with no review checklist, reported as a per-model catastrophic-failure statistic. A publish releases the generated source and no playable build.",
         isFailure: true,
         isPublishableFailure: true,
       };
@@ -48,7 +76,9 @@ export function describeRunState(state: RunState): RunStatePresentation {
         label: "Timed out",
         chip: "timed out",
         description:
-          "The run hit its maximum runtime and was stopped before the model finished. It never converged on a result.",
+          "The run hit its maximum runtime before the harness finished, so the model never converged.",
+        consequence:
+          "Publishable model signal with no review checklist, unscored and reported as a per-model timeout statistic. A publish releases the generated source and no playable build.",
         isFailure: true,
         isPublishableFailure: true,
       };
@@ -57,7 +87,9 @@ export function describeRunState(state: RunState): RunStatePresentation {
         label: "Harness error",
         chip: "harness",
         description:
-          "The model drove the agent harness to exit early (a non-zero exit). It produced no evaluable output, so it releases no code or build and is recorded only as a per-model harness-error statistic. A subscription auth-token refresh can also surface here; those are not published.",
+          "The agent harness, or the orchestrator runner driving it, exited non-zero.",
+        consequence:
+          "Publishable without a review, releasing no source repository and no playable build, and recorded only as a per-model harness-error statistic. A subscription auth-token refresh also surfaces as a non-zero exit, so each publish is deliberate: record the real harness errors and leave the auth-refresh ones unpublished.",
         isFailure: true,
         isPublishableFailure: true,
       };
@@ -66,7 +98,9 @@ export function describeRunState(state: RunState): RunStatePresentation {
         label: "Execution ceiling reached",
         chip: "ceiling",
         description:
-          "The harness stopped the run on one of the execution ceilings its configuration armed: a turn count, a wall-clock budget, a spend, or a tolerance for failing turns. The model spent its whole allowance without finishing, so the run releases no code or build and is recorded as a per-model statistic. It is never retried, because a second attempt on the same configuration reaches the same ceiling.",
+          "The model spent an execution ceiling its configuration armed without finishing: a turn count, a wall-clock budget, a spend, or a tolerance for failing turns.",
+        consequence:
+          "Published exactly like a harness error — no source repository, no playable build, recorded only as a per-model statistic. It is the one harness stop that is never retried, because a breached ceiling is a property of the configuration and a second attempt reaches the same bound. Only a gg run reaches this tier.",
         isFailure: true,
         isPublishableFailure: true,
       };
@@ -75,7 +109,9 @@ export function describeRunState(state: RunState): RunStatePresentation {
         label: "Harness hung",
         chip: "hung",
         description:
-          "The agent harness stopped producing output entirely and was stopped as hung, having neither finished nor failed. Like a harness error it releases no code or build and is recorded only as a per-model statistic.",
+          "The agent harness stopped producing output altogether: a provider request that never returned, or a subagent that never reported back.",
+        consequence:
+          "Published exactly like a harness error, with no exit code to report — no source repository, no playable build, recorded only as a per-model statistic. The idle watchdog sits well below the platform's own idle limits, so a run's fate is decided here rather than by its maximum runtime.",
         isFailure: true,
         isPublishableFailure: true,
       };
@@ -84,7 +120,9 @@ export function describeRunState(state: RunState): RunStatePresentation {
         label: "Infrastructure failure",
         chip: "infra",
         description:
-          "The Test Cabinet's own infrastructure failed before the model's output could be judged. This is not a model result and is never published.",
+          "The Test Cabinet's own infrastructure failed before the model's output could be judged.",
+        consequence:
+          "Not a model result: never publishable, and excluded from every model statistic. The run is retained with a diagnostic detail naming the reason, and one that reached the dependency install keeps its collected tree and validation summary.",
         isFailure: true,
         isPublishableFailure: false,
       };
@@ -92,8 +130,9 @@ export function describeRunState(state: RunState): RunStatePresentation {
       return {
         label: "Canceled",
         chip: "canceled",
-        description:
-          "An operator stopped this run before it finished. Everything it streamed up to that point is kept so it can be inspected, but it reached no outcome. It is not a model result and is never published.",
+        description: "An operator killed the run before it finished.",
+        consequence:
+          "Not a model result: never publishable, and excluded from every model statistic, because nothing about the model can be concluded from a run a human ended. A killed gg run is retained for inspection with its metrics, its collected tree as it stood at the last completed turn, and everything it streamed; a killed run of any other harness leaves no record at all.",
         isFailure: true,
         isPublishableFailure: false,
       };

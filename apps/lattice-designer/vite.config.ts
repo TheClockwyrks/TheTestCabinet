@@ -13,6 +13,16 @@ const lattice = new URL(
   import.meta.url,
 ).pathname;
 
+// The numeric-field rules the console's forms are written against — how a field's
+// text is read, and why it is refused. One module, no JSX and no styling, so the
+// designer shares the behaviour (a cleared field stays cleared; nothing out of
+// range is ever committed) while keeping its own plain-CSS controls. Same reasoning
+// as `@lattice` above: alias the pure module rather than depend on the package.
+const numeric = new URL(
+  "../../packages/ui/src/app/components/numberFieldRules.ts",
+  import.meta.url,
+).pathname;
+
 // The Lattice factory designer. A plain SPA dev tool: `vite build` emits a static
 // bundle, but it is normally run with `vite dev` while authoring a factory. Only the
 // dev server carries `scenarioApi`, which is what lets the tool open and save the
@@ -20,7 +30,7 @@ const lattice = new URL(
 export default defineConfig({
   plugins: [react(), scenarioApi()],
   resolve: {
-    alias: { "@lattice": lattice },
+    alias: { "@lattice": lattice, "@numeric": numeric },
   },
   server: {
     port: 1431,

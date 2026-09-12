@@ -331,6 +331,94 @@ describe("NewRunPage", () => {
     expect(launchRunBatch).not.toHaveBeenCalled();
   });
 
+  // The report this was built for: "1" could not be replaced by "5" without
+  // selecting it or driving the spinner, because clearing the field snapped it
+  // back to 1 under the caret.
+  it("lets the run count be cleared and retyped, and refuses to launch while it is empty", async () => {
+    const launchRunBatch = vi.fn().mockResolvedValue([{ runId: "run-1" }]);
+    renderPage(undefined, undefined, launchRunBatch);
+    fireEvent.change(await screen.findByPlaceholderText(/^model id/), {
+      target: { value: "claude-opus-4-8" },
+    });
+
+    const runCount = screen.getByLabelText("Run count") as HTMLInputElement;
+    expect(runCount.value).toBe("1");
+
+    fireEvent.change(runCount, { target: { value: "" } });
+    expect(runCount.value).toBe("");
+    expect(screen.getByText("Run count is required.")).toBeVisible();
+    expect(screen.getByRole("button", { name: /^Launch/ })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: /^Launch/ }));
+    expect(launchRunBatch).not.toHaveBeenCalled();
+
+    fireEvent.change(runCount, { target: { value: "5" } });
+    expect(runCount.value).toBe("5");
+    fireEvent.click(screen.getByRole("button", { name: "Launch 5 runs" }));
+    await waitFor(() => expect(launchRunBatch).toHaveBeenCalledTimes(1));
+    expect(launchRunBatch.mock.calls[0]![0]).toHaveLength(5);
+  });
+
+  it("refuses to launch on a run count outside the range it enqueues", async () => {
+    const launchRunBatch = vi.fn();
+    renderPage(undefined, undefined, launchRunBatch);
+    fireEvent.change(await screen.findByPlaceholderText(/^model id/), {
+      target: { value: "claude-opus-4-8" },
+    });
+
+    const runCount = screen.getByLabelText("Run count") as HTMLInputElement;
+    fireEvent.change(runCount, { target: { value: "999" } });
+    // Held as typed rather than clamped to the ceiling behind the operator's back.
+    expect(runCount.value).toBe("999");
+    expect(screen.getByText("Run count must be 20 or less.")).toBeVisible();
+    expect(screen.getByRole("button", { name: /^Launch/ })).toBeDisabled();
+    expect(launchRunBatch).not.toHaveBeenCalled();
+  });
+
+  it("lets the retry count be cleared, and refuses to launch until it is answered", async () => {
+    const launchRunBatch = vi.fn();
+    renderPage(undefined, undefined, launchRunBatch);
+    fireEvent.change(await screen.findByPlaceholderText(/^model id/), {
+      target: { value: "claude-opus-4-8" },
+    });
+
+    const retries = screen.getByLabelText("Retry count") as HTMLInputElement;
+    fireEvent.change(retries, { target: { value: "" } });
+    expect(retries.value).toBe("");
+    expect(screen.getByText("Retry count is required.")).toBeVisible();
+    expect(screen.getByRole("button", { name: /^Launch/ })).toBeDisabled();
+
+    // Zero is an answer — retries off — and is not the same as no answer at all.
+    fireEvent.change(retries, { target: { value: "0" } });
+    expect(screen.getByRole("button", { name: /^Launch/ })).not.toBeDisabled();
+  });
+
+  // The one field here an empty entry may be launched on: empty means "use the
+  // case's own ceiling". Text that names no number is still refused, rather than
+  // reaching the request as a NaN.
+  it("launches on an empty max runtime but not on a nonsense one", async () => {
+    const launchRunBatch = vi.fn().mockResolvedValue([{ runId: "run-1" }]);
+    renderPage(undefined, undefined, launchRunBatch);
+    fireEvent.change(await screen.findByPlaceholderText(/^model id/), {
+      target: { value: "claude-opus-4-8" },
+    });
+
+    const maxRuntime = screen.getByLabelText(
+      "Max runtime (s, optional)",
+    ) as HTMLInputElement;
+    expect(maxRuntime.value).toBe("");
+    expect(screen.getByRole("button", { name: /^Launch/ })).not.toBeDisabled();
+
+    fireEvent.change(maxRuntime, { target: { value: "0" } });
+    expect(screen.getByRole("button", { name: /^Launch/ })).toBeDisabled();
+
+    fireEvent.change(maxRuntime, { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Launch/ }));
+    await waitFor(() => expect(launchRunBatch).toHaveBeenCalledTimes(1));
+    expect(launchRunBatch.mock.calls[0]![0][0]).not.toHaveProperty(
+      "maxRuntimeSeconds",
+    );
+  });
+
   it("offers harnesses until gg is chosen as the orchestrator", async () => {
     renderPage();
     expect(screen.getByLabelText("Harness")).toBeInTheDocument();

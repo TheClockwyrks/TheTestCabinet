@@ -35,6 +35,8 @@ vi.mock("../../runtime/useCatalog", () => ({
     versionInfo: {
       testType: "end-to-end",
       variants: [{ slug: "base", name: "Base" }],
+      // The engines this version declares — the only ones the form may offer.
+      engines: ["none", "simple-2d"],
       maxRuntimeSeconds: 600,
     },
     error: null,
@@ -208,6 +210,112 @@ describe("ComparisonEditPage", () => {
     // Each arm's label distinguishes it by what it runs, model included.
     expect(harnessArm.label).toContain(harnessArm.modelId);
     expect(ggArm.label).toContain("minimal");
+  });
+
+  it("offers the engines the selected version declares, and saves the pick as a control", async () => {
+    const createComparison = vi
+      .fn()
+      .mockResolvedValue({ id: "cmp-1", config: {} });
+    renderPage(createComparison);
+    await screen.findByLabelText("gg configuration");
+
+    fireEvent.change(screen.getByLabelText("Name"), {
+      target: { value: "Carom on Simple 2D" },
+    });
+    // Named by the engine catalog, not by the raw slug.
+    fireEvent.change(screen.getByLabelText("Engine"), {
+      target: { value: "simple-2d" },
+    });
+    chooseOpenRouterHarness();
+    await pickModel(0);
+    await pickModel(1);
+
+    const save = screen.getByRole("button", { name: "Create comparison" });
+    await waitFor(() => expect(save).toBeEnabled());
+    fireEvent.click(save);
+    await waitFor(() => expect(createComparison).toHaveBeenCalledTimes(1));
+    expect(createComparison.mock.calls[0]![0].config.controls.engineSlug).toBe(
+      "simple-2d",
+    );
+  });
+
+  it("lets the run count be cleared outright, and refuses to save while it is empty", async () => {
+    const createComparison = vi
+      .fn()
+      .mockResolvedValue({ id: "cmp-1", config: {} });
+    renderPage(createComparison);
+    await screen.findByLabelText("gg configuration");
+    fireEvent.change(screen.getByLabelText("Name"), {
+      target: { value: "Carom — gg vs Kilo" },
+    });
+    chooseOpenRouterHarness();
+    await pickModel(0);
+    await pickModel(1);
+
+    const field = screen.getByLabelText("N (runs per arm)");
+    // Cleared, and it *stays* cleared — no snap back to a floor value under the
+    // caret (docs/components/ui/overview.md → "Numeric fields").
+    fireEvent.change(field, { target: { value: "" } });
+    expect(field).toHaveValue(null);
+    expect(
+      screen.getByRole("button", { name: "Create comparison" }),
+    ).toBeDisabled();
+    // The field says what is wrong with it, and the action row says which field
+    // is holding the save.
+    expect(screen.getByText("Runs per arm is required.")).toBeInTheDocument();
+    expect(
+      screen.getByText("The run count needs a whole number from 1 to 50."),
+    ).toBeInTheDocument();
+
+    // Typed over, the form saves exactly what was typed.
+    fireEvent.change(field, { target: { value: "7" } });
+    const save = screen.getByRole("button", { name: "Create comparison" });
+    await waitFor(() => expect(save).toBeEnabled());
+    fireEvent.click(save);
+    await waitFor(() => expect(createComparison).toHaveBeenCalledTimes(1));
+    expect(createComparison.mock.calls[0]![0].config.n).toBe(7);
+  });
+
+  it("refuses a run count outside the bounds the backend enforces", async () => {
+    renderPage();
+    await screen.findByLabelText("gg configuration");
+    fireEvent.change(screen.getByLabelText("Name"), {
+      target: { value: "Too many" },
+    });
+    chooseOpenRouterHarness();
+    await pickModel(0);
+    await pickModel(1);
+
+    fireEvent.change(screen.getByLabelText("N (runs per arm)"), {
+      target: { value: "51" },
+    });
+    expect(
+      screen.getByRole("button", { name: "Create comparison" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByText("Runs per arm must be 50 or less."),
+    ).toBeInTheDocument();
+  });
+
+  it("reports the backend's own refusal rather than swallowing it", async () => {
+    const createComparison = vi
+      .fn()
+      .mockRejectedValue(new Error("400 a comparison needs at least 2 arms"));
+    renderPage(createComparison);
+    await screen.findByLabelText("gg configuration");
+    fireEvent.change(screen.getByLabelText("Name"), {
+      target: { value: "Rejected" },
+    });
+    chooseOpenRouterHarness();
+    await pickModel(0);
+    await pickModel(1);
+
+    const save = screen.getByRole("button", { name: "Create comparison" });
+    await waitFor(() => expect(save).toBeEnabled());
+    fireEvent.click(save);
+    expect(
+      await screen.findByText(/a comparison needs at least 2 arms/),
+    ).toBeInTheDocument();
   });
 
   it("cannot be saved until every configuration has its model", async () => {

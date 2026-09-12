@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { createResolverAssetCaches, type AssetCache } from "./assetCache";
 import type { RunSubject } from "@clockwyrks/run-record";
 import type {
   CaseVariantRef,
@@ -71,27 +72,54 @@ export function useCaseVariant(
   engine: string,
 ): RetryableRunVariantState {
   const { fetchCaseVariant } = useGalleryData();
-  const [state, setState] = useState<RunVariantState>({
-    variant: undefined,
-    status: "loading",
-  });
-  // Bumped by `retry` to re-run the effect. A rejected fetch was evicted from
-  // the cache (see `resolveCached`), so the re-run genuinely refetches rather
-  // than replaying the failure.
+  const cache = CACHES.for(fetchCaseVariant);
+  // An empty coordinate is a caller whose own inputs are still resolving (the
+  // detail layout before its case fetch settles). Nothing is resolvable *yet*,
+  // which is exactly the `loading` state — asking the host for a blank coordinate
+  // would only cache a miss — so it is keyed as nothing at all.
+  const key =
+    slug && version && variant && engine
+      ? cacheKey({ slug, version, variant, engine })
+      : null;
+
+  // Seeded from the cache, and re-seeded during the render that sees a new
+  // coordinate rather than in the effect below, so a variant already resolved this
+  // session renders on the very first frame. The Inputs tab of a run is its own
+  // route: leaving it and coming back remounts this, and a spinner over text the
+  // console is still holding is the flash the seeding removes.
+  const [seenKey, setSeenKey] = useState(key);
+  const [state, setState] = useState<RunVariantState>(() => seed(cache, key));
+  if (key !== seenKey) {
+    setSeenKey(key);
+    setState(seed(cache, key));
+  }
+  // Bumped by `retry` to re-run the effect. A rejected fetch was evicted from the
+  // cache, so the re-run genuinely refetches rather than replaying the failure.
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
+    if (key === null) return;
     let active = true;
-    setState({ variant: undefined, status: "loading" });
-    // An empty coordinate is a caller whose own inputs are still resolving (the
-    // detail layout before its case fetch settles). Nothing is resolvable *yet*,
-    // which is exactly the `loading` state — asking the host for a blank
-    // coordinate would only cache a miss.
-    if (!slug || !version || !variant || !engine) return;
-    resolveCached(fetchCaseVariant, { slug, version, variant, engine })
+    // Only where nothing is held — on a hit the state is already seeded, and
+    // blanking it here would put back the spinner the seeding removed. This is also
+    // what puts a retry back into `loading`: the failed entry was evicted, so the
+    // peek misses.
+    if (cache.peek(key) === undefined) {
+      setState((prev) =>
+        prev.status === "loading"
+          ? prev
+          : { variant: undefined, status: "loading" },
+      );
+    }
+    cache
+      .load(key, () => fetchCaseVariant({ slug, version, variant, engine }))
       .then((resolved) => {
         if (!active) return;
-        setState({ variant: resolved ?? undefined, status: "ready" });
+        setState((prev) =>
+          prev.status === "ready" && prev.variant === (resolved ?? undefined)
+            ? prev
+            : { variant: resolved ?? undefined, status: "ready" },
+        );
       })
       .catch(() => {
         if (!active) return;
@@ -100,10 +128,21 @@ export function useCaseVariant(
     return () => {
       active = false;
     };
-  }, [fetchCaseVariant, slug, version, variant, engine, attempt]);
+  }, [cache, key, fetchCaseVariant, slug, version, variant, engine, attempt]);
 
   const retry = useCallback(() => setAttempt((n) => n + 1), []);
   return { ...state, retry };
+}
+
+/** The state a coordinate starts in: resolved where the cache already holds it. */
+function seed(
+  cache: AssetCache<VariantSummary | null>,
+  key: string | null,
+): RunVariantState {
+  if (key === null) return { variant: undefined, status: "loading" };
+  const cached = cache.peek(key);
+  if (cached === undefined) return { variant: undefined, status: "loading" };
+  return { variant: cached ?? undefined, status: "ready" };
 }
 
 /** The host's resolver, as the cache keys on it. */
@@ -113,39 +152,27 @@ type Resolver = (ref: CaseVariantRef) => Promise<VariantSummary | null>;
 // reference. Keying on the resolver — which each host rebuilds when its backend
 // changes — means a switched backend gets a fresh cache for free.
 //
-// The cache holds the promise rather than the value so the surfaces that mount
-// together for one run share a single in-flight request instead of racing
-// identical ones. A case version directory is frozen once it has runs, so a
-// resolved variant is safe to keep for the session.
-const CACHE = new WeakMap<
-  Resolver,
-  Map<string, Promise<VariantSummary | null>>
->();
+// Like every cache of an immutable asset it holds the promise rather than the
+// value, so the surfaces that mount together for one run share a single in-flight
+// request instead of racing identical ones, and a rejected fetch is evicted so a
+// transient failure is retried rather than remembered for the session. A case
+// version directory is frozen once it has runs, so a resolved variant is safe to
+// keep.
+//
+// Bounded at 128 coordinates per host: one case version fans out across its
+// variants and engines, so the entries per case are several, and 128 still covers
+// far more cases than a session compares. Each is a rendered prompt and its specs —
+// text, not media.
+//
+// The reference is a composite rather than a bare slug, so the loader is supplied
+// per call by the hook that holds the four coordinates.
+const CACHES = createResolverAssetCaches<Resolver, VariantSummary | null>({
+  name: "case variant",
+  maxEntries: 128,
+});
 
 function cacheKey(ref: CaseVariantRef): string {
   return `${ref.slug}@${ref.version}/${ref.variant}/${ref.engine}`;
-}
-
-function resolveCached(
-  resolver: Resolver,
-  ref: CaseVariantRef,
-): Promise<VariantSummary | null> {
-  let byRef = CACHE.get(resolver);
-  if (!byRef) {
-    byRef = new Map();
-    CACHE.set(resolver, byRef);
-  }
-  const key = cacheKey(ref);
-  const cached = byRef.get(key);
-  if (cached) return cached;
-  // A rejected fetch is evicted so a transient failure can be retried by the next
-  // mount, rather than being remembered as a permanent error for the session.
-  const pending = resolver(ref).catch((cause: unknown) => {
-    byRef.delete(key);
-    throw cause;
-  });
-  byRef.set(key, pending);
-  return pending;
 }
 
 /** A run's scoring model alongside the load state of the fetch behind it. */

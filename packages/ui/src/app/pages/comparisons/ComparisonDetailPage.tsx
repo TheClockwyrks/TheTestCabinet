@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router";
+import { Link, useNavigate, useParams } from "react-router";
 import type { Comparison } from "@clockwyrks/run-record/comparison";
 import {
   ChartWidget,
+  SectionWidget,
   distributionChart,
   stackedBarChart,
 } from "@clockwyrks/ui";
@@ -18,6 +19,8 @@ import { BackChevron } from "../../components/BackChevron";
 import { PageLayout } from "../../components/PageLayout";
 import { useGalleryData } from "../../data/galleryContext";
 import { useTestCaseName } from "../../data/useTestCaseName";
+import { engineName, resolveEngineSlug } from "../../data/engines";
+import { useConfirm } from "../../components/ConfirmDialog";
 import { GG_HARNESS_SLUG } from "../../data/runLinks";
 import { formatCompact, formatUsd } from "../../format";
 import { useRunsRuntime } from "../../runtime/runsRuntime";
@@ -28,11 +31,14 @@ import { routes } from "../../routes";
 import { categoricalColor } from "../../../primitives/plot/palette";
 import {
   appendRunIds,
+  armTopUps,
   harnessArmLaunchItems,
+  countedRunIds,
   isGgArm,
   medianRatio,
-  remainingForArm,
+  pruneDeadRunIds,
   toolCallChartData,
+  totalMissingRuns,
   withArmRunIds,
 } from "./comparisonMath";
 import { SubmitNotice } from "../../components/SubmitNotice";
@@ -53,6 +59,8 @@ import styles from "./Comparisons.module.scss";
 export function ComparisonDetailPage() {
   const { id = "" } = useParams();
   const { token } = useAuth();
+  const navigate = useNavigate();
+  const { confirm } = useConfirm();
   // A published comparison is public, so this page renders on the static site as
   // well — and that host mounts neither client provider. Both are read
   // optionally: the run/publish affordances below already gate on `canExecute`
@@ -72,6 +80,7 @@ export function ComparisonDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [triggering, setTriggering] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [publishResult, setPublishResult] =
     useState<ComparisonPublishOutcome | null>(null);
 
@@ -113,10 +122,13 @@ export function ComparisonDetailPage() {
     setTriggering(true);
     setError(null);
     try {
-      let nextConfig = comparison.config;
-      const { controls } = comparison.config;
-      for (const arm of comparison.config.arms) {
-        const remaining = remainingForArm(comparison.config.n, arm);
+      // Every id the arms record that no longer names a live run is dropped before
+      // anything is launched, so the top-up counts what actually exists and the
+      // config written back below stops carrying the dead ones (docs/comparisons/
+      // experiments.md, "Triggering the runs").
+      let nextConfig = pruneDeadRunIds(comparison.config, comparison.arms);
+      const { controls } = nextConfig;
+      for (const { arm, remaining } of armTopUps(nextConfig, comparison.arms)) {
         if (remaining <= 0) continue;
 
         // A gg arm launches through gg's own endpoint (one request per run, each
@@ -145,6 +157,12 @@ export function ComparisonDetailPage() {
                   version: controls.version,
                   variant: controls.variant,
                   capabilitySet,
+                  // The engine is one of the comparison's held-constant controls.
+                  // A gg arm launched engineless while the comparison declares an
+                  // engine would be doing different work from the harness arm it
+                  // is being compared against — confounding the experiment
+                  // against its own control.
+                  engine: resolveEngineSlug(controls.engineSlug),
                 },
                 token ?? "",
               );
@@ -164,6 +182,7 @@ export function ComparisonDetailPage() {
                 // life — the reconcile only patches `state` on rows it already
                 // tracks, so nothing re-seeds this one until a reload.
                 ggPreset: capabilitySet.preset ?? null,
+                engine: resolveEngineSlug(controls.engineSlug),
                 runId: ack.jobId,
                 state: "queued",
               });
@@ -192,6 +211,9 @@ export function ComparisonDetailPage() {
         }
       }
       if (backend?.updateComparison && token) {
+        // Written back even when nothing was launched: the prune above is itself a
+        // change worth keeping, and the response is the re-aggregated comparison —
+        // which is how the page learns what its arms' live runs now are.
         const updated = await backend.updateComparison(
           comparison.id,
           {
@@ -209,6 +231,39 @@ export function ComparisonDetailPage() {
       setTriggering(false);
     }
   }, [comparison, worker, canTrigger, ggOptions, token, runtime, backend]);
+
+  const canDelete = Boolean(canExecute && token && backend?.deleteComparison);
+
+  // Deleting the comparison discards the experiment, never its runs: the runs it
+  // launched are ordinary runs and stay exactly where they are (the backend's
+  // `DELETE /comparisons/{id}` touches nothing else). The dialog says so, because
+  // "delete this comparison" otherwise reads as "delete all those runs".
+  const onDelete = useCallback(async () => {
+    if (!comparison || !backend?.deleteComparison || !token) return;
+    const confirmed = await confirm({
+      title: "Delete comparison",
+      message: (
+        <>
+          Delete <strong>{comparison.name}</strong>? Its configuration and every
+          figure computed from it are removed. The runs it launched are ordinary
+          runs and are <strong>not</strong> deleted. This cannot be undone.
+        </>
+      ),
+      confirmLabel: "Delete comparison",
+    });
+    if (!confirmed) return;
+    setDeleting(true);
+    setError(null);
+    try {
+      await backend.deleteComparison(comparison.id, token);
+      // Gone: leave for the list rather than sitting on a page whose subject no
+      // longer exists, and replace the entry so Back does not return to it.
+      navigate(routes.runsComparisons(), { replace: true });
+    } catch (e) {
+      setError(String(e));
+      setDeleting(false);
+    }
+  }, [comparison, backend, token, confirm, navigate]);
 
   const onPublish = useCallback(async () => {
     if (!comparison || !backend?.publishComparison || !token) return;
@@ -230,14 +285,13 @@ export function ComparisonDetailPage() {
     }
   }, [comparison, backend, token]);
 
+  // What "Trigger missing runs" would launch right now: per arm, `N` less the runs
+  // it records that still exist. An arm whose runs were deleted is short again, and
+  // says so — the whole point of counting live ids rather than every id ever
+  // launched.
   const totalMissing = useMemo(
     () =>
-      comparison
-        ? comparison.config.arms.reduce(
-            (sum, arm) => sum + remainingForArm(comparison.config.n, arm),
-            0,
-          )
-        : 0,
+      comparison ? totalMissingRuns(comparison.config, comparison.arms) : 0,
     [comparison],
   );
 
@@ -291,6 +345,19 @@ export function ComparisonDetailPage() {
 
   const { controls } = comparison.config;
   const arms = comparison.arms;
+  const engineSlug = resolveEngineSlug(controls.engineSlug);
+
+  // Why the trigger button is doing nothing, in the button's own tooltip. Each
+  // case is a different fix — connect a worker, or there is genuinely nothing
+  // missing — so a single disabled button with no explanation would leave an
+  // operator guessing (report: "there's now no ability to trigger").
+  const triggerHint = !canTrigger
+    ? "Connect a worker (the gear in the top bar) to trigger runs."
+    : totalMissing === 0
+      ? `Every configuration already has ${comparison.config.n} live run${
+          comparison.config.n === 1 ? "" : "s"
+        }. Runs deleted since they were launched stop counting, and are offered here again.`
+      : `Launch the ${totalMissing} run${totalMissing === 1 ? "" : "s"} the configurations are still short of N=${comparison.config.n}.`;
 
   // The color assigned to each arm, by its position in the config's arm order —
   // fixed and never re-cycled, matching the arm order everywhere on this page
@@ -374,18 +441,23 @@ export function ComparisonDetailPage() {
             comparison without it. */}
         {canExecute && (
           <div className={styles.detailActions}>
-            {canTrigger && totalMissing > 0 && (
-              <button
-                type="button"
-                className={exec.primary}
-                disabled={triggering}
-                onClick={triggerMissing}
-              >
-                {triggering
-                  ? "Triggering…"
-                  : `Trigger missing runs (${totalMissing})`}
-              </button>
-            )}
+            {/* Always shown, never hidden when it has nothing to do: an operator
+                who deleted an arm's runs and came back to relaunch them needs to
+                see *why* the button offers nothing, not an empty toolbar. Its
+                title names the one reason it is disabled. */}
+            <button
+              type="button"
+              className={exec.primary}
+              disabled={triggering || !canTrigger || totalMissing === 0}
+              title={triggerHint}
+              onClick={triggerMissing}
+            >
+              {triggering
+                ? "Triggering…"
+                : totalMissing > 0
+                  ? `Trigger missing runs (${totalMissing})`
+                  : "Trigger missing runs"}
+            </button>
             <Link
               className={exec.secondary}
               to={routes.comparisonEdit(comparison.id)}
@@ -402,12 +474,22 @@ export function ComparisonDetailPage() {
                 {publishing ? "Publishing…" : "Publish"}
               </button>
             )}
+            {canDelete && (
+              <button
+                type="button"
+                className={exec.danger}
+                disabled={deleting}
+                onClick={onDelete}
+              >
+                {deleting ? "Deleting…" : "Delete"}
+              </button>
+            )}
           </div>
         )}
       </header>
 
       {comparison.description && (
-        <p className={styles.empty}>{comparison.description}</p>
+        <p className={styles.description}>{comparison.description}</p>
       )}
       <SubmitNotice message={error} />
       {publishResult && (
@@ -452,6 +534,12 @@ export function ComparisonDetailPage() {
           </span>
         </div>
         <div className={styles.controlStat}>
+          <span className={styles.controlStatLabel}>Engine</span>
+          <span className={styles.controlStatValue}>
+            {engineName(engineSlug)}
+          </span>
+        </div>
+        <div className={styles.controlStat}>
           <span className={styles.controlStatLabel}>Orchestrator</span>
           <span className={styles.controlStatValue}>
             {controls.orchestratorSlug}
@@ -469,7 +557,7 @@ export function ComparisonDetailPage() {
             Confound{confounds.length === 1 ? "" : "s"} detected
           </span>
           {confounds.map(({ armLabel, confound }, i) => (
-            <p key={i}>
+            <p key={i} className={styles.confoundNote}>
               <strong>{armLabel}</strong>: {confound.variable} varied across
               this arm&rsquo;s runs as {confound.values.join(", ")}. This
               arm&rsquo;s runs are not a clean comparison against the others.
@@ -487,118 +575,146 @@ export function ComparisonDetailPage() {
         </p>
       )}
 
-      <ChartWidget
-        title="Cost"
-        chartTitle="Comparable cost distribution by arm"
-        hint="Box = IQR, whiskers = min/max, tick = median, thin band = bootstrap 95% CI on the median. Every arm keeps its own n."
-        spec={
-          costGroups.length === 0
-            ? undefined
-            : (palette) =>
-                distributionChart(costGroups, palette, {
-                  y: "USD",
-                  formatValue: (v) => formatUsd(v),
-                })
-        }
-        empty="No cost data yet for this comparison's runs."
-      />
+      {/* Every figure on this page is a widget in one column, and the column is
+          the only thing that spaces them. A section that sets its own margins
+          (as the score section used to) reads as a different kind of thing: the
+          gaps around it stop matching the gaps between the charts, and its title
+          ends up out on the backdrop while every other title sits in a panel. */}
+      <div className={styles.sections}>
+        <ChartWidget
+          title="Cost"
+          chartTitle="Comparable cost distribution by arm"
+          hint="Box = IQR, whiskers = min/max, tick = median, thin band = bootstrap 95% CI on the median. Every arm keeps its own n."
+          spec={
+            costGroups.length === 0
+              ? undefined
+              : (palette) =>
+                  distributionChart(costGroups, palette, {
+                    y: "USD",
+                    formatValue: (v) => formatUsd(v),
+                  })
+          }
+          empty="No cost data yet for this comparison's runs."
+        />
 
-      <ChartWidget
-        title="Tokens"
-        chartTitle="Total token distribution by arm"
-        hint="Box = IQR, whiskers = min/max, tick = median, thin band = bootstrap 95% CI on the median. Every arm keeps its own n."
-        spec={
-          tokenGroups.length === 0
-            ? undefined
-            : (palette) =>
-                distributionChart(tokenGroups, palette, {
-                  y: "tokens",
-                  yTickFormat: "~s",
-                  formatValue: formatCompact,
-                })
-        }
-        empty="No token data yet for this comparison's runs."
-      />
+        <ChartWidget
+          title="Tokens"
+          chartTitle="Total token distribution by arm"
+          hint="Box = IQR, whiskers = min/max, tick = median, thin band = bootstrap 95% CI on the median. Every arm keeps its own n."
+          spec={
+            tokenGroups.length === 0
+              ? undefined
+              : (palette) =>
+                  distributionChart(tokenGroups, palette, {
+                    y: "tokens",
+                    yTickFormat: "~s",
+                    formatValue: formatCompact,
+                  })
+          }
+          empty="No token data yet for this comparison's runs."
+        />
 
-      <section className={styles.armSection}>
-        <h2 className={styles.armSectionTitle}>Score &amp; pass rate</h2>
-        {arms.map((a) => (
-          <div key={a.arm.id} className={styles.armPanel}>
-            <div className={styles.armPanelHead}>
-              <span className={styles.armLabel}>
-                <span
-                  className={styles.armSwatch}
-                  style={{ background: colorForArm.get(a.arm.id) }}
-                  aria-hidden
-                />
-                {a.arm.label}
-              </span>
-              <span className={styles.armN}>
-                n={a.nObserved} of {a.nDesired} desired
-              </span>
-            </div>
-            {a.score ? (
-              <div className={styles.scoreRow}>
-                <span className={styles.scoreMean}>
-                  {Math.round(a.score.meanFraction * 100)}% avg (automated-only)
-                </span>
-                {a.score.points.map((p, i) => (
-                  <span key={i} className={styles.scorePoint}>
-                    {p.earned}/{p.total}
-                  </span>
-                ))}
-              </div>
-            ) : (
-              <p className={styles.empty}>No scored runs yet.</p>
-            )}
-            {a.passRate ? (
-              <div className={styles.meterRow}>
-                <div className={styles.meter}>
-                  <span
-                    className={styles.meterFill}
-                    style={{ width: `${a.passRate.rate * 100}%` }}
-                  />
-                  <span
-                    className={styles.meterInterval}
-                    style={{
-                      left: `${a.passRate.wilsonLow * 100}%`,
-                      width: `${(a.passRate.wilsonHigh - a.passRate.wilsonLow) * 100}%`,
-                    }}
-                  />
+        {/* A peer of the three charts rather than a hand-rolled section: same
+            panel, same header treatment, same place in the column's rhythm. */}
+        <SectionWidget
+          title="Score & pass rate"
+          hint="The automated-only score across each arm's runs — every run's own point beside the mean — and the pass rate with its Wilson 95% interval."
+        >
+          <div className={styles.armRows}>
+            {arms.map((a) => {
+              // Runs this arm launched that exist but whose record has not landed
+              // yet. Stated rather than left as a silent gap between the arm's `n`
+              // and its desired count, which otherwise reads as runs that were
+              // never launched at all. Counted off the same ids the top-up
+              // counts (`countedRunIds`), so the two figures can never disagree —
+              // including against a backend that reports no liveness at all,
+              // where both fall back to what the arm itself records.
+              const inFlight = Math.max(
+                0,
+                countedRunIds(a).length - a.nObserved,
+              );
+              return (
+                <div key={a.arm.id} className={styles.armRow}>
+                  <div className={styles.armRowHead}>
+                    <span className={styles.armLabel}>
+                      <span
+                        className={styles.armSwatch}
+                        style={{ background: colorForArm.get(a.arm.id) }}
+                        aria-hidden
+                      />
+                      {a.arm.label}
+                    </span>
+                    <span className={styles.armN}>
+                      n={a.nObserved} of {a.nDesired} desired
+                      {inFlight > 0 && ` · ${inFlight} still in flight`}
+                    </span>
+                  </div>
+                  {a.score ? (
+                    <div className={styles.scoreRow}>
+                      <span className={styles.scoreMean}>
+                        {Math.round(a.score.meanFraction * 100)}% avg
+                        (automated-only)
+                      </span>
+                      {a.score.points.map((p, i) => (
+                        <span key={i} className={styles.scorePoint}>
+                          {p.earned}/{p.total}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className={styles.armEmpty}>No scored runs yet.</p>
+                  )}
+                  {a.passRate ? (
+                    <div className={styles.meterRow}>
+                      <div className={styles.meter}>
+                        <span
+                          className={styles.meterFill}
+                          style={{ width: `${a.passRate.rate * 100}%` }}
+                        />
+                        <span
+                          className={styles.meterInterval}
+                          style={{
+                            left: `${a.passRate.wilsonLow * 100}%`,
+                            width: `${(a.passRate.wilsonHigh - a.passRate.wilsonLow) * 100}%`,
+                          }}
+                        />
+                      </div>
+                      <span className={styles.meterLabel}>
+                        {a.passRate.passed}/{a.passRate.n} passed (
+                        {Math.round(a.passRate.rate * 100)}%), Wilson{" "}
+                        {Math.round(a.passRate.wilsonLow * 100)}%–
+                        {Math.round(a.passRate.wilsonHigh * 100)}%
+                      </span>
+                    </div>
+                  ) : (
+                    <p className={styles.armEmpty}>No pass-rate data yet.</p>
+                  )}
                 </div>
-                <span className={styles.meterLabel}>
-                  {a.passRate.passed}/{a.passRate.n} passed (
-                  {Math.round(a.passRate.rate * 100)}%), Wilson{" "}
-                  {Math.round(a.passRate.wilsonLow * 100)}%–
-                  {Math.round(a.passRate.wilsonHigh * 100)}%
-                </span>
-              </div>
-            ) : (
-              <p className={styles.empty}>No pass-rate data yet.</p>
-            )}
+              );
+            })}
           </div>
-        ))}
-      </section>
+        </SectionWidget>
 
-      <ChartWidget
-        title="Tool-call diagnostics"
-        chartTitle="Tool calls by arm, including consumed tools"
-        hint="Includes recognized-but-consumed tool calls (e.g. todo tools) that emit no workspace event but still cost real API round-trips, which is often the why behind a cost gap."
-        spec={
-          toolCallData.segments.length === 0
-            ? undefined
-            : (palette) =>
-                stackedBarChart(
-                  toolCallData.segments,
-                  palette,
-                  toolCallData.series,
-                  {
-                    y: "tool calls",
-                  },
-                )
-        }
-        empty="No tool-call diagnostics recorded yet for this comparison's runs."
-      />
+        <ChartWidget
+          title="Tool-call diagnostics"
+          chartTitle="Tool calls by arm, including consumed tools"
+          hint="Includes recognized-but-consumed tool calls (e.g. todo tools) that emit no workspace event but still cost real API round-trips, which is often the why behind a cost gap."
+          spec={
+            toolCallData.segments.length === 0
+              ? undefined
+              : (palette) =>
+                  stackedBarChart(
+                    toolCallData.segments,
+                    palette,
+                    toolCallData.series,
+                    {
+                      y: "tool calls",
+                    },
+                  )
+          }
+          empty="No tool-call diagnostics recorded yet for this comparison's runs."
+        />
+      </div>
     </PageLayout>
   );
 }

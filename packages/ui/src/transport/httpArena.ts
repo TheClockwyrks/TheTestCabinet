@@ -63,7 +63,7 @@ export function createHttpArena(
   const requireArena = (): string => {
     if (!arenaUrl) {
       throw new Error(
-        "arena execution is not configured (the backend reported no arenaUrl)",
+        "arena execution not configured (the backend reported no arenaUrl)",
       );
     }
     return arenaUrl;
@@ -162,8 +162,15 @@ async function streamTournament(
         signal: controller.signal,
       },
     );
-    if (!res.ok || !res.body) {
-      throw new Error(`tournament event stream failed: ${res.status}`);
+    // Split: a 2xx with no readable body is its own condition, and folding it in
+    // reported a success status as the failure.
+    if (!res.ok) {
+      throw new Error(
+        `tournament ${id} event stream failed: HTTP ${res.status} ${res.statusText}`,
+      );
+    }
+    if (!res.body) {
+      throw new Error(`tournament ${id} event stream carried no body`);
     }
     const reader = res.body.getReader();
     const decoder = new TextDecoder();

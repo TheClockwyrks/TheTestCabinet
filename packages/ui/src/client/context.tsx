@@ -42,7 +42,7 @@ export function BackendProvider({
 export function useBackend(): BackendContextValue {
   const ctx = useContext(BackendContext);
   if (!ctx) {
-    throw new Error("useBackend must be used within a <BackendProvider>");
+    throw new Error("useBackend called outside a <BackendProvider>");
   }
   return ctx;
 }
@@ -105,7 +105,7 @@ export function WorkersProvider({
 export function useWorkers(): WorkersContextValue {
   const ctx = useContext(WorkersContext);
   if (!ctx) {
-    throw new Error("useWorkers must be used within a <WorkersProvider>");
+    throw new Error("useWorkers called outside a <WorkersProvider>");
   }
   return ctx;
 }

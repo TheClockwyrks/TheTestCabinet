@@ -758,7 +758,8 @@ impl Workspace {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         if timeout.timed_out() {
             return Err(format!(
-                "the compile workspace {} was still held by another preparation after                  {PREPARATION_WAIT:?}: an agent's preparations run one at a time",
+                "the compile workspace {} was still held by another preparation after \
+                 {PREPARATION_WAIT:?}: an agent's preparations run one at a time",
                 self.root.display()
             ));
         }

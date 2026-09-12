@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createResolverAssetCaches, type AssetCache } from "./assetCache";
 import type { CatalogStatus } from "./galleryContext";
 import { useGalleryData } from "./galleryContext";
 import type { TestCaseDetail } from "./testCases";
@@ -22,36 +23,25 @@ type Resolver = (slug: string) => Promise<TestCaseDetail | null>;
 // switched backend gets a fresh cache for free, with the stale one collected
 // along with the callback it was keyed on.
 //
-// The cache holds the promise rather than the value so the several detail
-// surfaces that mount together for one case (its errata callout and its review
-// scoring model both key on the same slug) share a single in-flight request
-// instead of racing identical ones. A case version directory is frozen once it
-// has runs, so a resolved detail is safe to keep for the session.
-const CACHE = new WeakMap<
-  Resolver,
-  Map<string, Promise<TestCaseDetail | null>>
->();
+// Like every cache of an immutable asset it holds the promise rather than the value,
+// so the several detail surfaces that mount together for one case (its errata
+// callout and its review scoring model both key on the same slug) share a single
+// in-flight request instead of racing identical ones, and a rejected fetch is
+// evicted so a transient failure is retried by the next mount. A case version
+// directory is frozen once it has runs, so a resolved detail is safe to keep.
+//
+// Bounded at 64 cases per host, which is more than a session holds in play and
+// costs a parsed document each — the prompts, specs and checklists of one case
+// version, not its media.
+const CACHES = createResolverAssetCaches<Resolver, TestCaseDetail | null>({
+  name: "test case detail",
+  maxEntries: 64,
+  load: (resolver, slug) => resolver(slug),
+});
 
-function resolveCached(
-  resolver: Resolver,
-  slug: string,
-): Promise<TestCaseDetail | null> {
-  let bySlug = CACHE.get(resolver);
-  if (!bySlug) {
-    bySlug = new Map();
-    CACHE.set(resolver, bySlug);
-  }
-  const cached = bySlug.get(slug);
-  if (cached) return cached;
-  // A rejected fetch is evicted so a transient failure can be retried by the next
-  // mount, rather than being remembered as a permanent error for the session.
-  const pending = resolver(slug).catch((cause: unknown) => {
-    bySlug.delete(slug);
-    throw cause;
-  });
-  bySlug.set(slug, pending);
-  return pending;
-}
+// A host that cannot resolve a case by slug (none today) still has to be given a
+// cache, because a hook cannot skip a hook. This one resolves nothing.
+const NO_RESOLVER: Resolver = () => Promise.resolve(null);
 
 /**
  * Resolve one test case in full by slug — the description, variants (prompts,
@@ -65,28 +55,52 @@ function resolveCached(
  */
 export function useTestCase(slug: string | undefined): TestCaseState {
   const { readTestCase } = useGalleryData();
-  const [state, setState] = useState<TestCaseState>({
-    testCase: undefined,
-    status: slug && readTestCase ? "loading" : "ready",
-  });
+  // A host that cannot resolve a case by slug (none today) has no source to wait
+  // on, so it resolves nothing and settles immediately rather than waiting forever.
+  const cache = CACHES.for(readTestCase ?? NO_RESOLVER);
+  const key = slug && readTestCase ? slug : null;
+
+  // Seeded from the cache, and re-seeded during the render that sees a new slug
+  // rather than in the effect below. A case already resolved this session renders
+  // on the very first frame with no loading state: a detail surface is remounted
+  // every time a reader moves between the tabs of one case — each is its own route
+  // — and a spinner over text the console is still holding is the flash this
+  // seeding exists to remove.
+  const [seenKey, setSeenKey] = useState(key);
+  const [state, setState] = useState<TestCaseState>(() => seed(cache, key));
+  if (key !== seenKey) {
+    setSeenKey(key);
+    setState(seed(cache, key));
+  }
 
   useEffect(() => {
-    if (!slug) {
-      setState({ testCase: undefined, status: "ready" });
-      return;
-    }
-    // A host that cannot resolve a case by slug (none today) has no source to
-    // wait on, so this settles immediately rather than waiting forever.
-    if (!readTestCase) {
-      setState({ testCase: undefined, status: "ready" });
+    if (key === null) {
+      setState((prev) =>
+        prev.status === "ready" && prev.testCase === undefined
+          ? prev
+          : { testCase: undefined, status: "ready" },
+      );
       return;
     }
     let active = true;
-    setState({ testCase: undefined, status: "loading" });
-    resolveCached(readTestCase, slug)
+    // Only where nothing is held: on a hit the state is already seeded, and
+    // blanking it here would put back the spinner the seeding removed.
+    if (cache.peek(key) === undefined) {
+      setState((prev) =>
+        prev.status === "loading"
+          ? prev
+          : { testCase: undefined, status: "loading" },
+      );
+    }
+    cache
+      .load(key)
       .then((testCase) => {
         if (!active) return;
-        setState({ testCase: testCase ?? undefined, status: "ready" });
+        setState((prev) =>
+          prev.status === "ready" && prev.testCase === (testCase ?? undefined)
+            ? prev
+            : { testCase: testCase ?? undefined, status: "ready" },
+        );
       })
       .catch(() => {
         if (!active) return;
@@ -95,7 +109,18 @@ export function useTestCase(slug: string | undefined): TestCaseState {
     return () => {
       active = false;
     };
-  }, [readTestCase, slug]);
+  }, [cache, key]);
 
   return state;
+}
+
+/** The state a slug starts in: resolved where the cache already holds the case. */
+function seed(
+  cache: AssetCache<TestCaseDetail | null>,
+  key: string | null,
+): TestCaseState {
+  if (key === null) return { testCase: undefined, status: "ready" };
+  const cached = cache.peek(key);
+  if (cached === undefined) return { testCase: undefined, status: "loading" };
+  return { testCase: cached ?? undefined, status: "ready" };
 }

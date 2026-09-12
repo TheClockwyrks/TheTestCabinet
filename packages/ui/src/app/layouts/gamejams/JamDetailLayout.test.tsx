@@ -30,9 +30,12 @@ vi.mock("../../data/galleryContext", () => ({
 }));
 // The jam the layout resolves from the slug. Held in a hoisted cell so a test
 // can swap it before rendering.
-const fixture = vi.hoisted(() => ({ jam: null as unknown }));
+const fixture = vi.hoisted(() => ({
+  jam: null as unknown,
+  status: "ready" as string,
+}));
 vi.mock("../../data/useTestCase", () => ({
-  useTestCase: () => ({ testCase: fixture.jam, status: "ready" }),
+  useTestCase: () => ({ testCase: fixture.jam, status: fixture.status }),
 }));
 
 function jam(): TestCaseDetail {
@@ -57,6 +60,7 @@ function jam(): TestCaseDetail {
 
 async function renderLayout() {
   fixture.jam = jam();
+  fixture.status = "ready";
   render(
     <MemoryRouter initialEntries={["/game-jams/neon-drift"]}>
       <Routes>
@@ -109,5 +113,32 @@ describe("JamDetailLayout", () => {
     await renderLayout();
     const back = screen.getByRole("link", { name: "All game jams" });
     expect(back.getAttribute("href")).toBe("/other/game-jams");
+  });
+
+  // The three outcomes of the fetch, which this layout used to collapse into
+  // two: a fetch in flight and a fetch that failed both read as "no game jam
+  // found", which is the page answering a question it has no answer to.
+  it.each([
+    ["loading", "Loading game jam…"],
+    ["error", "Could not load the game jam"],
+  ])("reports a %s fetch as itself, never as a missing jam", (status, text) => {
+    fixture.jam = null;
+    fixture.status = status;
+    render(
+      <MemoryRouter initialEntries={["/game-jams/neon-drift"]}>
+        <Routes>
+          <Route
+            path="/game-jams/:slug"
+            element={
+              <JamDetailLayout tab="overview">
+                {() => <p>body</p>}
+              </JamDetailLayout>
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(screen.getByText(new RegExp(text))).toBeTruthy();
+    expect(screen.queryByText(/No game jam found/)).toBeNull();
   });
 });

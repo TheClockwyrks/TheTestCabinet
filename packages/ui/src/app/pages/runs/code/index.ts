@@ -8,6 +8,7 @@ export { CodeOutliers } from "./CodeOutliers";
 export { CodeCyclesCallout } from "./CodeCyclesCallout";
 export { CodeFigures } from "./CodeFigures";
 export { ToolchainTests } from "./ToolchainTests";
+export { ToolchainTestList, VIRTUALIZE_ABOVE } from "./ToolchainTestList";
 export { ToolchainCoverage } from "./ToolchainCoverage";
 export {
   buildCodeTree,
@@ -26,6 +27,7 @@ export {
   formatCodeBytes,
   formatCodeNumber,
   formatMetricValue,
+  formatTestDuration,
   isApproximate,
   lookupMetric,
   toolchainCoverage,

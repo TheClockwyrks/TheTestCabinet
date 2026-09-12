@@ -7,6 +7,7 @@ import {
   type ConfirmOptions,
 } from "../../components/ConfirmDialog";
 import { showToast } from "../../components/MessageToast";
+import { useRunKill } from "../../data/useRunKill";
 import { useRunsRuntime } from "../../runtime/runsRuntime";
 import type { InProgressRun } from "../../../client/types";
 import styles from "./StopRunsControls.module.scss";
@@ -81,6 +82,13 @@ export function StopRunsControls() {
   const sweeps = useSweeps();
   const { confirm } = useConfirm();
   const runtime = useRunsRuntime();
+  // The same deferred watch a single-run kill uses. A sweep cancels through
+  // `/jobs/cancel-*` rather than through `killRun`, and so used to get the
+  // immediate refresh and nothing else — and the immediate refresh is ALWAYS too
+  // early, because the backend marks each job canceled at once while its record
+  // only lands after the driver notices, stops the harness, drains telemetry and
+  // posts the partial record back.
+  const { watchCanceledRuns } = useRunKill();
   const [busy, setBusy] = useState<StopScope | null>(null);
   if (!sweeps) return null;
   const { token, cancelWaiting, cancelActive, cancelAll } = sweeps;
@@ -90,12 +98,14 @@ export function StopRunsControls() {
   // not just this session's launches, so it is the right global signal for whether
   // a sweep would do anything — and a sweep that would cancel nothing is disabled
   // rather than offered and answered with "0".
-  const waiting = runtime.inProgress.filter((run) =>
+  const waitingRuns = runtime.inProgress.filter((run) =>
     WAITING_STATES.includes(run.state),
-  ).length;
-  const running = runtime.inProgress.filter((run) =>
+  );
+  const runningRuns = runtime.inProgress.filter((run) =>
     ACTIVE_STATES.includes(run.state),
-  ).length;
+  );
+  const waiting = waitingRuns.length;
+  const running = runningRuns.length;
 
   const controls: {
     scope: StopScope;
@@ -105,6 +115,17 @@ export function StopRunsControls() {
     confirm: ConfirmOptions | null;
     disabled: boolean;
     sweep: () => Promise<BulkCancelOut>;
+    /**
+     * The in-flight runs this sweep is about, so the ones that were executing can
+     * be watched for the partial records their drivers hand back. The sweep's own
+     * answer is a count, not a set of ids, so this is the only handle on which
+     * runs it plausibly ended.
+     *
+     * Only the EXECUTING ones: a run cancelled before it ever started has no
+     * driver, produces no record, and would be watched until the budget expired
+     * for nothing.
+     */
+    watched: readonly string[];
   }[] = [
     {
       scope: "waiting",
@@ -117,6 +138,7 @@ export function StopRunsControls() {
       confirm: null,
       disabled: waiting === 0,
       sweep: () => cancelWaiting(token),
+      watched: [],
     },
     {
       scope: "active",
@@ -135,6 +157,7 @@ export function StopRunsControls() {
       },
       disabled: running === 0,
       sweep: () => cancelActive(token),
+      watched: runningRuns.map((run) => run.runId),
     },
     {
       scope: "all",
@@ -150,6 +173,7 @@ export function StopRunsControls() {
       },
       disabled: waiting + running === 0,
       sweep: () => cancelAll(token),
+      watched: runningRuns.map((run) => run.runId),
     },
   ];
 
@@ -172,6 +196,12 @@ export function StopRunsControls() {
       // than "everything this page was showing" whenever a run finished on its own
       // as the sweep raced past it.
       runtime.requestRefresh();
+      // …and watch the executing ones for their records, refreshing again as they
+      // land. Without this a swept run stayed out of the unpublished worklist for
+      // the rest of the session — visible in the run list (the backend serves it)
+      // but with no Delete offered against it, which is exactly what a canceled gg
+      // run looked like. Detached: the sweep has already succeeded.
+      watchCanceledRuns(control.watched);
     } catch (e) {
       showToast({
         title: `${control.label} failed`,

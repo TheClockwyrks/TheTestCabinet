@@ -360,19 +360,70 @@ describe("RunCodePage, the executed tier", () => {
     expect(screen.getByText(/62 of 100 executable lines/)).toBeInTheDocument();
 
     // The wording a reviewer needs, on both bands: these figures are the model's own
-    // suite over the model's own code, and the test case's validators — whose verdicts
-    // the same reviewer sees on a sibling surface — contribute nothing to them.
+    // suite over the model's own code. Each band's lead is one line, and the rest of the
+    // distinction — that the test case's validators, whose verdicts the same reviewer
+    // sees on a sibling surface, contribute nothing to them — is behind the "?" beside
+    // it, where it is still on the page and still reachable.
     expect(
       screen.getByText(
         /tests the model wrote, run over the code the model wrote/i,
       ),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/validators are a separate suite that grades this run/i),
-    ).toBeInTheDocument();
+      screen.getAllByLabelText(
+        /validators are a separate suite that grades this run/i,
+      ).length,
+    ).toBeGreaterThan(0);
     expect(
-      screen.getByText(/validators’ suite has coverage disabled by design/i),
+      screen.getAllByLabelText(
+        /validators' suite has coverage disabled by design/i,
+      ).length,
+    ).toBeGreaterThan(0);
+  });
+
+  // Most stored runs predate the per-test list, and the fixture above is one of them: it
+  // carries counts and failures and no `tests` array at all. A run recorded since gets the
+  // disclosure, opened on its failures.
+  it("discloses the recorded tests of a run whose record carries them", async () => {
+    renderPage(SUMMARY, vi.fn().mockResolvedValue(DOCUMENT), {
+      test: {
+        result: { ran: true },
+        tests: {
+          ...TESTS,
+          tests: [
+            {
+              file: "src/game.test.ts",
+              name: "engine > advances",
+              status: "failed",
+              durationMs: 1500,
+            },
+            {
+              file: "src/game.test.ts",
+              name: "engine > holds",
+              status: "passed",
+            },
+          ],
+          testsTruncated: false,
+        },
+      },
+    });
+    expect(
+      await screen.findByRole("button", { name: /The suite failed/ }),
+    ).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("engine > advances")).toBeInTheDocument();
+    expect(screen.getByText("1.5 s")).toBeInTheDocument();
+    expect(screen.getByText("expected 3 to be 4")).toBeInTheDocument();
+  });
+
+  // The per-file table the disclosure supersedes.
+  it("no longer tables every test file the runner loaded", async () => {
+    renderPage(SUMMARY, vi.fn().mockResolvedValue(DOCUMENT), {
+      test: { result: { ran: true }, tests: TESTS },
+    });
+    expect(
+      await screen.findByText("Tests the model wrote"),
     ).toBeInTheDocument();
+    expect(screen.queryByText(/Every test file the runner loaded/)).toBeNull();
   });
 
   // The two families that used to collide with the executed figures, renamed. The static

@@ -112,27 +112,58 @@ fn dashboard_from_input_validates_and_trims_its_panels() {
 }
 
 #[test]
-fn a_panel_width_is_clamped_rather_than_rejected() {
-    // A width is a layout hint whose worst failure is an ugly row; refusing to save a
-    // whole board over one would be the wrong trade.
-    let input = GgDashboardInput {
-        panels: vec![
-            GgDashboardPanel {
-                title: "Too wide".to_string(),
-                query: String::new(),
-                width: 99,
-            },
-            GgDashboardPanel {
-                title: "Too narrow".to_string(),
-                query: String::new(),
-                width: 0,
-            },
-        ],
-        ..sample_board("clamped")
+fn a_panel_width_off_the_grid_is_rejected_naming_the_bound_and_the_value() {
+    // A board saved with a width nobody sent is a board laid out differently from the
+    // one the operator saved, with a `200` saying it went in as typed. The console's
+    // own field refuses the same two values before it submits.
+    let too_wide = GgDashboardInput {
+        panels: vec![GgDashboardPanel {
+            title: "Too wide".to_string(),
+            query: String::new(),
+            width: 99,
+        }],
+        ..sample_board("off the grid")
     };
-    let board = dashboard_from_input("d1".to_string(), input, "2026-08-01T00:00:00Z").unwrap();
-    assert_eq!(board.panels[0].width, DASHBOARD_COLUMNS);
-    assert_eq!(board.panels[1].width, 1);
+    let err = dashboard_from_input("d1".to_string(), too_wide, "2026-08-01T00:00:00Z").unwrap_err();
+    assert_eq!(err.status, StatusCode::BAD_REQUEST);
+    assert_eq!(
+        err.message,
+        "a dashboard panel spans at most 12 columns (got 99)"
+    );
+
+    let too_narrow = GgDashboardInput {
+        panels: vec![GgDashboardPanel {
+            title: "Too narrow".to_string(),
+            query: String::new(),
+            width: 0,
+        }],
+        ..sample_board("off the grid")
+    };
+    let err =
+        dashboard_from_input("d1".to_string(), too_narrow, "2026-08-01T00:00:00Z").unwrap_err();
+    assert_eq!(err.status, StatusCode::BAD_REQUEST);
+    assert_eq!(
+        err.message,
+        "a dashboard panel spans at least 1 column (got 0)"
+    );
+}
+
+#[test]
+fn a_panel_spanning_the_whole_grid_is_stored_as_sent() {
+    // Both ends of the range are storable: the rejection is of what falls outside it,
+    // not of the edges.
+    for width in [MIN_PANEL_WIDTH, DASHBOARD_COLUMNS] {
+        let input = GgDashboardInput {
+            panels: vec![GgDashboardPanel {
+                title: "Sessions".to_string(),
+                query: String::new(),
+                width,
+            }],
+            ..sample_board("on the grid")
+        };
+        let board = dashboard_from_input("d1".to_string(), input, "2026-08-01T00:00:00Z").unwrap();
+        assert_eq!(board.panels[0].width, width);
+    }
 }
 
 #[test]

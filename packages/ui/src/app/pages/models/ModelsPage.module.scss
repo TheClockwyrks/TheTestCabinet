@@ -161,6 +161,15 @@ a.row:hover .logo {
   @include h.halo;
 }
 
+// The stale-data line above a catalog whose latest read failed. The rows below
+// it are real (just possibly out of date), so this reads as a warning over the
+// table rather than replacing it.
+.stale {
+  color: t.$color-accent-2;
+  margin-bottom: t.$space-sm;
+  @include h.halo-glow;
+}
+
 // --- Mobile: stack each row into a card ------------------------------------
 //
 // Below the small breakpoint the fixed column template can't fit a phone without

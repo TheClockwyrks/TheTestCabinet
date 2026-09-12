@@ -987,3 +987,84 @@ describe("subscribeToRun over a dropped live stream", () => {
     );
   });
 });
+
+// The publish stream's failure messages. Each reports the error and nothing about
+// what the app decided to do next, per the run-record contract's failure-detail
+// style, and each keeps the figures it holds.
+describe("publish stream failures", () => {
+  const ack = () => Response.json({ liveUrl: "/publish-jobs/p-1/live" });
+
+  function publish(lines: string[], close = true) {
+    const encoder = new TextEncoder();
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const line of lines) {
+          controller.enqueue(encoder.encode(`${line}\n`));
+        }
+      },
+      pull(controller) {
+        if (close) controller.close();
+      },
+    });
+    return new Response(body, {
+      headers: { "content-type": "application/x-ndjson" },
+    });
+  }
+
+  function client(stream: () => Response) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith("/publish")) return ack();
+        if (url.endsWith("/publish-jobs/p-1/live")) return stream();
+        throw new Error(`unexpected fetch ${url}`);
+      }),
+    );
+    return createBackendExec(BACKEND, AUTH, ARTIFACTS);
+  }
+
+  it("names the status when the backend refuses the stream", async () => {
+    const c = client(
+      () => new Response("nope", { status: 503, statusText: "Unavailable" }),
+    );
+    await expect(c.publish("run-1", "tok")).rejects.toThrow(
+      "publish stream failed: HTTP 503 Unavailable",
+    );
+  });
+
+  it("separates a 2xx with no readable body from a refused stream", async () => {
+    // The merged `!res.ok || !res.body` guard reported this as "publish stream
+    // failed: 200", naming a success as the failure.
+    const c = client(() => new Response(null, { status: 200 }));
+    await expect(c.publish("run-1", "tok")).rejects.toThrow(
+      "publish stream carried no body",
+    );
+  });
+
+  it("reports a stream that closed before its terminal result", async () => {
+    const c = client(() =>
+      publish([JSON.stringify({ type: "progress", message: "releasing" })]),
+    );
+    await expect(c.publish("run-1", "tok")).rejects.toThrow(
+      "publish stream ended before reporting a result",
+    );
+  });
+
+  it("carries the publisher's own reason through unwrapped", async () => {
+    // The publisher already wrote a sentence naming the failure, so this layer
+    // adds no verb of its own on top of it.
+    const c = client(() =>
+      publish([
+        JSON.stringify({
+          type: "result",
+          state: "failed",
+          detail: "pages deploy failed: HTTP 403",
+        }),
+      ]),
+    );
+    await expect(c.publish("run-1", "tok")).rejects.toThrow(
+      "pages deploy failed: HTTP 403",
+    );
+  });
+});

@@ -155,6 +155,13 @@ pub async fn backfill_coverage_plans(db: &Db) -> Result<usize> {
         let coverage = crate::api::CoveragePlan {
             id: cuid2::create_id(),
             name: "My coverage plan".to_string(),
+            // Normalized, not validated: a legacy row is a value this backend
+            // already stored, not a request an operator is waiting on, and there is
+            // no response a rejection could go back in. Refusing one here would
+            // either abandon a reviewer's plan or stop a boot over a number the
+            // console can no longer even submit. The range mirrors
+            // `api::coverage`'s `MIN_RUNS_PER_CELL..=MAX_RUNS_PER_CELL`, which is
+            // what bounds the plan once it is a coverage plan.
             runs_per_cell: plan.runs_per_cell.clamp(1, 100),
             combo_group_ids: Vec::new(),
             case_group_ids: Vec::new(),

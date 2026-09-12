@@ -670,7 +670,8 @@ pub(crate) fn verdict(report: &Report, file: &str) -> Result<(), PrepareFailure>
             ))));
         }
         return Err(PrepareFailure::Toolchain(format!(
-            "the Java toolchain refused a file gg generated rather than the program: {rendered}"
+            "the Java toolchain rejected gg's own guest rather than the model's program: \
+             {rendered}"
         )));
     }
 
@@ -802,9 +803,9 @@ impl JavaCompiler {
             })
             .map_err(|error| {
                 format!(
-                    "gg compiles every Java program with the JDK and the TeaVM jars in the gg run \
-                     image, and needs them in {IMAGE_ROOT}, under ~/{HOME_ROOT} \
-                     (scripts/ci/install-java.sh), or named by {JAVA_ENV} and {TEAVM_ENV}: {error}"
+                    "gg found no Java toolchain — the JDK and the TeaVM jars — in {IMAGE_ROOT}, \
+                     under ~/{HOME_ROOT} (scripts/ci/install-java.sh), or named by {JAVA_ENV} and \
+                     {TEAVM_ENV}: {error}"
                 )
             })
     }

@@ -113,7 +113,15 @@ async function main() {
   });
   await write(socket, Buffer.from(`tcab-collect/1 ${token}\n`, "utf8"));
 
-  const args = ["-c", ...excludes.map((dir) => `--exclude=${dir}`), "-f", "-", "-C", workdir, "."];
+  const args = [
+    "-c",
+    ...excludes.map((dir) => `--exclude=${dir}`),
+    "-f",
+    "-",
+    "-C",
+    workdir,
+    ".",
+  ];
   const tar = spawn("tar", args, { stdio: ["ignore", "pipe", "pipe"] });
   let tarStderr = "";
   tar.stderr.on("data", (chunk) => {

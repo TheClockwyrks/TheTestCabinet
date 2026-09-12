@@ -26,6 +26,7 @@ import { useCatalog } from "../../runtime/useCatalog";
 import { useTestCaseName } from "../../data/useTestCaseName";
 import { useEngineChoice } from "../../data/useEngineChoice";
 import { ModelCombobox } from "../../components/ModelCombobox";
+import { NumberValueField } from "../../components/NumberField";
 import { SettingRow } from "../../components/SettingRow";
 import { Switch } from "../../components/Switch";
 import { routes } from "../../routes";
@@ -217,31 +218,29 @@ export function BufferTargetField({
       {(id) => (
         <span className={styles.settingBuffer}>
           <span className={styles.settingNumber}>
-            <input
+            {/* Optional: empty is the answer "inherit my account default", so
+                clearing it drops the override rather than being read as a zero.
+                Typing that names nothing usable commits nothing at all — it no
+                longer silently throws the override away mid-keystroke. */}
+            <NumberValueField
               id={id}
               className={exec.input}
-              type="number"
+              optional
+              label="The review buffer"
               min={0}
               max={BUFFER_TARGET_CEILING}
-              step={1}
-              value={unbounded || value === null ? "" : value.runs}
+              integer
+              showProblem={false}
+              title={`Between 0 and ${BUFFER_TARGET_CEILING} runs, or empty to inherit your account default.`}
+              value={unbounded || value === null ? undefined : value.runs}
               placeholder={unbounded ? "" : placeholder}
               disabled={unbounded}
-              onChange={(e) => {
-                const raw = e.target.value.trim();
-                if (raw === "") {
-                  onChange(null);
-                  return;
-                }
-                const n = Number(raw);
-                if (!Number.isFinite(n)) {
-                  onChange(null);
-                  return;
-                }
+              onCommit={(n) => {
                 const next = boundedBuffer(n);
                 setLastBound(next.kind === "bounded" ? next.runs : null);
                 onChange(next);
               }}
+              onClear={() => onChange(null)}
             />
           </span>
           <label className={styles.settingToggle}>

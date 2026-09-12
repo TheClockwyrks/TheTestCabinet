@@ -10,7 +10,15 @@
 // wired differently, so a change to how a frame is drawn or how playback is paced
 // reaches both.
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { createAssetCache, useCachedAsset } from "../../../data/assetCache";
 import { LoadingState } from "../../../components/LoadingState";
 import {
   drawFrame,
@@ -18,7 +26,7 @@ import {
   type ReplayResources,
   type StoredImageResolver,
 } from "./drawFrame";
-import { fetchRecording, type Recording } from "./format";
+import { fetchRecording, recordingBytes, type Recording } from "./format";
 import {
   REPLAY_SPEEDS,
   timelineFor,
@@ -63,16 +71,22 @@ export interface LoadedRecording {
  * them are skipped and named under the canvas.
  *
  * THE URL ALONE DRIVES THE FETCH. `resolveStored` is deliberately kept OUT of the
- * effect's dependencies and read through a ref, because the resolver is a property
- * of the recording's own namespace and cannot meaningfully change without the URL
- * changing — while its identity changes constantly. The console's gallery context
- * is rebuilt on every render of the app shell, so every entry it hands out carries
- * a freshly minted closure; listing that closure would restart this effect on each
- * of them, and the effect's first act is to blank the player to its loading state.
- * A reviewer scrubbing a validation pair would watch both panes reset to a spinner
- * and re-download their recordings — and every stored image beside them — each time
- * a run finished anywhere in the console. A caller therefore does NOT have to
- * memoize the resolver.
+ * dependencies and read through a ref, because the resolver is a property of the
+ * recording's own namespace and cannot meaningfully change without the URL changing
+ * — while its identity changes constantly. The console's gallery context is rebuilt
+ * on every render of the app shell, so every entry it hands out carries a freshly
+ * minted closure; listing that closure would restart the load on each of them and
+ * blank the player to its loading state. A reviewer scrubbing a validation pair
+ * would watch both panes reset to a spinner and re-download their recordings — and
+ * every stored image beside them — each time a run finished anywhere in the console.
+ * A caller therefore does NOT have to memoize the resolver.
+ *
+ * A RECORDING ALREADY LOADED IS NOT LOADED AGAIN, and a mount that finds one
+ * reports `loading: false` on its very first frame. Every tab of a run's detail page
+ * is its own route, so leaving the Play tab unmounts the player whole; the prepared
+ * pair is held by URL in a process-wide cache, so coming back draws the picture
+ * immediately instead of refetching a document and re-decoding every PNG in it. Two
+ * panes that name the same URL share one load for the same reason.
  *
  * A `null` url is not an error — it is the caller saying there is nothing on this
  * side, which is how the review pair renders a case that ships no reference
@@ -82,70 +96,109 @@ export function useRecording(
   url: string | null,
   resolveStored?: StoredImageResolver | null,
 ): LoadedRecording {
-  const [state, setState] = useState<LoadedRecording>({
-    recording: null,
-    resources: null,
-    error: null,
-    loading: url !== null,
-  });
-
-  // Held rather than depended on, so a caller free to mint a new closure every
-  // render cannot restart the fetch. Written during render because the effect
-  // below runs after it, and because a resolver that arrives late is still the
-  // right one for a fetch that has not resolved yet.
-  const latestResolver = useRef(resolveStored);
-  latestResolver.current = resolveStored;
-
-  useEffect(() => {
-    if (url === null) {
-      setState({
-        recording: null,
-        resources: null,
-        error: null,
-        loading: false,
-      });
-      return;
-    }
-    let cancelled = false;
-    setState({ recording: null, resources: null, error: null, loading: true });
-    fetchRecording(url)
-      .then(async (recording) => ({
+  // The resolver is a property of the recording's own namespace and cannot
+  // meaningfully change without the URL changing, so it is passed as the cache's
+  // per-call loader — held in a ref by `useCachedAsset`, never depended on.
+  const load = useCallback(
+    (target: string) =>
+      fetchRecording(target).then(async (recording) => ({
         recording,
-        // Nothing is published to state until every image is resolved — a stored
-        // entry's fetch included — because `drawFrame` is synchronous and a scrub
-        // has to keep up with a dragged thumb.
+        // Nothing is published until every image is resolved — a stored entry's
+        // fetch included — because `drawFrame` is synchronous and a scrub has to
+        // keep up with a dragged thumb.
         resources: await prepareRecording(
           recording,
           undefined,
-          latestResolver.current ?? undefined,
+          resolveStored ?? undefined,
         ),
-      }))
-      .then(
-        ({ recording, resources }) => {
-          if (!cancelled) {
-            setState({ recording, resources, error: null, loading: false });
-          }
-        },
-        (err: unknown) => {
-          if (cancelled) return;
-          setState({
-            recording: null,
-            resources: null,
-            error: err instanceof Error ? err.message : String(err),
-            loading: false,
-          });
-        },
-      );
-    return () => {
-      cancelled = true;
-    };
-    // `resolveStored` is read from the ref above rather than listed here — see the
-    // doc comment. Only the URL identifies a recording, and only a new URL is a
-    // reason to throw away a loaded one.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [url]);
+      })),
+    [resolveStored],
+  );
+  const { data, loading, error } = useCachedAsset(
+    preparedRecordings,
+    url,
+    load,
+  );
+  // A fresh object every render would re-seed the canvas's own memos forever, so
+  // the two halves are handed on together and only when one of them moves.
+  return useMemo(
+    () => ({
+      recording: data?.recording ?? null,
+      resources: data?.resources ?? null,
+      error,
+      loading,
+    }),
+    [data, error, loading],
+  );
+}
 
-  return state;
+/** A recording and its decoded images — the pair a canvas can be handed. */
+interface PreparedRecording {
+  readonly recording: Recording;
+  readonly resources: ReplayResources;
+}
+
+/**
+ * What one prepared recording costs, in bytes.
+ *
+ * The decoded images are the expensive half and the only half that can be measured:
+ * an `ImageData` reports its buffer, and a decoded bitmap costs four bytes per pixel
+ * of the size the platform decoded it at. The recording's own bytes are counted too,
+ * because a prepared entry holds the parsed document alive whether or not the
+ * recording cache still lists it.
+ */
+function weighPrepared(prepared: PreparedRecording): number {
+  let bytes = recordingBytes(prepared.recording);
+  for (const image of prepared.resources.images) {
+    if (image === null) continue;
+    if (typeof ImageData === "function" && image instanceof ImageData) {
+      bytes += image.data.byteLength;
+      continue;
+    }
+    // Every other decoded form reports its size under one of these names — a
+    // decoded `<img>` under `natural*`, a bitmap or canvas under the bare pair, a
+    // video frame under `display*` — and a form that reports none is counted as
+    // nothing rather than guessed at.
+    const sized = image as {
+      naturalWidth?: number;
+      naturalHeight?: number;
+      width?: number;
+      height?: number;
+      displayWidth?: number;
+      displayHeight?: number;
+    };
+    const width = sized.naturalWidth ?? sized.width ?? sized.displayWidth ?? 0;
+    const height =
+      sized.naturalHeight ?? sized.height ?? sized.displayHeight ?? 0;
+    bytes += width * height * 4;
+  }
+  return bytes;
+}
+
+// The prepared recordings, by URL: what the player actually draws from.
+//
+// This is the cache the reported bug is about. Every tab of a run's detail page is
+// its own route, so clicking from the Play tab to the images and back unmounts the
+// player whole; without this, coming back re-downloaded the recording and re-decoded
+// every PNG in it, and put a spinner over a picture the reviewer had just been
+// looking at.
+//
+// Bounded at 192 MB, an order of magnitude above the recordings themselves because
+// a decoded picture is RGBA in memory while the document carried it as compressed
+// base64 — one full-surface frame is 8 MB. That holds both panes of a validation
+// pair, the run's own proofs, and the run beside it, which is everything a reviewer
+// has in play at once; the count cap keeps a case with many small clips from
+// holding all of them.
+const preparedRecordings = createAssetCache<PreparedRecording>({
+  name: "prepared replay",
+  maxEntries: 8,
+  maxBytes: 192 * 1024 * 1024,
+  weigh: weighPrepared,
+});
+
+/** Drop every prepared recording. For tests; one is never invalidated. */
+export function clearPreparedRecordingCache(): void {
+  preparedRecordings.clear();
 }
 
 /**

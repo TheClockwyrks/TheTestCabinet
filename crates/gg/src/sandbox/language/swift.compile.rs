@@ -828,8 +828,8 @@ fn invoke_swiftc(
 /// operator can actually fix: the toolchain is not where gg looked.
 fn spawn_prefix(home: &Path) -> String {
     format!(
-        "gg compiles every Swift program with the toolchain in the gg run image and looked for it \
-         in {} (set {SWIFT_HOME_ENV}, or run scripts/ci/install-swift.sh): ",
+        "gg found no Swift toolchain in {} (set {SWIFT_HOME_ENV}, or run \
+         scripts/ci/install-swift.sh): ",
         home.display()
     )
 }

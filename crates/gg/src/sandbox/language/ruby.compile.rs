@@ -355,8 +355,8 @@ fn invoke(
 /// operator can actually fix: `node` is not where gg looked for it.
 fn spawn_prefix(node: &str) -> String {
     format!(
-        "gg compiles every Ruby program with Opal and needs Node on PATH or {NODE_ENV} pointing at \
-         it (`{node}`): "
+        "gg found no Node for the Ruby toolchain, which compiles with Opal (`{node}` on PATH, or \
+         named by {NODE_ENV}): "
     )
 }
 

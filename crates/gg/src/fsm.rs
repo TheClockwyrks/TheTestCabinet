@@ -543,8 +543,7 @@ fn check_transfer(
             kind.to_string(),
             format!(
                 "the {fsm} machine's `{}` state transfers the `{kind}` module to `{}`, and the {} \
-                 agent it runs holds no such module. The successor would open with an empty one \
-                 under a configuration that says it continues.",
+                 agent it runs holds no such module",
                 state.name,
                 transition.to,
                 named(set, &state.agent_id),
@@ -575,8 +574,7 @@ fn check_shell_declarations(
             locus,
             "",
             format!(
-                "the {fsm} agent is an FSM shell, so the {what} it declares would never be read \
-                 — each state runs the agent profile it names, with that profile's configuration. \
+                "the {fsm} agent is an FSM shell, so the {what} it declares is never read. \
                  Remove it, or move it onto the profile a state runs."
             ),
         )

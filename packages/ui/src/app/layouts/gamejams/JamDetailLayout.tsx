@@ -3,6 +3,7 @@ import { Link, NavLink, useLocation, useParams } from "react-router";
 import { Panel } from "@clockwyrks/ui";
 import { PageLayout } from "../../components/PageLayout";
 import { LoadingState } from "../../components/LoadingState";
+import { LoadFailureState } from "../../components/LoadFailureState";
 import { BackChevron } from "../../components/BackChevron";
 import { useGalleryData } from "../../data/galleryContext";
 import { useTestCase } from "../../data/useTestCase";
@@ -75,14 +76,15 @@ export function JamDetailLayout({
   );
 
   if (!testCase || !coordinate.variant) {
-    // While the jam is still being fetched it isn't resolvable yet, so show the
-    // branded full-body loading state (the topbar stays) rather than the
-    // not-found text, which is reserved for a jam genuinely absent once the
-    // fetch has settled.
+    // Three outcomes, three states, exactly as {@link TestCaseDetailLayout}: the
+    // fetch is still in flight, the fetch failed, or the fetch settled without a
+    // jam. Only the last one is an absence, and only it says so.
     return (
       <PageLayout>
         {status === "loading" ? (
           <LoadingState label="Loading game jam…" />
+        ) : status === "error" ? (
+          <LoadFailureState subject={`the game jam “${slug}”`} />
         ) : (
           <p className={styles.notFound}>
             No game jam found for &ldquo;{slug}&rdquo;.

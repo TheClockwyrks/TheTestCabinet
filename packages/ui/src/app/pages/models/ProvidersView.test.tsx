@@ -121,10 +121,12 @@ const EMPTY: ProviderStats = {
   probes: [],
 };
 
-function galleryValue(): GalleryDataInput {
+function galleryValue(
+  catalog: { models?: ModelSummary[]; status?: string } = {},
+): GalleryDataInput {
   return {
-    models: [MODEL],
-    modelsStatus: "ready",
+    models: catalog.models ?? [MODEL],
+    modelsStatus: catalog.status ?? "ready",
     canExecute: true,
   } as unknown as GalleryDataInput;
 }
@@ -140,10 +142,13 @@ function backendValue(client: object): BackendContextValue {
   } as unknown as BackendContextValue;
 }
 
-function renderProviders(client: object) {
+function renderProviders(
+  client: object,
+  catalog: { models?: ModelSummary[]; status?: string } = {},
+) {
   render(
     <MemoryRouter initialEntries={["/models/providers"]}>
-      <GalleryDataProvider value={galleryValue()}>
+      <GalleryDataProvider value={galleryValue(catalog)}>
         <BackendProvider value={backendValue(client)}>
           <ModelsPage tab="providers" />
         </BackendProvider>
@@ -186,6 +191,33 @@ describe("the Providers tab", () => {
   it("says when the corpus carries no provider attribution", async () => {
     renderProviders({ getProviderStats: vi.fn().mockResolvedValue(EMPTY) });
     expect(await screen.findByText(/No provider data yet/)).toBeTruthy();
+  });
+
+  // This view names models, and an empty catalog is what a catalog still in
+  // flight looks like — so without waiting on it the table rendered every model
+  // by its raw id: a page that looks finished and is quietly wrong.
+  it("waits on the model catalog too, rather than naming models by their ids", () => {
+    renderProviders(
+      { getProviderStats: vi.fn().mockResolvedValue(STATS) },
+      { models: [], status: "loading" },
+    );
+    expect(screen.queryByText("anthropic/claude-x")).toBeNull();
+    expect(screen.getByText("Loading provider statistics…")).toBeTruthy();
+  });
+
+  // A catalog that could not be read is said out loud, rather than left looking
+  // like a cabinet that curates none of these models.
+  it("says the model names are missing when the catalog read failed", async () => {
+    renderProviders(
+      { getProviderStats: vi.fn().mockResolvedValue(STATS) },
+      { models: [], status: "error" },
+    );
+    expect(
+      await screen.findByText(/model catalog could not be read/),
+    ).toBeTruthy();
+    // With no catalog the ids stand in for the names, which is exactly what the
+    // notice above is there to explain.
+    expect(screen.getAllByText("anthropic/claude-x").length).toBeGreaterThan(0);
   });
 
   it("surfaces a failed load as an error, not an empty corpus", async () => {

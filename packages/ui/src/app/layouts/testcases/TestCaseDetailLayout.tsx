@@ -3,6 +3,7 @@ import { Link, NavLink, useLocation, useParams } from "react-router";
 import { Panel } from "@clockwyrks/ui";
 import { PageLayout } from "../../components/PageLayout";
 import { LoadingState } from "../../components/LoadingState";
+import { LoadFailureState } from "../../components/LoadFailureState";
 import { BackChevron } from "../../components/BackChevron";
 import { useGalleryData } from "../../data/galleryContext";
 import { useTestCase } from "../../data/useTestCase";
@@ -100,14 +101,17 @@ export function TestCaseDetailLayout({
   );
 
   if (!testCase || !coordinate.variant) {
-    // While the case is still being fetched it simply isn't resolvable yet, so
-    // show the branded full-body loading state (the topbar stays) rather than
-    // the not-found text. "No test case found" is reserved for a case that is
-    // genuinely absent once the fetch has settled.
+    // Three outcomes, three states. While the case is still being fetched it
+    // simply isn't resolvable YET, so show the branded full-body loading state
+    // (the topbar stays). A fetch that FAILED is reported as a failure: whether
+    // this slug names a case is precisely what could not be read. "No test case
+    // found" is reserved for a fetch that settled without one.
     return (
       <PageLayout>
         {status === "loading" ? (
           <LoadingState label="Loading test case…" />
+        ) : status === "error" ? (
+          <LoadFailureState subject={`the test case “${slug}”`} />
         ) : (
           <p className={styles.notFound}>
             No test case found for &ldquo;{slug}&rdquo;.

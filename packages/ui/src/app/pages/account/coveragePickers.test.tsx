@@ -241,10 +241,29 @@ describe("BufferTargetField", () => {
     expect(onChange).toHaveBeenLastCalledWith(bounded(4));
   });
 
-  it("clamps a typed bound to what the backend stores", () => {
+  // A bound past the ceiling is refused rather than quietly lowered: the reviewer
+  // typed a number, and a field that answers with a different one is a field that
+  // saved something nobody asked for.
+  it("refuses a typed bound past what the backend stores", () => {
     const { onChange, input } = renderField(bounded(3));
     fireEvent.change(input, { target: { value: "9999" } });
-    expect(onChange).toHaveBeenCalledWith(bounded(500));
+    expect(input.value).toBe("9999");
+    expect(input).toHaveAttribute("aria-invalid", "true");
+    expect(onChange).not.toHaveBeenCalled();
+    // …and leaving it puts the stored bound back.
+    fireEvent.blur(input);
+    expect(input.value).toBe("3");
+  });
+
+  // The report this was built for: a bound of 3 could not be replaced by 40 without
+  // selecting it first.
+  it("can be cleared and retyped without losing the override", () => {
+    const { onChange, input } = renderField(bounded(3));
+    fireEvent.change(input, { target: { value: "" } });
+    expect(input.value).toBe("");
+    fireEvent.change(input, { target: { value: "40" } });
+    expect(input.value).toBe("40");
+    expect(onChange).toHaveBeenLastCalledWith(bounded(40));
   });
 });
 

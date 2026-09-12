@@ -19,6 +19,7 @@ import type {
   CodeAnalysisSummary,
   CodeLanguage,
 } from "@clockwyrks/run-record/code-analysis";
+import { HelpTip } from "../../../components/HelpTip";
 import { formatCodeBytes, formatCodeNumber } from "./codeFormat";
 import styles from "./CodePanels.module.scss";
 
@@ -167,9 +168,20 @@ export function CodeProvenanceStrip({
             className={styles.provenanceFact}
             data-tone={fact.tone}
           >
-            <span className={styles.provenanceLabel}>{fact.label}</span>
+            <span className={styles.provenanceLabel}>
+              {fact.label}
+              {/* A basis that is fine needs no sentence under it — the value word says
+                  it. Its note is the definition of the basis, which a reader wants
+                  once, so it goes behind the "?" rather than into a paragraph under
+                  every tile. A caution or a degraded basis keeps its sentence on the
+                  page: it changes what every figure below means, and nothing else on
+                  the tab states it. */}
+              {fact.tone === "ok" && <HelpTip text={fact.note} />}
+            </span>
             <span className={styles.provenanceValue}>{fact.value}</span>
-            <span className={styles.provenanceNote}>{fact.note}</span>
+            {fact.tone !== "ok" && (
+              <span className={styles.provenanceNote}>{fact.note}</span>
+            )}
           </div>
         ))}
       </div>

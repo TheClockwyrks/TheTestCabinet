@@ -318,8 +318,7 @@ fn positive_secs(
                 crate::validate::as_written(value),
                 format!(
                     "the `{PARAM_TIMEOUT_SECS}` param bounds one program's guest CPU in seconds \
-                     and must be a positive number; gg cannot read a ceiling from this, and it \
-                     arms none of its own in place of one nobody wrote."
+                     and must be a positive number"
                 ),
             ));
             None

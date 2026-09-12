@@ -15,6 +15,7 @@ import {
   type DesignEntity,
   type Dir,
 } from "../model";
+import { NumberInput } from "./NumberInput";
 import { RecipeInfo } from "./RecipeInfo";
 
 interface InspectorProps {
@@ -119,15 +120,12 @@ export function Inspector({
             </select>
           </Field>
           <Field label="Period (ticks)">
-            <input
-              type="number"
+            <NumberInput
+              label="The source’s period"
               min={1}
+              ariaLabel="Source period in ticks"
               value={entity.period}
-              onChange={(e) =>
-                patch({
-                  period: Math.max(1, Number(e.target.value) || 1),
-                } as Partial<DesignEntity>)
-              }
+              onCommit={(period) => patch({ period } as Partial<DesignEntity>)}
             />
           </Field>
         </>

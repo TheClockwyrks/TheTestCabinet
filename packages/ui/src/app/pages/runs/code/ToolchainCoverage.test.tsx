@@ -115,7 +115,7 @@ describe("ToolchainCoverage", () => {
       />,
     );
     expect(
-      screen.getByText(/per-file list was capped at 2 of 140/),
+      screen.getByText(/List capped at 2 of 140 files/),
     ).toBeInTheDocument();
   });
 });

@@ -5,6 +5,8 @@ import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
 import { useConfirm } from "../../components/ConfirmDialog";
 import { usePagedSearchParams } from "../../components/usePagedSearchParams";
+import { LoadFailureState } from "../../components/LoadFailureState";
+import { LoadingState } from "../../components/LoadingState";
 import { useGalleryData } from "../../data/galleryContext";
 import { CONFIRM_DELETE_RUN, useRunDeletion } from "../../data/useRunDeletion";
 import { useOptionalWorkers } from "../../../client/context";
@@ -35,18 +37,29 @@ export function UnreadableRunsPage() {
   const client = useOptionalWorkers()?.active?.client ?? null;
   const { page, setPage } = usePagedSearchParams();
 
+  // Whether this host can enumerate the listing at all: the static gallery mounts
+  // no worker, and a worker whose transport predates the route serves no such
+  // listing. Distinct from "the listing is empty" — the page can say nothing at
+  // all about a cabinet it cannot read.
+  const supported = canExecute && Boolean(client?.listUnreadableRuns);
+
   const [runs, setRuns] = useState<UnreadableRun[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  // The read's own failure, so an unreachable backend is never reported as a
+  // cabinet that stores no unreadable runs.
+  const [failure, setFailure] = useState<string | null>(null);
   useEffect(() => {
-    if (!client?.listUnreadableRuns) {
+    if (!supported || !client?.listUnreadableRuns) {
       setRuns([]);
       setTotal(0);
+      setFailure(null);
       setLoading(false);
       return;
     }
     let active = true;
     setLoading(true);
+    setFailure(null);
     client
       .listUnreadableRuns({ limit: PAGE_SIZE, offset: page * PAGE_SIZE })
       .then((result) => {
@@ -55,18 +68,20 @@ export function UnreadableRunsPage() {
         setTotal(result.total);
         setLoading(false);
       })
-      .catch(() => {
-        // A transport that cannot enumerate these contributes none; the page then
-        // shows its empty state.
+      .catch((cause: unknown) => {
+        // A read that failed says nothing about what the cabinet holds. The rows
+        // are dropped (they are this page's stale answer to a question that has
+        // no answer right now) and the failure is reported in their place.
         if (!active) return;
         setRuns([]);
         setTotal(0);
+        setFailure(String(cause));
         setLoading(false);
       });
     return () => {
       active = false;
     };
-  }, [client, page, refreshToken]);
+  }, [supported, client, page, refreshToken]);
 
   // The backend's `total` counts exactly the rows this listing can serve, so a page
   // this sizes is a page that holds rows.
@@ -91,7 +106,20 @@ export function UnreadableRunsPage() {
 
       <RunsTabs active="unreadable" />
 
-      {!canExecute || runs.length === 0 ? (
+      {/* Four outcomes, four states. This page used to collapse all four into
+          "No unreadable runs are stored." — a read still in flight, a host that
+          cannot ask, a read that failed, and a cabinet that genuinely holds none
+          all told the operator the same (and, for three of them, false) thing. */}
+      {!supported ? (
+        <p className={styles.empty}>
+          The unreadable worklist is served by a connected worker. It isn&apos;t
+          part of the static gallery.
+        </p>
+      ) : loading ? (
+        <LoadingState label="Loading unreadable runs…" />
+      ) : failure ? (
+        <LoadFailureState subject="the unreadable worklist" detail={failure} />
+      ) : runs.length === 0 ? (
         <p className={styles.empty}>No unreadable runs are stored.</p>
       ) : (
         <>
@@ -114,12 +142,14 @@ export function UnreadableRunsPage() {
 }
 
 // One unreadable run: its lifted identity, when it finished, the decode error, and
-// the Delete control. The control is gated on the host rather than on the produced
+// the Delete control. The control is gated on the host (and on being signed in,
+// which disables rather than hides it) rather than on the produced
 // worklist, which never holds one of these rows, and a published row carries it too:
 // an unreadable run is already out of the snapshot and the gallery, so the backend
 // deletes it either way and this page is the only place it can be got rid of.
 function UnreadableRow({ run }: { run: UnreadableRun }) {
-  const { canDeleteUnreadable, deleteRun } = useRunDeletion();
+  const { unreadableGate, deleteRun } = useRunDeletion();
+  const gate = unreadableGate();
   const { confirm } = useConfirm();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -162,13 +192,16 @@ function UnreadableRow({ run }: { run: UnreadableRun }) {
         {run.published && (
           <span className={styles.publishedTag}>Published</span>
         )}
-        {canDeleteUnreadable() && (
+        {/* Hidden only where this host can delete no run at all; a console with
+            nobody signed in shows it disabled with the reason, since signing in
+            is a step the operator takes from this very page. */}
+        {gate.offered && (
           <button
             type="button"
             className={exec.secondary}
             onClick={onDelete}
-            disabled={busy}
-            title="Permanently delete this run"
+            disabled={busy || !gate.allowed}
+            title={gate.reason ?? "Permanently delete this run"}
           >
             {busy ? "Deleting…" : "Delete"}
           </button>

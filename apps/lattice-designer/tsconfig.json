@@ -7,7 +7,10 @@
     // (no wider-app imports), so aliasing to them keeps this tool standalone without
     // pulling the console in. Mirrors the Vite alias in `vite.config.ts`.
     "paths": {
-      "@lattice/*": ["../../packages/ui/src/app/pages/runs/lattice/*"]
+      "@lattice/*": ["../../packages/ui/src/app/pages/runs/lattice/*"],
+      // The console's numeric-field rules, aliased for the same reason: one pure
+      // module, so a field here behaves exactly as one there. Mirrors vite.config.ts.
+      "@numeric": ["../../packages/ui/src/app/components/numberFieldRules.ts"]
     }
   },
   "include": ["src", "vite.config.ts", "scenario-api.ts", "vitest.config.ts"]

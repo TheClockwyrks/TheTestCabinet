@@ -523,7 +523,7 @@ async fn check_arm(arm: &'static dyn ProgramLanguage) -> ArmCheck {
         // the functions a fresh profile opens on, and there was no program to compile at all.
         Ok(Bootstrap::Empty { .. }) => Err(harness(format!(
             "gg's {arm_name} opening turn resolved to nothing under a fully granted agent, so no \
-             program was written and this arm's toolchain was never reached"
+             program was written"
         ))),
         // Unreachable: the window above is constructed in code mode.
         Ok(Bootstrap::NotCodeMode) => Err(harness(format!(

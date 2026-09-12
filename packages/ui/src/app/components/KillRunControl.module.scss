@@ -35,9 +35,17 @@
     background: color-mix(in srgb, t.$color-negative 8%, transparent);
   }
 
+  // Busy: the press landed and the request is in flight.
   &:disabled {
     opacity: 0.6;
     cursor: progress;
+  }
+
+  // Blocked: the control is offered here but not for this run in this state, and
+  // its `title` says why. A refused press is not a pending one, so it must not
+  // read as one.
+  &:disabled[data-blocked] {
+    cursor: not-allowed;
   }
 }
 

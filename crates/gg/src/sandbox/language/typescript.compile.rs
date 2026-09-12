@@ -497,8 +497,8 @@ fn invoke(checker: &Checker, context: &PrepareContext) -> Result<CompilerReport,
 /// operator can actually fix: `node` is not where gg looked for it.
 fn spawn_prefix(node: &str) -> String {
     format!(
-        "gg compiles every TypeScript program and needs Node on PATH or {NODE_ENV} pointing at \
-         it (`{node}`): "
+        "gg found no Node for the TypeScript toolchain (`{node}` on PATH, or named by \
+         {NODE_ENV}): "
     )
 }
 

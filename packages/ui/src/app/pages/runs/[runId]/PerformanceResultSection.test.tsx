@@ -275,9 +275,12 @@ describe("PerformanceResultBody", () => {
 });
 
 describe("PlaybackOverlay", () => {
-  it("shows an unavailable message when the run published no engine module", () => {
+  it("names which half is missing when the run published no engine module", () => {
     // Playback steps the run's own module; there is no reference fallback, so a run
-    // that published none is simply not playable — no worker is spawned.
+    // that published none is simply not playable — no worker is spawned. The
+    // message reports which of the module and the scenario is absent, because that
+    // is the whole content of the failure; the chrome around it already says
+    // playback could not happen.
     render(
       <PlaybackOverlay
         scenarioUrl="/runs/r/asset/scenario.json"
@@ -286,7 +289,7 @@ describe("PlaybackOverlay", () => {
         onExit={() => {}}
       />,
     );
-    expect(screen.getByText(/Playback is unavailable/)).toBeInTheDocument();
+    expect(screen.getByText(/no engine module recorded$/)).toBeInTheDocument();
     // The transport controls are disabled: nothing loaded to play.
     expect(screen.getByRole("button", { name: "Pause" })).toBeDisabled();
   });

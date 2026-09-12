@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { LoadingState } from "../../components/LoadingState";
+import { LoadFailureState } from "../../components/LoadFailureState";
 import type {
   HarnessFamily,
   ModelAlias,
@@ -158,8 +159,11 @@ export function ModelConfigPage() {
     );
   }
 
-  // Edit mode with the model not yet in the catalog: still loading, or genuinely
-  // unknown once the catalog has settled.
+  // Edit mode with the model not yet in the catalog. Three outcomes, and the
+  // form must not open on any of them: the catalog read is still in flight, the
+  // read failed, or the read settled and this backend curates no such model.
+  // Only the last is an unknown model — reporting a failed read as one would
+  // invite the operator to create a duplicate of a model that already exists.
   if (editing && !existing) {
     return (
       <PageLayout>
@@ -169,6 +173,8 @@ export function ModelConfigPage() {
         />
         {status === "loading" ? (
           <LoadingState label="Resolving model…" />
+        ) : status === "error" ? (
+          <LoadFailureState subject="the model catalog" />
         ) : (
           <p className={`${styles.notice} ${styles.warn}`}>
             Unknown model: {modelId}

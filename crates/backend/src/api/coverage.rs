@@ -78,6 +78,11 @@ use super::GgConfig;
 /// real review target.
 const MAX_RUNS_PER_CELL: u32 = 100;
 
+/// The smallest target a plan may set. Not zero: a cell nobody wants any runs of is
+/// a cell that should not be in the plan (or a rung that should not be on the
+/// ladder), so an emptied field is a plan to fix rather than a target to store.
+const MIN_RUNS_PER_CELL: u32 = 1;
+
 /// The review-buffer size applied to an account that has never chosen one.
 ///
 /// The buffer bounds how much work a top-up leaves waiting on the reviewer, so the
@@ -397,9 +402,9 @@ impl CoverageSchedule {
         }
     }
 
-    /// Lower this schedule to the store's shape, clamping the buffer override for the
-    /// same reason [`plan_from_input`] clamps the runs-per-cell target: the buffer is
-    /// what bounds a top-up's fan-out.
+    /// Lower this schedule to the store's shape, clamping the buffer override: the
+    /// buffer is what bounds a top-up's fan-out, so a mistyped bound is a mistyped
+    /// value in units of queued runs.
     fn to_db(&self) -> crate::db::CoveragePlanSchedule {
         crate::db::CoveragePlanSchedule {
             outer_axis: self.outer_axis.as_str().to_string(),
@@ -503,6 +508,8 @@ pub struct CoveragePlanInput {
     /// The reviewer-chosen display name.
     pub name: String,
     /// The target number of runs desired for each `case × combination` cell.
+    /// Rejected outside `MIN_RUNS_PER_CELL..=MAX_RUNS_PER_CELL` rather than corrected
+    /// into range.
     pub runs_per_cell: u32,
     /// The referenced combination groups' ids.
     #[serde(default)]
@@ -1062,19 +1069,20 @@ pub async fn list_plans(
     Ok(Json(out))
 }
 
-/// `POST /coverage-plans` — create a plan. The runs-per-cell target is clamped to a
-/// sane maximum so a mistyped value cannot fan out into thousands of queued runs, and
-/// an absent schedule starts the plan on [`CoverageSchedule::default`] — indis-
-/// tinguishable from the plans that existed before a plan could be scheduled at all.
+/// `POST /coverage-plans` — create a plan. An absent schedule starts the plan on
+/// [`CoverageSchedule::default`] — indistinguishable from the plans that existed
+/// before a plan could be scheduled at all.
 ///
-/// `400` for a one-off gg member the account cannot launch (see [`create_group`]).
+/// `400` for a runs-per-cell target outside the range the backend will honour (see
+/// [`validated_runs_per_cell`]), and for a one-off gg member the account cannot launch
+/// (see [`create_group`]).
 pub async fn create_plan(
     State(state): State<AppState>,
     user: AuthUser,
     Json(input): Json<CoveragePlanInput>,
 ) -> Result<Json<CoveragePlanOut>, ApiError> {
     let library = reject_unstorable_members(&state, &user.0.id, &input.combos, &[]).await?;
-    let (mut plan, schedule) = plan_from_input(new_id(), input, &now()?);
+    let (mut plan, schedule) = plan_from_input(new_id(), input, &now()?)?;
     let schedule = schedule.unwrap_or_default();
     state
         .db
@@ -1086,7 +1094,8 @@ pub async fn create_plan(
 }
 
 /// `PUT /coverage-plans/{id}` — update a plan in place. 404 when the id is not the
-/// caller's.
+/// caller's, 400 for a runs-per-cell target outside the range the backend will honour
+/// (see [`validated_runs_per_cell`]).
 ///
 /// The declaration is always written; the schedule only when the body carried one, so
 /// saving an edited member list cannot un-pause a plan the reviewer paused a moment
@@ -1107,7 +1116,7 @@ pub async fn update_plan(
         .map(|plan| plan.combos)
         .unwrap_or_default();
     let library = reject_unstorable_members(&state, &user.0.id, &input.combos, &stored).await?;
-    let (mut plan, schedule) = plan_from_input(id, input, &now()?);
+    let (mut plan, schedule) = plan_from_input(id, input, &now()?)?;
     let updated = state
         .db
         .update_coverage_plan(&user.0.id, &plan)
@@ -2013,9 +2022,8 @@ pub(super) fn resolve_combos(
         let mut member = resolve_member(c, library);
         if member.unlaunchable.is_none() && !cells.insert(member.cell_identity()) {
             member.unlaunchable = Some(
-                "another member of this plan already asks for exactly these runs — same case, \
-                 same launch model, and (for a gg member) the same configuration bound to the \
-                 same agents"
+                "another member of this plan already asks for exactly these runs (same case, \
+                 same launch model, and for a gg member the same configuration and agents)"
                     .to_string(),
             );
         }
@@ -2952,11 +2960,34 @@ pub(super) fn now() -> Result<String, ApiError> {
 }
 
 /// Clamp a runs-per-cell target to the range the backend will honour. The floor is
-/// one, not zero: a cell nobody wants any runs of is a cell that should not be in the
-/// plan (or a rung that should not be on the ladder). Shared with the ladder
-/// transport, whose rungs set the same kind of target.
+/// [one](MIN_RUNS_PER_CELL), not zero: a cell nobody wants any runs of is a cell that
+/// should not be in the plan (or a rung that should not be on the ladder). Shared with
+/// the ladder transport, whose rungs set the same kind of target.
+///
+/// This is for a target the backend itself is normalizing — one already stored, or one
+/// it derived. A target an operator **submitted** goes through
+/// [`validated_runs_per_cell`] instead: storing a number other than the one that was
+/// sent, and answering `200` as though it had been stored, tells the operator nothing
+/// and leaves the plan running a target they never chose.
 pub(super) fn clamp_runs_per_cell(target: u32) -> u32 {
-    target.clamp(1, MAX_RUNS_PER_CELL)
+    target.clamp(MIN_RUNS_PER_CELL, MAX_RUNS_PER_CELL)
+}
+
+/// A submitted runs-per-cell target, or a bad request naming the bound it broke and
+/// the value that broke it. `what` names the object the target belongs to, so the
+/// message reads on whichever surface sent it.
+pub(super) fn validated_runs_per_cell(target: u32, what: &str) -> Result<u32, ApiError> {
+    if target < MIN_RUNS_PER_CELL {
+        return Err(ApiError::bad_request(format!(
+            "{what} runs at least {MIN_RUNS_PER_CELL} run per cell (got {target})"
+        )));
+    }
+    if target > MAX_RUNS_PER_CELL {
+        return Err(ApiError::bad_request(format!(
+            "{what} runs at most {MAX_RUNS_PER_CELL} runs per cell (got {target})"
+        )));
+    }
+    Ok(target)
 }
 
 /// Clamp a review-buffer target to the range the backend will honour. A bound of `0`
@@ -3026,19 +3057,20 @@ fn group_from_input(id: String, input: CoverageGroupInput, updated_at: &str) -> 
     }
 }
 
-/// Build a stored plan from a create/update body, clamping the runs-per-cell target,
-/// and hand back the schedule the body asked for (if any) separately — the split the
-/// store keeps.
+/// Build a stored plan from a create/update body, validating the runs-per-cell
+/// target, and hand back the schedule the body asked for (if any) separately — the
+/// split the store keeps.
 fn plan_from_input(
     id: String,
     input: CoveragePlanInput,
     updated_at: &str,
-) -> (CoveragePlan, Option<CoverageSchedule>) {
-    (
+) -> Result<(CoveragePlan, Option<CoverageSchedule>), ApiError> {
+    let runs_per_cell = validated_runs_per_cell(input.runs_per_cell, "a plan")?;
+    Ok((
         CoveragePlan {
             id,
             name: input.name,
-            runs_per_cell: clamp_runs_per_cell(input.runs_per_cell),
+            runs_per_cell,
             combo_group_ids: input.combo_group_ids,
             case_group_ids: input.case_group_ids,
             combos: for_storage(input.combos),
@@ -3046,7 +3078,7 @@ fn plan_from_input(
             updated_at: updated_at.to_string(),
         },
         input.schedule,
-    )
+    ))
 }
 
 impl TopUpResult {

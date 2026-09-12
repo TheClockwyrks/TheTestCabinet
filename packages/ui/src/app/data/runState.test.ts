@@ -4,6 +4,7 @@ import {
   describeRunState,
   hasPlayableOutcome,
   runStateColor,
+  RUN_STATE_DOCS_URL,
 } from "./runState";
 
 // Every terminal state in the contract, so a state added to the Rust enum without
@@ -47,6 +48,23 @@ describe("describeRunState", () => {
       expect(presentation.label, state).toBeTruthy();
       expect(presentation.chip, state).toBeTruthy();
       expect(presentation.description, state).toBeTruthy();
+      expect(presentation.consequence, state).toBeTruthy();
+    }
+  });
+
+  it("keeps the handling out of every failure description", () => {
+    // A description reports the error, not what the system decided to do about it
+    // (the run-record contract's failure-detail style). The tier's consequences —
+    // publishability, what a publish releases, whether it counts as a model
+    // statistic — are `consequence`, surfaced on demand, so a description that
+    // reached for them would be saying it twice and burying the failure.
+    for (const state of ALL_STATES) {
+      const { description } = describeRunState(state);
+      expect(description, state).not.toMatch(
+        /publish|statistic|retried|releases no/i,
+      );
+      // One clause, not a paragraph: the banner body has to read at a glance.
+      expect(description.length, state).toBeLessThanOrEqual(180);
     }
   });
 
@@ -56,7 +74,10 @@ describe("describeRunState", () => {
     const presentation = describeRunState("catastrophic");
     expect(presentation.isFailure).toBe(true);
     expect(presentation.isPublishableFailure).toBe(true);
-    expect(presentation.description).toMatch(/no playable build/i);
+    // The failure itself: a clean exit whose output would not build or load.
+    expect(presentation.description).toMatch(/did not build or load/i);
+    // What the tier means is kept, moved off the description onto `consequence`.
+    expect(presentation.consequence).toMatch(/no playable build/i);
   });
 
   it("marks only a completed run as a non-failure", () => {
@@ -78,7 +99,10 @@ describe("describeRunState", () => {
     const presentation = describeRunState("limit_exceeded");
     expect(presentation.isFailure).toBe(true);
     expect(presentation.isPublishableFailure).toBe(true);
-    expect(presentation.description).toMatch(/never retried/i);
+    // The description names the ceilings a configuration can arm, since it stands
+    // in for a record that recorded no detail of its own.
+    expect(presentation.description).toMatch(/wall-clock budget/i);
+    expect(presentation.consequence).toMatch(/never retried/i);
   });
 
   it("reads a canceled run as an operator's stop, not a model result", () => {
@@ -89,7 +113,16 @@ describe("describeRunState", () => {
     expect(presentation.isFailure).toBe(true);
     expect(presentation.isPublishableFailure).toBe(false);
     expect(presentation.description).toMatch(/operator/i);
-    expect(presentation.description).toMatch(/never published/i);
+    expect(presentation.consequence).toMatch(/never publishable/i);
+    expect(presentation.consequence).toMatch(
+      /excluded from every model statistic/i,
+    );
+  });
+
+  it("points at the contract behind the tier list", () => {
+    // The consequences are stated per tier, but the full contract is not restated
+    // in the app — the link is what keeps the two from drifting.
+    expect(RUN_STATE_DOCS_URL).toContain("/components/core/run-records/");
   });
 
   it("gives every state its own chart color", () => {

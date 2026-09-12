@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Link, NavLink, useParams } from "react-router";
 import { PageLayout } from "../../components/PageLayout";
 import { LoadingState } from "../../components/LoadingState";
+import { LoadFailureState } from "../../components/LoadFailureState";
 import { AddModelFromRunControl } from "../../components/AddModelFromRunControl";
 import { BackChevron } from "../../components/BackChevron";
 import { ModelProviderMark } from "../../components/ModelProviderMark";
@@ -39,10 +40,9 @@ export function ModelDetailLayout({ tab, children }: ModelDetailLayoutProps) {
   );
 
   if (!model) {
-    // While the catalog is still loading the model isn't resolvable yet, so show
-    // the branded full-body loading state (the topbar stays) rather than the
-    // unknown-model text, which is reserved for a model genuinely absent from a
-    // catalog that has finished loading.
+    // A read has three outcomes and this page must not collapse them into two.
+    // While the catalog is still loading the model isn't resolvable YET, so show
+    // the branded full-body loading state (the topbar stays).
     if (modelsStatus === "loading") {
       return (
         <PageLayout>
@@ -50,6 +50,20 @@ export function ModelDetailLayout({ tab, children }: ModelDetailLayoutProps) {
         </PageLayout>
       );
     }
+    // The catalog read FAILED. Whether this backend holds the model is exactly
+    // what could not be established, so saying it is unknown would be the app
+    // inventing an answer it does not have.
+    if (modelsStatus === "error") {
+      return (
+        <PageLayout>
+          <LoadFailureState subject="the model catalog" />
+          <p className={styles.line}>
+            <Link to={routes.models()}>&larr; All models</Link>
+          </p>
+        </PageLayout>
+      );
+    }
+    // The catalog read SETTLED and does not hold it: genuinely unknown.
     return (
       <PageLayout>
         <p className={styles.empty}>Unknown model: {modelId}</p>

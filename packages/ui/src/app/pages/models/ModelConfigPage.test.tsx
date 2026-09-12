@@ -37,10 +37,10 @@ const LISTING = {
   description: "A model for agents and coding workflows.",
 };
 
-function galleryValue(): GalleryDataInput {
+function galleryValue(modelsStatus = "ready"): GalleryDataInput {
   return {
     models: [],
-    modelsStatus: "ready",
+    modelsStatus,
     canExecute: true,
   } as unknown as GalleryDataInput;
 }
@@ -220,5 +220,47 @@ describe("ModelConfigPage's save failure", () => {
 
     await screen.findByRole("alert");
     expect(saveButton()).not.toBeDisabled();
+  });
+});
+
+// Editing an existing model resolves it out of the catalog, and the three
+// outcomes of that read must stay three. Reporting a failed read as "Unknown
+// model" invites the operator to go and create a duplicate of a model the
+// cabinet already holds.
+describe("ModelConfigPage when the edited model does not resolve", () => {
+  function renderEdit(modelsStatus: string) {
+    render(
+      <MemoryRouter initialEntries={["/models/claude/edit"]}>
+        <GalleryDataProvider value={galleryValue(modelsStatus)}>
+          <BackendProvider value={backendValue(vi.fn(), vi.fn())}>
+            <Routes>
+              <Route
+                path="/models/:modelId/edit"
+                element={<ModelConfigPage />}
+              />
+            </Routes>
+          </BackendProvider>
+        </GalleryDataProvider>
+      </MemoryRouter>,
+    );
+  }
+
+  it("waits rather than calling the model unknown while the catalog loads", () => {
+    renderEdit("loading");
+    expect(screen.getByText("Resolving model…")).toBeTruthy();
+    expect(screen.queryByText(/Unknown model/)).toBeNull();
+  });
+
+  it("reports a failed catalog read as a failure", () => {
+    renderEdit("error");
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Could not load the model catalog",
+    );
+    expect(screen.queryByText(/Unknown model/)).toBeNull();
+  });
+
+  it("names the model unknown once the catalog has settled without it", () => {
+    renderEdit("ready");
+    expect(screen.getByText(/Unknown model: claude/)).toBeTruthy();
   });
 });

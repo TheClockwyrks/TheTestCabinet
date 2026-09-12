@@ -90,6 +90,12 @@ export function TestCasesPage({ tab }: TestCasesPageProps) {
     [canExecute, testCases],
   );
 
+  // What decides this page's body: the catalog it holds, not the last read's
+  // outcome. An empty-but-settled catalog still renders the chrome and its empty
+  // state (`status === "ready"` with nothing in it), which is why this is only
+  // about having no catalog resolved at all.
+  const haveCatalog = testCases.length > 0 || status === "ready";
+
   const shown = useMemo(
     () =>
       testCases
@@ -113,17 +119,31 @@ export function TestCasesPage({ tab }: TestCasesPageProps) {
         comment={<>// the specs harnesses build against</>}
       />
 
-      {status === "loading" && <LoadingState label="Loading catalog…" />}
+      {/* Render order: DATA first, read state second. A catalog this page HOLDS
+          is rendered whatever the latest read did — the console keeps a loaded
+          catalog when a re-read fails — and a failure over it is stale data, not
+          an empty cabinet: the notice sits above the rows instead of replacing
+          them. Only with no catalog at all do the read states decide, and only a
+          read that settled says the catalog is empty. */}
+      {!haveCatalog && status === "loading" && (
+        <LoadingState label="Loading catalog…" />
+      )}
 
-      {status === "error" && (
+      {!haveCatalog && status === "error" && (
         <p className={styles.error}>
           Couldn&apos;t reach the backend, so the test-case catalog is
           unavailable.
         </p>
       )}
 
-      {status === "ready" && (
+      {haveCatalog && (
         <>
+          {status === "error" && (
+            <p className={styles.error} role="alert">
+              Couldn&apos;t reach the backend, so this catalog may be out of
+              date.
+            </p>
+          )}
           <div className={styles.controls}>
             <nav className={styles.tabs} aria-label="Test type">
               {visibleTabs.map((entry) => (

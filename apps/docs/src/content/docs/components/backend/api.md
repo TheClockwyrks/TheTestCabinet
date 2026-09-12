@@ -847,7 +847,8 @@ as it arrived and belongs to no configuration's cell.
   refused with `400`.
 - `GET|POST /coverage-plans`, `PUT|DELETE /coverage-plans/{id}` — the plans
   themselves. Reads return the declaration and schedule flattened.
-  `runsPerCell` is clamped server-side.
+  A `runsPerCell` outside `1..=100` is refused with `400` naming the bound and the
+  value received, rather than corrected into range.
 - `GET /coverage-plans/summary` — the roll-up: cell counts, runs missing, runs
   unreviewed by you, plus `paused` and `autoTopUp`.
 - `GET /coverage-plans/{id}/coverage` — the full matrix: one cell per

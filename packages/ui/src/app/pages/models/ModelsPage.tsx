@@ -226,68 +226,80 @@ export function ModelsPage({ tab = "models" }: ModelsPageProps) {
   // The catalog tab's body, split out so the tabbed return above stays
   // readable.
   function renderCatalog() {
+    // Render order: DATA first, read state second. A catalog with rows in it is
+    // rendered whatever the last read did — the gallery KEEPS a loaded catalog
+    // when a refresh fails (see `useLiveGallery`), and the refresh token is
+    // bumped by every finished run, so branching on `status` ahead of the rows
+    // let one network blip replace the whole table with an unavailability
+    // notice and throw away the catalog that was being retained. A failed read
+    // over rows is STALE DATA: the rows stay and the failure is said above
+    // them.
+    //
+    // Only with nothing to show do the three read states decide, and they are
+    // distinct: a fetch in flight is a wait, an unreachable backend is a fault,
+    // and only a resolved-but-empty catalog is genuinely "no models yet".
+    if (models.length === 0) {
+      return status === "loading" ? (
+        <LoadingState label="Loading models…" />
+      ) : status === "error" ? (
+        <p className={styles.empty}>
+          Couldn&apos;t reach the backend, so the model catalog is unavailable.
+        </p>
+      ) : (
+        <p className={styles.empty}>No models are in the catalog yet.</p>
+      );
+    }
     return (
       <>
-        {/* The three states are distinct and must read that way: a fetch in
-            flight is a wait, an unreachable backend is a fault, and only a
-            resolved-but-empty catalog is genuinely "no models yet". Reporting
-            the first two as the third told a visitor the cabinet was empty
-            while it was still being read. */}
-        {status === "loading" ? (
-          <LoadingState label="Loading models…" />
-        ) : status === "error" ? (
-          <p className={styles.empty}>
-            Couldn&apos;t reach the backend, so the model catalog is
-            unavailable.
+        {status === "error" && (
+          <p className={styles.stale} role="alert">
+            Couldn&apos;t reach the backend, so this catalog may be out of date.
           </p>
-        ) : models.length === 0 ? (
-          <p className={styles.empty}>No models are in the catalog yet.</p>
-        ) : (
-          <div className={styles.wrap}>
-            <div className={styles.menuAnchor}>
-              <ColumnMenu
-                ref={menuRef}
-                columns={MODEL_COLUMNS}
-                isVisible={isVisible}
-                onToggle={toggle}
-              />
-            </div>
-            <div className={styles.table} ref={table.containerRef}>
-              <div
-                className={`${styles.row} ${styles.head}`}
-                data-ttc-head
-                onContextMenu={(event) => {
-                  event.preventDefault();
-                  menuRef.current?.openAt(event.clientX, event.clientY);
-                }}
-              >
-                {visible.map((column, index) => (
-                  <SortableHeaderCell
-                    key={column.id}
-                    columnId={column.id}
-                    label={column.label}
-                    numeric={column.numeric}
-                    sortable={typeof column.sortKey === "function"}
-                    sort={sort}
-                    onSort={cycle}
-                    handle={table.handle(index)}
-                  />
-                ))}
-              </div>
-              {sorted.map((model) => (
-                <Link
-                  key={model.slug}
-                  to={routes.modelDetail(model.slug)}
-                  className={styles.row}
-                >
-                  {visible.map((column) => (
-                    <Fragment key={column.id}>{column.render(model)}</Fragment>
-                  ))}
-                </Link>
+        )}
+        <div className={styles.wrap}>
+          <div className={styles.menuAnchor}>
+            <ColumnMenu
+              ref={menuRef}
+              columns={MODEL_COLUMNS}
+              isVisible={isVisible}
+              onToggle={toggle}
+            />
+          </div>
+          <div className={styles.table} ref={table.containerRef}>
+            <div
+              className={`${styles.row} ${styles.head}`}
+              data-ttc-head
+              onContextMenu={(event) => {
+                event.preventDefault();
+                menuRef.current?.openAt(event.clientX, event.clientY);
+              }}
+            >
+              {visible.map((column, index) => (
+                <SortableHeaderCell
+                  key={column.id}
+                  columnId={column.id}
+                  label={column.label}
+                  numeric={column.numeric}
+                  sortable={typeof column.sortKey === "function"}
+                  sort={sort}
+                  onSort={cycle}
+                  handle={table.handle(index)}
+                />
               ))}
             </div>
+            {sorted.map((model) => (
+              <Link
+                key={model.slug}
+                to={routes.modelDetail(model.slug)}
+                className={styles.row}
+              >
+                {visible.map((column) => (
+                  <Fragment key={column.id}>{column.render(model)}</Fragment>
+                ))}
+              </Link>
+            ))}
           </div>
-        )}
+        </div>
       </>
     );
   }

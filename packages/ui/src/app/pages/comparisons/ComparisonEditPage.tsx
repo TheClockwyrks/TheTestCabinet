@@ -13,9 +13,11 @@ import { PageLayout } from "../../components/PageLayout";
 import { LoadingState } from "../../components/LoadingState";
 import { BackChevron } from "../../components/BackChevron";
 import { ModelCombobox } from "../../components/ModelCombobox";
+import { NumberField, useNumberFieldState } from "../../components/NumberField";
 import { harnesses } from "../../data/harnesses";
 import { familyOf } from "../../data/families";
-import { DEFAULT_ENGINE_SLUG } from "../../data/engines";
+import { engineName } from "../../data/engines";
+import { useEngineChoice } from "../../data/useEngineChoice";
 import { DEFAULT_ORCHESTRATOR_SLUG } from "../../data/orchestrators";
 import {
   CATALOG_CATEGORIES,
@@ -28,6 +30,7 @@ import { launchModelSlots } from "../runs/gg/ggConfigDraft";
 import { useGgConfigs } from "../runs/gg/useGgConfigs";
 import { routes } from "../../routes";
 import { armLabel, type ArmDraft, type ArmKind } from "./armDraft";
+import { pruneDeadRunIds } from "./comparisonMath";
 import { SubmitNotice } from "../../components/SubmitNotice";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Comparisons.module.scss";
@@ -89,7 +92,18 @@ export function ComparisonEditPage() {
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [n, setN] = useState(3);
+  // Held as the operator's own text, not as a number: a numeric field must be
+  // clearable, and a form that snapped an emptied field back to its floor would
+  // make `N` replaceable only by selecting the digits or driving the spinner
+  // (docs/components/ui/overview.md → "Numeric fields"). The same reading gates
+  // the save below, so the field and the button can never disagree — and the
+  // backend validates the identical 1–50 bounds.
+  const nField = useNumberFieldState(3, {
+    min: 1,
+    max: 50,
+    integer: true,
+    label: "Runs per arm",
+  });
   const [arms, setArms] = useState<ArmDraft[]>(() => [
     // A new comparison opens on the shape the feature exists for: one harness
     // against one gg configuration. Both rows still need their model picked.
@@ -104,6 +118,15 @@ export function ComparisonEditPage() {
     setCategory,
     cases: sortedCases,
   } = useCaseCategory(sel, { navSlug: loadedSlug, ready: !loading });
+  // The engine is one of the comparison's held-constant controls, and the *case
+  // version* decides which engines exist — so the pick is held to the set the
+  // selected version declares, exactly as the new-run form does. A saved
+  // comparison re-seeds it below, on load.
+  const {
+    options: engineOptions,
+    engine,
+    setEngine,
+  } = useEngineChoice(sel.versionInfo?.engines);
 
   useEffect(() => {
     backend
@@ -133,8 +156,17 @@ export function ComparisonEditPage() {
         sel.setVersion(c.config.controls.version);
         sel.setVariant(c.config.controls.variant);
         setLoadedSlug(c.config.controls.caseSlug);
-        setN(c.config.n);
-        setArms(c.config.arms.map(draftFromArm));
+        // The stored engine is a *preference* here, held to whatever the version
+        // this comparison names actually supports — a case that dropped an engine
+        // since must not leave the form able to save one it would refuse.
+        setEngine(c.config.controls.engineSlug);
+        nField.set(c.config.n);
+        // Saving is a write, and a write is where the arms' recorded run ids are
+        // pruned of the runs that no longer exist (docs/comparisons/experiments.md).
+        // Loading the drafts from the pruned config is what carries that through
+        // an edit: the ids the form writes back are the ones still live, so an arm
+        // whose runs were deleted stops counting them and can be topped up again.
+        setArms(pruneDeadRunIds(c.config, c.arms).arms.map(draftFromArm));
         setLoading(false);
       })
       .catch((e) => {
@@ -273,10 +305,29 @@ export function ComparisonEditPage() {
     Boolean(sel.slug && sel.version && sel.variant) &&
     arms.length >= 2 &&
     arms.every(armReady) &&
-    n >= 1;
+    nField.valid &&
+    nField.value !== undefined;
+
+  // What the form is still waiting for, named rather than left to the operator to
+  // work out from a disabled button. The run-count field says its own problem
+  // beneath itself, so this only has to name it.
+  const blocker = !name.trim()
+    ? "Name the comparison."
+    : !(sel.slug && sel.version && sel.variant)
+      ? "Pick the test every configuration runs."
+      : !nField.valid
+        ? // Named, not repeated: the field says exactly what is wrong with it
+          // directly beneath itself, and this only has to point the operator at
+          // the field from beside the button that is refusing.
+          "The run count needs a whole number from 1 to 50."
+        : arms.length < 2
+          ? "A comparison needs at least two configurations."
+          : !arms.every(armReady)
+            ? "Give every configuration its model."
+            : null;
 
   async function onSave() {
-    if (!token || !savable) return;
+    if (!token || !savable || nField.value === undefined) return;
     const input: ComparisonInput = {
       name: name.trim(),
       description: description.trim(),
@@ -286,10 +337,10 @@ export function ComparisonEditPage() {
           version: sel.version,
           variant: sel.variant,
           orchestratorSlug: DEFAULT_ORCHESTRATOR_SLUG,
-          engineSlug: DEFAULT_ENGINE_SLUG,
+          engineSlug: engine,
         },
         arms: arms.map((arm) => armFromDraft(arm, derivedLabel(arm))),
-        n,
+        n: nField.value,
       },
     };
     setBusy(true);
@@ -430,21 +481,33 @@ export function ComparisonEditPage() {
                 ))}
               </select>
             </label>
+            {/* Offered only where there is something to choose. A version
+                supporting a single engine has already decided it, and `engine`
+                resolves to that one whether or not the field is on screen. */}
+            {engineOptions.length > 1 && (
+              <label className={exec.field}>
+                <span className={exec.fieldLabel}>Engine</span>
+                <select
+                  className={exec.select}
+                  value={engine}
+                  onChange={(e) => setEngine(e.target.value)}
+                  title="The runtime every arm's runs are built against. It is held constant across the comparison: arms on different engines would be measuring different work."
+                >
+                  {engineOptions.map((slug) => (
+                    <option key={slug} value={slug}>
+                      {engineName(slug)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <label className={exec.field}>
               <span className={exec.fieldLabel}>N (runs per arm)</span>
-              <input
+              <NumberField
                 className={exec.input}
-                type="number"
-                min={1}
-                max={50}
-                step={1}
-                value={n}
-                onChange={(e) => {
-                  const next = Math.floor(Number(e.target.value));
-                  setN(
-                    Number.isFinite(next) && next >= 1 ? Math.min(next, 50) : 1,
-                  );
-                }}
+                value={nField.raw}
+                onChange={nField.setRaw}
+                {...nField.bounds}
               />
             </label>
           </div>
@@ -619,12 +682,7 @@ export function ComparisonEditPage() {
             >
               Cancel
             </button>
-            {!savable && (
-              <span className={styles.empty}>
-                Name the comparison, pick its test, and give every configuration
-                its model. At least two are needed.
-              </span>
-            )}
+            {blocker && <span className={styles.empty}>{blocker}</span>}
           </div>
         </section>
       )}

@@ -21,6 +21,7 @@ import {
   resolveLaunchModel,
 } from "../../data/providers";
 import { ModelCombobox } from "../../components/ModelCombobox";
+import { NumberField, useNumberFieldState } from "../../components/NumberField";
 import { launchBatch, type LaunchItem } from "./launchBatch";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
@@ -161,7 +162,17 @@ export function NewRunPage() {
     engine,
     setEngine,
   } = useEngineChoice(sel.versionInfo?.engines, params.get("engine"));
-  const [maxRuntime, setMaxRuntime] = useState("");
+  // The per-run timeout override. Optional: empty is the answer "use the case's own
+  // ceiling", so it is the one field here an empty entry may be launched on. Typing
+  // that names no usable number still blocks the launch rather than reaching the
+  // request as a NaN. See components/NumberField.
+  const maxRuntimeField = useNumberFieldState("", {
+    label: "Max runtime",
+    min: 1,
+    integer: true,
+    optional: true,
+  });
+  const maxRuntime = maxRuntimeField.value;
   // The harness/model combinations to launch. The form starts with one empty row
   // so the single-run path is unchanged in feel; "Add combination" fans out.
   const [combinations, setCombinations] = useState<Combination[]>(() => [
@@ -171,11 +182,27 @@ export function NewRunPage() {
   // How many runs to launch per combination. Multiplies the fan-out (total launches
   // = combinations × runCount). Defaults to 1 so behavior is unchanged when
   // untouched.
-  const [runCount, setRunCount] = useState(1);
+  //
+  // Held as the text the operator typed rather than as a number, so the field can
+  // be cleared and retyped — see `components/NumberField`. An unusable entry is not
+  // corrected under the caret; it blocks the launch instead.
+  const runCountField = useNumberFieldState(1, {
+    label: "Run count",
+    min: 1,
+    max: RUN_COUNT_MAX,
+    integer: true,
+  });
+  const runCount = runCountField.value ?? 1;
   // Automatic retries applied to every launched run (a run-level setting, threaded
   // into each fan-out launch). Defaults to 1 so a run auto-retries once on an infra
   // error or catastrophic build; 0 disables retries.
-  const [retryCount, setRetryCount] = useState(DEFAULT_RETRY_COUNT);
+  const retryCountField = useNumberFieldState(DEFAULT_RETRY_COUNT, {
+    label: "Retry count",
+    min: 0,
+    max: RETRY_COUNT_MAX,
+    integer: true,
+  });
+  const retryCount = retryCountField.value ?? DEFAULT_RETRY_COUNT;
   const [launchError, setLaunchError] = useState<string | null>(null);
   const [launching, setLaunching] = useState(false);
   const [results, setResults] = useState<LaunchOutcome[] | null>(null);
@@ -345,6 +372,11 @@ export function NewRunPage() {
     // be trusted while one is in flight.
     !sel.loading &&
     combosValid &&
+    // Both counts decide what is enqueued, so neither may be launched on while it
+    // is empty or out of range. The fields say why, immediately beneath themselves.
+    runCountField.valid &&
+    retryCountField.valid &&
+    maxRuntimeField.valid &&
     !launching,
   );
 
@@ -389,7 +421,9 @@ export function NewRunPage() {
             engine,
             // Omit the override entirely when blank so the case's default runtime
             // applies (the field is optional, not nullable).
-            ...(maxRuntime ? { maxRuntimeSeconds: Number(maxRuntime) } : {}),
+            ...(maxRuntime === undefined
+              ? {}
+              : { maxRuntimeSeconds: maxRuntime }),
             retryCount,
           },
           token ?? "",
@@ -467,7 +501,7 @@ export function NewRunPage() {
         ),
         orchestrator,
         engine,
-        maxRuntimeOverride: maxRuntime ? Number(maxRuntime) : null,
+        maxRuntimeOverride: maxRuntime ?? null,
         retryCount,
       },
       track: {
@@ -669,12 +703,12 @@ export function NewRunPage() {
         </label>
         <label className={styles.field}>
           <span className={styles.fieldLabel}>Max runtime (s, optional)</span>
-          <input
+          <NumberField
             className={styles.input}
-            type="number"
-            min={1}
-            value={maxRuntime}
-            onChange={(e) => setMaxRuntime(e.target.value)}
+            problemClassName={styles.fieldProblem}
+            {...maxRuntimeField.bounds}
+            value={maxRuntimeField.raw}
+            onChange={maxRuntimeField.setRaw}
             placeholder={
               sel.versionInfo
                 ? `default ${sel.versionInfo.maxRuntimeSeconds}`
@@ -684,21 +718,12 @@ export function NewRunPage() {
         </label>
         <label className={styles.field}>
           <span className={styles.fieldLabel}>Run count</span>
-          <input
+          <NumberField
             className={styles.input}
-            type="number"
-            min={1}
-            max={RUN_COUNT_MAX}
-            step={1}
-            value={runCount}
-            onChange={(e) => {
-              // Clamp to a sane integer range so an accidental keystroke can't
-              // enqueue an absurd batch; a blank/invalid entry falls back to 1.
-              const n = Math.floor(Number(e.target.value));
-              setRunCount(
-                Number.isFinite(n) && n >= 1 ? Math.min(n, RUN_COUNT_MAX) : 1,
-              );
-            }}
+            problemClassName={styles.fieldProblem}
+            {...runCountField.bounds}
+            value={runCountField.raw}
+            onChange={runCountField.setRaw}
           />
         </label>
         <label
@@ -706,23 +731,12 @@ export function NewRunPage() {
           title="Auto-retries on infra error or catastrophic failure (not on a timeout or a completed run)."
         >
           <span className={styles.fieldLabel}>Retry count</span>
-          <input
+          <NumberField
             className={styles.input}
-            type="number"
-            min={0}
-            max={RETRY_COUNT_MAX}
-            step={1}
-            value={retryCount}
-            onChange={(e) => {
-              // Clamp to [0, RETRY_COUNT_MAX] (matching the backend); a blank/invalid
-              // entry falls back to the default of one retry.
-              const n = Math.floor(Number(e.target.value));
-              setRetryCount(
-                Number.isFinite(n) && n >= 0
-                  ? Math.min(n, RETRY_COUNT_MAX)
-                  : DEFAULT_RETRY_COUNT,
-              );
-            }}
+            problemClassName={styles.fieldProblem}
+            {...retryCountField.bounds}
+            value={retryCountField.raw}
+            onChange={retryCountField.setRaw}
           />
         </label>
       </div>

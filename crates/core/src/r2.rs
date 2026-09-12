@@ -201,13 +201,13 @@ impl R2Client {
             .body(body)
             .send()
             .await
-            .map_err(|e| Error::R2(format!("R2 PUT `{key}` failed: {e}")))?;
+            .map_err(|e| Error::R2(format!("PUT `{key}` failed: {e}")))?;
 
         if !response.status().is_success() {
             let status = response.status();
             let detail = response.text().await.unwrap_or_default();
             return Err(Error::R2(format!(
-                "R2 PUT `{key}` returned {status}: {detail}"
+                "PUT `{key}` returned {status}: {detail}"
             )));
         }
         Ok(())
@@ -355,13 +355,13 @@ impl R2Client {
             .body(body)
             .send()
             .await
-            .map_err(|e| Error::R2(format!("R2 DELETE batch failed: {e}")))?;
+            .map_err(|e| Error::R2(format!("DELETE batch failed: {e}")))?;
 
         if !response.status().is_success() {
             let status = response.status();
             let detail = response.text().await.unwrap_or_default();
             return Err(Error::R2(format!(
-                "R2 DELETE batch returned {status}: {detail}"
+                "DELETE batch returned {status}: {detail}"
             )));
         }
         // A quiet-mode success body carries no elements; anything reported is a
@@ -369,7 +369,7 @@ impl R2Client {
         let detail = response.text().await.unwrap_or_default();
         if let Some(failures) = parse_delete_errors(&detail) {
             return Err(Error::R2(format!(
-                "R2 DELETE batch reported {failures} per-key error(s): {detail}"
+                "DELETE batch reported {failures} per-key error(s): {detail}"
             )));
         }
         Ok(())
@@ -423,16 +423,16 @@ impl R2Client {
             .header("Authorization", authorization)
             .send()
             .await
-            .map_err(|e| Error::R2(format!("R2 LIST failed: {e}")))?;
+            .map_err(|e| Error::R2(format!("LIST failed: {e}")))?;
         if !response.status().is_success() {
             let status = response.status();
             let detail = response.text().await.unwrap_or_default();
-            return Err(Error::R2(format!("R2 LIST returned {status}: {detail}")));
+            return Err(Error::R2(format!("LIST returned {status}: {detail}")));
         }
         response
             .text()
             .await
-            .map_err(|e| Error::R2(format!("reading R2 LIST body: {e}")))
+            .map_err(|e| Error::R2(format!("reading the LIST body: {e}")))
     }
 
     /// Compute the SigV4 signing key chain and sign the string-to-sign.

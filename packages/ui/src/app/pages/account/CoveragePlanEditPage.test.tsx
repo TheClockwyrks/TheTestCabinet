@@ -172,12 +172,38 @@ describe("CoveragePlanEditPage settings", () => {
     expect(runsPerCell().value).toBe("3");
   });
 
-  it("clamps a nonsense run target rather than saving it", async () => {
+  // A nonsense target is refused rather than corrected under the caret: the field
+  // keeps what was typed, says what is wrong with it, and the save will not run.
+  it("refuses a nonsense run target rather than correcting it", async () => {
     await renderEditor();
+
     fireEvent.change(runsPerCell(), { target: { value: "0" } });
-    expect(runsPerCell().value).toBe("1");
+    expect(runsPerCell().value).toBe("0");
+    expect(runsPerCell()).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByText("Runs per cell must be 1 or more.")).toBeVisible();
+    expect(screen.getByRole("button", { name: /plan$/ })).toBeDisabled();
+
     fireEvent.change(runsPerCell(), { target: { value: "9999" } });
-    expect(runsPerCell().value).toBe("100");
+    expect(runsPerCell().value).toBe("9999");
+    expect(
+      screen.getByText("Runs per cell must be 100 or less."),
+    ).toBeVisible();
+  });
+
+  // The report this was built for: "3" could not be replaced by "5" without
+  // selecting it, because clearing the field snapped it back to 1.
+  it("can be cleared and retyped, and will not save while it is empty", async () => {
+    await renderEditor();
+
+    fireEvent.change(runsPerCell(), { target: { value: "" } });
+    expect(runsPerCell().value).toBe("");
+    expect(screen.getByText("Runs per cell is required.")).toBeVisible();
+    expect(screen.getByRole("button", { name: /plan$/ })).toBeDisabled();
+
+    fireEvent.change(runsPerCell(), { target: { value: "5" } });
+    expect(runsPerCell().value).toBe("5");
+    expect(screen.queryByText("Runs per cell is required.")).toBeNull();
+    expect(screen.getByRole("button", { name: /plan$/ })).not.toBeDisabled();
   });
 
   it("states the auto-top-up setting as a switch, not a ticked box", async () => {

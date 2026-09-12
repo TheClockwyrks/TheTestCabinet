@@ -130,8 +130,7 @@ export function ToolchainCoverage({
           <table className={styles.table}>
             <caption className={styles.tableCaption}>
               {formatCodeNumber(coverage.filesMeasured)}{" "}
-              {coverage.filesMeasured === 1 ? "file" : "files"} measured, each
-              with the share its tests reached and the counts behind it
+              {coverage.filesMeasured === 1 ? "file" : "files"} measured
             </caption>
             <thead>
               <tr>
@@ -166,9 +165,9 @@ export function ToolchainCoverage({
           </table>
           {coverage.filesTruncated && (
             <p className={styles.caveat}>
-              The per-file list was capped at {coverage.files.length} of{" "}
-              {formatCodeNumber(coverage.filesMeasured)} measured files; the
-              totals above it cover all of them.
+              List capped at {coverage.files.length} of{" "}
+              {formatCodeNumber(coverage.filesMeasured)} files; the totals cover
+              all of them.
             </p>
           )}
         </div>

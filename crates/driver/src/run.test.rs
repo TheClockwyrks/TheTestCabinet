@@ -44,3 +44,28 @@ fn every_other_engine_error_is_an_ordinary_failure() {
         assert_ne!(failure.state, RunState::Canceled, "{err}");
     }
 }
+
+#[test]
+fn a_gg_ceiling_stop_composes_into_one_sentence() {
+    // The sentence an operator reads off a ceiling-stopped run, end to end: gg's own
+    // breach sentence carries the figures, core's error names the subsystem and
+    // parenthesizes them, and this layer supplies the one verb that claims the
+    // failure. Core pins its three layers (`a_ceiling_stop_reads_as_one_clause_end_to_end`
+    // in `crates/core/src/gg_exec.test.rs`); the prefix is this crate's, so it is pinned
+    // here or an edit to it passes every gate.
+    let failure = RunFailure::from_engine(
+        &Error::HarnessLimitExceeded {
+            slug: "gg".to_string(),
+            detail: "5 consecutive turns failed".to_string(),
+        },
+        None,
+    );
+
+    assert_eq!(
+        failure.detail,
+        "run failed: gg execution ceiling hit (5 consecutive turns failed)",
+    );
+    // The state is what makes such a run unpublishable rather than a fleet failure.
+    assert_eq!(failure.state, RunState::LimitExceeded);
+    assert!(!failure.canceled_before_session);
+}

@@ -1,15 +1,21 @@
 import { describe, expect, it } from "vitest";
 import type {
   ComparisonArm,
+  ComparisonArmResult,
   ComparisonConfig,
 } from "@clockwyrks/run-record/comparison";
 import {
   appendRunIds,
+  armTopUps,
+  countedRunIds,
   harnessArmLaunchItems,
   isGgArm,
   medianRatio,
+  pruneDeadRunIds,
   remainingForArm,
+  reportedLiveRunIds,
   toolCallChartData,
+  totalMissingRuns,
   withArmRunIds,
 } from "./comparisonMath";
 
@@ -17,17 +23,220 @@ function arm(overrides: Partial<ComparisonArm> = {}): ComparisonArm {
   return { id: "arm-1", label: "pi", runIds: [], ...overrides };
 }
 
+/** An aggregated arm result: what the arm records, plus which of those runs the
+ *  backend found still exist. */
+function result(
+  armOverrides: Partial<ComparisonArm> = {},
+  resultOverrides: Partial<ComparisonArmResult> = {},
+): ComparisonArmResult {
+  return {
+    arm: arm(armOverrides),
+    nDesired: 3,
+    nObserved: 0,
+    diagnostics: {},
+    ...resultOverrides,
+  } as ComparisonArmResult;
+}
+
+// The field has three states and the third is not the second — an absent field
+// means the backend never reported liveness (it predates the field), NOT that
+// nothing is live. Conflating them relaunches whole experiments and prunes every
+// stored run id out of the config.
+describe("reportedLiveRunIds / countedRunIds", () => {
+  it("reports the arm's still-existing runs when the backend sent them", () => {
+    const r = result({ runIds: ["a", "b", "c"] }, { liveRunIds: ["a", "b"] });
+    expect(reportedLiveRunIds(r)).toEqual(["a", "b"]);
+    expect(countedRunIds(r)).toEqual(["a", "b"]);
+  });
+
+  it("trusts a reported empty array as 'none of them are live'", () => {
+    // A current backend always serializes the field, so `[]` is a positive
+    // statement: the arm's three recorded runs are all gone.
+    const r = result({ runIds: ["a", "b", "c"] }, { liveRunIds: [] });
+    expect(reportedLiveRunIds(r)).toEqual([]);
+    expect(countedRunIds(r)).toEqual([]);
+  });
+
+  it("reads an absent field as 'not reported', falling back to the arm's own ids", () => {
+    // A backend older than the field sends no key at all. Reading that as "none
+    // live" would wipe the arm out; instead it counts what it recorded, exactly
+    // as the page did before liveness existed.
+    const r = result({ runIds: ["a", "b", "c"] });
+    expect(reportedLiveRunIds(r)).toBeUndefined();
+    expect(countedRunIds(r)).toEqual(["a", "b", "c"]);
+  });
+
+  it("falls back to none for an unreported arm that has launched nothing", () => {
+    expect(countedRunIds(result())).toEqual([]);
+  });
+});
+
 describe("remainingForArm", () => {
-  it("is N minus the arm's already-recorded run ids", () => {
-    expect(remainingForArm(5, arm({ runIds: ["a", "b"] }))).toBe(3);
+  it("is N minus the arm's runs that still exist", () => {
+    expect(
+      remainingForArm(
+        5,
+        result({ runIds: ["a", "b"] }, { liveRunIds: ["a", "b"] }),
+      ),
+    ).toBe(3);
   });
 
   it("never goes negative once an arm has met or exceeded N", () => {
-    expect(remainingForArm(2, arm({ runIds: ["a", "b", "c"] }))).toBe(0);
+    expect(
+      remainingForArm(
+        2,
+        result({ runIds: ["a", "b", "c"] }, { liveRunIds: ["a", "b", "c"] }),
+      ),
+    ).toBe(0);
   });
 
-  it("treats a missing runIds array as zero already launched", () => {
-    expect(remainingForArm(3, arm({ runIds: undefined }))).toBe(3);
+  it("offers an arm's runs again once they are deleted — the whole reason live ids exist", () => {
+    // The arm still records three launches; the backend reports none of them are
+    // there any more. Counting `runIds` would leave this arm believing itself
+    // full forever.
+    expect(
+      remainingForArm(
+        3,
+        result({ runIds: ["a", "b", "c"] }, { liveRunIds: [] }),
+      ),
+    ).toBe(3);
+  });
+
+  it("counts an unreported arm's own recorded ids rather than offering to relaunch it", () => {
+    // No `liveRunIds` key at all (a backend older than the field). Treating that
+    // as "none live" would offer to relaunch the entire arm; the arm records
+    // three launches and wants three, so there is nothing to trigger.
+    expect(remainingForArm(3, result({ runIds: ["a", "b", "c"] }))).toBe(0);
+    expect(remainingForArm(5, result({ runIds: ["a", "b", "c"] }))).toBe(2);
+  });
+
+  it("counts a run that is still in flight, so nothing is launched twice", () => {
+    // Two runs exist (queued or running) but neither record has landed, so
+    // `nObserved` is 0. Topping up against that would double the arm.
+    expect(
+      remainingForArm(
+        3,
+        result(
+          { runIds: ["a", "b"] },
+          { liveRunIds: ["a", "b"], nObserved: 0 },
+        ),
+      ),
+    ).toBe(1);
+  });
+});
+
+describe("pruneDeadRunIds", () => {
+  const config = (arms: ComparisonArm[]): ComparisonConfig => ({
+    controls: {
+      caseSlug: "carom",
+      version: "v1.0.0",
+      variant: "base",
+      orchestratorSlug: "one-shot",
+      engineSlug: "none",
+    },
+    arms,
+    n: 3,
+  });
+
+  it("drops the ids whose runs no longer exist, keeping launch order", () => {
+    const next = pruneDeadRunIds(
+      config([arm({ id: "a", runIds: ["r1", "r2", "r3"] })]),
+      [result({ id: "a" }, { liveRunIds: ["r3", "r1"] })],
+    );
+    expect(next.arms[0]!.runIds).toEqual(["r1", "r3"]);
+  });
+
+  it("empties an arm the backend reports no live runs for", () => {
+    const next = pruneDeadRunIds(
+      config([arm({ id: "a", runIds: ["r1", "r2"] })]),
+      [result({ id: "a" }, { liveRunIds: [] })],
+    );
+    expect(next.arms[0]!.runIds).toEqual([]);
+  });
+
+  it("never prunes an arm whose result reports no liveness at all", () => {
+    // The load-bearing case: against a backend that does not send the field, the
+    // pruned config is what gets PUT back — clearing `runIds` here would destroy
+    // the record of which runs belong to which arm, permanently.
+    const before = config([arm({ id: "a", runIds: ["r1", "r2"] })]);
+    const next = pruneDeadRunIds(before, [result({ id: "a" })]);
+    expect(next.arms[0]!.runIds).toEqual(["r1", "r2"]);
+    // Untouched, not rebuilt — nothing about this arm changed.
+    expect(next.arms[0]).toBe(before.arms[0]);
+  });
+
+  it("leaves an arm alone when every recorded run still exists", () => {
+    const before = config([arm({ id: "a", runIds: ["r1"] })]);
+    const next = pruneDeadRunIds(before, [
+      result({ id: "a" }, { liveRunIds: ["r1"] }),
+    ]);
+    expect(next.arms[0]).toBe(before.arms[0]);
+  });
+
+  it("leaves an arm the aggregation reported nothing for untouched", () => {
+    const before = config([arm({ id: "a", runIds: ["r1"] })]);
+    expect(pruneDeadRunIds(before, []).arms[0]!.runIds).toEqual(["r1"]);
+  });
+});
+
+describe("armTopUps / totalMissingRuns", () => {
+  const config: ComparisonConfig = {
+    controls: {
+      caseSlug: "carom",
+      version: "v1.0.0",
+      variant: "base",
+      orchestratorSlug: "one-shot",
+      engineSlug: "none",
+    },
+    arms: [
+      arm({ id: "a", runIds: ["r1", "r2"] }),
+      arm({ id: "b", runIds: ["r3"] }),
+    ],
+    n: 2,
+  };
+
+  it("counts each arm against the runs it still has", () => {
+    // Arm a's two runs were deleted (reported as none live); arm b's one run
+    // survives.
+    const results = [
+      result({ id: "a", runIds: ["r1", "r2"] }, { liveRunIds: [] }),
+      result({ id: "b", runIds: ["r3"] }, { liveRunIds: ["r3"] }),
+    ];
+    const tops = armTopUps(config, results);
+    expect(tops.map((t) => [t.arm.id, t.remaining])).toEqual([
+      ["a", 2],
+      ["b", 1],
+    ]);
+    expect(totalMissingRuns(config, results)).toBe(3);
+  });
+
+  it("reads an unreported arm's launches off the stored config, not the echoed arm", () => {
+    // The aggregation echoes a trimmed arm (no `runIds` on it at all). The config
+    // is the authority on what the arm has launched — it is what gets written
+    // back — so an unreported arm must be counted off the config, or the page
+    // offers to relaunch runs the config plainly records.
+    const echoed = [
+      { ...result({ id: "a" }), arm: { id: "a", label: "pi" } },
+      { ...result({ id: "b" }), arm: { id: "b", label: "gg" } },
+    ] as unknown as ComparisonArmResult[];
+    expect(armTopUps(config, echoed).map((t) => t.remaining)).toEqual([0, 1]);
+  });
+
+  it("offers nothing for a full comparison no arm of which reports liveness", () => {
+    // Every arm is at `N` by its own record and the backend sent no liveness for
+    // any of them: "Trigger missing runs" must offer 0, not the whole experiment.
+    const results = [
+      result({ id: "a", runIds: ["r1", "r2"] }),
+      result({ id: "b", runIds: ["r3"] }),
+    ];
+    expect(armTopUps(config, results).map((t) => t.remaining)).toEqual([0, 1]);
+    expect(totalMissingRuns(config, results)).toBe(1);
+  });
+
+  it("falls back to an arm's own recorded ids when no result carries it", () => {
+    // Never expected (the backend computes one result per arm) — but the safe
+    // direction is under-launching, not double-launching.
+    expect(armTopUps(config, []).map((t) => t.remaining)).toEqual([0, 1]);
   });
 });
 
@@ -56,6 +265,27 @@ describe("harnessArmLaunchItems", () => {
       expect(item.track.harnessSlug).toBe("pi");
       expect(item.track.modelId).toBe("claude-opus-4-8");
     }
+  });
+
+  it("carries the comparison's engine onto every launch and its tracked row", () => {
+    const items = harnessArmLaunchItems(
+      { ...controls, engineSlug: "simple-2d" },
+      arm({ harnessSlug: "pi", modelId: "claude-opus-4-8" }),
+      2,
+    );
+    for (const item of items) {
+      expect(item.config.engine).toBe("simple-2d");
+      expect(item.track.engine).toBe("simple-2d");
+    }
+  });
+
+  it("resolves an absent engine to the engineless run rather than omitting it", () => {
+    const items = harnessArmLaunchItems(
+      controls,
+      arm({ harnessSlug: "pi", modelId: "claude-opus-4-8" }),
+      1,
+    );
+    expect(items[0]!.config.engine).toBe("none");
   });
 
   it("gives each arm its own model, since the model is per configuration", () => {

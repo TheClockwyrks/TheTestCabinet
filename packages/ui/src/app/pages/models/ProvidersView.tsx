@@ -19,11 +19,17 @@ import styles from "./ProvidersView.module.scss";
 // run.
 export function ProvidersView() {
   const state = useProviderStats();
-  const { models } = useModels();
+  const { models, status: modelsStatus } = useModels();
+
+  // Whether this view has a catalog to name models with at all. The gallery keeps
+  // a loaded catalog across a failed refresh, so `modelsStatus` alone does not say
+  // whether the names resolve — the rows it holds do.
+  const haveModels = models.length > 0;
 
   // Map a raw model id to its catalog display name, falling back to the id for
   // a model the catalog hasn't curated. Null means the run's slices could not
-  // name a model at all (recorded before the agent's model was known).
+  // name a model at all (recorded before the agent's model was known) — an
+  // absence the slice itself records, not a load state.
   const nameOf = useMemo(() => {
     return (modelId: string | null): string => {
       if (modelId == null) return "Unknown model";
@@ -32,7 +38,16 @@ export function ProvidersView() {
     };
   }, [models]);
 
-  if (state.status === "loading") {
+  // This view names models, so it waits on BOTH reads. A catalog still in flight
+  // is an empty `models` list, and every id in the table would render as its raw
+  // slug — a page that looks finished and is quietly wrong, which is worse than a
+  // page that says it is still loading. What decides is the catalog it HAS: a
+  // loaded catalog being refreshed names every model it already holds, so only an
+  // empty one is worth waiting on.
+  if (
+    state.status === "loading" ||
+    (modelsStatus === "loading" && !haveModels)
+  ) {
     return <LoadingState label="Loading provider statistics…" />;
   }
   if (state.status === "unavailable") {
@@ -56,6 +71,17 @@ export function ProvidersView() {
 
   return (
     <div className={styles.view}>
+      {/* The statistics resolved but the catalog read did not, and nothing was
+          retained from an earlier one, so the table below names models by their
+          raw ids. Said out loud rather than left to look like the cabinet curates
+          none of them. A failed read over a catalog that IS loaded changes
+          nothing here — the names still resolve — so it says nothing. */}
+      {modelsStatus === "error" && !haveModels && (
+        <p className={styles.empty} role="alert">
+          The model catalog could not be read, so models are named by their raw
+          ids.
+        </p>
+      )}
       {noEvidence ? (
         <p className={styles.empty}>No provider data yet.</p>
       ) : (

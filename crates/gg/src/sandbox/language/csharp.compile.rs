@@ -679,8 +679,7 @@ pub(super) fn sdk_assembly(root: &Path, context: &PrepareContext) -> Result<Path
         match report.ok {
             true => Ok(()),
             false => Err(arrangement_failure(
-                "gg's own C# SDK did not compile, which is a defect in gg rather than in the \
-                 program",
+                "gg's own C# SDK did not compile",
                 &report,
             )),
         }
@@ -954,7 +953,7 @@ fn invoke(
 /// What a failure to start the compiler is prefixed with — the one failure here an operator can fix.
 fn spawn_prefix(root: &Path) -> String {
     format!(
-        "gg compiles every C# program with Roslyn and could not start it ({}): ",
+        "gg could not start the C# compiler ({}): ",
         root.join(LAUNCHER).display(),
     )
 }
@@ -968,9 +967,9 @@ fn spawn_prefix(root: &Path) -> String {
 /// [libraries](LIBRARY_DIRECTORY) is exactly the tree that reaches this sentence today.
 fn missing_toolchain() -> String {
     format!(
-        "gg compiles every C# program with Roslyn and found no .NET toolchain — install one with \
-         scripts/ci/install-dotnet.sh, or point {DOTNET_HOME_ENV} at a tree holding \
-         {LAUNCHER}, roslyn/bincore/csc.dll, ref/ and {LIBRARY_DIRECTORY}/",
+        "gg found no .NET toolchain (install one with scripts/ci/install-dotnet.sh, or point \
+         {DOTNET_HOME_ENV} at a tree holding {LAUNCHER}, roslyn/bincore/csc.dll, ref/ and \
+         {LIBRARY_DIRECTORY}/)",
     )
 }
 
@@ -988,9 +987,9 @@ fn missing_toolchain() -> String {
 /// The status and the stderr are here because of what they cost when they were not. Both of these
 /// paths once rendered `report.stdout` alone, and a .NET that cannot start writes to stderr and
 /// leaves stdout empty — so a live run died on its first turn reporting "gg's own C# SDK did not
-/// compile, which is a defect in gg rather than in the program:" followed by a full stop and
-/// nothing, with the SIGABRT and the compiler's own account of what it could not find both in hand
-/// and both discarded. [`verdict`] had it right in the same file the whole time.
+/// compile:" followed by a full stop and nothing, with the SIGABRT and the compiler's own account
+/// of what it could not find both in hand and both discarded. [`verdict`] had it right in the same
+/// file the whole time.
 ///
 /// The compiler's stdout comes last and only when there is any, so the ordinary case — Roslyn
 /// disagreeing with gg's own C#, which is what these two failures usually are — reads as the
@@ -1087,8 +1086,7 @@ fn verdict(report: &CompilerReport) -> Result<(), PrepareFailure> {
     // same safe direction [`is_error`] takes.
     if reported.iter().any(|line| is_arrangement(line)) {
         return Err(PrepareFailure::Toolchain(arrangement_failure(
-            "csc reported on the compilation gg arranged rather than on the program in it, which \
-             is gg's arrangement failing rather than the program",
+            "csc reported on the compilation gg arranged rather than on the program in it",
             report,
         )));
     }
@@ -1236,8 +1234,7 @@ fn parser(root: &Path, context: &PrepareContext) -> Result<PathBuf, String> {
         match report.ok {
             true => Ok(()),
             false => Err(arrangement_failure(
-                "csc could not build gg's own C# parse classifier, which is gg's arrangement \
-                 failing rather than any program's",
+                "csc could not build gg's own C# parse classifier",
                 &report,
             )),
         }

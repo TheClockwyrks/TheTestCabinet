@@ -741,10 +741,18 @@ impl ArtifactCollector for CliArtifactCollector {
         let dest = self
             .base_dir
             .join(format!("artifact-{}", cuid2::create_id()));
-        std::fs::create_dir_all(&dest).map_err(|err| Error::ArtifactCollection(err.to_string()))?;
-        let dest_str = dest
-            .to_str()
-            .ok_or_else(|| Error::ArtifactCollection("dest path is not valid UTF-8".to_string()))?;
+        // The `collecting run artifacts: ` this is wrapped in names the stage, so every
+        // detail below it is figures alone — the path, the container, the exit code —
+        // and the verb that claims the failure is the driver's `run failed: `.
+        std::fs::create_dir_all(&dest).map_err(|err| {
+            Error::ArtifactCollection(format!("creating `{}`: {err}", dest.display()))
+        })?;
+        let dest_str = dest.to_str().ok_or_else(|| {
+            Error::ArtifactCollection(format!(
+                "destination path is not valid UTF-8 (`{}`)",
+                dest.display()
+            ))
+        })?;
 
         // `cp <id>:/work/. <dest>` copies the contents of the working tree out to
         // the native host path. `cp` is handled by the runtime CLI on the host,
@@ -758,7 +766,7 @@ impl ArtifactCollector for CliArtifactCollector {
         let output = self.runtime.run(&args).await?;
         if !output.status.success() {
             return Err(Error::ArtifactCollection(format!(
-                "copying `{WORK_DIR}` from container `{}` failed{}",
+                "copying `{WORK_DIR}` out of container `{}`{}",
                 container.id,
                 run_failure(&output)
             )));
@@ -776,12 +784,16 @@ impl ArtifactCollector for CliArtifactCollector {
         // writes to a host directory we chose, so a failure to prepare it is a real error
         // rather than "nothing to recover".
         if let Some(parent) = dest.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|err| Error::ArtifactCollection(err.to_string()))?;
+            std::fs::create_dir_all(parent).map_err(|err| {
+                Error::ArtifactCollection(format!("creating `{}`: {err}", parent.display()))
+            })?;
         }
-        let dest_str = dest
-            .to_str()
-            .ok_or_else(|| Error::ArtifactCollection("dest path is not valid UTF-8".to_string()))?;
+        let dest_str = dest.to_str().ok_or_else(|| {
+            Error::ArtifactCollection(format!(
+                "destination path is not valid UTF-8 (`{}`)",
+                dest.display()
+            ))
+        })?;
 
         // `cp` reads the container's filesystem layer rather than execing inside it, so
         // this works against a container that is stopped, wedged, or has no usable shell

@@ -1,5 +1,6 @@
 import { Panel } from "@clockwyrks/ui";
 import type { RunRecord } from "@clockwyrks/run-record";
+import { LoadFailureState } from "../../../components/LoadFailureState";
 import { LoadingState } from "../../../components/LoadingState";
 import {
   VariantInputsView,
@@ -30,23 +31,35 @@ export function RunInputsPage() {
 
 function RunInputsBody({ run }: { run: RunRecord }) {
   const { variant, status } = useRunVariant(run.subject);
-  // The inputs are fetched independently of the run record, so this body commonly
-  // renders while that fetch is still in flight. Show the branded loading state
-  // for that wait; "not available" is reserved for a settled fetch that found no
-  // such case version, variant, or engine — the only state a visitor can do
-  // nothing about.
+  // Render order: the resolved inputs first, then the read's state. The inputs
+  // are fetched independently of the run record, so this body commonly renders
+  // while that fetch is still in flight (a wait), and a fetch that FAILED says
+  // so — whether the case version, variant, and engine this run names still
+  // exist is exactly what a failed read could not establish. "Not available" is
+  // reserved for a fetch that settled without them.
+  if (variant) {
+    // Keyed by run so moving between two runs of the same variant collapses the
+    // panels again rather than leaving one open over a different run's entry.
+    return (
+      <VariantInputsView
+        key={run.id}
+        variant={variant}
+        runSeededInputs={priorEntryInputs(run)}
+      />
+    );
+  }
   if (status === "loading") {
     return <LoadingState size="section" label="Loading inputs…" />;
   }
-  return variant ? (
-    // Keyed by run so moving between two runs of the same variant collapses the
-    // panels again rather than leaving one open over a different run's entry.
-    <VariantInputsView
-      key={run.id}
-      variant={variant}
-      runSeededInputs={priorEntryInputs(run)}
-    />
-  ) : (
+  if (status === "error") {
+    return (
+      <LoadFailureState
+        size="section"
+        subject="the inputs for this run’s test case"
+      />
+    );
+  }
+  return (
     <Panel>
       <p className={styles.empty}>
         The inputs for this run&rsquo;s test case are not available.

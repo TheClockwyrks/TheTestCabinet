@@ -73,6 +73,10 @@ pub const MAX_DASHBOARD_PANELS: usize = super::gg_query::GG_QUERY_MAX_BATCH;
 /// exact — the same reason every other twelve-column grid is twelve columns.
 pub const DASHBOARD_COLUMNS: u32 = 12;
 
+/// The narrowest a panel may be. A panel spanning no column at all renders nothing,
+/// so a width of zero names no panel the board could draw.
+pub const MIN_PANEL_WIDTH: u32 = 1;
+
 /// An operator's saved TCQ query: a question worth keeping, with the range it was
 /// asked over.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -124,8 +128,8 @@ pub struct GgDashboardPanel {
     /// The panel's query, as TCQ **source text**. A copy, even when the panel was
     /// built from a saved query — see the module docs.
     pub query: String,
-    /// How many of the [twelve](DASHBOARD_COLUMNS) grid columns the panel spans,
-    /// clamped to `1..=12`.
+    /// How many of the [twelve](DASHBOARD_COLUMNS) grid columns the panel spans.
+    /// A width outside `1..=12` is rejected on save, not corrected into range.
     pub width: u32,
 }
 
@@ -386,10 +390,12 @@ pub(crate) fn saved_query_from_input(
 /// Build a stored dashboard from a create/update body, validating the board and every
 /// panel on it.
 ///
-/// A panel's width is **clamped** rather than rejected, because a width is a layout
-/// hint whose only failure mode is an ugly row — refusing to save an entire board
-/// over one is the wrong trade. Its title and query are validated like the board's own,
-/// because those are the parts an operator reads and the surface runs.
+/// A panel's width is **rejected** outside the grid, like its title and its query:
+/// storing a span the operator did not send, and answering `200` as though it had been
+/// stored, leaves the board laid out differently from the one that was saved with
+/// nothing said about it. The console's own width field already refuses an empty or
+/// out-of-range span before it submits (see the UI's *Numeric fields*), so what this
+/// rejects is a request the editor never makes.
 pub(crate) fn dashboard_from_input(
     id: String,
     input: GgDashboardInput,
@@ -410,7 +416,7 @@ pub(crate) fn dashboard_from_input(
             Ok(GgDashboardPanel {
                 title: validated_name(&panel.title, "a dashboard panel")?,
                 query: validated_query(&panel.query, "a dashboard panel")?,
-                width: panel.width.clamp(1, DASHBOARD_COLUMNS),
+                width: validated_width(panel.width)?,
             })
         })
         .collect::<Result<Vec<_>, ApiError>>()?;
@@ -422,6 +428,22 @@ pub(crate) fn dashboard_from_input(
         range_id: input.range_id.trim().to_string(),
         updated_at: updated_at.to_string(),
     })
+}
+
+/// Bound a panel's column span, or reject it naming the bound it broke and the value
+/// that broke it.
+fn validated_width(width: u32) -> Result<u32, ApiError> {
+    if width < MIN_PANEL_WIDTH {
+        return Err(ApiError::bad_request(format!(
+            "a dashboard panel spans at least {MIN_PANEL_WIDTH} column (got {width})"
+        )));
+    }
+    if width > DASHBOARD_COLUMNS {
+        return Err(ApiError::bad_request(format!(
+            "a dashboard panel spans at most {DASHBOARD_COLUMNS} columns (got {width})"
+        )));
+    }
+    Ok(width)
 }
 
 /// Trim and bound a display name, naming the object in the rejection so the message

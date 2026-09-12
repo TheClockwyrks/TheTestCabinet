@@ -743,7 +743,21 @@ where
             .get(slug)
             .ok_or_else(|| Error::HarnessUnavailable {
                 slug: slug.as_str().to_string(),
-                detail: "no adapter is registered for this harness".to_string(),
+                // The registered set is the figure this layer holds: the outer clause
+                // already names the harness that was asked for, so repeating it here
+                // would say nothing, while the set says what could have been asked for.
+                detail: format!("no adapter is registered (registered: {})", {
+                    let registered: Vec<&str> = HarnessSlug::RUNNABLE
+                        .iter()
+                        .filter(|candidate| self.harnesses.get(**candidate).is_some())
+                        .map(|candidate| candidate.as_str())
+                        .collect();
+                    if registered.is_empty() {
+                        "none".to_string()
+                    } else {
+                        registered.join(", ")
+                    }
+                }),
             })?;
 
         // Resolve how this run authenticates: an API key injected as an
@@ -873,10 +887,7 @@ where
         {
             let contents = std::fs::read(host_path).map_err(|err| Error::HarnessUnavailable {
                 slug: slug.as_str().to_string(),
-                detail: format!(
-                    "reading the local gg binary at `{}` failed: {err}",
-                    host_path.display()
-                ),
+                detail: format!("local binary `{}` unreadable ({err})", host_path.display()),
             })?;
             files.push(crate::execution::ContainerFile {
                 container_path: container_path.clone(),
@@ -1086,9 +1097,12 @@ where
                 let _ = self.runtime.stop(&handle).await;
                 return Err(Error::HarnessUnavailable {
                     slug: slug.as_str().to_string(),
+                    // A probe that reported nothing leaves this layer to supply the
+                    // figure, and the run image is the one it holds: it is what the
+                    // CLI was installed into and what a reader has to change.
                     detail: availability
                         .detail
-                        .unwrap_or_else(|| "harness is unavailable".to_string()),
+                        .unwrap_or_else(|| format!("no working CLI in run image `{}`", spec.image)),
                 });
             }
             events.emit(&HarnessEvent::system(
@@ -1419,8 +1433,8 @@ where
         }
         Err(Error::ContainerRuntime(format!(
             "run image `{image}` does not accept staged audio (`{marker}` is absent or is \
-             not `{expected}`); pull a newer run image, or pin `TCAB_CONTAINER_TAG` to a \
-             commit at or after the one that publishes it"
+             not `{expected}`); pull a newer image or pin `TCAB_CONTAINER_TAG` to one that \
+             stages it"
         )))
     }
 

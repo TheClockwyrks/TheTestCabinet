@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import { Markdown } from "@clockwyrks/ui";
 import type {
   SeededInput,
@@ -11,6 +10,7 @@ import {
   type InputBrowserGroup,
   type InputBrowserItem,
 } from "./InputBrowser";
+import { createAssetCache, useCachedAsset } from "../data/assetCache";
 import { LoadingState } from "./LoadingState";
 import { MediaView } from "./MediaView";
 import { SourceView } from "./SourceView";
@@ -170,75 +170,47 @@ function SeededBody({ input }: { input: SeededInput }) {
   return null;
 }
 
-// What a lazily-fetched workspace file body is showing at the moment: the fetch
-// in flight, the text it resolved, or the fact that it failed.
-type WorkspaceFileState =
-  | { status: "loading" }
-  | { status: "ready"; text: string }
-  | { status: "error" };
-
-// One in-flight-or-resolved fetch per workspace-file URL: selecting a file
-// mounts a fresh `WorkspaceFileBody`, so without this cache every re-selection
-// refetched the same content-addressed (immutable) bytes. A failed fetch is
-// evicted so re-selecting the file retries rather than replaying the failure.
-const workspaceFileFetches = new Map<string, Promise<string>>();
-
-function fetchWorkspaceFile(url: string): Promise<string> {
-  const cached = workspaceFileFetches.get(url);
-  if (cached) {
-    return cached;
-  }
-  const pending = fetch(url).then((response) => {
+// The starter-workspace file bodies, by URL.
+//
+// Selecting a file mounts a fresh `WorkspaceFileBody`, so without this every
+// re-selection refetched the same content-addressed (and therefore immutable)
+// bytes — and re-selecting a file just read put a spinner over text the session
+// already held. Bounded at 256 files / 8 MB: a starter workspace is source text,
+// which is kilobytes a file, and 256 is more files than any workspace ships.
+const workspaceFiles = createAssetCache<string>({
+  name: "workspace file",
+  maxEntries: 256,
+  maxBytes: 8 * 1024 * 1024,
+  weigh: (text) => text.length * 2,
+  load: async (url) => {
+    const response = await fetch(url);
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+      throw new Error(
+        `workspace file fetch failed: HTTP ${response.status} (${url})`,
+      );
     }
     return response.text();
-  });
-  pending.catch(() => {
-    workspaceFileFetches.delete(url);
-  });
-  workspaceFileFetches.set(url, pending);
-  return pending;
-}
+  },
+});
 
 // A starter-workspace file's body: fetched by URL when the entry is selected
 // (this component mounts only then), rendered like any other seeded text file —
-// prose for Markdown, the source inline otherwise. A host that cannot serve the
+// prose for Markdown, the source inline otherwise. A file already read this session
+// renders on the first frame with no loading state. A host that cannot serve the
 // bytes (`url: null`) says so instead, the same degrade the showcase media use.
 function WorkspaceFileBody({ file }: { file: WorkspaceFileRef }) {
   const { path, url } = file;
-  const [state, setState] = useState<WorkspaceFileState>({ status: "loading" });
-  useEffect(() => {
-    if (!url) {
-      return;
-    }
-    let cancelled = false;
-    setState({ status: "loading" });
-    fetchWorkspaceFile(url)
-      .then((text) => {
-        if (!cancelled) {
-          setState({ status: "ready", text });
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setState({ status: "error" });
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [url]);
+  const { data, loading, error } = useCachedAsset(workspaceFiles, url ?? null);
   if (!url) {
     return <InputViewerNote>This file is not available here.</InputViewerNote>;
   }
-  if (state.status === "loading") {
+  if (loading) {
     return <LoadingState size="section" label="Loading file…" />;
   }
-  if (state.status === "error") {
+  if (error !== null || data === null) {
     return <InputViewerNote>This file could not be loaded.</InputViewerNote>;
   }
-  return <TextFileBody path={path} text={state.text} />;
+  return <TextFileBody path={path} text={data} />;
 }
 
 // Markdown source files render as prose; every other text file renders inline as

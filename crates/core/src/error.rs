@@ -12,6 +12,14 @@ use thiserror::Error;
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 /// Errors that can occur anywhere in the run lifecycle.
+///
+/// One grammar governs every variant that wraps a detail from a layer below it: the
+/// clause is a bare noun phrase naming the stage that was running or the subsystem
+/// that answered — `collecting run artifacts`, `seeding the run repository`,
+/// `container runtime`, `publishing the run` — with no `error` noun and no verb of
+/// its own. The verb that claims the failure comes from exactly one layer: the
+/// driver's `run failed: ` in front, or the detail behind it. A variant that wraps
+/// nothing keeps the verb itself (`{slug} harness produced no output for {seconds}s`).
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum Error {
@@ -210,7 +218,11 @@ pub enum Error {
     /// session could start. The detail carries the exit code and captured output
     /// so a broken install can be diagnosed. The container is torn down before
     /// this is returned.
-    #[error("{slug} harness install failed: {detail}")]
+    ///
+    /// The clause names the stage and leaves the verb to the detail inside it, which
+    /// claims the failure with the exit code it carries; `failed` here would only
+    /// repeat the `run failed: ` the driver wraps the whole message in.
+    #[error("{slug} harness install: {detail}")]
     HarnessInstall {
         /// The harness slug whose install command failed.
         slug: String,
@@ -231,7 +243,10 @@ pub enum Error {
     /// The test case's init command failed inside the run container. The detail
     /// carries the exit code and captured output so a broken setup step can be
     /// diagnosed. The container is torn down before this is returned.
-    #[error("init command failed: {0}")]
+    ///
+    /// The stage form again: the detail claims the failure (`exited with code 1: …`,
+    /// or the packages an install left behind), so this layer names only the step.
+    #[error("init command: {0}")]
     Init(String),
 
     /// The test case's init command exceeded the run's maximum runtime before it
@@ -256,34 +271,34 @@ pub enum Error {
 
     /// Validation could not be carried out (distinct from validation finding
     /// problems with the implementation).
-    #[error("validation error: {0}")]
+    #[error("validating the run: {0}")]
     Validation(String),
 
     /// Publishing the run failed.
-    #[error("publish error: {0}")]
+    #[error("publishing the run: {0}")]
     Publish(String),
 
     /// An R2 request failed: the object store could not be reached, or it
     /// rejected a signed `PutObject`/`ListObjectsV2`. Carries the key or prefix
     /// and the store's own explanation.
-    #[error("r2 error: {0}")]
+    #[error("the R2 object store: {0}")]
     R2(String),
 
     /// A run's hand-written review (its writeup and rating) was missing or
     /// malformed.
-    #[error("review error: {0}")]
+    #[error("reading the run's review: {0}")]
     Review(String),
 
     /// An account operation against the auth service failed: a registration or
     /// login was rejected (bad credentials, a taken username), or the service
     /// could not be reached. The detail carries the service's explanation.
-    #[error("auth error: {0}")]
+    #[error("the auth service: {0}")]
     Auth(String),
 
     /// An orchestrator could not be resolved (an unknown built-in slug, or an
     /// external `--orchestrator-dir` whose manifest or runner could not be read
     /// or parsed). The detail names the slug or directory and what was wrong.
-    #[error("orchestrator error: {0}")]
+    #[error("resolving the orchestrator: {0}")]
     Orchestrator(String),
 
     /// A non-default orchestrator was requested for a test type that does not
@@ -303,7 +318,7 @@ pub enum Error {
     /// An [engine](crate::engine) could not be resolved: the requested slug is
     /// not one this build carries. The detail names the slug and every built-in,
     /// so a typo on `--engine` is fixable from the message alone.
-    #[error("engine error: {0}")]
+    #[error("resolving the engine: {0}")]
     Engine(String),
 
     /// An engine was requested that the test case version does not support.
@@ -374,8 +389,8 @@ pub enum Error {
     /// store with the restaging instructions once a run gets that far.
     #[error(
         "engine `{slug}` has no staged version in the host package store \
-         (test case `{test_case}` {version} declares {range}); rebuild the packages \
-         (`npm run build:packages`) and restage them (`node scripts/stage-tcab-packages.mjs`)"
+         (case `{test_case}` {version} declares {range}); rebuild and restage the packages \
+         (`npm run build:packages`; `node scripts/stage-tcab-packages.mjs`)"
     )]
     EngineVersionUnknown {
         /// The requested engine slug.
@@ -393,7 +408,7 @@ pub enum Error {
     /// malformed or broke an invariant (a slug disagreeing with its directory,
     /// an empty member list, a duplicate member). The detail names the group
     /// directory and what was wrong.
-    #[error("test-case group error: {0}")]
+    #[error("loading the test-case group: {0}")]
     TestCaseGroup(String),
 
     /// A **gg** run was misconfigured: the gg configuration invariant does not
@@ -401,7 +416,7 @@ pub enum Error {
     /// carry a [capability set](crate::gg::GgCapabilitySet), and a non-gg run must
     /// not. Raised by [`RunRequest::validate`](crate::RunRequest::validate) at the
     /// top of a run, before any container work.
-    #[error("gg configuration error: {0}")]
+    #[error("the gg configuration: {0}")]
     GgConfiguration(String),
 
     /// A **gg** run reached execution but the direct gg executor is not yet wired.
@@ -444,15 +459,15 @@ pub enum Error {
     /// nothing about the tree. Like the replay assembly this runs at the
     /// [post-run seam](crate::post_run), so it never fails the run it describes:
     /// it costs the run its `codeAnalysis` and nothing else.
-    #[error("code analysis failed: {0}")]
+    #[error("code analysis: {0}")]
     CodeAnalysis(String),
 
     /// Failed to (de)serialize a value, typically the run record.
-    #[error("serialization error: {0}")]
+    #[error("JSON serialization: {0}")]
     Serde(#[from] serde_json::Error),
 
     /// An underlying I/O operation failed.
-    #[error("io error: {0}")]
+    #[error("host I/O: {0}")]
     Io(#[from] io::Error),
 }
 

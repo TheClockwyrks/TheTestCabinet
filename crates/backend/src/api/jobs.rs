@@ -446,14 +446,12 @@ async fn resolve_one_model_facts(
                 },
             }),
             None => Err(format!(
-                "OpenRouter lists `{lookup}` but reports no context window for it; a gg run is \
-                 measured against its model's context window and none is assumed"
+                "OpenRouter lists `{lookup}` but reports no context window for it"
             )),
         },
         Err(err) => Err(format!(
-            "no context window is known for `{model_id}`: it is not in the model catalog, and \
-             looking it up as `{lookup}` failed ({err}). A gg run is measured against its \
-             model's context window and none is assumed."
+            "no context window is known for `{model_id}` (not in the model catalog, and \
+             looking it up as `{lookup}` failed: {err})"
         )),
     }
 }

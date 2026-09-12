@@ -10,7 +10,7 @@ import { useStaticGallery } from "./staticGallery";
 // location and nothing has to be restored here before it mounts.
 const rootElement = document.getElementById("root");
 if (!rootElement) {
-  throw new Error("Missing #root element");
+  throw new Error("#root element not found in index.html");
 }
 
 // The static gallery: the shared app (from @clockwyrks/ui) rendered with the

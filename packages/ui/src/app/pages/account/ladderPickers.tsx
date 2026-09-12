@@ -46,6 +46,7 @@ import {
   pinnedEngine,
   samePinnedCase,
 } from "./caseLabels";
+import { NumberValueField } from "../../components/NumberField";
 import { SettingRow } from "../../components/SettingRow";
 import { Switch } from "../../components/Switch";
 import exec from "../runs/RunExec.module.scss";
@@ -316,29 +317,37 @@ export function GateEditor({
       >
         {(id) => (
           <>
-            <span className={styles.settingNumber}>
-              <input
-                id={id}
-                className={exec.input}
-                type="number"
-                min={isCount ? 1 : 0}
-                max={100}
-                step={isCount ? 1 : 5}
-                value={amount}
-                onChange={(e) => {
-                  const n = Math.floor(Number(e.target.value));
-                  if (!Number.isFinite(n)) return;
-                  setThreshold(
-                    isCount
-                      ? { kind: "count", runs: Math.min(Math.max(n, 1), 100) }
-                      : {
-                          kind: "fraction",
-                          fraction: Math.min(Math.max(n, 0), 100) / 100,
-                        },
-                  );
-                }}
-              />
-            </span>
+            {/* The gate holds a number, so the typing lives in the field rather
+                than in the gate: clearing it leaves the gate on its last figure and
+                the field empty for the next one, and the committed figure comes back
+                on blur. Nothing out of range is ever committed, so there is no
+                invalid gate for the ladder's save to refuse. The column is too
+                narrow to read a sentence in, so the field wears the invalid border
+                and its title carries the range. */}
+            <NumberValueField
+              id={id}
+              className={exec.input}
+              wrapperClassName={styles.settingNumber}
+              showProblem={false}
+              label="The threshold"
+              min={isCount ? 1 : 0}
+              max={100}
+              integer
+              step={isCount ? 1 : 5}
+              title={
+                isCount
+                  ? "Between 1 and 100 runs."
+                  : "Between 0 and 100 per cent."
+              }
+              value={amount}
+              onCommit={(n) =>
+                setThreshold(
+                  isCount
+                    ? { kind: "count", runs: n }
+                    : { kind: "fraction", fraction: n / 100 },
+                )
+              }
+            />
             <span className={styles.settingUnit}>
               <select
                 className={exec.select}
@@ -552,24 +561,22 @@ function SortableRung({
       <span className={ladder.rungEditName}>{label}</span>
       <label className={ladder.rungEditRuns}>
         runs
-        <input
+        {/* Optional: empty is the answer "use the ladder's own run count", not a
+            blank on the way to one, so clearing it commits `undefined`. */}
+        <NumberValueField
           className={exec.input}
-          type="number"
+          optional
+          label="A rung's run count"
           min={1}
           max={100}
-          step={1}
-          aria-label={`Runs for rung ${index + 1}`}
+          integer
+          ariaLabel={`Runs for rung ${index + 1}`}
           placeholder={String(runsPerCell)}
-          value={rung.runs ?? ""}
-          onChange={(e) => {
-            const raw = e.target.value.trim();
-            const n = Math.floor(Number(raw));
-            onRunsChange(
-              raw === "" || !Number.isFinite(n)
-                ? undefined
-                : Math.min(Math.max(n, 1), 100),
-            );
-          }}
+          showProblem={false}
+          title="Between 1 and 100 runs, or empty to use the ladder's own run count."
+          value={rung.runs}
+          onCommit={(n) => onRunsChange(n)}
+          onClear={() => onRunsChange(undefined)}
         />
       </label>
       <span className={ladder.rungEditActions}>

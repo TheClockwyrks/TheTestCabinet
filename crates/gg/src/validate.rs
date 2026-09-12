@@ -1237,9 +1237,9 @@ fn check_memory_compaction(set: &GgCapabilitySet, report: &mut LaunchReport) {
             implementation_locus(CAPABILITY_COMPACTION),
             COMPACTION_STRATEGY_MEMORY,
             format!(
-                "the `{COMPACTION_STRATEGY_MEMORY}` strategy condenses a thread by writing the \
-                 agent's working state into its memories, and `{}` {why}. Give it writable \
-                 memories, or name a strategy that condenses in prose.",
+                "the `{COMPACTION_STRATEGY_MEMORY}` strategy writes the agent's working state \
+                 into its memories, and `{}` {why}. Give it writable memories, or name a strategy \
+                 that condenses in prose.",
                 agent.slug,
             ),
         ));
@@ -1834,9 +1834,8 @@ fn check_merge_agent(set: &GgCapabilitySet, report: &mut LaunchReport) {
             locus,
             &id,
             format!(
-                "the merge agent `{id}` ({}) does not have the `{CAPABILITY_SHELL}` capability; \
-                 resolving a merge conflict means running `git` in the workspace, so a merge agent \
-                 must have a shell.",
+                "the merge agent `{id}` ({}) has no `{CAPABILITY_SHELL}` capability, and \
+                 resolving a merge conflict means running `git` in the workspace",
                 profile.name
             ),
         ));

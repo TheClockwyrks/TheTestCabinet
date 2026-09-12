@@ -1,6 +1,7 @@
 import * as Plot from "@observablehq/plot";
 import type { PlotOptions } from "@observablehq/plot";
 import { basePlotOptions, type ChartPalette } from "./theme";
+import type { DistributionStats } from "./distribution";
 
 // Spec builders that turn data into themed Plot option objects. They return
 // PlotOptions (not DOM) so <Chart> stays the single place that renders into the
@@ -25,6 +26,33 @@ export interface BarPoint {
    * a chart shows tooltips only when at least one of its bars carries one.
    */
   title?: string;
+  /**
+   * The spread behind an **aggregated** bar — the runs a mean bar averages. Set
+   * it and the chart gains a hover affordance the plain bar cannot have: the
+   * hovered bar is swapped for the box-and-whiskers of the distribution it is
+   * summarizing, so the reader sees the spread the single height hides without
+   * leaving the chart (see {@link barChart}).
+   *
+   * It must be set on **every** bar or on none. Plot's pointer transform selects
+   * the nearest datum *in its own mark's data*, so a swap layer fed only the bars
+   * that happen to carry a distribution would answer a hover over a bar that does
+   * not by lighting up a different column. `barChart` therefore draws the swap
+   * only when the whole chart is distributional, and a mixed chart keeps the plain
+   * hover wash.
+   */
+  distribution?: BarDistribution;
+}
+
+/**
+ * The runs behind one aggregated bar: their summary statistics, and the
+ * individual observations so a caller can plot them (see {@link scatterChart}).
+ * A single-run group is a legitimate value of this — `n` is 1 and every
+ * statistic is that one run's value, which is the distribution collapsing to a
+ * point rather than a spread of zero width being asserted.
+ */
+export interface BarDistribution extends DistributionStats {
+  /** Every observation the statistics summarize, in the order the runs were folded. */
+  points: readonly DistributionPoint[];
 }
 
 interface AxisLabels {
@@ -121,6 +149,11 @@ function highlightWash(palette: ChartPalette): {
 // provider brand color), otherwise the theme accent, so an uncolored chart still
 // reads uniformly. Use for direct per-item magnitudes (e.g. a single run's token
 // breakdown), not for comparing runs into a ranking.
+//
+// A chart whose bars are aggregates gains a second reading for free: give every
+// bar its `distribution` and hovering one replaces it with the box-and-whiskers
+// of the runs it averages, so the spread a single height hides is one gesture
+// away without the resting chart becoming a box plot.
 export function barChart(
   data: readonly BarPoint[],
   palette: ChartPalette,
@@ -130,6 +163,18 @@ export function barChart(
   // chart stays free of an empty tip. A `title` channel plus `tip: true` makes
   // Plot render the bar's `title` text as-is in an interactive tooltip.
   const hasTips = data.some((d) => d.title != null);
+  // The hover swap is drawn only when every bar carries its distribution — see
+  // `BarPoint.distribution` for why a partial layer would mis-select. Flattened
+  // here so the statistics are plain channels Plot can read by name.
+  const boxes: BarBox[] | null =
+    data.length > 0 && data.every((d) => d.distribution != null)
+      ? data.map((d) => ({
+          label: d.label,
+          value: d.value,
+          color: d.color ?? palette.accent,
+          ...d.distribution!,
+        }))
+      : null;
   return {
     ...basePlotOptions(palette),
     ...(labels.xTickRotate
@@ -161,24 +206,113 @@ export function barChart(
           : {}),
       }),
       Plot.ruleY([0], { stroke: palette.border }),
-      // The hover highlight: a wash over the pointer-selected bar, matching the
-      // tip's column selection (renders nothing until the pointer is near).
-      ...(hasTips
-        ? [
-            Plot.barY(
-              data as BarPoint[],
-              Plot.pointerX({
-                x: "label",
-                y: "value",
-                rx: 2,
-                maxRadius: POINTER_RADIUS,
-                ...highlightWash(palette),
-              }),
-            ),
-          ]
-        : []),
+      // The hover affordance. A distributional chart swaps the hovered bar for the
+      // box-and-whiskers behind it; a plain one washes the bar lighter. The two are
+      // exclusive: washing a bar that has just been covered would paint a bright
+      // rectangle back over the box and undo the swap.
+      ...(boxes
+        ? boxSwapMarks(boxes, palette)
+        : hasTips
+          ? [
+              Plot.barY(
+                data as BarPoint[],
+                Plot.pointerX({
+                  x: "label",
+                  y: "value",
+                  rx: 2,
+                  maxRadius: POINTER_RADIUS,
+                  ...highlightWash(palette),
+                }),
+              ),
+            ]
+          : []),
     ],
   };
+}
+
+/** One bar's distribution, flattened so Plot reads each statistic as a channel. */
+interface BarBox extends DistributionStats {
+  label: string;
+  /** The bar's height — the mean the box is drawn in place of. */
+  value: number;
+  /** Resolved (never undefined) so every layer of the swap shares one hue. */
+  color: string;
+  points: readonly DistributionPoint[];
+}
+
+// The layers that turn the pointer-selected bar into its box plot: a cover the
+// exact size of the bar, then the whisker, box, median and mean drawn over it.
+// Every layer is `pointerX`-selected on the SAME data with the same radius, so
+// all of them — and the tip the bar mark raises — describe one column.
+//
+// The cover is filled with the plot's own surface rather than being an erase: an
+// SVG has no way to un-draw an earlier mark, and the chart sits on the shared
+// translucent panel, which is this color over the backdrop. The grid behind the
+// bar's footprint goes with it, which is the price of the swap.
+//
+// The raw per-run points are NOT drawn here, and their absence is the design
+// rather than an omission: `pointerX` resolves to exactly one datum, so a points
+// layer could only ever show one run of the hovered group. Every point of every
+// group is what `scatterChart` is for, one click away on the same widget.
+function boxSwapMarks(boxes: readonly BarBox[], palette: ChartPalette) {
+  const data = boxes as BarBox[];
+  const pointer = { x: "label" as const, maxRadius: POINTER_RADIUS };
+  const colorOf = (d: BarBox) => d.color;
+  return [
+    Plot.barY(
+      data,
+      Plot.pointerX({ ...pointer, y: "value", rx: 2, fill: palette.surface }),
+    ),
+    // Whisker: the full min-max range at the bar's x position.
+    Plot.ruleX(
+      data,
+      Plot.pointerX({
+        ...pointer,
+        y1: "min",
+        y2: "max",
+        stroke: colorOf,
+        strokeWidth: 1,
+        strokeOpacity: 0.7,
+      }),
+    ),
+    // Box: the interquartile range. At n = 1 this is a zero-height rule, which is
+    // the distribution collapsing to a point — the honest drawing of one run.
+    Plot.barY(
+      data,
+      Plot.pointerX({
+        ...pointer,
+        y1: "q1",
+        y2: "q3",
+        fill: colorOf,
+        fillOpacity: 0.28,
+        stroke: colorOf,
+        strokeWidth: 1.5,
+        rx: 2,
+      }),
+    ),
+    // Median: the bold tick across the box — the typical run of a skewed metric.
+    Plot.tickY(
+      data,
+      Plot.pointerX({
+        ...pointer,
+        y: "median",
+        stroke: colorOf,
+        strokeWidth: 2,
+      }),
+    ),
+    // Mean: a dashed tick where the bar's top was, so the figure the bar was
+    // drawing is still readable beside the median it usually sits above.
+    Plot.tickY(
+      data,
+      Plot.pointerX({
+        ...pointer,
+        y: "mean",
+        stroke: palette.text,
+        strokeWidth: 1,
+        strokeDasharray: "3,3",
+      }),
+    ),
+  ];
 }
 
 /** One segment of a stacked bar: the magnitude one series contributes to one
@@ -643,6 +777,21 @@ export interface DistributionPoint {
   /** The run's id, when known, shown in the point's tooltip. */
   runId?: string;
   value: number;
+  /**
+   * The point's tooltip text, when the caller wants to say more about this one
+   * observation than its value and run id — when it ran, which model produced
+   * it, what the group it sits in averages. Newlines break the tip into lines.
+   * Omit and the chart composes the default tip from the label, the value and
+   * the run id.
+   */
+  title?: string;
+  /**
+   * Where this observation's run lives. Set it and the point is drawn inside a
+   * link, so a reader who spots an outlier can open the run that produced it
+   * (and middle-click it into a new tab) instead of hunting for it in a list.
+   * Omit for a point with nowhere to go.
+   */
+  href?: string;
 }
 
 /**
@@ -811,11 +960,186 @@ export function distributionChart(
         strokeWidth: 1,
         r: 4,
         dx: POINTS_DX,
-        title: (d: (typeof points)[number]) =>
-          d.runId
-            ? `${d.label}\n${formatValue(d.value)}\nrun ${d.runId}`
-            : `${d.label}\n${formatValue(d.value)}`,
+        title: (d: (typeof points)[number]) => pointTitle(d, formatValue),
+        ...(points.some((p) => p.href != null)
+          ? { href: (d: (typeof points)[number]) => d.href, target: "_self" }
+          : {}),
         tip: tipBox(palette),
+      }),
+    ],
+  };
+}
+
+// The tooltip one raw observation carries: whatever the caller wrote for it,
+// otherwise its group, its value, and the run it came from. Shared by the two
+// charts that draw individual runs so a point reads the same in either.
+function pointTitle(
+  point: DistributionPoint & { label: string },
+  formatValue: (value: number) => string,
+): string {
+  if (point.title != null) return point.title;
+  const head = `${point.label}\n${formatValue(point.value)}`;
+  return point.runId ? `${head}\nrun ${point.runId}` : head;
+}
+
+/**
+ * One group's runs for a {@link scatterChart}: every observation as its own dot,
+ * and the average drawn through them.
+ */
+export interface ScatterGroup {
+  /** The x-axis category — the group's label. Never merges two groups into one. */
+  label: string;
+  /** The group's identity color. Omit to fall back to the theme accent. */
+  color?: string;
+  /** The average drawn as a horizontal rule across the group's slot. */
+  mean: number;
+  /** Every run in the group. A group with one run draws one dot on its own rule. */
+  points: readonly DistributionPoint[];
+}
+
+// How far apart two dots of one group sit, and how far the spread may reach —
+// both in x-axis units, where 1 is the distance between two groups. The offset is
+// there only so two runs of similar value don't hide each other; it carries no
+// meaning, which is why the spread is tight and a lone run sits dead center.
+const DOT_STEP = 0.09;
+const DOT_SPREAD = 0.34;
+// Half the width of a group's average rule, a little short of touching its
+// neighbour's.
+const MEAN_RULE_HALF = 0.42;
+
+/** Labels and framing for a {@link scatterChart}. */
+export interface ScatterLabels extends AxisLabels {
+  /**
+   * Formats a raw value for a point's tooltip. Only the fallback tip uses it — a
+   * caller that writes each point's own `title` (naming the run, when it ran, what
+   * its group averages) never reaches it.
+   */
+  formatValue?: (value: number) => string;
+}
+
+// Hover-tip options for a chart whose marks are individually meaningful points:
+// same box as `tipBox`, but the pointer selects in BOTH dimensions, so the tip
+// describes the dot the reader is actually pointing at rather than some run that
+// merely shares its column. The radius is deliberately small for the same reason.
+const POINT_POINTER_RADIUS = 24;
+
+function tipBoxXY(palette: ChartPalette): {
+  pointer: "xy";
+  maxRadius: number;
+  fill: string;
+  stroke: string;
+} {
+  return {
+    pointer: "xy",
+    maxRadius: POINT_POINTER_RADIUS,
+    fill: palette.surface,
+    stroke: palette.border,
+  };
+}
+
+/**
+ * A per-group scatter: every run of every group as its own dot, with a
+ * horizontal rule at that group's average.
+ *
+ * It is the companion to a mean bar chart rather than a replacement for one. A
+ * bar answers "what does a run of this cost?"; this answers "and how much do the
+ * runs differ?", which at the sample sizes a test case gathers is usually the
+ * more useful question — three runs whose costs are 1, 1 and 7 have the same
+ * mean as three that are all 3, and the bar cannot tell them apart.
+ *
+ * Two things are load-bearing:
+ *
+ * - **x is a group slot, not a quantity.** Groups sit at integer positions and a
+ *   dot is nudged off center only so its neighbours stay visible. The axis is a
+ *   linear scale (not the band a bar chart uses) purely because that is what lets
+ *   one mark hold every dot at its own offset — and one mark is what keeps ONE
+ *   tooltip on screen at a time. The tick positions are identical to the band's,
+ *   so switching a widget between the two modes does not move the labels.
+ * - **The order is the caller's**, as `xDomain`, for the same reason every other
+ *   chart here pins it: Plot sorts a domain it infers, which would silently
+ *   override a chosen order.
+ *
+ * y starts at 0 so magnitudes are not exaggerated by a floating baseline, and a
+ * point whose value is unknown is dropped by the caller rather than passed as a
+ * zero.
+ */
+export function scatterChart(
+  groups: readonly ScatterGroup[],
+  palette: ChartPalette,
+  labels: ScatterLabels = {},
+): PlotOptions {
+  const order = [...(labels.xDomain ?? groups.map((g) => g.label))];
+  const slotOf = new Map(order.map((label, index) => [label, index]));
+  const format = labels.formatValue ?? String;
+
+  const dots = groups.flatMap((group) => {
+    const slot = slotOf.get(group.label);
+    if (slot === undefined) return [];
+    const color = group.color ?? palette.accent;
+    const n = group.points.length;
+    // Evenly spread across a width that grows with the run count and then stops,
+    // so a pair of runs stays tight and a dozen stays inside its own slot.
+    const half = Math.min(DOT_SPREAD, (DOT_STEP * (n - 1)) / 2);
+    return group.points.map((point, index) => ({
+      ...point,
+      label: group.label,
+      color,
+      x: n > 1 ? slot + (index / (n - 1) - 0.5) * 2 * half : slot,
+    }));
+  });
+  const hasLinks = dots.some((d) => d.href != null);
+
+  return {
+    ...basePlotOptions(palette),
+    ...(labels.xTickRotate
+      ? { marginBottom: rotatedBottomMargin(order, labels.xTickRotate) }
+      : {}),
+    x: {
+      label: labels.x ?? null,
+      type: "linear",
+      // A half-slot of padding at each end, so the outermost group's dots and its
+      // average rule are inside the frame rather than clipped by it.
+      domain: [-0.5, Math.max(order.length - 0.5, 0.5)],
+      ticks: order.map((_, index) => index),
+      tickFormat: (value: number) => order[value] ?? "",
+      tickRotate: labels.xTickRotate,
+      // A vertical rule per group would only repeat what the tick already says.
+      grid: false,
+    },
+    y: {
+      label: labels.y ?? null,
+      grid: true,
+      zero: true,
+      tickFormat: labels.yTickFormat,
+    },
+    // Dots carry literal CSS colors, so use an identity scale rather than letting
+    // Plot invent a categorical scheme (and a legend the axis already provides).
+    color: { type: "identity" },
+    marks: [
+      Plot.ruleY([0], { stroke: palette.border }),
+      // The group's average, drawn through its dots — the same figure the bar mode
+      // draws as a bar height, so flipping between the modes reads as one chart.
+      Plot.ruleY(groups as ScatterGroup[], {
+        y: "mean",
+        x1: (d: ScatterGroup) => (slotOf.get(d.label) ?? 0) - MEAN_RULE_HALF,
+        x2: (d: ScatterGroup) => (slotOf.get(d.label) ?? 0) + MEAN_RULE_HALF,
+        stroke: (d: ScatterGroup) => d.color ?? palette.accent,
+        strokeWidth: 2,
+      }),
+      // Every run, in one mark: see the note on x above for why that matters.
+      Plot.dot(dots, {
+        x: "x",
+        y: "value",
+        fill: "color",
+        // A surface-colored ring so two runs of similar value stay separable.
+        stroke: palette.surface,
+        strokeWidth: 1,
+        r: 4,
+        title: (d: (typeof dots)[number]) => pointTitle(d, format),
+        ...(hasLinks
+          ? { href: (d: (typeof dots)[number]) => d.href, target: "_self" }
+          : {}),
+        tip: tipBoxXY(palette),
       }),
     ],
   };

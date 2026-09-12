@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { LoadingState } from "../../components/LoadingState";
+import { NumberField, useNumberFieldState } from "../../components/NumberField";
 import type {
   BufferTarget,
   CoverageAxis,
@@ -64,7 +65,15 @@ export function CoveragePlanEditPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [name, setName] = useState("");
-  const [runsPerCell, setRunsPerCell] = useState(DEFAULT_RUNS_PER_CELL);
+  // The target every cell is filled to. Held as the text the operator typed so the
+  // field can be cleared and retyped; the save refuses while it says nothing usable.
+  const runsPerCellField = useNumberFieldState(DEFAULT_RUNS_PER_CELL, {
+    label: "Runs per cell",
+    min: 1,
+    max: 100,
+    integer: true,
+  });
+  const runsPerCell = runsPerCellField.value ?? DEFAULT_RUNS_PER_CELL;
   const [comboGroupIds, setComboGroupIds] = useState<string[]>([]);
   const [caseGroupIds, setCaseGroupIds] = useState<string[]>([]);
   const [combos, setCombos] = useState<ReviewPlanCombo[]>([]);
@@ -105,7 +114,7 @@ export function CoveragePlanEditPage() {
             setError("That plan no longer exists.");
           } else {
             setName(plan.name);
-            setRunsPerCell(Math.max(1, plan.runsPerCell || 1));
+            runsPerCellField.set(Math.max(1, plan.runsPerCell || 1));
             setComboGroupIds(plan.comboGroupIds);
             setCaseGroupIds(plan.caseGroupIds);
             setCombos(plan.combos);
@@ -142,7 +151,8 @@ export function CoveragePlanEditPage() {
     return () => {
       active = false;
     };
-  }, [backend, token, editing, planId]);
+    // `runsPerCellField.set` is referentially stable (see components/NumberField).
+  }, [backend, token, editing, planId, runsPerCellField.set]);
 
   const comboGroups = useMemo(
     () => groups.filter((g) => g.kind === "combo"),
@@ -164,7 +174,10 @@ export function CoveragePlanEditPage() {
   const savable =
     name.trim().length > 0 &&
     (comboGroupIds.length > 0 || combos.length > 0) &&
-    (caseGroupIds.length > 0 || cases.length > 0);
+    (caseGroupIds.length > 0 || cases.length > 0) &&
+    // A plan with no run target fills nothing, so an emptied or out-of-range field
+    // refuses the save rather than being corrected in place.
+    runsPerCellField.valid;
 
   async function onSave() {
     if (!token || !savable) return;
@@ -255,27 +268,22 @@ export function CoveragePlanEditPage() {
             label="Runs per cell"
             description="How many runs every combination does on every case in the matrix."
             help="A cell is one combination on one case. Raising this lengthens the plan rather than starting more runs at once — the review buffer is what caps how many are outstanding."
-            modified={runsPerCell !== DEFAULT_RUNS_PER_CELL}
-            onReset={() => setRunsPerCell(DEFAULT_RUNS_PER_CELL)}
+            modified={runsPerCellField.raw !== String(DEFAULT_RUNS_PER_CELL)}
+            onReset={() => runsPerCellField.set(DEFAULT_RUNS_PER_CELL)}
           >
             {(id) => (
-              <span className={styles.settingNumber}>
-                <input
-                  id={id}
-                  className={exec.input}
-                  type="number"
-                  min={1}
-                  max={100}
-                  step={1}
-                  value={runsPerCell}
-                  onChange={(e) => {
-                    const n = Math.floor(Number(e.target.value));
-                    setRunsPerCell(
-                      Number.isFinite(n) && n >= 1 ? Math.min(n, 100) : 1,
-                    );
-                  }}
-                />
-              </span>
+              // The column is too narrow to read a sentence in, so the field shows
+              // only its invalid state here and the action row below says why the
+              // save is refused.
+              <NumberField
+                id={id}
+                className={exec.input}
+                wrapperClassName={styles.settingNumber}
+                showProblem={false}
+                {...runsPerCellField.bounds}
+                value={runsPerCellField.raw}
+                onChange={runsPerCellField.setRaw}
+              />
             )}
           </SettingRow>
           <AxisPicker value={outerAxis} onChange={setOuterAxis} />
@@ -361,6 +369,14 @@ export function CoveragePlanEditPage() {
           <CasePicker cases={cases} onChange={setCases} />
 
           <SubmitNotice message={error} />
+          {/* Why the save is refused, beside the button refusing it. Static rather
+              than a SubmitNotice: it is the state of the form, not the outcome of a
+              press, so it must not scroll the page to itself as the operator types. */}
+          {runsPerCellField.message && (
+            <p className={`${exec.notice} ${exec.warn}`}>
+              {runsPerCellField.message}
+            </p>
+          )}
 
           <div className={styles.editorActions}>
             <button

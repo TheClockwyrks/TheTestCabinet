@@ -10,15 +10,26 @@
 // generated on the way out. A scored scenario's snapshot schedule is load-bearing —
 // the case grades at those exact ticks — so it is displayed for review and written
 // back as-is, never silently recomputed.
+//
+// Every field up here changes the SHAPE of the design or of the run, and the tool
+// has no undo, so none of them commits from a keystroke. They divide in two by what
+// a wrong commit costs:
+//
+//   • the run length and the snapshot schedule are held until the field is left or
+//     Enter is pressed, Escape abandoning the edit — a wrong one is simply retyped;
+//   • the board size is not committed by this toolbar at all. It is staged in
+//     `<BoardSize>` and applied by an explicit button, because applying it takes
+//     components off the board and off the saved file. See `boardDraft.ts`.
 
-import { useState } from "react";
-import { GRID_PRESETS, type Design, type Timeline } from "../model";
+import { useState, type KeyboardEvent } from "react";
+import type { Design, Timeline } from "../model";
 import type { ScenarioSummary } from "../scenarioFiles";
 import type { SimStatus } from "../sim";
+import { BoardSize } from "./BoardSize";
+import { NumberInput } from "./NumberInput";
+import { commitTickList, formatTicks } from "./tickList";
 
 const SPEEDS = [0.5, 1, 2, 4] as const;
-const MIN_DIM = 4;
-const MAX_DIM = 120;
 
 interface ToolbarProps {
   design: Design;
@@ -36,7 +47,14 @@ interface ToolbarProps {
   notice: string | null;
   /** The exact JSON a save/export would write. */
   exportText: string;
-  onResize: (width: number, height: number) => void;
+  /** How many components a shrink has set aside, waiting for the board to grow. */
+  asideCount: number;
+  /**
+   * Apply a board size. Never called by a field changing — only by Apply, by Enter
+   * inside a staged field, or by a preset click. The handler plans the resize and
+   * asks before committing one that would set components aside.
+   */
+  onApplySize: (width: number, height: number) => void;
   onTogglePlay: () => void;
   onSpeed: (speed: number) => void;
   onClear: () => void;
@@ -59,7 +77,8 @@ export function Toolbar({
   dirty,
   notice,
   exportText,
-  onResize,
+  asideCount,
+  onApplySize,
   onTogglePlay,
   onSpeed,
   onClear,
@@ -86,9 +105,6 @@ export function Toolbar({
   const copy = () => {
     void navigator.clipboard.writeText(exportText);
   };
-
-  const clampDim = (v: number) =>
-    Math.max(MIN_DIM, Math.min(MAX_DIM, Math.floor(v) || MIN_DIM));
 
   return (
     <header className="toolbar">
@@ -121,7 +137,7 @@ export function Toolbar({
             type="button"
             onClick={() => onImport(chosen)}
             disabled={!chosen}
-            title={`Load its components onto the current ${design.grid.width}×${design.grid.height} board, dropping anything that does not fit. Whatever file is open stays the save target.`}
+            title={`Load its components onto the current ${design.grid.width}×${design.grid.height} board. Anything that does not fit is set aside rather than dropped — grow the board to bring it back. Whatever file is open stays the save target.`}
           >
             Import here
           </button>
@@ -134,7 +150,11 @@ export function Toolbar({
             disabled={!openFile || !dirty || timelineProblem !== null}
             title={
               openFile
-                ? `Overwrite cases/${openFile}.json`
+                ? `Overwrite cases/${openFile}.json${
+                    asideCount > 0
+                      ? ` — ${asideCount} component${asideCount === 1 ? "" : "s"} are set aside and will NOT be written; grow the board to bring them back first`
+                      : ""
+                  }`
                 : "Open a scenario first"
             }
           >
@@ -152,49 +172,7 @@ export function Toolbar({
         </div>
       )}
 
-      <div className="group">
-        <label className="inline">
-          W
-          <input
-            type="number"
-            min={MIN_DIM}
-            max={MAX_DIM}
-            value={design.grid.width}
-            onChange={(e) =>
-              onResize(clampDim(Number(e.target.value)), design.grid.height)
-            }
-          />
-        </label>
-        <label className="inline">
-          H
-          <input
-            type="number"
-            min={MIN_DIM}
-            max={MAX_DIM}
-            value={design.grid.height}
-            onChange={(e) =>
-              onResize(design.grid.width, clampDim(Number(e.target.value)))
-            }
-          />
-        </label>
-        <div className="presets">
-          {GRID_PRESETS.map((p) => {
-            const active =
-              design.grid.width === p.width && design.grid.height === p.height;
-            return (
-              <button
-                key={p.name}
-                type="button"
-                className={active ? "preset active" : "preset"}
-                title={`${p.name} scored grid: ${p.width}×${p.height}`}
-                onClick={() => onResize(p.width, p.height)}
-              >
-                {p.name} {p.width}×{p.height}
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      <BoardSize grid={design.grid} onApply={onApplySize} />
 
       <div className="group">
         <button type="button" onClick={onTogglePlay}>
@@ -220,26 +198,31 @@ export function Toolbar({
         </span>
         <span>tick {status?.tick ?? 0}</span>
         <span>{design.entities.length} components</span>
+        {asideCount > 0 && (
+          <span
+            className="aside"
+            title="Components a smaller board set aside. They are not exported, and they come back when the board grows over them again."
+          >
+            +{asideCount} set aside
+          </span>
+        )}
         {notice && <span className="notice">{notice}</span>}
       </div>
 
       <div className="group export">
         <label
           className="inline"
-          title="The run length written to the file. A scored scenario's is set by the case."
+          title="The run length written to the file. A scored scenario's is set by the case. Applied when you leave the field or press Enter."
         >
           ticks
-          <input
-            type="number"
+          <NumberInput
+            label="The run length"
             min={1}
             style={{ width: 88 }}
+            ariaLabel="Run length in ticks"
+            commit="blur"
             value={timeline.ticks}
-            onChange={(e) =>
-              onTimeline({
-                ...timeline,
-                ticks: Math.max(1, Math.floor(Number(e.target.value)) || 1),
-              })
-            }
+            onCommit={(ticks) => onTimeline({ ...timeline, ticks })}
           />
         </label>
         <label
@@ -250,13 +233,9 @@ export function Toolbar({
           }
         >
           snapshots
-          <input
-            type="text"
-            style={{ width: 280 }}
-            value={timeline.snapshots.join(", ")}
-            onChange={(e) =>
-              onTimeline({ ...timeline, snapshots: parseTicks(e.target.value) })
-            }
+          <SnapshotsInput
+            snapshots={timeline.snapshots}
+            onCommit={(snapshots) => onTimeline({ ...timeline, snapshots })}
           />
         </label>
         <button type="button" onClick={download}>
@@ -274,16 +253,49 @@ export function Toolbar({
 }
 
 /**
- * A comma-separated tick list as numbers, keeping whatever the field currently says
- * — including a list that is out of order or past the end. Validation belongs to
- * `timelineError`, which reports it and blocks the save; silently repairing the text
- * as it is typed would fight the person editing it.
+ * The snapshot schedule, edited as text.
+ *
+ * The field is controlled by the TYPING while an edit is in progress and by the
+ * committed schedule the rest of the time. Controlling it by the parsed list meant
+ * a comma vanished as it was typed (so a second checkpoint could not be added) and
+ * clearing the field destroyed the schedule a keystroke at a time. The parsing
+ * itself is unchanged and still permissive — `timelineError` is what reports a
+ * schedule the engine would refuse, and what blocks the save on it.
  */
-function parseTicks(text: string): number[] {
-  return text
-    .split(",")
-    .map((part) => part.trim())
-    .filter((part) => part.length > 0)
-    .map((part) => Math.floor(Number(part)))
-    .filter((n) => Number.isFinite(n));
+function SnapshotsInput({
+  snapshots,
+  onCommit,
+}: {
+  snapshots: number[];
+  onCommit: (snapshots: number[]) => void;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+
+  const commit = () => {
+    const next = commitTickList(draft, snapshots);
+    setDraft(null);
+    if (next) onCommit(next);
+  };
+
+  const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      commit();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setDraft(null);
+    }
+  };
+
+  return (
+    <input
+      type="text"
+      style={{ width: 280 }}
+      aria-label="Snapshot ticks"
+      value={draft ?? formatTicks(snapshots)}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={onKeyDown}
+    />
+  );
 }

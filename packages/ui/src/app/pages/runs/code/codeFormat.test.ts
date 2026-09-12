@@ -8,6 +8,7 @@ import {
   formatCodeBytes,
   formatCodeNumber,
   formatMetricValue,
+  formatTestDuration,
   isApproximate,
   lookupMetric,
   toolchainCoverage,
@@ -192,5 +193,30 @@ describe("the executed-tier gates", () => {
     });
     expect(toolchainTests(none)).not.toBeNull();
     expect(toolchainTests(none)?.total).toBe(0);
+  });
+});
+
+// A test's duration, as the runner timed it — and the absence of one, which is the
+// difference between "not timed" and "instant".
+describe("formatTestDuration", () => {
+  it("scales the figure to what it is", () => {
+    expect(formatTestDuration(4)).toBe("4 ms");
+    expect(formatTestDuration(0.4)).toBe("0.4 ms");
+    expect(formatTestDuration(12.6)).toBe("13 ms");
+    expect(formatTestDuration(1500)).toBe("1.5 s");
+    expect(formatTestDuration(64000)).toBe("64 s");
+  });
+
+  // The reason this returns null rather than a string: absence is NOT TIMED, never zero,
+  // and the widget has to be able to say so.
+  it("reports an absent duration as not a figure at all", () => {
+    expect(formatTestDuration(undefined)).toBeNull();
+    expect(formatTestDuration(Number.NaN)).toBeNull();
+    expect(formatTestDuration(-1)).toBeNull();
+  });
+
+  // A recorded zero IS a measurement, and reads as one.
+  it("keeps a reported zero", () => {
+    expect(formatTestDuration(0)).toBe("0 ms");
   });
 });

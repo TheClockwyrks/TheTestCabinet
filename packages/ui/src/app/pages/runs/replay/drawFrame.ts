@@ -49,6 +49,7 @@ import type {
   Recording,
   Resource,
 } from "./format";
+import { createAssetCache } from "../../../data/assetCache";
 
 /**
  * What one frame's draw did, and what it could not do.
@@ -320,21 +321,21 @@ async function decodeCapturedImage(
     const url = resolveStored ? resolveStored(image.store) : null;
     if (url === null) {
       throw new Error(
-        "this replay keeps its images beside it and this view cannot reach them",
+        `this replay keeps its images beside it and this view cannot reach ${image.store}`,
       );
     }
     if (image.kind === "pixels") {
       const bytes = await withTimeout(
         fetchBytes(url),
         DECODE_TIMEOUT_MS,
-        "the pixel buffer did not arrive in time",
+        `the pixel buffer did not arrive within ${DECODE_TIMEOUT_MS}ms`,
       );
       return rebuildPixelsFrom(bytes, image.width, image.height);
     }
     return withTimeout(
       decodeElement(url),
       DECODE_TIMEOUT_MS,
-      "the image did not decode in time",
+      `the image did not decode within ${DECODE_TIMEOUT_MS}ms`,
     );
   }
   if (image.kind === "pixels") {
@@ -343,25 +344,54 @@ async function decodeCapturedImage(
   return withTimeout(
     decodeElement(image.src),
     DECODE_TIMEOUT_MS,
-    "the image did not decode in time",
+    `the image did not decode within ${DECODE_TIMEOUT_MS}ms`,
   );
 }
 
 /**
- * The bytes at `url`, or throw.
+ * The bytes at `url`, fetched once per session, or throw.
  *
  * The status is checked before the body is read for the reason every fetch in this
  * player checks it: an error page is bytes too, and rebuilding an `ImageData` from
  * one would put a wall of noise on screen and report the frame as clean.
  */
-async function fetchBytes(url: string): Promise<Uint8Array> {
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(
-      `the pixel buffer could not be fetched (HTTP ${response.status})`,
-    );
-  }
-  return new Uint8Array(await response.arrayBuffer());
+function fetchBytes(url: string): Promise<Uint8Array> {
+  return pixelBufferCache.load(url);
+}
+
+// The RGBA bytes of stored `pixels` entries, by URL.
+//
+// These are the one thing in a replay worth fetching once and keeping even though
+// the prepared recording above them is cached too. A stored file is named by a
+// digest of its own bytes, so the sprite a build drew in forty recordings is ONE
+// file: the reference and the build of a validation pair routinely name the same
+// buffers, and a reviewer stepping through a case's clips names them again in every
+// one. Without this, each of those is a fresh download of bytes the session already
+// holds.
+//
+// Bounded at 32 MB, which is a handful of full-surface buffers (a 1920x1080 capture
+// is 8 MB of RGBA) — enough that a pair and the clips around it share, small enough
+// that it cannot become a copy of the run's media directory. The count cap bounds a
+// replay that names many small sprites.
+const pixelBufferCache = createAssetCache<Uint8Array>({
+  name: "replay pixel buffer",
+  maxEntries: 64,
+  maxBytes: 32 * 1024 * 1024,
+  weigh: (bytes) => bytes.byteLength,
+  load: async (url) => {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(
+        `the pixel buffer could not be fetched (HTTP ${response.status}, ${url})`,
+      );
+    }
+    return new Uint8Array(await response.arrayBuffer());
+  },
+});
+
+/** Drop every cached pixel buffer. For tests; a buffer is never invalidated. */
+export function clearPixelBufferCache(): void {
+  pixelBufferCache.clear();
 }
 
 /**

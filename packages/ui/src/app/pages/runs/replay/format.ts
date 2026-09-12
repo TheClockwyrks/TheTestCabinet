@@ -22,6 +22,8 @@
 // changes shape, the types here change with it; a player never learns to read a
 // second shape.
 
+import { createAssetCache } from "../../../data/assetCache";
+
 /**
  * The format version this console knows how to draw.
  *
@@ -612,8 +614,7 @@ export function parseRecording(data: unknown): RecordingParse {
   if (!isNumber(data.format)) {
     return {
       ok: false,
-      message:
-        "This file does not say which recording format it was written in, so it cannot be played. It was probably not produced by an engine recorder.",
+      message: "This file states no recording format.",
     };
   }
   if (data.format !== RECORDING_FORMAT) {
@@ -622,14 +623,13 @@ export function parseRecording(data: unknown): RecordingParse {
     // no newer console that would play it.
     return {
       ok: false,
-      message: `This file states recording format ${data.format}, and the only recording format is ${RECORDING_FORMAT}, so it was not produced by an engine recorder.`,
+      message: `This file states recording format ${data.format}, not ${RECORDING_FORMAT}.`,
     };
   }
   if (!isNumber(data.width) || !isNumber(data.height)) {
     return {
       ok: false,
-      message:
-        "This replay does not say what size it was drawn at, so it cannot be played.",
+      message: "This replay does not say what size it was drawn at.",
     };
   }
   const background = data.background;
@@ -641,15 +641,13 @@ export function parseRecording(data: unknown): RecordingParse {
   if (background === undefined) {
     return {
       ok: false,
-      message:
-        "This replay does not say what its frames were cleared to, so it cannot be played.",
+      message: "This replay does not say what its frames were cleared to.",
     };
   }
   if (background !== null && typeof background !== "string") {
     return {
       ok: false,
-      message:
-        "This replay's background is not a colour, so it cannot be played.",
+      message: "This replay's background is not a colour.",
     };
   }
 
@@ -665,7 +663,7 @@ export function parseRecording(data: unknown): RecordingParse {
     if (!Array.isArray(table)) {
       return {
         ok: false,
-        message: `This replay is damaged: it carries no ${noun} table, so its frames cannot be drawn.`,
+        message: `This replay is damaged: it carries no ${noun} table.`,
       };
     }
     for (let i = 0; i < table.length; i += 1) {
@@ -682,7 +680,7 @@ export function parseRecording(data: unknown): RecordingParse {
   if (!Array.isArray(data.frames)) {
     return {
       ok: false,
-      message: "This replay carries no frames, so there is nothing to play.",
+      message: "This replay carries no frames.",
     };
   }
   const states = data.states as unknown[];
@@ -735,20 +733,82 @@ export function parseRecording(data: unknown): RecordingParse {
  * caller, through the same `(runId | subject, file) => url` function that produced
  * the URL handed in here — see `StoredImageResolver` in `drawFrame.ts`.
  */
-export async function fetchRecording(url: string): Promise<Recording> {
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(
-      `The replay could not be fetched (HTTP ${response.status}).`,
-    );
+export function fetchRecording(url: string): Promise<Recording> {
+  return recordingCache.load(url);
+}
+
+/**
+ * What one parsed recording costs, in bytes, near enough for a budget.
+ *
+ * The tables and frames are counted at a flat per-entry figure because what
+ * actually makes a recording big is its inline pixels: a base64 `data:` URL or a
+ * base64 RGBA buffer is one string holding every byte of a picture, and a recording
+ * carrying a few of those outweighs a hundred thousand operations. A stored entry
+ * carries a file name instead, and its bytes are weighed by the pixel-buffer cache
+ * that fetches them rather than a second time here.
+ *
+ * A JS string is two bytes per UTF-16 unit and base64 is ASCII, so a string's
+ * length doubled is what it occupies.
+ */
+export function recordingBytes(recording: Recording): number {
+  let bytes =
+    (recording.ops.length +
+      recording.states.length +
+      recording.frames.length +
+      recording.resources.length) *
+    64;
+  for (const image of recording.images) {
+    if ("store" in image) {
+      bytes += image.store.length * 2;
+    } else if (image.kind === "pixels") {
+      bytes += image.data.length * 2;
+    } else {
+      bytes += image.src.length * 2;
+    }
   }
-  let data: unknown;
-  try {
-    data = await response.json();
-  } catch {
-    throw new Error("The replay is not valid JSON, so it cannot be played.");
-  }
-  const parsed = parseRecording(data);
-  if (!parsed.ok) throw new Error(parsed.message);
-  return parsed.recording;
+  return bytes;
+}
+
+// The parsed recordings, by URL.
+//
+// A recording does not change once its run produced it, so leaving a replay and
+// coming back re-reads this rather than re-downloading and re-parsing a document
+// that can run to megabytes. Bounded at 48 MB because that is what makes it a cache
+// rather than a second copy of the run tree: it holds the reference and the build
+// of a validation pair, the proofs of the run beside them, and the run a reviewer
+// is comparing against, while a session that works through a hundred runs drops the
+// ones it has left behind. The count cap bounds a gallery of recordings each too
+// small to reach the byte budget.
+const recordingCache = createAssetCache<Recording>({
+  name: "replay recording",
+  maxEntries: 24,
+  maxBytes: 48 * 1024 * 1024,
+  weigh: recordingBytes,
+  load: async (url) => {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(
+        `The replay could not be fetched (HTTP ${response.status}, ${url}).`,
+      );
+    }
+    let data: unknown;
+    try {
+      data = await response.json();
+    } catch {
+      throw new Error(`The replay is not valid JSON (${url}).`);
+    }
+    const parsed = parseRecording(data);
+    if (!parsed.ok) throw new Error(parsed.message);
+    return parsed.recording;
+  },
+});
+
+/** What is already parsed for `url`, or undefined — see {@link fetchRecording}. */
+export function peekRecording(url: string): Recording | undefined {
+  return recordingCache.peek(url);
+}
+
+/** Drop every cached recording. For tests; a recording is never invalidated. */
+export function clearRecordingCache(): void {
+  recordingCache.clear();
 }

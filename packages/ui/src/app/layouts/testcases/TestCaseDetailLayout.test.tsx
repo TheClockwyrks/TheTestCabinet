@@ -304,4 +304,52 @@ describe("TestCaseDetailLayout", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("body v2.0.0/base/none")).toBeInTheDocument();
   });
+
+  // Three outcomes, three states. A fetch still in flight and a fetch that failed
+  // both used to read as "No test case found for …" — the page answering, on no
+  // evidence, the very question the fetch was asked.
+  it.each([
+    ["loading", "Loading test case…"],
+    ["error", "Could not load the test case"],
+  ])(
+    "reports a %s fetch as itself, never as a missing case",
+    (status, text) => {
+      catalog.mockReturnValue({ testCases: [], status });
+      render(
+        <MemoryRouter initialEntries={[routes.testCaseDetail("carom")]}>
+          <Routes>
+            <Route
+              path={routePatterns.testCaseDetail}
+              element={
+                <TestCaseDetailLayout tab="overview">
+                  {() => <p>body</p>}
+                </TestCaseDetailLayout>
+              }
+            />
+          </Routes>
+        </MemoryRouter>,
+      );
+      expect(screen.getByText(new RegExp(text))).toBeTruthy();
+      expect(screen.queryByText(/No test case found/)).toBeNull();
+    },
+  );
+
+  it("names the case as not found once the fetch settles without one", () => {
+    catalog.mockReturnValue({ testCases: [], status: "ready" });
+    render(
+      <MemoryRouter initialEntries={[routes.testCaseDetail("carom")]}>
+        <Routes>
+          <Route
+            path={routePatterns.testCaseDetail}
+            element={
+              <TestCaseDetailLayout tab="overview">
+                {() => <p>body</p>}
+              </TestCaseDetailLayout>
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(screen.getByText(/No test case found/)).toBeTruthy();
+  });
 });

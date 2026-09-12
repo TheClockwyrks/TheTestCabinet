@@ -71,6 +71,38 @@ None of this makes a chart a ranking. The board that _is_ a ranking is the
 [Leaderboard](/components/web/overview/) tab; the order control only decides
 where the bars sit.
 
+## Display mode
+
+The token and cost charts each carry a display control, rendered into the same
+header row as the order control.
+
+| Mode      | What it draws                                               |
+| --------- | ----------------------------------------------------------- |
+| `bar`     | One bar per pair at its mean. The default.                  |
+| `scatter` | One dot per run, with a horizontal rule at the pair's mean. |
+
+Under `bar`, hovering a bar replaces it with the box plot of the runs it
+averages: whiskers at the minimum and maximum, a box over the interquartile
+range, a tick at the median, and a dashed tick at the mean. The tooltip states
+those same figures as text, with the sample size. A pair holding one run draws
+as a point, which is what a sample of one has to say about its spread.
+
+Under `scatter`, each dot links to the run it stands for. Its tooltip names the
+pair, the run's own figure, when the run started, the pair's mean, and the run
+id.
+
+Each chart owns its control. The order control is shared because the charts are
+only comparable while the bars sit in the same places; the display mode is a
+reading of one chart's own metric, so a reader sets cost to `scatter` and tokens
+to `bar` to put a spread beside a magnitude. Both modes read one fold and one
+order, so the mean a bar draws is the rule a scatter draws, and the axis is
+identical under either.
+
+Quartiles are cut by the linearly interpolated quantile the [comparison
+statistics](/comparisons/statistics/) define, so a box here and a box on a
+comparison agree. These charts fold in the browser over whatever runs the reader
+has scoped, and summarize without a bootstrap interval.
+
 ## gg exclusion
 
 gg runs are filtered out of the per-test-case metric, ratings, and leaderboard

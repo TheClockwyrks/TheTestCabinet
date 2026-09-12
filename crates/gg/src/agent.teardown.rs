@@ -282,7 +282,7 @@ impl AgentTeardown {
             emitter.emit(log(
                 "error",
                 format!(
-                    "agent `{}` (profile `{}`) {detail} — `{STATUS_INTERNAL_ERROR}` (gg defect)",
+                    "agent `{}` (profile `{}`) {detail} (`{STATUS_INTERNAL_ERROR}`, gg defect)",
                     self.agent.id, self.agent.profile_id
                 ),
             ));

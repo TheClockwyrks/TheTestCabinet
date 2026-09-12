@@ -228,7 +228,14 @@ pub struct ComparisonArmResult {
     /// never be topped up again. [`n_observed`](Self::n_observed) counts only the runs
     /// whose record has landed, so topping up against it relaunches every run still in
     /// flight. This counts the runs that exist right now, in flight or finished.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    ///
+    /// Always serialized, empty array included: an arm with no live runs and a backend
+    /// that predates the field are different answers, and a console can only tell them
+    /// apart if "none are live" arrives as `[]` rather than as a missing key. The
+    /// TypeScript type stays optional so a console still reads a record written by an
+    /// older backend, which is the one case where the key is genuinely absent.
+    #[serde(default)]
+    #[cfg_attr(feature = "contract", ts(optional = nullable))]
     pub live_run_ids: Vec<String>,
     /// The comparable-cost (USD) distribution across the arm's runs.
     #[serde(default, skip_serializing_if = "Option::is_none")]

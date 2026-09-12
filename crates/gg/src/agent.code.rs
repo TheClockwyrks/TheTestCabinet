@@ -811,18 +811,13 @@ fn sandbox_failure_decision(
         error if error.is_artifact_defect() => CodeTurnOutcome::Fatal {
             fault: FatalFault::ArtifactDefect,
             message: format!(
-                "the code sandbox's prebuilt component could not be run ({error}); this is \
-                 artifact drift, not a fault in the model's program, and every further turn would \
-                 fail identically."
+                "the code sandbox's prebuilt component could not be run: {error} \
+                 (artifact drift)"
             ),
         },
         error if error.is_host_fault() => CodeTurnOutcome::Fatal {
             fault: FatalFault::HostFault,
-            message: format!(
-                "the code sandbox could not be operated ({error}); this is a defect in gg's own \
-                 plumbing, not a fault in the model's program, and every further turn would fail \
-                 identically."
-            ),
+            message: format!("gg's own plumbing could not operate the code sandbox: {error}"),
         },
         // gg's own preparation of a source it had already accepted. Fatal for the reason the two
         // above are, and stated separately because this is the one that reads like a compiler
@@ -833,11 +828,7 @@ fn sandbox_failure_decision(
         // `transpile` row in the published record saying the model could not write compiling code.
         error if error.is_lowering_defect() => CodeTurnOutcome::Fatal {
             fault: FatalFault::Lowering,
-            message: format!(
-                "the code sandbox could not run the model's program ({error}); this is a defect in \
-                 gg's own pipeline, not a fault in the model's program, and it is not fed back to \
-                 the model as one."
-            ),
+            message: format!("gg's own pipeline could not prepare the model's program: {error}"),
         },
         // The compiler could not finish, so nothing was decided about the program. Fatal, and fed
         // back to nobody: there is no diagnostic to show, and the one sentence gg could write in
@@ -847,10 +838,7 @@ fn sandbox_failure_decision(
         // ever read.
         error if error.is_toolchain_defect() => CodeTurnOutcome::Fatal {
             fault: FatalFault::Toolchain,
-            message: format!(
-                "the model's program was never read ({error}) — a fault in the run's environment \
-                 rather than in the model's program"
-            ),
+            message: format!("the model's program was never read: {error} (run environment fault)"),
         },
         // The language's own diagnostic, with nothing wrapped around it. `SandboxError::Prepare`'s
         // `Display` prefixes it ("the program did not compile: …"), which the `Compiler error`

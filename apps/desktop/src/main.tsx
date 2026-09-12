@@ -4,7 +4,7 @@ import { App } from "./App.tsx";
 
 const container = document.getElementById("root");
 if (!container) {
-  throw new Error("Root element #root not found in index.html");
+  throw new Error("#root element not found in index.html");
 }
 
 createRoot(container).render(

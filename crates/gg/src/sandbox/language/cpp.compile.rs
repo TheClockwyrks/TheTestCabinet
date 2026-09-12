@@ -806,8 +806,8 @@ fn clang(home: &Path) -> PathBuf {
 /// operator can actually fix: the toolchain is not where gg looked.
 fn spawn_prefix(home: &Path) -> String {
     format!(
-        "gg compiles every C++ program with the wasi-sdk in the gg run image and looked for it in \
-         {} (set {WASI_SDK_HOME_ENV}, or run scripts/ci/install-wasi-sdk.sh): ",
+        "gg found no C++ toolchain in {} (set {WASI_SDK_HOME_ENV}, or run \
+         scripts/ci/install-wasi-sdk.sh): ",
         home.display()
     )
 }

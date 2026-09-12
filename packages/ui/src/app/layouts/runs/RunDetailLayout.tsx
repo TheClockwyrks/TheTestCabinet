@@ -4,6 +4,7 @@ import type { RunRecord } from "@clockwyrks/run-record";
 import type { StoredReview } from "../../../client/types";
 import { PageLayout } from "../../components/PageLayout";
 import { LoadingState } from "../../components/LoadingState";
+import { LoadFailureState } from "../../components/LoadFailureState";
 import { BackChevron } from "../../components/BackChevron";
 import { DownloadIcon } from "../../components/DownloadIcon";
 import { ExternalLinkIcon } from "../../components/ExternalLinkIcon";
@@ -16,6 +17,7 @@ import {
 import { UnpublishedTag } from "../../components/UnpublishedTag";
 import { RunDeleteControl } from "../../components/RunDeleteControl";
 import { useGalleryData, type RunDetail } from "../../data/galleryContext";
+import { createAssetCache } from "../../data/assetCache";
 import { grafanaTraceUrl } from "../../data/grafanaTraceUrl";
 import { useTestCaseName } from "../../data/useTestCaseName";
 import { useFindModel } from "../../data/useModels";
@@ -81,7 +83,30 @@ interface RunDetailLayoutProps {
 // chrome immediately on a tab switch (the background fetch still refreshes it),
 // so the title and tabs stay stable across every tab — only a run never fetched
 // this session shows the full-body loading state, and only on its first view.
-const runDetailCache = new Map<string, RunDetail>();
+//
+// **Bounded at 12 runs.** This was a bare `Map` that nothing ever evicted, which
+// is the leak-with-a-lookup-on-it the "Immutable asset caching" rule in the UI
+// component doc exists to rule out: a console left open while a reviewer walks a
+// leaderboard held every run record it had ever resolved — each one a whole
+// `RunRecord` plus its full per-reviewer review list — for the life of the tab.
+// The unit here is RUNS, not tabs: all nine tabs of one run share one entry, so
+// 12 is twelve runs flipped between, which is more than a reviewer holds in play
+// in one comparison pass and far fewer than a session's whole walk. The values
+// are parsed documents with no portable size, so — like the other
+// parsed-document caches — the count is the whole bound.
+//
+// **Read with `peek`/`put`, never `load`.** A run record is NOT immutable the way
+// a produced artifact is: a review can be added to it and an unpublished run can
+// be published. That is why this layout refetches in the background on every
+// mount and overwrites the entry with what came back, and why `load` — which
+// answers a hit with the stored promise and starts no fetch — would be the wrong
+// primitive here. `peek` seeds the first frame; the refetch that follows `put`s
+// the fresh record, which is also what keeps this run at the fresh end of the
+// eviction order.
+const runDetailCache = createAssetCache<RunDetail>({
+  name: "run detail",
+  maxEntries: 12,
+});
 
 // Shared chrome for every run detail tab: the test case / harness title row, the
 // subject line with the harness version pushed to the right, and the tab
@@ -118,12 +143,18 @@ export function RunDetailLayout({
   // Seed from the session cache so a run already viewed renders its chrome on the
   // first frame of a tab switch, with no blank while the refresh fetch runs.
   const [detail, setDetail] = useState<RunDetail | null>(() =>
-    runId ? (runDetailCache.get(runId) ?? null) : null,
+    runId ? (runDetailCache.peek(runId) ?? null) : null,
   );
   const [fetching, setFetching] = useState(true);
+  // The read's own failure, kept apart from "the read settled with no record".
+  // A run whose fetch threw is a run this page could not READ, which says nothing
+  // about whether the store holds it — and a run the operator has just canceled
+  // is exactly the case where the two get confused.
+  const [failure, setFailure] = useState<string | null>(null);
   useEffect(() => {
     if (!runId) {
       setDetail(null);
+      setFailure(null);
       setFetching(false);
       return;
     }
@@ -131,15 +162,22 @@ export function RunDetailLayout({
     // Reset to whatever the cache holds for this id: the record itself on a tab
     // switch (chrome stays put), or null on a fresh run (the full-body loading
     // state shows until the fetch lands). Either way the fetch below refreshes it.
-    setDetail(runDetailCache.get(runId) ?? null);
+    setDetail(runDetailCache.peek(runId) ?? null);
+    setFailure(null);
     setFetching(true);
     fetchRunRef
       .current(runId)
       .then((resolved) => {
-        if (resolved) runDetailCache.set(runId, resolved);
-        if (active) setDetail(resolved);
+        if (!active) return;
+        if (resolved) runDetailCache.put(runId, resolved);
+        setDetail(resolved);
       })
-      .catch(() => active && setDetail(null))
+      .catch((cause: unknown) => {
+        if (!active) return;
+        // The cached record, if there is one, stays on screen: a refresh that
+        // failed must not take a page that was rendering fine down with it.
+        setFailure(String(cause));
+      })
       .finally(() => {
         if (active) setFetching(false);
       });
@@ -155,10 +193,15 @@ export function RunDetailLayout({
       <PageLayout>
         {fetching ? (
           // A full-body branded loading state (the topbar stays), centred rather
-          // than a small spinner stranded in the corner. "No run found" is shown
-          // only once the fetch settles with no record.
+          // than a small spinner stranded in the corner.
           <LoadingState label="Loading run…" />
+        ) : failure ? (
+          // The read FAILED. Whether the store holds this run is the question the
+          // failed read was asked, so the page reports the failure instead of
+          // answering it.
+          <LoadFailureState subject={`the run “${runId}”`} detail={failure} />
         ) : (
+          // The read SETTLED with no record: genuinely not there.
           <p className={styles.notFound}>
             No run found for &ldquo;{runId}&rdquo;.
           </p>
@@ -475,7 +518,16 @@ export function RunDetailLayout({
               </a>
             );
           })()}
-          {canExecute && <RunDeleteControl runId={run.id} />}
+          {/* The run's OWN publish state, off the record this page just resolved,
+              rather than the produced worklist — which lags behind a run that was
+              canceled moments ago and used to make its Delete control disappear
+              entirely until the page was reloaded. */}
+          {canExecute && (
+            <RunDeleteControl
+              runId={run.id}
+              published={detail?.published ?? false}
+            />
+          )}
         </div>
       </div>
 

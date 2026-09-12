@@ -210,7 +210,9 @@ export async function encodeReplayWebm(
   }
   const mimeType = pickWebmType(host);
   if (mimeType === null) {
-    throw new Error("This browser cannot record WebM video.");
+    throw new Error(
+      `This browser cannot record WebM video (tried ${WEBM_MIME_TYPES.join(", ")}).`,
+    );
   }
   const { width, height } = exportSize(recording);
   const output = host.createCanvas(width, height);
@@ -239,7 +241,9 @@ export async function encodeReplayWebm(
         reject(
           reason instanceof Error
             ? reason
-            : new Error("The browser's video recorder failed."),
+            : new Error(
+                `The browser's video recorder failed (${String(reason)}).`,
+              ),
         ),
       );
     });

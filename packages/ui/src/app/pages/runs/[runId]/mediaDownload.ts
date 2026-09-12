@@ -62,7 +62,9 @@ export async function downloadMediaFile(
 ): Promise<void> {
   const response = await fetch(url);
   if (!response.ok) {
-    throw new Error(`The download failed (${response.status}).`);
+    throw new Error(
+      `download failed: HTTP ${response.status} ${response.statusText} (${url})`,
+    );
   }
   const blob = await response.blob();
   // The served Content-Type is the authority on what the bytes are; the blob's

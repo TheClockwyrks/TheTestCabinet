@@ -713,9 +713,9 @@ fn stage_project(project: &Path, dest: &Path) -> Result<(), String> {
 fn stage_case_harness(dest: &Path) -> Result<(), String> {
     let source = case_harness_source().ok_or_else(|| {
         format!(
-            "shared validator harness `{CASE_HARNESS_PACKAGE}` not found in the package store \
+            "shared validator harness `{CASE_HARNESS_PACKAGE}` is not in the package store \
              at `{}`; run `node scripts/stage-tcab-packages.mjs` or point \
-             `TCAB_PACKAGE_STORE` at a staged copy",
+             `TCAB_PACKAGE_STORE` at one",
             crate::seeding::package_store_dir().display(),
         )
     })?;
