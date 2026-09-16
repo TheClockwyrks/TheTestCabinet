@@ -43,6 +43,12 @@ Once an issue has been completed, it should be moved into a `done/` folder in
 the same subfolder it's already in. This makes it easy to check what issues have
 and have not been completed without needing to inspect file contents.
 
+Move it with `git mv`. Once it is there the file is immutable: never edit a
+completed issue, including to keep its cross-links or details current. There are
+too many of them for that upkeep to be worth anything, and nothing may depend on
+what they say. A `PreToolUse` hook denies the write. To reopen an issue, move it
+back out of `done/` first, then edit it where it lands.
+
 ### Critical Cross-Linking Only
 
 Insert a cross-link if and only if the reader would frequently want to
