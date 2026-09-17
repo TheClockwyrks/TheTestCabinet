@@ -136,6 +136,8 @@
 !/scripts/ci/install-java.sh
 !/scripts/ci/install-kotlin.sh
 !/scripts/ci/install-nextest.sh
+# Matched by the devcontainer image's `install-*.sh` COPY, so it must be in the context too.
+!/scripts/ci/install-playwright-chromium.sh
 !/scripts/ci/install-purescript.sh
 !/scripts/ci/install-rust-wasm.sh
 !/scripts/ci/install-swift.sh
