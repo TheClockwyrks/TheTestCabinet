@@ -7,6 +7,10 @@ license = "MIT"
 publish = false
 
 [lib]
+# Named rather than discovered, so that `cargo fetch --locked` against this manifest needs only it and
+# the lockfile beside it: `scripts/ci/install-gg-build-tools.sh` warms this crate set in the
+# devcontainer image from exactly those two files, and a discovered target makes cargo demand `src/`.
+path = "src/lib.rs"
 crate-type = ["cdylib"]
 
 [dependencies]

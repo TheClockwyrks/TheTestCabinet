@@ -180,7 +180,7 @@
 !/packages/gg-sandbox-rust/rust-version.sh
 !/packages/gg-sandbox-swift/swift-version.sh
 
-# Seven files that are NOT version files and are read by `scripts/ci/install-gg-build-tools.sh`,
+# Nine files that are NOT version files and are read by `scripts/ci/install-gg-build-tools.sh`,
 # which warms the package-manager-delivered half of gg's build toolchain. They are named
 # individually rather than admitted by a glob, because a glob wide enough to catch them
 # (`!/packages/gg-sandbox*/build.sh`) would put ten build scripts in this layer's cache key and the
@@ -191,6 +191,11 @@
 #   requirements.txt     the Python arm's wheels, pre-fetched into uv's cache.
 #   the two Cargo files  the Rust arm's SEPARATE lockfile, whose registry closure nothing else in
 #                        this repository warms and which that arm's build resolves `--offline`.
+#   the two guest        the same for gg's ECMAScript guest, a crate outside the workspace with a
+#   Cargo files          lockfile of its own, built `--locked --offline` by its `guest.sh`. Only the
+#                        manifest and the lockfile: the manifest names its `[lib] path` so
+#                        `cargo fetch` does not look for `src/`, which keeps the guest's sources out
+#                        of this layer's cache key.
 #   spago.yaml           read by TWO things, and the first is why it cannot wait for the glob above:
 #                        `purescript-version.sh` does not merely sit beside it, it READS it. The
 #                        registry package set is written down once, where Spago reads it, and that
@@ -206,6 +211,8 @@
 !/packages/gg-sandbox-python/requirements.txt
 !/packages/gg-sandbox-rust/Cargo.toml
 !/packages/gg-sandbox-rust/Cargo.lock
+!/packages/gg-sandbox/guest/Cargo.toml
+!/packages/gg-sandbox/guest/Cargo.lock
 !/packages/gg-sandbox-purescript/spago.yaml
 !/packages/gg-sandbox-purescript/spago.lock
 
