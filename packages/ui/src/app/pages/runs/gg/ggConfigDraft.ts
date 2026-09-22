@@ -47,6 +47,7 @@ import type {
 import {
   ALWAYS_BOUND_OPERATIONS,
   AUTHORED_HOOK_TIMEOUT_SECS,
+  AUTHORED_MODEL_CALL_TIMEOUT_SECS,
   BYTES_PER_MIB,
   CAPABILITIES,
   DEFAULT_OPENING_TURN,
@@ -2251,8 +2252,9 @@ export function runLimitsError(limits: GgRunLimitsDraft): string | null {
   for (const spec of RUN_LIMIT_SPECS) {
     const raw = limits[spec.key].trim();
     if (!raw) {
-      // The two ceilings a run cannot be conducted without. Every other empty field is
-      // that ceiling unarmed, which is a setting rather than a gap.
+      // The two ceilings a run cannot be conducted without. An empty model-call timeout
+      // is the run's default rather than an absent ceiling, and every other empty field
+      // is that ceiling unarmed, which is a setting rather than a gap.
       if (spec.required) {
         return `${spec.label} is required: every run has one, and gg supplies no figure for it.`;
       }
@@ -2261,14 +2263,12 @@ export function runLimitsError(limits: GgRunLimitsDraft): string | null {
     const value = Number(raw);
     if (!Number.isFinite(value)) return `${spec.label} must be a number.`;
     if (spec.kind === "count" && (!Number.isInteger(value) || value < 0)) {
-      const unit =
-        spec.key === "maxRuntimeSecs" || spec.key === "modelCallTimeoutSecs"
-          ? "seconds"
-          : "turns";
-      return `${spec.label} must be a whole number of ${unit}.`;
+      return `${spec.label} must be a whole number of ${spec.unit ?? "turns"}.`;
     }
+    // Every model call is made under this one, so zero is a ceiling no call could start
+    // under rather than a way to switch it off — which is what an empty field does.
     if (spec.key === "modelCallTimeoutSecs" && value === 0) {
-      return `${spec.label} must be greater than zero.`;
+      return `${spec.label} must be greater than zero. Clear the field to take gg's default of ${AUTHORED_MODEL_CALL_TIMEOUT_SECS} seconds.`;
     }
     if (spec.kind === "fraction" && (value < 0 || value > 1)) {
       return `${spec.label} must be between 0 and 1.`;
