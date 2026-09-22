@@ -126,11 +126,23 @@ function setAside(): number {
 
 const widthField = () =>
   screen.getByLabelText("Board width") as HTMLInputElement;
+const heightField = () =>
+  screen.getByLabelText("Board height") as HTMLInputElement;
 const applyButton = () =>
   screen.getByRole("button", { name: /^Apply/ }) as HTMLButtonElement;
 const dialog = () => screen.queryByRole("dialog");
 
-/** Render the app and open one of the fixtures, so there is a design to damage. */
+/**
+ * Render the app and open one of the fixtures, so there is a design to damage.
+ *
+ * Opening lands in two commits, not one: the status line these tests waited on comes
+ * from the open itself, and the W/H fields resync to the board they were just handed
+ * in an effect that commits after it. Waiting only on the status line therefore
+ * starts a test on a control still showing the default 24×16 over a 12×8 board —
+ * which is a real state of the control for a moment, and not the one any test here
+ * means to describe. So the helper's postcondition is the SETTLED control: the
+ * fields agree with the board that was opened.
+ */
 async function open(name: string) {
   render(<App />);
   const picker = await screen.findByRole("combobox");
@@ -138,6 +150,11 @@ async function open(name: string) {
   fireEvent.change(picker, { target: { value: name } });
   fireEvent.click(screen.getByRole("button", { name: "Open" }));
   await screen.findByText(`opened ${name}.json`);
+  const { grid } = FILES[name] as { grid: { width: number; height: number } };
+  await waitFor(() => {
+    expect(widthField().value).toBe(String(grid.width));
+    expect(heightField().value).toBe(String(grid.height));
+  });
 }
 
 // --- The tests -------------------------------------------------------------
