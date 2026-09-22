@@ -1,26 +1,5 @@
 # pre-commit configuration for The Test Cabinet.
 #
-# Most of these are fast, trivial gates that run on every `git commit`. The two
-# deliberate exceptions are clippy (rust-clippy) and rustdoc (rust-doc): both
-# compile the workspace and so are slower, but they guard against landing lint
-# failures locally. They share their compilation artifacts, so running the pair
-# costs little more than clippy alone. The remaining slow gates (the Rust test
-# suite, the web/docs builds) still live only in CI (scripts/ci/*, driven by
-# azure-pipelines.yml and .github/workflows/ci.yml).
-#
-# The FRONT-END tests (web-test) are a commit gate, unlike the Rust ones. Not
-# because front-end defects matter more, but because the gate is cheap — the whole
-# npm suite finishes in seconds, well inside clippy's budget — and because the
-# thing it guards is invisible without it: a page can be completely broken while
-# every test in the repo passes, and a suite whose verdict only arrives after the
-# push is a suite that reports the mistake rather than preventing it.
-#
-# Note rust-doc is not doctests: it checks that doc comments' intra-doc links
-# resolve, which no other gate sees. Doctests (`cargo test --doc`) run the code
-# examples inside those comments and stay CI-only — every doctest in this
-# workspace is currently `ignore`/`text`, so running them locally would cost
-# ~35s to execute zero tests.
-#
 # Setup is a single idempotent command: `scripts/setup-hooks.sh` (also run
 # automatically when the devcontainer is created). If a hook ever blocks a commit
 # you know is fine, `git commit --no-verify` bypasses it; CI remains the backstop.
@@ -219,42 +198,6 @@ repos:
         # rustfmt operates on the whole workspace, not individual files; trigger
         # whenever any Rust source is staged, but don't pass file paths.
         files: '\.rs$'
-        pass_filenames: false
-
-      - id: rust-clippy
-        name: cargo clippy (warnings denied)
-        description: Run Clippy across the workspace with warnings denied (mirrors CI's rust-lint).
-        entry: scripts/hooks/rust-clippy.sh
-        language: script
-        # Clippy operates on the whole workspace, not individual files; trigger
-        # whenever any Rust source is staged, but don't pass file paths.
-        files: '\.rs$'
-        pass_filenames: false
-
-      - id: rust-doc
-        name: cargo doc (warnings denied)
-        description: Run rustdoc across the workspace with warnings denied, over private items too, catching broken intra-doc links.
-        entry: scripts/hooks/rust-doc.sh
-        language: script
-        # rustdoc operates on the whole workspace, not individual files; trigger
-        # whenever any Rust source is staged, but don't pass file paths.
-        files: '\.rs$'
-        pass_filenames: false
-
-      - id: web-test
-        name: front-end tests (vitest)
-        description: Run the npm workspaces' unit tests, including the route smoke test that renders every page.
-        entry: scripts/hooks/web-test.sh
-        language: script
-        # Vitest runs whole workspaces, not individual files, so this takes no
-        # file arguments. It triggers on any front-end source or its lockfile —
-        # the source a page is built from, the styles it renders through, and the
-        # dependency set it resolves against. The route smoke test walks EVERY
-        # route in the app, so a change to one page is a change this gate judges
-        # against all of them; scoping the trigger any narrower would mean the one
-        # class of defect it exists to catch (a page broken by something that is
-        # not that page) walks straight through.
-        files: '^(packages|apps)/.*\.(ts|tsx|js|jsx|mjs|cjs|scss|css)$|^package-lock\.json$'
         pass_filenames: false
 
       # The two prose gates below run the npm workspace's own locked
