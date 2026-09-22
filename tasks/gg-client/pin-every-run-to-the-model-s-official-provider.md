@@ -49,7 +49,7 @@ Every request carries OpenRouter's `provider` object with `only` naming the
 pinned slug and `allow_fallbacks` false. The sticky key stays, since it still
 keeps a run on one endpoint within the provider. With fallbacks refused a
 provider's outage reaches gg as the error it is, so this issue depends on
-[`ride-out-a-provider-outage-with-ten-retries.md`](ride-out-a-provider-outage-with-ten-retries.md).
+[`ride-out-a-provider-outage-with-configurable-retries.md`](ride-out-a-provider-outage-with-configurable-retries.md).
 
 Every response names the provider that served it, which `usage` already
 records. A response from any other provider ends the run as a harness failure,
