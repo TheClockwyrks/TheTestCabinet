@@ -87,6 +87,10 @@ What the profile grants:
 - `context-window-override` at a `windowLimit` of 400,000 tokens, so a
   million-token model is measured against 400k and reaches a compaction boundary
   at roughly 256k.
+- `promptCacheTtl` `extended`, the one-hour cache lifetime. An issue's turns
+  run builds and test suites, so the gap between requests near the end of a
+  run is routinely past five minutes, and the write premium is cheaper than
+  re-reading a late window in full.
 - `maxCost` 25 USD. The OpenRouter key in `.env` has a 50 USD daily ceiling, so
   two sessions fit in a day and a third needs the ceiling raised.
 

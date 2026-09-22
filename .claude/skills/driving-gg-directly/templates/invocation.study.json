@@ -157,7 +157,8 @@
               "script": "guard-destructive-shell"
             }
           }
-        ]
+        ],
+        "promptCacheTtl": "extended"
       }
     ]
   }
