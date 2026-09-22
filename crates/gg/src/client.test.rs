@@ -944,7 +944,8 @@ fn resolve_provider_kind_selects_mock_by_model_prefix_or_override() {
 /// `client_for_slot` builds a working mock client for a mock binding.
 #[test]
 fn client_for_slot_builds_mock_for_mock_binding() {
-    let client = client_for_slot(&binding("mock/echo"), None).expect("mock client");
+    let client = client_for_slot(&binding("mock/echo"), None, DEFAULT_MODEL_CALL_TIMEOUT)
+        .expect("mock client");
     assert_eq!(client.model_id(), "mock/echo");
 }
 

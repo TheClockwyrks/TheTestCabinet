@@ -324,7 +324,7 @@ pub enum TurnErrorType {
     ModelVisionUnsupported,
     /// A successful response could not be parsed into a reply.
     ModelParse,
-    /// The call ran into gg's [per-call ceiling](crate::client::MODEL_CALL_TIMEOUT) without
+    /// The call ran into gg's configured per-call ceiling without
     /// producing a reply — a stalled provider. The one model error the loop retries at the turn
     /// level rather than ending the session on.
     ModelTimeout,
@@ -525,6 +525,8 @@ const REFUSED_COUNT: usize = usize::MAX;
 /// set did not write: `None` here means the ceiling is **off**, never that gg chose a figure for it.
 /// `Copy`, because a resolved ceiling set is five scalars that every agent enforces identically and
 /// none of them mutates.
+pub const DEFAULT_MODEL_CALL_TIMEOUT_SECS: u64 = 900;
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RunLimits {
     /// The per-agent turn ceiling, or `None` for **unbounded**, which is what a set that writes no
@@ -533,6 +535,8 @@ pub struct RunLimits {
     /// The run's wall-clock budget, when configured. Run-wide: every agent measures it against the
     /// same session-start instant, so it ends the run rather than one agent.
     pub max_runtime: Option<Duration>,
+    /// The ceiling applied to every model request. Always present on a launched run.
+    pub model_call_timeout: Duration,
     /// How many error turns in a row end an agent, when configured. `None` when the set wrote no
     /// `maxConsecutiveErrors` — gg arms no error ceiling nobody wrote.
     pub max_consecutive_errors: Option<u32>,
@@ -664,6 +668,9 @@ pub(crate) const LIMIT_MAX_TURNS: &str = "maxTurns";
 
 /// The `limits` key naming the [wall-clock budget](RunLimits::max_runtime).
 pub(crate) const LIMIT_MAX_RUNTIME_SECS: &str = "maxRuntimeSecs";
+
+/// The `limits` key naming the model-call ceiling.
+pub(crate) const LIMIT_MODEL_CALL_TIMEOUT_SECS: &str = "modelCallTimeoutSecs";
 
 /// The `limits` key naming the [consecutive-error ceiling](RunLimits::max_consecutive_errors).
 pub(crate) const LIMIT_MAX_CONSECUTIVE_ERRORS: &str = "maxConsecutiveErrors";
@@ -825,6 +832,21 @@ pub fn resolve_run_limits(
         None => None,
     };
 
+    // Every model call is bounded. Absence is the backwards-compatible default; unlike an
+    // optional execution ceiling there is no unbounded reading for this value.
+    let model_call_timeout = match declared.model_call_timeout_secs {
+        Some(0) => {
+            report.report(unarmable(
+                LIMIT_MODEL_CALL_TIMEOUT_SECS,
+                0,
+                "a model call allowed no seconds cannot start",
+            ));
+            Duration::from_secs(DEFAULT_MODEL_CALL_TIMEOUT_SECS)
+        }
+        Some(secs) => Duration::from_secs(secs),
+        None => Duration::from_secs(DEFAULT_MODEL_CALL_TIMEOUT_SECS),
+    };
+
     // Absent leaves it unarmed, on the same terms as the turn ceiling: an agent stopped after five
     // failed turns in a row was stopped by a threshold its operator chose, and there is no fifth
     // turn gg would have picked on their behalf.
@@ -894,6 +916,7 @@ pub fn resolve_run_limits(
     RunLimits {
         max_turns,
         max_runtime,
+        model_call_timeout,
         max_consecutive_errors,
         error_rate,
         max_cost,

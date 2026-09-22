@@ -444,7 +444,7 @@ pub enum ModelError {
         detail: String,
     },
     /// The call ran into gg's **per-call ceiling**
-    /// ([`MODEL_CALL_TIMEOUT`](crate::client::MODEL_CALL_TIMEOUT)) without producing a reply — a
+    /// configured in the run limits without producing a reply — a
     /// stalled provider, not a refusal.
     ///
     /// The one `ModelError` the turn loop does **not** end the session on. The client surfaces a

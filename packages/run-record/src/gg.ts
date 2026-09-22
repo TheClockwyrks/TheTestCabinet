@@ -1764,11 +1764,13 @@ export type GgReviewer = {
  * produced it — where limits on the invocation would let a run record *which* ceiling was hit
  * while making *what the ceiling was* unrecoverable.
  *
- * **Two are required and five are armed by being written.**
+ * **Two are required, one defaults, and five are armed by being written.**
  * [`max_parallel`](Self::max_parallel) and [`replay_max_bytes`](Self::replay_max_bytes) bound
  * every run gg conducts — the pool it runs agents in and the journal it writes as it goes — and
  * neither has a figure that means "no cap", so an absent one refuses the launch.
- * [`max_turns`](Self::max_turns), [`max_runtime_secs`](Self::max_runtime_secs),
+ * [`model_call_timeout_secs`](Self::model_call_timeout_secs) bounds every model request and
+ * defaults to fifteen minutes when absent. [`max_turns`](Self::max_turns),
+ * [`max_runtime_secs`](Self::max_runtime_secs),
  * [`max_cost`](Self::max_cost), [`max_consecutive_errors`](Self::max_consecutive_errors) and
  * [`max_error_rate`](Self::max_error_rate) with its [window](Self::error_rate_window) are each
  * **unarmed when the configuration leaves them out**. gg arms no ceiling nobody wrote: an agent
@@ -1829,6 +1831,13 @@ export type GgRunLimits = {
    * Absent means no budget. A run that spends it ends `timed_out`.
    */
   maxRuntimeSecs?: number;
+  /**
+   * The per-model-request ceiling in seconds. Absent resolves to fifteen minutes (900 seconds),
+   * because every request needs a bound even when the configuration predates this field. `0`
+   * is refused: it would prevent every model call from starting. The buffering transport applies
+   * it to the whole call; streaming applies it to the response head and between chunks.
+   */
+  modelCallTimeoutSecs?: number;
   /**
    * How many **error turns in a row** end an agent. **Absent leaves it unarmed** — gg arms no
    * error ceiling nobody wrote, so an agent stopped by this one was stopped by a threshold its

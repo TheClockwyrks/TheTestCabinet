@@ -11,6 +11,7 @@
       "replayMaxBytes": 268435456,
       "maxTurns": 300,
       "maxRuntimeSecs": 7200,
+      "modelCallTimeoutSecs": 900,
       "maxConsecutiveErrors": 5,
       "maxCost": 25
     },

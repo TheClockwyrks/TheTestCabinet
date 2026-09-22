@@ -22,7 +22,10 @@ breaches any of them, in any agent of its tree, stops early and gg exits `3`. Th
 host records such a run as
 [`limit_exceeded`](/components/core/run-records/#status) and never retries it.
 
-Two further bounds are declared, resolved and recorded with those five.
+Three further bounds are declared, resolved and recorded with those five.
+`modelCallTimeoutSecs` bounds each model request; unlike the five run-stopping ceilings,
+it turns a stalled request into a retryable `model_timeout` turn error. Absent means
+900 seconds, while `0` refuses the launch.
 [`maxParallel`](#parallelism) queues agents rather than stopping them, and
 `replayMaxBytes` bounds the [session capture journal](/gg/session-record/)
 rather than the run. [Cancellation](#cancellation) stops a run on an operator's
@@ -30,6 +33,15 @@ instruction, with no threshold declared anywhere.
 
 [Loop detection](/gg/loop-detection/) bounds a single reply rather than a run. A
 discarded attempt is not a turn, so no ceiling on this page observes one.
+
+### `modelCallTimeoutSecs`
+
+Every model request has an operator-visible ceiling, defaulting to 900 seconds when
+the key is absent. The buffering transport applies it as a total-duration cap over the
+whole request. The streaming transport applies it as an idle cap while waiting for the
+response head and between chunks, so a reply that keeps producing chunks may run longer.
+A timeout reports the configured duration through `ModelError::Timeout` and the
+`model_timeout` turn error. A value of `0` refuses launch.
 
 ## What counts as an error
 
@@ -112,7 +124,7 @@ summed on the summary's `rejectedResponses` rollup instead.
 
 ## What is required and what is armed
 
-Two of the seven keys are required, because gg conducts every run under them and
+Two keys are required, because gg conducts every run under them and
 neither has an off it could take instead.
 
 - `maxParallel` bounds the running pool. A run with no agent able to run is not a
@@ -120,7 +132,8 @@ neither has an off it could take instead.
 - `replayMaxBytes` bounds the [session capture journal](/gg/session-record/),
   which gg writes on every run.
 
-The other five are ceilings, and a ceiling is armed by writing it. `maxTurns`,
+The model-call timeout always applies and defaults to 900 seconds when absent. The other five
+are run-stopping ceilings, and each is armed by writing it. `maxTurns`,
 `maxRuntimeSecs`, `maxCost`, `maxConsecutiveErrors`, and `maxErrorRate` with its
 `errorRateWindow` are each unarmed when the configuration leaves them out. gg
 arms no error ceiling nobody wrote: an agent stopped for looping on errors was
@@ -579,10 +592,11 @@ same turn. Nothing enters the context between the attempts, so the retry is
 byte-identical, and only the error ceilings, the run's wall clock and an
 operator's kill (both re-checked between attempts) decide when to stop asking.
 
-- A timed-out call. Every model call runs under a five-minute per-call ceiling:
-  a total-duration cap on the buffered transport, whose reply arrives all at
-  once or not at all, and an idle cap on the [streaming](/gg/loop-detection/)
-  one — five minutes waiting for the response head or between chunks — so a
+- A timed-out call. Every model call runs under the configured
+  `modelCallTimeoutSecs` ceiling (900 seconds when absent): a total-duration cap
+  on the buffered transport, whose reply arrives all at once or not at all, and
+  an idle cap on the [streaming](/gg/loop-detection/) one — the configured
+  duration waiting for the response head or between chunks — so a
   stream that is still producing is never cut however long it runs. A timeout
   surfaces immediately, without spending the client's internal retry budget:
   each internal retry of a stall would cost the full ceiling again, and the

@@ -2230,6 +2230,9 @@ export const BYTES_PER_MIB = 1024 * 1024;
 // unreachable by a run that is behaving and reachable by one that is not.
 export const AUTHORED_REPLAY_MAX_MIB = 256;
 
+// Every model request has a ceiling; fresh configurations state the fifteen-minute default.
+export const AUTHORED_MODEL_CALL_TIMEOUT_SECS = 900;
+
 // The guardrails, in the order they read as a sentence: how much of the run happens
 // at once, then how long it may go on for, then how badly it may go, then how much it
 // may cost — and last, the one that bounds not the run but the record kept of it.
@@ -2259,6 +2262,13 @@ export const RUN_LIMIT_SPECS: ReadonlyArray<RunLimitSpec> = [
     kind: "count",
     placeholder: "no ceiling",
     hint: "Wall-clock budget for the whole run, observed by every agent at its own turn boundary. Empty arms no such ceiling, and the host caps the run's wall-clock either way. A run that spends a ceiling you set ends timed_out.",
+  },
+  {
+    key: "modelCallTimeoutSecs",
+    label: "Model call timeout (seconds)",
+    kind: "count",
+    defaultValue: String(AUTHORED_MODEL_CALL_TIMEOUT_SECS),
+    hint: "Ceiling on one model request. The buffering transport applies it to the whole call; streaming applies it while waiting for the response head and between chunks. An omitted value defaults to 900 seconds, and 0 is refused.",
   },
   {
     key: "maxConsecutiveErrors",

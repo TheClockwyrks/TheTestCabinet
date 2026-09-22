@@ -11,6 +11,7 @@
       "replayMaxBytes": 268435456,
       "maxTurns": 150,
       "maxRuntimeSecs": 5400,
+      "modelCallTimeoutSecs": 900,
       "maxConsecutiveErrors": 5,
       "maxCost": 25
     },
@@ -48,7 +49,11 @@
               "language": "typescript",
               "timeoutSecs": 30,
               "maxMemoryBytes": 268435456,
-              "docViewTypes": { "return": true, "parameters": false, "errors": true }
+              "docViewTypes": {
+                "return": true,
+                "parameters": false,
+                "errors": true
+              }
             }
           }
         ],
@@ -83,7 +88,10 @@
           {
             "event": "pre-shell",
             "name": "no destructive git or rm",
-            "action": { "type": "built-in", "script": "guard-destructive-shell" }
+            "action": {
+              "type": "built-in",
+              "script": "guard-destructive-shell"
+            }
           }
         ]
       }

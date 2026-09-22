@@ -17,6 +17,7 @@ fn cancelable(max_turns: usize, sentinel: PathBuf) -> LimitsSetup {
         limits: RunLimits {
             max_turns: Some(max_turns),
             max_runtime: None,
+            model_call_timeout: crate::client::DEFAULT_MODEL_CALL_TIMEOUT,
             max_consecutive_errors: None,
             error_rate: None,
             max_cost: None,

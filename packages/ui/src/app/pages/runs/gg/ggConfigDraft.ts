@@ -478,6 +478,7 @@ export function blankRunLimits(): GgRunLimitsDraft {
     maxParallel: "",
     maxTurns: "",
     maxRuntimeSecs: "",
+    modelCallTimeoutSecs: "",
     maxConsecutiveErrors: "",
     maxErrorRate: "",
     errorRateWindow: "",
@@ -2260,7 +2261,14 @@ export function runLimitsError(limits: GgRunLimitsDraft): string | null {
     const value = Number(raw);
     if (!Number.isFinite(value)) return `${spec.label} must be a number.`;
     if (spec.kind === "count" && (!Number.isInteger(value) || value < 0)) {
-      return `${spec.label} must be a whole number of ${spec.key === "maxRuntimeSecs" ? "seconds" : "turns"}.`;
+      const unit =
+        spec.key === "maxRuntimeSecs" || spec.key === "modelCallTimeoutSecs"
+          ? "seconds"
+          : "turns";
+      return `${spec.label} must be a whole number of ${unit}.`;
+    }
+    if (spec.key === "modelCallTimeoutSecs" && value === 0) {
+      return `${spec.label} must be greater than zero.`;
     }
     if (spec.kind === "fraction" && (value < 0 || value > 1)) {
       return `${spec.label} must be between 0 and 1.`;

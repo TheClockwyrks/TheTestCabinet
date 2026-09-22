@@ -76,6 +76,7 @@ async fn mid_stream_stalled_gateway() -> String {
 #[tokio::test(start_paused = true)]
 async fn a_stalled_gateway_times_out_the_buffered_call_without_spending_retries() {
     let (base_url, connections) = stalled_gateway().await;
+    let configured_timeout = Duration::from_secs(17);
     let client = OpenRouterClient::new(
         base_url,
         reqwest::Client::new(),
@@ -83,13 +84,14 @@ async fn a_stalled_gateway_times_out_the_buffered_call_without_spending_retries(
         "sk-test",
         RetryPolicy::default(),
         None,
-    );
+    )
+    .with_model_call_timeout(configured_timeout);
 
     let outcome = client.complete(&[Message::user("build it")], &[]).await;
 
     match outcome {
         Err(ModelError::Timeout { after, provider }) => {
-            assert_eq!(after, MODEL_CALL_TIMEOUT);
+            assert_eq!(after, configured_timeout);
             assert!(
                 provider.is_none(),
                 "a buffered stall read nothing that could name a provider"

@@ -97,26 +97,29 @@ const SESSION_ID_HEADER: &str = "x-session-id";
 /// Maximum length of a provider error body copied into a [`ModelError`].
 const ERROR_BODY_CAP: usize = 2000;
 
-/// The **per-model-call ceiling**: five minutes.
+/// The default **per-model-call ceiling**: fifteen minutes. A run may override it.
 ///
 /// Without one, a stalled provider stream blocks the turn forever — a run was observed hung twenty
 /// minutes inside a single call, and nothing in gg could ever have interrupted it. How the ceiling
 /// is applied differs by [transport](OpenRouterClient), because the two fail differently:
 ///
 /// - The **buffering** transport gets its reply all at once or not at all, so the ceiling is a
-///   **total-duration** cap over the whole call, internal retries included: five minutes without a
-///   complete reply is a stall whatever the client was doing with them.
+///   **total-duration** cap over the whole call, internal retries included: the configured
+///   duration without a complete reply is a stall whatever the client was doing with them.
 /// - The **streaming** transport delivers the reply incrementally, and a stream that is still
 ///   producing bytes is not stalled however long it runs — a legitimately long program can stream
-///   for longer than any total cap worth having. Its ceiling is therefore an **idle** cap: five
-///   minutes waiting for the response head, or five minutes between chunks, is a stall; steady
+///   for longer than any total cap worth having. Its ceiling is therefore an **idle** cap: the
+///   configured duration waiting for the response head, or between chunks, is a stall; steady
 ///   progress never is.
 ///
 /// A timed-out call surfaces as [`ModelError::Timeout`] **immediately**, without spending the
 /// client's own retry budget — each internal retry of a stall would cost the full ceiling again —
 /// and the turn loop records it as an error turn and asks again, so the bounded retry is the
 /// turn-level one the error ceilings govern. It must therefore never end the session by itself.
-pub const MODEL_CALL_TIMEOUT: Duration = Duration::from_secs(300);
+pub const DEFAULT_MODEL_CALL_TIMEOUT: Duration = Duration::from_secs(900);
+/// Backwards-compatible name used by timeout tests and API documentation.
+#[allow(dead_code)]
+pub const MODEL_CALL_TIMEOUT: Duration = DEFAULT_MODEL_CALL_TIMEOUT;
 
 /// The most [`cache_control` breakpoints](cache_breakpoints) one request may carry.
 ///
@@ -362,6 +365,8 @@ pub struct OpenRouterClient {
     /// already-[resolved](resolve_loop_guard) configuration rather than as the declaration, so the
     /// per-attempt path constructs a [`LoopGuard`] and does no interpretation at all.
     loop_guard: Option<LoopGuardConfig>,
+    /// The resolved run-wide ceiling for each model request.
+    model_call_timeout: Duration,
 }
 
 impl OpenRouterClient {
@@ -393,7 +398,14 @@ impl OpenRouterClient {
             session_key,
             stable_ttl: CacheTtl::Standard,
             loop_guard: None,
+            model_call_timeout: DEFAULT_MODEL_CALL_TIMEOUT,
         }
+    }
+
+    /// Use the model-call ceiling resolved from this run's limits.
+    pub fn with_model_call_timeout(mut self, timeout: Duration) -> Self {
+        self.model_call_timeout = timeout;
+        self
     }
 
     /// This client with `ttl` as the [lifetime](CacheTtl) its stable cache markers ask for — the
@@ -561,20 +573,23 @@ impl OpenRouterClient {
     ///
     /// The whole call — every attempt, backoff included — runs under the
     /// [per-call ceiling](MODEL_CALL_TIMEOUT) as a **total-duration** cap: a buffered reply
-    /// arrives all at once or not at all, so there is no progress to watch, and five minutes
-    /// without a complete reply is a stall whichever attempt it happened on. The elapse is a
+    /// arrives all at once or not at all, so there is no progress to watch, and the configured
+    /// duration without a complete reply is a stall whichever attempt it happened on. The elapse is a
     /// [`ModelError::Timeout`] with no provider (nothing was read that could name one).
     async fn send_buffered(
         &self,
         body: Value,
         messages: &[Message],
     ) -> Result<ModelResponse, ModelError> {
-        match tokio::time::timeout(MODEL_CALL_TIMEOUT, self.send_buffered_inner(body, messages))
-            .await
+        match tokio::time::timeout(
+            self.model_call_timeout,
+            self.send_buffered_inner(body, messages),
+        )
+        .await
         {
             Ok(outcome) => outcome,
             Err(_) => Err(ModelError::Timeout {
-                after: MODEL_CALL_TIMEOUT,
+                after: self.model_call_timeout,
                 provider: None,
             }),
         }
@@ -675,11 +690,11 @@ impl OpenRouterClient {
         for attempt in 1..=self.retry.max_attempts {
             // The [per-call ceiling](MODEL_CALL_TIMEOUT) on the wait for the response *head*. The
             // body's own progress is watched separately (see `read_stream`); a head that has not
-            // arrived in five minutes is a stall, and it surfaces immediately rather than
+            // arrived within the configured duration is a stall, and it surfaces immediately rather than
             // spending the retry budget — each internal retry of a stall would cost the full
             // ceiling again, and the turn-level retry is the bounded one.
             let sent = match tokio::time::timeout(
-                MODEL_CALL_TIMEOUT,
+                self.model_call_timeout,
                 self.attempt(&url).json(&body).send(),
             )
             .await
@@ -687,7 +702,7 @@ impl OpenRouterClient {
                 Ok(sent) => sent,
                 Err(_) => {
                     return Err(ModelError::Timeout {
-                        after: MODEL_CALL_TIMEOUT,
+                        after: self.model_call_timeout,
                         provider: None,
                     });
                 }
@@ -699,33 +714,37 @@ impl OpenRouterClient {
                 Ok(resp) => {
                     let status = resp.status().as_u16();
                     match classify_status(status) {
-                        StatusClass::Success => match read_stream(resp, guard).await {
-                            StreamOutcome::Reply(response) => {
-                                // The tally of thrown-away attempts rides out on the reply that
-                                // worked; nothing else the turn loop is handed could carry it.
-                                return Ok(ModelResponse {
-                                    loop_aborts,
-                                    ..response
-                                });
+                        StatusClass::Success => {
+                            match read_stream_with_timeout(resp, guard, self.model_call_timeout)
+                                .await
+                            {
+                                StreamOutcome::Reply(response) => {
+                                    // The tally of thrown-away attempts rides out on the reply that
+                                    // worked; nothing else the turn loop is handed could carry it.
+                                    return Ok(ModelResponse {
+                                        loop_aborts,
+                                        ..response
+                                    });
+                                }
+                                StreamOutcome::Looping { detail, generated } => {
+                                    // The size is recorded here rather than only rendered into the
+                                    // message, because it is the one measure of an abandoned attempt
+                                    // gg can vouch for: the provider's usage payload arrives at the
+                                    // end of a stream that was never read to its end.
+                                    loop_aborts.record(generated.words, generated.chars);
+                                    last_err = format!("abandoned a looping reply: {detail}");
+                                    last_trip = Some(detail);
+                                }
+                                StreamOutcome::Interrupted(detail) => last_err = detail,
+                                StreamOutcome::Stalled { provider } => {
+                                    return Err(ModelError::Timeout {
+                                        after: self.model_call_timeout,
+                                        provider,
+                                    });
+                                }
+                                StreamOutcome::Malformed(err) => return Err(err),
                             }
-                            StreamOutcome::Looping { detail, generated } => {
-                                // The size is recorded here rather than only rendered into the
-                                // message, because it is the one measure of an abandoned attempt
-                                // gg can vouch for: the provider's usage payload arrives at the
-                                // end of a stream that was never read to its end.
-                                loop_aborts.record(generated.words, generated.chars);
-                                last_err = format!("abandoned a looping reply: {detail}");
-                                last_trip = Some(detail);
-                            }
-                            StreamOutcome::Interrupted(detail) => last_err = detail,
-                            StreamOutcome::Stalled { provider } => {
-                                return Err(ModelError::Timeout {
-                                    after: MODEL_CALL_TIMEOUT,
-                                    provider,
-                                });
-                            }
-                            StreamOutcome::Malformed(err) => return Err(err),
-                        },
+                        }
                         StatusClass::Fatal => {
                             let body = resp.text().await.unwrap_or_default();
                             return Err(self.refusal(status, &body, carries_images));
@@ -804,7 +823,7 @@ enum StreamOutcome {
     /// The connection failed part-way through the reply. **Retryable**, on the same terms as a
     /// transport error before the response head: nothing about the request was wrong.
     Interrupted(String),
-    /// The stream went [idle past the per-call ceiling](MODEL_CALL_TIMEOUT): five minutes without
+    /// The stream went idle past the configured per-call ceiling: that duration without
     /// a chunk. Surfaced as [`ModelError::Timeout`] **without** consuming the retry budget — see
     /// that constant — carrying the provider the chunks had named, when any arrived at all.
     Stalled {
@@ -839,7 +858,17 @@ struct Generated {
 /// Abandoning is simply returning: the [`reqwest::Response`] and its chunk stream are dropped on
 /// the way out, which closes the connection and stops the provider sending the rest. gg neither
 /// reads nor pays for the remainder.
+#[cfg(test)]
+#[allow(dead_code)]
 async fn read_stream(resp: reqwest::Response, config: LoopGuardConfig) -> StreamOutcome {
+    read_stream_with_timeout(resp, config, DEFAULT_MODEL_CALL_TIMEOUT).await
+}
+
+async fn read_stream_with_timeout(
+    resp: reqwest::Response,
+    config: LoopGuardConfig,
+    model_call_timeout: Duration,
+) -> StreamOutcome {
     let mut guard = LoopGuard::new(config);
     let mut accumulator = StreamAccumulator::new();
     let mut stream = resp.bytes_stream();
@@ -847,7 +876,7 @@ async fn read_stream(resp: reqwest::Response, config: LoopGuardConfig) -> Stream
     loop {
         // The idle half of the [per-call ceiling](MODEL_CALL_TIMEOUT): a stream still producing
         // bytes is not stalled however long it runs, so the clock is per read rather than total.
-        let chunk = match tokio::time::timeout(MODEL_CALL_TIMEOUT, stream.next()).await {
+        let chunk = match tokio::time::timeout(model_call_timeout, stream.next()).await {
             Ok(Some(chunk)) => chunk,
             Ok(None) => break,
             Err(_) => {
@@ -3688,13 +3717,14 @@ pub fn provider_for(binding: &GgSlotBinding) -> ProviderKind {
 pub fn client_for_slot(
     binding: &GgSlotBinding,
     session_key: Option<&str>,
+    model_call_timeout: Duration,
 ) -> Result<Box<dyn ModelClient>, ModelError> {
     match provider_for(binding) {
         ProviderKind::Mock => Ok(Box::new(mock_client_for(&binding.model_id))),
-        ProviderKind::OpenRouter => Ok(Box::new(OpenRouterClient::from_binding(
-            binding,
-            session_key,
-        )?)),
+        ProviderKind::OpenRouter => Ok(Box::new(
+            OpenRouterClient::from_binding(binding, session_key)?
+                .with_model_call_timeout(model_call_timeout),
+        )),
     }
 }
 
@@ -3850,19 +3880,27 @@ impl AgentIdentity {
 /// opening prefix a sibling already warmed, instead of each agent paying for it uncached.
 pub struct DefaultClientFactory {
     session_key: Option<String>,
+    model_call_timeout: Duration,
 }
 
 impl DefaultClientFactory {
     /// A factory that stamps `session_key` (the run's session id) on every live client it builds.
     /// `None` builds clients that send no session key at all (the pre-caching behavior).
-    pub fn new(session_key: Option<String>) -> Self {
-        Self { session_key }
+    pub fn new(session_key: Option<String>, model_call_timeout: Duration) -> Self {
+        Self {
+            session_key,
+            model_call_timeout,
+        }
     }
 }
 
 impl ClientFactory for DefaultClientFactory {
     fn client_for(&self, binding: &GgSlotBinding) -> Result<Box<dyn ModelClient>, ModelError> {
-        client_for_slot(binding, self.session_key.as_deref())
+        client_for_slot(
+            binding,
+            self.session_key.as_deref(),
+            self.model_call_timeout,
+        )
     }
 }
 

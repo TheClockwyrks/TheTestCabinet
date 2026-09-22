@@ -45,7 +45,7 @@ climbers built on a configuration are bound to its id.
 
 The Configuration tab carries the [execution ceilings](/gg/execution-limits/)
 the whole run is bounded by: max parallel agents, turns per agent, wall-clock
-seconds, consecutive errors, error rate and its window, cost, and the size of
+seconds, the per-model-call timeout, consecutive errors, error rate and its window, cost, and the size of
 the session journal. They apply to every capability and to both execution modes
 at once, so they sit beside the configuration's identity rather than inside a
 capability group.
@@ -54,8 +54,8 @@ Max parallel agents and the session journal's size are required: gg runs under
 both on every run, and neither has an off it could take instead. Turns per agent,
 wall-clock seconds, cost, consecutive errors, and the error rate with its window
 are each armed by writing a figure and unarmed by leaving the field empty. A
-fresh configuration seeds the error ceilings (5 consecutive errors, a 0.2 rate
-over 50 turns) for the operator to keep, change, or clear; gg itself arms no
+fresh configuration seeds the model-call timeout at 900 seconds beside the error
+ceilings (5 consecutive errors, a 0.2 rate over 50 turns) for the operator to keep, change, or clear; gg itself arms no
 ceiling the saved configuration did not write. [Execution
 limits](/gg/execution-limits/) states what each one bounds.
 

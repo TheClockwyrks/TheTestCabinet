@@ -57,6 +57,7 @@ import {
   AUTHORED_MAX_CONSECUTIVE_ERRORS,
   AUTHORED_MAX_ERROR_RATE,
   AUTHORED_MAX_PARALLEL,
+  AUTHORED_MODEL_CALL_TIMEOUT_SECS,
   AUTHORED_MEMORY_MAX_COUNT,
   AUTHORED_MEMORY_MAX_LEN_DESCRIPTION,
   AUTHORED_MEMORY_MAX_LEN_PER,
@@ -2007,6 +2008,7 @@ describe("gg run limits", () => {
     expect(capabilitySetFromDraft(emptyDraft(), null).limits).toEqual({
       maxParallel: AUTHORED_MAX_PARALLEL,
       replayMaxBytes: AUTHORED_REPLAY_MAX_MIB * BYTES_PER_MIB,
+      modelCallTimeoutSecs: AUTHORED_MODEL_CALL_TIMEOUT_SECS,
       maxConsecutiveErrors: AUTHORED_MAX_CONSECUTIVE_ERRORS,
       maxErrorRate: AUTHORED_MAX_ERROR_RATE,
       errorRateWindow: AUTHORED_ERROR_RATE_WINDOW,
@@ -2073,6 +2075,12 @@ describe("gg run limits", () => {
     draft.limits.maxErrorRate = "";
     draft.limits.errorRateWindow = "10";
     expect(draftSaveError(draft)).toBeNull();
+  });
+
+  it("refuses a zero model-call timeout", () => {
+    const draft = emptyDraft();
+    draft.limits.modelCallTimeoutSecs = "0";
+    expect(draftSaveError(draft)).toContain("greater than zero");
   });
 
   it("refuses a ceiling that is not a number in its own units", () => {

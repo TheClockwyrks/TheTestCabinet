@@ -137,7 +137,7 @@ use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 // `catch_unwind` over a *future* — the async equivalent of the `std` one, and the only way to be
 // standing between a panicking agent task and the run it would otherwise take down silently. See
@@ -833,7 +833,16 @@ pub async fn run(invocation: &GgInvocation, emitter: &Emitter) -> SessionOutcome
     run_with_seams(
         invocation,
         emitter,
-        SessionSeams::live(Some(invocation.session_id.clone())),
+        SessionSeams::live(
+            Some(invocation.session_id.clone()),
+            Duration::from_secs(
+                invocation
+                    .capability_set
+                    .limits
+                    .model_call_timeout_secs
+                    .unwrap_or(900),
+            ),
+        ),
     )
     .await
 }
@@ -865,9 +874,9 @@ impl SessionSeams {
     /// `session_key` is the run's session id, stamped on every live client the factory builds, so
     /// all of a run's agents share one sticky-session key and a subagent reuses the cached opening
     /// prefix a sibling already warmed instead of paying for it uncached.
-    pub fn live(session_key: Option<String>) -> Self {
+    pub fn live(session_key: Option<String>, model_call_timeout: Duration) -> Self {
         Self::substituted(
-            Arc::new(DefaultClientFactory::new(session_key)),
+            Arc::new(DefaultClientFactory::new(session_key, model_call_timeout)),
             real_shell(),
         )
     }
@@ -7128,7 +7137,7 @@ impl Agent {
             // The model call, retried **within this turn** for the two failures the loop recovers
             // from rather than dying on:
             //
-            // - a call that hit gg's [per-call ceiling](crate::client::MODEL_CALL_TIMEOUT) — a
+            // - a call that hit gg's configured per-call ceiling — a
             //   stalled provider;
             // - a reply that hit the **provider's output cap** (`finish_reason: length`), which is
             //   presumed a degenerate generation and rejected whole.
@@ -9132,6 +9141,7 @@ fn recorded_limits(limits: &RunLimits, max_parallel: usize) -> GgRunLimits {
         max_parallel: Some(max_parallel as u64),
         max_turns: limits.max_turns.map(|turns| turns as u64),
         max_runtime_secs: limits.max_runtime.map(|budget| budget.as_secs()),
+        model_call_timeout_secs: Some(limits.model_call_timeout.as_secs()),
         max_consecutive_errors: limits.max_consecutive_errors.map(u64::from),
         max_error_rate: limits.error_rate.map(|rate| rate.max_rate),
         error_rate_window: limits.error_rate.map(|rate| rate.window as u64),

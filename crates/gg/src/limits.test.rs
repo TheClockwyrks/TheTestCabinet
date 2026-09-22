@@ -79,6 +79,7 @@ fn bare_limits() -> RunLimits {
     RunLimits {
         max_turns: None,
         max_runtime: None,
+        model_call_timeout: Duration::from_secs(DEFAULT_MODEL_CALL_TIMEOUT_SECS),
         max_consecutive_errors: None,
         error_rate: None,
         max_cost: None,
@@ -89,6 +90,35 @@ fn bare_limits() -> RunLimits {
 /// The smallest limits block a launch accepts — the two required run-level values and no ceiling
 /// armed beyond them. Every resolution case varies one field of it, so each test is about the
 /// ceiling it names rather than about the values every configuration owes whatever it measures.
+#[test]
+fn model_call_timeout_defaults_and_zero_is_refused() {
+    let limits = resolve_cleanly(GgRunLimits::authored());
+    assert_eq!(
+        limits.model_call_timeout,
+        std::time::Duration::from_secs(900)
+    );
+
+    assert!(
+        sole_refusal(GgRunLimits {
+            model_call_timeout_secs: Some(0),
+            ..GgRunLimits::authored()
+        })
+        .contains("limits.modelCallTimeoutSecs")
+    );
+}
+
+#[test]
+fn model_call_timeout_uses_declared_value() {
+    let limits = resolve_cleanly(GgRunLimits {
+        model_call_timeout_secs: Some(1234),
+        ..GgRunLimits::authored()
+    });
+    assert_eq!(
+        limits.model_call_timeout,
+        std::time::Duration::from_secs(1234)
+    );
+}
+
 fn required_only() -> GgRunLimits {
     GgRunLimits::authored()
 }
@@ -489,6 +519,7 @@ fn every_unusable_ceiling_is_named_in_one_refusal() {
             max_parallel: None,
             max_turns: Some(0),
             max_runtime_secs: Some(0),
+            model_call_timeout_secs: Some(0),
             max_consecutive_errors: Some(0),
             max_error_rate: Some(-3.0),
             error_rate_window: Some(0),
@@ -511,6 +542,7 @@ fn every_unusable_ceiling_is_named_in_one_refusal() {
         [
             "limits.maxTurns",
             "limits.maxRuntimeSecs",
+            "limits.modelCallTimeoutSecs",
             "limits.maxConsecutiveErrors",
             "limits.maxErrorRate",
             "limits.errorRateWindow",
@@ -525,7 +557,13 @@ fn every_unusable_ceiling_is_named_in_one_refusal() {
     // The values that come back no longer decide anything — the run is refused — but the resolver
     // stays total, so every mid-run caller of it still gets an answer. Every one of them is the
     // named placeholder, and none is a figure gg picked.
-    assert_eq!(limits, bare_limits());
+    assert_eq!(
+        limits,
+        RunLimits {
+            model_call_timeout: Duration::from_secs(DEFAULT_MODEL_CALL_TIMEOUT_SECS),
+            ..bare_limits()
+        }
+    );
 }
 
 #[test]

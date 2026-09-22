@@ -11,6 +11,7 @@
       "replayMaxBytes": 268435456,
       "maxTurns": 300,
       "maxRuntimeSecs": 5400,
+      "modelCallTimeoutSecs": 900,
       "maxConsecutiveErrors": 5,
       "maxCost": 25
     },
@@ -72,7 +73,10 @@
           {
             "event": "pre-shell",
             "name": "no destructive git or rm",
-            "action": { "type": "built-in", "script": "guard-destructive-shell" }
+            "action": {
+              "type": "built-in",
+              "script": "guard-destructive-shell"
+            }
           }
         ]
       }
