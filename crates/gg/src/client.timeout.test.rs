@@ -5,12 +5,21 @@
 //! Each test states the ceiling its client was built with, so what is asserted is the figure the
 //! run configured rather than one gg picked.
 //!
-//! These run under `start_paused` time: the sockets are real (a bound listener on a loopback
-//! port), but the ceiling elapses the moment the runtime goes idle waiting on one, so each test
-//! costs milliseconds. What they hold is the contract the turn loop is built on: a stall surfaces
-//! as [`ModelError::Timeout`] — promptly, without spending the client's internal retry budget on
-//! more full-ceiling waits — and carries the provider when the stream got far enough to name
-//! one.
+//! The sockets are real in both tests — a bound listener on a loopback port. What they hold is the
+//! contract the turn loop is built on: a stall surfaces as [`ModelError::Timeout`] — promptly,
+//! without spending the client's internal retry budget on more full-ceiling waits — and carries the
+//! provider when the stream got far enough to name one.
+//!
+//! The two are clocked differently, and deliberately:
+//!
+//! - A gateway that answers **nothing** can be tested under `start_paused` time. Nothing has to
+//!   arrive before the ceiling may fire, so letting the ceiling elapse the moment the runtime goes
+//!   idle on the socket costs milliseconds and races nothing.
+//! - A gateway that stalls **mid-reply** cannot. The first chunk has to arrive before the idle half
+//!   of the ceiling is what cuts the call, and under paused time the wait for that chunk is exactly
+//!   an idle runtime — so the clock jumps the whole ceiling and the call is cut waiting for the
+//!   response head instead, at whichever figure the ceiling happens to hold. That test therefore
+//!   runs on **real** time at a ceiling small enough to pay for in a test suite.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -71,6 +80,17 @@ async fn mid_stream_stalled_gateway() -> String {
     format!("http://127.0.0.1:{port}/api/v1")
 }
 
+/// The ceiling the [mid-stream test](a_mid_stream_stall_times_out_on_idleness_and_names_the_provider)
+/// runs at, in real time.
+///
+/// Two bounds meet here, and the gap between them is wide. It has to be long enough that a response
+/// head and one chunk cross a loopback socket inside it, and short enough that a suite pays it
+/// without noticing — and since the test passes *by* timing out, it pays the figure every time
+/// rather than only when something is wrong. Two seconds against a loopback round trip of
+/// milliseconds leaves room for a runner sharing its cores with the rest of the suite, which is the
+/// machine this actually has to hold on.
+const SHORT_CEILING: Duration = Duration::from_secs(2);
+
 /// The buffered transport under a gateway that never answers: the whole call — retries included —
 /// is cut at the total-duration ceiling the run configured, surfaces as
 /// [`ModelError::Timeout`], and spends exactly **one** connection: a stall is never retried
@@ -113,14 +133,22 @@ async fn a_stalled_gateway_times_out_the_buffered_call_without_spending_retries(
 /// the ceiling cuts it (a total cap would kill legitimately long streams, so a stream that is
 /// still producing is never cut), and the surfaced timeout names the provider the chunks did.
 ///
-/// This one is built at the default figure rather than at an arbitrary one. Under paused time the
-/// ceiling and the socket's own progress are both timers, and the run has to reach the first chunk
-/// before the idle half can be what cuts it; the buffered case above is where a figure the run
-/// chose is shown reaching the transport.
-#[tokio::test(start_paused = true)]
+/// **Real time, at a figure the test chose.** This is the one case in this module that cannot be
+/// clocked by `start_paused`: what it asserts is that the call was cut *between chunks*, which
+/// requires the first chunk to have arrived, and waiting for a socket is precisely when paused time
+/// auto-advances. Under paused time the ceiling would therefore fire on the wait for the response
+/// head — provider unnamed — except when the loopback round trip happened to win the race, which
+/// made the test's result a function of the ceiling's magnitude rather than of the transport's
+/// behaviour.
+///
+/// [`SHORT_CEILING`] is what makes real time affordable, and running at a figure the test chose
+/// rather than at [`DEFAULT_MODEL_CALL_TIMEOUT`] is a second reading of what the buffered case
+/// above shows: the run's own figure is the one that reaches the transport and the one the error
+/// reports.
+#[tokio::test]
 async fn a_mid_stream_stall_times_out_on_idleness_and_names_the_provider() {
     let base_url = mid_stream_stalled_gateway().await;
-    let configured_timeout = DEFAULT_MODEL_CALL_TIMEOUT;
+    let configured_timeout = SHORT_CEILING;
     let client = OpenRouterClient::new(
         base_url,
         reqwest::Client::new(),
