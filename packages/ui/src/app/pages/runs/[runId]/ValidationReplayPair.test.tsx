@@ -142,7 +142,17 @@ describe("the replay comparison", () => {
   it("moves both panes when the one scrubber moves", async () => {
     serve(2, 6);
     render(<ValidationReplayPair media={media()} />);
-    await waitFor(() => expect(screen.getByRole("slider")).toBeEnabled());
+    // BOTH sides, not just the one that enables the scrubber. The two recordings
+    // are fetched independently, and the clock starts the position over whenever the
+    // set it is pacing changes — which is right, because a different set is a
+    // different recording — so scrubbing while the second side is still in flight
+    // puts the pair back on frame 0 the moment it lands. Each side's own length is
+    // what says it has arrived.
+    await waitFor(() => {
+      expect(screen.getByText("2 frames")).toBeInTheDocument();
+      expect(screen.getByText("6 frames")).toBeInTheDocument();
+    });
+    expect(screen.getByRole("slider")).toBeEnabled();
 
     const scrub = screen.getByRole("slider");
     // The scrubber spans the longer recording, so the run's own build is reachable
