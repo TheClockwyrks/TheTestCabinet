@@ -1,5 +1,9 @@
-# Host override for rootless Podman (for example on a NixOS host). Copy this to
+# Host override for rootless Podman on Linux — a NixOS host, or an Ubuntu one
+# (the DGX Sparks) whose VS Code has been pointed at podman. Copy this to
 # docker-compose.local.yml (see README.md).
+#
+# `in_pod: false` keeps podman-compose from wrapping the service in an infra pod;
+# a pod owns the user namespace, which turns userns_mode below into an error.
 x-podman:
   in_pod: false
 
@@ -7,15 +11,42 @@ services:
   dev:
     environment:
       SSH_AUTH_SOCK: /tmp/ssh-agent.sock
+    # THE WORKSPACE IS WRITABLE BECAUSE OF THIS LINE. Rootless Podman maps the host
+    # user to root inside the container by default, so the checkout arrives owned
+    # by root (its group by `nogroup`, where the host group has no mapping at all)
+    # and `ttc` cannot write a lock file, let alone a commit. `keep-id` maps the
+    # host user onto the image's `ttc` instead: the numbers are the CONTAINER
+    # user's and have to match .env — uid 1000, gid 100 (`users`, per .env.podman).
+    # The host side is whatever `id` says on the host, and it need not be 100:
+    # on a Spark the account's primary group is its own (gid 1000), and this line
+    # maps that onto `users` in here, which is exactly what the image expects.
+    #
+    # It pairs with `"updateRemoteUserUID": false` in devcontainer.json, which
+    # must stay false. A docker-compose.local.yml copied from the Docker row
+    # (docker-compose.ubuntu.yml) has no such line, and under podman produces the
+    # root-owned checkout described above — that is the first thing to check
+    # when a host moves from Docker to Podman: `setup-host.sh nixos --force`.
     userns_mode: keep-id:uid=1000,gid=100
     volumes:
+      # Forward the host's SSH agent so `git push` over SSH works in here (see
+      # README.md, "SSH agent forwarding"). The `/dev/null` fallback keeps the
+      # container startable under a compose that honours it when the environment
+      # VS Code runs compose from has no agent — a login shell on a Spark has
+      # none — because compose rejects an empty bind source outright. Note that
+      # podman-compose substitutes the service's own `environment:` block into
+      # `${...}` as well, so there an unset SSH_AUTH_SOCK resolves to the
+      # container-side path above instead, podman creates an empty directory at
+      # that path ON THE HOST, and the container starts anyway. Either way a
+      # non-socket at the target merely fails the `-S` test in devcontainer.json's
+      # postStartCommand, which skips the bridge and leaves the extension's own
+      # forwarding to it.
       - type: bind
-        source: ${SSH_AUTH_SOCK}
+        source: ${SSH_AUTH_SOCK:-/dev/null}
         target: /tmp/ssh-agent.sock
       # Docker-outside-of-Docker: bind the host's container-runtime socket in so
       # the local service stack (`make -C deployments/local local-up`) drives the
-      # HOST daemon. That is what lets `k3d` create its cluster — its node
-      # containers are siblings on that same daemon — and what lets the Makefile's
+      # HOST runtime. That is what lets `k3d` create its cluster — its node
+      # containers are siblings on that same runtime — and what lets the Makefile's
       # `docker` calls build/save the service images and inspect this devcontainer
       # to resolve the HOST path of the workspace it mounts into the k3d node.
       #
@@ -27,5 +58,12 @@ services:
       # from starting at all. Access is granted at container start by
       # tools/docker-socket-access.sh, whatever group owns the socket.
       #
-      # Set DOCKER_SOCKET in .env for a non-default path.
-      - ${DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
+      # The default is rootless Podman's own per-user socket — the SAME runtime
+      # that created this container, and the only one the user namespace above can
+      # use. A host that also runs Docker (a Spark does; DGX OS ships it) exposes
+      # /var/run/docker.sock as root:docker, which arrives in here owned outside
+      # the namespace and cannot be granted to anyone, so it is not the default
+      # even where it exists. Confirm the path with
+      # `podman info --format '{{.Host.RemoteSocket.Path}}'` and set DOCKER_SOCKET
+      # in .env if the UID differs.
+      - ${DOCKER_SOCKET:-/run/user/1000/podman/podman.sock}:/var/run/docker.sock

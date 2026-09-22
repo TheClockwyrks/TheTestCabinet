@@ -102,9 +102,31 @@ detect_variant() {
 	# Linux. `docker` may itself be podman (podman-docker, or an alias), so ask
 	# what is actually there before trusting the name — the same reasoning
 	# deployments/local/Makefile applies when it probes for a container tool.
+	local has_docker=0 has_podman=0
 	if command -v docker >/dev/null 2>&1 && ! docker --version 2>/dev/null | grep -qi podman; then
+		has_docker=1
+	fi
+	if command -v podman >/dev/null 2>&1; then
+		has_podman=1
+	fi
+
+	# Both engines installed — a DGX Spark, where DGX OS ships Docker and podman
+	# was added beside it. Which one a devcontainer runs on is decided by VS
+	# Code's `dev.containers.dockerPath`, which this script cannot see, and the
+	# two rows are not interchangeable: the Docker row has no `userns_mode`, and
+	# copied onto a podman host it yields a checkout owned by root:nogroup. So
+	# say nothing and have the variant named, rather than pick the engine that
+	# happens to sort first.
+	if [ "$has_docker" = "1" ] && [ "$has_podman" = "1" ]; then
+		echo "note: both docker and podman are installed; which one Dev Containers uses is" >&2
+		echo "      set by \"dev.containers.dockerPath\" in VS Code's settings (ubuntu for" >&2
+		echo "      docker, nixos for podman)." >&2
+		return 0
+	fi
+
+	if [ "$has_docker" = "1" ]; then
 		echo "ubuntu"
-	elif command -v podman >/dev/null 2>&1; then
+	elif [ "$has_podman" = "1" ]; then
 		echo "nixos"
 	fi
 }

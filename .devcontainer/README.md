@@ -77,12 +77,12 @@ The devcontainer references two host-specific files that are not committed —
 without affecting the repository. Create them from the committed variants before
 opening the container.
 
-| Host                                         | `docker-compose.local.yml`        | `.env`              |
-| -------------------------------------------- | --------------------------------- | ------------------- |
-| Docker on Linux (the default)                | `docker-compose.ubuntu.yml`       | `.env.ubuntu`       |
-| Rootless Podman on Linux (e.g. NixOS)        | `docker-compose.nixos.yml`        | `.env.podman`       |
-| Docker on macOS — Docker Desktop or OrbStack | `docker-compose.macos-docker.yml` | `.env.ubuntu`       |
-| Rootless Podman on macOS (`podman machine`)  | `docker-compose.macos-podman.yml` | `.env.macos-podman` |
+| Host                                          | `docker-compose.local.yml`        | `.env`              |
+| --------------------------------------------- | --------------------------------- | ------------------- |
+| Docker on Linux (the default)                 | `docker-compose.ubuntu.yml`       | `.env.ubuntu`       |
+| Rootless Podman on Linux (NixOS, a DGX Spark) | `docker-compose.nixos.yml`        | `.env.podman`       |
+| Docker on macOS — Docker Desktop or OrbStack  | `docker-compose.macos-docker.yml` | `.env.ubuntu`       |
+| Rootless Podman on macOS (`podman machine`)   | `docker-compose.macos-podman.yml` | `.env.macos-podman` |
 
 One macOS row covers Docker Desktop and OrbStack both: OrbStack is a drop-in
 Docker-API runtime, and where this file cares — a daemon in a managed VM, no UID
@@ -108,6 +108,16 @@ The script is a convenience on every row; the copies are equally correct. What i
 adds on the **macOS + Podman** row is a check a copy cannot do — that the podman
 machine is big enough to build this workspace in, and that the checkout is
 somewhere the machine can actually share into the VM.
+
+**The row follows the engine VS Code uses, not the engines the host has.** A DGX
+Spark ships Docker and has podman installed beside it; which one a devcontainer
+runs on is `"dev.containers.dockerPath"` in VS Code's settings, and the script
+cannot see that, so on a host with both it declines to guess and asks you to name
+one. The rows are not interchangeable: the Docker row carries no `userns_mode`,
+and copied onto a rootless-podman host it produces a checkout owned by
+`root:root` (directories) and `root:nogroup` (files) inside the container — the
+signature of a `docker-compose.local.yml` that predates a move from Docker to
+podman. `setup-host.sh nixos --force` and a **Rebuild Container** fixes it.
 
 **Re-run it after a pull that changes these templates.** Your two files are
 copies, so they do not follow the repository. A stale `docker-compose.local.yml`
@@ -288,13 +298,16 @@ Makefile's `cluster`/`kubeconfig` targets repoint the kubeconfig there.
 
 This works out of the box on a standard setup. Three notes cover the rest:
 
-- **Non-default socket path** (e.g. rootless Podman at
-  `/run/user/1000/podman/podman.sock`): set `DOCKER_SOCKET` in `.env` to the
-  host path before opening the container. It is a path on the host that runs the
-  runtime, and podman rejects one it cannot see — on macOS that means the Mac,
-  under a directory `podman machine` shares, which is why the
-  [macOS + Podman row](#podman-on-macos) reaches its socket through a named
-  volume and sets `PODMAN_SOCKET_DIR` rather than this.
+- **Non-default socket path**: set `DOCKER_SOCKET` in `.env` to the host path
+  before opening the container. The Docker rows default to `/var/run/docker.sock`
+  and the Linux Podman row to rootless podman's own `/run/user/1000/podman/podman.sock`
+  — the runtime that created the container, and the only one its user namespace
+  can be granted; a host that also runs Docker (a Spark) has a `root:docker`
+  `/var/run/docker.sock` that arrives inside owned by nobody and stays unusable.
+  It is a path on the host that runs the runtime, and podman rejects one it
+  cannot see — on macOS that means the Mac, under a directory `podman machine`
+  shares, which is why the [macOS + Podman row](#podman-on-macos) reaches its
+  socket through a named volume and sets `PODMAN_SOCKET_DIR` rather than this.
 - **Nothing mounted**: `tools/docker-socket-access.sh` says so at container start.
   Usually a `docker-compose.local.yml` copied before this mount moved into the
   host overrides — refresh it with `.devcontainer/setup-host.sh --force`.
