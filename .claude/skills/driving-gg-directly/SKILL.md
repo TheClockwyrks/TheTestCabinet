@@ -106,7 +106,8 @@ ones markedly worse, so the order is a capability probe as much as a preference.
    the turns are `response_rejected`, compile errors, or
    `missing_completion_no_program` back to back.
 3. To move down a rung, kill the process, reset the worktree
-   (`git -C <wt> checkout -- . && git clean -fdx -e .gg && rm -rf <wt>/.gg`),
+   (`git -C <wt> checkout -- . && git clean -fd && rm -rf <wt>/.gg`, without `-x`, which
+   would take `node_modules` with it),
    regenerate the invocation and relaunch. Keep each abandoned `run.ndjson`;
    the failed rungs are part of the assessment.
 4. Otherwise let it run to `session_ended`.
