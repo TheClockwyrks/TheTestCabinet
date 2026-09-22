@@ -5,6 +5,15 @@
     "pr": "",
     "sessionUrl": false
   },
+  "askUserQuestionTimeout": "never",
+  "autoContinueAtUsageLimit": true,
+  "autoCompactWindow": 400000,
+  "autoInstallIdeExtension": false,
+  "awaySummaryEnabled": false,
+  "emojiCompletionEnabled": false,
+  "feedbackDrafts": "off",
+  "feedbackSurveyRate": 0,
+  "promptSuggestionEnabled": false,
   "permissions": {
     "defaultMode": "bypassPermissions"
   },
