@@ -30,7 +30,7 @@ through them, not a replacement.
 3. **Isolate a workspace.** gg writes `.gg/replay.ndjson` and `.gg/hooks/`, and
    reads `.gg/skills/`, under `workspaceDir`. `.gg` is not gitignored, and the
    file tools are deliberately not confined to the workspace. Always run in a
-   worktree: `git worktree add /workspaces/gg-wt-<model> -b gg/<model>`. One
+   worktree: `git worktree add ~/gg-worktrees/<model> -b gg/<model>`. One
    worktree per model also makes the comparison a `git diff` between branches.
 4. **Resolve model windows.** gg keeps no model table and refuses to launch
    without a `modelWindows` entry for every bound model. Run

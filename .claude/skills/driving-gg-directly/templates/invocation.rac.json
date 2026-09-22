@@ -1,6 +1,6 @@
 {
   "sessionId": "gg-<issue-slug>-<model-slug>",
-  "workspaceDir": "/workspaces/gg-wt-<model-slug>",
+  "workspaceDir": "/home/ttc/gg-worktrees/<model-slug>",
   "prompt": "The workspace is the repository this issue describes. Implement the issue below. Run the gates it names before you finish, and end your session by calling finish with a short summary once the change is complete.\n\n<paste the tasks/ file here>",
   "modelWindows": { "<openrouter/model-id>": 1048576 },
   "modelModalities": { "<openrouter/model-id>": ["text"] },
