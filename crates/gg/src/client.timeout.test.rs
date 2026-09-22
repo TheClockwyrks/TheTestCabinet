@@ -1,13 +1,16 @@
-//! The [per-model-call ceiling](MODEL_CALL_TIMEOUT) against a **stalled gateway** — a live socket
-//! that accepts the request and never answers it, which is exactly the failure that once held a
-//! run twenty minutes inside one call with nothing able to interrupt it.
+//! The [per-model-call ceiling](DEFAULT_MODEL_CALL_TIMEOUT) against a **stalled gateway** — a live
+//! socket that accepts the request and never answers it, which is exactly the failure that once
+//! held a run twenty minutes inside one call with nothing able to interrupt it.
+//!
+//! Each test states the ceiling its client was built with, so what is asserted is the figure the
+//! run configured rather than one gg picked.
 //!
 //! These run under `start_paused` time: the sockets are real (a bound listener on a loopback
-//! port), but the five-minute ceiling elapses the moment the runtime goes idle waiting on one, so
-//! each test costs milliseconds. What they hold is the contract the turn loop is built on: a
-//! stall surfaces as [`ModelError::Timeout`] — promptly, without spending the client's internal
-//! retry budget on more five-minute waits — and carries the provider when the stream got far
-//! enough to name one.
+//! port), but the ceiling elapses the moment the runtime goes idle waiting on one, so each test
+//! costs milliseconds. What they hold is the contract the turn loop is built on: a stall surfaces
+//! as [`ModelError::Timeout`] — promptly, without spending the client's internal retry budget on
+//! more full-ceiling waits — and carries the provider when the stream got far enough to name
+//! one.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -69,14 +72,14 @@ async fn mid_stream_stalled_gateway() -> String {
 }
 
 /// The buffered transport under a gateway that never answers: the whole call — retries included —
-/// is cut at the [total-duration ceiling](MODEL_CALL_TIMEOUT), surfaces as
+/// is cut at the total-duration ceiling the run configured, surfaces as
 /// [`ModelError::Timeout`], and spends exactly **one** connection: a stall is never retried
 /// inside the client, because each internal retry would cost the full ceiling again and the
 /// turn-level retry is the bounded one.
 #[tokio::test(start_paused = true)]
 async fn a_stalled_gateway_times_out_the_buffered_call_without_spending_retries() {
     let (base_url, connections) = stalled_gateway().await;
-    let configured_timeout = Duration::from_secs(17);
+    let configured_timeout = DEFAULT_MODEL_CALL_TIMEOUT;
     let client = OpenRouterClient::new(
         base_url,
         reqwest::Client::new(),
@@ -109,9 +112,15 @@ async fn a_stalled_gateway_times_out_the_buffered_call_without_spending_retries(
 /// The streaming transport under a gateway that stalls **mid-reply**: the per-chunk idle half of
 /// the ceiling cuts it (a total cap would kill legitimately long streams, so a stream that is
 /// still producing is never cut), and the surfaced timeout names the provider the chunks did.
+///
+/// This one is built at the default figure rather than at an arbitrary one. Under paused time the
+/// ceiling and the socket's own progress are both timers, and the run has to reach the first chunk
+/// before the idle half can be what cuts it; the buffered case above is where a figure the run
+/// chose is shown reaching the transport.
 #[tokio::test(start_paused = true)]
 async fn a_mid_stream_stall_times_out_on_idleness_and_names_the_provider() {
     let base_url = mid_stream_stalled_gateway().await;
+    let configured_timeout = DEFAULT_MODEL_CALL_TIMEOUT;
     let client = OpenRouterClient::new(
         base_url,
         reqwest::Client::new(),
@@ -120,6 +129,7 @@ async fn a_mid_stream_stall_times_out_on_idleness_and_names_the_provider() {
         RetryPolicy::default(),
         None,
     )
+    .with_model_call_timeout(configured_timeout)
     .with_loop_detection(GgLoopDetection {
         enabled: true,
         window_words: Some(256),
@@ -133,7 +143,7 @@ async fn a_mid_stream_stall_times_out_on_idleness_and_names_the_provider() {
 
     match outcome {
         Err(ModelError::Timeout { after, provider }) => {
-            assert_eq!(after, MODEL_CALL_TIMEOUT);
+            assert_eq!(after, configured_timeout);
             assert_eq!(
                 provider.as_deref(),
                 Some("slowco"),

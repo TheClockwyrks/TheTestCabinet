@@ -330,7 +330,7 @@ async fn length_capped_replies_alone_stop_the_run_on_the_error_ceilings() {
 }
 
 /// A client whose first `n` calls time out — the shape of a stalled provider endpoint the
-/// [per-call ceiling](crate::client::MODEL_CALL_TIMEOUT) cuts off — and which then answers from
+/// [per-call ceiling](crate::limits::RunLimits::model_call_timeout) cuts off — and which then answers from
 /// its inner script. The error is exactly what the [`OpenRouterClient`](crate::client) surfaces
 /// for a stall, provider and all.
 struct StalledThenScripted {
@@ -362,7 +362,7 @@ impl ModelClient for StalledThenScripted {
             .is_ok()
         {
             return Err(ModelError::Timeout {
-                after: crate::client::MODEL_CALL_TIMEOUT,
+                after: crate::client::DEFAULT_MODEL_CALL_TIMEOUT,
                 provider: Some("stalled-provider".to_string()),
             });
         }

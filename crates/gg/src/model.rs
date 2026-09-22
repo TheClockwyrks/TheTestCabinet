@@ -443,9 +443,9 @@ pub enum ModelError {
         /// line for each discarded attempt describe the same event identically.
         detail: String,
     },
-    /// The call ran into gg's **per-call ceiling**
-    /// configured in the run limits without producing a reply — a
-    /// stalled provider, not a refusal.
+    /// The call ran into the run's
+    /// [**per-call ceiling**](crate::limits::RunLimits::model_call_timeout) without producing a
+    /// reply — a stalled provider, not a refusal.
     ///
     /// The one `ModelError` the turn loop does **not** end the session on. The client surfaces a
     /// timeout immediately rather than spending its own retry budget on it — every internal retry

@@ -1779,8 +1779,8 @@ export type GgReviewer = {
  * a wall-clock cap on every run regardless.
  *
  * **Present and unhonourable fails the launch.** A field set to a value that cannot bound
- * anything — a zero turn or runtime ceiling, a zero window, a negative rate, a rate above `1.0`, a
- * non-finite cost — is refused by name rather than disarmed with a warning: an operator who wrote
+ * anything — a zero turn, runtime or model-call ceiling, a zero window, a negative rate, a rate
+ * above `1.0`, a non-finite cost — is refused by name rather than disarmed with a warning: an operator who wrote
  * a ceiling believes the run is bounded, and a run that quietly became unbounded is the one case
  * where the misconfiguration costs money. A **partially** declared error rate (a rate without a
  * window, or a window without a rate) is refused on the same terms rather than arming nothing. The
@@ -1832,10 +1832,20 @@ export type GgRunLimits = {
    */
   maxRuntimeSecs?: number;
   /**
-   * The per-model-request ceiling in seconds. Absent resolves to fifteen minutes (900 seconds),
-   * because every request needs a bound even when the configuration predates this field. `0`
-   * is refused: it would prevent every model call from starting. The buffering transport applies
-   * it to the whole call; streaming applies it to the response head and between chunks.
+   * The ceiling, in seconds, on **one model request** — the bound that turns a provider which
+   * has stopped answering into an error turn the agent asks again from.
+   *
+   * The one key on this type an absence answers with a **figure** rather than with "off":
+   * **absent is fifteen minutes** (900 seconds), because there is no run whose calls may hang
+   * forever, and `0` is refused on the same terms as every other unhonourable figure. How it is
+   * applied follows the transport the agent's [loop detection](GgLoopDetection) selects: the
+   * buffering one bounds the whole call, and the streaming one bounds the wait for the response
+   * head and the gap between chunks, so a reply still arriving is never cut.
+   *
+   * Unlike the ceilings above it, breaching this one does not stop the run. The turn is
+   * recorded as a [`ModelTimeout`](GgTurnErrorType::ModelTimeout) error and the agent asks
+   * again, so a stalled endpoint costs one bounded error turn per stall and the run ends only
+   * when an error ceiling says it should.
    */
   modelCallTimeoutSecs?: number;
   /**

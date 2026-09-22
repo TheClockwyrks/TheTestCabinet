@@ -187,7 +187,7 @@ use crate::git;
 use crate::hooks::{HookAgent, HookFailure, HookRuntime};
 use crate::limits::{
     AgentLimits, CeilingLatch, FatalFault, RunLimits, RunSpend, TurnErrorType, TurnOutcome,
-    resolve_run_limits,
+    declared_model_call_timeout, resolve_run_limits,
 };
 use crate::loopguard::LoopGuardConfig;
 use crate::memories::{MemoriesRuntime, MemoryRegistry, MemoryScope, MemoryStrategy};
@@ -835,13 +835,7 @@ pub async fn run(invocation: &GgInvocation, emitter: &Emitter) -> SessionOutcome
         emitter,
         SessionSeams::live(
             Some(invocation.session_id.clone()),
-            Duration::from_secs(
-                invocation
-                    .capability_set
-                    .limits
-                    .model_call_timeout_secs
-                    .unwrap_or(900),
-            ),
+            declared_model_call_timeout(&invocation.capability_set.limits),
         ),
     )
     .await
@@ -874,6 +868,11 @@ impl SessionSeams {
     /// `session_key` is the run's session id, stamped on every live client the factory builds, so
     /// all of a run's agents share one sticky-session key and a subagent reuses the cached opening
     /// prefix a sibling already warmed instead of paying for it uncached.
+    ///
+    /// `model_call_timeout` is the run's [per-call model ceiling](declared_model_call_timeout),
+    /// read from the declared limits rather than from the resolved ones because the factory is
+    /// built before there is an agent to resolve them for. Resolution is pure, so the two
+    /// readings cannot disagree.
     pub fn live(session_key: Option<String>, model_call_timeout: Duration) -> Self {
         Self::substituted(
             Arc::new(DefaultClientFactory::new(session_key, model_call_timeout)),
@@ -7137,8 +7136,8 @@ impl Agent {
             // The model call, retried **within this turn** for the two failures the loop recovers
             // from rather than dying on:
             //
-            // - a call that hit gg's configured per-call ceiling — a
-            //   stalled provider;
+            // - a call that hit the run's [per-call ceiling](crate::limits::RunLimits::model_call_timeout)
+            //   — a stalled provider;
             // - a reply that hit the **provider's output cap** (`finish_reason: length`), which is
             //   presumed a degenerate generation and rejected whole.
             //

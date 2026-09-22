@@ -574,8 +574,9 @@ pub enum GgSessionModelErrorKind {
     /// [`attempts`](GgSessionModelError::attempts) count is how many were discarded before the loop
     /// gave up.
     ResponseLoop,
-    /// The call ran into gg's **per-call ceiling** (five minutes) without producing a reply — a
-    /// stalled provider or endpoint. Retryable at the turn level and counted against the run's
+    /// The call ran into the run's
+    /// [**per-call ceiling**](crate::gg::GgRunLimits::model_call_timeout_secs) without producing a
+    /// reply — a stalled provider or endpoint. Retryable at the turn level and counted against the run's
     /// error ceiling; unlike every other class it never ends the session on its own.
     Timeout,
 }
