@@ -617,8 +617,8 @@ export type GgDashboardPanel = {
    */
   query: string;
   /**
-   * How many of the [twelve](DASHBOARD_COLUMNS) grid columns the panel spans,
-   * clamped to `1..=12`.
+   * How many of the [twelve](DASHBOARD_COLUMNS) grid columns the panel spans.
+   * A width outside `1..=12` is rejected on save, not corrected into range.
    */
   width: number;
 };

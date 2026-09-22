@@ -338,6 +338,8 @@ export type CoveragePlanInput = {
   name: string;
   /**
    * The target number of runs desired for each `case × combination` cell.
+   * Rejected outside `MIN_RUNS_PER_CELL..=MAX_RUNS_PER_CELL` rather than corrected
+   * into range.
    */
   runsPerCell: number;
   /**
