@@ -404,3 +404,9 @@ __pycache__/
 # of the three roots a case may serve a produced file from. Stated after the Node
 # template's `dist` rule above, because the later rule wins.
 !packages/case-harness/test/host/root/dist/
+
+# gg's per-workspace state. A gg session writes its replay journal and the hook
+# scripts it materializes under `.gg/` in the workspace it runs in, and reads
+# skills from there. A run container's workspace is never committed, but a
+# session driven directly against a checkout leaves the folder behind.
+.gg/
