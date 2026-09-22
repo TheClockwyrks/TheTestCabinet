@@ -24,38 +24,68 @@
             "id": "shell",
             "enabled": true,
             "implementation": "offload",
-            "params": { "maxLines": 250, "maxChars": 4096 }
+            "params": {
+              "maxLines": 250,
+              "maxChars": 4096
+            }
           },
           {
             "id": "read-file",
             "enabled": true,
             "implementation": "unlimited",
-            "params": { "lineCap": 250 }
+            "params": {
+              "lineCap": 250
+            }
           },
-          { "id": "write-file", "enabled": true, "params": {} },
-          { "id": "edit-file", "enabled": true, "params": {} },
-          { "id": "list-dir", "enabled": true, "params": {} },
-          { "id": "search", "enabled": true, "params": {} },
+          {
+            "id": "write-file",
+            "enabled": true,
+            "params": {}
+          },
+          {
+            "id": "edit-file",
+            "enabled": true,
+            "params": {}
+          },
+          {
+            "id": "list-dir",
+            "enabled": true,
+            "params": {}
+          },
+          {
+            "id": "search",
+            "enabled": true,
+            "params": {}
+          },
           {
             "id": "tasks",
-            "enabled": true,
-            "params": { "maxTasks": 100, "mode": "simple" }
+            "enabled": false,
+            "params": {
+              "maxTasks": 100,
+              "mode": "simple"
+            }
           },
           {
             "id": "context-window-override",
             "enabled": true,
-            "params": { "windowLimit": 400000 }
+            "params": {
+              "windowLimit": 400000
+            }
           },
           {
             "id": "compaction",
             "enabled": true,
             "implementation": "self-summarization",
-            "params": { "summaryHeadroom": 0.2 }
+            "params": {
+              "summaryHeadroom": 0.2
+            }
           },
           {
             "id": "subagents",
             "enabled": true,
-            "params": { "maxDepth": 3 }
+            "params": {
+              "maxDepth": 3
+            }
           },
           {
             "id": "responses-as-code",
@@ -80,11 +110,6 @@
           "list_dir",
           "tree",
           "search",
-          "add_task",
-          "update_task",
-          "set_blocked_by",
-          "complete_task",
-          "remove_task",
           "spawn_subagent",
           "wait_for_subagents",
           "send_message"
@@ -98,11 +123,6 @@
           "files.tree",
           "files.search",
           "views.open_file",
-          "tasks.add_task",
-          "tasks.update_task",
-          "tasks.set_blocked_by",
-          "tasks.complete_task",
-          "tasks.remove_task",
           "delegation.spawn_subagent",
           "delegation.wait_for_subagents",
           "delegation.send_message"
@@ -116,7 +136,10 @@
             "views.open_file",
             "files.search"
           ],
-          "tree": { "include": true, "depth": 2 }
+          "tree": {
+            "include": true,
+            "depth": 2
+          }
         },
         "subagents": [
           {

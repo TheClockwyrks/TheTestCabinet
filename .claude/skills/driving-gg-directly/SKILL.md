@@ -78,8 +78,9 @@ Conventional Commits message, call `finish`), names the session
 `gg-<issue>-<model>-<mode>`, and moves the responses-as-code block in or out.
 What the profile grants:
 
-- The standard filesystem, shell and tasks capabilities, as in the two minimal
-  templates.
+- The standard filesystem and shell capabilities, as in the two minimal
+  templates. The tasks capability is declared but off: current large models
+  spend turns checking tasks off instead of moving on.
 - `subagents` at `maxDepth` 3 with the root profile listed in its own roster, so
   the agent can spawn copies of itself, and `maxParallel` 8.
 - `compaction` on `self-summarization` at a `summaryHeadroom` of `0.2`.
