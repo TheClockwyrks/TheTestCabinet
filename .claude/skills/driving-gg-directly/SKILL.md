@@ -63,6 +63,67 @@ it exits `3` after five `missing_completion_no_program` turns, because the mock
 answers with tool calls rather than programs: that is the mock's limitation,
 and the launch having been accepted is the result you were after.
 
+## The issue study
+
+The setup used to trial a model on an open `tasks/` issue. One run per model
+per issue, in a worktree, on a branch named for the model.
+
+### The configuration
+
+`templates/invocation.study.json` is the profile, and
+`scripts/issue-invocation.sh <model> <language|tools> <tasks-file> <worktree>`
+fills it: it resolves the model window, pastes the issue in as the prompt with
+the standard one-line preface (implement, run the gates, commit with a
+Conventional Commits message, call `finish`), names the session
+`gg-<issue>-<model>-<mode>`, and moves the responses-as-code block in or out.
+What the profile grants:
+
+- The standard filesystem, shell and tasks capabilities, as in the two minimal
+  templates.
+- `subagents` at `maxDepth` 3 with the root profile listed in its own roster, so
+  the agent can spawn copies of itself, and `maxParallel` 8.
+- `compaction` on `self-summarization` at a `summaryHeadroom` of `0.2`.
+- `context-window-override` at a `windowLimit` of 400,000 tokens, so a
+  million-token model is measured against 400k and reaches a compaction boundary
+  at roughly 256k.
+- `maxCost` 25 USD. The OpenRouter key in `.env` has a 50 USD daily ceiling, so
+  two sessions fit in a day and a third needs the ceiling raised.
+
+Both arms have been launched against `mock/test` from this template: the tools
+arm runs to exit `0` and the responses-as-code arm to the expected exit `3`.
+
+### The language ladder
+
+Run responses as code first, PureScript, then TypeScript, then JavaScript, then
+tool calling. Large models have tended to do better under PureScript and small
+ones markedly worse, so the order is a capability probe as much as a preference.
+
+1. Generate the invocation for the top rung and launch in the background with
+   stdout to a file.
+2. Watch the first two to four turns. The model is driving the rung when its
+   `turn_outcome` events are `completed` and `shell`, `tool_call` or file
+   events follow: it is producing programs the sandbox accepts. It is not when
+   the turns are `response_rejected`, compile errors, or
+   `missing_completion_no_program` back to back.
+3. To move down a rung, kill the process, reset the worktree
+   (`git -C <wt> checkout -- . && git clean -fdx -e .gg && rm -rf <wt>/.gg`),
+   regenerate the invocation and relaunch. Keep each abandoned `run.ndjson`;
+   the failed rungs are part of the assessment.
+4. Otherwise let it run to `session_ended`.
+
+### After the run
+
+- Exit `0` with the work committed: dispatch an Opus 5 review agent on the
+  worktree. It reviews the diff against the issue's done-when list, runs the
+  gates, fixes what it finds, and commits the fixes as their own commit so the
+  model's work and the corrections stay separable.
+- Exit `3` on the `cost` limit, or any exit with uncommitted work: commit what
+  the model left under a message that says so, then have the Opus 5 agent finish
+  the remaining items and commit those separately.
+- Write up the model: which rung it ran on and why the rungs above failed, the
+  `session_summary` figures (turns, cost, compactions, subagents), how much of
+  the done-when list it reached on its own, and what the reviewer had to fix.
+
 ## Reading the telemetry
 
 Every line is one event with a `type` tag (snake_case) and the run's
