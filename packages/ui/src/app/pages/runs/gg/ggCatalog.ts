@@ -2194,7 +2194,7 @@ export const AUTHORED_ERROR_RATE_WINDOW = 50;
 
 // One execution ceiling's control. `key` is the wire field on
 // `GgCapabilitySet.limits`; `kind` is what makes the value legible *and* checkable
-// — a `count` is a whole number of turns, seconds or errors, a `fraction` is a rate
+// — a `count` is a whole number of whatever its `unit` names, a `fraction` is a rate
 // in 0–1, and an `amount` is money, which is the only one of the three that is
 // meaningfully fractional above 1.
 export interface RunLimitSpec {
@@ -2207,6 +2207,10 @@ export interface RunLimitSpec {
   // that is not a whole MiB is legitimate here — a stored ceiling that is not a round
   // multiple has to survive a round-trip.
   kind: "count" | "fraction" | "amount" | "mib";
+  // What a `count` counts, named so a refused entry says what it wanted. Ceilings count
+  // different things — agents, turns, seconds, errors — and one wrong noun in a
+  // validation message is the operator reading the wrong field.
+  unit?: "agents" | "turns" | "seconds" | "errors";
   placeholder?: string;
   hint: string;
   // What a fresh configuration's field is seeded with — and, when the ceiling is
@@ -2230,6 +2234,11 @@ export const BYTES_PER_MIB = 1024 * 1024;
 // unreachable by a run that is behaving and reachable by one that is not.
 export const AUTHORED_REPLAY_MAX_MIB = 256;
 
+// The ceiling every model request is made under. It has no unarmed setting — a cleared
+// field is conducted under this figure rather than under none — so a fresh configuration
+// states it rather than leaving the operator to discover it.
+export const AUTHORED_MODEL_CALL_TIMEOUT_SECS = 900;
+
 // The guardrails, in the order they read as a sentence: how much of the run happens
 // at once, then how long it may go on for, then how badly it may go, then how much it
 // may cost — and last, the one that bounds not the run but the record kept of it.
@@ -2242,6 +2251,7 @@ export const RUN_LIMIT_SPECS: ReadonlyArray<RunLimitSpec> = [
     key: "maxParallel",
     label: "Max parallel agents",
     kind: "count",
+    unit: "agents",
     required: true,
     defaultValue: String(AUTHORED_MAX_PARALLEL),
     hint: "How many of the run's agents may run at once, counting the root and every subagent, issue implementer and reviewer. An agent spawned while the pool is full queues for a slot rather than being refused, so this stops nothing and only serializes the run. A suspended agent (waiting on its subagents or an issue) frees its slot, and takes priority over any not-yet-started agent when one opens up. Every run has a pool, so this one is always written.",
@@ -2250,6 +2260,7 @@ export const RUN_LIMIT_SPECS: ReadonlyArray<RunLimitSpec> = [
     key: "maxTurns",
     label: "Max turns per agent",
     kind: "count",
+    unit: "turns",
     placeholder: "unbounded",
     hint: "Absent means unbounded: the host caps the run's wall-clock, so gg imposes no turn backstop unless you set one. An agent that reaches a set ceiling ends exhausted.",
   },
@@ -2257,13 +2268,24 @@ export const RUN_LIMIT_SPECS: ReadonlyArray<RunLimitSpec> = [
     key: "maxRuntimeSecs",
     label: "Runtime (seconds)",
     kind: "count",
+    unit: "seconds",
     placeholder: "no ceiling",
     hint: "Wall-clock budget for the whole run, observed by every agent at its own turn boundary. Empty arms no such ceiling, and the host caps the run's wall-clock either way. A run that spends a ceiling you set ends timed_out.",
+  },
+  {
+    key: "modelCallTimeoutSecs",
+    label: "Model call timeout (seconds)",
+    kind: "count",
+    unit: "seconds",
+    placeholder: String(AUTHORED_MODEL_CALL_TIMEOUT_SECS),
+    defaultValue: String(AUTHORED_MODEL_CALL_TIMEOUT_SECS),
+    hint: "Ceiling on one model request, and the one field here an empty value does not unarm: a call gg would wait on forever is no setting, so a cleared field is conducted under 900 seconds and 0 is refused. A request that hits it is an error turn the agent asks again from, rather than a stop. The buffering transport measures the whole call; the streaming one measures the wait for the response head and the gap between chunks, so a long reply is never cut for being long.",
   },
   {
     key: "maxConsecutiveErrors",
     label: "Consecutive errors",
     kind: "count",
+    unit: "errors",
     placeholder: "no ceiling",
     defaultValue: String(AUTHORED_MAX_CONSECUTIVE_ERRORS),
     hint: "How many error turns in a row end an agent. Seeded as a guardrail into a fresh configuration; clear the field to unarm the ceiling, and a run whose model errors every turn spends its turns, its runtime or its cost instead. A turn is an error when the work it declared could not be carried out: a failed model call, a program that did not compile, threw, or was stopped at a sandbox ceiling. A tool call that failed inside a program that carried on is not one.",
@@ -2280,6 +2302,7 @@ export const RUN_LIMIT_SPECS: ReadonlyArray<RunLimitSpec> = [
     key: "errorRateWindow",
     label: "Error-rate window (turns)",
     kind: "count",
+    unit: "turns",
     placeholder: "no ceiling",
     defaultValue: String(AUTHORED_ERROR_RATE_WINDOW),
     hint: "How many of an agent's most recent turns the rate is measured over, and also the minimum sample: the ceiling cannot fire until the agent has taken this many turns. Seeded with the rate as a guardrail into a fresh configuration; clear both fields to unarm.",

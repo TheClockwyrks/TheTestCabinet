@@ -591,7 +591,7 @@
         },
         {
           "const": "timeout",
-          "description": "The call ran into gg's **per-call ceiling** (five minutes) without producing a reply — a\nstalled provider or endpoint. Retryable at the turn level and counted against the run's\nerror ceiling; unlike every other class it never ends the session on its own.",
+          "description": "The call ran into the run's\n[**per-call ceiling**](crate::gg::GgRunLimits::model_call_timeout_secs) without producing a\nreply — a stalled provider or endpoint. Retryable at the turn level and counted against the run's\nerror ceiling; unlike every other class it never ends the session on its own.",
           "type": "string"
         }
       ]

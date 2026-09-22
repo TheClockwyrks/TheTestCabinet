@@ -1271,7 +1271,7 @@
         },
         {
           "const": "model_timeout",
-          "description": "The model call ran into gg's **per-call ceiling** (five minutes) without producing a reply —\na stalled provider, not a refusal. Unlike every other `model_` type this one does **not**\nend the session: the turn is recorded as this error and the loop asks again, so a stalled\nendpoint costs the run one bounded error turn per stall and the run ends only when the\n[error ceilings](GgRunLimits) say it should.",
+          "description": "The model call ran into the run's\n[**per-call ceiling**](GgRunLimits::model_call_timeout_secs) without producing a reply — a\nstalled provider, not a refusal. Unlike every other `model_` type this one does **not**\nend the session: the turn is recorded as this error and the loop asks again, so a stalled\nendpoint costs the run one bounded error turn per stall and the run ends only when the\n[error ceilings](GgRunLimits) say it should.",
           "type": "string"
         },
         {

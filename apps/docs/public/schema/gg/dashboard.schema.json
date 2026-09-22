@@ -12,7 +12,7 @@
           "type": "string"
         },
         "width": {
-          "description": "How many of the [twelve](DASHBOARD_COLUMNS) grid columns the panel spans,\nclamped to `1..=12`.",
+          "description": "How many of the [twelve](DASHBOARD_COLUMNS) grid columns the panel spans.\nA width outside `1..=12` is rejected on save, not corrected into range.",
           "format": "uint32",
           "minimum": 0,
           "type": "integer"

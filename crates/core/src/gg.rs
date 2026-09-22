@@ -4479,11 +4479,13 @@ mod count {
 /// produced it — where limits on the invocation would let a run record *which* ceiling was hit
 /// while making *what the ceiling was* unrecoverable.
 ///
-/// **Two are required and five are armed by being written.**
+/// **Two are required, one defaults, and five are armed by being written.**
 /// [`max_parallel`](Self::max_parallel) and [`replay_max_bytes`](Self::replay_max_bytes) bound
 /// every run gg conducts — the pool it runs agents in and the journal it writes as it goes — and
 /// neither has a figure that means "no cap", so an absent one refuses the launch.
-/// [`max_turns`](Self::max_turns), [`max_runtime_secs`](Self::max_runtime_secs),
+/// [`model_call_timeout_secs`](Self::model_call_timeout_secs) bounds every model request and
+/// defaults to fifteen minutes when absent. [`max_turns`](Self::max_turns),
+/// [`max_runtime_secs`](Self::max_runtime_secs),
 /// [`max_cost`](Self::max_cost), [`max_consecutive_errors`](Self::max_consecutive_errors) and
 /// [`max_error_rate`](Self::max_error_rate) with its [window](Self::error_rate_window) are each
 /// **unarmed when the configuration leaves them out**. gg arms no ceiling nobody wrote: an agent
@@ -4492,8 +4494,8 @@ mod count {
 /// a wall-clock cap on every run regardless.
 ///
 /// **Present and unhonourable fails the launch.** A field set to a value that cannot bound
-/// anything — a zero turn or runtime ceiling, a zero window, a negative rate, a rate above `1.0`, a
-/// non-finite cost — is refused by name rather than disarmed with a warning: an operator who wrote
+/// anything — a zero turn, runtime or model-call ceiling, a zero window, a negative rate, a rate
+/// above `1.0`, a non-finite cost — is refused by name rather than disarmed with a warning: an operator who wrote
 /// a ceiling believes the run is bounded, and a run that quietly became unbounded is the one case
 /// where the misconfiguration costs money. A **partially** declared error rate (a rate without a
 /// window, or a window without a rate) is refused on the same terms rather than arming nothing. The
@@ -4558,6 +4560,27 @@ pub struct GgRunLimits {
     )]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub max_runtime_secs: Option<u64>,
+    /// The ceiling, in seconds, on **one model request** — the bound that turns a provider which
+    /// has stopped answering into an error turn the agent asks again from.
+    ///
+    /// The one key on this type an absence answers with a **figure** rather than with "off":
+    /// **absent is fifteen minutes** (900 seconds), because there is no run whose calls may hang
+    /// forever, and `0` is refused on the same terms as every other unhonourable figure. How it is
+    /// applied follows the transport the agent's [loop detection](GgLoopDetection) selects: the
+    /// buffering one bounds the whole call, and the streaming one bounds the wait for the response
+    /// head and the gap between chunks, so a reply still arriving is never cut.
+    ///
+    /// Unlike the ceilings above it, breaching this one does not stop the run. The turn is
+    /// recorded as a [`ModelTimeout`](GgTurnErrorType::ModelTimeout) error and the agent asks
+    /// again, so a stalled endpoint costs one bounded error turn per stall and the run ends only
+    /// when an error ceiling says it should.
+    #[serde(
+        deserialize_with = "count::option_u64",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub model_call_timeout_secs: Option<u64>,
     /// How many **error turns in a row** end an agent. **Absent leaves it unarmed** — gg arms no
     /// error ceiling nobody wrote, so an agent stopped by this one was stopped by a threshold its
     /// operator chose. `0` is refused rather than read as "off": it would end an agent before its
@@ -4955,8 +4978,9 @@ pub enum GgTurnErrorType {
     /// A `2xx` response could not be parsed into a reply. Retrying an already-successful-but-
     /// malformed response would not help, so the turn ends on it.
     ModelParse,
-    /// The model call ran into gg's **per-call ceiling** (five minutes) without producing a reply —
-    /// a stalled provider, not a refusal. Unlike every other `model_` type this one does **not**
+    /// The model call ran into the run's
+    /// [**per-call ceiling**](GgRunLimits::model_call_timeout_secs) without producing a reply — a
+    /// stalled provider, not a refusal. Unlike every other `model_` type this one does **not**
     /// end the session: the turn is recorded as this error and the loop asks again, so a stalled
     /// endpoint costs the run one bounded error turn per stall and the run ends only when the
     /// [error ceilings](GgRunLimits) say it should.

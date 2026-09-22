@@ -27,11 +27,13 @@
 //! | [`error_rate`](RunLimits::error_rate) | per agent | ends **that agent** | `limit_exceeded` |
 //! | [`max_cost`](RunLimits::max_cost) | **run-wide** ([`RunSpend`]) | ends **every agent** at its next boundary | `limit_exceeded` |
 //!
-//! [`RunLimits`] carries one further ceiling that is **not** in that table and never ends a run:
+//! [`RunLimits`] carries two further bounds that are **not** in that table and never end a run.
 //! [`replay_max_bytes`](RunLimits::replay_max_bytes) bounds the
-//! [capture journal](crate::capture) that observes the run. It is resolved here because there is
+//! [capture journal](crate::capture) that observes the run, and
+//! [`model_call_timeout`](RunLimits::model_call_timeout) bounds one model call, turning a stalled
+//! provider into an error turn the loop asks again from. Both are resolved here because there is
 //! one resolver for everything an operator can declare under `capabilitySet.limits`, not because
-//! it is an execution ceiling.
+//! either is an execution ceiling.
 //!
 //! Every ceiling, the turn ceiling and the wall-clock budget included, has one home, one
 //! [resolver](resolve_run_limits), one [breach record](test_cabinet_core::gg::GgLimitBreach) and
@@ -57,6 +59,11 @@
 //! there is no run it does not apply to and no absence for gg to read as "off" — a set that omits it
 //! is [refused](resolve_run_limits) here. The other required run-level value, `maxParallel`, is
 //! resolved by [`SubagentConfig`](crate::subagents::SubagentConfig), which owns the pool it bounds.
+//!
+//! `modelCallTimeoutSecs` is the one key an absence answers with a figure rather than with "off":
+//! every model call is made under a ceiling, so an absent key takes
+//! [`DEFAULT_MODEL_CALL_TIMEOUT`] and a zero is [refused](resolve_run_limits) like any other
+//! figure nothing can run under.
 //!
 //! # This module decides; the loop acts
 //!
@@ -102,6 +109,7 @@ use std::fmt;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
+use crate::client::DEFAULT_MODEL_CALL_TIMEOUT;
 use test_cabinet_core::gg::{
     GgCapabilitySet, GgLimitBreach, GgLimitKind, GgRunLimits, GgTurnErrorKind, GgTurnErrorType,
     GgTurnOutcome,
@@ -324,7 +332,7 @@ pub enum TurnErrorType {
     ModelVisionUnsupported,
     /// A successful response could not be parsed into a reply.
     ModelParse,
-    /// The call ran into gg's [per-call ceiling](crate::client::MODEL_CALL_TIMEOUT) without
+    /// The call ran into the run's [per-call ceiling](RunLimits::model_call_timeout) without
     /// producing a reply — a stalled provider. The one model error the loop retries at the turn
     /// level rather than ending the session on.
     ModelTimeout,
@@ -519,12 +527,29 @@ fn refused_ceiling<T>() -> Option<T> {
 /// [`RunLimits`] should recognise the shape it replaces.
 const REFUSED_COUNT: usize = usize::MAX;
 
+/// The ceiling every model call a run makes runs under, given the run's declared
+/// [limits](GgRunLimits): the figure written, or [`DEFAULT_MODEL_CALL_TIMEOUT`] when the key is
+/// absent. The `0` a launch [refuses](resolve_run_limits) takes the default too, so this function
+/// is [total](crate::validate#the-resolver-contract) on the same terms as the resolver around it.
+///
+/// Read twice per run and by one rule: once by [`resolve_run_limits`], and once by the launch
+/// building the run's [client factory](crate::client::DefaultClientFactory), which needs the
+/// figure before an agent exists to resolve limits for.
+pub fn declared_model_call_timeout(declared: &GgRunLimits) -> Duration {
+    match declared.model_call_timeout_secs {
+        Some(0) | None => DEFAULT_MODEL_CALL_TIMEOUT,
+        Some(secs) => Duration::from_secs(secs),
+    }
+}
+
 /// The resolved [execution ceilings](test_cabinet_core::gg::GgRunLimits) one run is bounded by.
 ///
-/// Every field is `None` for a ceiling the set left unarmed, and gg leaves unarmed every ceiling the
-/// set did not write: `None` here means the ceiling is **off**, never that gg chose a figure for it.
-/// `Copy`, because a resolved ceiling set is five scalars that every agent enforces identically and
-/// none of them mutates.
+/// Every optional field is `None` for a ceiling the set left unarmed, and gg leaves unarmed every
+/// ceiling the set did not write: `None` here means the ceiling is **off**, never that gg chose a
+/// figure for it. [`model_call_timeout`](Self::model_call_timeout) is the exception, and carries a
+/// figure on every run: a model call has no unbounded reading, so absence is a default rather than
+/// an off. `Copy`, because a resolved ceiling set is a handful of scalars that every agent enforces
+/// identically and none of them mutates.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RunLimits {
     /// The per-agent turn ceiling, or `None` for **unbounded**, which is what a set that writes no
@@ -533,6 +558,11 @@ pub struct RunLimits {
     /// The run's wall-clock budget, when configured. Run-wide: every agent measures it against the
     /// same session-start instant, so it ends the run rather than one agent.
     pub max_runtime: Option<Duration>,
+    /// The ceiling every one of the run's model calls is made under — the buffering transport's
+    /// total duration and the streaming one's idle gap alike. Present on every run: a set that
+    /// writes no `modelCallTimeoutSecs` takes [`DEFAULT_MODEL_CALL_TIMEOUT`], because a call gg
+    /// would wait on forever is not a ceiling an operator can have meant.
+    pub model_call_timeout: Duration,
     /// How many error turns in a row end an agent, when configured. `None` when the set wrote no
     /// `maxConsecutiveErrors` — gg arms no error ceiling nobody wrote.
     pub max_consecutive_errors: Option<u32>,
@@ -665,6 +695,9 @@ pub(crate) const LIMIT_MAX_TURNS: &str = "maxTurns";
 /// The `limits` key naming the [wall-clock budget](RunLimits::max_runtime).
 pub(crate) const LIMIT_MAX_RUNTIME_SECS: &str = "maxRuntimeSecs";
 
+/// The `limits` key naming the [model-call ceiling](RunLimits::model_call_timeout).
+pub(crate) const LIMIT_MODEL_CALL_TIMEOUT_SECS: &str = "modelCallTimeoutSecs";
+
 /// The `limits` key naming the [consecutive-error ceiling](RunLimits::max_consecutive_errors).
 pub(crate) const LIMIT_MAX_CONSECUTIVE_ERRORS: &str = "maxConsecutiveErrors";
 
@@ -687,7 +720,7 @@ fn locus(key: &str) -> String {
 
 /// **A run-level ceiling gg cannot arm as written**, reported against the key that carries it.
 ///
-/// One constructor rather than seven inline ones so every ceiling's refusal is worded the same way:
+/// One constructor rather than one inline per key so every ceiling's refusal is worded the same way:
 /// the value as declared, what it would have meant, and — always — that gg is not going to run
 /// under a different ceiling instead. That last clause is the whole point of the refusal: an
 /// operator who wrote a ceiling believes the run is bounded, and the one thing worse than a run
@@ -707,8 +740,8 @@ fn unarmable(
     )
 }
 
-/// What an operator can do about a value gg could not arm — which differs between the ceilings that
-/// have an unarmed reading and the one that has none.
+/// What an operator can do about a value gg could not arm — which differs between the ceilings an
+/// absent key leaves unarmed and those an absent key answers some other way.
 ///
 /// Read off the key rather than passed in at each call site, so a ceiling cannot be refused with
 /// advice that contradicts whether it is required.
@@ -716,6 +749,9 @@ fn remedy(key: &str) -> &'static str {
     if key == LIMIT_REPLAY_MAX_BYTES {
         "Capture runs on every session, so there is no reading of this run under which the journal \
          has no ceiling: write a figure it can be bounded by."
+    } else if key == LIMIT_MODEL_CALL_TIMEOUT_SECS {
+        "Every model call is made under this ceiling: omit the key to take gg's default of 900 \
+         seconds, or give it a value a call can be made under."
     } else {
         "Omit the key to leave the ceiling unarmed, or give it a value a run can be bounded by."
     }
@@ -825,6 +861,18 @@ pub fn resolve_run_limits(
         None => None,
     };
 
+    // Every model call is bounded. Absence is the default rather than an unarmed ceiling — there
+    // is no run whose calls may hang forever — and zero, which would refuse every call the instant
+    // it started, is refused on the same terms as every other unhonourable figure.
+    if declared.model_call_timeout_secs == Some(0) {
+        report.report(unarmable(
+            LIMIT_MODEL_CALL_TIMEOUT_SECS,
+            0,
+            "a model call allowed no seconds cannot start",
+        ));
+    }
+    let model_call_timeout = declared_model_call_timeout(&declared);
+
     // Absent leaves it unarmed, on the same terms as the turn ceiling: an agent stopped after five
     // failed turns in a row was stopped by a threshold its operator chose, and there is no fifth
     // turn gg would have picked on their behalf.
@@ -894,6 +942,7 @@ pub fn resolve_run_limits(
     RunLimits {
         max_turns,
         max_runtime,
+        model_call_timeout,
         max_consecutive_errors,
         error_rate,
         max_cost,

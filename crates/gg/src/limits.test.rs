@@ -79,6 +79,7 @@ fn bare_limits() -> RunLimits {
     RunLimits {
         max_turns: None,
         max_runtime: None,
+        model_call_timeout: DEFAULT_MODEL_CALL_TIMEOUT,
         max_consecutive_errors: None,
         error_rate: None,
         max_cost: None,
@@ -131,6 +132,10 @@ fn an_absent_limits_block_arms_nothing_and_owes_the_journal_ceiling() {
     assert_eq!(limits.max_turns, None, "turns are unbounded");
     assert_eq!(limits.max_runtime, None);
     assert_eq!(
+        limits.model_call_timeout, DEFAULT_MODEL_CALL_TIMEOUT,
+        "a model call is bounded on every run"
+    );
+    assert_eq!(
         limits.max_consecutive_errors, None,
         "gg arms no error ceiling nobody wrote"
     );
@@ -154,6 +159,7 @@ fn the_required_values_alone_are_a_complete_declaration() {
 
     assert_eq!(limits.max_turns, None);
     assert_eq!(limits.max_runtime, None);
+    assert_eq!(limits.model_call_timeout, DEFAULT_MODEL_CALL_TIMEOUT);
     assert_eq!(limits.max_consecutive_errors, None);
     assert_eq!(limits.error_rate, None);
     assert_eq!(limits.max_cost, None);
@@ -165,6 +171,7 @@ fn every_declared_ceiling_resolves_when_it_is_usable() {
     let limits = resolve_cleanly(GgRunLimits {
         max_turns: Some(60),
         max_runtime_secs: Some(5400),
+        model_call_timeout_secs: Some(1200),
         max_consecutive_errors: Some(5),
         max_error_rate: Some(0.5),
         error_rate_window: Some(10),
@@ -175,6 +182,7 @@ fn every_declared_ceiling_resolves_when_it_is_usable() {
 
     assert_eq!(limits.max_turns, Some(60));
     assert_eq!(limits.max_runtime, Some(Duration::from_secs(5400)));
+    assert_eq!(limits.model_call_timeout, Duration::from_secs(1200));
     assert_eq!(limits.max_consecutive_errors, Some(5));
     assert_eq!(
         limits.error_rate,
@@ -213,6 +221,44 @@ fn a_zero_runtime_budget_is_refused() {
         })
         .starts_with(
             "limits.maxRuntimeSecs = `0` — a budget of no seconds is spent before the run"
+        )
+    );
+}
+
+/// **The model-call ceiling has no unarmed reading.** A set that writes none is not refused, and
+/// does not get an unbounded call either: it gets gg's default, because a call nothing would ever
+/// interrupt is not a configuration an operator can have meant.
+#[test]
+fn an_absent_model_call_ceiling_takes_the_default() {
+    let limits = resolve_cleanly(required_only());
+
+    assert_eq!(limits.model_call_timeout, DEFAULT_MODEL_CALL_TIMEOUT);
+}
+
+/// A written figure is the one every call of the run is made under, whatever gg's default is.
+#[test]
+fn a_declared_model_call_ceiling_resolves_to_what_was_written() {
+    let limits = resolve_cleanly(GgRunLimits {
+        model_call_timeout_secs: Some(1234),
+        ..required_only()
+    });
+
+    assert_eq!(limits.model_call_timeout, Duration::from_secs(1234));
+}
+
+/// **Zero is refused rather than read as the default**, on the same terms as a zero turn ceiling:
+/// an operator who wrote it meant something, and gg conducting the run under fifteen minutes
+/// instead would be running it under a ceiling nobody wrote. The remedy names the default, because
+/// omitting the key is the only way to ask for it.
+#[test]
+fn a_zero_model_call_ceiling_is_refused() {
+    assert!(
+        sole_refusal(GgRunLimits {
+            model_call_timeout_secs: Some(0),
+            ..required_only()
+        })
+        .starts_with(
+            "limits.modelCallTimeoutSecs = `0` — a model call allowed no seconds cannot start"
         )
     );
 }
@@ -489,6 +535,7 @@ fn every_unusable_ceiling_is_named_in_one_refusal() {
             max_parallel: None,
             max_turns: Some(0),
             max_runtime_secs: Some(0),
+            model_call_timeout_secs: Some(0),
             max_consecutive_errors: Some(0),
             max_error_rate: Some(-3.0),
             error_rate_window: Some(0),
@@ -511,6 +558,7 @@ fn every_unusable_ceiling_is_named_in_one_refusal() {
         [
             "limits.maxTurns",
             "limits.maxRuntimeSecs",
+            "limits.modelCallTimeoutSecs",
             "limits.maxConsecutiveErrors",
             "limits.maxErrorRate",
             "limits.errorRateWindow",
