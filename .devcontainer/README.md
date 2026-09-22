@@ -335,6 +335,33 @@ This works out of the box on a standard setup. Three notes cover the rest:
   host daemon is running and that `docker ps` works **from a fresh terminal**
   inside the container.
 
+## Browsers
+
+Chromium is baked into the image, because the front-end commit gate
+(`packages/case-harness`'s suite), the validator's browser driver and the Rust
+suite's served validator-project tests all launch it through Playwright, and
+`npm ci` installs Playwright without downloading any browser. Two scripts
+install it, at the `PLAYWRIGHT_VERSION` `docker-compose.yml` pins:
+
+- `system/browser-deps.sh` installs the system libraries Chromium links
+  against, as root. The package list is Playwright's own, resolved for the
+  distribution the image is built on, which is why these packages are absent
+  from `system/apt.sh`.
+- `tools/browsers.sh` downloads Chromium itself, as the container user, into
+  `~/.cache/ms-playwright`, then starts it headless and renders a page, so a
+  browser that cannot run in this image fails the build rather than the commit
+  gate.
+
+Keep that pin equal to the `playwright` in `packages/case-harness` and
+`packages/browser-driver`: Playwright resolves a browser build per client
+version. In a container built before the pin moved, running both by hand
+installs the new build without waiting for a rebuild:
+
+```sh
+sudo bash .devcontainer/system/browser-deps.sh
+bash .devcontainer/tools/browsers.sh
+```
+
 ## Building inside the container
 
 Two of the eleven signature catalogues `crates/gg`'s build script reflects come
