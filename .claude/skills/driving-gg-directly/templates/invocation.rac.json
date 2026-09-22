@@ -1,0 +1,92 @@
+{
+  "sessionId": "gg-<issue-slug>-<model-slug>",
+  "workspaceDir": "/workspaces/gg-wt-<model-slug>",
+  "prompt": "The workspace is the repository this issue describes. Implement the issue below. Run the gates it names before you finish, and end your session by calling finish with a short summary once the change is complete.\n\n<paste the tasks/ file here>",
+  "modelWindows": { "<openrouter/model-id>": 1048576 },
+  "modelModalities": { "<openrouter/model-id>": ["text"] },
+  "capabilitySet": {
+    "preset": "issue-rac-typescript",
+    "limits": {
+      "maxParallel": 16,
+      "replayMaxBytes": 268435456,
+      "maxTurns": 150,
+      "maxRuntimeSecs": 5400,
+      "maxConsecutiveErrors": 5,
+      "maxCost": 25
+    },
+    "agents": [
+      {
+        "slug": "root",
+        "name": "Root",
+        "modelId": "<openrouter/model-id>",
+        "capabilities": [
+          {
+            "id": "shell",
+            "enabled": true,
+            "implementation": "offload",
+            "params": { "maxLines": 250, "maxChars": 4096 }
+          },
+          {
+            "id": "read-file",
+            "enabled": true,
+            "implementation": "unlimited",
+            "params": { "lineCap": 250 }
+          },
+          { "id": "write-file", "enabled": true, "params": {} },
+          { "id": "edit-file", "enabled": true, "params": {} },
+          { "id": "list-dir", "enabled": true, "params": {} },
+          { "id": "search", "enabled": true, "params": {} },
+          {
+            "id": "tasks",
+            "enabled": true,
+            "params": { "maxTasks": 100, "mode": "simple" }
+          },
+          {
+            "id": "responses-as-code",
+            "enabled": true,
+            "params": {
+              "language": "typescript",
+              "timeoutSecs": 30,
+              "maxMemoryBytes": 268435456,
+              "docViewTypes": { "return": true, "parameters": false, "errors": true }
+            }
+          }
+        ],
+        "tools": [],
+        "operations": [
+          "shell.shell",
+          "files.read_file",
+          "files.write_file",
+          "files.edit_file",
+          "files.list_dir",
+          "files.tree",
+          "files.search",
+          "views.open_file",
+          "tasks.add_task",
+          "tasks.update_task",
+          "tasks.set_blocked_by",
+          "tasks.complete_task",
+          "tasks.remove_task"
+        ],
+        "openingTurn": {
+          "modules": ["files", "shell"],
+          "functions": [
+            "docs.search",
+            "views.open_docs_view",
+            "views.open_text",
+            "views.open_file",
+            "files.search"
+          ],
+          "tree": { "include": true, "depth": 2 }
+        },
+        "hooks": [
+          {
+            "event": "pre-shell",
+            "name": "no destructive git or rm",
+            "action": { "type": "built-in", "script": "guard-destructive-shell" }
+          }
+        ]
+      }
+    ]
+  }
+}
