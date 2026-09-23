@@ -206,6 +206,10 @@ tempfile = { workspace = true }
 # real, but the five-minute ceiling elapses the moment the runtime idles on one, so a
 # timeout test costs milliseconds instead of minutes.
 tokio = { workspace = true, features = ["test-util"] }
+# The content key of the test suite's on-disk cache of compiled components
+# (`src/sandbox/engine.cache.rs`, `#[cfg(test)]` only): an entry is mapped in and run on the
+# strength of its name, so the name is a collision-resistant digest of the bytes it was compiled from.
+sha2 = { workspace = true }
 
 [lints]
 workspace = true

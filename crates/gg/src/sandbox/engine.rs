@@ -51,8 +51,14 @@ fn slot(id: GgProgramLanguage) -> &'static OnceLock<Component> {
     &COMPONENTS[id.ordinal()]
 }
 
-/// How many times this process compiled the component. Read only by tests, which is how the "never
-/// recompiled per program" property is asserted **without timing anything**.
+/// How many times this process asked for component bytes to be made a [`Component`]. Read only by
+/// tests, which is how the "never recompiled per program" property is asserted **without timing
+/// anything**.
+///
+/// Under test a request may be served from the on-disk cache (`engine.cache.rs`) rather than
+/// compiled, and it counts the same: what the assertions are about is how often gg *asks* — once
+/// per language per process, never per program — which is the property production depends on,
+/// whatever answered.
 static COMPILES: AtomicU64 = AtomicU64::new(0);
 
 /// The process-wide wasm engine.
@@ -77,6 +83,11 @@ static COMPILES: AtomicU64 = AtomicU64::new(0);
 /// [`COMPONENTS`] already delivers the only property that matters — the second program of a run
 /// pays nothing — and the feature would pull `zstd`'s C compile into a musl-static release binary
 /// to buy nothing.
+///
+/// The test suite is the opposite workload — one process per test, thousands of them compiling the
+/// same bytes — so under `#[cfg(test)]` [`compile_bytes`] goes through a cache of its own
+/// (`engine.cache.rs`), keyed on the bytes' content and this engine's configuration and written
+/// with nothing but [`Component::serialize`] and [`Component::deserialize_file`].
 ///
 /// # The compile cost is core-count sensitive
 ///
@@ -336,7 +347,9 @@ pub(crate) fn compiles() -> u64 {
     COMPILES.load(Ordering::Relaxed)
 }
 
-/// Compile component bytes against the shared engine, counting the compile.
+/// Compile component bytes against the shared engine, counting the compile — under test, through
+/// the on-disk cache (`engine.cache.rs`), which may map in a copy another test process already
+/// compiled.
 ///
 /// Called with a language's own [`guest_component`](ProgramLanguage::guest_component) in production;
 /// the tests additionally call it with bytes that are not a component at all, which is the only way
@@ -344,6 +357,27 @@ pub(crate) fn compiles() -> u64 {
 /// — is always valid in a real build.
 pub(crate) fn compile_bytes(bytes: &[u8]) -> Result<Component, SandboxError> {
     COMPILES.fetch_add(1, Ordering::Relaxed);
+    obtain(bytes)
+}
+
+/// Production compiles every time it is asked. An embedded guest is asked for once per language per
+/// process, through [`COMPONENTS`]; a compiled arm's program once per turn, through
+/// [`program_component`].
+#[cfg(not(test))]
+fn obtain(bytes: &[u8]) -> Result<Component, SandboxError> {
+    compile(bytes)
+}
+
+/// The test suite goes through its on-disk cache (`engine.cache.rs`), which maps in a copy another
+/// test process already compiled from the same bytes.
+#[cfg(test)]
+fn obtain(bytes: &[u8]) -> Result<Component, SandboxError> {
+    cache::load_or_compile(engine(), bytes, cache::directory(), compile)
+        .map(|(component, _)| component)
+}
+
+/// Cranelift-compile component bytes against the shared engine.
+fn compile(bytes: &[u8]) -> Result<Component, SandboxError> {
     // Through [`failure_reason`] like every other wasmtime error path here: a component that will
     // not compile fails with the validator's own sentence buried in the chain, and `to_string()`
     // hands back the outer link alone.
@@ -604,6 +638,10 @@ fn failure_reason(err: &wasmtime::Error) -> String {
         false => format!("{reason}\n\n{}", chain.join("\n\n")),
     }
 }
+
+#[cfg(test)]
+#[path = "engine.cache.rs"]
+mod cache;
 
 #[cfg(test)]
 #[path = "engine.test.rs"]

@@ -7,8 +7,7 @@
 //! **No wasm here.** [`MembraneState`] is built directly, the generated `Host` methods are called
 //! as ordinary Rust, and the whole thirty-two-function surface is covered at microseconds per test
 //! — which is what makes it affordable to assert every one of them. The end-to-end behaviour that
-//! genuinely needs the component (scope binding, denied globals, traps) lives in `sandbox.test.rs`,
-//! where it is consolidated into a handful of processes because each pays a full component compile.
+//! genuinely needs the component (scope binding, denied globals, traps) lives in `sandbox.test.rs`.
 
 use std::time::{Duration, Instant};
 

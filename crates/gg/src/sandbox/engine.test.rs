@@ -1,10 +1,9 @@
 //! Tests for the process-wide engine and the compiled-component cache.
 //!
-//! **These cost a real compile.** Every test here that touches [`component`] pays a full
-//! `Component::new` of the ~13 MB artifact in its own process, because `cargo nextest` runs one
-//! process per test — measured at ~1.2 s with the root manifest's `[profile.dev.package.*]`
-//! cranelift pins and ~7.6 s without them. That is the whole reason the end-to-end tests in
-//! `sandbox.test.rs` are consolidated into a handful of functions instead of one per behaviour.
+//! A test here that touches [`component`] obtains the embedded ECMAScript guest in its own process,
+//! because `cargo nextest` runs one process per test. Under test that is usually a load from the
+//! on-disk cache (`engine.cache.rs`) rather than a Cranelift compile, and [`compiles`] counts either
+//! as the process's one request — which is what the properties below are about.
 
 use wasmtime::ResourceLimiter;
 use wasmtime_wasi::I32Exit;
@@ -349,10 +348,10 @@ fn the_ceilings_report_what_the_guest_said() {
 ///
 /// Asserted with a counter rather than a stopwatch. A timing test would pass on a fast machine
 /// whatever the code did, and flake on a loaded one; the counter says exactly what is claimed —
-/// `Component::new` ran once — and keeps saying it when the machine is busy.
+/// the component was asked for once — and keeps saying it when the machine is busy.
 ///
-/// Every route to the component is exercised in this one process, because each of them would
-/// otherwise pay its own compile in its own test: the warm-up, two direct [`component`] calls, and
+/// Every route to the component is exercised in this one process, because the 0 → 1 transition is
+/// only observable once per process: the warm-up, two direct [`component`] calls, and
 /// two whole [`run_program`] calls that prove nothing on the turn path reaches around the cache.
 #[test]
 fn the_component_compiles_once_per_process() {

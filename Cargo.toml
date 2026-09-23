@@ -165,14 +165,13 @@ codegen-units = 1
 [profile.dev.package.test-cabinet-desktop]
 codegen-units = 1
 
-# Cranelift compiles the ~13 MB responses-as-code sandbox component
-# (`crates/gg/src/sandbox`) on first use in every process that runs a sandbox
-# test, and `cargo nextest` runs ONE PROCESS PER TEST. Unoptimised that compile
-# takes 7.6s; with these five packages optimised it takes 1.2s on a many-core
-# machine and 7.9s on one core — the difference between a comfortable margin and
-# brushing the 120s per-test cap (`.config/nextest.toml`) on a small runner. The
-# cost is one slower first build. These are the code generator's own hot crates,
-# not workspace members, so optimising them changes no behaviour under test.
+# Cranelift compiles gg's responses-as-code sandbox components (`crates/gg/src/sandbox`)
+# in test processes, and `cargo nextest` runs ONE PROCESS PER TEST. The test suite's
+# on-disk cache (`crates/gg/src/sandbox/engine.cache.rs`) spares most processes the
+# embedded guests' compile, but the first processes of a build still pay it and every
+# compiled arm (Swift above all) compiles a new artifact per program. These are the code
+# generator's own hot crates, not workspace members, so optimising them changes no
+# behaviour under test; the cost is one slower first build.
 [profile.dev.package.cranelift-codegen]
 opt-level = 3
 
@@ -186,6 +185,14 @@ opt-level = 3
 opt-level = 3
 
 [profile.dev.package.wasmparser]
+opt-level = 3
+
+# gg's test suite keys its on-disk cache of compiled components
+# (`crates/gg/src/sandbox/engine.cache.rs`) on a SHA-256 of each component, and
+# the embedded guests are tens of megabytes: unoptimised, hashing the 25 MB Python
+# guest takes ~1.3s, against ~75ms optimised and ~70ms to map the compiled copy
+# in. Optimising the hash changes no output, only how long the digest takes.
+[profile.dev.package.sha2]
 opt-level = 3
 
 [workspace.dependencies]
