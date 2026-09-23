@@ -247,11 +247,11 @@ scripts/ci/rust-test.sh       # build, nextest run, test --doc
 scripts/ci/specs-lint.sh      # markdownlint + cspell over the authored prose
 ```
 
-`scripts/setup-hooks.sh` installs the pre-commit hooks, which run the formatting,
-clippy, and doc gates, the front-end test suite, the
-[frozen-version](/development/frozen-versions/) check, the audio-pack lint, and the
-seeded-spec vocabulary check on each commit. The front-end suite is a commit gate
-because it completes in seconds; the Rust test suite runs in CI.
+`scripts/setup-hooks.sh` installs the pre-commit hooks, which run the formatting
+gates, the [frozen-version](/development/frozen-versions/) check, the audio-pack
+lint, and the seeded-spec vocabulary check on each commit. Clippy, rustdoc, and
+both test suites take too long for a commit or push hook; run them locally
+through the scripts above, and CI runs them on every change.
 
 ```sh
 node scripts/ci/audio-packs-check.mjs
@@ -304,7 +304,7 @@ exactly those five and ignores everything else in that directory.
 
 Anything that compiles `crates/gg` needs those toolchains present. That is
 `cargo build --workspace`, `cargo clippy --workspace`, `cargo doc --workspace`,
-the pre-commit clippy and doc hooks, `scripts/build-gg-static.sh`, and
+`scripts/build-gg-static.sh`, and
 `scripts/gg-reference.sh`. Nothing else in the workspace depends on
 `test-cabinet-gg`, so a package-scoped build such as `-p test-cabinet-cli`, the
 release binaries, or the desktop app needs none of it.

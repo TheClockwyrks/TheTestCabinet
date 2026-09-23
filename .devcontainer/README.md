@@ -22,9 +22,9 @@ offers — is reflected out of that arm's own SDK by that arm's own documentatio
 tool (`tsc`, griffe, YARD, `purs`, javadoc, the Kotlin front end, rustdoc,
 `swiftc -emit-symbol-graph`, `clang++ -ast-dump=json`, Roslyn), and
 `crates/gg/build.rs` does that reflection **as a step of building the crate**
-rather than reading a committed copy. So a container missing them cannot build
-the workspace, cannot lint it, and fails the pre-commit hooks that run both. A
-prerequisite for working in the repository at all belongs in the image.
+rather than reading a committed copy. So a container missing them can neither
+build the workspace nor lint it. A prerequisite for working in the repository at
+all belongs in the image.
 
 The mechanism is the same one Node and Rust use — a thin
 [`languages/gg/install.sh`](languages/gg/install.sh) copied in and run by
