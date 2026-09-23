@@ -150,12 +150,17 @@ things have to hold for a cached read to happen, and gg does both.
 
 The request has to reach the endpoint that holds the cache, and it has to stay
 on the provider the run's cost is recorded against. Every request carries
-OpenRouter's `provider` object with `only` naming the one provider slug the
-launch pinned the model to, and `allow_fallbacks` false. The pin is the model
-developer's own endpoint. A response from any other provider ends the run as a
-harness failure, `provider_mismatch`, naming the pinned provider and the one
-that served the call, because the cost recorded from that point would be on a
-different price basis.
+OpenRouter's `provider` object with `only` naming the one provider the launch
+pinned the model to, and `allow_fallbacks` false. The pin is the model
+developer's own endpoint. Every request of the run carries it, including a
+subagent's and a handoff compaction's.
+
+A response from any other provider ends the run as a harness failure, because
+the cost recorded from that point would be on a different price basis. The turn
+is recorded as a `model_provider_mismatch` error, the session record's model
+error as `provider_mismatch`, and both name the pinned provider and the one that
+served the call. The two are compared ignoring case and punctuation, so `z-ai`
+and `Z.AI` are one provider.
 
 Within that provider, every client in a run stamps the same `session_id`, the
 run's session id, shared by the root agent and every

@@ -11,9 +11,8 @@ edit that takes effect immediately, with nothing to commit, build, or release.
 
 Every run is pinned to the model developer's own OpenRouter provider, and nowhere
 else. A model whose official endpoint OpenRouter does not list, or which the
-account's privacy settings exclude, is not testable. Enqueue refuses it, and the
-console shows the reason on the model, rather than launching it on another
-provider.
+account's privacy settings exclude, is not testable. Enqueue refuses it with the
+reason rather than launching it on another provider.
 
 The full walkthrough is
 [Adding or Updating a Model](/guides/devops/adding-or-updating-a-model/).
@@ -55,11 +54,15 @@ Prices are recorded by the backend rather than edited here: when the model is
 saved, when a run using it is enqueued, when a run completes, and on a 24-hour
 refresh. The model's Stats tab shows the latest per-Mtok rates.
 
-At enqueue the backend resolves the provider pin with the context window. The
-catalog entry carries the provider slug, seeded from OpenRouter's endpoints
-listing by taking the endpoint whose provider is the model's developer. Set the
-slug by hand where that listing's name does not match the author segment of the
-model id. A model with no official endpoint refuses the enqueue with the reason.
+The catalog records each model's provider pin with its prices, from OpenRouter's
+endpoints listing: the endpoint whose `provider_name` matches the author segment
+of the model id, ignoring case and punctuation. The model's Stats tab shows the
+pin, or "no official endpoint" when the listing has none. Where the developer's
+listing name does not match the id (`qwen/…` served by `Alibaba`), enter it in
+the form's Provider pin field; a pin set there wins over the observed one.
+
+At enqueue the backend resolves the pin with the context window and stamps both
+onto the launch. A model with no pin refuses the enqueue, naming the model.
 
 ## Verify
 

@@ -486,11 +486,12 @@ Each capability page states which of its params are required and what an optiona
 one's absence turns off.
 
 The invocation also carries `modelProviders`, keyed by model id on the same terms
-as `modelWindows`. Each entry names the one OpenRouter provider slug that model's
-requests go to. A bound model missing from the map refuses the launch, and the
-refusal names every missing pin together. The backend stamps the map at enqueue.
-A model whose official endpoint is not listed is refused there, so it never
-reaches this check as a failed run.
+as `modelWindows`. Each entry names the one OpenRouter provider that model's
+requests go to, spelled as OpenRouter's endpoints listing spells its
+`provider_name` (`OpenAI`, `Z.AI`). A bound model missing from the map refuses
+the launch, and the refusal names every missing pin together. A `mock/…` model
+sends no request and needs no pin. The backend stamps the map at enqueue, and a
+model with no official endpoint is refused there.
 
 The check runs at the top of gg's own session frame, inside the run container and
 before the first turn, so a refusal costs no model spend. It lives there and

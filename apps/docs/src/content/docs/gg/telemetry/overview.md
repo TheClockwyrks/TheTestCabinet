@@ -63,12 +63,12 @@ The telemetry must let a console display:
 ## The opening event
 
 `session_started` is the first event of a session and carries the run's whole
-[capability set](/gg/overview/#the-capability-set), and `modelProviders`, the
-OpenRouter provider slug each bound model is pinned to, beside the session id. A
-console therefore shapes itself to the run from the moment it starts watching,
-rather than once the run record lands, and a reader can see which provider the
-run's cost is recorded against before the first request. A stream that omits the
-capability set falls back to the set recorded on the run record.
+[capability set](/gg/overview/#the-capability-set) and `modelProviders`, the
+OpenRouter provider each bound model is pinned to. A console therefore shapes
+itself to the run from the moment it starts watching, rather than once the run
+record lands, and a reader can see which provider the run's cost is recorded
+against before the first request. A stream that omits the capability set falls
+back to the set recorded on the run record, which records the pins as well.
 
 ## The channel
 
