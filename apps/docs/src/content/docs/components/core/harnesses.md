@@ -131,7 +131,7 @@ account subscription. The user signs in with the harness CLI itself in a trusted
 environment; The Test Cabinet performs no login and mints no tokens. A
 subscription carries no per-run provider charge. A harness that still reports an
 exact charge has that figure recorded as the run's actual cost; one that reports
-none leaves it unset.
+none records the comparable cost as its actual cost.
 
 Credentials and keys are supplied only as container secrets or copied-in files,
 and are never written into the seeded repository. Each harness's Authentication
@@ -197,12 +197,14 @@ figure and it becomes the run's actual cost, as described in [Harness-reported
 cost](/components/core/metrics/#harness-reported-cost). Harnesses that report no
 cost leave it unset.
 
-A run's comparable cost is computed from the model's curated list price, so the
-layer maps every harness's model ID to the model's catalog entry. Harnesses that
-route through OpenRouter already use OpenRouter model IDs and pass them through
-unchanged; harnesses that take a provider-native model ID have it mapped to its
-OpenRouter equivalent. Which case a harness falls into, and the exact mapping it
-applies, is documented on that harness's Metrics page.
+A run's comparable cost is computed from the list price on the model's catalog
+entry, found through the entry's aliases by the run's canonical model ID.
+Harnesses that route through OpenRouter use OpenRouter model IDs, with any
+`openrouter/` routing prefix and `:free`-style variant tag stripped; harnesses
+that take a provider-native model ID match an alias of their own harness family
+unchanged. The billed-rate lookup maps a provider-native ID to its OpenRouter
+equivalent. Which case a harness falls into, and the exact mapping it applies, is
+documented on that harness's Metrics page.
 
 ## Event reporting
 

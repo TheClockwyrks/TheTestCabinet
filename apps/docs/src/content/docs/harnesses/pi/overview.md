@@ -46,4 +46,4 @@ the run container under the same name. See
 
 The model ID is already an OpenRouter slug, so it resolves as-is to the catalog
 entry the comparable cost is priced from. Pi reports no run cost of its own, so
-a run carries no actual cost. See [Metrics](/harnesses/pi/metrics/).
+its actual cost equals the comparable cost. See [Metrics](/harnesses/pi/metrics/).

@@ -26,7 +26,8 @@ class. Reasoning is reported on its own key and tracked separately from
 ## Cost
 
 Codex reports no cost of its own, so the comparable cost is computed from the
-model's list price. The bare OpenAI model ID is prefixed with `openai/`, so
-`gpt-5.5` resolves to the catalog entry as `openai/gpt-5.5`, and the comparable
-cost is computed from the entry's list price applied to the recorded token
-classes. See [Metrics](/components/core/metrics/) for that contract.
+model's list price applied to the recorded token classes. The bare OpenAI model
+ID resolves to the catalog entry that lists it as a Codex alias, so `gpt-5.5` is
+priced from the entry carrying the `gpt-5.5` alias. The billed-rate lookup
+prefixes it with `openai/`, so `gpt-5.5` is observed on OpenRouter as
+`openai/gpt-5.5`. See [Metrics](/components/core/metrics/) for that contract.

@@ -62,7 +62,8 @@ A model record has these fields:
   enters them from the developer's own pricing page, and they are what a run's
   comparable cost is priced from. Fill from OpenRouter seeds the three rates
   from the official endpoint's listing, for confirmation or correction against
-  the pricing page.
+  the pricing page. The three rates are saved together with their date or not
+  at all, and a blank set on an existing model keeps the stored one.
 - Provider pin, the OpenRouter provider every gg run of the model is pinned to.
   Blank takes the official endpoint the catalog observes; set it where the
   developer's `provider_name` on the endpoints listing does not match the author
@@ -164,10 +165,9 @@ endpoint's billed rate:
   variant is a routing tag rather than a free run.
 
 The observed billed rate never rewrites the list price and never changes what a
-run is scored at. It is what a run's billed side is read against, and the
-model's Stats tab shows the latest list price and billed rate side by side with
-the difference, so a discount, a price change, or a listing error is visible on
-the model rather than silently in the runs.
+run is scored at. The model's Stats tab shows the latest list price and billed
+rate side by side with the difference, so a discount, a price change, or a
+listing error is visible on the model rather than silently in the runs.
 
 ## Catalog facts recorded with each observation
 

@@ -45,5 +45,5 @@ same name. See [Authentication](/harnesses/opencode/authentication/).
 
 The leading `openrouter/` is stripped before the catalog lookup, so
 `openrouter/minimax/minimax-m3` is priced as `minimax/minimax-m3`. OpenCode
-reports no run cost of its own, so a run carries no actual cost. See
+reports no run cost of its own, so its actual cost equals the comparable cost. See
 [Metrics](/harnesses/opencode/metrics/).

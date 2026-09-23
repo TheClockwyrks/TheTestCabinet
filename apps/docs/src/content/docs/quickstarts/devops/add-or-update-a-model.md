@@ -38,7 +38,7 @@ The full walkthrough is
    uncached input, cached input, and output rates per Mtok, and the date the
    figures were taken. Fill from OpenRouter seeds the three rates from the
    official provider endpoint's listing; confirm or correct them against the
-   pricing page.
+   pricing page. Save refuses a partial or undated set.
 5. Check the result and adjust the wording. A display name is required. Add one
    model id per alias, each paired with the harness family it works with (Claude
    Code, Codex, Antigravity, or Others/OpenRouter) so the run form offers a

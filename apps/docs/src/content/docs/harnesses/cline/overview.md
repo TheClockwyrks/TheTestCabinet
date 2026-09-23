@@ -48,5 +48,5 @@ Cline's model IDs are already OpenRouter slugs, so they resolve to the catalog
 entry whose list price yields the comparable cost. A trailing variant tag such
 as `:free` selects a pricing route rather than a different model, so it is
 stripped and the model is priced at its list price. Cline reports no run cost of
-its own, so a run carries no actual cost. See
+its own, so its actual cost equals the comparable cost. See
 [Metrics](/harnesses/cline/metrics/).

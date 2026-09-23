@@ -80,7 +80,14 @@ Every run records cost two ways:
   the figure is stable across providers and discounts rather than tracking what
   one provider happened to bill.
 - The actual cost charged for the run, recorded alongside the comparable cost
-  for reference, from the harness's own accounting where it reports one.
+  for reference. It is the harness's own accounting where the harness reports
+  one, and equal to the comparable cost otherwise.
+
+The backend resolves the model's list price when a run is enqueued and stamps it
+onto the launch, so a run is scored at the list price its model carried at
+enqueue. A launch naming a model with no list price is refused. A gg run is
+scored at the list price of the model it is published under, and every model its
+capability set binds must carry one.
 
 Comparable cost is derived from the recorded token classes and the list price's
 rates for uncached input, cached input, and output, with reasoning tokens priced
@@ -95,8 +102,10 @@ reached us is recorded as unknown rather than as `$0.00`.
 
 Beside the curated list price, the [backend](/components/backend/overview/)
 records the official provider endpoint's billed rate as a per-model history: the
-rates per Mtok the model's OpenRouter endpoints listing shows at that moment,
-with the date, the provider pin, and the catalog facts observed alongside. An
+rates the model's OpenRouter endpoints listing shows at that moment for the
+endpoint its provider pin names, with the date, the provider pin, and the catalog
+facts observed alongside. A model with no priced official endpoint records the
+listing's headline rate. An
 observation is recorded when a run completes, missing-only when a model is saved
 or first enqueued, and on a 24-hour periodic refresh, and is appended only when
 the observed facts changed.
