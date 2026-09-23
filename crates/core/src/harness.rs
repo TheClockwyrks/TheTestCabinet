@@ -608,11 +608,11 @@ pub struct HarnessOutcome {
     ///
     /// Harnesses that drive a single provider directly through an API key (for
     /// example Claude Code, which reports `total_cost_usd`) emit the exact
-    /// amount charged. Because such a harness talks to one provider at one
-    /// price, this figure is both the actual charge and a provider-stable
-    /// comparable value, so the orchestrator uses it directly and skips the
-    /// OpenRouter price lookup. Harnesses that do not report a cost leave this
-    /// `None` and fall back to OpenRouter-derived pricing.
+    /// amount charged. The figure is what the run was billed, so the run engine
+    /// records it as the actual cost; the comparable cost is computed from the
+    /// model's curated list price regardless. Harnesses that do not report a
+    /// cost leave this `None`, and the actual cost falls back to the comparable
+    /// figure.
     pub reported_cost: Option<f64>,
     /// Every raw output line the harness produced, in arrival order, recorded so
     /// a run can persist the untranslated stream alongside its translation.

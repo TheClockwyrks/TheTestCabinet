@@ -157,10 +157,10 @@ use test_cabinet_core::gg::{
     CAPABILITY_SUBAGENTS, DEFAULT_SIGNAL_THRESHOLD_PERCENT, GG_WORKSPACE_SKILLS_DIR, GgAgentApi,
     GgAgentApiFunction, GgAgentConfig, GgAgentStatus, GgAgentTransitionKind, GgCallFailure,
     GgCapabilitySet, GgContextAction, GgContextSource, GgHookAgentKind, GgHookEvent,
-    GgIssueReviewPhase, GgLimitBreach, GgLimitKind, GgProgramLanguage, GgReasoning, GgReviewer,
-    GgRosterEntry, GgRunLimits, GgSlotBinding, GgSubagentScope, GgTelemetryKind,
-    GgUndocumentedCalls, GgUsageFigure, MAX_OPENING_TREE_DEPTH, PARAM_SIGNAL_THRESHOLD_PERCENT,
-    PARAM_SKILLS_DIR, PARAM_TOP_FILE_VIEWS, PARAM_WINDOW_LIMIT,
+    GgIssueReviewPhase, GgLimitBreach, GgLimitKind, GgProgramLanguage, GgProviderCandidate,
+    GgReasoning, GgReviewer, GgRosterEntry, GgRunLimits, GgSlotBinding, GgSubagentScope,
+    GgTelemetryKind, GgUndocumentedCalls, GgUsageFigure, MAX_OPENING_TREE_DEPTH,
+    PARAM_SIGNAL_THRESHOLD_PERCENT, PARAM_SKILLS_DIR, PARAM_TOP_FILE_VIEWS, PARAM_WINDOW_LIMIT,
     PROJECT_MANAGEMENT_PARAM_MERGE_AGENT,
 };
 use test_cabinet_core::gg_session_journal::GG_SESSION_JOURNAL_PATH;
@@ -196,8 +196,8 @@ use crate::git;
 use crate::hooks::{HookAgent, HookFailure, HookRuntime};
 use crate::limits::{
     AgentLimits, CeilingLatch, FatalFault, RunLimits, RunSpend, TurnErrorType, TurnOutcome,
-    declared_model_call_timeout, declared_model_stream_idle, declared_retry_policy,
-    resolve_run_limits,
+    declared_model_call_timeout, declared_model_stream_idle, declared_provider_cache_miss_limit,
+    declared_retry_policy, resolve_run_limits,
 };
 use crate::loopguard::LoopGuardConfig;
 use crate::memories::{MemoriesRuntime, MemoryRegistry, MemoryScope, MemoryStrategy};
@@ -857,6 +857,7 @@ pub async fn run(invocation: &GgInvocation, emitter: &Emitter) -> SessionOutcome
             declared_model_stream_idle(&invocation.capability_set.limits),
             declared_retry_policy(&invocation.capability_set.limits),
             invocation.model_providers.clone(),
+            declared_provider_cache_miss_limit(&invocation.capability_set.limits),
         ),
     )
     .await
@@ -909,7 +910,8 @@ impl SessionSeams {
         model_call_timeout: Duration,
         model_stream_idle: Duration,
         retry_policy: crate::client::RetryPolicy,
-        model_providers: BTreeMap<String, String>,
+        model_providers: BTreeMap<String, Vec<GgProviderCandidate>>,
+        cache_miss_limit: u64,
     ) -> Self {
         let routing_key = RoutingKey::mint();
         Self {
@@ -919,6 +921,7 @@ impl SessionSeams {
                 model_stream_idle,
                 retry_policy,
                 model_providers,
+                cache_miss_limit,
             )),
             shell: real_shell(),
             routing_key,
@@ -9364,6 +9367,7 @@ fn recorded_limits(limits: &RunLimits, max_parallel: usize) -> GgRunLimits {
         max_error_rate: limits.error_rate.map(|rate| rate.max_rate),
         error_rate_window: limits.error_rate.map(|rate| rate.window as u64),
         max_cost: limits.max_cost,
+        provider_cache_miss_limit: Some(limits.provider_cache_miss_limit),
         // Recorded on the same terms as the error ceilings: the capture ceiling in force is a fact
         // about the run, and a truncated record is far easier to read beside the number that
         // truncated it.
@@ -10956,31 +10960,32 @@ fn validate_model_windows(
     ))
 }
 
-/// Check that every model `set` binds names the one OpenRouter provider its requests are pinned
-/// to, reporting every missing pin together.
+/// Check that every model `set` binds carries a [usable](GgProviderCandidate::usable_list)
+/// candidate list, reporting every model without one together.
 ///
 /// A model the [mock client](crate::client::ProviderKind::Mock) answers is exempt: it sends no
-/// request, so there is no provider to pin.
+/// request, so there is no provider to name.
 fn validate_model_providers(
     set: &GgCapabilitySet,
-    providers: &BTreeMap<String, String>,
+    providers: &BTreeMap<String, Vec<GgProviderCandidate>>,
 ) -> Result<(), String> {
     let missing: Vec<&str> = set
         .bound_model_ids()
         .into_iter()
         .filter(|id| provider_for(&GgSlotBinding::new("", *id)) != ProviderKind::Mock)
         .filter(|id| {
-            providers
+            !providers
                 .get(*id)
-                .is_none_or(|provider| provider.trim().is_empty())
+                .is_some_and(|candidates| GgProviderCandidate::usable_list(candidates))
         })
         .collect();
     if missing.is_empty() {
         return Ok(());
     }
     Err(format!(
-        "the invocation carries no provider pin for the model(s) {}: every bound model needs a \
-         `modelProviders` entry naming its developer's own OpenRouter provider",
+        "the invocation carries no usable provider candidate list for the model(s) {}: every \
+         bound model needs a `modelProviders` entry listing at least one candidate, each naming \
+         a provider and a quantization",
         missing
             .iter()
             .map(|id| format!("`{id}`"))

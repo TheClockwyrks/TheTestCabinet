@@ -15,6 +15,10 @@ namespace: tcab-prod
 
 resources:
   - ../../base
+  # The Namespace and the observability stack's node-metrics grant are cluster-scoped,
+  # so they live under ../../cluster rather than in the base and its components.
+  - ../../cluster/namespace
+  - ../../cluster/observability
 
 # Run the observability stack (Grafana LGTM) in-cluster; patch-otel.yaml below points
 # every workload's OTEL_EXPORTER_OTLP_ENDPOINT at the `tcab-lgtm` Service it adds.

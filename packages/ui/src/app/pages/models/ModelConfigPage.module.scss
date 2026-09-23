@@ -74,6 +74,18 @@
   min-height: 9rem;
 }
 
+// A one-name-per-line list: a few rows, not a prose field.
+.textareaShort {
+  min-height: 5rem;
+}
+
+// A hint that qualifies a whole row of fields rather than one field, set under
+// the row with the same rhythm a field's own bottom margin gives.
+.fieldBlockHint {
+  display: block;
+  margin: calc(-1 * #{t.$space-md}) 0 t.$space-lg;
+}
+
 // --- OpenRouter fill-in --------------------------------------------------------
 
 // The slug input and its fill action on one line, wrapping when cramped — the
@@ -122,6 +134,22 @@
   color: t.$color-negative;
   font-size: t.$font-sm;
   @include h.halo;
+}
+
+// --- List price ---------------------------------------------------------------
+
+// The three per-Mtok figures plus the taken-on date on one row, wrapping when
+// cramped — one price triple reads as a unit, not four scattered fields.
+.priceRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: t.$space-md;
+}
+
+.priceField {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
 }
 
 // --- Aliases: a repeatable id list --------------------------------------------

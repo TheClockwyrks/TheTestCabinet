@@ -1373,7 +1373,7 @@ async fn plan_top_up_locked(
     // Before the scheduler decides anything: a gg member whose models the catalog cannot
     // answer for has to be unlaunchable *now*, or it spends buffer and capacity on runs that
     // are never enqueued and starves the members that could have used them.
-    resolve_gg_launch_facts(state, &mut combos).await;
+    resolve_launch_facts(state, &mut combos).await;
     let slugs: Vec<String> = cases.iter().map(|c| c.slug.clone()).collect();
     // A coverage plan has no gate, so a run whose build never loaded still wants a
     // human to look at it and still occupies a buffer slot. Only a ladder, which can
@@ -2128,8 +2128,9 @@ pub(super) fn cells_in_order<'a>(
     cells
 }
 
-/// Resolve every launchable gg member's [per-model catalog facts](super::jobs::GgModelFacts),
-/// marking a member whose bound models the catalog cannot answer for as unlaunchable.
+/// Resolve every launchable member's launch facts, marking a member the catalog cannot
+/// answer for as unlaunchable: a gg member's [per-model catalog facts](super::jobs::GgModelFacts),
+/// and a harness member's model's list price.
 ///
 /// Run by the two paths that are about to **launch** — a plan's top-up and a ladder's — and
 /// before either asks the scheduler what to emit. That ordering is the point. The scheduler
@@ -2142,13 +2143,39 @@ pub(super) fn cells_in_order<'a>(
 ///
 /// The facts are kept on the member so the enqueue does not resolve them again per cell: one
 /// member launched across eight cases is one resolution, not eight.
-pub(super) async fn resolve_gg_launch_facts(state: &AppState, members: &mut [PlanMember]) {
+pub(super) async fn resolve_launch_facts(state: &AppState, members: &mut [PlanMember]) {
+    // The stored gg runs every member's candidate lists are ordered by, loaded once per plan and
+    // only when a member launches gg.
+    let record = if members
+        .iter()
+        .any(|member| member.unlaunchable.is_none() && member.gg.is_some())
+    {
+        super::stats::recorded_run_facts(state).await
+    } else {
+        std::sync::Arc::new(Vec::new())
+    };
     for member in members {
         if member.unlaunchable.is_some() {
             continue;
         }
         let launch_model = member.launch_model.clone();
         let Some(gg) = member.gg.as_mut() else {
+            // A harness member is refused at enqueue when its model carries no list price,
+            // so it is refused here first, before the scheduler spends buffer on it. The
+            // price itself is stamped per cell at enqueue.
+            match state
+                .db
+                .list_price_for_run_model(&launch_model, member.combo.harness)
+                .await
+            {
+                Ok(Ok(_)) => {}
+                Ok(Err(reason)) => member.unlaunchable = Some(reason),
+                Err(err) => {
+                    member.unlaunchable = Some(format!(
+                        "could not read the model catalog's list price for `{launch_model}`: {err}"
+                    ));
+                }
+            }
             continue;
         };
         // Price the models the set binds before resolving their windows, exactly as the gg
@@ -2166,6 +2193,7 @@ pub(super) async fn resolve_gg_launch_facts(state: &AppState, members: &mut [Pla
         match super::jobs::gg_model_facts(
             &state.db,
             &state.prices,
+            &record,
             &gg.capability_set,
             &launch_model,
             HarnessSlug::Gg,
@@ -2667,6 +2695,9 @@ fn top_up_launch_body(cell: &TopUpCell<'_>) -> test_cabinet_core::LaunchBody {
             gg_model_windows: Default::default(),
             gg_model_providers: Default::default(),
             gg_model_modalities: Default::default(),
+            gg_model_prices: Default::default(),
+            // Stamped by `enqueue_top_up` once the body's model price resolves.
+            model_prices: None,
         },
     }
 }
@@ -2720,7 +2751,7 @@ pub(super) async fn enqueue_top_up(
         let mut body = top_up_launch_body(cell);
         match cell.member.gg.as_ref().map(|gg| gg.model_facts.clone()) {
             // The facts a caller about to launch resolved for this member up front (see
-            // [`resolve_gg_launch_facts`]) — the same figures a second resolution would
+            // [`resolve_launch_facts`]) — the same figures a second resolution would
             // produce, minus a round-trip per cell.
             Some(Some(facts)) => facts.apply(&mut body),
             // A gg cell whose member was never put through that pass: resolve here rather
@@ -2733,14 +2764,32 @@ pub(super) async fn enqueue_top_up(
                     &super::jobs::launch_models(&body),
                 )
                 .await;
-                if let Err(reason) =
-                    super::jobs::resolve_gg_model_facts(&state.db, &state.prices, &mut body).await
+                let record = super::jobs::candidate_record(state, [&body]).await;
+                if let Err(reason) = super::jobs::resolve_gg_model_facts(
+                    &state.db,
+                    &state.prices,
+                    &record,
+                    &mut body,
+                )
+                .await
                 {
                     blocked.push(cell.blocked(reason));
                     continue;
                 }
             }
-            None => {}
+            None => {
+                // A non-gg cell: stamp the model's curated list price onto the
+                // launch, blocking the cell when the model has none (a gg cell's
+                // per-bound-model prices ride in the facts above).
+                match super::jobs::resolve_model_price(&state.db, &body).await {
+                    Ok(Some(prices)) => body.model_prices = Some(prices),
+                    Ok(None) => {}
+                    Err(reason) => {
+                        blocked.push(cell.blocked(reason));
+                        continue;
+                    }
+                }
+            }
         }
         // The case's type is lifted onto the job so the queue can serialize the run
         // types that must not overlap (a game jam per model). A version that is not

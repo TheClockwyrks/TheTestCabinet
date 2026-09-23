@@ -17,10 +17,12 @@
 #                          component's tcab-lgtm), each with a cert-manager-issued TLS
 #                          cert. The grafana route depends on the observability
 #                          component + the azure-prod overlay's auth-lockdown patch.
-#   3. clusterissuer.yaml — the cert-manager ClusterIssuer (Let's Encrypt prod,
-#                          Cloudflare DNS-01) the Ingresses reference.
-#   4. networkpolicy.yaml — admits the ingress-nginx namespace through the base's
+#   3. networkpolicy.yaml — admits the ingress-nginx namespace through the base's
 #                          default-deny-ingress to each routed service + tcab-web.
+#
+# The cert-manager ClusterIssuer the Ingresses reference (Let's Encrypt prod,
+# Cloudflare DNS-01) is cluster-scoped, so it lives in ../../cluster/internal-ingress
+# and is applied with the other cluster prerequisites.
 #
 # Prerequisites (out of band — see task-4 / the deployment runbook): the ingress-nginx
 # controller (Azure internal LB) and cert-manager (with CRDs) are Helm-installed, the
@@ -40,5 +42,4 @@ components:
 
 resources:
   - ingress.yaml
-  - clusterissuer.yaml
   - networkpolicy.yaml

@@ -482,7 +482,7 @@ fn auto_falls_back_to_a_release_download() {
     assert_eq!(
         install,
         GgInstall::Release {
-            repo: "TheClockwyrks/test-cabinet".to_string(),
+            base_url: "https://testcabinetartifacts.blob.core.windows.net/gg-releases".to_string(),
             version: "0.7.0".to_string(),
             // The default release asset is the fully static musl build (see
             // `resolve_install_with`), so one asset runs across every run-container image.
@@ -497,7 +497,7 @@ fn release_mode_forces_a_release_even_with_a_local_build_present() {
     let env = env_map(&[
         ("TCAB_GG_INSTALL", "release"),
         ("TCAB_GG_RELEASE_VERSION", "0.9.1"),
-        ("TCAB_GG_RELEASE_REPO", "acme/gg"),
+        ("TCAB_GG_RELEASE_URL", "https://mirror.example.com/gg"),
         ("TCAB_GG_RELEASE_TARGET", "x86_64-unknown-linux-musl"),
     ]);
     // Even though a local build "exists", the mode override wins.
@@ -506,7 +506,7 @@ fn release_mode_forces_a_release_even_with_a_local_build_present() {
     assert_eq!(
         install,
         GgInstall::Release {
-            repo: "acme/gg".to_string(),
+            base_url: "https://mirror.example.com/gg".to_string(),
             version: "0.9.1".to_string(),
             target: "x86_64-unknown-linux-musl".to_string(),
             container_path: "/tmp/gg".to_string(),
@@ -559,32 +559,130 @@ fn an_unrecognized_install_mode_is_refused() {
 #[test]
 fn release_download_command_builds_the_expected_url_and_script() {
     let script = release_download_command(
-        "TheClockwyrks/test-cabinet",
+        DEFAULT_RELEASE_BASE_URL,
         "0.7.0",
         "x86_64-unknown-linux-gnu",
         "/tmp/gg",
     );
     assert!(script.contains(
-        "https://github.com/TheClockwyrks/test-cabinet/releases/download/v0.7.0/gg-x86_64-unknown-linux-gnu"
+        "https://testcabinetartifacts.blob.core.windows.net/gg-releases/v0.7.0/gg-x86_64-unknown-linux-gnu"
     ));
     assert!(script.contains("--output /tmp/gg"));
     assert!(script.contains("chmod 0755 /tmp/gg"));
 }
 
-/// The asset URL is the contract with `.github/workflows/release.yml`: the release is
-/// cut at the tag `v{version}` and gg is uploaded to it as a bare `gg-{target}`
-/// executable. Pinning the whole string here means a change to either half of that
-/// convention has to be made deliberately, in a place that names the workflow.
+/// The asset URL is the contract with the Azure pipeline's gg upload
+/// (`scripts/ci/publish-gg.sh`): each release is published under a `v{version}/` prefix
+/// of the release container, with gg as a bare `gg-{target}` executable. Pinning the
+/// whole string here means a change to either half of that layout has to be made
+/// deliberately, in a place that names the upload script.
 #[test]
-fn the_release_asset_url_names_the_version_tag_not_a_gg_prefixed_one() {
+fn the_release_asset_url_is_the_versioned_object_in_the_release_container() {
     assert_eq!(
         release_asset_url(
-            "TheClockwyrks/test-cabinet",
+            DEFAULT_RELEASE_BASE_URL,
             "0.7.0",
             "aarch64-unknown-linux-musl"
         ),
-        "https://github.com/TheClockwyrks/test-cabinet/releases/download/v0.7.0/gg-aarch64-unknown-linux-musl"
+        "https://testcabinetartifacts.blob.core.windows.net/gg-releases/v0.7.0/gg-aarch64-unknown-linux-musl"
     );
+    // A trailing slash on the base joins cleanly rather than doubling up.
+    assert_eq!(
+        release_asset_url(
+            "https://mirror.example.com/gg/",
+            "0.7.0-rc1",
+            "x86_64-unknown-linux-musl"
+        ),
+        "https://mirror.example.com/gg/v0.7.0-rc1/gg-x86_64-unknown-linux-musl"
+    );
+}
+
+/// With nothing overridden, a release downloads from the `gg-releases` blob container (not
+/// `gg`: Azure refuses a container name shorter than three characters).
+#[test]
+fn the_default_release_base_is_the_blob_container() {
+    assert_eq!(
+        DEFAULT_RELEASE_BASE_URL,
+        "https://testcabinetartifacts.blob.core.windows.net/gg-releases"
+    );
+    let install = resolve_install_with(
+        env_map(&[("TCAB_GG_INSTALL", "release")]),
+        |_: &Path| false,
+        "0.7.0",
+        "x86_64",
+    )
+    .unwrap();
+    let GgInstall::Release { base_url, .. } = install else {
+        panic!("release mode must resolve to a release install");
+    };
+    assert_eq!(base_url, DEFAULT_RELEASE_BASE_URL);
+}
+
+/// `TCAB_GG_RELEASE_URL` redirects the download to another base (a mirror, or a staging
+/// container), and the script the container runs fetches from there.
+#[test]
+fn the_release_url_override_redirects_the_download() {
+    let install = resolve_install_with(
+        env_map(&[
+            ("TCAB_GG_INSTALL", "release"),
+            (
+                "TCAB_GG_RELEASE_URL",
+                "https://staging.example.com/gg-releases",
+            ),
+        ]),
+        |_: &Path| false,
+        "0.7.0",
+        "x86_64",
+    )
+    .unwrap();
+    let GgInstall::Release {
+        base_url,
+        version,
+        target,
+        container_path,
+    } = &install
+    else {
+        panic!("release mode must resolve to a release install");
+    };
+    assert_eq!(base_url, "https://staging.example.com/gg-releases");
+    let script = release_download_command(base_url, version, target, container_path);
+    assert!(
+        script.contains(
+            "https://staging.example.com/gg-releases/v0.7.0/gg-x86_64-unknown-linux-musl"
+        ),
+        "the download must come from the override: {script}"
+    );
+    assert!(!script.contains("blob.core.windows.net"), "{script}");
+}
+
+/// An operator-written base with a trailing slash (or stray whitespace) resolves to the same
+/// base as without, and an empty or whitespace-only value counts as unset, like the other
+/// release variables.
+#[test]
+fn the_release_url_override_tolerates_a_trailing_slash_and_ignores_an_empty_value() {
+    let base = |value: &str| {
+        let pairs = [
+            ("TCAB_GG_INSTALL", "release"),
+            ("TCAB_GG_RELEASE_URL", value),
+        ];
+        let GgInstall::Release { base_url, .. } =
+            resolve_install_with(env_map(&pairs), |_: &Path| false, "0.7.0", "x86_64").unwrap()
+        else {
+            panic!("release mode must resolve to a release install");
+        };
+        base_url
+    };
+    assert_eq!(
+        base("https://mirror.example.com/gg/"),
+        "https://mirror.example.com/gg"
+    );
+    assert_eq!(
+        base(" https://mirror.example.com/gg// "),
+        "https://mirror.example.com/gg"
+    );
+    assert_eq!(base(""), DEFAULT_RELEASE_BASE_URL);
+    assert_eq!(base("   "), DEFAULT_RELEASE_BASE_URL);
+    assert_eq!(base("/"), DEFAULT_RELEASE_BASE_URL);
 }
 
 /// A release install with nothing overridden must resolve to a version that could
@@ -625,13 +723,18 @@ fn gg_request(model: &str) -> RunRequest {
         gg_model_windows: std::collections::BTreeMap::from([(model.to_string(), 200_000)]),
         gg_model_providers: std::collections::BTreeMap::from([(
             model.to_string(),
-            model.split(['/', ':']).next().unwrap_or(model).to_string(),
+            vec![crate::gg::GgProviderCandidate::new(
+                model.split(['/', ':']).next().unwrap_or(model),
+                "fp8",
+            )],
         )]),
         // And the input modalities the catalog observed for it.
         gg_model_modalities: std::collections::BTreeMap::from([(
             model.to_string(),
             vec!["text".to_string(), "image".to_string()],
         )]),
+        gg_model_prices: std::collections::BTreeMap::new(),
+        model_prices: None,
     }
 }
 

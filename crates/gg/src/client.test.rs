@@ -105,22 +105,24 @@ fn build_request_body_omits_tools_when_none() {
     assert!(body.get("tool_choice").is_none());
 }
 
-/// A pinned provider rides as OpenRouter's `provider` object: `only` names that one slug
-/// and fallbacks are refused, so a run cannot be moved onto another provider's price basis.
-/// The routing key stays beside it — it still keeps the run on one endpoint within the pin.
+/// A candidate rides as OpenRouter's `provider` object: `only` names that one slug,
+/// `quantizations` its level, and fallbacks are refused, so a run cannot be moved onto
+/// another provider. The routing key stays beside it.
 #[test]
 fn build_request_body_pins_the_provider_and_refuses_fallbacks() {
     let key = RoutingKey::mint();
+    let candidate = test_cabinet_core::gg::GgProviderCandidate::new("openai", "fp8");
     let body = build_request_body(
         "openai/gpt-5.6",
         &[Message::user("hi")],
         &[],
         Some(&key),
-        Some("openai"),
+        Some(&candidate),
         CacheTtl::Standard,
         None,
     );
     assert_eq!(body["provider"]["only"], json!(["openai"]));
+    assert_eq!(body["provider"]["quantizations"], json!(["fp8"]));
     assert_eq!(body["provider"]["allow_fallbacks"], json!(false));
     assert_eq!(body["session_id"], json!(key.as_str()));
 
@@ -1171,7 +1173,7 @@ fn client_for_slot_builds_mock_for_mock_binding() {
         DEFAULT_MODEL_CALL_TIMEOUT,
         DEFAULT_MODEL_STREAM_IDLE,
         RetryPolicy::default(),
-        None,
+        &ProviderRoster::default(),
         &ToolChoiceMemory::default(),
         &AbandonedReplies::default(),
     )

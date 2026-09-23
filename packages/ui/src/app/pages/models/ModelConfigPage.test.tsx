@@ -35,6 +35,20 @@ const LISTING = {
   name: "Claude Sonnet 4.5",
   provider: "Anthropic",
   description: "A model for agents and coding workflows.",
+  // The official endpoint's current per-Mtok rates, which the fill seeds the
+  // list-price fields from.
+  inputPerMtok: 3,
+  cachedInputPerMtok: 0.3,
+  outputPerMtok: 15,
+};
+
+// A listing whose endpoint publishes no rates at all: the fill leaves the
+// list-price block to the operator.
+const UNPRICED_LISTING = {
+  ...LISTING,
+  inputPerMtok: null,
+  cachedInputPerMtok: null,
+  outputPerMtok: null,
 };
 
 function galleryValue(modelsStatus = "ready"): GalleryDataInput {
@@ -70,7 +84,7 @@ function backendValue(
 
 function renderPage(
   lookupOpenrouterModel = vi.fn().mockResolvedValue(LISTING),
-  createModel = vi.fn(),
+  createModel = vi.fn().mockResolvedValue({ slug: "claude-sonnet-4-5" }),
 ) {
   render(
     <MemoryRouter initialEntries={["/models/new"]}>
@@ -99,6 +113,10 @@ const nameInput = () => screen.getByPlaceholderText("e.g. Claude Opus 4.8");
 const providerInput = () => screen.getByPlaceholderText("e.g. Anthropic");
 const descriptionInput = () =>
   screen.getByPlaceholderText("What the model is, when to reach for it…");
+const inputPriceInput = () => screen.getByLabelText("Input / Mtok");
+const cachedPriceInput = () => screen.getByLabelText("Cached input / Mtok");
+const outputPriceInput = () => screen.getByLabelText("Output / Mtok");
+const asOfInput = () => screen.getByLabelText("Prices taken on");
 const fillButton = () => screen.getByRole("button", { name: /fill/i });
 
 function typeSlug(slug: string) {
@@ -190,6 +208,150 @@ describe("ModelConfigPage's OpenRouter fill-in", () => {
     expect(fillButton()).not.toBeDisabled();
     await settle();
   });
+
+  it("seeds the list-price fields from the listing's official endpoint", async () => {
+    renderPage();
+    typeSlug("anthropic/claude-sonnet-4.5");
+    fireEvent.click(fillButton());
+
+    await waitFor(() => expect(inputPriceInput()).toHaveValue("3"));
+    expect(cachedPriceInput()).toHaveValue("0.3");
+    expect(outputPriceInput()).toHaveValue("15");
+    // The figures were just read off the live listing, so the taken-on date is
+    // today (UTC) unless the operator already dated them.
+    expect(asOfInput()).toHaveValue(new Date().toISOString().slice(0, 10));
+  });
+
+  it("seeds the list-price fields without floating-point noise", async () => {
+    // Per-token rates scaled to per Mtok come back as 0.12099999999999998.
+    renderPage(
+      vi.fn().mockResolvedValue({
+        ...LISTING,
+        inputPerMtok: 0.12099999999999998,
+        cachedInputPerMtok: 0.061000000000000006,
+        outputPerMtok: 0.24199999999999997,
+      }),
+    );
+    typeSlug("anthropic/claude-sonnet-4.5");
+    fireEvent.click(fillButton());
+
+    await waitFor(() => expect(inputPriceInput()).toHaveValue("0.121"));
+    expect(cachedPriceInput()).toHaveValue("0.061");
+    expect(outputPriceInput()).toHaveValue("0.242");
+  });
+
+  it("keeps the entered taken-on date when the fill seeds the prices", async () => {
+    renderPage();
+    fireEvent.change(asOfInput(), { target: { value: "2026-07-01" } });
+    typeSlug("anthropic/claude-sonnet-4.5");
+    fireEvent.click(fillButton());
+
+    await waitFor(() => expect(inputPriceInput()).toHaveValue("3"));
+    // An entered date records when *those* figures were taken; re-dating them
+    // to today would assert something the press does not know.
+    expect(asOfInput()).toHaveValue("2026-07-01");
+  });
+
+  it("leaves the list-price block blank when the endpoint lists no rates", async () => {
+    renderPage(vi.fn().mockResolvedValue(UNPRICED_LISTING));
+    typeSlug("anthropic/claude-sonnet-4.5");
+    fireEvent.click(fillButton());
+
+    await waitFor(() => expect(nameInput()).toHaveValue("Claude Sonnet 4.5"));
+    // An unlisted figure seeds nothing: the operator enters the developer's
+    // pricing page's figures by hand.
+    expect(inputPriceInput()).toHaveValue("");
+    expect(cachedPriceInput()).toHaveValue("");
+    expect(outputPriceInput()).toHaveValue("");
+    expect(asOfInput()).toHaveValue("");
+  });
+});
+
+describe("ModelConfigPage's list-price validation", () => {
+  const saveButton = () => screen.getByRole("button", { name: "Create model" });
+
+  function enterName() {
+    fireEvent.change(nameInput(), { target: { value: "Claude Sonnet 4.5" } });
+  }
+
+  it("submits a full price set as per-Mtok figures with the taken-on date", async () => {
+    const create = vi.fn().mockResolvedValue({ slug: "claude-sonnet-4-5" });
+    renderPage(vi.fn(), create);
+    enterName();
+    fireEvent.change(inputPriceInput(), { target: { value: "3" } });
+    fireEvent.change(cachedPriceInput(), { target: { value: "0.3" } });
+    fireEvent.change(outputPriceInput(), { target: { value: "15" } });
+    fireEvent.change(asOfInput(), { target: { value: "2026-08-01" } });
+    fireEvent.click(saveButton());
+
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    const body = create.mock.calls[0]![0];
+    expect(body.listPriceInputPerMtok).toBe(3);
+    expect(body.listPriceCachedInputPerMtok).toBe(0.3);
+    expect(body.listPriceOutputPerMtok).toBe(15);
+    expect(body.listPriceAsOf).toBe("2026-08-01");
+  });
+
+  it("blocks a partial price set before any request", async () => {
+    const create = vi.fn();
+    renderPage(vi.fn(), create);
+    enterName();
+    fireEvent.change(inputPriceInput(), { target: { value: "3" } });
+    fireEvent.click(saveButton());
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      /set all three list prices, or none/i,
+    );
+    expect(create).not.toHaveBeenCalled();
+    // The button is not busy-locked: fix the fields and save again.
+    expect(saveButton()).not.toBeDisabled();
+  });
+
+  it("blocks an undated price set before any request", async () => {
+    const create = vi.fn();
+    renderPage(vi.fn(), create);
+    enterName();
+    fireEvent.change(inputPriceInput(), { target: { value: "3" } });
+    fireEvent.change(cachedPriceInput(), { target: { value: "0.3" } });
+    fireEvent.change(outputPriceInput(), { target: { value: "15" } });
+    fireEvent.click(saveButton());
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      /date the list prices were taken/i,
+    );
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("blocks a negative figure with the field named", async () => {
+    const create = vi.fn();
+    renderPage(vi.fn(), create);
+    enterName();
+    fireEvent.change(inputPriceInput(), { target: { value: "3" } });
+    fireEvent.change(cachedPriceInput(), { target: { value: "-1" } });
+    fireEvent.change(outputPriceInput(), { target: { value: "15" } });
+    fireEvent.click(saveButton());
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      /Cached input \/ Mtok must be a non-negative number/,
+    );
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("sends all-null prices on a fully blank block", async () => {
+    const create = vi.fn().mockResolvedValue({ slug: "claude-sonnet-4-5" });
+    renderPage(vi.fn(), create);
+    enterName();
+    fireEvent.click(saveButton());
+
+    // A blank block is "not entered": nulls, which an update reads as
+    // preserving the stored price rather than clearing it.
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    const body = create.mock.calls[0]![0];
+    expect(body.listPriceInputPerMtok).toBeNull();
+    expect(body.listPriceCachedInputPerMtok).toBeNull();
+    expect(body.listPriceOutputPerMtok).toBeNull();
+    expect(body.listPriceAsOf).toBeNull();
+  });
 });
 
 describe("ModelConfigPage's save failure", () => {
@@ -262,5 +424,58 @@ describe("ModelConfigPage when the edited model does not resolve", () => {
   it("names the model unknown once the catalog has settled without it", () => {
     renderEdit("ready");
     expect(screen.getByText(/Unknown model: claude/)).toBeTruthy();
+  });
+});
+
+describe("ModelConfigPage's provider policy", () => {
+  const saveButton = () => screen.getByRole("button", { name: "Create model" });
+
+  it("saves the developer provider, native level, ceiling and provider lists", async () => {
+    const createModel = vi.fn().mockResolvedValue({ slug: "glm" });
+    renderPage(vi.fn(), createModel);
+    fireEvent.change(nameInput(), { target: { value: "GLM 5.3" } });
+    fireEvent.change(screen.getByLabelText("Developer provider"), {
+      target: { value: " Z.AI " },
+    });
+    fireEvent.change(screen.getByLabelText("Native quantization"), {
+      target: { value: "FP8" },
+    });
+    fireEvent.change(screen.getByLabelText("Price ceiling, input per Mtok"), {
+      target: { value: "0.6" },
+    });
+    fireEvent.change(screen.getByLabelText("Price ceiling, output per Mtok"), {
+      target: { value: "2.2" },
+    });
+    fireEvent.change(screen.getByLabelText("Banned providers"), {
+      target: { value: "Cheapo\n\n  Flaky  \n" },
+    });
+    fireEvent.change(screen.getByLabelText("Unknown-quantization providers"), {
+      target: { value: "Vague" },
+    });
+    fireEvent.click(saveButton());
+
+    await waitFor(() => expect(createModel).toHaveBeenCalled());
+    expect(createModel.mock.calls[0]![0]).toMatchObject({
+      providerPin: "Z.AI",
+      nativeQuantization: "fp8",
+      maxInputPrice: 0.6,
+      maxOutputPrice: 2.2,
+      bannedProviders: ["Cheapo", "Flaky"],
+      unknownQuantizationProviders: ["Vague"],
+    });
+  });
+
+  it("refuses half a price ceiling before saving", async () => {
+    const createModel = vi.fn();
+    renderPage(vi.fn(), createModel);
+    fireEvent.change(nameInput(), { target: { value: "GLM 5.3" } });
+    fireEvent.change(screen.getByLabelText("Price ceiling, input per Mtok"), {
+      target: { value: "0.6" },
+    });
+    fireEvent.click(saveButton());
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("both halves of the price ceiling");
+    expect(createModel).not.toHaveBeenCalled();
   });
 });

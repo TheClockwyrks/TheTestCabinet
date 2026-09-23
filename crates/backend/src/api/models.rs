@@ -71,19 +71,44 @@ pub struct ModelOut {
     /// family it is usable with (so a run form can offer only the slugs the
     /// selected harness can launch).
     pub aliases: Vec<AliasOut>,
-    /// The latest observed comparable price, or null when none is recorded.
+    /// The latest observed **billed rate** — what the official provider's
+    /// endpoint charges right now — or null when none is recorded. A run's
+    /// comparable cost is computed from [`list_price`](Self::list_price), not
+    /// this.
     pub price: Option<ModelPricesOut>,
+    /// The curated developer list price (per-token USD) a run's comparable cost
+    /// is computed from — all-or-nothing: `Some` only when all three prices are
+    /// set. Null for a derived or unpriced model.
+    pub list_price: Option<ModelPricesOut>,
+    /// The date the list-price figures were taken, as the operator recorded it,
+    /// or null.
+    pub list_price_as_of: Option<String>,
     /// The observed price history, ascending, consecutive-equal deduped.
     pub price_history: Vec<PriceObservationOut>,
     /// The latest observed context window in tokens, or null.
     pub context_length: Option<u64>,
-    /// The OpenRouter provider this model's requests are pinned to: the hand-set
-    /// override when one is set, otherwise the official endpoint observed on the listing.
-    /// Null means no official endpoint is known, and a launch of the model is refused.
+    /// The developer provider: the OpenRouter provider name of the model developer's own
+    /// endpoint. The hand-set one when the catalog entry sets it, otherwise the one last observed
+    /// on the endpoints listing. Null means none is known; a gg run's
+    /// [candidate list](https://docs.testcabinet.ai/gg/overview/#the-candidate-list) then takes
+    /// the catalog entry's price ceiling in place of the developer's rates.
     pub provider_pin: Option<String>,
-    /// Whether [`provider_pin`](Self::provider_pin) is the curated override rather than
-    /// the observed official endpoint.
+    /// Whether [`provider_pin`](Self::provider_pin) is set by hand on the catalog entry rather
+    /// than observed on the listing.
     pub provider_pin_set_by_hand: bool,
+    /// The native quantization set by hand (`fp8`, `bf16`, …), or null to take the highest
+    /// level any endpoint declares. Always null for a derived model.
+    pub native_quantization: Option<String>,
+    /// The input half of the price ceiling, USD per million tokens, used when OpenRouter lists no
+    /// developer endpoint. Null when no ceiling is set, and always for a derived model.
+    pub max_input_price: Option<f64>,
+    /// The output half of the price ceiling, USD per million tokens.
+    pub max_output_price: Option<f64>,
+    /// The providers a gg run of the model never uses. Empty for a derived model.
+    pub banned_providers: Vec<String>,
+    /// The providers accepted despite declaring `unknown` quantization. Empty for a derived
+    /// model.
+    pub unknown_quantization_providers: Vec<String>,
     /// The latest observed release date (RFC 3339), or null.
     pub released_at: Option<String>,
     /// The input modalities OpenRouter reports the model accepts (`text`,
@@ -154,12 +179,57 @@ pub struct ModelConfigInput {
     /// family it is usable with (at least one).
     pub aliases: Vec<AliasInput>,
     pub openrouter_slug: Option<String>,
-    /// The OpenRouter provider this model's requests are pinned to, set by hand where
-    /// the endpoints listing's name does not match the model id's author segment. Absent
-    /// means the observed listing name is the pin.
+    /// The developer provider: the OpenRouter provider name of the model developer's own
+    /// endpoint, set by hand where the endpoints listing's name does not match the model id's
+    /// author segment. Absent or blank takes the provider the listing names for that segment.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub provider_pin: Option<String>,
+    /// The native quantization every provider of a gg run's candidate list must serve the model
+    /// at (`fp8`, `bf16`, …). Absent or blank takes the highest level any endpoint declares; any
+    /// other value must be a level OpenRouter declares.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub native_quantization: Option<String>,
+    /// The input half of the price ceiling, USD per million tokens, used when OpenRouter lists no
+    /// developer endpoint. Set together with [`max_output_price`](Self::max_output_price) or not
+    /// at all, and positive.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub max_input_price: Option<f64>,
+    /// The output half of the price ceiling, USD per million tokens.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub max_output_price: Option<f64>,
+    /// The providers a gg run of the model never uses. Names are trimmed and blanks dropped.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub banned_providers: Option<Vec<String>>,
+    /// The providers accepted despite declaring `unknown` quantization. Names are trimmed and
+    /// blanks dropped.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub unknown_quantization_providers: Option<Vec<String>>,
+    /// The developer's published list price per **Mtok** of input, in USD — the
+    /// unit every developer pricing page publishes; the store carries per token.
+    /// The list-price write is all-or-nothing: all three prices (plus
+    /// `list_price_as_of`) or none; absent on update preserves the stored set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub list_price_input_per_mtok: Option<f64>,
+    /// The developer's published list price per **Mtok** of cached input, in USD.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub list_price_cached_input_per_mtok: Option<f64>,
+    /// The developer's published list price per **Mtok** of output, in USD.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub list_price_output_per_mtok: Option<f64>,
+    /// The date the operator took the list-price figures (trimmed; empty means
+    /// none).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub list_price_as_of: Option<String>,
     pub description: Option<String>,
     /// The stored provider-logo SVG (already fetched via `POST /models/logo`).
     pub logo_svg: Option<String>,
@@ -186,12 +256,13 @@ pub struct ModelSeedOut {
 }
 
 /// The `GET /models/openrouter` response: the descriptive facts OpenRouter
-/// publishes about a model, for the config form to fill itself in with.
-///
-/// Only the fields a curator would otherwise retype are here. Prices, the context
-/// window, and the modalities are deliberately absent: the backend records those
-/// itself from the same catalog (on save, on launch, and on the 24-hour refresh),
-/// so they are never form state to begin with.
+/// publishes about a model, for the config form to fill itself in with, plus the
+/// official endpoint's current prices scaled to per Mtok — the seed figures for
+/// the form's curated list-price fields (the whole point of the fill). An absent
+/// price is not an error: the field is null and the form leaves it for the
+/// operator. The context window and the modalities remain deliberately absent:
+/// the backend records those itself from the same catalog (on save, on launch,
+/// and on the 24-hour refresh), so they are never form state to begin with.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -202,6 +273,12 @@ pub struct ModelListingOut {
     pub provider: String,
     /// OpenRouter's prose description, or null when it publishes none.
     pub description: Option<String>,
+    /// The official endpoint's current input price per Mtok in USD, or null.
+    pub input_per_mtok: Option<f64>,
+    /// The official endpoint's current cached-input price per Mtok in USD, or null.
+    pub cached_input_per_mtok: Option<f64>,
+    /// The official endpoint's current output price per Mtok in USD, or null.
+    pub output_per_mtok: Option<f64>,
 }
 
 /// The `POST /models/logo` request/response.
@@ -310,6 +387,92 @@ async fn write_config(
         .openrouter_slug
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
+    let policy = normalize_provider_policy(
+        input.native_quantization.as_deref(),
+        input.max_input_price,
+        input.max_output_price,
+        input.banned_providers.as_deref().unwrap_or_default(),
+        input
+            .unknown_quantization_providers
+            .as_deref()
+            .unwrap_or_default(),
+    )
+    .map_err(ApiError::unprocessable)?;
+
+    // The list-price write is all-or-nothing: all three prices (finite, >= 0)
+    // plus the as-of date, or the model keeps whatever it had. The wire carries
+    // per-Mtok (the unit every developer pricing page publishes); the store
+    // carries per token.
+    let prices_in = [
+        input.list_price_input_per_mtok,
+        input.list_price_cached_input_per_mtok,
+        input.list_price_output_per_mtok,
+    ];
+    let as_of = input
+        .list_price_as_of
+        .map(|d| d.trim().to_string())
+        .filter(|d| !d.is_empty());
+    let (
+        list_price_input,
+        list_price_cached_input,
+        list_price_output,
+        list_price_as_of,
+        list_price_source,
+    ) = if prices_in.iter().all(Option::is_none) && as_of.is_none() {
+        // No list-price fields at all: preserve the stored set on update;
+        // store nothing on create.
+        let existing = state
+            .db
+            .get_model_config(&slug)
+            .await
+            .map_err(ApiError::from)?;
+        match existing {
+            Some(existing) => (
+                existing.config.list_price_input,
+                existing.config.list_price_cached_input,
+                existing.config.list_price_output,
+                existing.config.list_price_as_of,
+                existing.config.list_price_source,
+            ),
+            None => (None, None, None, None, None),
+        }
+    } else {
+        let [
+            Some(input_per_mtok),
+            Some(cached_per_mtok),
+            Some(output_per_mtok),
+        ] = prices_in
+        else {
+            return Err(ApiError::unprocessable(
+                "model list price is all-or-nothing: set listPriceInputPerMtok, listPriceCachedInputPerMtok, and listPriceOutputPerMtok together",
+            ));
+        };
+        for (field, value) in [
+            ("listPriceInputPerMtok", input_per_mtok),
+            ("listPriceCachedInputPerMtok", cached_per_mtok),
+            ("listPriceOutputPerMtok", output_per_mtok),
+        ] {
+            if !value.is_finite() || value < 0.0 {
+                return Err(ApiError::unprocessable(format!(
+                    "model.{field} must be a finite, non-negative price"
+                )));
+            }
+        }
+        let Some(as_of) = as_of else {
+            return Err(ApiError::unprocessable(
+                "model list price is dated: set listPriceAsOf to the date the prices were taken",
+            ));
+        };
+        (
+            Some(input_per_mtok / 1_000_000.0),
+            Some(cached_per_mtok / 1_000_000.0),
+            Some(output_per_mtok / 1_000_000.0),
+            Some(as_of),
+            // The operator typed/confirmed the set (the form's Fill merely
+            // seeds the same fields).
+            Some("hand".to_string()),
+        )
+    };
 
     state
         .db
@@ -325,6 +488,16 @@ async fn write_config(
                 .provider_pin
                 .map(|slug| slug.trim().to_string())
                 .filter(|slug| !slug.is_empty()),
+            native_quantization: policy.native_quantization,
+            max_input_price: policy.max_input_price,
+            max_output_price: policy.max_output_price,
+            banned_providers: policy.banned_providers,
+            unknown_quantization_providers: policy.unknown_quantization_providers,
+            list_price_input,
+            list_price_cached_input,
+            list_price_output,
+            list_price_as_of,
+            list_price_source,
             aliases,
             now,
         })
@@ -465,10 +638,18 @@ pub async fn openrouter(
         state.prices.model_listing(slug).await.map_err(|err| {
             ApiError::not_found(format!("looking up `{slug}` on OpenRouter: {err}"))
         })?;
+    // The official endpoint's current prices seed the form's list-price fields.
+    // A failure or absent price is not an error — the field is null and the form
+    // leaves it for the operator.
+    let official = state.prices.official_prices(slug).await.ok();
+    let per_mtok = |price: Option<f64>| price.map(|p| p * 1_000_000.0);
     Ok(Json(ModelListingOut {
         name: listing.name,
         provider: listing.provider,
         description: listing.description,
+        input_per_mtok: per_mtok(official.as_ref().and_then(|p| p.uncached_input)),
+        cached_input_per_mtok: per_mtok(official.as_ref().and_then(|p| p.cached_input)),
+        output_per_mtok: per_mtok(official.and_then(|p| p.output)),
     }))
 }
 
@@ -484,17 +665,90 @@ pub async fn logo(
     Ok(Json(LogoFetchOut { logo_svg }))
 }
 
-/// The hand-set provider of the curated model that claims `model_id`, when one is set.
+/// A catalog entry's provider policy as a write stores it: every field normalized, or the reason
+/// the write is refused.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(crate) struct ProviderPolicyWrite {
+    /// The native level, lowercased, or `None` for blank.
+    pub native_quantization: Option<String>,
+    /// The input half of the ceiling, USD per million tokens.
+    pub max_input_price: Option<f64>,
+    /// The output half of the ceiling, USD per million tokens.
+    pub max_output_price: Option<f64>,
+    /// The banned providers, trimmed, blanks and repeats dropped.
+    pub banned_providers: Vec<String>,
+    /// The unknown-quantization providers, trimmed, blanks and repeats dropped.
+    pub unknown_quantization_providers: Vec<String>,
+}
+
+/// Normalize and check the provider policy fields of a config write.
 ///
-/// This is the override for a listing whose provider name does not match the author segment
-/// of the model id. Absent means the observed listing name is the pin.
-pub async fn curated_provider_pin(
-    db: &crate::db::Db,
-    model_id: &str,
-    harness: HarnessSlug,
-) -> crate::error::Result<Option<String>> {
-    let canonical = canonical_model_id(model_id, harness);
-    db.provider_pin_for_alias(&canonical).await
+/// A native level is lowercased and must be one OpenRouter declares, or blank. A price ceiling
+/// needs both halves or neither, each finite and above zero: half a ceiling would leave one rate
+/// unbounded, and a zero one would refuse every provider. Provider names are trimmed, blanks are
+/// dropped, and a name repeated (ignoring case and punctuation) is kept once.
+pub(crate) fn normalize_provider_policy(
+    native_quantization: Option<&str>,
+    max_input_price: Option<f64>,
+    max_output_price: Option<f64>,
+    banned_providers: &[String],
+    unknown_quantization_providers: &[String],
+) -> Result<ProviderPolicyWrite, String> {
+    let native_quantization = native_quantization
+        .map(|level| level.trim().to_ascii_lowercase())
+        .filter(|level| !level.is_empty());
+    if let Some(level) = &native_quantization
+        && test_cabinet_core::pricing::quantization_rank(level).is_none()
+    {
+        return Err(format!(
+            "model.nativeQuantization `{level}` is not a quantization level OpenRouter declares \
+             (fp32, bf16, fp16, fp8, int8, fp6, fp4, int4)"
+        ));
+    }
+    let (max_input_price, max_output_price) = match (max_input_price, max_output_price) {
+        (None, None) => (None, None),
+        (Some(input), Some(output)) => {
+            for (field, price) in [("maxInputPrice", input), ("maxOutputPrice", output)] {
+                if !price.is_finite() || price <= 0.0 {
+                    return Err(format!(
+                        "model.{field} must be a price above zero, in USD per million tokens"
+                    ));
+                }
+            }
+            (Some(input), Some(output))
+        }
+        _ => {
+            return Err(
+                "a price ceiling needs both model.maxInputPrice and model.maxOutputPrice, or \
+                 neither"
+                    .to_string(),
+            );
+        }
+    };
+    Ok(ProviderPolicyWrite {
+        native_quantization,
+        max_input_price,
+        max_output_price,
+        banned_providers: normalize_providers(banned_providers),
+        unknown_quantization_providers: normalize_providers(unknown_quantization_providers),
+    })
+}
+
+/// A provider list trimmed, with blanks dropped and a name repeated (ignoring case and
+/// punctuation) kept once, in the order given.
+fn normalize_providers(providers: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for name in providers {
+        let name = name.trim();
+        if !name.is_empty()
+            && !out
+                .iter()
+                .any(|kept| test_cabinet_core::pricing::same_provider(kept, name))
+        {
+            out.push(name.to_string());
+        }
+    }
+    out
 }
 
 /// The catalog's [launch facts](test_cabinet_core::ModelLaunchFacts) for the model a
@@ -548,6 +802,9 @@ async fn latest_launch_facts(
             provider_pin: row
                 .provider_pin
                 .filter(|provider| !provider.trim().is_empty()),
+            // The stored observation keeps the official endpoint's price, not every
+            // route's; a launch reads no route price.
+            route_prices: Vec::new(),
         }))
 }
 
@@ -623,6 +880,23 @@ pub fn compose_catalog(
             .provider_pin
             .clone()
             .filter(|provider| !provider.trim().is_empty());
+        // All-or-nothing: the list price is `Some` only when all three columns are.
+        let list_price = match (
+            config.list_price_input,
+            config.list_price_cached_input,
+            config.list_price_output,
+        ) {
+            (Some(uncached_input), Some(cached_input), Some(output)) => Some(ModelPricesOut {
+                uncached_input: Some(uncached_input),
+                cached_input: Some(cached_input),
+                output: Some(output),
+            }),
+            _ => None,
+        };
+        let list_price_as_of = list_price
+            .is_some()
+            .then(|| config.list_price_as_of.clone())
+            .flatten();
         out.push(ModelOut {
             slug: config.slug.clone(),
             name: config.display_name.clone(),
@@ -640,12 +914,21 @@ pub fn compose_catalog(
                 })
                 .collect(),
             price: facts.price,
+            list_price,
+            list_price_as_of,
             price_history: series,
             context_length: facts.context_length,
             released_at: facts.released_at,
             input_modalities: facts.input_modalities,
             provider_pin_set_by_hand: hand_set_pin.is_some(),
             provider_pin: hand_set_pin.or(facts.provider_pin),
+            native_quantization: config.native_quantization.clone(),
+            max_input_price: config.max_input_price,
+            max_output_price: config.max_output_price,
+            banned_providers: crate::db::provider_list(config.banned_providers.as_deref()),
+            unknown_quantization_providers: crate::db::provider_list(
+                config.unknown_quantization_providers.as_deref(),
+            ),
         });
     }
 
@@ -676,12 +959,19 @@ pub fn compose_catalog(
                 harness_family: family,
             }],
             price: facts.price,
+            list_price: None,
+            list_price_as_of: None,
             price_history: series,
             context_length: facts.context_length,
             released_at: facts.released_at,
             input_modalities: facts.input_modalities,
             provider_pin: facts.provider_pin,
             provider_pin_set_by_hand: false,
+            native_quantization: None,
+            max_input_price: None,
+            max_output_price: None,
+            banned_providers: Vec::new(),
+            unknown_quantization_providers: Vec::new(),
         });
     }
 

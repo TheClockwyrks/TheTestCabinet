@@ -7,8 +7,8 @@
 // JSON Schemas under `apps/docs/public/schema/` are generated from the same types
 // in the same pass.
 
-import type { GgCapabilitySet } from "./gg";
-import type { HarnessSlug, RunRecord } from "./index";
+import type { GgCapabilitySet, GgProviderCandidate } from "./gg";
+import type { HarnessSlug, RunRecord, TokenPrices } from "./index";
 
 /**
  * The state a driver reports for a job via `POST /jobs/{id}/status`.
@@ -120,13 +120,13 @@ export type LaunchBody = {
    */
   ggModelWindows?: { [key in string]: number };
   /**
-   * The OpenRouter provider each model this **gg** run is pinned to.
+   * The ordered candidate list each model this **gg** run may be served by.
    *
    * **Filled in by the backend at enqueue, not sent by a client**, on the same terms as
    * [`gg_model_windows`](Self::gg_model_windows) and from the same lookup. A model the catalog
-   * has no official endpoint for refuses the enqueue rather than launching unpinned.
+   * has no candidate for refuses the enqueue rather than launching with an empty list.
    */
-  ggModelProviders?: { [key in string]: string };
+  ggModelProviders?: { [key in string]: Array<GgProviderCandidate> };
   /**
    * The input modalities each model this **gg** run may bind accepts (`text`,
    * `image`, `file`, …), as the model catalog observed them.
@@ -138,6 +138,27 @@ export type LaunchBody = {
    * the provider refuses it. Empty for every non-gg run.
    */
   ggModelModalities?: { [key in string]: Array<string> };
+  /**
+   * The curated **list price** (USD per token) each model this **gg** run may
+   * bind is scored at, resolved from the model catalog at enqueue and stamped
+   * here on the same terms as [`gg_model_windows`](Self::gg_model_windows).
+   *
+   * A run's comparable cost is computed from the developer's published list
+   * price — entered on the model's catalog entry — and nothing else, so the
+   * figure is stable across providers and discounts. A gg run binding a model
+   * with no list price is refused at enqueue rather than priced off whatever
+   * a provider happened to charge that day. Empty for every non-gg run, whose
+   * single model's price rides in [`model_prices`](Self::model_prices).
+   */
+  ggModelPrices?: { [key in string]: TokenPrices };
+  /**
+   * The curated list price (USD per token) of the launch's model, resolved from
+   * the model catalog at enqueue and stamped here so the driver prices the run's
+   * comparable cost from it without reaching the catalog. `None` for a gg run
+   * (whose per-model prices ride in `gg_model_prices`) and for a run enqueued
+   * before the catalog priced models.
+   */
+  modelPrices?: TokenPrices;
 };
 
 /**

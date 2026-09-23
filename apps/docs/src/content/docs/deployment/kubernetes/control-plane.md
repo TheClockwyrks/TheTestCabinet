@@ -35,8 +35,8 @@ browser for rendering references. As a `StatefulSet`
 The backend image also bakes gg's reference documents at `/opt/gg-reference` and
 sets `TCAB_GG_REFERENCE` to point at them. Those are the files the backend serves
 at `GET /gg/reference`, projected by the same `gg` binary the `tcab-driver` image
-ships. A backend deployed from the release tarballs instead needs
-`gg-reference-<version>.tar.gz` unpacked and the variable pointed at it;
+ships. A backend deployed from the release tarballs instead needs gg's
+`v<version>/gg-reference.tar.gz` unpacked and the variable pointed at it;
 otherwise the console's gg Reference section answers `503` and the rest of the
 backend works normally.
 
@@ -88,14 +88,16 @@ overlay uses one of them.
 - An ingest sidecar in the backend pod, which the `azure-*` overlays patch in.
   It shares the backend's `state` volume, writes the checkout the backend
   reads, and calls `POST /ingest` over localhost, so intra-pod traffic bypasses
-  the `NetworkPolicy` and no service token is needed. It runs one ingest on
-  backend start to repopulate an ephemeral store after a reschedule, then idles.
-  Those overlays suspend the base `CronJob`.
+  the `NetworkPolicy` and no service token is needed. It runs one forced ingest
+  of the branch tip on backend start, then idles. Those overlays suspend the
+  base `CronJob`.
 
-The sidecar shape ingests once rather than on a schedule: a periodic forced
-re-ingest rewrites every version and briefly leaves each one without a manifest,
-which fails any run resolving that version mid-cycle. Publish catalog changes on
-demand with `scripts/reingest-cluster.sh --env <env>`, which fetches the branch
+Every pipeline deploy changes the backend's image tag, so every deploy restarts
+the backend pod, and the sidecar re-ingests the catalog that shipped with the
+commit. It ingests once rather than on a schedule: a periodic forced re-ingest
+rewrites every version and briefly leaves each one without a manifest, which
+fails any run resolving that version mid-cycle. Publish catalog changes between
+deploys with `scripts/reingest-cluster.sh --env <env>`, which fetches the branch
 tip into the live checkout and forces one re-ingest. The backend swaps each
 version into place atomically, so it is safe to run while runs execute.
 

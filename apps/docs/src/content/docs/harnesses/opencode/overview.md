@@ -4,8 +4,8 @@ title: Overview
 
 OpenCode (slug `opencode`) is a coding agent CLI driven non-interactively
 through its `opencode run` subcommand. It reaches its model through OpenRouter,
-so an OpenCode run reports OpenRouter-style model IDs and is priced from
-OpenRouter's listed rates. The harness itself is documented at
+so an OpenCode run reports OpenRouter-style model IDs and is priced from the
+model's list price. The harness itself is documented at
 [opencode.ai](https://opencode.ai/).
 
 ## Model IDs
@@ -43,7 +43,7 @@ same name. See [Authentication](/harnesses/opencode/authentication/).
 
 ## Pricing
 
-The comparable-cost lookup strips the leading `openrouter/` before consulting
-OpenRouter, so `openrouter/minimax/minimax-m3` is priced as
-`minimax/minimax-m3`. OpenCode reports no run cost of its own, so the comparable
-cost is always OpenRouter-derived. See [Metrics](/harnesses/opencode/metrics/).
+The leading `openrouter/` is stripped before the catalog lookup, so
+`openrouter/minimax/minimax-m3` is priced as `minimax/minimax-m3`. OpenCode
+reports no run cost of its own, so its actual cost equals the comparable cost. See
+[Metrics](/harnesses/opencode/metrics/).

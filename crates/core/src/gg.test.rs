@@ -660,6 +660,7 @@ fn run_limits_round_trip_camel_case_and_omit_every_unset_ceiling() {
         model_stream_idle_secs: Some(60),
         max_model_retries: Some(10),
         model_retry_max_delay_secs: Some(60),
+        provider_cache_miss_limit: Some(2),
         max_consecutive_errors: Some(5),
         max_error_rate: Some(0.5),
         error_rate_window: Some(10),
@@ -677,6 +678,7 @@ fn run_limits_round_trip_camel_case_and_omit_every_unset_ceiling() {
             "modelStreamIdleSecs": 60,
             "maxModelRetries": 10,
             "modelRetryMaxDelaySecs": 60,
+            "providerCacheMissLimit": 2,
             "maxConsecutiveErrors": 5,
             "maxErrorRate": 0.5,
             "errorRateWindow": 10,
@@ -4155,4 +4157,97 @@ fn two_slot_configuration() -> GgCapabilitySet {
         ],
         ..GgCapabilitySet::default()
     }
+}
+
+/// A candidate list rides the invocation as `{provider, quantization}` objects in the order the
+/// run tries them, and only a list naming both on every candidate is one a launch can use.
+#[test]
+fn model_providers_carry_ordered_candidates() {
+    let list = vec![
+        GgProviderCandidate::new("Z.AI", "fp8"),
+        GgProviderCandidate::new("Baidu", "fp8"),
+    ];
+    assert_eq!(
+        serde_json::to_value(&list).unwrap(),
+        json!([
+            { "provider": "Z.AI", "quantization": "fp8" },
+            { "provider": "Baidu", "quantization": "fp8" },
+        ])
+    );
+    assert!(GgProviderCandidate::usable_list(&list));
+    assert!(!GgProviderCandidate::usable_list(&[]));
+    assert!(!GgProviderCandidate::usable_list(&[
+        GgProviderCandidate::new("Z.AI", " ")
+    ]));
+    assert!(!GgProviderCandidate::usable_list(&[
+        GgProviderCandidate::new("", "fp8")
+    ]));
+}
+
+/// The two provider events are snake_case tagged with camelCase fields, and a fault is its wire
+/// id, so a query groups moves and faults by the same vocabulary.
+#[test]
+fn provider_events_have_their_documented_wire_shape() {
+    let fault = GgTelemetryKind::ProviderFault {
+        model_id: "z-ai/glm-5.3".to_string(),
+        provider: "Z.AI".to_string(),
+        fault: GgProviderFault::Stall,
+    };
+    assert_eq!(
+        serde_json::to_value(&fault).unwrap(),
+        json!({ "type": "provider_fault", "modelId": "z-ai/glm-5.3", "provider": "Z.AI", "fault": "stall" })
+    );
+    let switch = GgTelemetryKind::ProviderSwitch {
+        model_id: "z-ai/glm-5.3".to_string(),
+        from: "Z.AI".to_string(),
+        to: "Baidu".to_string(),
+        fault: GgProviderFault::FailedCall,
+        detail: "HTTP 502: bad gateway".to_string(),
+    };
+    let value = serde_json::to_value(&switch).unwrap();
+    assert_eq!(
+        value,
+        json!({
+            "type": "provider_switch",
+            "modelId": "z-ai/glm-5.3",
+            "from": "Z.AI",
+            "to": "Baidu",
+            "fault": "failed_call",
+            "detail": "HTTP 502: bad gateway",
+        })
+    );
+    assert_eq!(
+        serde_json::from_value::<GgTelemetryKind>(value).unwrap(),
+        switch
+    );
+    for (fault, id) in [
+        (GgProviderFault::FailedCall, "failed_call"),
+        (GgProviderFault::Unavailable, "unavailable"),
+        (GgProviderFault::Stall, "stall"),
+        (GgProviderFault::CacheMiss, "cache_miss"),
+    ] {
+        assert_eq!(serde_json::to_value(fault).unwrap(), json!(id));
+    }
+}
+
+/// A list written before candidate lists named a bare provider per model: it reads as a
+/// one-candidate list of blank quantization, which a launch refuses, and a list reads as itself.
+#[test]
+fn a_bare_provider_pin_reads_as_a_list_a_launch_refuses() {
+    let record: crate::gg_session_record::GgSessionSeed = {
+        let mut value = serde_json::to_value(crate::gg_session_record::GgSessionSeed::default())
+            .expect("a seed serializes");
+        value["modelProviders"] = serde_json::json!({
+            "z-ai/glm-5.3": "Z.AI",
+            "qwen/qwen4": [{ "provider": "Alibaba", "quantization": "fp8" }],
+        });
+        serde_json::from_value(value).expect("a pre-list seed still reads")
+    };
+    let pinned = &record.model_providers["z-ai/glm-5.3"];
+    assert_eq!(pinned, &vec![GgProviderCandidate::new("Z.AI", "")]);
+    assert!(!GgProviderCandidate::usable_list(pinned));
+    assert_eq!(
+        record.model_providers["qwen/qwen4"],
+        vec![GgProviderCandidate::new("Alibaba", "fp8")]
+    );
 }

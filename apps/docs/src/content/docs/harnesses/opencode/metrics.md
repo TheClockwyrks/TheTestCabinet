@@ -30,8 +30,8 @@ class. Reasoning is reported on its own key and tracked separately from
 
 ## Cost
 
-OpenCode reports no run cost of its own, so the comparable cost is always
-OpenRouter-derived. The `openrouter/` prefix is stripped from the model ID
-(`openrouter/minimax/minimax-m3` is priced as `minimax/minimax-m3`) and
-OpenRouter's listed per-token prices are applied to the recorded token classes.
-See [Cost](/components/core/metrics/#cost).
+OpenCode reports no run cost of its own, so the comparable cost is computed
+from the model's curated list price. The `openrouter/` prefix is stripped from
+the model ID (`openrouter/minimax/minimax-m3` is priced as
+`minimax/minimax-m3`) and the list price's rates are applied to the recorded
+token classes. See [Cost](/components/core/metrics/#cost).

@@ -296,3 +296,27 @@ static-musl gg binary the core copies into each sandbox pod, so a gg run
 installs locally with no network egress. Publishing is a separate backend
 operation, so the image ships no publish CLIs. The driver runs unprivileged and
 needs no Docker or Podman daemon.
+
+### Installing gg
+
+The core resolves the gg binary a run installs in this order:
+
+1. `TCAB_GG_INSTALL=release` forces a download.
+2. `TCAB_GG_BINARY` names a local binary, which must exist.
+3. The first local build that exists: the path the driver image bakes gg at,
+   `/usr/local/lib/tcab/gg`, then the development build paths.
+4. Otherwise, a download.
+
+`TCAB_GG_INSTALL=local` requires one of the local binaries, and any other value
+of it is an error. A download fetches `<base>/v<version>/gg-<target>` into the
+sandbox with one `curl`:
+
+| Variable                  | Sets        | Default                                                          |
+| ------------------------- | ----------- | ---------------------------------------------------------------- |
+| `TCAB_GG_RELEASE_URL`     | `<base>`    | `https://testcabinetartifacts.blob.core.windows.net/gg-releases` |
+| `TCAB_GG_RELEASE_VERSION` | `<version>` | the core's own package version                                   |
+| `TCAB_GG_RELEASE_TARGET`  | `<target>`  | `<arch>-unknown-linux-musl` for the driver's architecture        |
+
+The default base is gg's release container, which the Azure pipeline publishes
+to; see [Releasing `gg`](/development/releasing/#releasing-gg). The dispatcher
+forwards all five variables into every driver `Job` when they are set.

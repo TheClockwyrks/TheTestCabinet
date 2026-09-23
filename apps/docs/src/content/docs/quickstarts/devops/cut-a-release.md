@@ -8,10 +8,10 @@ production. The full walkthrough and the _why_ behind each step are in
 [Cutting a Release](/guides/devops/cutting-a-release/).
 
 Four things ship on four separate paths, and the tag governs only the first:
-**artifacts** (the GitHub release), the **catalog** (a branch tip plus a
-re-ingest), the **services** (a sha pinned in the prod overlay), and the **sites**
-(a Pages build). There is **no version to bump** anywhere in the repository, and
-no tag to push — the Release workflow creates it.
+**artifacts** (the GitHub release), the **catalog** (a branch tip the backend
+re-ingests on every deploy), the **services** (the pipeline's deploy of the merge
+commit), and the **sites** (a Pages build). There is **no version to bump**
+anywhere in the repository, and no tag to push — the Release workflow creates it.
 
 ```text
 rel/vX.Y.Z ──▶ nightly ──▶ staging ──▶ master
@@ -20,9 +20,10 @@ rel/vX.Y.Z ──▶ nightly ──▶ staging ──▶ master
 
 ## Prerequisites
 
-- `gh` authenticated against `TheClockwyrks/TheTestCabinet`, and a `gh` remote for
-  the GitHub mirror (public releases are cut there; Azure DevOps is private).
-- `az` logged in to the cluster subscription, for the roll and the re-ingest.
+- `gh` authenticated against `TheClockwyrks/TheTestCabinet`, the GitHub mirror
+  the pipeline pushes gated commits to (public releases are cut there; Azure
+  DevOps is private).
+- `az` logged in to the cluster subscription, for verifying the rolls.
 - `wrangler` with `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID`, if any
   reference implementation needs publishing.
 
@@ -75,25 +76,12 @@ so this is the only macOS check before the artifacts are built).
 
 ## 2. Rehearse on staging
 
-Merge `nightly` into `staging` as a `vX.Y.Z-rcN` PR, then wait for its images:
-
-```sh
-for wf in build-service-images build-containers; do                 # both run on
-  gh run list --workflow=$wf.yml --branch staging --limit 5 \       # every push;
-    --json headSha,conclusion,createdAt                             # wait for both
-done
-```
-
-Re-pin `deployments/k8s/overlays/azure-staging` to that sha (the `images:` block +
-`patch-dispatcher-driver-image.yaml`, including its `TCAB_CONTAINER_TAG`, +
-`patch-dispatcher-publisher.yaml`), apply
-it the way [Roll Production Service
-Images](/quickstarts/devops/roll-prod-service-images/) does but against the staging
-cluster, then:
-
-```sh
-scripts/reingest-cluster.sh --env staging   # makes the merged catalog visible
-```
+Merge `nightly` into `staging` as a `vX.Y.Z-rcN` PR. The merge commit's
+pipeline run builds every image at its sha and `deploy_staging` rolls the
+staging cluster to them, the way [Roll Production Service
+Images](/quickstarts/devops/roll-prod-service-images/) describes for prod. The
+roll restarts the backend, which re-ingests the `staging` tip, so the merged
+catalog is visible once `deploy_staging` succeeds.
 
 Enqueue real runs of the cases that changed and review one end to end. Fixes go
 back onto `nightly` and return as the next rc — never straight onto `staging`.
@@ -101,12 +89,11 @@ back onto `nightly` and return as the next rc — never straight onto `staging`.
 ## 3. Cut the artifacts
 
 ```sh
-# Promote staging -> master as a `vX.Y.Z` PR (the rehearsed tree), then mirror it:
-# the release workflows live on GitHub.
-git push gh master
+# Promote staging -> master as a `vX.Y.Z` PR (the rehearsed tree). The pipeline's
+# mirror job pushes the merge to GitHub once it passes the gates.
 
-# Both image workflows run on EVERY master push, so the merge always publishes a
-# complete `:<sha>` set — just wait for them (the release gates on it either way).
+# The desktop app pulls the GHCR images; both GitHub image workflows run on every
+# master push, so wait for them (the release gates on it either way).
 gh run list --workflow=build-service-images.yml --branch master --limit 5 \
   --json headSha,conclusion,createdAt
 gh run list --workflow=build-containers.yml --branch master --limit 5 \
@@ -120,15 +107,14 @@ gh workflow run release-promote.yml -f tag=vX.Y.Z            # flips to latest, 
 
 ## 4. Land it in production
 
-```sh
-# Roll the service images AND TCAB_CONTAINER_TAG to the release sha — every master
-# sha now carries both image sets: see the roll-prod quickstart.
-# Then publish the release's catalog work — cases, errata, reference-build URLs:
-scripts/reingest-cluster.sh --env prod
-```
+The merge into `master` already did it: the pipeline's `deploy_prod` rolled every
+image to the release sha, and the restarted backend re-ingested the `master` tip,
+publishing the release's cases, errata, and reference-build URLs. Confirm the
+roll as the [roll-prod quickstart](/quickstarts/devops/roll-prod-service-images/)
+does.
 
-The docs deploy themselves on the `master` push (the changelog touches
-`apps/docs/**`); the gallery rebuilds because a re-ingest that changed something
+The pipeline's `docs` job deploys the docs on the same `master` build; the
+gallery rebuilds because a re-ingest that changed something
 queues a snapshot refresh, which fires the Pages deploy hook. A **no-op** re-ingest
 queues nothing — that, not a broken hook, is the usual reason the gallery does not
 move.
@@ -150,4 +136,4 @@ move.
 - [Releasing](/development/releasing/) — the Release workflows, the unsigned-macOS
   workaround, and the Cloudflare Pages topology.
 - [Roll Production Service Images](/quickstarts/devops/roll-prod-service-images/) —
-  the commands Phase 4's roll expands into.
+  verifying Phase 4's roll, and rolling back.

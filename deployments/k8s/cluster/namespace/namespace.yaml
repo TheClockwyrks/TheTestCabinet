@@ -1,8 +1,5 @@
-# One namespace per environment. Apply with the name for the environment you are
-# building — `tcab-staging` or `tcab-prod` — and pass `-n <name>` (or edit each
-# manifest's metadata.namespace) when applying the rest.
-#
-#   kubectl apply -f deployments/k8s/base/namespace.yaml
+# One namespace per environment. It is named `tcab-prod` here, and the including
+# kustomization's `namespace:` directive renames it to the environment's namespace.
 #
 # Tearing an environment down is `kubectl delete namespace tcab-<env>`.
 apiVersion: v1

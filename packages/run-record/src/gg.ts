@@ -1972,6 +1972,20 @@ export type GgRunLimits = {
    */
   modelRetryMaxDelaySecs?: number;
   /**
+   * How many **unexpected cache misses** a provider may produce in one run before the run
+   * leaves it for the next [candidate](GgProviderCandidate) on its model's list.
+   *
+   * One of the keys an absence answers with a **figure**: **absent is two**, because every
+   * provider is held to it. `0` is refused rather than read as "off": a provider allowed no
+   * misses would be left before it served a turn.
+   *
+   * An unexpected miss is a reply that read under half of the prefix the agent's previous
+   * request on the same provider left in the cache, within the five-minute cache lifetime and
+   * above the minimum cacheable size. The reply stands and the miss is counted; a provider that
+   * reaches this limit is left at the next request, unless it is the model's last candidate.
+   */
+  providerCacheMissLimit?: number;
+  /**
    * How many **error turns in a row** end an agent. **Absent leaves it unarmed** — gg arms no
    * error ceiling nobody wrote, so an agent stopped by this one was stopped by a threshold its
    * operator chose. `0` is refused rather than read as "off": it would end an agent before its
@@ -2814,6 +2828,50 @@ export type GgProviderStat = {
    * terms.
    */
   errors?: { [key in string]: number };
+  /**
+   * Requests sent to this provider whose stream went
+   * [`modelStreamIdleSecs`](GgRunLimits::model_stream_idle_secs) without a delta, folded from
+   * the [`Stall`](GgProviderFault::Stall) faults against it. `0`, and omitted, for a provider
+   * that never stalled.
+   */
+  stalls?: number;
+  /**
+   * Replies this provider served that were an unexpected cache miss, folded from the
+   * [`CacheMiss`](GgProviderFault::CacheMiss) faults against it. `0`, and omitted, for a
+   * provider that never missed.
+   */
+  cacheMisses?: number;
+};
+
+/**
+ * A fault gg holds against one provider within a run: what a
+ * [`ProviderFault`](GgTelemetryKind::ProviderFault) records and what a
+ * [`ProviderSwitch`](GgTelemetryKind::ProviderSwitch) names as its cause.
+ */
+export type GgProviderFault =
+  | "failed_call"
+  | "unavailable"
+  | "stall"
+  | "cache_miss";
+
+/**
+ * One provider a model may run on, and the quantization that endpoint serves.
+ *
+ * A [`GgInvocation::model_providers`] entry is an ordered list of these: the order a run tries
+ * them in, and a one-entry list is a pin. Every request names one of them as OpenRouter's
+ * `provider.only` and `provider.quantizations`, with fallbacks refused.
+ */
+export type GgProviderCandidate = {
+  /**
+   * The provider, spelled as OpenRouter's endpoints listing spells its `provider_name`
+   * (`Z.AI`, `DeepInfra`).
+   */
+  provider: string;
+  /**
+   * The quantization the provider's endpoint declares (`fp8`, `bf16`, or `unknown` for a
+   * provider the catalog entry accepts despite it).
+   */
+  quantization: string;
 };
 
 /**
@@ -3157,11 +3215,11 @@ export type GgTelemetryKind =
        */
       capabilitySet: GgCapabilitySet;
       /**
-       * The OpenRouter provider each bound model is pinned to, beside the routing
-       * key. A run's cost is recorded against this pin; a response from any other
+       * The ordered candidate list each bound model may run on, beside the routing
+       * key. Every request names exactly one of them; a response from any other
        * provider ends the run.
        */
-      modelProviders: { [key in string]: string };
+      modelProviders: { [key in string]: Array<GgProviderCandidate> };
       /**
        * The **routing key** gg minted at launch: a cuid2 sent on every request of the run
        * as both `session_id` and `prompt_cache_key`, so a provider dashboard row can be
@@ -4341,6 +4399,46 @@ export type GgTelemetryKind =
        * one repeated string.
        */
       breach: GgLimitBreach;
+    }
+  | {
+      type: "provider_fault";
+      /**
+       * The model the request was for.
+       */
+      modelId: string;
+      /**
+       * The provider the request named, spelled as its [candidate](GgProviderCandidate) is.
+       */
+      provider: string;
+      /**
+       * [`Stall`](GgProviderFault::Stall) or [`CacheMiss`](GgProviderFault::CacheMiss).
+       */
+      fault: GgProviderFault;
+    }
+  | {
+      type: "provider_switch";
+      /**
+       * The model whose candidate changed.
+       */
+      modelId: string;
+      /**
+       * The provider the run left, spelled as its candidate is.
+       */
+      from: string;
+      /**
+       * The provider the run moved to.
+       */
+      to: string;
+      /**
+       * What decided the move: [`FailedCall`](GgProviderFault::FailedCall),
+       * [`Unavailable`](GgProviderFault::Unavailable) or
+       * [`CacheMiss`](GgProviderFault::CacheMiss).
+       */
+      fault: GgProviderFault;
+      /**
+       * The last failure's cause, or the miss count that reached the limit, for a reader.
+       */
+      detail: string;
     }
   | {
       type: "log";
@@ -4441,11 +4539,11 @@ export type GgTelemetryEvent = {
        */
       capabilitySet: GgCapabilitySet;
       /**
-       * The OpenRouter provider each bound model is pinned to, beside the routing
-       * key. A run's cost is recorded against this pin; a response from any other
+       * The ordered candidate list each bound model may run on, beside the routing
+       * key. Every request names exactly one of them; a response from any other
        * provider ends the run.
        */
-      modelProviders: { [key in string]: string };
+      modelProviders: { [key in string]: Array<GgProviderCandidate> };
       /**
        * The **routing key** gg minted at launch: a cuid2 sent on every request of the run
        * as both `session_id` and `prompt_cache_key`, so a provider dashboard row can be
@@ -5625,6 +5723,46 @@ export type GgTelemetryEvent = {
        * one repeated string.
        */
       breach: GgLimitBreach;
+    }
+  | {
+      type: "provider_fault";
+      /**
+       * The model the request was for.
+       */
+      modelId: string;
+      /**
+       * The provider the request named, spelled as its [candidate](GgProviderCandidate) is.
+       */
+      provider: string;
+      /**
+       * [`Stall`](GgProviderFault::Stall) or [`CacheMiss`](GgProviderFault::CacheMiss).
+       */
+      fault: GgProviderFault;
+    }
+  | {
+      type: "provider_switch";
+      /**
+       * The model whose candidate changed.
+       */
+      modelId: string;
+      /**
+       * The provider the run left, spelled as its candidate is.
+       */
+      from: string;
+      /**
+       * The provider the run moved to.
+       */
+      to: string;
+      /**
+       * What decided the move: [`FailedCall`](GgProviderFault::FailedCall),
+       * [`Unavailable`](GgProviderFault::Unavailable) or
+       * [`CacheMiss`](GgProviderFault::CacheMiss).
+       */
+      fault: GgProviderFault;
+      /**
+       * The last failure's cause, or the miss count that reached the limit, for a reader.
+       */
+      detail: string;
     }
   | {
       type: "log";

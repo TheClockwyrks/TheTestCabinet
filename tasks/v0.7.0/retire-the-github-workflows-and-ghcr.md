@@ -4,9 +4,9 @@ Delete every GitHub Actions workflow and every reference to GHCR, so the GitHub
 repository is a source mirror of Azure and nothing else.
 
 This issue depends on
-[`build-ci-cd-on-azure-pipelines-with-deploys-to-staging-and-prod.md`](build-ci-cd-on-azure-pipelines-with-deploys-to-staging-and-prod.md)
+[`build-ci-cd-on-azure-pipelines-with-deploys-to-staging-and-prod.md`](done/build-ci-cd-on-azure-pipelines-with-deploys-to-staging-and-prod.md)
 and
-[`publish-gg-release-binaries-to-azure-blob-storage.md`](publish-gg-release-binaries-to-azure-blob-storage.md),
+[`publish-gg-release-binaries-to-azure-blob-storage.md`](done/publish-gg-release-binaries-to-azure-blob-storage.md),
 which take over everything the workflows did that still matters.
 
 ## Current state

@@ -110,10 +110,17 @@ const DUAL_FAMILY_MODEL = {
     { slug: "openai/gpt-5.6-sol", harnessFamily: "openrouter" },
   ],
   price: null,
+  listPrice: null,
+  listPriceAsOf: null,
   priceHistory: [],
   contextLength: null,
   providerPin: null,
   providerPinSetByHand: false,
+  nativeQuantization: null,
+  maxInputPrice: null,
+  maxOutputPrice: null,
+  bannedProviders: [],
+  unknownQuantizationProviders: [],
   releasedAt: null,
 } as unknown as Model;
 

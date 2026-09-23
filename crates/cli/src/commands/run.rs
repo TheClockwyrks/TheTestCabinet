@@ -67,6 +67,10 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
         gg_model_windows: Default::default(),
         gg_model_providers: Default::default(),
         gg_model_modalities: Default::default(),
+        // The prices the run is scored at are the backend's to stamp: the model
+        // catalog lives there, and the enqueue overwrites whatever a client sent.
+        gg_model_prices: Default::default(),
+        model_prices: None,
     };
 
     println!(

@@ -1,8 +1,11 @@
-//! OpenRouter price lookup for the comparable cost.
+//! OpenRouter price lookup: the billed rate, read from the official endpoint.
 //!
-//! See `docs/metrics.md`. The canonical, provider-stable cost is computed from
-//! the per-token prices OpenRouter lists for a model. This module fetches those
-//! prices and maps them onto [`TokenPrices`].
+//! See `docs/metrics.md`. A run's comparable cost is priced at the model
+//! developer's published list price, curated on the model's catalog entry and
+//! computed over the run's token classes — it never comes from this module. What
+//! this module fetches is the rate a run is **billed** at: the per-token price
+//! of the model's official endpoint, the provider route belonging to the model's
+//! own developer (see [`official_provider`]), mapped onto [`TokenPrices`].
 
 use serde::Deserialize;
 use time::OffsetDateTime;
@@ -14,13 +17,16 @@ use crate::metrics::TokenPrices;
 /// The OpenRouter models endpoint listing every model and its pricing.
 const MODELS_URL: &str = "https://openrouter.ai/api/v1/models";
 
-/// Selected OpenRouter metadata for a model: its comparable per-token prices
-/// plus the catalog facts the static site surfaces — the context window, the
-/// model's release date, and the input modalities it accepts. Each field beyond
-/// the prices is optional because OpenRouter does not always report it.
+/// Selected OpenRouter metadata for a model: its billed per-token prices plus
+/// the catalog facts the static site surfaces — the context window, the model's
+/// release date, and the input modalities it accepts. Each field beyond the
+/// prices is optional because OpenRouter does not always report it.
 #[derive(Debug, Clone)]
 pub struct ModelDetails {
-    /// Comparable per-token prices, mapped onto [`TokenPrices`].
+    /// The listing's headline per-token prices, mapped onto [`TokenPrices`]. The
+    /// catalog records the [official endpoint's](ModelLaunchFacts::official_prices)
+    /// prices in their place wherever the model has one, since those are the billed
+    /// rate of a run pinned to the developer's own route.
     pub prices: TokenPrices,
     /// The maximum context length in tokens, when OpenRouter reports one.
     pub context_length: Option<u64>,
@@ -50,7 +56,7 @@ pub const MODALITY_IMAGE: &str = "image";
 /// These travel together because they come from the same `/models/{id}/endpoints`
 /// read and are pushed into the run container together — a run is *told* what it needs
 /// about its models at launch rather than querying for it from inside the container.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct ModelLaunchFacts {
     /// The largest context length any provider route reports, or `None` when
     /// OpenRouter lists the model but reports no window for any route.
@@ -62,6 +68,10 @@ pub struct ModelLaunchFacts {
     /// listing spells its `provider_name`, or `None` when no endpoint belongs to the
     /// model's developer.
     pub provider_pin: Option<String>,
+    /// Each provider route's per-token prices, keyed by the provider as the listing
+    /// spells it: the first priced route per provider, in listing order. Read through
+    /// [`official_prices`](Self::official_prices).
+    pub route_prices: Vec<(String, TokenPrices)>,
 }
 
 /// The descriptive facts OpenRouter publishes about one model — the display name,
@@ -98,7 +108,29 @@ impl ModelLaunchFacts {
     pub fn accepts_images(&self) -> bool {
         self.input_modalities.iter().any(|m| m == MODALITY_IMAGE)
     }
+
+    /// The billed rate of the model's official endpoint: the prices of the route
+    /// `pin` names, or of the observed [`provider_pin`](Self::provider_pin) when
+    /// `pin` is `None`. A hand-set pin is passed as `pin`, since it names the
+    /// developer where the listing spells it differently from the model id.
+    ///
+    /// `None` when there is no pin or the pinned provider lists no priced route.
+    pub fn official_prices(&self, pin: Option<&str>) -> Option<TokenPrices> {
+        let provider = pin.or(self.provider_pin.as_deref())?;
+        self.route_prices
+            .iter()
+            .find(|(name, _)| same_provider(name, provider))
+            .map(|(_, prices)| *prices)
+    }
 }
+
+#[path = "pricing.candidates.rs"]
+mod candidates;
+pub use candidates::{
+    CandidateList, CandidatePolicy, CandidateRefusal, EndpointOffer, ProviderCandidate,
+    QUANTIZATION_UNKNOWN, native_quantization, provider_candidates, quantization_rank,
+    run_parameters,
+};
 
 /// Fetches model prices from OpenRouter.
 #[derive(Debug, Clone)]
@@ -131,30 +163,38 @@ impl OpenRouterPrices {
         }
     }
 
-    /// Look up the per-token prices OpenRouter lists for `model_id`.
+    /// Look up **one** model's official endpoint price: the prices of the route
+    /// belonging to the model's own developer (see [`official_provider`]).
     ///
-    /// The model ID is matched exactly against OpenRouter's catalog. Prices are
-    /// reported per token in USD.
-    pub async fn token_prices(&self, model_id: &str) -> Result<TokenPrices> {
-        Ok(prices_of(&self.fetch_model(model_id).await?))
+    /// This is the billed rate of a run pinned to the developer's own route, read
+    /// from the same cheap per-model fetch as
+    /// [`model_launch_facts`](Self::model_launch_facts). An unlisted model is an
+    /// `Err`, as is a listed model with no priced route of its developer's.
+    pub async fn official_prices(&self, model_id: &str) -> Result<TokenPrices> {
+        self.model_launch_facts(model_id)
+            .await?
+            .official_prices(None)
+            .ok_or_else(|| {
+                Error::Validation(format!(
+                    "model `{model_id}` has no official endpoint in OpenRouter's catalog"
+                ))
+            })
     }
 
-    /// Look up the comparable prices plus the catalog facts the site surfaces —
-    /// the context window and release date — for `model_id`.
+    /// Look up the listing's headline prices plus the catalog facts the site
+    /// surfaces (the context window and release date) for `model_id`.
     ///
-    /// Like [`token_prices`](Self::token_prices) this matches the model ID
-    /// exactly against OpenRouter's catalog; it simply carries the extra
-    /// metadata alongside the prices.
+    /// The model ID is matched exactly against OpenRouter's catalog.
     pub async fn model_details(&self, model_id: &str) -> Result<ModelDetails> {
-        let model = self.fetch_model(model_id).await?;
-        Ok(details_of(model))
+        Ok(details_of(self.fetch_model(model_id).await?))
     }
 
-    /// Look up the comparable prices plus catalog facts for **every** model
+    /// Look up the headline prices plus catalog facts for **every** model
     /// OpenRouter lists, keyed by OpenRouter id, in one fetch.
     ///
-    /// The periodic price refresher uses this to re-price all known models from a
-    /// single catalog download rather than a fetch per model.
+    /// The periodic price refresher reads the catalog facts of every known model
+    /// from this single download, then each model's official endpoint price from its
+    /// per-model [launch facts](Self::model_launch_facts).
     pub async fn all_model_details(
         &self,
     ) -> Result<std::collections::HashMap<String, ModelDetails>> {
@@ -188,21 +228,10 @@ impl OpenRouterPrices {
     /// lists the model but reports no context length for any route; an unlisted model is
     /// an `Err`.
     pub async fn model_launch_facts(&self, model_id: &str) -> Result<ModelLaunchFacts> {
-        let data = self.fetch_endpoints(model_id).await?;
-        Ok(ModelLaunchFacts {
-            context_window: data
-                .endpoints
-                .iter()
-                .filter_map(|endpoint| endpoint.context_length)
-                .max(),
-            input_modalities: modalities_of(data.architecture.as_ref()),
-            provider_pin: official_provider(
-                model_id,
-                data.endpoints
-                    .iter()
-                    .filter_map(|endpoint| endpoint.provider_name.as_deref()),
-            ),
-        })
+        Ok(launch_facts_of(
+            model_id,
+            self.fetch_endpoints(model_id).await?,
+        ))
     }
 
     /// Look up **one** model's [descriptive facts](ModelListing) — its display name,
@@ -231,8 +260,15 @@ impl OpenRouterPrices {
         Ok(routes_of(self.fetch_endpoints(model_id).await?))
     }
 
+    /// Every endpoint OpenRouter lists for one model, as the
+    /// [candidate filter](provider_candidates) reads it, in listing order. An unlisted model is an
+    /// `Err`; a listed model with no endpoints is an empty list.
+    pub async fn endpoint_offers(&self, model_id: &str) -> Result<Vec<EndpointOffer>> {
+        Ok(offers_of(&self.fetch_endpoints(model_id).await?))
+    }
+
     /// Fetch one model's `/models/{id}/endpoints` body — the cheap per-model read
-    /// (a few KB) shared by the launch-facts and listing lookups.
+    /// (a few KB) shared by the launch-facts, listing, and official-price lookups.
     async fn fetch_endpoints(&self, model_id: &str) -> Result<ModelEndpoints> {
         let url = format!("{}/{model_id}/endpoints", self.endpoint);
         let response = reqwest::get(&url).await.map_err(|err| {
@@ -285,7 +321,7 @@ impl OpenRouterPrices {
 /// reports it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProviderRoute {
-    /// The provider's display name — the value `provider.order` pins.
+    /// The provider's display name — the value `provider.only` names.
     pub name: String,
     /// The route's context window in tokens, when reported.
     pub context_length: Option<u64>,
@@ -303,7 +339,7 @@ pub fn same_provider(a: &str, b: &str) -> bool {
 }
 
 /// A provider spelling reduced to the characters [`same_provider`] compares.
-fn provider_key(name: &str) -> String {
+pub fn provider_key(name: &str) -> String {
     name.chars()
         .filter(|ch| ch.is_alphanumeric())
         .flat_map(char::to_lowercase)
@@ -351,6 +387,37 @@ fn routes_of(data: ModelEndpoints) -> Vec<ProviderRoute> {
     routes
 }
 
+/// Reduce one model's endpoints body to every named endpoint as the candidate filter reads it,
+/// in listing order. A provider listing several endpoints appears once per endpoint.
+fn offers_of(data: &ModelEndpoints) -> Vec<EndpointOffer> {
+    data.endpoints
+        .iter()
+        .filter_map(|endpoint| {
+            let provider = endpoint
+                .provider_name
+                .as_deref()
+                .map(str::trim)
+                .filter(|name| !name.is_empty())?;
+            let pricing = endpoint.pricing.as_ref();
+            Some(EndpointOffer {
+                provider: provider.to_string(),
+                quantization: endpoint
+                    .quantization
+                    .as_deref()
+                    .map(|level| level.trim().to_ascii_lowercase())
+                    .filter(|level| !level.is_empty())
+                    .unwrap_or_else(|| QUANTIZATION_UNKNOWN.to_string()),
+                input: pricing.and_then(|pricing| parse_price(&pricing.prompt)),
+                output: pricing.and_then(|pricing| parse_price(&pricing.completion)),
+                cache_read: pricing
+                    .and_then(|pricing| pricing.input_cache_read.as_deref())
+                    .and_then(parse_price),
+                supported_parameters: endpoint.supported_parameters.clone(),
+            })
+        })
+        .collect()
+}
+
 /// Map one model's endpoints response onto the [`ModelListing`] the config form
 /// fills itself in from.
 ///
@@ -382,10 +449,31 @@ fn listing_of(model_id: &str, data: ModelEndpoints) -> ModelListing {
     }
 }
 
+/// Map one model's endpoints response onto its [`ModelLaunchFacts`]: the largest
+/// window any route offers, the model-level modalities, the official provider, and
+/// each provider's route prices.
+fn launch_facts_of(model_id: &str, data: ModelEndpoints) -> ModelLaunchFacts {
+    ModelLaunchFacts {
+        context_window: data
+            .endpoints
+            .iter()
+            .filter_map(|endpoint| endpoint.context_length)
+            .max(),
+        input_modalities: modalities_of(data.architecture.as_ref()),
+        provider_pin: official_provider(
+            model_id,
+            data.endpoints
+                .iter()
+                .filter_map(|endpoint| endpoint.provider_name.as_deref()),
+        ),
+        route_prices: route_prices_of(&data.endpoints),
+    }
+}
+
 /// Map one catalog entry onto the [`ModelDetails`] the catalog stores.
 fn details_of(model: Model) -> ModelDetails {
     ModelDetails {
-        prices: prices_of(&model),
+        prices: token_prices_of(&model.pricing),
         context_length: model.context_length,
         released_at: model.created.and_then(release_date),
         input_modalities: modalities_of(model.architecture.as_ref()),
@@ -415,19 +503,38 @@ fn modalities_of(architecture: Option<&Architecture>) -> Vec<String> {
     out
 }
 
-/// Map an OpenRouter model's pricing block onto [`TokenPrices`].
-fn prices_of(model: &Model) -> TokenPrices {
-    let prompt = parse_price(&model.pricing.prompt);
+/// Each provider's route prices, in listing order, keeping the first priced route
+/// of a provider that lists several (quantizations, say) — the same route
+/// [`official_provider`] settles on when it scans the names in that order.
+fn route_prices_of(endpoints: &[ModelEndpoint]) -> Vec<(String, TokenPrices)> {
+    let mut out: Vec<(String, TokenPrices)> = Vec::new();
+    for endpoint in endpoints {
+        let (Some(name), Some(pricing)) = (endpoint.provider_name.as_deref(), &endpoint.pricing)
+        else {
+            continue;
+        };
+        let name = name.trim();
+        if name.is_empty() || out.iter().any(|(seen, _)| seen == name) {
+            continue;
+        }
+        out.push((name.to_string(), token_prices_of(pricing)));
+    }
+    out
+}
+
+/// Map an OpenRouter pricing block — a listing entry's headline block or one
+/// endpoint's per-route block, the same shape either way — onto [`TokenPrices`].
+fn token_prices_of(pricing: &Pricing) -> TokenPrices {
+    let prompt = parse_price(&pricing.prompt);
     TokenPrices {
         uncached_input: prompt,
         // Fall back to the prompt price when a cache-read price is absent.
-        cached_input: model
-            .pricing
+        cached_input: pricing
             .input_cache_read
             .as_deref()
             .map(parse_price)
             .unwrap_or(prompt),
-        output: parse_price(&model.pricing.completion),
+        output: parse_price(&pricing.completion),
     }
 }
 
@@ -494,10 +601,8 @@ struct ModelEndpointsResponse {
 
 /// One model's descriptive block, its `architecture` block, and its provider routes.
 /// The context lengths and the input modalities are read here, as are the name and
-/// description the model form offers a curator; the endpoint carries per-route
-/// pricing too, but prices are recorded from the listing (whose top-level block is
-/// the headline the catalog stores), so reading them here would invite two sources
-/// disagreeing.
+/// description the model form offers a curator and each route's per-endpoint pricing
+/// block — the billed rate the [official endpoint](official_provider) charges at.
 #[derive(Debug, Deserialize)]
 struct ModelEndpoints {
     /// The display name, written `Provider: Model`.
@@ -511,19 +616,31 @@ struct ModelEndpoints {
     endpoints: Vec<ModelEndpoint>,
 }
 
-/// One provider route for a model. A route may report no context length.
+/// One provider route for a model. A route may report no context length and no pricing block,
+/// and the fields beyond the name are what the [candidate filter](provider_candidates) reads.
 #[derive(Debug, Deserialize)]
 struct ModelEndpoint {
     #[serde(default)]
     provider_name: Option<String>,
     #[serde(default)]
     context_length: Option<u64>,
+    /// The quantization the route declares. Absent reads as `unknown`.
+    #[serde(default)]
+    quantization: Option<String>,
+    /// The route's own per-token prices, the same shape as the listing's pricing
+    /// block: what a request routed to this provider is billed at.
+    #[serde(default)]
+    pricing: Option<Pricing>,
+    #[serde(default)]
+    supported_parameters: Vec<String>,
 }
 
 /// OpenRouter prices, reported as per-token USD strings.
 #[derive(Debug, Deserialize)]
 struct Pricing {
+    #[serde(default)]
     prompt: String,
+    #[serde(default)]
     completion: String,
     #[serde(default)]
     input_cache_read: Option<String>,

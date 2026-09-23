@@ -3,7 +3,8 @@ title: Releasing
 ---
 
 This page covers cutting a release of the downloadable binaries and the desktop
-app, and the one-time configuration behind the project's deployed static sites.
+app, publishing [`gg`](/gg/overview/), and the one-time configuration behind the
+project's deployed static sites.
 For the whole `vX.Y.Z` sequence these workflows sit inside — preparing the
 release on `nightly`, rehearsing it on staging, and landing the catalog and the
 services in production afterwards — see
@@ -28,10 +29,6 @@ are tested before they reach users.
      `tcab-backend` store/API, and the `tcab-dispatcher`, `tcab-driver`, and
      `tcab-artifacts` services, smoke-testing each platform's `tcab` with
      `scripts/ci/smoke-binary.sh`;
-   - [`gg`](/gg/overview/), the in-container coding harness, as a bare
-     static-musl executable for `x86_64` and `aarch64`, plus gg's reference
-     documents as one arch-independent `gg-reference-<version>.tar.gz` (see
-     [Releasing `gg`](#releasing-gg));
    - the [Tauri desktop app](/components/tauri/overview/) as the platform's
      installer: a `.deb` on Linux, a `.dmg` on macOS, an `.msi` and an NSIS
      `.exe` on Windows.
@@ -61,46 +58,63 @@ because no Azure agent can build it.
 ### Releasing `gg`
 
 [`gg`](/gg/overview/) is fetched by a running deployment into a run container
-rather than downloaded by a person, and its release job encodes three
-consequences of that.
+rather than downloaded by a person, so its release host is the Azure Blob
+Storage container `gg-releases` in the storage account `testcabinetartifacts`.
+The container allows anonymous blob read and no listing, so every object is
+readable at a known URL under
+`https://testcabinetartifacts.blob.core.windows.net/gg-releases/`. Each version
+is laid out under its own prefix:
 
-Two architectures, both native. `core`, running in the driver, picks the
-asset triple from its own architecture, so an arm64 deployment asks for
-`gg-aarch64-unknown-linux-musl` and an amd64 one for the `x86_64` asset. Each leg
-builds on a runner of that architecture via `scripts/build-gg-static.sh`, the
-same script the driver image runs to bake gg in, so the release asset and the
-image's binary come off one build path.
+| Object                                     | Contents                                          |
+| ------------------------------------------ | ------------------------------------------------- |
+| `v<version>/gg-x86_64-unknown-linux-musl`  | The static-musl `gg` for `x86_64`                 |
+| `v<version>/gg-aarch64-unknown-linux-musl` | The static-musl `gg` for `aarch64`                |
+| `v<version>/gg-reference.tar.gz`           | gg's reference documents, identical on every arch |
 
-A bare executable. The install inside a run container is a
-single `curl` of
-`https://github.com/<owner>/<repo>/releases/download/v<version>/gg-<target>`
-(`core::gg_exec::release_asset_url`), so the asset is uploaded under exactly that
-name with no packaging around it.
+The Azure pipeline uploads all three on every `master` build and every `v*` tag
+build. The `gg_amd64` and `gg_arm64` gate jobs build the binaries natively with
+`scripts/ci/gg-dist.sh`, which runs `scripts/build-gg-static.sh`, the same
+script the driver image runs to bake gg in, so the release objects and the
+image's binary come off one build path. The `gg_publish` job then runs
+`scripts/ci/publish-gg.sh` under the `tcab-gg-publish` service connection, a
+workload-identity-federated identity holding Storage Blob Data Contributor on
+the account. The version prefix is what the `x86_64` binary reports, and each
+upload is read back without credentials.
+
+A bare executable. The install inside a run container is a single `curl` of
+`<base>/v<version>/gg-<target>` (`core::gg_exec::release_asset_url`), so the
+object is uploaded under exactly that name with no packaging around it. The base
+defaults to the container's URL and `TCAB_GG_RELEASE_URL` overrides it. `core`,
+running in the driver, picks the target from its own architecture, so an arm64
+deployment asks for `gg-aarch64-unknown-linux-musl` and an amd64 one for the
+`x86_64` object; `TCAB_GG_RELEASE_TARGET` overrides it.
 
 The crate version is the release version. `gg --version` is read out of the
 run container and recorded as a run's `subject.harnessVersion`, and `core`
-derives the release tag it fetches from its own package version. Bump both
-`crates/gg` and `crates/core` to the release version before running the workflow.
-A test pins them to each other, and the `gg` job fails the release when the tag
-and the binary's reported version disagree.
+derives the version it fetches from its own package version. Bump both
+`crates/gg` and `crates/core` to the release version before tagging. A test pins
+them to each other. On a tag build the gates fail when `gg --version` differs
+from the tag with its `v` stripped, naming the two crates to bump, and
+`publish-gg.sh` runs the same check before it uploads anything.
 
 A prerelease tag such as `v0.7.0-rc1` equals no crate version, so nothing
 resolves it by default. Point a deployment at one explicitly with
 `TCAB_GG_RELEASE_VERSION=0.7.0-rc1`.
 
-#### `gg-reference-<version>.tar.gz`
+#### `gg-reference.tar.gz`
 
-The same job publishes the reference documents `tcab-backend` serves at
+The same upload publishes the reference documents `tcab-backend` serves at
 `GET /gg/reference` and `GET /gg/reference/{language}`: `index.json` plus one
 document per program language, projected by the freshly built `gg` itself
 (`gg reference --out`). The backend reads them from disk because it must not link
 `test-cabinet-gg`.
 
-A backend deployed from these tarballs rather than from the container image needs
-this asset unpacked too:
+A backend deployed from the release tarballs rather than from the container
+image needs this object unpacked too:
 
 ```sh
-tar -xzf gg-reference-v0.7.0.tar.gz -C /srv/test-cabinet
+GG_RELEASES=https://testcabinetartifacts.blob.core.windows.net/gg-releases
+curl -fsSL "$GG_RELEASES/v0.7.0/gg-reference.tar.gz" | tar -xz -C /srv/test-cabinet
 # then, in the backend's environment:
 TCAB_GG_REFERENCE=/srv/test-cabinet/gg-reference
 ```
@@ -111,9 +125,9 @@ section is the only thing that degrades. The container images need none of this:
 the backend image bakes the identical files at `/opt/gg-reference` and sets the
 variable itself.
 
-It is a single asset built on the `x86_64` leg alone, with no triple in its name,
-because the content is JSON projected from data compiled into gg and is identical
-on every platform.
+It is a single object built on the `x86_64` leg alone, with no triple in its
+name, because the content is JSON projected from data compiled into gg and is
+identical on every platform.
 
 ### The audio store a released driver needs
 
@@ -162,11 +176,11 @@ The project deploys three static sites, all on Cloudflare Pages. Each is its own
 Pages project under its own domain, built elsewhere and pushed with `wrangler`
 as a Direct Upload project.
 
-| Site                                                                             | Project                   | Address                         | Built by                                        |
-| -------------------------------------------------------------------------------- | ------------------------- | ------------------------------- | ----------------------------------------------- |
-| [Docs](/components/docs/overview/) (`apps/docs`)                                 | `test-cabinet-docs`       | `docs.testcabinet.ai`           | GitHub Actions → `wrangler` (`deploy-docs.yml`) |
-| Per-run playable builds                                                          | `test-cabinet-runs`       | a per-run `*.pages.dev` URL     | `tcab publish` → `wrangler`                     |
-| [Reference implementations](/components/core/results/#reference-implementations) | `test-cabinet-references` | a per-variant `*.pages.dev` URL | `tcab publish-reference` → `wrangler`           |
+| Site                                                                             | Project                   | Address                         | Built by                                                      |
+| -------------------------------------------------------------------------------- | ------------------------- | ------------------------------- | ------------------------------------------------------------- |
+| [Docs](/components/docs/overview/) (`apps/docs`)                                 | `test-cabinet-docs`       | `docs.testcabinet.ai`           | the Azure pipeline → `wrangler` (`scripts/ci/deploy-docs.sh`) |
+| Per-run playable builds                                                          | `test-cabinet-runs`       | a per-run `*.pages.dev` URL     | `tcab publish` → `wrangler`                                   |
+| [Reference implementations](/components/core/results/#reference-implementations) | `test-cabinet-references` | a per-variant `*.pages.dev` URL | `tcab publish-reference` → `wrangler`                         |
 
 The [gallery](/components/site/overview/) is served by an origin rather than
 built as a static site; see [Public Gallery](/deployment/public-gallery/).
@@ -188,18 +202,20 @@ branch-alias subdomains.
 ## Docs (Cloudflare Pages, one-time)
 
 The developer docs (`apps/docs`) deploy to Cloudflare Pages at
-`docs.testcabinet.ai`, driven by `.github/workflows/deploy-docs.yml`. The deploy
-target follows the branch: `master` publishes to `test-cabinet-docs` and
-`staging` to `test-cabinet-docs-staging`. It is a pure static build with no Rust
-step.
+`docs.testcabinet.ai` from the Azure pipeline's `docs` job, which runs
+`scripts/ci/deploy-docs.sh` on every `master` and `staging` build that passed the
+gates and the image builds. The deploy target follows the branch: `master`
+publishes to `test-cabinet-docs` and `staging` to `test-cabinet-docs-staging`.
+It is a pure static build with no Rust step.
 
-- Create a Direct Upload Pages project named `test-cabinet-docs`, matching
-  `--project-name` in the deploy workflow, with its production branch set to
-  `master`.
-- Add `docs.testcabinet.ai` as a custom domain on that project, with a
+- Create Direct Upload Pages projects named `test-cabinet-docs`, with its
+  production branch set to `master`, and `test-cabinet-docs-staging`, with its
+  production branch set to `staging`. The script passes the branch to `wrangler`
+  as `--branch`, so each upload is its project's production deployment.
+- Add `docs.testcabinet.ai` as a custom domain on `test-cabinet-docs`, with a
   `docs.testcabinet.ai` CNAME pointing at `test-cabinet-docs.pages.dev`.
 - Create a Cloudflare API token with the "Cloudflare Pages: Edit" permission and
-  note the account ID. Add both to the repository as the GitHub Actions secrets
+  note the account ID. Set both on the Azure pipeline as the secret variables
   `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
 
 ## Per-run builds (Cloudflare Pages)

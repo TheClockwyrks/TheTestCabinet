@@ -31,9 +31,8 @@ the run participates in token comparisons.
 ## Cost
 
 Claude Code reports the exact charge for a run as `total_cost_usd` on its
-terminal `result` event. That figure is used as both the [comparable and the
-actual cost](/components/core/metrics/#harness-reported-cost), and the
-OpenRouter price lookup is skipped for two reasons. One provider at one price
-already yields a provider-stable charge, which is the normalization the
-OpenRouter figure exists to provide. Claude Code also passes the provider's
-native model ID, which OpenRouter's catalog lists under different names.
+terminal `result` event. That figure is recorded as the run's [actual
+cost](/components/core/metrics/#harness-reported-cost). The comparable cost is
+computed from the model's curated list price as for every harness; the provider
+native model id a Claude Code run reports is mapped to its catalog entry through
+the model's aliases.

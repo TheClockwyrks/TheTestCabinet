@@ -8,6 +8,7 @@ import type {
   ModelInput,
 } from "../../../client/types";
 import { FAMILIES } from "../../data/families";
+import { perMillion } from "../../format";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
 import { SubmitNotice } from "../../components/SubmitNotice";
@@ -50,6 +51,56 @@ function withAtLeastOneRow(aliases: ModelAlias[]): ModelAlias[] {
   return aliases.length > 0 ? aliases : [blankAlias()];
 }
 
+// A per-Mtok price field's text: the stored per-token figure scaled up, or ""
+// for an unknown one. The form edits per-Mtok figures because that is the unit
+// a developer pricing page publishes; the backend divides back down.
+function priceField(perToken: number | null): string {
+  const perMtok = perMillion(perToken);
+  return perMtok === null ? "" : mtokText(perMtok);
+}
+
+// A per-Mtok figure as field text. Scaling between per-token and per-Mtok leaves
+// binary floating-point noise (0.121 comes back as 0.12099999999999998), which
+// twelve significant digits drop without touching any published price.
+function mtokText(perMtok: number): string {
+  return String(Number(perMtok.toPrecision(12)));
+}
+
+// Today's date as a `YYYY-MM-DD` string in UTC, for seeding the list price's
+// "prices taken on" field — the figures were just read off the live listing.
+function todayUtc(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+// Parse one list-price field's text: "" reads as "not entered" (null); anything
+// else must be a finite, non-negative number, and a figure that isn't fails the
+// save with a reason rather than reaching the backend as a NaN.
+function parsePriceField(
+  text: string,
+  label: string,
+): { value: number | null } | { error: string } {
+  const trimmed = text.trim();
+  if (!trimmed) return { value: null };
+  const value = Number(trimmed);
+  if (!Number.isFinite(value) || value < 0) {
+    return {
+      error: `${label} must be a non-negative number, got "${trimmed}".`,
+    };
+  }
+  return { value };
+}
+
+// The three parsed list-price fields, narrowed past their failure arm — the
+// caller reports the first failure and only calls this once none remains.
+function parsedPrices(
+  parsed: Array<{ value: number | null } | { error: string }>,
+): [number | null, number | null, number | null] {
+  const [input, cachedInput, output] = parsed.map((p) =>
+    "value" in p ? p.value : null,
+  );
+  return [input ?? null, cachedInput ?? null, output ?? null];
+}
+
 // The add/edit model configuration form — one component covering three entry
 // modes: a blank draft (`/models/new`), a draft seeded from a run of an unknown
 // model (`/models/new?fromRun=<runId>`), and an existing config opened for
@@ -88,6 +139,21 @@ export function ModelConfigPage() {
   const [description, setDescription] = useState("");
   const [openrouterSlug, setOpenrouterSlug] = useState("");
   const [providerPin, setProviderPin] = useState("");
+  // The provider policy a gg run's candidate list is filtered by. The prices are
+  // kept as typed and parsed on save; the provider lists are one name per line.
+  const [nativeQuantization, setNativeQuantization] = useState("");
+  const [maxInputPrice, setMaxInputPrice] = useState("");
+  const [maxOutputPrice, setMaxOutputPrice] = useState("");
+  const [bannedProviders, setBannedProviders] = useState("");
+  const [unknownQuantizationProviders, setUnknownQuantizationProviders] =
+    useState("");
+  // The list-price block, edited as text: per-Mtok USD figures (the unit a
+  // developer pricing page publishes) plus the date they were taken. An empty
+  // field reads as "not entered"; the save parses them all-or-nothing.
+  const [listPriceInput, setListPriceInput] = useState("");
+  const [listPriceCachedInput, setListPriceCachedInput] = useState("");
+  const [listPriceOutput, setListPriceOutput] = useState("");
+  const [listPriceAsOf, setListPriceAsOf] = useState("");
   // The catalog slug, kept internal: preserved from the existing model (edit) or
   // the seed, else derived from the name at submit time.
   const [slug, setSlug] = useState("");
@@ -111,9 +177,29 @@ export function ModelConfigPage() {
     setLogoSvg(existing.logoSvg);
     setDescription(existing.description ?? "");
     setOpenrouterSlug(openrouterSlugFromUrl(existing.openrouterUrl));
-    // Only a hand-set pin is the form's to edit; an observed one follows the listing.
+    // The stored figures are per-token; the fields edit them per Mtok. The date
+    // is edited as a calendar date, whatever precision it was stored with.
+    setListPriceInput(priceField(existing.listPrice?.uncachedInput ?? null));
+    setListPriceCachedInput(
+      priceField(existing.listPrice?.cachedInput ?? null),
+    );
+    setListPriceOutput(priceField(existing.listPrice?.output ?? null));
+    setListPriceAsOf(existing.listPriceAsOf?.slice(0, 10) ?? "");
+    // Only a hand-set developer provider is the form's to edit; an observed one
+    // follows the listing.
     setProviderPin(
       existing.providerPinSetByHand ? (existing.providerPin ?? "") : "",
+    );
+    setNativeQuantization(existing.nativeQuantization ?? "");
+    setMaxInputPrice(
+      existing.maxInputPrice != null ? String(existing.maxInputPrice) : "",
+    );
+    setMaxOutputPrice(
+      existing.maxOutputPrice != null ? String(existing.maxOutputPrice) : "",
+    );
+    setBannedProviders(existing.bannedProviders.join("\n"));
+    setUnknownQuantizationProviders(
+      existing.unknownQuantizationProviders.join("\n"),
     );
     setSlug(existing.slug);
   }, [editing, existing]);
@@ -207,9 +293,10 @@ export function ModelConfigPage() {
 
   // Fill the curated fields in from what OpenRouter publishes for the entered
   // slug, so an operator adding a model doesn't retype a name, a provider, and a
-  // blurb that OpenRouter already has. Everything else — the prices, the context
-  // window, the modalities — the backend records for itself, which is why this
-  // fills exactly these three.
+  // blurb that OpenRouter already has, and the list-price block seeds from the
+  // model's official endpoint for confirmation against the developer's pricing
+  // page. The context window and the modalities the backend records for itself,
+  // which is why they are not here.
   //
   // It replaces rather than merges: it runs only on an explicit press, and
   // "replace what's here from OpenRouter" is the one reading of that press that
@@ -225,6 +312,27 @@ export function ModelConfigPage() {
       setName(listing.name);
       setProvider(listing.provider);
       if (listing.description) setDescription(listing.description);
+      // Seed the list-price fields from the official endpoint's current rates,
+      // for the operator to confirm or correct against the developer's pricing
+      // page. A figure the endpoint does not list seeds nothing, so the fields
+      // the operator may already have filled are only ever replaced by a real
+      // figure. The date is set only when blank: an entered date records when
+      // *those* figures were taken, and re-dating them to today would assert
+      // something the press does not know.
+      if (listing.inputPerMtok !== null)
+        setListPriceInput(mtokText(listing.inputPerMtok));
+      if (listing.cachedInputPerMtok !== null)
+        setListPriceCachedInput(mtokText(listing.cachedInputPerMtok));
+      if (listing.outputPerMtok !== null)
+        setListPriceOutput(mtokText(listing.outputPerMtok));
+      if (
+        (listing.inputPerMtok !== null ||
+          listing.cachedInputPerMtok !== null ||
+          listing.outputPerMtok !== null) &&
+        !listPriceAsOf
+      ) {
+        setListPriceAsOf(todayUtc());
+      }
       // The OpenRouter slug is itself a canonical model id for the OpenRouter
       // family, so an untouched alias list is worth claiming it — the row the
       // operator would otherwise fill with the exact text they just typed above.
@@ -243,17 +351,64 @@ export function ModelConfigPage() {
   };
 
   const onSave = async () => {
+    const ceiling = parseCeiling(maxInputPrice, maxOutputPrice);
+    if (typeof ceiling === "string") {
+      setError(ceiling);
+      return;
+    }
+    // The list price is all-or-nothing, matching the backend's validation: the
+    // comparable cost needs every class, so a partial set is a mistake the save
+    // refuses with the reason rather than a figure that prices some runs at 0.
+    // A fully blank block sends all null — on update that preserves the stored
+    // price rather than clearing it.
+    const input = parsePriceField(listPriceInput, "Input / Mtok");
+    const cached = parsePriceField(listPriceCachedInput, "Cached input / Mtok");
+    const output = parsePriceField(listPriceOutput, "Output / Mtok");
+    const failure = [input, cached, output].find(
+      (parsed): parsed is { error: string } => "error" in parsed,
+    );
+    if (failure) {
+      setError(failure.error);
+      return;
+    }
+    const [listInput, listCachedInput, listOutput] = parsedPrices([
+      input,
+      cached,
+      output,
+    ]);
+    const entered = [listInput, listCachedInput, listOutput].filter(
+      (value) => value !== null,
+    );
+    if (entered.length > 0 && entered.length < 3) {
+      setError(
+        "Set all three list prices, or none — the comparable cost needs every class.",
+      );
+      return;
+    }
+    if (entered.length === 3 && !listPriceAsOf) {
+      setError("Enter the date the list prices were taken.");
+      return;
+    }
     const cleanAliases = aliases
       .map((a) => ({ ...a, slug: a.slug.trim() }))
       .filter((a) => a.slug);
     const submittedSlug = (editing ? slug : slug || slugify(name)).trim();
-    const input: ModelInput = {
+    const body: ModelInput = {
       slug: submittedSlug,
       name: name.trim(),
       provider: provider.trim(),
       aliases: cleanAliases,
       openrouterSlug: openrouterSlug.trim() || null,
       providerPin: providerPin.trim() || null,
+      nativeQuantization: nativeQuantization.trim().toLowerCase() || null,
+      maxInputPrice: ceiling.input,
+      maxOutputPrice: ceiling.output,
+      bannedProviders: providerLines(bannedProviders),
+      unknownQuantizationProviders: providerLines(unknownQuantizationProviders),
+      listPriceInputPerMtok: listInput,
+      listPriceCachedInputPerMtok: listCachedInput,
+      listPriceOutputPerMtok: listOutput,
+      listPriceAsOf: listPriceAsOf || null,
       description: description.trim() || null,
       logoSvg,
       providerLogoUrl: logoUrl.trim() || null,
@@ -262,8 +417,8 @@ export function ModelConfigPage() {
     setError(null);
     try {
       const result = editing
-        ? await config.updateModel(slug, input)
-        : await config.createModel(input);
+        ? await config.updateModel(slug, body)
+        : await config.createModel(body);
       // The catalog just changed, so nudge the data source to re-read it, then
       // land on the saved model's detail page.
       runtime.requestRefresh();
@@ -351,8 +506,10 @@ export function ModelConfigPage() {
           </div>
           <span className={styles.fieldHint}>
             Fill replaces the name, provider, and description below with what
-            OpenRouter publishes. Prices, the context window, and the input
-            modalities are recorded automatically and are never edited here.
+            OpenRouter publishes, and seeds the list-price fields from the
+            model's official endpoint. The billed rate, the context window, and
+            the input modalities are recorded automatically; the list price
+            below is the operator's.
           </span>
           {fillError && (
             <span className={styles.fillError} role="alert">
@@ -361,22 +518,65 @@ export function ModelConfigPage() {
           )}
         </div>
 
-        <label className={styles.field}>
-          <span className={styles.fieldLabel}>Provider pin</span>
-          <input
-            className={styles.input}
-            value={providerPin}
-            onChange={(e) => setProviderPin(e.target.value)}
-            placeholder="the listing's provider name, e.g. OpenAI"
-            aria-label="Provider pin"
-          />
+        {/* The list price: the developer's published figures, per Mtok because
+          that is the unit a pricing page publishes. The save parses them
+          all-or-nothing. */}
+        <div className={styles.field}>
+          <span className={styles.fieldLabel}>List price</span>
           <span className={styles.fieldHint}>
-            The OpenRouter provider this model's requests are pinned to. Leave
-            blank to take the endpoint whose provider is the model's developer.
-            Set it where that listing's name does not match the model id. A
-            model with no official endpoint is not testable.
+            The developer&apos;s published list prices — the figures a
+            run&apos;s comparable cost is computed from. Enter them from the
+            developer&apos;s pricing page; Fill from OpenRouter seeds them from
+            the model&apos;s official endpoint for confirmation.
           </span>
-        </label>
+          <div className={styles.priceRow}>
+            <label className={styles.priceField}>
+              <span className={styles.fieldLabel}>Input / Mtok</span>
+              <input
+                className={styles.input}
+                value={listPriceInput}
+                onChange={(e) => setListPriceInput(e.target.value)}
+                inputMode="decimal"
+                step="any"
+                min="0"
+                placeholder="e.g. 5"
+              />
+            </label>
+            <label className={styles.priceField}>
+              <span className={styles.fieldLabel}>Cached input / Mtok</span>
+              <input
+                className={styles.input}
+                value={listPriceCachedInput}
+                onChange={(e) => setListPriceCachedInput(e.target.value)}
+                inputMode="decimal"
+                step="any"
+                min="0"
+                placeholder="e.g. 0.50"
+              />
+            </label>
+            <label className={styles.priceField}>
+              <span className={styles.fieldLabel}>Output / Mtok</span>
+              <input
+                className={styles.input}
+                value={listPriceOutput}
+                onChange={(e) => setListPriceOutput(e.target.value)}
+                inputMode="decimal"
+                step="any"
+                min="0"
+                placeholder="e.g. 25"
+              />
+            </label>
+            <label className={styles.priceField}>
+              <span className={styles.fieldLabel}>Prices taken on</span>
+              <input
+                className={styles.input}
+                type="date"
+                value={listPriceAsOf}
+                onChange={(e) => setListPriceAsOf(e.target.value)}
+              />
+            </label>
+          </div>
+        </div>
 
         <div className={styles.fields}>
           <label className={styles.field}>
@@ -476,6 +676,132 @@ export function ModelConfigPage() {
           />
         </label>
 
+        {/* The provider policy: what a gg run's candidate list is filtered by.
+          Every field is optional; blank takes the figure from OpenRouter's
+          endpoints listing. */}
+        <div className={styles.aliasBlock}>
+          <span className={styles.fieldLabel}>Providers for gg runs</span>
+          <span className={styles.fieldHint}>
+            A gg run of this model runs on the providers OpenRouter lists that
+            serve it at its native quantization, at or below its developer's
+            prices, with a cache-read price. The model's Stats tab shows the
+            list the next run would use.
+          </span>
+        </div>
+
+        <div className={styles.fields}>
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>Developer provider</span>
+            <input
+              className={styles.input}
+              value={providerPin}
+              onChange={(e) => setProviderPin(e.target.value)}
+              placeholder="e.g. Alibaba"
+              aria-label="Developer provider"
+            />
+            <span className={styles.fieldHint}>
+              OpenRouter's name for the developer's own endpoint. Leave blank to
+              take the provider matching the model id's author segment; set it
+              where they differ (<code>qwen/…</code> served by Alibaba).
+            </span>
+          </label>
+
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>Native quantization</span>
+            <input
+              className={styles.input}
+              value={nativeQuantization}
+              onChange={(e) => setNativeQuantization(e.target.value)}
+              placeholder="e.g. fp8"
+              aria-label="Native quantization"
+              list="model-quantization-levels"
+            />
+            <datalist id="model-quantization-levels">
+              {QUANTIZATION_LEVELS.map((level) => (
+                <option key={level} value={level} />
+              ))}
+            </datalist>
+            <span className={styles.fieldHint}>
+              The level every provider must serve the model at. Leave blank to
+              take the highest level any endpoint declares.
+            </span>
+          </label>
+        </div>
+
+        <div className={styles.fields}>
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>
+              Price ceiling, input / Mtok (USD)
+            </span>
+            <input
+              className={styles.input}
+              type="number"
+              min="0"
+              step="any"
+              inputMode="decimal"
+              value={maxInputPrice}
+              onChange={(e) => setMaxInputPrice(e.target.value)}
+              placeholder="e.g. 0.60"
+              aria-label="Price ceiling, input per Mtok"
+            />
+          </label>
+
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>
+              Price ceiling, output / Mtok (USD)
+            </span>
+            <input
+              className={styles.input}
+              type="number"
+              min="0"
+              step="any"
+              inputMode="decimal"
+              value={maxOutputPrice}
+              onChange={(e) => setMaxOutputPrice(e.target.value)}
+              placeholder="e.g. 2.20"
+              aria-label="Price ceiling, output per Mtok"
+            />
+          </label>
+        </div>
+        <span className={`${styles.fieldHint} ${styles.fieldBlockHint}`}>
+          Used only when OpenRouter lists no developer endpoint, since that
+          endpoint's own rates are the ceiling. Set both or neither.
+        </span>
+
+        <div className={styles.fields}>
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>Banned providers</span>
+            <textarea
+              className={`${styles.textarea} ${styles.textareaShort}`}
+              value={bannedProviders}
+              onChange={(e) => setBannedProviders(e.target.value)}
+              placeholder={"One provider per line"}
+              aria-label="Banned providers"
+            />
+            <span className={styles.fieldHint}>
+              Providers a gg run of this model never uses.
+            </span>
+          </label>
+
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>
+              Unknown-quantization providers
+            </span>
+            <textarea
+              className={`${styles.textarea} ${styles.textareaShort}`}
+              value={unknownQuantizationProviders}
+              onChange={(e) => setUnknownQuantizationProviders(e.target.value)}
+              placeholder={"One provider per line"}
+              aria-label="Unknown-quantization providers"
+            />
+            <span className={styles.fieldHint}>
+              Providers kept despite declaring <code>unknown</code>{" "}
+              quantization. Every other <code>unknown</code> endpoint is left
+              out.
+            </span>
+          </label>
+        </div>
+
         <SubmitNotice message={error} />
 
         <div className={styles.actions}>
@@ -502,4 +828,51 @@ export function ModelConfigPage() {
       </div>
     </PageLayout>
   );
+}
+
+// The quantization levels OpenRouter declares, best first — the native levels
+// the form offers (the backend refuses any other).
+const QUANTIZATION_LEVELS = [
+  "fp32",
+  "bf16",
+  "fp16",
+  "fp8",
+  "int8",
+  "fp6",
+  "fp4",
+  "int4",
+];
+
+// A provider list typed one name per line: trimmed, blank lines dropped.
+function providerLines(text: string): string[] {
+  return text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+}
+
+// The price ceiling as typed: both halves blank is no ceiling, both set to
+// positive numbers is the ceiling, and anything else is the reason it is
+// refused (the backend holds the same rule).
+function parseCeiling(
+  input: string,
+  output: string,
+): { input: number | null; output: number | null } | string {
+  const typedInput = input.trim();
+  const typedOutput = output.trim();
+  if (!typedInput && !typedOutput) return { input: null, output: null };
+  if (!typedInput || !typedOutput) {
+    return "Set both halves of the price ceiling, or neither.";
+  }
+  const parsedInput = Number(typedInput);
+  const parsedOutput = Number(typedOutput);
+  if (
+    !Number.isFinite(parsedInput) ||
+    !Number.isFinite(parsedOutput) ||
+    parsedInput <= 0 ||
+    parsedOutput <= 0
+  ) {
+    return "The price ceiling must be two prices above zero, in USD per million tokens.";
+  }
+  return { input: parsedInput, output: parsedOutput };
 }

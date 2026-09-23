@@ -606,6 +606,70 @@ same `--gg-selfcheck` flag post-merge, before the images are published.
 machine's own toolchains, which is the form to run while working on an arm. See
 [the self-check](/gg/languages/selfcheck/).
 
+## Continuous integration
+
+`azure-pipelines.yml` is the pipeline that gates a commit, mirrors it to GitHub,
+builds its images, and deploys it. Every job delegates to a script under
+`scripts/ci/`, so a failure reproduces locally by running the same script; the
+scripts are listed in `scripts/ci/README.md`. Pushes to `master`, `staging`,
+`nightly`, and `v*` tags trigger it. Pull requests into `master` and `staging`
+run it through build validation policies on those branches, because Azure Repos
+ignores a `pr:` block. A run for any other branch runs the gates only.
+
+| Stage    | Runs on                   | What it does                                                                                                                              |
+| -------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `gates`  | every run                 | Every check below, plus the static gg builds on `master`, `staging`, and tags, then the GitHub mirror                                     |
+| `images` | `master`, `staging`, tags | On `master` and `staging`, every service and run-container image into `testcabinet.azurecr.io`; on `master` and tags, gg's release upload |
+| `deploy` | `master`, `staging`       | Rolls the matching cluster to the commit's images and deploys the docs site                                                               |
+
+The gates are `rust`, `binary` (Linux and Windows), `web`, `webtest`, `specs`,
+`format`, `validators`, `frozen`, `audiopacks`, `specvocabulary`,
+`buildcontext`, `contract`, `manifests`, which renders every kustomization and
+checks the deploy set with `scripts/ci/k8s-manifests.sh`, and `submodulepins`,
+which fails when a submodule pin is absent from that submodule's `master`
+(`scripts/ci/submodule-pins.sh`). On `master`,
+`staging`, and tags, `gg_amd64` and `gg_arm64` build the static gg binaries
+natively, and on a tag build the step "gg version matches the tag" fails when
+`gg --version` differs from the tag with its `v` stripped, naming `crates/gg` and
+`crates/core` as the crates to bump.
+
+The `mirror` job runs after every gate on `master`, `staging`, `nightly`, and
+`v*` tags. It force-pushes the branch with its tags, or the tag, to
+`github.com/TheClockwyrks/TheTestCabinet` with the deploy key held in the secure
+file `github-mirror-key`. It is the only thing that pushes there, so the mirror
+holds gated commits only.
+
+The `images` stage builds every image natively per architecture: `amd64` on
+Microsoft-hosted `ubuntu-24.04` agents and `arm64` on the organisation's arm64
+pool `pool-dev-linux-arm64-wus3-4c-eph-01`. Each is pushed as
+`<image>:<sha>-<arch>` and fused into the multi-arch `<image>:<sha>`; `:latest`
+is never pushed. The audio store is built first, because the driver image bakes
+`test-cabinet-audio-store:<sha>`. The run images are pushed only after
+`gg selfcheck` passes inside each `-gg` environment. The `gg_publish` job is
+described in [Releasing `gg`](/development/releasing/#releasing-gg), and the
+deploy in [Kubernetes](/deployment/kubernetes/overview/#deploying).
+
+No job holds a stored credential. The pipeline authenticates through
+workload-identity-federated service connections and a few secret pipeline
+variables:
+
+| Name                                                                                                                                                | Kind                       | Used for                                                                                                                                                   |
+| --------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tcab-acr`                                                                                                                                          | Docker Registry connection | `AcrPush` on `testcabinet.azurecr.io`                                                                                                                      |
+| `tcab-deploy`                                                                                                                                       | Azure Resource Manager     | The cluster deploys: the custom "Test Cabinet AKS Command Invoke" role on each cluster, "Azure Kubernetes Service RBAC Admin" on its application namespace |
+| `tcab-gg-publish`                                                                                                                                   | Azure Resource Manager     | Storage Blob Data Contributor on `testcabinetartifacts`                                                                                                    |
+| `github-mirror-key`                                                                                                                                 | Secure file                | The GitHub mirror's write deploy key                                                                                                                       |
+| `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`                                                                                                     | Secret pipeline variables  | The docs deploy                                                                                                                                            |
+| `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_AUDIO_R2_BUCKET`, `CLOUDFLARE_AUDIO_R2_PRESIGN_ACCESS_KEY_ID`, `CLOUDFLARE_AUDIO_R2_PRESIGN_SECRET_ACCESS_KEY` | Secret pipeline variables  | Staging the audio store out of the audio object store (read-only)                                                                                          |
+
+The secret variables must be set on the pipeline before `master` or `staging`
+builds can complete their images and deploy stages.
+
+The GitHub workflows under `.github/workflows/` run on the mirror. `ci.yml`
+repeats the critical checks, `binary-macos.yml` validates the macOS binary on
+demand, and `release.yml` and `release-promote.yml` cut the public `tcab`
+release; see [Releasing](/development/releasing/).
+
 ## Desktop app (Tauri)
 
 The Tauri CLI drives the [desktop app](/components/tauri/overview/), building the

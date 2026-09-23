@@ -241,6 +241,8 @@ fn build_new_job_leaves_gg_config_null_for_a_conventional_run() {
         gg_model_windows: Default::default(),
         gg_model_providers: Default::default(),
         gg_model_modalities: Default::default(),
+        gg_model_prices: Default::default(),
+        model_prices: None,
     };
     let new = build_new_job(
         &launch,
@@ -321,6 +323,104 @@ fn unreachable_prices() -> test_cabinet_core::OpenRouterPrices {
     test_cabinet_core::OpenRouterPrices::with_endpoint("http://127.0.0.1:0/models")
 }
 
+/// Serve `endpoints` as every model's OpenRouter `/models/{id}/endpoints` body on a loopback
+/// port, and return a price source pointed at it.
+async fn endpoints_listing(endpoints: serde_json::Value) -> test_cabinet_core::OpenRouterPrices {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let body = serde_json::json!({ "data": { "name": "Some: Model", "endpoints": endpoints } });
+    let app = axum::Router::new().fallback(move || {
+        let body = body.clone();
+        async move { axum::Json(body) }
+    });
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    test_cabinet_core::OpenRouterPrices::with_endpoint(format!("http://{addr}/models"))
+}
+
+/// One endpoint of the listing: `provider` at `quantization`, priced per million tokens, with a
+/// cache-read price and the parameters every gg request sends.
+fn endpoint(provider: &str, quantization: &str, input: f64, output: f64) -> serde_json::Value {
+    serde_json::json!({
+        "provider_name": provider,
+        "context_length": 262_144,
+        "quantization": quantization,
+        "pricing": {
+            "prompt": format!("{}", input / 1_000_000.0),
+            "completion": format!("{}", output / 1_000_000.0),
+            "input_cache_read": format!("{}", input / 10.0 / 1_000_000.0),
+        },
+        "supported_parameters": ["tools", "tool_choice", "reasoning"],
+    })
+}
+
+/// A listing every model of these tests resolves a list from: one fp8 endpoint per developer
+/// they bind, all at one price, so each model's developer passes and heads its list.
+async fn every_developer_listing() -> test_cabinet_core::OpenRouterPrices {
+    endpoints_listing(serde_json::json!([
+        endpoint("Anthropic", "fp8", 1.0, 2.0),
+        endpoint("OpenAI", "fp8", 1.0, 2.0),
+        endpoint("Z.AI", "fp8", 1.0, 2.0),
+        endpoint("Mystery", "fp8", 1.0, 2.0),
+    ]))
+    .await
+}
+
+/// The providers of `model_id`'s list on `launch`, in order.
+fn providers_of<'a>(launch: &'a LaunchBody, model_id: &str) -> Vec<&'a str> {
+    launch
+        .gg_model_providers
+        .get(model_id)
+        .map(|candidates| {
+            candidates
+                .iter()
+                .map(|candidate| candidate.provider.as_str())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// A launch of `set`, as the console authors it.
+fn launch_of(set: GgCapabilitySet) -> LaunchBody {
+    GgRunRequest {
+        capability_set: authored(set),
+        ..sample_request()
+    }
+    .into_launch_body()
+    .unwrap()
+}
+
+/// A gg launch's pricing rides per-bound-model in `gg_model_prices`, resolved from
+/// the model catalog at enqueue: a model without a curated list price refuses the
+/// launch. Curate `model_id` fully priced, so the tests below hinge on the fact they
+/// mean to exercise (the window, the pin, the modalities), never on pricing.
+async fn curate_priced(db: &Db, model_id: &str) {
+    db.upsert_model_config(crate::db::ModelConfigWrite {
+        slug: model_id.replace('/', "-"),
+        display_name: model_id.to_string(),
+        provider: model_id.split('/').next().unwrap_or(model_id).to_string(),
+        provider_logo_url: None,
+        provider_logo_svg: None,
+        description_md: None,
+        openrouter_slug: Some(model_id.to_string()),
+        provider_pin: None,
+        list_price_input: Some(1e-6),
+        list_price_cached_input: Some(1e-7),
+        list_price_output: Some(2e-6),
+        list_price_as_of: Some("2026-10-01".to_string()),
+        list_price_source: Some("hand".to_string()),
+        aliases: vec![crate::db::AliasEntry {
+            alias: model_id.to_string(),
+            family: test_cabinet_core::run_record::HarnessFamily::Openrouter,
+        }],
+        now: "2026-01-01T00:00:00Z".to_string(),
+        ..Default::default()
+    })
+    .await
+    .unwrap();
+}
+
 /// Enqueuing a gg run resolves the context window of **every model it binds** from the
 /// model catalog and stamps it onto the launch body, so the figure travels to the run
 /// rather than being looked up from inside the run container.
@@ -333,6 +433,8 @@ async fn launch_resolves_the_bound_models_context_windows() {
     db.insert_price_observation(window_observation("openai/gpt-5.4-mini", 400_000))
         .await
         .unwrap();
+    curate_priced(&db, "anthropic/claude-opus-4.8").await;
+    curate_priced(&db, "openai/gpt-5.4-mini").await;
 
     let mut set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
     set.agents.push(test_cabinet_core::gg::GgAgentConfig {
@@ -341,14 +443,9 @@ async fn launch_resolves_the_bound_models_context_windows() {
         model_id: "openai/gpt-5.4-mini".to_string(),
         ..test_cabinet_core::gg::GgAgentConfig::root()
     });
-    let mut launch = GgRunRequest {
-        capability_set: authored(set),
-        ..sample_request()
-    }
-    .into_launch_body()
-    .unwrap();
+    let mut launch = launch_of(set);
 
-    resolve_gg_model_facts(&db, &unreachable_prices(), &mut launch)
+    resolve_gg_model_facts(&db, &every_developer_listing().await, &[], &mut launch)
         .await
         .expect("every bound model is in the catalog");
 
@@ -359,6 +456,12 @@ async fn launch_resolves_the_bound_models_context_windows() {
             ("openai/gpt-5.4-mini".to_string(), 400_000),
         ])
     );
+    // Each model's list is built from the listing, with its own developer first.
+    assert_eq!(
+        providers_of(&launch, "anthropic/claude-opus-4.8")[0],
+        "Anthropic"
+    );
+    assert_eq!(providers_of(&launch, "openai/gpt-5.4-mini")[0], "OpenAI");
 }
 
 /// The same resolution also stamps each bound model's **input modalities** onto the
@@ -368,6 +471,9 @@ async fn launch_resolves_the_bound_models_context_windows() {
 #[tokio::test]
 async fn launch_resolves_the_bound_models_input_modalities() {
     let db = Db::connect_in_memory().await.unwrap();
+    curate_priced(&db, "anthropic/claude-opus-4.8").await;
+    curate_priced(&db, "z-ai/glm-5.2").await;
+    curate_priced(&db, "mystery/model").await;
     let mut seeing = window_observation("anthropic/claude-opus-4.8", 200_000);
     seeing.input_modalities = Some("text,image".to_string());
     db.insert_price_observation(seeing).await.unwrap();
@@ -392,14 +498,9 @@ async fn launch_resolves_the_bound_models_input_modalities() {
         model_id: "mystery/model".to_string(),
         ..test_cabinet_core::gg::GgAgentConfig::root()
     });
-    let mut launch = GgRunRequest {
-        capability_set: authored(set),
-        ..sample_request()
-    }
-    .into_launch_body()
-    .unwrap();
+    let mut launch = launch_of(set);
 
-    resolve_gg_model_facts(&db, &unreachable_prices(), &mut launch)
+    resolve_gg_model_facts(&db, &every_developer_listing().await, &[], &mut launch)
         .await
         .expect("every bound model has a window, which is what a launch hinges on");
 
@@ -422,173 +523,247 @@ async fn launch_resolves_the_bound_models_input_modalities() {
 #[tokio::test]
 async fn unknown_modalities_do_not_block_a_launch() {
     let db = Db::connect_in_memory().await.unwrap();
+    curate_priced(&db, "anthropic/claude-opus-4.8").await;
     // A window and nothing else — exactly what a row recorded before modalities existed
     // looks like.
     db.insert_price_observation(window_observation("anthropic/claude-opus-4.8", 200_000))
         .await
         .unwrap();
 
-    let mut launch = GgRunRequest {
-        capability_set: authored(GgCapabilitySet::minimal("anthropic/claude-opus-4.8")),
-        ..sample_request()
-    }
-    .into_launch_body()
-    .unwrap();
-
-    resolve_gg_model_facts(&db, &unreachable_prices(), &mut launch)
+    let mut launch = launch_of(GgCapabilitySet::minimal("anthropic/claude-opus-4.8"));
+    resolve_gg_model_facts(&db, &every_developer_listing().await, &[], &mut launch)
         .await
         .expect("a missing modality list is not a launch failure");
     assert!(launch.gg_model_modalities.is_empty());
     assert!(!launch.gg_model_windows.is_empty());
-    assert_eq!(
-        launch
-            .gg_model_providers
-            .get("anthropic/claude-opus-4.8")
-            .map(String::as_str),
-        Some("anthropic"),
-        "the observed provider is the pin"
-    );
+    assert!(!launch.gg_model_providers.is_empty());
 }
 
-/// A model the catalog knows a window for but no official endpoint for is refused, naming
-/// the model. It is not testable on another provider, and the reason is the enqueue's.
+/// The list is built from the endpoints listing read at enqueue, so a listing that cannot be
+/// read refuses the launch, naming the model, even when the catalog holds the window.
 #[tokio::test]
-async fn launch_is_refused_when_a_model_has_no_official_endpoint() {
+async fn launch_is_refused_when_the_endpoints_listing_cannot_be_read() {
     let db = Db::connect_in_memory().await.unwrap();
-    let mut observation = window_observation("mystery/model", 128_000);
-    observation.provider_pin = None;
-    db.insert_price_observation(observation).await.unwrap();
-
-    let mut launch = GgRunRequest {
-        capability_set: authored(GgCapabilitySet::minimal("mystery/model")),
-        ..sample_request()
-    }
-    .into_launch_body()
-    .unwrap();
-
-    let err = resolve_gg_model_facts(&db, &unreachable_prices(), &mut launch)
+    db.insert_price_observation(window_observation("mystery/model", 128_000))
         .await
-        .expect_err("a model with no official endpoint is not testable");
+        .unwrap();
+
+    let mut launch = launch_of(GgCapabilitySet::minimal("mystery/model"));
+    let err = resolve_gg_model_facts(&db, &unreachable_prices(), &[], &mut launch)
+        .await
+        .expect_err("no listing, no list");
     assert!(
-        err.contains("mystery/model") && err.contains("no official provider"),
+        err.contains("mystery/model") && err.contains("endpoints listing"),
         "unexpected reason: {err}"
     );
 }
 
-/// Serve `endpoints` as every model's OpenRouter `/models/{id}/endpoints` body on a loopback
-/// port, and return a price source pointed at it.
-async fn endpoints_listing(endpoints: serde_json::Value) -> test_cabinet_core::OpenRouterPrices {
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-    let body = serde_json::json!({ "data": { "name": "Some: Model", "endpoints": endpoints } });
-    let app = axum::Router::new().fallback(move || {
-        let body = body.clone();
-        async move { axum::Json(body) }
-    });
-    tokio::spawn(async move {
-        axum::serve(listener, app).await.unwrap();
-    });
-    test_cabinet_core::OpenRouterPrices::with_endpoint(format!("http://{addr}/models"))
-}
-
-/// A model the catalog has not pinned yet is pinned from its live endpoints listing, to the
-/// endpoint whose provider is its developer, spelled as the listing spells it.
+/// Enqueue builds the ordered candidate list from the live listing: the developer's endpoint
+/// first, spelled as the listing spells it, then the rest by price, each at its quantization.
+/// Endpoints below the native level, above the developer's rates, without a cache-read price or
+/// without tool support are left out.
 #[tokio::test]
-async fn launch_pins_an_unpinned_model_to_its_developers_endpoint() {
+async fn launch_builds_the_candidate_list_developer_first() {
     let db = Db::connect_in_memory().await.unwrap();
-    let mut observation = window_observation("z-ai/glm-5.2", 1_048_576);
-    observation.provider_pin = None;
-    db.insert_price_observation(observation).await.unwrap();
+    curate_priced(&db, "z-ai/glm-5.2").await;
+    db.insert_price_observation(window_observation("z-ai/glm-5.2", 1_048_576))
+        .await
+        .unwrap();
+    let mut no_cache = endpoint("NoCache", "fp8", 0.5, 2.0);
+    no_cache["pricing"]["input_cache_read"] = serde_json::Value::Null;
+    let mut no_tools = endpoint("NoTools", "fp8", 0.5, 2.0);
+    no_tools["supported_parameters"] = serde_json::json!(["reasoning"]);
     let prices = endpoints_listing(serde_json::json!([
-        { "provider_name": "DeepInfra", "context_length": 1_048_576 },
-        { "provider_name": "Z.AI", "context_length": 1_048_576 },
+        endpoint("DeepInfra", "fp8", 0.5, 2.0),
+        endpoint("Quantized", "fp4", 0.1, 0.2),
+        endpoint("Z.AI", "fp8", 0.6, 2.2),
+        endpoint("Pricey", "fp8", 0.9, 3.0),
+        endpoint("Baidu", "fp8", 0.56, 1.76),
+        no_cache,
+        no_tools,
     ]))
     .await;
 
-    let mut launch = GgRunRequest {
-        capability_set: authored(GgCapabilitySet::minimal("z-ai/glm-5.2")),
-        ..sample_request()
-    }
-    .into_launch_body()
-    .unwrap();
-    resolve_gg_model_facts(&db, &prices, &mut launch)
+    let mut launch = launch_of(GgCapabilitySet::minimal("z-ai/glm-5.2"));
+    resolve_gg_model_facts(&db, &prices, &[], &mut launch)
         .await
         .expect("the developer serves it");
     assert_eq!(
-        launch
-            .gg_model_providers
-            .get("z-ai/glm-5.2")
-            .map(String::as_str),
-        Some("Z.AI")
+        launch.gg_model_providers.get("z-ai/glm-5.2"),
+        Some(&vec![
+            test_cabinet_core::gg::GgProviderCandidate::new("Z.AI", "fp8"),
+            test_cabinet_core::gg::GgProviderCandidate::new("DeepInfra", "fp8"),
+            test_cabinet_core::gg::GgProviderCandidate::new("Baidu", "fp8"),
+        ])
     );
 }
 
-/// A model only third parties serve is refused at enqueue with the reason, rather than
-/// launched on one of them.
+/// The recorded runs' fault rates order the providers after the developer: a provider that
+/// stalled half its calls follows one with a clean record, whatever it charges.
 #[tokio::test]
-async fn launch_refuses_a_model_only_third_parties_serve() {
+async fn launch_orders_candidates_by_recorded_fault_rate() {
     let db = Db::connect_in_memory().await.unwrap();
+    curate_priced(&db, "z-ai/glm-5.2").await;
+    db.insert_price_observation(window_observation("z-ai/glm-5.2", 1_048_576))
+        .await
+        .unwrap();
     let prices = endpoints_listing(serde_json::json!([
-        { "provider_name": "Novita", "context_length": 262_144 },
+        endpoint("Z.AI", "fp8", 0.6, 2.2),
+        endpoint("Cheap", "fp8", 0.4, 1.6),
+        endpoint("Steady", "fp8", 0.5, 2.0),
+    ]))
+    .await;
+    let record = vec![std::sync::Arc::new(crate::stats::GgRunFacts {
+        id: "r1".to_string(),
+        model_id: "z-ai/glm-5.2".to_string(),
+        execution_mode: "tool_calling".to_string(),
+        errors: Default::default(),
+        tool_calls: 0,
+        provider_stats: vec![test_cabinet_core::gg::GgProviderStat {
+            provider: Some("Cheap".to_string()),
+            model_id: Some("z-ai/glm-5.2".to_string()),
+            calls: 10,
+            stalls: 5,
+            ..Default::default()
+        }],
+        models: ["z-ai/glm-5.2".to_string()].into_iter().collect(),
+    })];
+
+    let mut launch = launch_of(GgCapabilitySet::minimal("z-ai/glm-5.2"));
+    resolve_gg_model_facts(&db, &prices, &record, &mut launch)
+        .await
+        .expect("three providers pass");
+    assert_eq!(
+        providers_of(&launch, "z-ai/glm-5.2"),
+        ["Z.AI", "Steady", "Cheap"]
+    );
+}
+
+/// An agent that sets a reasoning setting asks every candidate of its model to support
+/// `reasoning`; a model bound only by agents that set none does not.
+#[tokio::test]
+async fn a_reasoning_agent_needs_candidates_that_support_reasoning() {
+    let db = Db::connect_in_memory().await.unwrap();
+    curate_priced(&db, "z-ai/glm-5.2").await;
+    db.insert_price_observation(window_observation("z-ai/glm-5.2", 1_048_576))
+        .await
+        .unwrap();
+    let mut plain = endpoint("Plain", "fp8", 0.5, 2.0);
+    plain["supported_parameters"] = serde_json::json!(["tools", "tool_choice"]);
+    let prices = endpoints_listing(serde_json::json!([
+        endpoint("Z.AI", "fp8", 0.6, 2.2),
+        plain
     ]))
     .await;
 
-    let mut launch = GgRunRequest {
-        capability_set: authored(GgCapabilitySet::minimal("moonshotai/kimi-k2")),
-        ..sample_request()
-    }
-    .into_launch_body()
-    .unwrap();
-    let err = resolve_gg_model_facts(&db, &prices, &mut launch)
+    let mut launch = launch_of(GgCapabilitySet::minimal("z-ai/glm-5.2"));
+    resolve_gg_model_facts(&db, &prices, &[], &mut launch)
         .await
-        .expect_err("no official endpoint");
+        .unwrap();
+    assert_eq!(providers_of(&launch, "z-ai/glm-5.2"), ["Z.AI", "Plain"]);
+
+    let mut set = GgCapabilitySet::minimal("z-ai/glm-5.2");
+    set.agents[0].reasoning = Some(test_cabinet_core::gg::GgReasoning {
+        effort: Some(test_cabinet_core::gg::GgReasoningEffort::High),
+        ..Default::default()
+    });
+    let mut launch = launch_of(set);
+    resolve_gg_model_facts(&db, &prices, &[], &mut launch)
+        .await
+        .unwrap();
+    assert_eq!(providers_of(&launch, "z-ai/glm-5.2"), ["Z.AI"]);
+}
+
+/// A model with no candidate refuses the enqueue with the filter that emptied the list: here a
+/// model only third parties serve, whose catalog entry sets no price ceiling.
+#[tokio::test]
+async fn launch_refuses_a_model_with_no_candidate_with_the_reason() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.insert_price_observation(window_observation("moonshotai/kimi-k2", 262_144))
+        .await
+        .unwrap();
+    let prices = endpoints_listing(serde_json::json!([endpoint("Novita", "fp8", 0.5, 2.0)])).await;
+
+    let mut launch = launch_of(GgCapabilitySet::minimal("moonshotai/kimi-k2"));
+    let err = resolve_gg_model_facts(&db, &prices, &[], &mut launch)
+        .await
+        .expect_err("no developer endpoint and no ceiling");
     assert!(
-        err.contains("moonshotai/kimi-k2") && err.contains("not testable"),
+        err.contains("moonshotai/kimi-k2")
+            && err.contains(
+                &test_cabinet_core::pricing::CandidateRefusal::NoPriceCeiling.to_string()
+            ),
         "unexpected reason: {err}"
     );
 }
 
-/// A pin set by hand on the curated model wins over the observed one: it is the override for a
-/// developer the listing names differently from the model id.
+/// The catalog entry's say: a developer provider set by hand heads the list, and when OpenRouter
+/// lists no developer endpoint the entry's ceiling (per million tokens) bounds the rest, its ban
+/// list removes a provider and its unknown-quantization list keeps one.
 #[tokio::test]
-async fn a_hand_set_pin_wins_over_the_observed_one() {
+async fn the_catalog_entry_shapes_the_candidate_list() {
     let db = Db::connect_in_memory().await.unwrap();
     db.insert_price_observation(window_observation("qwen/qwen3-coder", 262_144))
         .await
         .unwrap();
-    db.upsert_model_config(crate::db::ModelConfigWrite {
+    let write = |provider_pin: Option<&str>| crate::db::ModelConfigWrite {
         slug: "qwen3-coder".to_string(),
         display_name: "Qwen3 Coder".to_string(),
         provider: "Qwen".to_string(),
-        provider_logo_url: None,
-        provider_logo_svg: None,
-        description_md: None,
         openrouter_slug: Some("qwen/qwen3-coder".to_string()),
-        provider_pin: Some("Alibaba".to_string()),
+        provider_pin: provider_pin.map(str::to_string),
+        max_input_price: Some(1.0),
+        max_output_price: Some(4.0),
+        banned_providers: vec!["Banned".to_string()],
+        unknown_quantization_providers: vec!["Vague".to_string()],
+        list_price_input: Some(1e-6),
+        list_price_cached_input: Some(1e-7),
+        list_price_output: Some(2e-6),
+        list_price_as_of: Some("2026-10-01".to_string()),
+        list_price_source: Some("hand".to_string()),
         aliases: vec![crate::db::AliasEntry {
             alias: "qwen/qwen3-coder".to_string(),
             family: test_cabinet_core::run_record::HarnessFamily::Openrouter,
         }],
         now: "2026-01-01T00:00:00Z".to_string(),
-    })
-    .await
-    .unwrap();
+        ..Default::default()
+    };
+    let prices = endpoints_listing(serde_json::json!([
+        endpoint("Novita", "fp8", 0.8, 3.0),
+        endpoint("Alibaba", "fp8", 0.9, 3.5),
+        endpoint("Banned", "fp8", 0.5, 2.0),
+        endpoint("Vague", "unknown", 0.7, 2.5),
+        endpoint("Mute", "unknown", 0.6, 2.0),
+        endpoint("Dear", "fp8", 1.5, 6.0),
+    ]))
+    .await;
 
-    let mut launch = GgRunRequest {
-        capability_set: authored(GgCapabilitySet::minimal("qwen/qwen3-coder")),
-        ..sample_request()
-    }
-    .into_launch_body()
-    .unwrap();
-    resolve_gg_model_facts(&db, &unreachable_prices(), &mut launch)
+    // The developer set by hand heads the list, and its rates are the ceiling.
+    db.upsert_model_config(write(Some("Alibaba")))
         .await
-        .expect("the catalog holds both facts");
+        .unwrap();
+    let mut launch = launch_of(GgCapabilitySet::minimal("qwen/qwen3-coder"));
+    resolve_gg_model_facts(&db, &prices, &[], &mut launch)
+        .await
+        .expect("the hand-set developer serves it");
     assert_eq!(
-        launch
-            .gg_model_providers
-            .get("qwen/qwen3-coder")
-            .map(String::as_str),
-        Some("Alibaba")
+        providers_of(&launch, "qwen/qwen3-coder"),
+        ["Alibaba", "Vague", "Novita"]
+    );
+
+    // With no developer endpoint on the listing, the entry's ceiling stands in.
+    db.upsert_model_config(write(None)).await.unwrap();
+    let mut launch = launch_of(GgCapabilitySet::minimal("qwen/qwen3-coder"));
+    resolve_gg_model_facts(&db, &prices, &[], &mut launch)
+        .await
+        .expect("the ceiling bounds the third parties");
+    assert_eq!(
+        providers_of(&launch, "qwen/qwen3-coder"),
+        ["Vague", "Novita", "Alibaba"]
+    );
+    assert_eq!(
+        launch.gg_model_providers["qwen/qwen3-coder"][0].quantization,
+        "unknown"
     );
 }
 
@@ -601,7 +776,7 @@ async fn launch_is_rejected_when_a_models_window_cannot_be_resolved() {
     let db = Db::connect_in_memory().await.unwrap();
     let mut launch = sample_request().into_launch_body().unwrap();
 
-    let err = resolve_gg_model_facts(&db, &unreachable_prices(), &mut launch)
+    let err = resolve_gg_model_facts(&db, &unreachable_prices(), &[], &mut launch)
         .await
         .expect_err("an unresolvable window is a launch failure");
     assert!(err.contains("mock/echo"), "unexpected reason: {err}");
@@ -620,7 +795,7 @@ async fn launch_rejects_the_scripted_mock_provider() {
     .into_launch_body()
     .unwrap();
 
-    let err = resolve_gg_model_facts(&db, &unreachable_prices(), &mut launch)
+    let err = resolve_gg_model_facts(&db, &unreachable_prices(), &[], &mut launch)
         .await
         .expect_err("a mock model cannot be launched");
     assert!(
@@ -641,7 +816,7 @@ async fn launch_overwrites_client_supplied_windows() {
         .insert("mock/echo".to_string(), 999_999);
 
     assert!(
-        resolve_gg_model_facts(&db, &unreachable_prices(), &mut launch)
+        resolve_gg_model_facts(&db, &unreachable_prices(), &[], &mut launch)
             .await
             .is_err()
     );
@@ -668,9 +843,11 @@ async fn launch_resolves_nothing_for_a_conventional_run() {
         gg_model_windows: Default::default(),
         gg_model_providers: Default::default(),
         gg_model_modalities: Default::default(),
+        gg_model_prices: Default::default(),
+        model_prices: None,
     };
 
-    resolve_gg_model_facts(&db, &unreachable_prices(), &mut launch)
+    resolve_gg_model_facts(&db, &unreachable_prices(), &[], &mut launch)
         .await
         .expect("a non-gg run resolves nothing");
     assert!(launch.gg_model_windows.is_empty());

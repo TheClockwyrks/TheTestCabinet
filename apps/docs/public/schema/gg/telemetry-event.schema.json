@@ -967,9 +967,55 @@
       "required": ["id", "source"],
       "type": "object"
     },
+    "GgProviderCandidate": {
+      "description": "One provider a model may run on, and the quantization that endpoint serves.\n\nA [`GgInvocation::model_providers`] entry is an ordered list of these: the order a run tries\nthem in, and a one-entry list is a pin. Every request names one of them as OpenRouter's\n`provider.only` and `provider.quantizations`, with fallbacks refused.",
+      "properties": {
+        "provider": {
+          "description": "The provider, spelled as OpenRouter's endpoints listing spells its `provider_name`\n(`Z.AI`, `DeepInfra`).",
+          "type": "string"
+        },
+        "quantization": {
+          "description": "The quantization the provider's endpoint declares (`fp8`, `bf16`, or `unknown` for a\nprovider the catalog entry accepts despite it).",
+          "type": "string"
+        }
+      },
+      "required": ["provider", "quantization"],
+      "type": "object"
+    },
+    "GgProviderFault": {
+      "description": "A fault gg holds against one provider within a run: what a\n[`ProviderFault`](GgTelemetryKind::ProviderFault) records and what a\n[`ProviderSwitch`](GgTelemetryKind::ProviderSwitch) names as its cause.",
+      "oneOf": [
+        {
+          "const": "failed_call",
+          "description": "The retry schedule was spent on `429`, `5xx`, transport failures or stalls.",
+          "type": "string"
+        },
+        {
+          "const": "unavailable",
+          "description": "OpenRouter answered `404`: the account's settings exclude the provider's endpoint, so no\nretry can succeed.",
+          "type": "string"
+        },
+        {
+          "const": "stall",
+          "description": "A stream went [`modelStreamIdleSecs`](GgRunLimits::model_stream_idle_secs) without a delta.",
+          "type": "string"
+        },
+        {
+          "const": "cache_miss",
+          "description": "A reply read far less from the cache than the agent's previous request left there.",
+          "type": "string"
+        }
+      ]
+    },
     "GgProviderStat": {
       "description": "One `(provider, model)` health slice in a [`GgSessionSummary`] — which upstream provider\nserved a run's model calls, and how the calls it served went. Folded from the run's own\nstream: the [`Usage`](GgTelemetryKind::Usage) deltas contribute the calls with their tokens\nand cost, the [`ResponseRejected`](GgTelemetryKind::ResponseRejected) events the length-capped\nreplies, and the [`TurnOutcome`](GgTelemetryKind::TurnOutcome) events the per-turn judgement,\neach attributed to the provider its own call named.\n\nTwo invariants hold across a summary's slices: their [`turns`](Self::turns) sum to the\n[error rollup](GgErrorSummary::turns)'s denominator, and within a slice `turns` minus\n[`working`](Self::working) minus its error count is its fatal turns.",
       "properties": {
+        "cacheMisses": {
+          "description": "Replies this provider served that were an unexpected cache miss, folded from the\n[`CacheMiss`](GgProviderFault::CacheMiss) faults against it. `0`, and omitted, for a\nprovider that never missed.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
         "calls": {
           "description": "Model calls folded from the [`Usage`](GgTelemetryKind::Usage) deltas — the calls that\nreported usage. A call that reported neither tokens nor cost emits no delta and reaches\nonly the turn figures below.",
           "format": "uint64",
@@ -1006,6 +1052,12 @@
         },
         "rejected": {
           "description": "Replies gg [rejected whole](GgRejectedResponses) — the length-capped ones — that this\nslice's provider served. `0`, and omitted, for the ordinary slice with none.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "stalls": {
+          "description": "Requests sent to this provider whose stream went\n[`modelStreamIdleSecs`](GgRunLimits::model_stream_idle_secs) without a delta, folded from\nthe [`Stall`](GgProviderFault::Stall) faults against it. `0`, and omitted, for a provider\nthat never stalled.",
           "format": "uint64",
           "minimum": 0,
           "type": "integer"
@@ -1422,9 +1474,12 @@
         },
         "modelProviders": {
           "additionalProperties": {
-            "type": "string"
+            "items": {
+              "$ref": "#/$defs/GgProviderCandidate"
+            },
+            "type": "array"
           },
-          "description": "The OpenRouter provider each bound model is pinned to, beside the routing\nkey. A run's cost is recorded against this pin; a response from any other\nprovider ends the run.",
+          "description": "The ordered candidate list each bound model may run on, beside the routing\nkey. Every request names exactly one of them; a response from any other\nprovider ends the run.",
           "type": "object"
         },
         "routingKey": {
@@ -2689,6 +2744,60 @@
         }
       },
       "required": ["type", "breach"],
+      "type": "object"
+    },
+    {
+      "description": "One stall or one unexpected cache miss, against the provider the request was sent to.\n\nThe fact the run record's per-provider [`stalls`](GgProviderStat::stalls) and\n[`cache_misses`](GgProviderStat::cache_misses) are folded from. A stall is also retried,\nand logged as a retry; a miss's reply stands. Emitted on the stream of the agent whose\nrequest saw it.",
+      "properties": {
+        "fault": {
+          "$ref": "#/$defs/GgProviderFault",
+          "description": "[`Stall`](GgProviderFault::Stall) or [`CacheMiss`](GgProviderFault::CacheMiss)."
+        },
+        "modelId": {
+          "description": "The model the request was for.",
+          "type": "string"
+        },
+        "provider": {
+          "description": "The provider the request named, spelled as its [candidate](GgProviderCandidate) is.",
+          "type": "string"
+        },
+        "type": {
+          "const": "provider_fault",
+          "type": "string"
+        }
+      },
+      "required": ["type", "modelId", "provider", "fault"],
+      "type": "object"
+    },
+    {
+      "description": "The run left one [candidate](GgProviderCandidate) for the next on its model's list, for the\nrequest that decided it and every request after it, in every agent of the run.\n\nEmitted once per move, on the stream of the agent whose request decided it. A run whose\nmodel is on its last candidate never moves, so a failure there reaches the agent loop as\nthe failed model call an outage is.",
+      "properties": {
+        "detail": {
+          "description": "The last failure's cause, or the miss count that reached the limit, for a reader.",
+          "type": "string"
+        },
+        "fault": {
+          "$ref": "#/$defs/GgProviderFault",
+          "description": "What decided the move: [`FailedCall`](GgProviderFault::FailedCall),\n[`Unavailable`](GgProviderFault::Unavailable) or\n[`CacheMiss`](GgProviderFault::CacheMiss)."
+        },
+        "from": {
+          "description": "The provider the run left, spelled as its candidate is.",
+          "type": "string"
+        },
+        "modelId": {
+          "description": "The model whose candidate changed.",
+          "type": "string"
+        },
+        "to": {
+          "description": "The provider the run moved to.",
+          "type": "string"
+        },
+        "type": {
+          "const": "provider_switch",
+          "type": "string"
+        }
+      },
+      "required": ["type", "modelId", "from", "to", "fault", "detail"],
       "type": "object"
     },
     {

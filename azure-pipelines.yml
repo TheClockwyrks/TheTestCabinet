@@ -1,48 +1,70 @@
-# Azure DevOps CI pipeline for The Test Cabinet — the primary CI system.
+# Azure Pipelines CI/CD for The Test Cabinet: the one pipeline that gates a commit,
+# mirrors it to GitHub, builds its images into the Test Cabinet Azure Container
+# Registry, and rolls it onto the staging or production cluster by branch.
 #
-# Validates every component the project ships: the Rust crates (the `tcab` CLI,
-# the `tcab-backend` server, the `tcab-dispatcher`/`tcab-driver`/`tcab-artifacts`
-# services, and the libraries they share), the TypeScript front ends (the
-# gallery, the operator web console, and these docs), and the Tauri desktop app —
-# both its React UI (`apps/desktop`) and its Rust shell (`crates/desktop`). Every
-# job delegates to a shared script under scripts/ci/, so the GitHub workflows run
-# exactly the same checks (see scripts/ci/README.md).
+# Three stages, each after the one before it has passed:
 #
-# Azure is the primary CI and covers Linux and Windows; macOS validation lives in
-# GitHub because Azure has no macOS agents. The `binary` job release-builds and
-# smoke-tests the shipped `tcab` binary on Linux and Windows so a release can
-# never publish a binary that is flat-out broken; macOS gets the same check on
-# GitHub, on demand (its `binary-macos.yml` workflow), since those runners are
-# costly and only needed at release time.
+#   gates   every check a commit has to pass, on every branch. On master, staging
+#           and tags it also builds the static gg binaries and, on a tag, fails when
+#           `gg --version` differs from the tag. Its `mirror` job then pushes a gated
+#           master, staging or nightly commit, or a tag, to GitHub.
+#   images  master and staging: every service image and every run-container image,
+#           built natively on amd64 and arm64 and pushed to testcabinet.azurecr.io
+#           tagged by the commit sha. Master and tags: gg's binaries and reference
+#           documents uploaded to the `gg-releases` blob container.
+#   deploy  staging rolls the staging cluster and master the production cluster to
+#           the commit's images, and both deploy the docs site.
 #
-# The `desktop` job exists because the desktop app used to be validated ONLY by
-# the GitHub Release workflow, and a release duly failed on all three platforms
-# in a typecheck that nothing here had ever run. Nothing this pipeline can build
-# is left for a release to discover any more: the one remaining gap is macOS,
-# which no Azure agent can cover.
+# A feature branch therefore runs the gates and nothing else. Pull requests are not
+# triggered from this file: Azure Repos ignores a `pr:` block, so pull requests into
+# master and staging run the gates through build validation policies on those
+# branches.
 #
-# The YAML's only responsibilities are provisioning toolchains (Rust ships with
-# the Microsoft-hosted Ubuntu and Windows images; Node is installed via UseNode),
-# reclaiming disk on the near-full hosted Ubuntu agents before the cargo jobs
-# (scripts/ci/free-disk-linux.sh), and caching. One toolchain set is provisioned by
-# a script rather than by a task because it is pinned by this repository: the eleven
-# gg program-language toolchains, which scripts/ci/install-gg-toolchains.sh installs
-# for every job that compiles test-cabinet-gg — gg's build script reflects a
-# signature catalogue out of each language's SDK and its artifact crates COMPILE each
-# language's guest, so the toolchains are as much a build dependency as rustc is. A
-# second, separate list (scripts/ci/install-gg-build-toolchains.sh) carries the one
-# thing only the C# link needs and no gg run does. See the `rust` job.
+# Every job delegates to a script under scripts/ci/ (see scripts/ci/README.md). The
+# YAML provisions toolchains, caches, and the credentials a step runs under, and
+# nothing else. Nothing here holds a credential of its own:
+#
+#   tcab-acr         Docker Registry service connection (workload identity
+#                    federation) holding AcrPush on the registry. Both clusters'
+#                    kubelets hold AcrPull, so the overlays need no pull secret.
+#   tcab-deploy      Azure Resource Manager connection (workload identity federation)
+#                    holding "Azure Kubernetes Service RBAC Admin" on each cluster's
+#                    application namespace and the custom "Test Cabinet AKS Command
+#                    Invoke" role on each cluster, and nothing else. The API servers
+#                    are private, so the deploy runs kubectl through
+#                    `az aks command invoke`.
+#   tcab-gg-publish  Azure Resource Manager connection (workload identity federation)
+#                    holding Storage Blob Data Contributor on testcabinetartifacts.
+#   github-mirror-key  secure file: a deploy key with write access to the GitHub
+#                    mirror and nothing else.
+#   CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_AUDIO_R2_BUCKET,
+#   CLOUDFLARE_AUDIO_R2_PRESIGN_ACCESS_KEY_ID, CLOUDFLARE_AUDIO_R2_PRESIGN_SECRET_ACCESS_KEY
+#                    secret pipeline variables: the docs deploy and the read-only
+#                    presign keys the audio store is staged with.
+#
+# The clusters' nodes are arm64 and a Microsoft-hosted Linux agent is x86_64, so every
+# arm64 build runs natively on the organisation's arm64 agent pool rather than under
+# emulation. The run images compile Rust and wasm inside their builds, which is far too
+# slow emulated.
 
 trigger:
   branches:
     include:
       - master
       - staging
-
-pr:
-  branches:
+      - nightly
+  tags:
     include:
-      - master
+      - v*
+
+# The submodule repositories a job may reach. The project protects YAML pipeline
+# repository access, so a job token reaches only the repositories its job names under
+# `uses:`, and each of them is listed here.
+resources:
+  repositories:
+    - repository: cold-storage
+      type: git
+      name: the-test-cabinet/cold-storage
 
 pool:
   vmImage: ubuntu-24.04
@@ -63,442 +85,792 @@ variables:
   # `test` inherits `dev`, but set both so the intent survives a profile change.
   CARGO_PROFILE_DEV_DEBUG: line-tables-only
   CARGO_PROFILE_TEST_DEBUG: line-tables-only
+  # The organisation's arm64 agent pool, which every arm64 build runs on natively.
+  arm64Pool: pool-dev-linux-arm64-wus3-4c-eph-01
+  # The two architectures every image and gg binary is built for.
+  architectures: amd64,arm64
+  # The targets of deployments/images/services.Dockerfile, plus the web console.
+  services: backend,auth,dispatcher,driver,artifacts,arena,publisher,web
 
-jobs:
-  - job: rust
-    displayName: "Rust: lint, build & test (CLI, backend, dispatcher/driver/artifacts, core)"
-    steps:
-      - checkout: self
-        fetchDepth: 1
-      # The hosted Ubuntu image ships ~95% full; free unused SDKs so the cargo
-      # target/ build and its cache save do not run the OS disk out of room.
-      - script: ./scripts/ci/free-disk-linux.sh
-        displayName: Reclaim agent disk
-      - task: Cache@2
-        displayName: Cache cargo home
-        inputs:
-          key: 'cargo-home | "$(Agent.OS)" | Cargo.lock'
-          restoreKeys: |
-            cargo-home | "$(Agent.OS)"
-          path: $(HOME)/.cargo
-      - task: Cache@2
-        displayName: Cache cargo target
-        inputs:
-          # The debug level is part of the key: artifacts built at a different
-          # `debug` setting have a different fingerprint, so cargo rebuilds them
-          # but never evicts the originals — restoring a full-debug cache into a
-          # line-tables build would leave both in `target/` and put the disk
-          # straight back over the edge. Keying on it namespaces each setting to
-          # its own cache instead.
-          key: 'cargo-target | "$(Agent.OS)" | "$(CARGO_PROFILE_DEV_DEBUG)" | Cargo.lock'
-          restoreKeys: |
-            cargo-target | "$(Agent.OS)" | "$(CARGO_PROFILE_DEV_DEBUG)"
-          path: target
-      # Node, in the Rust job, because compiling test-cabinet-gg needs it — see the
-      # toolchain step below. The npm cache is the same one the `web` job uses.
-      - task: UseNode@1
-        displayName: Use Node 22
-        inputs:
-          version: 22.23.1
-      - task: Cache@2
-        displayName: Cache npm
-        inputs:
-          key: 'npm | "$(Agent.OS)" | package-lock.json'
-          restoreKeys: |
-            npm | "$(Agent.OS)"
-          path: $(HOME)/.npm
-      # Installs the channel + components pinned by rust-toolchain.toml on first
-      # cargo use; print what resolved for easier debugging.
-      - script: rustup show
-        displayName: Show Rust toolchain
-      # EVERY gg PROGRAM-LANGUAGE TOOLCHAIN, AND IT HAS TO BE BEFORE THE LINT.
-      #
-      # gg tells a model what each of its eleven program languages offers by embedding a
-      # signature catalogue reflected out of that language's own SDK by that language's
-      # own documentation tool. Those catalogues are no longer committed: crates/gg's
-      # build script generates all eleven on every build, so a gg binary cannot describe
-      # a surface the guest in its own checkout does not export. A machine that compiles
-      # test-cabinet-gg is therefore a machine that has `tsc`, griffe, YARD, `purs`, a
-      # JDK, the Kotlin compiler, the wasm32 std, Swift, wasi-sdk and .NET.
-      #
-      # This job compiles it TWICE, and the first time is the lint: rust-lint.sh runs
-      # clippy and rustdoc over `--workspace --exclude test-cabinet-desktop`, which
-      # includes test-cabinet-gg, and both fully compile it (build scripts run under
-      # clippy like any other build). rust-test.sh installs the same toolchains itself,
-      # idempotently, but it runs after — so without this step the job would die in its
-      # first minute, before a single lint had been reported.
-      #
-      # `npm ci` is part of the same prerequisite rather than a separate concern: the
-      # pinned `typescript` that reflects the TypeScript and JavaScript arms is a
-      # workspace devDependency, and the reflector says so by name if node_modules is
-      # absent.
-      #
-      # THE SECOND LIST, AND WHY IT IS HERE RATHER THAN ONLY IN rust-test.sh. gg's eleven
-      # arms' ARTIFACTS — the guest components, the SDK jars, the library archives — are
-      # generated by the build now instead of being committed, so `cargo build -p
-      # test-cabinet-gg` re-links the C# guest, and THAT needs a whole .NET SDK and an
-      # unpruned wasi-sdk, which the eleven-arm run list deliberately does not install (a
-      # gg RUN needs neither; see install-gg-build-toolchains.sh's header). Clippy runs
-      # build scripts like any other build, so the lint below is where that first bites.
-      # Leaving it out does not fail the job — packages/gg-sandbox-csharp/build.sh falls
-      # back to fetching the same ~1.4 GB into its own .build/ — so this is not about
-      # bytes but about WHERE they land: the fallback re-fetches per checkout, is not
-      # idempotent across jobs, and reports its failures from inside a cargo build script
-      # rather than from a step named after what it was doing.
-      #
-      # DISK. The two lists install ~3.3 GB under $HOME (835 MB of it Swift, after its
-      # installer prunes a 3.3 GB toolchain, and ~1.4 GB the C# link), on an agent whose
-      # image ships ~95% full — which is
-      # why the reclaim step above stays first and stays load-bearing. It leaves ~40 GB,
-      # so the toolchains are affordable; what would not be is caching them. Neither
-      # Cache@2 path covers $HOME/.local, deliberately: a 1.9 GB cache entry has to be
-      # tarred into a file beside itself on the same disk, which is exactly the failure
-      # ("Wrote only N of M bytes") that free-disk-linux.sh and the line-tables debug cap
-      # exist to prevent. Re-downloading them each run is the cheaper half of that trade.
-      #
-      # AND THAT SAME MEASUREMENT IS WHY THIS JOB DOES NOT HYDRATE FROM AN IMAGE. GitHub's
-      # ci.yml now seeds these toolchains from a published image before running the same
-      # installer (scripts/ci/hydrate-gg-toolchains.sh + containers/gg-ci/Dockerfile),
-      # which trades five upstream CDNs for one registry pull. Azure is deliberately left
-      # on the download path, for reasons that are all about THIS agent rather than about
-      # the idea: pulling a ~2 GB image has the identical disk problem the paragraph above
-      # measured, only sooner; free-disk-linux.sh reclaims space on the agent HOST, so
-      # moving the work into a container job would step around the one thing keeping this
-      # job green; and this is the pipeline that runs rust-lint.sh BEFORE rust-test.sh and
-      # therefore needs the toolchains earlier than either script installs them, which is
-      # why this step exists at all. Overturning that needs a measurement on a real agent
-      # that nobody has taken — not an argument.
-      - script: |
-          set -euo pipefail
-          ./scripts/ci/install-gg-toolchains.sh
-          ./scripts/ci/install-gg-build-toolchains.sh
-          npm ci
-          # Later steps are separate processes, so the installers' bin directory has to
-          # be prepended for the job rather than exported for this script: `purs` and
-          # `uv` are resolved from PATH.
-          echo "##vso[task.prependpath]$HOME/.local/bin"
-        displayName: Install gg's program-language toolchains
-      - script: ./scripts/ci/rust-lint.sh
-        displayName: Lint (rustfmt + clippy)
-      - script: ./scripts/ci/install-nextest.sh
-        displayName: Install cargo-nextest
-      - script: ./scripts/ci/rust-test.sh
-        displayName: Build & test
+stages:
+  - stage: gates
+    displayName: Gates
+    jobs:
+      - job: rust
+        displayName: "Rust: lint, build & test (CLI, backend, dispatcher/driver/artifacts, core)"
+        steps:
+          - checkout: self
+            fetchDepth: 1
+          # The hosted Ubuntu image ships ~95% full; free unused SDKs so the cargo
+          # target/ build and its cache save do not run the OS disk out of room.
+          - script: ./scripts/ci/free-disk-linux.sh
+            displayName: Reclaim agent disk
+          - task: Cache@2
+            displayName: Cache cargo home
+            inputs:
+              key: 'cargo-home | "$(Agent.OS)" | Cargo.lock'
+              restoreKeys: |
+                cargo-home | "$(Agent.OS)"
+              path: $(HOME)/.cargo
+          - task: Cache@2
+            displayName: Cache cargo target
+            inputs:
+              # The debug level is part of the key: artifacts built at a different
+              # `debug` setting have a different fingerprint, so cargo rebuilds them
+              # but never evicts the originals — restoring a full-debug cache into a
+              # line-tables build would leave both in `target/` and put the disk
+              # straight back over the edge. Keying on it namespaces each setting to
+              # its own cache instead.
+              key: 'cargo-target | "$(Agent.OS)" | "$(CARGO_PROFILE_DEV_DEBUG)" | Cargo.lock'
+              restoreKeys: |
+                cargo-target | "$(Agent.OS)" | "$(CARGO_PROFILE_DEV_DEBUG)"
+              path: target
+          # Node, in the Rust job, because compiling test-cabinet-gg needs it — see the
+          # toolchain step below. The npm cache is the same one the `web` job uses.
+          - task: UseNode@1
+            displayName: Use Node 22
+            inputs:
+              version: 22.23.1
+          - task: Cache@2
+            displayName: Cache npm
+            inputs:
+              key: 'npm | "$(Agent.OS)" | package-lock.json'
+              restoreKeys: |
+                npm | "$(Agent.OS)"
+              path: $(HOME)/.npm
+          # Installs the channel + components pinned by rust-toolchain.toml on first
+          # cargo use; print what resolved for easier debugging.
+          - script: rustup show
+            displayName: Show Rust toolchain
+          # EVERY gg PROGRAM-LANGUAGE TOOLCHAIN, AND IT HAS TO BE BEFORE THE LINT.
+          #
+          # gg tells a model what each of its eleven program languages offers by embedding a
+          # signature catalogue reflected out of that language's own SDK by that language's
+          # own documentation tool. Those catalogues are no longer committed: crates/gg's
+          # build script generates all eleven on every build, so a gg binary cannot describe
+          # a surface the guest in its own checkout does not export. A machine that compiles
+          # test-cabinet-gg is therefore a machine that has `tsc`, griffe, YARD, `purs`, a
+          # JDK, the Kotlin compiler, the wasm32 std, Swift, wasi-sdk and .NET.
+          #
+          # This job compiles it TWICE, and the first time is the lint: rust-lint.sh runs
+          # clippy and rustdoc over `--workspace --exclude test-cabinet-desktop`, which
+          # includes test-cabinet-gg, and both fully compile it (build scripts run under
+          # clippy like any other build). rust-test.sh installs the same toolchains itself,
+          # idempotently, but it runs after — so without this step the job would die in its
+          # first minute, before a single lint had been reported.
+          #
+          # `npm ci` is part of the same prerequisite rather than a separate concern: the
+          # pinned `typescript` that reflects the TypeScript and JavaScript arms is a
+          # workspace devDependency, and the reflector says so by name if node_modules is
+          # absent.
+          #
+          # THE SECOND LIST, AND WHY IT IS HERE RATHER THAN ONLY IN rust-test.sh. gg's eleven
+          # arms' ARTIFACTS — the guest components, the SDK jars, the library archives — are
+          # generated by the build now instead of being committed, so `cargo build -p
+          # test-cabinet-gg` re-links the C# guest, and THAT needs a whole .NET SDK and an
+          # unpruned wasi-sdk, which the eleven-arm run list deliberately does not install (a
+          # gg RUN needs neither; see install-gg-build-toolchains.sh's header). Clippy runs
+          # build scripts like any other build, so the lint below is where that first bites.
+          # Leaving it out does not fail the job — packages/gg-sandbox-csharp/build.sh falls
+          # back to fetching the same ~1.4 GB into its own .build/ — so this is not about
+          # bytes but about WHERE they land: the fallback re-fetches per checkout, is not
+          # idempotent across jobs, and reports its failures from inside a cargo build script
+          # rather than from a step named after what it was doing.
+          #
+          # DISK. The two lists install ~3.3 GB under $HOME (835 MB of it Swift, after its
+          # installer prunes a 3.3 GB toolchain, and ~1.4 GB the C# link), on an agent whose
+          # image ships ~95% full — which is
+          # why the reclaim step above stays first and stays load-bearing. It leaves ~40 GB,
+          # so the toolchains are affordable; what would not be is caching them. Neither
+          # Cache@2 path covers $HOME/.local, deliberately: a 1.9 GB cache entry has to be
+          # tarred into a file beside itself on the same disk, which is exactly the failure
+          # ("Wrote only N of M bytes") that free-disk-linux.sh and the line-tables debug cap
+          # exist to prevent. Re-downloading them each run is the cheaper half of that trade.
+          #
+          # AND THAT SAME MEASUREMENT IS WHY THIS JOB DOES NOT HYDRATE FROM AN IMAGE. GitHub's
+          # ci.yml now seeds these toolchains from a published image before running the same
+          # installer (scripts/ci/hydrate-gg-toolchains.sh + containers/gg-ci/Dockerfile),
+          # which trades five upstream CDNs for one registry pull. Azure is deliberately left
+          # on the download path, for reasons that are all about THIS agent rather than about
+          # the idea: pulling a ~2 GB image has the identical disk problem the paragraph above
+          # measured, only sooner; free-disk-linux.sh reclaims space on the agent HOST, so
+          # moving the work into a container job would step around the one thing keeping this
+          # job green; and this is the pipeline that runs rust-lint.sh BEFORE rust-test.sh and
+          # therefore needs the toolchains earlier than either script installs them, which is
+          # why this step exists at all. Overturning that needs a measurement on a real agent
+          # that nobody has taken — not an argument.
+          - script: |
+              set -euo pipefail
+              ./scripts/ci/install-gg-toolchains.sh
+              ./scripts/ci/install-gg-build-toolchains.sh
+              npm ci
+              # Later steps are separate processes, so the installers' bin directory has to
+              # be prepended for the job rather than exported for this script: `purs` and
+              # `uv` are resolved from PATH.
+              echo "##vso[task.prependpath]$HOME/.local/bin"
+            displayName: Install gg's program-language toolchains
+          - script: ./scripts/ci/rust-lint.sh
+            displayName: Lint (rustfmt + clippy)
+          - script: ./scripts/ci/install-nextest.sh
+            displayName: Install cargo-nextest
+          - script: ./scripts/ci/rust-test.sh
+            displayName: Build & test
 
-  - job: binary
-    displayName: "Binary: release build & smoke"
-    # The shipped binary is release-mode, so it is validated on every target
-    # platform Azure can run. macOS is validated on GitHub (no macOS agents
-    # here). Each leg release-builds `tcab`, runs the suite in release mode, and
-    # smoke-runs the produced binary; see scripts/ci/binary-smoke.sh.
-    strategy:
-      matrix:
-        linux:
-          imageName: ubuntu-24.04
-        windows:
-          imageName: windows-2022
-    pool:
-      vmImage: $(imageName)
-    variables:
-      # Pin a per-agent CARGO_HOME so the cache path is identical on Linux and
-      # Windows (the predefined $(HOME) is not set on Windows agents).
-      CARGO_HOME: $(Pipeline.Workspace)/.cargo
-    steps:
-      - checkout: self
-        fetchDepth: 1
-      # Linux only: reclaim the near-full hosted Ubuntu disk before the release
-      # target/ build and cache. The Windows agent's disk is not affected and the
-      # paths are Ubuntu-image specific, so it skips this.
-      - bash: ./scripts/ci/free-disk-linux.sh
-        displayName: Reclaim agent disk
-        condition: eq(variables['Agent.OS'], 'Linux')
-      - task: Cache@2
-        displayName: Cache cargo home
-        inputs:
-          key: 'cargo-home-release | "$(Agent.OS)" | Cargo.lock'
-          restoreKeys: |
-            cargo-home-release | "$(Agent.OS)"
-          path: $(CARGO_HOME)
-      - task: Cache@2
-        displayName: Cache cargo target
-        inputs:
-          key: 'cargo-target-release | "$(Agent.OS)" | Cargo.lock'
-          restoreKeys: |
-            cargo-target-release | "$(Agent.OS)"
-          path: target
-      - script: rustup show
-        displayName: Show Rust toolchain
-      # `bash` runs Git Bash on the Windows agent, so the one script drives every
-      # platform identically — including the cross-platform nextest install.
-      - bash: ./scripts/ci/install-nextest.sh
-        displayName: Install cargo-nextest
-      - bash: ./scripts/ci/binary-smoke.sh
-        displayName: Release build & smoke
+      - job: binary
+        displayName: "Binary: release build & smoke"
+        # The shipped binary is release-mode, so it is validated on every target
+        # platform Azure can run. macOS is validated on GitHub (no macOS agents
+        # here). Each leg release-builds `tcab`, runs the suite in release mode, and
+        # smoke-runs the produced binary; see scripts/ci/binary-smoke.sh.
+        strategy:
+          matrix:
+            linux:
+              imageName: ubuntu-24.04
+            windows:
+              imageName: windows-2022
+        pool:
+          vmImage: $(imageName)
+        variables:
+          # Pin a per-agent CARGO_HOME so the cache path is identical on Linux and
+          # Windows (the predefined $(HOME) is not set on Windows agents).
+          CARGO_HOME: $(Pipeline.Workspace)/.cargo
+        steps:
+          - checkout: self
+            fetchDepth: 1
+          # Linux only: reclaim the near-full hosted Ubuntu disk before the release
+          # target/ build and cache. The Windows agent's disk is not affected and the
+          # paths are Ubuntu-image specific, so it skips this.
+          - bash: ./scripts/ci/free-disk-linux.sh
+            displayName: Reclaim agent disk
+            condition: eq(variables['Agent.OS'], 'Linux')
+          - task: Cache@2
+            displayName: Cache cargo home
+            inputs:
+              key: 'cargo-home-release | "$(Agent.OS)" | Cargo.lock'
+              restoreKeys: |
+                cargo-home-release | "$(Agent.OS)"
+              path: $(CARGO_HOME)
+          - task: Cache@2
+            displayName: Cache cargo target
+            inputs:
+              key: 'cargo-target-release | "$(Agent.OS)" | Cargo.lock'
+              restoreKeys: |
+                cargo-target-release | "$(Agent.OS)"
+              path: target
+          - script: rustup show
+            displayName: Show Rust toolchain
+          # `bash` runs Git Bash on the Windows agent, so the one script drives every
+          # platform identically — including the cross-platform nextest install.
+          - bash: ./scripts/ci/install-nextest.sh
+            displayName: Install cargo-nextest
+          - bash: ./scripts/ci/binary-smoke.sh
+            displayName: Release build & smoke
 
-  - job: web
-    displayName: "Front ends: type-check & build (gallery, web console, docs)"
-    steps:
-      - checkout: self
-        fetchDepth: 1
-      - task: UseNode@1
-        displayName: Use Node 22
-        inputs:
-          version: 22.23.1
-      - task: Cache@2
-        displayName: Cache npm
-        inputs:
-          key: 'npm | "$(Agent.OS)" | package-lock.json'
-          restoreKeys: |
-            npm | "$(Agent.OS)"
-          path: $(HOME)/.npm
-      - script: ./scripts/ci/web-build.sh
-        displayName: Build website
+      - job: web
+        displayName: "Front ends: type-check & build (gallery, web console, docs)"
+        steps:
+          - checkout: self
+            fetchDepth: 1
+          - task: UseNode@1
+            displayName: Use Node 22
+            inputs:
+              version: 22.23.1
+          - task: Cache@2
+            displayName: Cache npm
+            inputs:
+              key: 'npm | "$(Agent.OS)" | package-lock.json'
+              restoreKeys: |
+                npm | "$(Agent.OS)"
+              path: $(HOME)/.npm
+          - script: ./scripts/ci/web-build.sh
+            displayName: Build website
 
-  # The front-end unit suites. Its own job rather than steps on `web`, so a failing
-  # assertion reports as a failing test rather than as a failing build, and so it
-  # runs in parallel with it: the tests need only the small workspace runtime
-  # packages, not the app bundles.
-  - job: webtest
-    displayName: "Front ends: unit tests (vitest)"
-    steps:
-      - checkout: self
-        fetchDepth: 1
-      - task: UseNode@1
-        displayName: Use Node 22
-        inputs:
-          version: 22.23.1
-      - task: Cache@2
-        displayName: Cache npm
-        inputs:
-          key: 'npm | "$(Agent.OS)" | package-lock.json'
-          restoreKeys: |
-            npm | "$(Agent.OS)"
-          path: $(HOME)/.npm
-      - script: ./scripts/ci/web-test.sh
-        displayName: Test front ends
+      # The front-end unit suites. Its own job rather than steps on `web`, so a failing
+      # assertion reports as a failing test rather than as a failing build, and so it
+      # runs in parallel with it: the tests need only the small workspace runtime
+      # packages, not the app bundles.
+      - job: webtest
+        displayName: "Front ends: unit tests (vitest)"
+        steps:
+          - checkout: self
+            fetchDepth: 1
+          - task: UseNode@1
+            displayName: Use Node 22
+            inputs:
+              version: 22.23.1
+          - task: Cache@2
+            displayName: Cache npm
+            inputs:
+              key: 'npm | "$(Agent.OS)" | package-lock.json'
+              restoreKeys: |
+                npm | "$(Agent.OS)"
+              path: $(HOME)/.npm
+          - script: ./scripts/ci/web-test.sh
+            displayName: Test front ends
 
-  # The Tauri desktop app, both halves — the React UI (apps/desktop) and the Rust
-  # shell (crates/desktop). It is its own job because it is the only one that
-  # needs BOTH toolchains plus the Linux GUI system libraries, and because it owns
-  # the crate `rust-lint.sh`/`rust-test.sh` exclude (so those runners stay free of
-  # that dependency): this is the only place `test-cabinet-desktop`'s clippy pass
-  # and unit tests run at all.
-  #
-  # It runs on the same two platforms as the `binary` job, for the same reason —
-  # they are the platforms Azure has agents for. macOS is validated when the
-  # Release workflow bundles the app, which is the project's one accepted CI gap.
-  - job: desktop
-    displayName: "Desktop app: build & test (UI + Tauri shell)"
-    strategy:
-      matrix:
-        linux:
-          imageName: ubuntu-24.04
-        windows:
-          imageName: windows-2022
-    pool:
-      vmImage: $(imageName)
-    variables:
-      # Pin per-agent tool caches so one cache path works on both Linux and
-      # Windows: the predefined $(HOME) is not set on Windows agents, and npm
-      # reads its cache location from `npm_config_cache` on every platform.
-      CARGO_HOME: $(Pipeline.Workspace)/.cargo
-      npm_config_cache: $(Pipeline.Workspace)/.npm
-    steps:
-      - checkout: self
-        fetchDepth: 1
-      # Linux only: reclaim the near-full hosted Ubuntu disk before the GUI
-      # libraries and the cargo target/ build land on it. The Windows agent's disk
-      # is not affected and the paths are Ubuntu-image specific, so it skips this.
-      - bash: ./scripts/ci/free-disk-linux.sh
-        displayName: Reclaim agent disk
-        condition: eq(variables['Agent.OS'], 'Linux')
-      # Tauri v2's Linux backend compiles against the system WebKitGTK/GTK/tray
-      # libraries. The devcontainer already curates exactly this package set (and
-      # the Release workflow reuses the same script), so install from there rather
-      # than duplicating the list. Windows ships its web view with the OS.
-      - bash: ./.devcontainer/languages/rust/tauri.sh
-        displayName: Install Linux GUI libraries
-        condition: eq(variables['Agent.OS'], 'Linux')
-      - task: UseNode@1
-        displayName: Use Node 22
-        inputs:
-          version: 22.23.1
-      - task: Cache@2
-        displayName: Cache npm
-        inputs:
-          key: 'npm | "$(Agent.OS)" | package-lock.json'
-          restoreKeys: |
-            npm | "$(Agent.OS)"
-          path: $(npm_config_cache)
-      - task: Cache@2
-        displayName: Cache cargo home
-        inputs:
-          key: 'cargo-home-desktop | "$(Agent.OS)" | Cargo.lock'
-          restoreKeys: |
-            cargo-home-desktop | "$(Agent.OS)"
-          path: $(CARGO_HOME)
-      - task: Cache@2
-        displayName: Cache cargo target
-        inputs:
-          # Keyed on the debug level for the same reason as the `rust` job: a
-          # cache saved at a different `debug` setting is rebuilt but never
-          # evicted, so both copies would pile up in target/. Namespaced away from
-          # that job's cache because this one builds a different crate set.
-          key: 'cargo-target-desktop | "$(Agent.OS)" | "$(CARGO_PROFILE_DEV_DEBUG)" | Cargo.lock'
-          restoreKeys: |
-            cargo-target-desktop | "$(Agent.OS)" | "$(CARGO_PROFILE_DEV_DEBUG)"
-          path: target
-      - script: rustup show
-        displayName: Show Rust toolchain
-      # `bash` runs Git Bash on the Windows agent, so the one script drives both
-      # platforms identically — including the cross-platform nextest install.
-      - bash: ./scripts/ci/install-nextest.sh
-        displayName: Install cargo-nextest
-      - bash: ./scripts/ci/desktop-build.sh
-        displayName: Build & test the desktop app
+      - job: specs
+        displayName: "Specs: markdown & spelling"
+        steps:
+          - checkout: self
+            fetchDepth: 1
+          - task: UseNode@1
+            displayName: Use Node 22
+            inputs:
+              version: 22.23.1
+          - script: ./scripts/ci/specs-lint.sh
+            displayName: Lint specs
 
-  - job: specs
-    displayName: "Specs: markdown & spelling"
-    steps:
-      - checkout: self
-        fetchDepth: 1
-      - task: UseNode@1
-        displayName: Use Node 22
-        inputs:
-          version: 22.23.1
-      - script: ./scripts/ci/specs-lint.sh
-        displayName: Lint specs
+      # Formatting over the whole checkout. Needs Node for the pinned `prettier`; no
+      # Rust and no credentials.
+      - job: format
+        displayName: "Format: prettier over the whole checkout"
+        steps:
+          - checkout: self
+            fetchDepth: 1
+          - task: UseNode@1
+            displayName: Use Node 22
+            inputs:
+              version: 22.23.1
+          - script: ./scripts/ci/format-check.sh
+            displayName: Check formatting
 
-  # Formatting over the whole checkout. Needs Node for the pinned `prettier`; no
-  # Rust and no credentials.
-  - job: format
-    displayName: "Format: prettier over the whole checkout"
-    steps:
-      - checkout: self
-        fetchDepth: 1
-      - task: UseNode@1
-        displayName: Use Node 22
-        inputs:
-          version: 22.23.1
-      - script: ./scripts/ci/format-check.sh
-        displayName: Check formatting
+      # The only thing that ever compiles a case's validators. They are never built,
+      # never bundled and never seeded — they are staged into a produced tree and run
+      # by vitest, which transpiles without checking types — so nothing else in this
+      # repository would notice a validator that does not compile until it failed
+      # every point it decides, on every run of its case. Needs Node (the pinned
+      # `typescript`, and the packages the validators import) but no Rust and no
+      # credentials.
+      - job: validators
+        displayName: "Validators: type-check every case's validator projects"
+        steps:
+          - checkout: self
+            fetchDepth: 1
+          - task: UseNode@1
+            displayName: Use Node 22
+            inputs:
+              version: 22.23.1
+          - script: ./scripts/ci/validators-typecheck.sh
+            displayName: Type-check validators
 
-  # The only thing that ever compiles a case's validators. They are never built,
-  # never bundled and never seeded — they are staged into a produced tree and run
-  # by vitest, which transpiles without checking types — so nothing else in this
-  # repository would notice a validator that does not compile until it failed
-  # every point it decides, on every run of its case. Needs Node (the pinned
-  # `typescript`, and the packages the validators import) but no Rust and no
-  # credentials.
-  - job: validators
-    displayName: "Validators: type-check every case's validator projects"
-    steps:
-      - checkout: self
-        fetchDepth: 1
-      - task: UseNode@1
-        displayName: Use Node 22
-        inputs:
-          version: 22.23.1
-      - script: ./scripts/ci/validators-typecheck.sh
-        displayName: Type-check validators
+      # Needs no toolchain and no history: the check reads the checked-out index, so
+      # a shallow clone is enough.
+      - job: frozen
+        displayName: "Frozen: test-case versions with recorded runs are unchanged"
+        steps:
+          - checkout: self
+            fetchDepth: 1
+          - script: ./scripts/ci/frozen-check.sh
+            displayName: Verify frozen directories
 
-  # Needs no toolchain and no history: the check reads the checked-out index, so
-  # a shallow clone is enough.
-  - job: frozen
-    displayName: "Frozen: test-case versions with recorded runs are unchanged"
-    steps:
-      - checkout: self
-        fetchDepth: 1
-      - script: ./scripts/ci/frozen-check.sh
-        displayName: Verify frozen directories
+      # The only gate on the rule that every non-frozen full-stack version and every
+      # game jam declares `[audio] packs`, and the only place a declared ref is resolved
+      # against containers/sample-packs/ for name, version, kind and published clips —
+      # manifest resolution cannot do that, because it also runs at backend ingest,
+      # where that directory is absent. Needs Node (the lint parses TOML through the
+      # workspace's smol-toml) but no Rust and no credentials.
+      - job: audiopacks
+        displayName: "Audio: every version declares packs that resolve"
+        steps:
+          - checkout: self
+            fetchDepth: 1
+          - task: UseNode@1
+            displayName: Use Node 22
+            inputs:
+              version: 22.23.1
+          - script: ./scripts/ci/audio-packs-lint.sh
+            displayName: Check audio pack declarations
 
-  # The only gate on the rule that every non-frozen full-stack version and every
-  # game jam declares `[audio] packs`, and the only place a declared ref is resolved
-  # against containers/sample-packs/ for name, version, kind and published clips —
-  # manifest resolution cannot do that, because it also runs at backend ingest,
-  # where that directory is absent. Needs Node (the lint parses TOML through the
-  # workspace's smol-toml) but no Rust and no credentials.
-  - job: audiopacks
-    displayName: "Audio: every version declares packs that resolve"
-    steps:
-      - checkout: self
-        fetchDepth: 1
-      - task: UseNode@1
-        displayName: Use Node 22
-        inputs:
-          version: 22.23.1
-      - script: ./scripts/ci/audio-packs-lint.sh
-        displayName: Check audio pack declarations
+      # The spec counterpart of seeded-contract-check.sh (which runs in `contract`,
+      # after the generator): every non-frozen version's prompt.hbs and specs/, and
+      # the shared preambles prompt.rs prepends, name nothing about evaluation or this
+      # project. Hits in frozen versions are reported, not failed — they cannot be
+      # edited. Needs Node for the checker but no `npm ci`, no Rust and no history.
+      - job: specvocabulary
+        displayName: "Specs: seeded specs and prompts name nothing about evaluation"
+        steps:
+          - checkout: self
+            fetchDepth: 1
+          - task: UseNode@1
+            displayName: Use Node 22
+            inputs:
+              version: 22.23.1
+          - script: ./scripts/ci/spec-vocabulary-check.sh
+            displayName: Check seeded spec vocabulary
 
-  # The spec counterpart of seeded-contract-check.sh (which runs in `contract`,
-  # after the generator): every non-frozen version's prompt.hbs and specs/, and
-  # the shared preambles prompt.rs prepends, name nothing about evaluation or this
-  # project. Hits in frozen versions are reported, not failed — they cannot be
-  # edited. Needs Node for the checker but no `npm ci`, no Rust and no history.
-  - job: specvocabulary
-    displayName: "Specs: seeded specs and prompts name nothing about evaluation"
-    steps:
-      - checkout: self
-        fetchDepth: 1
-      - task: UseNode@1
-        displayName: Use Node 22
-        inputs:
-          version: 22.23.1
-      - script: ./scripts/ci/spec-vocabulary-check.sh
-        displayName: Check seeded spec vocabulary
+      # Also needs no toolchain and no history — it reads Dockerfiles against
+      # .dockerignore. It runs here rather than with the image builds because those run
+      # only on master/staging, after the gates: a COPY that cannot see its source would
+      # otherwise land, and be found by whoever next needs a run container rather than by
+      # the change that broke it.
+      - job: buildcontext
+        displayName: "Containers: every Dockerfile COPY can see its source"
+        steps:
+          - checkout: self
+            fetchDepth: 1
+          - script: ./scripts/ci/build-context.sh
+            displayName: Verify build contexts
 
-  # Also needs no toolchain and no history — it reads Dockerfiles against
-  # .dockerignore. It runs here rather than with the image builds because those live
-  # on a GitHub workflow that only fires on master/staging: a COPY that cannot see
-  # its source would otherwise land, and be found by whoever next needs a run
-  # container rather than by the change that broke it.
-  - job: buildcontext
-    displayName: "Containers: every Dockerfile COPY can see its source"
-    steps:
-      - checkout: self
-        fetchDepth: 1
-      - script: ./scripts/ci/build-context.sh
-        displayName: Verify build contexts
+      - job: contract
+        displayName: "Contract: regenerate & check for drift"
+        # Regenerates the TS bindings + JSON Schemas from the Rust source and fails on
+        # any diff, so the contract's three representations can never drift apart.
+        # Needs both Rust (the generator) and Node (Prettier), so it runs on its own.
+        steps:
+          - checkout: self
+            fetchDepth: 1
+          # Frees unused SDKs before the codegen build populates cargo target/; the
+          # Node toolcache is left intact for UseNode below.
+          - script: ./scripts/ci/free-disk-linux.sh
+            displayName: Reclaim agent disk
+          - task: UseNode@1
+            displayName: Use Node 22
+            inputs:
+              version: 22.23.1
+          - task: Cache@2
+            displayName: Cache cargo home
+            inputs:
+              key: 'cargo-home | "$(Agent.OS)" | Cargo.lock'
+              restoreKeys: |
+                cargo-home | "$(Agent.OS)"
+              path: $(HOME)/.cargo
+          - task: Cache@2
+            displayName: Cache cargo target
+            inputs:
+              # The debug level is part of the key: artifacts built at a different
+              # `debug` setting have a different fingerprint, so cargo rebuilds them
+              # but never evicts the originals — restoring a full-debug cache into a
+              # line-tables build would leave both in `target/` and put the disk
+              # straight back over the edge. Keying on it namespaces each setting to
+              # its own cache instead.
+              key: 'cargo-target | "$(Agent.OS)" | "$(CARGO_PROFILE_DEV_DEBUG)" | Cargo.lock'
+              restoreKeys: |
+                cargo-target | "$(Agent.OS)" | "$(CARGO_PROFILE_DEV_DEBUG)"
+              path: target
+          - script: rustup show
+            displayName: Show Rust toolchain
+          - script: ./scripts/ci/contract-drift.sh
+            displayName: Regenerate & check for drift
+          - script: ./scripts/ci/seeded-contract-check.sh
+            displayName: Seeded contract names nothing about evaluation
 
-  - job: contract
-    displayName: "Contract: regenerate & check for drift"
-    # Regenerates the TS bindings + JSON Schemas from the Rust source and fails on
-    # any diff, so the contract's three representations can never drift apart.
-    # Needs both Rust (the generator) and Node (Prettier), so it runs on its own.
-    steps:
-      - checkout: self
-        fetchDepth: 1
-      # Frees unused SDKs before the codegen build populates cargo target/; the
-      # Node toolcache is left intact for UseNode below.
-      - script: ./scripts/ci/free-disk-linux.sh
-        displayName: Reclaim agent disk
-      - task: UseNode@1
-        displayName: Use Node 22
-        inputs:
-          version: 22.23.1
-      - task: Cache@2
-        displayName: Cache cargo home
-        inputs:
-          key: 'cargo-home | "$(Agent.OS)" | Cargo.lock'
-          restoreKeys: |
-            cargo-home | "$(Agent.OS)"
-          path: $(HOME)/.cargo
-      - task: Cache@2
-        displayName: Cache cargo target
-        inputs:
-          # The debug level is part of the key: artifacts built at a different
-          # `debug` setting have a different fingerprint, so cargo rebuilds them
-          # but never evicts the originals — restoring a full-debug cache into a
-          # line-tables build would leave both in `target/` and put the disk
-          # straight back over the edge. Keying on it namespaces each setting to
-          # its own cache instead.
-          key: 'cargo-target | "$(Agent.OS)" | "$(CARGO_PROFILE_DEV_DEBUG)" | Cargo.lock'
-          restoreKeys: |
-            cargo-target | "$(Agent.OS)" | "$(CARGO_PROFILE_DEV_DEBUG)"
-          path: target
-      - script: rustup show
-        displayName: Show Rust toolchain
-      - script: ./scripts/ci/contract-drift.sh
-        displayName: Regenerate & check for drift
-      - script: ./scripts/ci/seeded-contract-check.sh
-        displayName: Seeded contract names nothing about evaluation
+      # Renders every kustomization and checks that what the deploy stage applies is
+      # namespaced only and names every image at the registry and the commit, and
+      # that the overlays name no registry of their own. Needs kubectl, which the
+      # hosted agent carries, and no cluster.
+      - job: manifests
+        displayName: "Kubernetes: every overlay renders and each deploy is namespaced"
+        steps:
+          - checkout: self
+            fetchDepth: 1
+          - script: ./scripts/ci/k8s-manifests.sh
+            displayName: Check the Kubernetes manifests
+
+      # Every submodule pin is on that submodule's `master`, which is all its own
+      # pipeline mirrors, so a commit this pipeline mirrors names only submodule
+      # commits the GitHub mirror holds. The check fetches `master`'s commits without
+      # trees or blobs through the job token.
+      - job: submodulepins
+        displayName: "Submodules: every pin is on the submodule's master"
+        uses:
+          repositories:
+            - cold-storage
+        steps:
+          - checkout: self
+            fetchDepth: 1
+            submodules: false
+          - script: ./scripts/ci/submodule-pins.sh
+            displayName: Check the submodule pins
+            env:
+              SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+
+      # gg's static musl binaries, one per architecture, built natively. They are
+      # built on master and staging for the run-image builds, and on master and tags
+      # for the upload to the `gg-releases` blob container. On a tag the version gate
+      # runs here, so a tag whose gg reports another version fails the gates and
+      # nothing after them runs.
+      - ${{ each arch in split(variables.architectures, ',') }}:
+          - job: gg_${{ arch }}
+            displayName: "gg: static build (${{ arch }})"
+            condition: >-
+              or(
+                eq(variables['Build.SourceBranch'], 'refs/heads/master'),
+                eq(variables['Build.SourceBranch'], 'refs/heads/staging'),
+                startsWith(variables['Build.SourceBranch'], 'refs/tags/v')
+              )
+            timeoutInMinutes: 180
+            pool:
+              ${{ if eq(arch, 'amd64') }}:
+                vmImage: ubuntu-24.04
+              ${{ else }}:
+                name: $(arm64Pool)
+            steps:
+              - checkout: self
+                fetchDepth: 1
+              - ${{ if eq(arch, 'amd64') }}:
+                  - script: ./scripts/ci/free-disk-linux.sh
+                    displayName: Reclaim agent disk
+              - task: UseNode@1
+                displayName: Use Node 22
+                inputs:
+                  version: 22.23.1
+              # musl-gcc links the C that `ring` and `wasmtime` compile for the musl
+              # target, and gg's Ruby arm reflects its catalogue with YARD.
+              - script: sudo apt-get update && sudo apt-get install -y musl-tools ruby
+                displayName: Install the musl toolchain and Ruby
+              - script: |
+                  set -euo pipefail
+                  if ! command -v rustup >/dev/null 2>&1; then
+                    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+                      | sh -s -- -y --profile minimal --default-toolchain none
+                    echo "##vso[task.prependpath]$HOME/.cargo/bin"
+                  fi
+                displayName: Install rustup
+              - script: rustup show
+                displayName: Show Rust toolchain
+              # The same two installers as the `rust` job, for the same reason: building
+              # gg reflects and compiles every language arm.
+              - script: |
+                  set -euo pipefail
+                  ./scripts/ci/install-gg-toolchains.sh
+                  ./scripts/ci/install-gg-build-toolchains.sh
+                  npm ci
+                  echo "##vso[task.prependpath]$HOME/.local/bin"
+                displayName: Install gg's program-language toolchains
+              - script: ./scripts/ci/gg-dist.sh "$(Build.ArtifactStagingDirectory)/gg"
+                displayName: Build gg (static musl)
+              - script: >-
+                  ./scripts/ci/gg-version-gate.sh
+                  "$(Build.ArtifactStagingDirectory)/gg/gg-$(uname -m)-unknown-linux-musl"
+                  "$(Build.SourceBranch)"
+                displayName: gg version matches the tag
+                condition: and(succeeded(), startsWith(variables['Build.SourceBranch'], 'refs/tags/v'))
+              - publish: $(Build.ArtifactStagingDirectory)/gg
+                artifact: gg-${{ arch }}
+                displayName: Keep gg for the images stage
+
+      # GitHub holds a force-pushed mirror that only this job writes to, so the mirror
+      # holds gated commits and nothing else. It waits on every gate. The gg builds are
+      # skipped on nightly, which is why the condition asks for no failure rather than
+      # for every dependency to have succeeded.
+      - job: mirror
+        displayName: GitHub mirror
+        dependsOn:
+          - rust
+          - binary
+          - web
+          - webtest
+          - specs
+          - format
+          - validators
+          - frozen
+          - audiopacks
+          - specvocabulary
+          - buildcontext
+          - contract
+          - manifests
+          - submodulepins
+          - ${{ each arch in split(variables.architectures, ',') }}:
+              - gg_${{ arch }}
+        condition: >-
+          and(
+            not(failed()),
+            not(canceled()),
+            or(
+              eq(variables['Build.SourceBranch'], 'refs/heads/master'),
+              eq(variables['Build.SourceBranch'], 'refs/heads/staging'),
+              eq(variables['Build.SourceBranch'], 'refs/heads/nightly'),
+              startsWith(variables['Build.SourceBranch'], 'refs/tags/v')
+            )
+          )
+        steps:
+          # GitHub refuses a push from a shallow clone, and a branch carries its tags.
+          - checkout: self
+            fetchDepth: 0
+            fetchTags: true
+            submodules: false
+          - task: DownloadSecureFile@1
+            name: mirrorKey
+            displayName: Fetch the mirror's deploy key
+            inputs:
+              secureFile: github-mirror-key
+          - script: ./scripts/ci/mirror.sh "$(mirrorKey.secureFilePath)" "$(Build.SourceBranch)"
+            displayName: Push to the GitHub mirror
+
+  - stage: images
+    displayName: Images
+    dependsOn: gates
+    condition: >-
+      and(
+        succeeded(),
+        or(
+          eq(variables['Build.SourceBranch'], 'refs/heads/master'),
+          eq(variables['Build.SourceBranch'], 'refs/heads/staging'),
+          startsWith(variables['Build.SourceBranch'], 'refs/tags/v')
+        )
+      )
+    jobs:
+      # Every image is built natively once per architecture and pushed as
+      # `<image>:<sha>-<arch>`; a manifest job then fuses the two into the multi-arch
+      # `<image>:<sha>` a deployment pins. `:latest` is never pushed.
+      - ${{ each arch in split(variables.architectures, ',') }}:
+          # The audio store the driver image bakes, ahead of everything else.
+          - job: audiostore_${{ arch }}
+            displayName: "Audio store (${{ arch }})"
+            condition: >-
+              or(
+                eq(variables['Build.SourceBranch'], 'refs/heads/master'),
+                eq(variables['Build.SourceBranch'], 'refs/heads/staging')
+              )
+            pool:
+              ${{ if eq(arch, 'amd64') }}:
+                vmImage: ubuntu-24.04
+              ${{ else }}:
+                name: $(arm64Pool)
+            steps:
+              - checkout: self
+                fetchDepth: 1
+              - task: UseNode@1
+                displayName: Use Node 22
+                inputs:
+                  version: 22.23.1
+              - task: Docker@2
+                displayName: Log in to the registry
+                inputs:
+                  command: login
+                  containerRegistry: tcab-acr
+              - script: |
+                  set -euo pipefail
+                  npm ci
+                  ./scripts/ci/audio-store-image.sh "$(Build.SourceVersion)"
+                displayName: Build and push the audio store
+                env:
+                  CLOUDFLARE_ACCOUNT_ID: $(CLOUDFLARE_ACCOUNT_ID)
+                  CLOUDFLARE_AUDIO_R2_BUCKET: $(CLOUDFLARE_AUDIO_R2_BUCKET)
+                  CLOUDFLARE_AUDIO_R2_PRESIGN_ACCESS_KEY_ID: $(CLOUDFLARE_AUDIO_R2_PRESIGN_ACCESS_KEY_ID)
+                  CLOUDFLARE_AUDIO_R2_PRESIGN_SECRET_ACCESS_KEY: $(CLOUDFLARE_AUDIO_R2_PRESIGN_SECRET_ACCESS_KEY)
+
+          # Every run-container image, gated on `gg selfcheck` inside each `-gg`
+          # environment before it is pushed. Uses the gg the gates stage built.
+          - job: runimages_${{ arch }}
+            displayName: "Run-container images (${{ arch }})"
+            dependsOn: []
+            condition: >-
+              or(
+                eq(variables['Build.SourceBranch'], 'refs/heads/master'),
+                eq(variables['Build.SourceBranch'], 'refs/heads/staging')
+              )
+            timeoutInMinutes: 360
+            pool:
+              ${{ if eq(arch, 'amd64') }}:
+                vmImage: ubuntu-24.04
+              ${{ else }}:
+                name: $(arm64Pool)
+            steps:
+              - checkout: self
+                fetchDepth: 1
+              - ${{ if eq(arch, 'amd64') }}:
+                  - script: ./scripts/ci/free-disk-linux.sh
+                    displayName: Reclaim agent disk
+              - download: current
+                artifact: gg-${{ arch }}
+                displayName: Fetch gg
+              - task: Docker@2
+                displayName: Log in to the registry
+                inputs:
+                  command: login
+                  containerRegistry: tcab-acr
+              - script: |
+                  set -euo pipefail
+                  gg="$(Pipeline.Workspace)/gg-${{ arch }}/gg-$(uname -m)-unknown-linux-musl"
+                  chmod 0755 "$gg"
+                  ./scripts/ci/run-images.sh "$gg" "$(Build.SourceVersion)"
+                displayName: Build, self-check and push the run images
+
+          # One job per service image, so each reports and retries on its own. The
+          # driver bakes the audio store this run pushed, so it waits for it.
+          - ${{ each service in split(variables.services, ',') }}:
+              - job: service_${{ service }}_${{ arch }}
+                displayName: "Service image: ${{ service }} (${{ arch }})"
+                ${{ if eq(service, 'driver') }}:
+                  dependsOn: audiostore_manifest
+                ${{ else }}:
+                  dependsOn: []
+                condition: >-
+                  and(
+                    succeeded(),
+                    or(
+                      eq(variables['Build.SourceBranch'], 'refs/heads/master'),
+                      eq(variables['Build.SourceBranch'], 'refs/heads/staging')
+                    )
+                  )
+                timeoutInMinutes: 240
+                pool:
+                  ${{ if eq(arch, 'amd64') }}:
+                    vmImage: ubuntu-24.04
+                  ${{ else }}:
+                    name: $(arm64Pool)
+                steps:
+                  - checkout: self
+                    fetchDepth: 1
+                  - ${{ if eq(arch, 'amd64') }}:
+                      - script: ./scripts/ci/free-disk-linux.sh
+                        displayName: Reclaim agent disk
+                  - task: Docker@2
+                    displayName: Log in to the registry
+                    inputs:
+                      command: login
+                      containerRegistry: tcab-acr
+                  - script: ./scripts/ci/service-image.sh ${{ service }} "$(Build.SourceVersion)"
+                    displayName: Build and push ${{ service }}
+
+      - job: audiostore_manifest
+        displayName: "Audio store: multi-arch tag"
+        dependsOn:
+          - ${{ each arch in split(variables.architectures, ',') }}:
+              - audiostore_${{ arch }}
+        steps:
+          - checkout: self
+            fetchDepth: 1
+          - task: Docker@2
+            displayName: Log in to the registry
+            inputs:
+              command: login
+              containerRegistry: tcab-acr
+          - script: ./scripts/ci/manifest.sh "$(Build.SourceVersion)" test-cabinet-audio-store
+            displayName: Fuse the architectures
+
+      - job: runimages_manifest
+        displayName: "Run-container images: multi-arch tags"
+        dependsOn:
+          - ${{ each arch in split(variables.architectures, ',') }}:
+              - runimages_${{ arch }}
+        steps:
+          - checkout: self
+            fetchDepth: 1
+          - task: Docker@2
+            displayName: Log in to the registry
+            inputs:
+              command: login
+              containerRegistry: tcab-acr
+          # The set a run resolves, plus the gg toolchain builder the `-gg` variants
+          # copy out of.
+          - script: |
+              set -euo pipefail
+              mapfile -t images < <(./containers/image-names.sh | sed 's/^/test-cabinet-/')
+              ./scripts/ci/manifest.sh "$(Build.SourceVersion)" "${images[@]}" test-cabinet-gg-toolchains
+            displayName: Fuse the architectures
+
+      - job: services_manifest
+        displayName: "Service images: multi-arch tags"
+        dependsOn:
+          - ${{ each service in split(variables.services, ',') }}:
+              - ${{ each arch in split(variables.architectures, ',') }}:
+                  - service_${{ service }}_${{ arch }}
+        steps:
+          - checkout: self
+            fetchDepth: 1
+          - task: Docker@2
+            displayName: Log in to the registry
+            inputs:
+              command: login
+              containerRegistry: tcab-acr
+          - script: >-
+              ./scripts/ci/manifest.sh "$(Build.SourceVersion)"
+              tcab-backend tcab-auth-service tcab-dispatcher tcab-driver
+              tcab-artifacts tcab-arena tcab-publisher tcab-web
+            displayName: Fuse the architectures
+
+      # gg's release artifacts, on master and tags. The upload re-runs the version gate
+      # before it writes anything, so a tag whose gg reports another version uploads
+      # nothing.
+      - job: gg_publish
+        displayName: "gg: upload to gg-releases"
+        dependsOn: []
+        condition: >-
+          or(
+            eq(variables['Build.SourceBranch'], 'refs/heads/master'),
+            startsWith(variables['Build.SourceBranch'], 'refs/tags/v')
+          )
+        steps:
+          - checkout: self
+            fetchDepth: 1
+          - ${{ each arch in split(variables.architectures, ',') }}:
+              - download: current
+                artifact: gg-${{ arch }}
+                displayName: Fetch gg (${{ arch }})
+          - task: AzureCLI@2
+            displayName: Upload gg's binaries and reference documents
+            inputs:
+              azureSubscription: tcab-gg-publish
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+                dist="$(Agent.TempDirectory)/gg"
+                mkdir -p "$dist"
+                cp "$(Pipeline.Workspace)"/gg-amd64/* "$(Pipeline.Workspace)"/gg-arm64/* "$dist"/
+                ./scripts/ci/publish-gg.sh "$dist" "$(Build.SourceBranch)"
+
+  - stage: deploy
+    displayName: Deploy
+    dependsOn: images
+    condition: >-
+      and(
+        succeeded(),
+        or(
+          eq(variables['Build.SourceBranch'], 'refs/heads/master'),
+          eq(variables['Build.SourceBranch'], 'refs/heads/staging')
+        )
+      )
+    jobs:
+      # staging rolls the staging cluster and master the production cluster. Neither
+      # environment has an approval check. `tcab-deploy` may run commands in each
+      # cluster through `az aks command invoke` and write that cluster's application
+      # namespace, and nothing else, so the cluster-scoped prerequisites are applied by
+      # hand (see
+      # deployments/k8s/README.md). deploy.sh waits for every rollout and undoes one
+      # that does not become ready. Each entry below is `<environment>:<branch>`.
+      - ${{ each target in split('staging:staging,prod:master', ',') }}:
+          - deployment: deploy_${{ split(target, ':')[0] }}
+            displayName: "Roll ${{ split(target, ':')[0] }}"
+            condition: eq(variables['Build.SourceBranch'], 'refs/heads/${{ split(target, ':')[1] }}')
+            environment: tcab-${{ split(target, ':')[0] }}
+            timeoutInMinutes: 60
+            strategy:
+              runOnce:
+                deploy:
+                  steps:
+                    - checkout: self
+                      fetchDepth: 1
+                      submodules: false
+                    - task: AzureCLI@2
+                      displayName: Apply and wait for every rollout
+                      inputs:
+                        azureSubscription: tcab-deploy
+                        scriptType: bash
+                        scriptLocation: inlineScript
+                        inlineScript: ./scripts/ci/deploy.sh ${{ split(target, ':')[0] }} "$(Build.SourceVersion)"
+
+      # The docs site, to the Cloudflare Pages project for this branch.
+      - job: docs
+        displayName: Docs site
+        steps:
+          - checkout: self
+            fetchDepth: 1
+          - task: UseNode@1
+            displayName: Use Node 22
+            inputs:
+              version: 22.23.1
+          - task: Cache@2
+            displayName: Cache npm
+            inputs:
+              key: 'npm | "$(Agent.OS)" | package-lock.json'
+              restoreKeys: |
+                npm | "$(Agent.OS)"
+              path: $(HOME)/.npm
+          - script: ./scripts/ci/deploy-docs.sh "$(Build.SourceBranchName)"
+            displayName: Build and deploy the docs
+            env:
+              CLOUDFLARE_API_TOKEN: $(CLOUDFLARE_API_TOKEN)
+              CLOUDFLARE_ACCOUNT_ID: $(CLOUDFLARE_ACCOUNT_ID)

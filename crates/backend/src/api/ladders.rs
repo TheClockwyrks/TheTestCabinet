@@ -1399,7 +1399,7 @@ async fn load_board(
     // resolve model facts: the resolution can reach out to OpenRouter, and nothing on a read
     // spends a buffer slot that a failure would have to be refunded from.
     if record {
-        super::coverage::resolve_gg_launch_facts(state, &mut combos).await;
+        super::coverage::resolve_launch_facts(state, &mut combos).await;
     }
     let steering: HashMap<String, StoredLadderClimber> = state
         .db

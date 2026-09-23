@@ -225,14 +225,14 @@ pub const PASSTHROUGH_K8S_VARS: &[&str] = &[
     // gg harness install controls (`core::gg_exec::resolve_install`, which reads these
     // from the driver's own env). Forwarded so a deployment can pin how a gg run gets
     // its binary: `TCAB_GG_INSTALL=local`/`release`, an explicit `TCAB_GG_BINARY` path,
-    // and the release coordinates (`_VERSION`/`_REPO`/`_TARGET`). Unset, the driver
+    // and the release coordinates (`_VERSION`/`_URL`/`_TARGET`). Unset, the driver
     // auto-detects — finding the static-musl gg baked into the driver image at
     // `/usr/local/lib/tcab/gg` (offline, no release needed), else falling back to a
-    // GitHub release. All are "forward only if set".
+    // release downloaded from the gg release blob container. All are "forward only if set".
     "TCAB_GG_INSTALL",
     "TCAB_GG_BINARY",
     "TCAB_GG_RELEASE_VERSION",
-    "TCAB_GG_RELEASE_REPO",
+    "TCAB_GG_RELEASE_URL",
     "TCAB_GG_RELEASE_TARGET",
 ];
 
