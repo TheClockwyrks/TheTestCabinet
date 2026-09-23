@@ -485,7 +485,7 @@ fn a_located_failure_names_the_model_s_own_purescript() {
         );
     }
     assert!(
-        reported.contains("… and 1 more frame,"),
+        reported.contains("… and 1 more frame (external code)"),
         "and the one frame that was struck is counted rather than silently dropped: {reported}"
     );
 
@@ -530,7 +530,7 @@ fn a_located_failure_names_the_model_s_own_purescript() {
         );
     }
     assert!(
-        reported.contains("more frames, in code this program was compiled into"),
+        reported.contains("more frames (external code)"),
         "and what was struck is counted: {reported}"
     );
     // The crossing itself, measured rather than inferred. A conversion mapped over the effect

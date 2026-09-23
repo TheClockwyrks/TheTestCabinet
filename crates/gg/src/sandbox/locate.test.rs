@@ -118,8 +118,7 @@ fn an_unresolvable_position_is_struck_and_counted() {
         locations.rewrite(
             "Error: boom\n    at inner (program.js:1:1)\n    at <anonymous> (program.js:900:1)\n"
         ),
-        "Error: boom\n    at inner (program.ts:3:1)\n… and 1 more frame, in code this program was \
-         compiled into rather than in code it contains."
+        "Error: boom\n    at inner (program.ts:3:1)\n… and 1 more frame (external code)"
     );
 }
 
@@ -134,8 +133,7 @@ fn a_frame_in_ggs_own_source_is_struck() {
         .hiding(["entry.js".to_string()]);
     assert_eq!(
         locations.rewrite("Error: boom\n    at <anonymous> (program.js:1:1)\n"),
-        "Error: boom\n… and 1 more frame, in code this program was compiled into rather than in \
-         code it contains."
+        "Error: boom\n… and 1 more frame (external code)"
     );
 }
 
@@ -157,8 +155,7 @@ fn a_frame_under_a_hidden_prefix_is_struck() {
         .hiding(["libs/gg-sdk/".to_string()]);
     assert_eq!(
         locations.rewrite("Error: boom\n    at <anonymous> (program.js:1:1)\n"),
-        "Error: boom\n… and 1 more frame, in code this program was compiled into rather than in \
-         code it contains."
+        "Error: boom\n… and 1 more frame (external code)"
     );
 }
 
