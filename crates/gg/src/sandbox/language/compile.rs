@@ -450,6 +450,73 @@ struct ModuleBuild {
     artifacts: Vec<PathBuf>,
 }
 
+/// **Every private tree this process has made and not yet removed** — agents' compile workspaces
+/// and compiler daemons' trees both — so that whatever is still standing when the process exits is
+/// removed then.
+///
+/// Each tree is removed by its owner's drop, and an ordinary exit runs no drop for a value parked in
+/// a `static`: a warm daemon in a [`CompilerPool`] is never dropped, and neither is a workspace a
+/// `static` still holds a handle to. Every one of those would otherwise stay under the temp root
+/// shared by every process on the machine, and a test suite — one process per test, each warming its
+/// own pool — would leave hundreds behind a run. What this cannot reach is a process that never
+/// exits normally (a `SIGKILL`); the trees' three-part names are what keep those leftovers inert.
+static STANDING: Mutex<Vec<PathBuf>> = Mutex::new(Vec::new());
+
+/// Record a tree as standing, arranging its removal at exit the first time anything is recorded.
+fn stand(tree: &Path) {
+    static AT_EXIT: std::sync::Once = std::sync::Once::new();
+    AT_EXIT.call_once(remove_standing_at_exit);
+    STANDING
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .push(tree.to_path_buf());
+}
+
+/// Remove a tree and forget it, for an owner that is being dropped.
+fn fall(tree: &Path) {
+    STANDING
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .retain(|standing| standing != tree);
+    let _ = std::fs::remove_dir_all(tree);
+}
+
+/// Register [`remove_standing`] to run when the process exits normally — a return from `main` or a
+/// [`std::process::exit`], which is how every test process ends.
+#[cfg(unix)]
+fn remove_standing_at_exit() {
+    unsafe extern "C" {
+        fn atexit(callback: extern "C" fn()) -> std::ffi::c_int;
+    }
+    // SAFETY: `atexit` is the C library's own registration, declared with its C signature, and the
+    // callback is a plain function that touches nothing but a `static`. A failed registration (the
+    // C library's table is full) leaves the trees to their owners' drops, which is what happened
+    // before this existed.
+    unsafe {
+        atexit(remove_standing);
+    }
+}
+
+/// No exit hook where there is no C `atexit` to register one with; each tree is still removed by its
+/// owner's drop.
+#[cfg(not(unix))]
+fn remove_standing_at_exit() {}
+
+/// Remove every tree still standing. Called from `atexit`, so it must not panic: a lock another
+/// thread holds as the process exits is skipped rather than waited on, and a removal that fails is
+/// ignored, because there is nobody left to report it to.
+#[cfg(unix)]
+extern "C" fn remove_standing() {
+    let standing = match STANDING.try_lock() {
+        Ok(standing) => standing,
+        Err(std::sync::TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
+        Err(std::sync::TryLockError::WouldBlock) => return,
+    };
+    for tree in standing.iter() {
+        let _ = std::fs::remove_dir_all(tree);
+    }
+}
+
 impl Workspace {
     /// Create one agent's tree.
     ///
@@ -485,6 +552,7 @@ impl Workspace {
                 root.display()
             )
         })?;
+        stand(&root);
 
         let work = root.join("work");
         let workspace = Self {
@@ -839,7 +907,7 @@ fn digest(source: &str) -> u64 {
 
 impl Drop for Workspace {
     fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.root);
+        fall(&self.root);
     }
 }
 
@@ -1368,11 +1436,11 @@ fn started_at_ms() -> u128 {
 /// It has to be unique against three different collisions, and each part answers one of them: the
 /// counter separates two daemons in this process, the pid separates two processes running at once,
 /// and the **clock** separates this process from a dead one whose pid the OS has since handed back.
-/// That last one is not theoretical. A tree is removed by [`CompilerDaemon`]'s drop, and plenty of
-/// endings never run it — a `SIGKILL`ed test binary, or an ordinary exit with the daemon still
-/// parked in a `static` pool. Either leaves `<pid>-0` standing under a temp root shared by every
-/// process on the machine, and the next process the OS hands that pid to then fails to start its
-/// first daemon at all, on a `create_dir` that finds the directory already there. Naming a tree
+/// That last one is not theoretical. A tree is removed by [`CompilerDaemon`]'s drop, or at an
+/// ordinary exit by [`STANDING`] when the daemon is still parked in a `static` pool, and a
+/// `SIGKILL`ed process gets neither. That leaves `<pid>-0` standing under a temp root shared by
+/// every process on the machine, and the next process the OS hands that pid to then fails to start
+/// its first daemon at all, on a `create_dir` that finds the directory already there. Naming a tree
 /// after the moment it was made costs nothing and makes those leftovers inert.
 pub fn daemon(program: impl AsRef<OsStr>) -> Result<DaemonCommand, String> {
     let program = program.as_ref();
@@ -1391,6 +1459,7 @@ pub fn daemon(program: impl AsRef<OsStr>) -> Result<DaemonCommand, String> {
             tree.display()
         )
     })?;
+    stand(&tree);
     let work = tree.join("work");
     let home = tree.join("home");
     let tmp = tree.join("tmp");
@@ -1563,7 +1632,7 @@ impl Drop for CompilerDaemon {
         // reader thread's pipe would otherwise leave the thread parked on a read that never ends.
         let _ = self.child.kill();
         let _ = self.child.wait();
-        let _ = std::fs::remove_dir_all(&self.tree);
+        fall(&self.tree);
     }
 }
 

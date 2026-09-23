@@ -74,7 +74,7 @@ fn the_same_file_name_in_two_agents_is_two_files() {
 }
 
 /// The tree is removed when the last hold on it is dropped. A run's container is thrown away
-/// eventually, but a machine running sixteen agents a run would otherwise fill its disk with build
+/// eventually, but a machine running many agents a run would otherwise fill its disk with build
 /// trees.
 #[test]
 fn a_workspace_is_removed_when_its_agent_ends() {
@@ -95,6 +95,62 @@ fn a_workspace_is_removed_when_its_agent_ends() {
         path
     };
     assert!(!path.exists(), "{} outlived its agent", path.display());
+}
+
+/// **A tree still held when the process exits is removed at the exit** — the case a drop never
+/// reaches, because the hold is in a `static` (a warm daemon in a pool, a workspace a test recorded).
+///
+/// Observed from outside, since the property is about what happens after this process is gone: the
+/// test binary is run again on [`a_tree_held_by_a_static_is_left_for_the_exit`], which opens a
+/// workspace, parks the agent in a `static` and prints the tree's path; once that process has
+/// exited, the path must not exist.
+#[cfg(unix)]
+#[test]
+fn a_tree_still_held_at_exit_is_removed_then() {
+    let ran = std::process::Command::new(std::env::current_exe().expect("this test binary"))
+        .args([
+            "--exact",
+            "sandbox::language::compile::tests::a_tree_held_by_a_static_is_left_for_the_exit",
+            "--ignored",
+            "--nocapture",
+        ])
+        .output()
+        .expect("the test binary runs");
+    let said = String::from_utf8_lossy(&ran.stdout);
+    assert!(ran.status.success(), "the helper failed: {said}");
+    let path = said
+        .lines()
+        .find_map(|line| line.strip_prefix("tree: "))
+        .unwrap_or_else(|| panic!("the helper printed no tree: {said}"));
+    let path = std::path::Path::new(path);
+    assert!(
+        path.is_absolute() && path.starts_with(std::env::temp_dir()),
+        "{} is not a tree under the temp root",
+        path.display()
+    );
+    assert!(
+        !path.exists(),
+        "{} outlived the process that held it",
+        path.display()
+    );
+}
+
+/// The helper [`a_tree_still_held_at_exit_is_removed_then`] runs in a process of its own: a
+/// workspace opened, held by a `static` so no drop ever reaches it, and its path printed.
+#[test]
+#[ignore = "run by a_tree_still_held_at_exit_is_removed_then, in a process of its own"]
+fn a_tree_held_by_a_static_is_left_for_the_exit() {
+    static HELD: std::sync::OnceLock<AgentWorkspace> = std::sync::OnceLock::new();
+    let agent = HELD.get_or_init(AgentWorkspace::new);
+    let context = PrepareContext::for_agent(agent, &[]);
+    let root = context
+        .workspace()
+        .expect("a workspace opens")
+        .root()
+        .to_path_buf();
+    drop(context);
+    assert!(root.exists(), "the tree stands while the process does");
+    println!("tree: {}", root.display());
 }
 
 /// A language that compiles nothing asks for nothing. The context is the seam's offer, not its
