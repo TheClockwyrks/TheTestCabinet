@@ -4229,3 +4229,25 @@ fn provider_events_have_their_documented_wire_shape() {
         assert_eq!(serde_json::to_value(fault).unwrap(), json!(id));
     }
 }
+
+/// A list written before candidate lists named a bare provider per model: it reads as a
+/// one-candidate list of blank quantization, which a launch refuses, and a list reads as itself.
+#[test]
+fn a_bare_provider_pin_reads_as_a_list_a_launch_refuses() {
+    let record: crate::gg_session_record::GgSessionSeed = {
+        let mut value = serde_json::to_value(crate::gg_session_record::GgSessionSeed::default())
+            .expect("a seed serializes");
+        value["modelProviders"] = serde_json::json!({
+            "z-ai/glm-5.3": "Z.AI",
+            "qwen/qwen4": [{ "provider": "Alibaba", "quantization": "fp8" }],
+        });
+        serde_json::from_value(value).expect("a pre-list seed still reads")
+    };
+    let pinned = &record.model_providers["z-ai/glm-5.3"];
+    assert_eq!(pinned, &vec![GgProviderCandidate::new("Z.AI", "")]);
+    assert!(!GgProviderCandidate::usable_list(pinned));
+    assert_eq!(
+        record.model_providers["qwen/qwen4"],
+        vec![GgProviderCandidate::new("Alibaba", "fp8")]
+    );
+}

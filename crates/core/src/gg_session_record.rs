@@ -205,7 +205,11 @@ pub struct GgSessionSeed {
     /// The ordered candidate list each bound model may run on. Recorded because a
     /// run's cost is on those providers' price bases, and a reader that guessed the
     /// list would price the run against a different one.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[serde(
+        default,
+        skip_serializing_if = "BTreeMap::is_empty",
+        deserialize_with = "crate::gg::provider_lists::read"
+    )]
     pub model_providers: BTreeMap<String, Vec<crate::gg::GgProviderCandidate>>,
     /// The **final, resolved** modality state of each bound slot.
     ///

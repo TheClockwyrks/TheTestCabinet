@@ -5605,7 +5605,11 @@ pub struct GgInvocation {
     /// fallbacks are refused — and the list is the order the run tries them in. A one-entry list
     /// is a pin. A bound model with no entry, or an empty list, refuses the launch together with
     /// every other missing one: a model with no candidate is not testable.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[serde(
+        default,
+        skip_serializing_if = "BTreeMap::is_empty",
+        deserialize_with = "provider_lists::read"
+    )]
     pub model_providers: BTreeMap<String, Vec<GgProviderCandidate>>,
     /// The **input modalities** each model this run may bind accepts (`text`, `image`,
     /// `file`, …), from the same model catalog and pushed in on the same terms as
@@ -7195,6 +7199,48 @@ pub struct GgProviderCandidate {
     pub quantization: String,
 }
 
+/// **Reading a stored candidate list**, which may predate candidate lists.
+///
+/// A launch, a queued job, a session record and a `session_started` event written before gg
+/// named a list per model carried a bare provider name instead: the pin. Such an entry reads as
+/// a one-candidate list whose quantization is blank, since the pin named none. A record stays
+/// readable, and a launch built from it is [refused](GgProviderCandidate::usable_list) rather
+/// than run under a level nobody chose.
+pub(crate) mod provider_lists {
+    use std::collections::BTreeMap;
+
+    use serde::{Deserialize, Deserializer};
+
+    use super::GgProviderCandidate;
+
+    /// One entry as written: a list, or the bare provider name written before lists.
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Entry {
+        List(Vec<GgProviderCandidate>),
+        Pin(String),
+    }
+
+    /// Deserialize a model-to-list map under the rule the [module](self) states.
+    pub(crate) fn read<'de, D>(
+        deserializer: D,
+    ) -> Result<BTreeMap<String, Vec<GgProviderCandidate>>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Ok(BTreeMap::<String, Entry>::deserialize(deserializer)?
+            .into_iter()
+            .map(|(model, entry)| {
+                let list = match entry {
+                    Entry::List(list) => list,
+                    Entry::Pin(provider) => vec![GgProviderCandidate::new(provider, "")],
+                };
+                (model, list)
+            })
+            .collect())
+    }
+}
+
 impl GgProviderCandidate {
     /// A candidate naming `provider` at `quantization`.
     pub fn new(provider: impl Into<String>, quantization: impl Into<String>) -> Self {
@@ -7578,7 +7624,11 @@ pub enum GgTelemetryKind {
         /// The ordered candidate list each bound model may run on, beside the routing
         /// key. Every request names exactly one of them; a response from any other
         /// provider ends the run.
-        #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+        #[serde(
+            default,
+            skip_serializing_if = "BTreeMap::is_empty",
+            deserialize_with = "provider_lists::read"
+        )]
         model_providers: BTreeMap<String, Vec<GgProviderCandidate>>,
         /// The **routing key** gg minted at launch: a cuid2 sent on every request of the run
         /// as both `session_id` and `prompt_cache_key`, so a provider dashboard row can be

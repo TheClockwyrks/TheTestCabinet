@@ -127,7 +127,11 @@ pub struct LaunchBody {
     /// **Filled in by the backend at enqueue, not sent by a client**, on the same terms as
     /// [`gg_model_windows`](Self::gg_model_windows) and from the same lookup. A model the catalog
     /// has no candidate for refuses the enqueue rather than launching with an empty list.
-    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    #[serde(
+        default,
+        skip_serializing_if = "std::collections::BTreeMap::is_empty",
+        deserialize_with = "crate::gg::provider_lists::read"
+    )]
     pub gg_model_providers: std::collections::BTreeMap<String, Vec<crate::gg::GgProviderCandidate>>,
     /// The input modalities each model this **gg** run may bind accepts (`text`,
     /// `image`, `file`, …), as the model catalog observed them.
