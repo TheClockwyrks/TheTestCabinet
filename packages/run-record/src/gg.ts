@@ -3242,16 +3242,9 @@ export type GgTelemetryKind =
        * Which of the session's two cost figures this turn's spend fed — the
        * [work cost](GgSessionSummary::work_cost) or the [total](GgSessionSummary::cost) alone.
        *
-       * The cost figures of the two kinds of turn a run has: a turn that
-       * [produced a program or a tool call gg ran](GgUsageFigure::Work), whose spend belongs in
-       * both figures, and one that produced nothing usable — a rejected, unparseable or
-       * otherwise [errored](GgTurnErrorType) turn — whose spend belongs only in the total, so
-       * what a run's faults cost stays readable apart from what its work cost. Every delta
-       * counts toward the total; `work` is what marks the narrower figure.
-       *
-       * Absent on a stream recorded before the split: such a delta contributed to the one
-       * figure the run kept, and it reads back as total-only rather than being scored as work
-       * retroactively.
+       * Every delta counts toward the total; `work` marks the ones that also count toward the
+       * work cost, so what a run's faults cost stays readable apart from what its work cost.
+       * Absent, the delta is read as [`total`](GgUsageFigure::Total).
        */
       figure?: GgUsageFigure;
       /**
@@ -4507,16 +4500,9 @@ export type GgTelemetryEvent = {
        * Which of the session's two cost figures this turn's spend fed — the
        * [work cost](GgSessionSummary::work_cost) or the [total](GgSessionSummary::cost) alone.
        *
-       * The cost figures of the two kinds of turn a run has: a turn that
-       * [produced a program or a tool call gg ran](GgUsageFigure::Work), whose spend belongs in
-       * both figures, and one that produced nothing usable — a rejected, unparseable or
-       * otherwise [errored](GgTurnErrorType) turn — whose spend belongs only in the total, so
-       * what a run's faults cost stays readable apart from what its work cost. Every delta
-       * counts toward the total; `work` is what marks the narrower figure.
-       *
-       * Absent on a stream recorded before the split: such a delta contributed to the one
-       * figure the run kept, and it reads back as total-only rather than being scored as work
-       * retroactively.
+       * Every delta counts toward the total; `work` marks the ones that also count toward the
+       * work cost, so what a run's faults cost stays readable apart from what its work cost.
+       * Absent, the delta is read as [`total`](GgUsageFigure::Total).
        */
       figure?: GgUsageFigure;
       /**

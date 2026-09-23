@@ -1403,7 +1403,7 @@
         },
         {
           "const": "total",
-          "description": "The turn produced nothing usable gg ran — a rejected, unparseable, looping or otherwise\nnon-work reply — so its spend is in the total alone. Also the figure a delta that carries\nno mark reads back as, since such a delta was recorded before the split and was never\nmarked as work.",
+          "description": "The request produced nothing gg ran — a rejected or unparseable reply, a reply with no\ncall, or one gg refused — so its spend is in the total alone. A delta that carries no\nfigure is read as this one.",
           "type": "string"
         }
       ]
@@ -1641,7 +1641,7 @@
               "type": "null"
             }
           ],
-          "description": "Which of the session's two cost figures this turn's spend fed — the\n[work cost](GgSessionSummary::work_cost) or the [total](GgSessionSummary::cost) alone.\n\nThe cost figures of the two kinds of turn a run has: a turn that\n[produced a program or a tool call gg ran](GgUsageFigure::Work), whose spend belongs in\nboth figures, and one that produced nothing usable — a rejected, unparseable or\notherwise [errored](GgTurnErrorType) turn — whose spend belongs only in the total, so\nwhat a run's faults cost stays readable apart from what its work cost. Every delta\ncounts toward the total; `work` is what marks the narrower figure.\n\nAbsent on a stream recorded before the split: such a delta contributed to the one\nfigure the run kept, and it reads back as total-only rather than being scored as work\nretroactively."
+          "description": "Which of the session's two cost figures this turn's spend fed — the\n[work cost](GgSessionSummary::work_cost) or the [total](GgSessionSummary::cost) alone.\n\nEvery delta counts toward the total; `work` marks the ones that also count toward the\nwork cost, so what a run's faults cost stays readable apart from what its work cost.\nAbsent, the delta is read as [`total`](GgUsageFigure::Total)."
         },
         "modelId": {
           "description": "The concrete model id that spent this — the model the\n[profile](Self::Usage::profile_id) resolved to for the agent that took the turn.",

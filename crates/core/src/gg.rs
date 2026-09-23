@@ -6916,10 +6916,9 @@ pub enum GgUsageFigure {
     /// The turn produced a program or a tool call gg ran, so its spend is in the work cost **and**
     /// the total.
     Work,
-    /// The turn produced nothing usable gg ran — a rejected, unparseable, looping or otherwise
-    /// non-work reply — so its spend is in the total alone. Also the figure a delta that carries
-    /// no mark reads back as, since such a delta was recorded before the split and was never
-    /// marked as work.
+    /// The request produced nothing gg ran — a rejected or unparseable reply, a reply with no
+    /// call, or one gg refused — so its spend is in the total alone. A delta that carries no
+    /// figure is read as this one.
     Total,
 }
 
@@ -7517,16 +7516,9 @@ pub enum GgTelemetryKind {
         /// Which of the session's two cost figures this turn's spend fed — the
         /// [work cost](GgSessionSummary::work_cost) or the [total](GgSessionSummary::cost) alone.
         ///
-        /// The cost figures of the two kinds of turn a run has: a turn that
-        /// [produced a program or a tool call gg ran](GgUsageFigure::Work), whose spend belongs in
-        /// both figures, and one that produced nothing usable — a rejected, unparseable or
-        /// otherwise [errored](GgTurnErrorType) turn — whose spend belongs only in the total, so
-        /// what a run's faults cost stays readable apart from what its work cost. Every delta
-        /// counts toward the total; `work` is what marks the narrower figure.
-        ///
-        /// Absent on a stream recorded before the split: such a delta contributed to the one
-        /// figure the run kept, and it reads back as total-only rather than being scored as work
-        /// retroactively.
+        /// Every delta counts toward the total; `work` marks the ones that also count toward the
+        /// work cost, so what a run's faults cost stays readable apart from what its work cost.
+        /// Absent, the delta is read as [`total`](GgUsageFigure::Total).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[cfg_attr(feature = "contract", ts(optional))]
         figure: Option<GgUsageFigure>,

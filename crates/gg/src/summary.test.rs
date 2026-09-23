@@ -460,8 +460,8 @@ fn records_the_work_cost_and_the_total_cost_per_slot_and_in_the_rollup() {
         None,
         &usage_marked(ROOT_PROFILE_ID, "mock/primary", None, GgUsageFigure::Total),
     );
-    // A second slot whose priced turns were all faults — plus one delta recorded before the split
-    // carried a mark at all, which counts toward the total and can never be scored as work.
+    // A second slot whose priced turns were all faults, plus one delta that carries no figure,
+    // which counts toward the total and never toward the work cost.
     tracker.observe(
         None,
         &GgTelemetryKind::SlotUsage {
@@ -529,6 +529,33 @@ fn records_the_work_cost_and_the_total_cost_per_slot_and_in_the_rollup() {
     let total = summary.cost.and_then(|cost| cost.actual).expect("rollup");
     assert!((total - 0.04).abs() < 1e-9, "rollup total was {total}");
     assert_eq!(summary.work_cost.and_then(|cost| cost.actual), Some(0.01));
+}
+
+/// A slot that spent but whose `SlotUsage` rollup never arrived is recorded from its own deltas,
+/// so the run-wide total still agrees with the sum of every delta and the work cost never exceeds
+/// it.
+#[test]
+fn a_slot_without_a_rollup_is_recorded_from_its_deltas() {
+    let tracker = SessionSummaryTracker::new();
+    tracker.observe(
+        None,
+        &usage_marked(ROOT_PROFILE_ID, "mock/primary", None, GgUsageFigure::Work),
+    );
+    tracker.observe(
+        None,
+        &usage_marked(ROOT_PROFILE_ID, "mock/primary", None, GgUsageFigure::Total),
+    );
+
+    let summary = tracker.finalize("internal_error");
+    assert_eq!(summary.slot_costs.len(), 1);
+    let slot = &summary.slot_costs[0];
+    assert_eq!(slot.profile_id, ROOT_PROFILE_ID);
+    assert_eq!(slot.tokens.output, Some(80), "both deltas' tokens");
+    let total = slot.cost.and_then(|cost| cost.actual).expect("a total");
+    assert!((total - 0.02).abs() < 1e-9, "total was {total}");
+    assert_eq!(slot.work_cost.and_then(|cost| cost.actual), Some(0.01));
+    assert_eq!(summary.cost, slot.cost);
+    assert_eq!(summary.work_cost, slot.work_cost);
 }
 
 /// The terminal `SessionSummary`/`SessionEnded` events (which flow through the same emitter,

@@ -91,9 +91,9 @@ fn length_capped_reply() -> ModelResponse {
     }
 }
 
-/// The finishing program with real usage on it, so the run has exactly one accountable turn: its
-/// spend is what the run's own metrics must show once the rejected call's is excluded, and its
-/// completion tokens (output plus reasoning) are the maximum the summary must report.
+/// The finishing program with real usage on it, so the run has exactly one turn that did work: its
+/// spend is the run's whole work cost, and its completion tokens (output plus reasoning) are the
+/// maximum the summary must report.
 fn finishing_reply_with_usage() -> ModelResponse {
     ModelResponse {
         usage: TokenCounts {
@@ -791,4 +791,98 @@ async fn unreadable_replies_alone_stop_the_run_on_the_error_ceilings() {
         "each unreadable reply spent a consecutive error"
     );
     assert_eq!(summary.errors.max_consecutive, 2);
+}
+
+/// A reply making `calls`, with nothing else on it — the input [`usage_figure`] reads.
+fn reply_calling(calls: Vec<ToolCall>) -> ModelResponse {
+    ModelResponse {
+        text: None,
+        tool_calls: calls,
+        finish_reason: FinishReason::ToolCalls,
+        usage: TokenCounts::default(),
+        cost: None,
+        provider: None,
+        loop_aborts: LoopAborts::none(),
+    }
+}
+
+/// One tool call named `name` carrying `arguments`.
+fn calling(name: &str, arguments: Value) -> ToolCall {
+    ToolCall {
+        id: format!("call-{name}"),
+        name: name.to_string(),
+        arguments,
+    }
+}
+
+/// A reply's spend is work exactly when gg runs something it produced: a `submit_program` call
+/// carrying a program under responses as code, and a dispatched tool call under tool calling. A
+/// call gg refuses, a `submit_program` call with no program, and a reply taken whole as a
+/// compaction summary all feed the total alone.
+#[test]
+fn a_reply_is_work_only_when_gg_runs_what_it_produced() {
+    let program = calling(
+        completion::SUBMIT_PROGRAM_TOOL,
+        json!({ "program": FINISHING_PROGRAM }),
+    );
+    let empty_submission = calling(completion::SUBMIT_PROGRAM_TOOL, json!({}));
+    let shell = calling("shell", json!({ "command": "ls" }));
+    let compact = calling(COMPACT_TOOL, json!({ "summary": "done so far" }));
+
+    // Responses as code.
+    assert_eq!(
+        usage_figure(&reply_calling(vec![program.clone()]), true, None),
+        GgUsageFigure::Work
+    );
+    assert_eq!(
+        usage_figure(&reply_calling(vec![shell.clone()]), true, None),
+        GgUsageFigure::Total,
+        "a tool this mode does not offer is refused, so nothing ran"
+    );
+    assert_eq!(
+        usage_figure(&reply_calling(vec![empty_submission]), true, None),
+        GgUsageFigure::Total,
+        "a submission with no program runs nothing"
+    );
+    assert_eq!(
+        usage_figure(&reply_calling(Vec::new()), true, None),
+        GgUsageFigure::Total
+    );
+
+    // Tool calling.
+    assert_eq!(
+        usage_figure(&reply_calling(vec![shell.clone()]), false, None),
+        GgUsageFigure::Work
+    );
+    assert_eq!(
+        usage_figure(&reply_calling(Vec::new()), false, None),
+        GgUsageFigure::Total,
+        "a reply with no call is a missing completion"
+    );
+    assert_eq!(
+        usage_figure(
+            &reply_calling(vec![shell.clone()]),
+            false,
+            Some(PendingCompaction::Summary)
+        ),
+        GgUsageFigure::Total,
+        "a self-summarization turn dispatches none of its calls"
+    );
+    assert_eq!(
+        usage_figure(
+            &reply_calling(vec![shell]),
+            false,
+            Some(PendingCompaction::CompactCall)
+        ),
+        GgUsageFigure::Total,
+        "a pending compaction refuses every call it does not admit"
+    );
+    assert_eq!(
+        usage_figure(
+            &reply_calling(vec![compact]),
+            false,
+            Some(PendingCompaction::CompactCall)
+        ),
+        GgUsageFigure::Work
+    );
 }

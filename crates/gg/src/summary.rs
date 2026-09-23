@@ -151,18 +151,14 @@ struct SummaryState {
     issues_completed: BTreeSet<String>,
     /// One entry per [`SlotUsage`](GgTelemetryKind::SlotUsage) rollup, captured in emission order.
     /// Each entry's `work_cost` is joined on at [finalize](SessionSummaryTracker::finalize) from
-    /// the same run's [`Usage`](GgTelemetryKind::Usage) deltas — the only events that carry the
-    /// figure mark — keyed by the entry's own `(profile, model)`, since a `SlotUsage` rollup
-    /// predates nothing and reports the totals either way.
+    /// [`slot_deltas`](Self::slot_deltas), since the rollup carries the total alone.
     slot_costs: Vec<GgSlotCost>,
-    /// The run's **work cost** per `(profile, model)`, folded from the
-    /// [`Usage`](GgTelemetryKind::Usage) deltas marked [`work`](GgUsageFigure::Work) — the turns
-    /// that produced a program or a tool call gg ran. Joined onto
-    /// [`slot_costs`](Self::slot_costs) at finalize, where a total-marked delta never comes: the
-    /// run's faults belong in the [total](GgSessionSummary::cost) alone. Opened only by a
-    /// **priced** work delta — a work turn that reported no price leaves the figure honestly
-    /// `None` rather than opening an entry nothing can read a figure out of.
-    slot_work: BTreeMap<(String, String), Cost>,
+    /// The run's [`Usage`](GgTelemetryKind::Usage) deltas folded per `(profile, model)`: every
+    /// delta into the total, and the deltas marked [`work`](GgUsageFigure::Work) into the work
+    /// cost as well. The work cost is joined onto the matching [`slot_costs`](Self::slot_costs)
+    /// entry at finalize, and a key no rollup arrived for becomes an entry of its own, so the
+    /// summary's total always agrees with the sum of the deltas.
+    slot_deltas: BTreeMap<(String, String), SlotDeltas>,
     /// The run's [provider-health rollup](GgProviderStat), keyed `(provider, model)` — a
     /// [`BTreeMap`] so [finalize](SessionSummaryTracker::finalize) emits the slices in a
     /// deterministic order (the providerless slice first, then lexicographic) without a sort of
@@ -636,19 +632,14 @@ impl SessionSummaryTracker {
                 slice.calls += 1;
                 slice.tokens = fold_counts(slice.tokens, *tokens);
                 slice.cost = fold_cost(slice.cost, *cost);
-                if *figure == Some(GgUsageFigure::Work)
-                    && let Some(price) = cost
-                {
-                    // Only a priced work delta opens (or adds to) a slot's work entry: a work
-                    // turn that reported no price leaves the figure honestly `None`.
-                    state
-                        .slot_work
-                        .entry((profile_id.clone(), model_id.clone()))
-                        .and_modify(|slot| {
-                            *slot = fold_cost(Some(*slot), Some(*price))
-                                .expect("folding two reported costs reports a cost");
-                        })
-                        .or_insert(*price);
+                let slot = state
+                    .slot_deltas
+                    .entry((profile_id.clone(), model_id.clone()))
+                    .or_default();
+                slot.tokens = fold_counts(slot.tokens, *tokens);
+                slot.cost = fold_cost(slot.cost, *cost);
+                if *figure == Some(GgUsageFigure::Work) {
+                    slot.work_cost = fold_cost(slot.work_cost, *cost);
                 }
                 if let Some(agent_id) = agent_id {
                     let attribution = state.attribution(agent_id);
@@ -710,8 +701,7 @@ impl SessionSummaryTracker {
                 model_id: model_id.clone(),
                 tokens: *tokens,
                 cost: *cost,
-                // Joined from the usage deltas' figure marks at finalize — see
-                // [`SummaryState::slot_work`].
+                // Joined from the usage deltas at finalize — see [`SummaryState::slot_deltas`].
                 work_cost: None,
             }),
             // Every other event carries no aggregatable figure of its own: session/turn
@@ -739,25 +729,26 @@ impl SessionSummaryTracker {
     /// exactly what a run that ended before the resolver ran should say.
     pub fn finalize(&self, terminal_status: &str) -> GgSessionSummary {
         let state = self.inner.lock().expect("summary tracker lock");
-        // The per-slot rollup with its two figures joined: the totals each `SlotUsage` event
-        // carried, plus the work figure folded from the run's `Usage` deltas — see
-        // [`SummaryState::slot_work`]. Built ahead of the summary so the run-wide rollup below is
-        // summed from exactly the entries the summary carries, and cannot diverge from them.
+        // The per-slot rollup with its two figures joined: the total each `SlotUsage` event
+        // carried, and the work cost folded from the run's `Usage` deltas — see
+        // [`SummaryState::slot_deltas`]. Built ahead of the summary so the run-wide rollup below is
+        // summed from exactly the entries the summary carries.
         let mut slot_costs = state.slot_costs.clone();
-        let mut slot_work = state.slot_work.clone();
+        let mut slot_deltas = state.slot_deltas.clone();
         for entry in &mut slot_costs {
-            entry.work_cost = slot_work.remove(&(entry.profile_id.clone(), entry.model_id.clone()));
+            entry.work_cost = slot_deltas
+                .remove(&(entry.profile_id.clone(), entry.model_id.clone()))
+                .and_then(|deltas| deltas.work_cost);
         }
-        // A work-marked delta whose rollup event never arrived: keep the spend rather than drop
-        // it — the delta is the evidence it happened, and a slot keyed differently is still a
-        // slot the run spent on.
-        for ((profile_id, model_id), work_cost) in slot_work {
+        // A slot that spent but whose rollup never arrived (a run that ended before its agents
+        // joined) is recorded from its deltas, so its spend is in both run-wide figures.
+        for ((profile_id, model_id), deltas) in slot_deltas {
             slot_costs.push(GgSlotCost {
                 profile_id,
                 model_id,
-                tokens: TokenCounts::default(),
-                cost: None,
-                work_cost: Some(work_cost),
+                tokens: deltas.tokens,
+                cost: deltas.cost,
+                work_cost: deltas.work_cost,
             });
         }
         // The run-wide rollup of the two figures: `cost` is the total over every request the run
@@ -825,6 +816,15 @@ impl SessionSummaryTracker {
             limit_hit: state.limit_hit.clone(),
         }
     }
+}
+
+/// One `(profile, model)`'s [`Usage`](GgTelemetryKind::Usage) deltas, folded: the tokens and cost
+/// of every delta, and the cost of the deltas marked [`work`](GgUsageFigure::Work).
+#[derive(Debug, Clone, Default)]
+struct SlotDeltas {
+    tokens: TokenCounts,
+    cost: Option<Cost>,
+    work_cost: Option<Cost>,
 }
 
 /// Sum two [`TokenCounts`], keeping a class `None` only when it is unreported on both sides —

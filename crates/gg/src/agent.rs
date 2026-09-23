@@ -6330,9 +6330,8 @@ struct LoopEnd {
     handoff: Option<Handoff>,
     /// Whether this agent ended because the **provider** failed its model call: the client's
     /// [retry schedule](crate::client::RetryPolicy) spent, or a fatal status on the first attempt.
-    /// Always under [`STATUS_MODEL_ERROR`], which a reply loop detection discarded on every attempt
-    /// also ends under; that one is the model's failure and leaves this `false`. The root's is
-    /// what makes a session exit `1` rather than be scored.
+    /// Always under [`STATUS_MODEL_ERROR`], which a model that cannot accept the run's images also
+    /// ends under and leaves this `false`. The root's is what makes a session exit `1` rather than be scored.
     provider_failure: bool,
 }
 
@@ -7234,10 +7233,8 @@ impl Agent {
             //   provider;
             // - a reply that hit the **provider's output cap** (`finish_reason: length`), which is
             //   presumed a degenerate generation and rejected whole;
-            // - a reply gg **could not read** (`ModelError::Parse`) — the envelope unparseable, or
-            //   tool call arguments the provider cut off mid-JSON, the shape that cost a run of
-            //   `tencent/hy4-preview` sixty-five turns of uncommitted work when it ended the
-            //   session instead;
+            // - a reply gg **could not read** (`ModelError::Parse`) — an unreadable stream, or
+            //   tool call arguments the provider cut off mid-JSON;
             // - a reply that [looped](crate::loopguard) on every attempt the client made
             //   (`ModelError::ResponseLoop`).
             //
@@ -7312,10 +7309,8 @@ impl Agent {
                         (TurnErrorType::ModelTimeout, LoopAborts::none(), None)
                     }
                     // A reply gg could not read: the envelope unparseable, an error object in a
-                    // `2xx`, or tool call arguments that are not JSON — a provider that cut the
-                    // arguments off mid-JSON is the shape that matters, and ending the session on
-                    // it threw away sixty-five turns of uncommitted work once. Answered as a
-                    // `model_parse` error turn instead: nothing was pushed (there was nothing to
+                    // `2xx`, or tool call arguments that are not JSON, which is what a provider
+                    // that cuts the arguments off produces. Answered as a `model_parse` error turn: nothing was pushed (there was nothing to
                     // push), the ceilings spend, and the same request goes out again. A reply
                     // that was no tool call at all never arrives here — it parses, and the loop
                     // files it under its `missing_completion` types — so this arm's meaning stays
@@ -7456,8 +7451,7 @@ impl Agent {
                             ending: None,
                             limit: None,
                             // The provider's failure, not the model's: the client spent its whole
-                            // schedule, or the provider refused the request outright. A reply loop
-                            // detection discarded on every attempt is the model's, and stays out.
+                            // schedule, or the provider refused the request outright.
                             provider_failure: status.as_str() == STATUS_MODEL_ERROR
                                 && matches!(
                                     err,
@@ -7578,16 +7572,8 @@ impl Agent {
                 ));
             }
 
-            // The delta names the figure this turn's spend fed: [`Work`](GgUsageFigure::Work) when
-            // the reply produced a program or a tool call gg ran — the definition of the run's
-            // work — and [`Total`](GgUsageFigure::Total) when it produced nothing gg ran (a prose
-            // reply the loop will file as a `missing_completion`, a summary turn). Every delta is
-            // in the total; the mark is what keeps a fault's price out of the work cost.
-            let figure = if response.tool_calls.is_empty() {
-                GgUsageFigure::Total
-            } else {
-                GgUsageFigure::Work
-            };
+            // The delta names the figure this turn's spend fed; see [`usage_figure`].
+            let figure = usage_figure(&response, code.enabled, pending_compaction);
             record_usage_delta(
                 response.usage,
                 response.cost,
@@ -12575,11 +12561,46 @@ const IMAGE_STRIPPED_NOTE: &str = "[The image could not be shown: the model runn
      does not accept image input. Reading it again will not help — work from the written \
      specification instead.]";
 
+/// Which of the run's two cost figures a reply's spend feeds: [`Work`](GgUsageFigure::Work) when
+/// the reply produced a program or a tool call gg runs, [`Total`](GgUsageFigure::Total) otherwise.
+///
+/// Decided off the reply before anything is dispatched, by the same rules dispatch applies:
+///
+/// - under responses as code, a `submit_program` call carrying a `program` string is a program;
+///   a call to any other tool is refused, and a `submit_program` call without one runs nothing;
+/// - under tool calling, a pending self-summarization takes the reply as the summary and
+///   dispatches none of its calls, and any other pending compaction refuses every call it does
+///   not [admit](PendingCompaction::admits).
+fn usage_figure(
+    response: &ModelResponse,
+    code_enabled: bool,
+    pending_compaction: Option<PendingCompaction>,
+) -> GgUsageFigure {
+    let works = if code_enabled {
+        response.tool_calls.iter().any(|call| {
+            call.name == completion::SUBMIT_PROGRAM_TOOL
+                && code::submitted_program(call).program.is_ok()
+        })
+    } else {
+        match pending_compaction {
+            Some(pending) => response
+                .tool_calls
+                .iter()
+                .any(|call| pending.admits(&call.name)),
+            None => !response.tool_calls.is_empty(),
+        }
+    };
+    if works {
+        GgUsageFigure::Work
+    } else {
+        GgUsageFigure::Total
+    }
+}
+
 /// Emit a [`Usage`](GgTelemetryKind::Usage) delta for a model request when it reported any tokens
 /// or cost, attributed to the `slot` (agent profile) and `model_id` that spent it and naming the
-/// [figure](GgUsageFigure) its turn fed: [`Work`](GgUsageFigure::Work) for a reply that produced
-/// a program or a tool call gg ran, [`Total`](GgUsageFigure::Total) for every other request — one
-/// whose reply was rejected or could not be read, or one that ended with no call.
+/// [figure](GgUsageFigure) its turn fed, which [`usage_figure`] decides for a usable reply and is
+/// always [`Total`](GgUsageFigure::Total) for one that was rejected or could not be read.
 ///
 /// The attribution is what makes a *live* multi-model run readable: a bare delta can only be
 /// summed into one figure, so a console watching a run that spans several models could show the
