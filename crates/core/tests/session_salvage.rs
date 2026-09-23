@@ -341,6 +341,8 @@ async fn a_hung_gg_run_keeps_the_capture_journal_it_had_written() {
         gg_model_windows: Default::default(),
         gg_model_providers: Default::default(),
         gg_model_modalities: Default::default(),
+        gg_model_prices: Default::default(),
+        model_prices: None,
     };
 
     // The id the *host* would drive this run under and would then file its own failure

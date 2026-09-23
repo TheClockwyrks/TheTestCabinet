@@ -385,6 +385,8 @@ fn request(test_case: &TestCaseVersion, variant: &Variant, harness: HarnessSlug)
         gg_model_windows: Default::default(),
         gg_model_providers: Default::default(),
         gg_model_modalities: Default::default(),
+        gg_model_prices: Default::default(),
+        model_prices: None,
     }
 }
 
