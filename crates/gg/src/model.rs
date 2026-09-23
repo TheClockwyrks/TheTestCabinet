@@ -13,8 +13,7 @@
 //! see a `reqwest` type or an OpenAI JSON shape — only these domain types — so a
 //! second provider is an addition in [`crate::client`], not a change here.
 
-use serde::Deserialize;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 

@@ -879,12 +879,19 @@ fn parse_response_without_usage_carries_no_wire_and_no_mark() {
     assert!(!response.usage_reconciled);
 }
 
-/// A provider whose reasoning figure leaves the reply no room is bounded by the reply: its
-/// output is recorded at the reply's own estimated size, reasoning takes the remainder of the
-/// completion total, and the row is marked reconciled — the shape Sail Research's serving of
-/// Kimi produced, reporting `reasoning_tokens == completion_tokens` on every turn.
+/// The reply's size as the bound measures it, computed independently of the client: the default
+/// estimator over the assistant message the reply becomes.
+fn estimated_reply(text: Option<&str>, tool_calls: Vec<ToolCall>) -> u64 {
+    let reply = Message::assistant(text.map(str::to_string), tool_calls);
+    crate::context::BpeTokenEstimator::new().estimate_message(&reply) as u64
+}
+
+/// A provider whose reasoning figure leaves the reply no room is bounded by the reply: output is
+/// the reply's own estimated size, reasoning is the remainder of the completion total, and the
+/// row is marked reconciled.
 #[test]
 fn parse_response_bounds_a_split_that_leaves_the_reply_no_room() {
+    let text = "Creating the file now, writing it out.";
     let body = r#"{
         "choices": [{ "message": { "role": "assistant", "content": "Creating the file now, writing it out." }, "finish_reason": "stop" }],
         "usage": {
@@ -897,18 +904,98 @@ fn parse_response_bounds_a_split_that_leaves_the_reply_no_room() {
 
     let response = parse_response(body).expect("parse");
 
-    // The reply's own estimated size, not the zero the provider's arithmetic leaves.
-    let output = response.usage.output.expect("output is recorded");
+    let reply = estimated_reply(Some(text), Vec::new());
     assert!(
-        output > 0,
-        "a 230-token reply is never recorded as zero output"
+        reply > 0 && reply < 230,
+        "the fixture's reply fits the total"
     );
-    assert_eq!(response.usage.reasoning, Some(230 - output));
-    // The billed total is the provider's either way: both halves sum to `completion_tokens`.
-    assert_eq!(output + response.usage.reasoning.unwrap_or(0), 230);
+    assert_eq!(response.usage.output, Some(reply));
+    assert_eq!(response.usage.reasoning, Some(230 - reply));
+    assert!(response.usage_reconciled);
+}
+
+/// A reasoning figure that leaves the reply some room, but less than its size, is bounded too:
+/// the floor is the reply's whole size, not merely a non-zero output.
+#[test]
+fn parse_response_bounds_a_split_that_leaves_the_reply_too_little_room() {
+    let text = "Creating the file now, writing it out.";
+    let body = r#"{
+        "choices": [{ "message": { "role": "assistant", "content": "Creating the file now, writing it out." }, "finish_reason": "stop" }],
+        "usage": {
+            "prompt_tokens": 1200,
+            "completion_tokens": 230,
+            "completion_tokens_details": { "reasoning_tokens": 229 }
+        }
+    }"#;
+
+    let response = parse_response(body).expect("parse");
+
+    let reply = estimated_reply(Some(text), Vec::new());
     assert!(
-        response.usage_reconciled,
-        "the split is gg's, and the row says so"
+        reply > 1,
+        "the provider's split would record less than the reply"
+    );
+    assert_eq!(response.usage.output, Some(reply));
+    assert_eq!(response.usage.reasoning, Some(230 - reply));
+    assert!(response.usage_reconciled);
+}
+
+/// A responses-as-code reply carries its output in a tool call's arguments, and the bound
+/// measures them: a reply with no text is still never recorded below its program's size.
+#[test]
+fn parse_response_bounds_a_tool_call_reply_by_its_arguments() {
+    let program =
+        "const files = gg.files.list('.'); for (const f of files) { gg.files.readFile(f); }";
+    let body = format!(
+        r#"{{
+        "choices": [{{ "message": {{ "role": "assistant", "content": null, "tool_calls": [
+            {{ "id": "call_1", "type": "function", "function": {{ "name": "submit_program", "arguments": "{{\"program\": \"{program}\"}}" }} }}
+        ] }}, "finish_reason": "tool_calls" }}],
+        "usage": {{
+            "prompt_tokens": 1200,
+            "completion_tokens": 500,
+            "completion_tokens_details": {{ "reasoning_tokens": 500 }}
+        }}
+    }}"#
+    );
+
+    let response = parse_response(&body).expect("parse");
+
+    let reply = estimated_reply(None, response.tool_calls.clone());
+    assert!(reply > 20, "the program's tokens are counted");
+    assert_eq!(response.usage.output, Some(reply));
+    assert_eq!(response.usage.reasoning, Some(500 - reply));
+    assert!(response.usage_reconciled);
+}
+
+/// The split sums to the provider's completion total on every arm, and a split is kept as given
+/// exactly up to the point where it leaves the reply its whole size.
+#[test]
+fn the_split_is_bounded_at_exactly_the_replys_size() {
+    // Reasoning leaves exactly the reply's size: the provider's split stands.
+    assert_eq!(
+        split_completion(Some(100), Some(60), Some(40)),
+        (Some(40), Some(60), false)
+    );
+    // One token less room than the reply: bounded.
+    assert_eq!(
+        split_completion(Some(100), Some(61), Some(40)),
+        (Some(40), Some(60), true)
+    );
+    // A reply estimated above the whole total takes the total, and reasoning is zero.
+    assert_eq!(
+        split_completion(Some(100), Some(10), Some(150)),
+        (Some(100), Some(0), true)
+    );
+    // No reasoning reported: the total is output and reasoning stays unreported.
+    assert_eq!(
+        split_completion(Some(100), None, Some(40)),
+        (Some(100), None, false)
+    );
+    // No reply to bound by: the provider's figures stand, however they fall.
+    assert_eq!(
+        split_completion(Some(100), Some(100), None),
+        (Some(0), Some(100), false)
     );
 }
 

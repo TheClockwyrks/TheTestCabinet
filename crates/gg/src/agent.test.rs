@@ -773,6 +773,7 @@ impl ModelClient for SingleReplyClient {
         "mock/echo"
     }
 }
+
 /// A [`ModelClient`] that returns a single `write_file` tool call on its first turn, then fails
 /// every subsequent turn with a fatal model error — so an agent driving it writes one file and then
 /// ends in `model_error` (a non-clean completion).
@@ -5407,18 +5408,18 @@ async fn usage_records_a_reconciled_row_beside_the_providers_object() {
         else {
             unreachable!("filtered above")
         };
-        // The reply is never recorded with fewer output tokens than its own size.
-        assert!(
-            tokens.output.unwrap_or(0) > 0,
-            "a reply gg holds is never recorded as zero output"
-        );
+        // The client's bounded split reaches the row unchanged.
+        assert_eq!((tokens.output, tokens.reasoning), (Some(34), Some(196)));
         assert!(*reconciled, "the row says the split is gg's");
-        // The provider's object is verbatim beside it — what the gateway said, not what gg made
-        // of it, so the disagreement is readable rather than invisible.
+        // The provider's object rides beside it, verbatim.
         assert_eq!(
-            wire.as_ref().and_then(|wire| wire.get("completion_tokens")),
-            Some(&json!(230)),
-            "the provider's completion total is on the row"
+            wire.as_ref(),
+            Some(&json!({
+                "prompt_tokens": 1200,
+                "completion_tokens": 230,
+                "total_tokens": 1430,
+                "completion_tokens_details": { "reasoning_tokens": 230 },
+            }))
         );
     }
 

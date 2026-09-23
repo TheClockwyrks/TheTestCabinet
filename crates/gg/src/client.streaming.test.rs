@@ -637,8 +637,7 @@ fn usage_arriving_only_on_the_final_chunk_is_still_accounted() {
     );
     // The trailing chunk carries no choice, so it must not disturb the finish reason.
     assert_eq!(response.finish_reason, FinishReason::Stop);
-    // The provider's object rides on, verbatim, beside the mapped counts — the same figure the
-    // buffering transport would have carried for the same call.
+    // The provider's object rides on, verbatim, beside the mapped counts.
     assert_eq!(
         response.usage_wire,
         Some(json!({
@@ -676,12 +675,12 @@ fn a_trailer_that_leaves_the_reply_no_room_is_reconciled() {
     feed(&mut accumulator, &transcript);
 
     let response = accumulator.finish().expect("assembles");
-    let output = response.usage.output.expect("output is recorded");
-    assert!(
-        output > 0,
-        "a reply gg holds is never recorded as zero output"
-    );
-    assert_eq!(output + response.usage.reasoning.unwrap_or(0), 230);
+    let reply = crate::context::BpeTokenEstimator::new().estimate_message(&Message::assistant(
+        Some("done, writing the file out now.".to_string()),
+        Vec::new(),
+    )) as u64;
+    assert_eq!(response.usage.output, Some(reply));
+    assert_eq!(response.usage.reasoning, Some(230 - reply));
     assert!(response.usage_reconciled);
 }
 

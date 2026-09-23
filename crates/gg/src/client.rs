@@ -71,7 +71,7 @@ use test_cabinet_core::gg::{
 use test_cabinet_core::gg_session_record::{GgClientRole, GgSessionAgentOrigin};
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
-use crate::context::REPLY_FRAMING_TOKENS;
+use crate::context::{BpeTokenEstimator, TokenEstimator};
 use crate::loopguard::{LoopGuard, LoopGuardConfig, LoopVerdict, resolve_loop_guard};
 use crate::model::{
     FinishReason, LoopAborts, Message, ModelClient, ModelError, ModelResponse, Role, ToolCall,
@@ -1895,16 +1895,11 @@ fn map_finish_reason(reason: Option<&str>) -> FinishReason {
 /// metrics contract), using saturating subtraction so a provider's slightly
 /// inconsistent details can never underflow.
 ///
-/// `reply_tokens` is the size of the reply gg measured with its own
-/// [estimator](crate::context::TokenEstimator) — the figure the message log charges
-/// the reply. It bounds the split: a provider's `reasoning_tokens` is trusted only
-/// while it leaves the reply room under its own `completion_tokens`. A provider that
-/// reports the two equal on every turn (Sail Research's Kimi served one such run) would
-/// otherwise record every reply it serves as zero output and all reasoning, however
-/// large the reply gg holds in its hand. On such a call the reply's size is recorded as
-/// output, what remains of the completion total is recorded as reasoning, and
-/// [`reconciled`](test_cabinet_core::gg::GgTelemetryKind::Usage) is set so the row says
-/// the figure is gg's.
+/// `reply_tokens` is the [reply's own estimated size](reply_size), which bounds the
+/// output/reasoning split (see [`split_completion`]): a provider's `reasoning_tokens` is
+/// kept only while it leaves the reply that much room under `completion_tokens`, and a
+/// split gg bounded is reported as
+/// [`reconciled`](test_cabinet_core::gg::GgTelemetryKind::Usage).
 ///
 /// The return also carries the provider's usage object verbatim (as JSON) so the
 /// [`Usage`](test_cabinet_core::gg::GgTelemetryKind::Usage) event can publish it beside
@@ -2474,32 +2469,19 @@ impl StreamAccumulator {
     }
 }
 
-/// The size of the reply the transport assembled, in the estimator's terms — the figure the
-/// [message log](crate::message_log) charges the reply and the floor the recorded output split is
-/// bounded by.
+/// The reply's own estimated size in tokens: the floor [`map_usage`] bounds the recorded output
+/// split by.
 ///
-/// Computed here rather than borrowed from the loop so the bound applies identically on both
-/// transports: a reply's split is decided when its usage payload is mapped, which is before any
-/// loop is in a position to measure anything.
-///
-/// The same estimate [`crate::context::TokenEstimator::estimate_message`] applies, read in its own
-/// terms: the text and every tool call's name and serialized arguments, over a shared framing
-/// allowance. The tool-call half matters on a responses-as-code turn, whose real output travels
-/// inside a `submit_program` call's arguments; on an ordinary tool-calling turn the text carries it.
+/// Measured with the default [`BpeTokenEstimator`] over the assistant message the reply becomes,
+/// which is the estimate gg's context accounting charges that message. `None` for a reply with
+/// neither text nor tool calls, which leaves the provider's split as reported.
 fn reply_size(text: Option<&str>, tool_calls: &[ToolCall]) -> Option<u64> {
     if text.is_none() && tool_calls.is_empty() {
         return None;
     }
-    let mut body: usize = text.unwrap_or_default().chars().count();
-    for call in tool_calls {
-        body += call.name.chars().count() + call.arguments.to_string().chars().count();
-    }
-    Some((body + REPLY_FRAMING_TOKENS) as u64)
+    let reply = Message::assistant(text.map(str::to_string), tool_calls.to_vec());
+    Some(BpeTokenEstimator::new().estimate_message(&reply) as u64)
 }
-
-// ---------------------------------------------------------------------------
-// Wire response types
-// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // Streamed wire types
