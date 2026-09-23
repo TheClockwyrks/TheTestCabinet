@@ -243,9 +243,8 @@ async fn a_ceiling_long_silence_times_out_without_spending_retries() {
     );
 }
 
-/// A stream that stalls after its first chunk is cut on **idleness** — a total cap would kill
-/// legitimately long streams, so a stream that is still producing is never cut — and the stall
-/// names the provider the chunk did.
+/// A stream that stalls after its first chunk is cut on **idleness**, measured from the delta that
+/// chunk carried, and the stall names the provider the chunk did.
 #[tokio::test(start_paused = true)]
 async fn a_stream_that_goes_quiet_after_a_chunk_is_a_stall_naming_its_provider() {
     let stream =
@@ -255,7 +254,14 @@ async fn a_stream_that_goes_quiet_after_a_chunk_is_a_stall_naming_its_provider()
 
     let idle = Duration::from_secs(5);
     let started = tokio::time::Instant::now();
-    let outcome = read_stream(stream, config, started + DEFAULT_MODEL_CALL_TIMEOUT, idle).await;
+    let outcome = read_stream(
+        stream,
+        config,
+        started + DEFAULT_MODEL_CALL_TIMEOUT,
+        started,
+        idle,
+    )
+    .await;
     assert_eq!(started.elapsed(), idle);
     match outcome {
         StreamOutcome::Stalled { idle, provider } => {
@@ -289,6 +295,7 @@ async fn keep_alives_do_not_restart_the_idle_clock() {
         Box::pin(stream),
         None,
         started + DEFAULT_MODEL_CALL_TIMEOUT,
+        started,
         idle,
     )
     .await;
@@ -299,6 +306,115 @@ async fn keep_alives_do_not_restart_the_idle_clock() {
         matches!(outcome, StreamOutcome::Stalled { idle, .. } if idle == Duration::from_secs(5)),
         "keep-alives are not progress: {outcome:?}"
     );
+}
+
+/// A reply whose deltas keep arriving is never cut on idleness, however much longer than the idle
+/// bound it runs: each delta restarts the clock.
+#[tokio::test(start_paused = true)]
+async fn a_reply_still_delivering_deltas_outlives_the_idle_bound() {
+    let deltas = futures_util::stream::unfold(0, |tick| async move {
+        match tick {
+            // A delta every four seconds, five times over: twenty seconds against a five-second
+            // bound.
+            0..5 => {
+                tokio::time::sleep(Duration::from_secs(4)).await;
+                Some((
+                    Ok::<_, std::convert::Infallible>(FIRST_EVENT.as_bytes()),
+                    tick + 1,
+                ))
+            }
+            5 => Some((
+                Ok(
+                    "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n\
+                    data: [DONE]\n\n"
+                        .as_bytes(),
+                ),
+                tick + 1,
+            )),
+            _ => None,
+        }
+    });
+    let started = tokio::time::Instant::now();
+    let outcome = read_stream(
+        Box::pin(deltas),
+        None,
+        started + DEFAULT_MODEL_CALL_TIMEOUT,
+        started,
+        Duration::from_secs(5),
+    )
+    .await;
+    assert_eq!(started.elapsed(), Duration::from_secs(20));
+    match outcome {
+        StreamOutcome::Reply(reply) => {
+            assert_eq!(
+                reply.text.as_deref(),
+                Some("workingworkingworkingworkingworking")
+            );
+        }
+        other => panic!("a reply still delivering deltas must complete, got {other:?}"),
+    }
+}
+
+/// A provider that accepts the connection and never sends a response head is a stall too: the
+/// idle clock runs from the moment the request is sent, so the attempt is cancelled at the idle
+/// bound and retried on the schedule, not held for the whole call ceiling.
+///
+/// The gateway is a real socket that is listened on and never answered.
+#[tokio::test(start_paused = true)]
+async fn a_response_head_that_never_arrives_is_a_stall() {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a local port");
+    let address = listener.local_addr().expect("the bound address");
+    let client = OpenRouterClient::new(
+        format!("http://{address}/api/v1"),
+        reqwest::Client::new(),
+        "openai/gpt-5.6",
+        "sk-test",
+        two_retries(),
+        None,
+    )
+    .with_model_call_timeout(CONFIGURED)
+    .with_stream_idle(CONFIGURED_IDLE);
+    let sink = CollectingSink::new();
+    client.announce_retries_on(&Emitter::with_sink(None, Box::new(sink.clone())));
+
+    let started = tokio::time::Instant::now();
+    let outcome = client.complete(&[Message::user("build it")], &[]).await;
+
+    assert_eq!(
+        started.elapsed(),
+        3 * CONFIGURED_IDLE + Duration::from_secs(1) + Duration::from_secs(2),
+        "each attempt cost the idle bound, not the call ceiling"
+    );
+    assert!(
+        matches!(outcome, Err(ModelError::RetryExhausted { attempts: 3, .. })),
+        "{outcome:?}"
+    );
+    let warned = sink
+        .events()
+        .into_iter()
+        .filter_map(|event| match event.kind {
+            GgTelemetryKind::Log { level, message } if level == "warn" => Some(message),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        warned,
+        vec![
+            retry_message(
+                1,
+                3,
+                "the stream stalled: no delta from the model for 11s",
+                Duration::from_secs(1)
+            ),
+            retry_message(
+                2,
+                3,
+                "the stream stalled: no delta from the model for 11s",
+                Duration::from_secs(2)
+            ),
+        ]
+    );
+    drop(listener);
 }
 
 /// The detector configuration the streaming tests arm, resolved the way the client resolves it.

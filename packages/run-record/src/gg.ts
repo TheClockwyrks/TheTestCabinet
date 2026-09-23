@@ -1835,8 +1835,8 @@ export type GgRunLimits = {
    */
   maxRuntimeSecs?: number;
   /**
-   * The ceiling, in seconds, on **one model request** — the bound that turns a provider which
-   * has stopped answering into an error turn the agent asks again from.
+   * The ceiling, in seconds, on **one attempt at a model request**, from sending it to the last
+   * chunk of its reply.
    *
    * One of the four keys on this type an absence answers with a **figure** rather than with
    * "off", beside the [stream-idle bound](Self::model_stream_idle_secs) and the
@@ -1844,19 +1844,15 @@ export type GgRunLimits = {
    * (900 seconds), because there is no run whose calls may hang forever, and `0` is refused on
    * the same terms as every other unhonourable figure.
    *
-   * Every reply is read as a stream, and the ceiling caps one attempt's **whole duration** —
-   * the wait for the response head, the gaps between its chunks, and the time the last chunk
-   * takes to arrive — so it keeps its meaning for a provider that streams nothing until the
-   * reply is complete: such a reply is one long silence, and the ceiling is what bounds it. A
-   * stream that stays quiet for that long is bounded sooner by
-   * [`model_stream_idle_secs`](Self::model_stream_idle_secs), which is the figure a stalled
-   * stream is answered with; this one is the ceiling the whole attempt runs under, and the
-   * backoff between attempts sits outside it.
+   * A reply that goes without a delta is cut sooner by
+   * [`model_stream_idle_secs`](Self::model_stream_idle_secs), so this is the bound on a reply
+   * whose deltas keep arriving for longer than it, and on every attempt when the idle bound is
+   * set above it. The backoff between attempts sits outside it.
    *
    * Unlike the ceilings above it, breaching this one does not stop the run. The turn is
    * recorded as a [`ModelTimeout`](GgTurnErrorType::ModelTimeout) error and the agent asks
-   * again, so a stalled endpoint costs one bounded error turn per stall and the run ends only
-   * when an error ceiling says it should.
+   * again, so an attempt that ran the whole ceiling costs one bounded error turn and the run
+   * ends only when an error ceiling says it should.
    */
   modelCallTimeoutSecs?: number;
   /**
@@ -1872,13 +1868,12 @@ export type GgRunLimits = {
    * unhonourable figure.
    *
    * The clock measures time since the last chunk carrying a `delta` with content, reasoning or
-   * tool-call arguments. A model that reasons for minutes produces reasoning deltas for the
-   * whole of that time when the provider streams them, so on a streamed reply a provider's
-   * silence and a model's thinking are distinguishable within seconds; keep-alive comments
-   * (OpenRouter sends `: OPENROUTER PROCESSING`) and blank lines carry no delta and leave the
-   * clock running. A stream whose clock expires is cancelled and retried as a transport error
-   * is, and the retry's `log` line names the stall — so a stall and an outage are answered the
-   * same way.
+   * tool-call arguments, or since the request was sent when none has arrived. A model that
+   * reasons for minutes produces reasoning deltas for the whole of that time when the provider
+   * streams them, so a provider's silence and a model's thinking are distinguishable within
+   * seconds. Keep-alive comments (OpenRouter sends `: OPENROUTER PROCESSING`) and blank lines
+   * carry no delta and leave the clock running. A request whose clock expires is cancelled and
+   * retried as a transport error is, and the retry's `log` line names the stall.
    */
   modelStreamIdleSecs?: number;
   /**
