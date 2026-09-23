@@ -54,9 +54,10 @@ scripts/freeze.sh test-cases/end-to-end/easy/carom/v1.0.0
 Do this as soon as you trigger the first run against a version. That is the
 moment it stops being editable.
 
-The script refuses to freeze a directory with uncommitted changes, so the digest
-always records settled contents. It accepts several directories at once and takes
-an optional `--reason` for the marker.
+The script refuses to freeze a directory whose working tree differs from the
+index, so the digest always records exactly what the commit will hold. Stage a
+change first to re-baseline over it in the same commit. It accepts several
+directories at once and takes an optional `--reason` for the marker.
 
 ## Unfreezing and re-baselining
 
