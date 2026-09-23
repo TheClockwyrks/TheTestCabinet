@@ -32,10 +32,10 @@ use test_cabinet_core::{
     ContainerRuntime, ContainerSpec, ContainerStart, CredFile, CredSource, EngineCatalog,
     EngineSelection, Error as CoreError, EventFormat, ExecOutput, FsRepoSeeder, HarnessInvocation,
     HarnessOutcome, HarnessRegistry, HarnessSlug, MapCreds, MediaKind, NoopEventSink,
-    OpenRouterPrices, OrchestratorCatalog, OrchestratorSelection, OutputSink,
-    PrerenderedReferenceRenderer, ProofFile, RenderedReference, Result as CoreResult,
-    RunCancellation, RunEngine, RunRequest, SubscriptionSpec, TestCaseCatalog, TestCaseVersion,
-    Usage, ValidationSummary, Validator, Variant,
+    OrchestratorCatalog, OrchestratorSelection, OutputSink, PrerenderedReferenceRenderer,
+    ProofFile, RenderedReference, Result as CoreResult, RunCancellation, RunEngine, RunRequest,
+    SubscriptionSpec, TestCaseCatalog, TestCaseVersion, Usage, ValidationSummary, Validator,
+    Variant,
 };
 
 /// The repository's `test-cases/` directory — the real catalog, so the run is seeded from
@@ -313,7 +313,6 @@ async fn a_hung_gg_run_keeps_the_capture_journal_it_had_written() {
         analyzer: None,
         toolchain: None,
         validator: UnreachableValidator,
-        prices: OpenRouterPrices::new(),
         output_dir: out_dir.path().to_path_buf(),
         creds: Some(Box::new(MapCreds::new(
             [(
@@ -339,7 +338,10 @@ async fn a_hung_gg_run_keeps_the_capture_journal_it_had_written() {
         container_image: None,
         gg_capability_set: Some(test_cabinet_core::gg::GgCapabilitySet::default()),
         gg_model_windows: Default::default(),
+        gg_model_providers: Default::default(),
         gg_model_modalities: Default::default(),
+        gg_model_prices: Default::default(),
+        model_prices: None,
     };
 
     // The id the *host* would drive this run under and would then file its own failure

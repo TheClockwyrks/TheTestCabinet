@@ -65,6 +65,8 @@ fn stop_response(text: &str) -> ModelResponse {
         cost: None,
         provider: None,
         loop_aborts: LoopAborts::none(),
+        usage_wire: None,
+        usage_reconciled: false,
     }
 }
 
@@ -336,6 +338,12 @@ fn recorded_seed<'a>(prompt: &'a str, vision: bool) -> RecordedSeed<'a> {
         prompt,
         baseline_commit: Some("abc123"),
         model_windows: BTreeMap::from([("mock/echo".to_string(), 128_000)]),
+        model_providers: BTreeMap::from([(
+            "mock/echo".to_string(),
+            vec![test_cabinet_core::gg::GgProviderCandidate::new(
+                "mock", "fp8",
+            )],
+        )]),
         model_modalities: BTreeMap::from([(
             "mock/echo".to_string(),
             GgSessionModalities { vision },
@@ -1278,7 +1286,7 @@ fn every_model_error_class_is_recorded_as_the_class_the_loop_branched_on() {
             GgSessionModelErrorKind::RetryExhausted,
         ),
         (
-            ModelError::Parse("not json".to_string()),
+            ModelError::parse("not json".to_string()),
             GgSessionModelErrorKind::Parse,
         ),
         (

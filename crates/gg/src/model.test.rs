@@ -63,6 +63,8 @@ fn model_response_round_trips_through_json() {
         }),
         provider: None,
         loop_aborts: LoopAborts::none(),
+        usage_wire: None,
+        usage_reconciled: false,
     };
 
     let encoded = serde_json::to_string(&response).expect("serialize");
@@ -147,7 +149,7 @@ fn every_model_error_is_recorded_as_its_own_type_under_one_base_kind() {
             TurnErrorType::ModelVisionUnsupported,
         ),
         (
-            ModelError::Parse("bad json".to_string()),
+            ModelError::parse("bad json".to_string()),
             TurnErrorType::ModelParse,
         ),
     ];
@@ -260,6 +262,8 @@ fn a_response_carries_what_the_replies_before_it_threw_away() {
             words: 6_130,
             chars: 38_900,
         },
+        usage_wire: None,
+        usage_reconciled: false,
     };
 
     let value = serde_json::to_value(&response).expect("to_value");
@@ -273,6 +277,39 @@ fn a_response_carries_what_the_replies_before_it_threw_away() {
     );
     let decoded: ModelResponse = serde_json::from_value(value).expect("deserialize");
     assert_eq!(decoded.loop_aborts, response.loop_aborts);
+}
+
+/// The provider's usage object and the reconciled mark ride on the response beside the mapped
+/// counts, and both are omitted from the wire for a call that reported no usage.
+#[test]
+fn a_response_carries_its_usage_wire_and_reconciled_mark() {
+    let mapped = ModelResponse {
+        text: Some("done".to_string()),
+        tool_calls: Vec::new(),
+        finish_reason: FinishReason::Stop,
+        usage: TokenCounts::default(),
+        cost: None,
+        provider: None,
+        loop_aborts: LoopAborts::none(),
+        usage_wire: Some(json!({ "prompt_tokens": 12 })),
+        usage_reconciled: true,
+    };
+
+    let value = serde_json::to_value(&mapped).expect("to_value");
+    assert_eq!(value["usageWire"], json!({ "prompt_tokens": 12 }));
+    assert_eq!(value["usageReconciled"], json!(true));
+
+    // The ordinary call: no usage payload at all, so neither field is on the wire.
+    let bare = ModelResponse {
+        usage_wire: None,
+        usage_reconciled: false,
+        ..mapped
+    };
+    let value = serde_json::to_value(&bare).expect("to_value");
+    assert!(value.get("usageWire").is_none());
+    // `usage_reconciled` has no `skip_serializing_if` — the flag is always spelled, because
+    // `false` is the provider's own split and not an absence.
+    assert_eq!(value["usageReconciled"], json!(false));
 }
 
 /// A refused credential — absent, `401`, or `403` — is an auth failure; every other
@@ -306,7 +343,7 @@ fn model_error_classifies_auth_failures() {
             attempts: 4,
             last: "HTTP 503".to_string(),
         },
-        ModelError::Parse("bad json".to_string()),
+        ModelError::parse("bad json".to_string()),
     ] {
         assert!(
             !other.is_auth_failure(),

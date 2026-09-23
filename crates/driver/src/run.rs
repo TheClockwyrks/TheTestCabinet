@@ -25,9 +25,9 @@ use test_cabinet_core::gg_session_assembly::GgSessionAssembler;
 use test_cabinet_core::{
     ArtifactCollector, BackendClient, CliArtifactCollector, CliContainerRuntime, ContainerRuntime,
     CredBytesSource, DefaultHarnessRegistry, DispatchValidator, EngineCatalog, Error, FsRepoSeeder,
-    HttpBackendClient, OpenRouterPrices, OrchestratorCatalog, PrerenderedReferenceRenderer,
-    PriorGameJamEntry, RenderedReference, RunCancellation, RunEngine, RunRecord, RunRequest,
-    RunState, TestCaseCatalog, TestCaseVersion, TestType, materialize_version,
+    HttpBackendClient, OrchestratorCatalog, PrerenderedReferenceRenderer, PriorGameJamEntry,
+    RenderedReference, RunCancellation, RunEngine, RunRecord, RunRequest, RunState,
+    TestCaseCatalog, TestCaseVersion, TestType, materialize_version,
 };
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -359,7 +359,6 @@ where
         // A `typecheck` that ran and failed is what gates the run.
         toolchain: Some(Box::new(ToolchainStage::default())),
         validator: DispatchValidator::new(screenshot_dir),
-        prices: OpenRouterPrices::new(),
         output_dir: out_dir.to_path_buf(),
         // The cluster path has no host credential files; a subscription run reads
         // its credentials from the mounted Secret instead (`None` when no

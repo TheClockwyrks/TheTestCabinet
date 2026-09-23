@@ -47,12 +47,26 @@ fn invocation(dir: &Path, set: GgCapabilitySet) -> GgInvocation {
         .into_iter()
         .map(|id| (id.to_string(), 200_000))
         .collect::<BTreeMap<_, _>>();
+    let model_providers = set
+        .bound_model_ids()
+        .into_iter()
+        .map(|id| {
+            let provider = id.split(['/', ':']).next().unwrap_or(id);
+            (
+                id.to_string(),
+                vec![test_cabinet_core::gg::GgProviderCandidate::new(
+                    provider, "fp8",
+                )],
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
     GgInvocation {
         session_id: "run-workspace-gate".to_string(),
         workspace_dir: dir.to_path_buf(),
         prompt: "Build a tiny game.".to_string(),
         capability_set: set,
         model_windows,
+        model_providers,
         model_modalities: BTreeMap::new(),
         provided_files: Vec::new(),
         cancel_file: None,

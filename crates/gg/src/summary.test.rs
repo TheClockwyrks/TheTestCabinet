@@ -424,6 +424,142 @@ fn captures_per_slot_cost_rollups() {
     assert_eq!(summary.slot_costs[1].cost, None);
 }
 
+/// The two cost figures, per model slot and in the run-wide rollup: each `SlotUsage` entry's
+/// `cost` is the total over every priced request of that slot, its `work_cost` is joined from the
+/// [`Usage`](GgTelemetryKind::Usage) deltas marked `work` — the turns that produced a program or a
+/// tool call gg ran — and the summary's own pair is those figures summed. A total-marked delta and
+/// a pre-split delta with no mark at all never enter the work figure.
+#[test]
+fn records_the_work_cost_and_the_total_cost_per_slot_and_in_the_rollup() {
+    let tracker = SessionSummaryTracker::new();
+    // The root slot: one work turn and one fault, both priced. Its rollup event carries the
+    // totals those deltas add to — every delta's spend is folded into its agent's totals when it
+    // is counted, so the two sources agree by construction.
+    tracker.observe(
+        None,
+        &GgTelemetryKind::SlotUsage {
+            profile_id: ROOT_PROFILE_ID.to_string(),
+            model_id: "mock/primary".to_string(),
+            tokens: TokenCounts {
+                uncached_input: Some(2_000),
+                cached_input: None,
+                output: Some(80),
+                reasoning: None,
+            },
+            cost: Some(Cost {
+                comparable: Some(0.02),
+                actual: Some(0.02),
+            }),
+        },
+    );
+    tracker.observe(
+        None,
+        &usage_marked(ROOT_PROFILE_ID, "mock/primary", None, GgUsageFigure::Work),
+    );
+    tracker.observe(
+        None,
+        &usage_marked(ROOT_PROFILE_ID, "mock/primary", None, GgUsageFigure::Total),
+    );
+    // A second slot whose priced turns were all faults, plus one delta that carries no figure,
+    // which counts toward the total and never toward the work cost.
+    tracker.observe(
+        None,
+        &GgTelemetryKind::SlotUsage {
+            profile_id: "reviewer".to_string(),
+            model_id: "mock/reviewer".to_string(),
+            tokens: TokenCounts {
+                uncached_input: Some(300),
+                cached_input: None,
+                output: Some(80),
+                reasoning: None,
+            },
+            cost: Some(Cost {
+                comparable: Some(0.02),
+                actual: Some(0.02),
+            }),
+        },
+    );
+    tracker.observe(
+        None,
+        &usage_marked("reviewer", "mock/reviewer", None, GgUsageFigure::Total),
+    );
+    tracker.observe(
+        None,
+        &GgTelemetryKind::Usage {
+            profile_id: "reviewer".to_string(),
+            model_id: "mock/reviewer".to_string(),
+            tokens: TokenCounts {
+                uncached_input: Some(100),
+                cached_input: None,
+                output: Some(40),
+                reasoning: None,
+            },
+            cost: Some(Cost {
+                comparable: Some(0.01),
+                actual: Some(0.01),
+            }),
+            figure: None,
+            provider: None,
+            wire: None,
+            reconciled: false,
+        },
+    );
+
+    let summary = tracker.finalize("completed");
+    assert_eq!(summary.slot_costs.len(), 2);
+
+    let root = &summary.slot_costs[0];
+    assert_eq!(root.cost.and_then(|cost| cost.actual), Some(0.02));
+    assert_eq!(
+        root.work_cost.and_then(|cost| cost.actual),
+        Some(0.01),
+        "the work figure is the work-marked deltas only"
+    );
+
+    let reviewer = &summary.slot_costs[1];
+    assert_eq!(
+        reviewer.cost.and_then(|cost| cost.actual),
+        Some(0.02),
+        "the total is every request's price, faults and all"
+    );
+    assert_eq!(
+        reviewer.work_cost, None,
+        "a slot whose priced turns were all non-work carries no work figure"
+    );
+
+    // The rollup is the same two figures summed over the slots — by construction, not agreement.
+    let total = summary.cost.and_then(|cost| cost.actual).expect("rollup");
+    assert!((total - 0.04).abs() < 1e-9, "rollup total was {total}");
+    assert_eq!(summary.work_cost.and_then(|cost| cost.actual), Some(0.01));
+}
+
+/// A slot that spent but whose `SlotUsage` rollup never arrived is recorded from its own deltas,
+/// so the run-wide total still agrees with the sum of every delta and the work cost never exceeds
+/// it.
+#[test]
+fn a_slot_without_a_rollup_is_recorded_from_its_deltas() {
+    let tracker = SessionSummaryTracker::new();
+    tracker.observe(
+        None,
+        &usage_marked(ROOT_PROFILE_ID, "mock/primary", None, GgUsageFigure::Work),
+    );
+    tracker.observe(
+        None,
+        &usage_marked(ROOT_PROFILE_ID, "mock/primary", None, GgUsageFigure::Total),
+    );
+
+    let summary = tracker.finalize("internal_error");
+    assert_eq!(summary.slot_costs.len(), 1);
+    let slot = &summary.slot_costs[0];
+    assert_eq!(slot.profile_id, ROOT_PROFILE_ID);
+    assert_eq!(slot.tokens.output, Some(80), "both deltas' tokens");
+    let total = slot.cost.and_then(|cost| cost.actual).expect("a total");
+    assert!((total - 0.02).abs() < 1e-9, "total was {total}");
+    assert_eq!(slot.work_cost.and_then(|cost| cost.actual), Some(0.01));
+    assert_eq!(summary.cost, slot.cost);
+    assert_eq!(summary.work_cost, slot.work_cost);
+}
+
 /// The terminal `SessionSummary`/`SessionEnded` events (which flow through the same emitter,
 /// so the tracker observes them too) contribute nothing — the summary excludes itself.
 #[test]
@@ -433,6 +569,7 @@ fn observing_the_terminal_events_is_a_no_op() {
         None,
         &GgTelemetryKind::SessionStarted {
             capability_set: Box::new(GgCapabilitySet::minimal("mock/echo")),
+            model_providers: Default::default(),
             routing_key: None,
         },
     );
@@ -1082,11 +1219,24 @@ fn the_largest_reply_is_reported_even_when_its_turn_errored() {
 }
 
 /// A usage delta as an agent's model call reports it: the model it ran on, the provider that
-/// served it, and a small spend. The profile id is irrelevant to the provider rollup, which keys
-/// on `(provider, model)`.
+/// served it, and a small spend, marked [`work`](GgUsageFigure::Work) — the figure a turn that
+/// produced a program or a tool call gg ran contributes to. The profile id is irrelevant to the
+/// provider rollup, which keys on `(provider, model)`.
 fn usage(model: &str, provider: Option<&str>) -> GgTelemetryKind {
+    usage_marked(ROOT_PROFILE_ID, model, provider, GgUsageFigure::Work)
+}
+
+/// The same delta with the profile and the [figure](GgUsageFigure) stated — what a test that
+/// reads the two cost figures off the summary needs, since the figure is the only thing that
+/// decides which one a delta's spend lands in.
+fn usage_marked(
+    profile: &str,
+    model: &str,
+    provider: Option<&str>,
+    figure: GgUsageFigure,
+) -> GgTelemetryKind {
     GgTelemetryKind::Usage {
-        profile_id: ROOT_PROFILE_ID.to_string(),
+        profile_id: profile.to_string(),
         model_id: model.to_string(),
         tokens: TokenCounts {
             uncached_input: Some(100),
@@ -1098,7 +1248,10 @@ fn usage(model: &str, provider: Option<&str>) -> GgTelemetryKind {
             comparable: Some(0.01),
             actual: Some(0.01),
         }),
+        figure: Some(figure),
         provider: provider.map(str::to_string),
+        wire: None,
+        reconciled: false,
     }
 }
 
@@ -1287,4 +1440,44 @@ fn a_summary_with_no_provider_or_tool_activity_omits_the_new_fields() {
     let json = serde_json::to_value(&summary).expect("summary serializes");
     assert!(json.get("providerStats").is_none());
     assert!(json.get("toolCalls").is_none());
+}
+
+/// Stalls and unexpected misses are folded from `provider_fault` onto the slice of the provider
+/// and model the fault names, and a move is not a fault of its own.
+#[test]
+fn provider_faults_are_counted_on_their_providers_slice() {
+    let fault = |provider: &str, fault| GgTelemetryKind::ProviderFault {
+        model_id: "z-ai/glm-5.3".to_string(),
+        provider: provider.to_string(),
+        fault,
+    };
+    let tracker = SessionSummaryTracker::new();
+    tracker.observe(Some("root"), &fault("Z.AI", GgProviderFault::Stall));
+    tracker.observe(Some("helper"), &fault("Z.AI", GgProviderFault::Stall));
+    tracker.observe(Some("root"), &fault("Z.AI", GgProviderFault::CacheMiss));
+    tracker.observe(
+        Some("root"),
+        &GgTelemetryKind::ProviderSwitch {
+            model_id: "z-ai/glm-5.3".to_string(),
+            from: "Z.AI".to_string(),
+            to: "Baidu".to_string(),
+            fault: GgProviderFault::FailedCall,
+            detail: "HTTP 502".to_string(),
+        },
+    );
+    tracker.observe(Some("root"), &fault("Baidu", GgProviderFault::CacheMiss));
+
+    let summary = tracker.finalize("completed");
+    let zai = slice(&summary, Some("Z.AI"), Some("z-ai/glm-5.3"));
+    assert_eq!((zai.stalls, zai.cache_misses), (2, 1));
+    let baidu = slice(&summary, Some("Baidu"), Some("z-ai/glm-5.3"));
+    assert_eq!((baidu.stalls, baidu.cache_misses), (0, 1));
+    assert_eq!(summary.provider_stats.len(), 2);
+    let json = serde_json::to_value(zai).expect("slice serializes");
+    assert_eq!(json["stalls"], 2);
+    assert_eq!(json["cacheMisses"], 1);
+    assert!(
+        serde_json::to_value(baidu).unwrap().get("stalls").is_none(),
+        "a zero count is omitted"
+    );
 }

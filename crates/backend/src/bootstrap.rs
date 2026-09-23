@@ -2,15 +2,20 @@
 //!
 //! On startup the backend seeds the curated model configs into an empty store
 //! and re-associates any legacy `:free`-tagged runs to their base model. While it
-//! runs it appends a price observation whenever a run completes and re-prices
-//! every known model on a periodic schedule, so the catalog's comparable prices
-//! track OpenRouter's — including promotional pricing — without the removed
+//! runs it records a **billed rate** observation — what the official provider's
+//! endpoint charges right now — whenever a run completes and re-observes every
+//! known model on a periodic schedule, so the catalog's billed-rate series tracks
+//! OpenRouter's — including promotional pricing — without the removed
 //! `tcab catalog` step.
+//!
+//! A run's comparable cost is priced at the model developer's published **list
+//! price**, curated on the model's catalog entry; the refresh records the billed
+//! rate beside it and never rewrites what a run is scored at.
 //!
 //! A model is also priced the moment it first *appears* — when it is curated in the
 //! app, when a launch binds it, and at startup for every known model still missing
-//! an observation — so the catalog never shows a blank price for a model the system
-//! already knows about but has not finished a run with yet.
+//! an observation — so the catalog never shows a blank billed rate for a model the
+//! system already knows about but has not finished a run with yet.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -50,6 +55,22 @@ pub async fn seed_models_if_empty(db: &Db) -> Result<()> {
             description_md: (!seed.description_md.is_empty())
                 .then(|| seed.description_md.to_string()),
             openrouter_slug: seed.openrouter_slug.map(str::to_string),
+            // The seed takes the listing's own name; a mismatch is set by hand afterwards.
+            provider_pin: None,
+            // The seed sets no provider policy: every figure comes from the listing until an
+            // operator sets one on the model's form.
+            native_quantization: None,
+            max_input_price: None,
+            max_output_price: None,
+            banned_providers: Vec::new(),
+            unknown_quantization_providers: Vec::new(),
+            // A seed carries no list price: a fresh deployment curates prices by
+            // hand or by Fill from OpenRouter.
+            list_price_input: None,
+            list_price_cached_input: None,
+            list_price_output: None,
+            list_price_as_of: None,
+            list_price_source: None,
             // The seed store is empty, so there is no run evidence yet; the
             // structural rule classifies every seed id unambiguously (a bare
             // `claude-*`/`gpt-*` to its native family, every `provider/model`
@@ -190,24 +211,48 @@ pub async fn backfill_coverage_plans(db: &Db) -> Result<usize> {
 }
 
 /// Re-associate any legacy `:free`-tagged runs to their base model and re-price
-/// them. Best-effort: a failure to fetch base prices leaves the affected runs'
-/// costs unknown rather than blocking startup.
-pub async fn normalize_free_runs(db: &Db, prices: &OpenRouterPrices) -> Result<()> {
-    // Skip the OpenRouter fetch entirely when there is nothing to re-price — the
-    // common case, so a normal boot costs no network.
+/// them at the base model's **curated list price**. Costs no network: the
+/// list-price map is built from the catalog itself. A `:free` run of a model with
+/// no list price gets an unknown (`None`) comparable, exactly as an unfetchable
+/// base price did before.
+pub async fn normalize_free_runs(db: &Db) -> Result<()> {
+    // Skip the read entirely when there is nothing to re-price — the common case,
+    // so a normal boot costs nothing.
     if !db.has_free_tag_candidates().await? {
         return Ok(());
     }
-    let base_prices = fetch_base_prices(prices).await;
-    let rewritten = db.normalize_free_model_ids(&base_prices).await?;
+    // Every alias of every fully priced curated config → its list price (per
+    // token, as stored), keyed by canonical id.
+    let mut list_prices: HashMap<String, TokenPrices> = HashMap::new();
+    for stored in db.list_model_configs().await? {
+        let config = &stored.config;
+        let (Some(uncached_input), Some(cached_input), Some(output)) = (
+            config.list_price_input,
+            config.list_price_cached_input,
+            config.list_price_output,
+        ) else {
+            continue;
+        };
+        let prices = TokenPrices {
+            uncached_input: Some(uncached_input),
+            cached_input: Some(cached_input),
+            output: Some(output),
+        };
+        for alias in &stored.aliases {
+            list_prices.insert(alias.alias.clone(), prices);
+        }
+    }
+    let rewritten = db.normalize_free_model_ids(&list_prices).await?;
     if rewritten > 0 {
         tracing::info!(rewritten, "re-associated :free runs to their base model");
     }
     Ok(())
 }
 
-/// Record a run's model price when it completes: fetch the current OpenRouter
-/// price for the run's model and append it to the history if it changed. Keyed by
+/// Record a run's **billed rate** when it completes: fetch the official
+/// endpoint's current price for the run's model and append it to the history if
+/// it changed. The observation sits beside the curated list price; the run itself
+/// stays scored at the list price stamped at enqueue. Keyed by
 /// the run's canonical model id; a curated model is priced against its configured
 /// OpenRouter slug. Best-effort — errors are logged and dropped so completion is
 /// never delayed or failed.
@@ -251,6 +296,7 @@ async fn try_observe_completion(
         // unlisted model) simply records no price.
         Err(_) => return Ok(()),
     };
+    let details = with_official_endpoint(db, prices, &canonical, &lookup, &details).await?;
     let now = OffsetDateTime::now_utc().format(&Rfc3339)?;
     insert_if_changed(db, &canonical, &details, &now).await?;
     Ok(())
@@ -265,7 +311,9 @@ async fn try_observe_completion(
 /// completion-time observation (which captures the price as it was when the run
 /// actually ran) and the periodic refresh. That also makes the steady state free —
 /// nothing is fetched when every target is already priced, so this costs a network
-/// round trip exactly on the first sighting of a new model.
+/// round trip exactly on the first sighting of a new model. A model on record with no
+/// [developer provider](ModelDetails::provider_pin) counts as missing, so the developer
+/// provider is observed as soon as the catalog meets a model rather than on the next refresh.
 ///
 /// `targets` maps the storage key an observation is filed under to the OpenRouter id
 /// to ask about. Returns how many models were seeded; a catalog fetch that fails
@@ -277,7 +325,11 @@ async fn seed_missing_prices(
 ) -> Result<usize> {
     let mut missing: Vec<(String, String)> = Vec::new();
     for (storage_key, lookup) in targets {
-        if db.latest_price(&storage_key).await?.is_none() {
+        let pinned = db
+            .latest_price(&storage_key)
+            .await?
+            .is_some_and(|latest| latest.provider_pin.is_some());
+        if !pinned {
             missing.push((storage_key, lookup));
         }
     }
@@ -296,19 +348,23 @@ async fn seed_missing_prices(
     for (storage_key, lookup) in missing {
         // A model OpenRouter does not list (a provider-native id, an unlisted model)
         // simply stays unpriced, exactly as at completion time.
-        if let Some(details) = catalog.get(&lookup)
-            && insert_if_changed(db, &storage_key, details, &now).await?
-        {
+        let Some(details) = catalog.get(&lookup) else {
+            continue;
+        };
+        let details = with_official_endpoint(db, prices, &storage_key, &lookup, details).await?;
+        if insert_if_changed(db, &storage_key, &details, &now).await? {
             seeded += 1;
         }
     }
     Ok(seeded)
 }
 
-/// Seed the prices of every model a launch binds, keyed by canonical id exactly as the
-/// completion-time observation is. Called at enqueue so the catalog knows a run's
-/// model from the moment the run exists — the console's Models page and the run's own
-/// cost split do not have to wait for the run to finish.
+/// Seed the **billed rates** of every model a launch binds, keyed by canonical id
+/// exactly as the completion-time observation is. Called at enqueue so the catalog
+/// knows a run's model from the moment the run exists — the console's Models page
+/// and the run's own cost split do not have to wait for the run to finish. The
+/// run's comparable cost is priced at the curated list price stamped at enqueue;
+/// this only records the billed rate beside it.
 ///
 /// It runs *before* the launch resolves its context window (`resolve_gg_model_facts`),
 /// so a gg run against a never-before-seen model usually finds the window already in
@@ -345,10 +401,12 @@ pub async fn seed_launch_prices(
     }
 }
 
-/// Seed a just-configured curated model's prices from its OpenRouter slug, so a model
-/// added or re-pointed in the app shows its prices at once instead of `—` until its
-/// first run completes. Filed under the slug — the key the periodic refresh uses — so
-/// the observation merges with the model's other alias histories at compose time.
+/// Seed a just-configured curated model's **billed rate** from its OpenRouter
+/// slug, so a model added or re-pointed in the app shows its billed rate at once
+/// instead of `—` until its first run completes. Filed under the slug — the key
+/// the periodic refresh uses — so the observation merges with the model's other
+/// alias histories at compose time. The list price the run is scored at is the
+/// curated one on the config itself, untouched here.
 ///
 /// Best-effort: a failure is logged and dropped, so saving a model config never fails
 /// on OpenRouter being unreachable.
@@ -365,12 +423,12 @@ pub async fn seed_curated_price(db: &Db, prices: &OpenRouterPrices, openrouter_s
     }
 }
 
-/// Seed a first price observation for every model the catalog knows but holds none
-/// for: each curated model's configured OpenRouter slug, and each model a stored run
-/// references. Run at startup, so a freshly seeded deployment (curated configs
-/// inserted by [`seed_models_if_empty`], an empty `model_price` table) is priced
-/// before its first run rather than after its first run *completes* — the per-class
-/// cost split on a live run depends on it.
+/// Seed a first **billed-rate** observation for every model the catalog knows but
+/// holds none for: each curated model's configured OpenRouter slug, and each model
+/// a stored run references. Run at startup, so a freshly seeded deployment
+/// (curated configs inserted by [`seed_models_if_empty`], an empty `model_price`
+/// table) records the billed rate before its first run rather than after its
+/// first run *completes* — the per-class cost split on a live run depends on it.
 ///
 /// Missing-only via `seed_missing_prices`: the steady-state boot reads the
 /// database and fetches nothing. Returns how many models were seeded.
@@ -395,10 +453,13 @@ pub async fn seed_catalog_prices(db: &Db, prices: &OpenRouterPrices) -> Result<u
     seed_missing_prices(db, prices, targets).await
 }
 
-/// Re-price every known model from a single OpenRouter catalog fetch: each curated
-/// model against its configured slug, and each model a run references against its
-/// canonical lookup id. Appends an observation only where the price changed.
-/// Returns how many models got a new observation.
+/// Re-observe the **billed rate** of every known model: each curated model against its
+/// configured slug, and each model a run references against its canonical lookup id. The
+/// catalog facts come from a single OpenRouter catalog fetch and the billed rate from each
+/// model's endpoints listing, as the price of its official endpoint. Appends an observation
+/// only where the billed rate (or a fact riding along on it) changed. The observation sits
+/// beside the curated list price and never changes what a run is scored at. Returns how many
+/// models got a new observation.
 pub async fn refresh_all_prices(db: &Db, prices: &OpenRouterPrices) -> Result<usize> {
     let catalog = match prices.all_model_details().await {
         Ok(catalog) => catalog,
@@ -427,13 +488,62 @@ pub async fn refresh_all_prices(db: &Db, prices: &OpenRouterPrices) -> Result<us
 
     let mut changed = 0usize;
     for (storage_key, lookup) in targets {
-        if let Some(details) = catalog.get(&lookup)
-            && insert_if_changed(db, &storage_key, details, &now).await?
-        {
+        let Some(details) = catalog.get(&lookup) else {
+            continue;
+        };
+        let details = with_official_endpoint(db, prices, &storage_key, &lookup, details).await?;
+        if insert_if_changed(db, &storage_key, &details, &now).await? {
             changed += 1;
         }
     }
     Ok(changed)
+}
+
+/// `details` with its [provider pin](ModelDetails::provider_pin) and billed rate read from
+/// `lookup`'s endpoints listing, which the models listing `details` came from does not
+/// carry.
+///
+/// The billed rate is the official endpoint's price: the route of the catalog entry's
+/// hand-set pin when it has one, else of the observed pin. A model with no priced official
+/// route keeps the listing's headline price. A listing that cannot be read keeps the pin and
+/// the prices last recorded under `storage_key`, so an unreachable endpoint never records a
+/// model as having lost its official provider or swapped to the headline price.
+async fn with_official_endpoint(
+    db: &Db,
+    prices: &OpenRouterPrices,
+    storage_key: &str,
+    lookup: &str,
+    details: &ModelDetails,
+) -> Result<ModelDetails> {
+    match prices.model_launch_facts(lookup).await {
+        Ok(facts) => {
+            let hand_pin = db.provider_pin_for_alias(storage_key).await?;
+            let billed = facts
+                .official_prices(hand_pin.as_deref())
+                .unwrap_or(details.prices);
+            Ok(ModelDetails {
+                prices: billed,
+                provider_pin: facts.provider_pin,
+                ..details.clone()
+            })
+        }
+        Err(err) => {
+            tracing::debug!(lookup, error = %err, "could not read a model's endpoints listing");
+            let latest = db.latest_price(storage_key).await?;
+            Ok(ModelDetails {
+                prices: latest
+                    .as_ref()
+                    .map(|row| TokenPrices {
+                        uncached_input: row.uncached_input,
+                        cached_input: row.cached_input,
+                        output: row.output,
+                    })
+                    .unwrap_or(details.prices),
+                provider_pin: latest.and_then(|row| row.provider_pin),
+                ..details.clone()
+            })
+        }
+    }
 }
 
 /// Spawn the periodic price refresher, returning its task handle (kept alive for
@@ -472,6 +582,10 @@ async fn insert_if_changed(
     let prices = &details.prices;
     let context_length = details.context_length.and_then(|c| i64::try_from(c).ok());
     let input_modalities = encode_modalities(&details.input_modalities);
+    let provider_pin = details
+        .provider_pin
+        .clone()
+        .filter(|provider| !provider.trim().is_empty());
     let changed = match db.latest_price(model_id).await? {
         Some(latest) => {
             latest.uncached_input != prices.uncached_input
@@ -480,6 +594,7 @@ async fn insert_if_changed(
                 || latest.context_length != context_length
                 || latest.released_at != details.released_at
                 || latest.input_modalities != input_modalities
+                || latest.provider_pin != provider_pin
         }
         None => true,
     };
@@ -493,6 +608,7 @@ async fn insert_if_changed(
             context_length,
             released_at: details.released_at.clone(),
             input_modalities,
+            provider_pin,
         })
         .await?;
     }
@@ -516,21 +632,6 @@ pub fn decode_modalities(stored: Option<&str>) -> Vec<String> {
         .filter(|part| !part.is_empty())
         .map(str::to_string)
         .collect()
-}
-
-/// Fetch OpenRouter's catalog as a base-price map keyed by OpenRouter id, for the
-/// `:free` re-pricing. An empty map on failure leaves affected costs unknown.
-async fn fetch_base_prices(prices: &OpenRouterPrices) -> HashMap<String, TokenPrices> {
-    match prices.all_model_details().await {
-        Ok(catalog) => catalog
-            .into_iter()
-            .map(|(id, details)| (id, details.prices))
-            .collect(),
-        Err(err) => {
-            tracing::warn!(error = %err, ":free re-pricing: could not fetch OpenRouter catalog");
-            HashMap::new()
-        }
-    }
 }
 
 /// Parse a stored harness slug into a [`HarnessSlug`], defaulting to Claude for an

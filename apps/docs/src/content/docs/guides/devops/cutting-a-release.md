@@ -115,10 +115,17 @@ an older script.
 
 ```sh
 # Per case; commits nothing itself. The publish exits non-zero if any reference
-# build failed to build, capture its baselines, or deploy, so the commit is
-# chained onto it rather than run over a lockfile a failed sweep half wrote.
+# build failed to build, capture its baselines, or deploy, so the commits are
+# chained onto it rather than run over media and a lockfile a failed sweep half
+# wrote. The baselines land in the cold-storage submodule, which is committed and
+# pushed first so the superproject pins a commit its master already holds.
+git submodule update --init --depth 1 cold-storage
 tcab publish-reference --env prod <slug> && \
-  git add test-cases/reference-builds.lock.json && \
+  git -C cold-storage switch -C master && \
+  git -C cold-storage add test-cases && \
+  git -C cold-storage commit -m "feat: recapture <slug> baselines" && \
+  git -C cold-storage push origin master && \
+  git add cold-storage test-cases/reference-builds.lock.json && \
   git commit -m "chore(references): update reference implementations"
 ```
 

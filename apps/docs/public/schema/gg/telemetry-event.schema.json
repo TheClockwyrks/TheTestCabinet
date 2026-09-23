@@ -443,7 +443,7 @@
           "type": "integer"
         },
         "loopAbortWords": {
-          "description": "Words of generated output across every reply [`loop_aborts`](Self::loop_aborts) counts, and\nthe characters of the same output beside it — the **size** of what was thrown away, where\nthe count beside them is only how often.\n\nThe units are the ones gg measured itself, as the replies streamed. There is deliberately no\ntoken count and no price: gg's [cost](crate::metrics::Cost) and\n[tokens](crate::metrics::TokenCounts) come from the provider's usage payload, which arrives\nat the end of a stream an abandoned reply never reached, so any figure in those units would\nbe an estimate published where every neighbouring figure is a measurement.\n\nThis output is charged to the provider bill and is absent from the run's recorded cost, by\ndesign: a looping reply is a model defect, and a run must not be made to look expensive for\none. The figures here are what makes that omission visible rather than silent.",
+          "description": "Words of generated output across every reply [`loop_aborts`](Self::loop_aborts) counts, and\nthe characters of the same output beside it — the **size** of what was thrown away, where\nthe count beside them is only how often.\n\nThe units are the ones gg measured itself, as the replies streamed. There is deliberately no\ntoken count and no price: gg's [cost](crate::metrics::Cost) and\n[tokens](crate::metrics::TokenCounts) come from the provider's usage payload, which arrives\nat the end of a stream an abandoned reply never reached, so any figure in those units would\nbe an estimate published where every neighbouring figure is a measurement.\n\nThis output is charged to the provider bill, and it reaches neither of the run's cost\nfigures — the [work](GgSessionSummary::work_cost) nor the\n[total](GgSessionSummary::cost) — because gg has no price for it: a looping reply is\ndropped before the stream's usage trailer, so unlike every other spend in this summary it\nis a measurement gg never received rather than one it set aside. The figures here are what\nmakes that omission visible rather than silent.",
           "format": "uint64",
           "minimum": 0,
           "type": "integer"
@@ -967,9 +967,55 @@
       "required": ["id", "source"],
       "type": "object"
     },
+    "GgProviderCandidate": {
+      "description": "One provider a model may run on, and the quantization that endpoint serves.\n\nA [`GgInvocation::model_providers`] entry is an ordered list of these: the order a run tries\nthem in, and a one-entry list is a pin. Every request names one of them as OpenRouter's\n`provider.only` and `provider.quantizations`, with fallbacks refused.",
+      "properties": {
+        "provider": {
+          "description": "The provider, spelled as OpenRouter's endpoints listing spells its `provider_name`\n(`Z.AI`, `DeepInfra`).",
+          "type": "string"
+        },
+        "quantization": {
+          "description": "The quantization the provider's endpoint declares (`fp8`, `bf16`, or `unknown` for a\nprovider the catalog entry accepts despite it).",
+          "type": "string"
+        }
+      },
+      "required": ["provider", "quantization"],
+      "type": "object"
+    },
+    "GgProviderFault": {
+      "description": "A fault gg holds against one provider within a run: what a\n[`ProviderFault`](GgTelemetryKind::ProviderFault) records and what a\n[`ProviderSwitch`](GgTelemetryKind::ProviderSwitch) names as its cause.",
+      "oneOf": [
+        {
+          "const": "failed_call",
+          "description": "The retry schedule was spent on `429`, `5xx`, transport failures or stalls.",
+          "type": "string"
+        },
+        {
+          "const": "unavailable",
+          "description": "OpenRouter answered `404`: the account's settings exclude the provider's endpoint, so no\nretry can succeed.",
+          "type": "string"
+        },
+        {
+          "const": "stall",
+          "description": "A stream went [`modelStreamIdleSecs`](GgRunLimits::model_stream_idle_secs) without a delta.",
+          "type": "string"
+        },
+        {
+          "const": "cache_miss",
+          "description": "A reply read far less from the cache than the agent's previous request left there.",
+          "type": "string"
+        }
+      ]
+    },
     "GgProviderStat": {
       "description": "One `(provider, model)` health slice in a [`GgSessionSummary`] — which upstream provider\nserved a run's model calls, and how the calls it served went. Folded from the run's own\nstream: the [`Usage`](GgTelemetryKind::Usage) deltas contribute the calls with their tokens\nand cost, the [`ResponseRejected`](GgTelemetryKind::ResponseRejected) events the length-capped\nreplies, and the [`TurnOutcome`](GgTelemetryKind::TurnOutcome) events the per-turn judgement,\neach attributed to the provider its own call named.\n\nTwo invariants hold across a summary's slices: their [`turns`](Self::turns) sum to the\n[error rollup](GgErrorSummary::turns)'s denominator, and within a slice `turns` minus\n[`working`](Self::working) minus its error count is its fatal turns.",
       "properties": {
+        "cacheMisses": {
+          "description": "Replies this provider served that were an unexpected cache miss, folded from the\n[`CacheMiss`](GgProviderFault::CacheMiss) faults against it. `0`, and omitted, for a\nprovider that never missed.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
         "calls": {
           "description": "Model calls folded from the [`Usage`](GgTelemetryKind::Usage) deltas — the calls that\nreported usage. A call that reported neither tokens nor cost emits no delta and reaches\nonly the turn figures below.",
           "format": "uint64",
@@ -1010,6 +1056,12 @@
           "minimum": 0,
           "type": "integer"
         },
+        "stalls": {
+          "description": "Requests sent to this provider whose stream went\n[`modelStreamIdleSecs`](GgRunLimits::model_stream_idle_secs) without a delta, folded from\nthe [`Stall`](GgProviderFault::Stall) faults against it. `0`, and omitted, for a provider\nthat never stalled.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
         "tokens": {
           "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/TokenMetrics",
           "description": "The tokens those calls reported, summed in the shared [`TokenCounts`] units."
@@ -1031,7 +1083,7 @@
       "type": "object"
     },
     "GgRejectedResponses": {
-      "description": "The run's **rejected-reply** rollup: how many model replies gg refused to use (today, exactly\nthe length-capped ones — see [`GgTelemetryKind::ResponseRejected`]), and the spend they burned.\n\nThis bucket exists so the exclusion is visible rather than silent. A rejected reply's usage is\ndeliberately kept **out** of the run's cost and turn metrics — a degenerate generation must not\nmake a run look expensive or long — but the money was still spent, and \"how often does this\nmodel cap out, and what does it cost?\" is a question the owner asks of the durable record.\nFolded from the [`ResponseRejected`](GgTelemetryKind::ResponseRejected) events the run emitted.",
+      "description": "The run's **rejected-reply** rollup: how many model replies gg refused to use (today, exactly\nthe length-capped ones — see [`GgTelemetryKind::ResponseRejected`]), and the spend they burned.\n\nThis bucket exists so the exclusion is visible rather than silent. A rejected reply's usage\nnever counts as the run's **work** — a degenerate generation must not make a run's work look\nexpensive or long — but it is in the run's [total cost](GgSessionSummary::cost) like every\nother request's, and \"how often does this model cap out, and what did those attempts cost?\" is\na question the owner asks of the durable record. Folded from the\n[`ResponseRejected`](GgTelemetryKind::ResponseRejected) events the run emitted.",
       "properties": {
         "cost": {
           "anyOf": [
@@ -1042,7 +1094,7 @@
               "type": "null"
             }
           ],
-          "description": "Their cost, summed, when the provider reported any — spend absent from the run's recorded\ncost by design."
+          "description": "Their cost, summed, when the provider reported any — in the run's\n[total cost](GgSessionSummary::cost), never its\n[work cost](GgSessionSummary::work_cost)."
         },
         "count": {
           "description": "How many replies were rejected.",
@@ -1052,7 +1104,7 @@
         },
         "tokens": {
           "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/TokenMetrics",
-          "description": "The tokens the provider billed for them, summed — spend absent from the run's own\n[token totals](crate::metrics::TokenCounts) by design."
+          "description": "The tokens the provider billed for them, summed — absent from the run's\n[work](GgSessionSummary::work_cost) figures by design, and inside its\n[total](GgSessionSummary::cost) ones like every other request's."
         }
       },
       "required": ["count", "tokens"],
@@ -1256,7 +1308,7 @@
         },
         {
           "const": "model_response_loop",
-          "description": "The provider served the request and every answer was a\n[generation loop](GgLoopDetection), so the client discarded all of them and gave up. The\nrequest was fine and the provider was up, which is precisely why this must not read as\n[`ModelRetryExhausted`](Self::ModelRetryExhausted).",
+          "description": "The provider served the request and every answer was a\n[generation loop](GgLoopDetection), so the client discarded all of them and gave up. The\nrequest was fine and the provider was up, which is precisely why this must not read as\n[`ModelRetryExhausted`](Self::ModelRetryExhausted).\n\nAnswered as an error turn rather than an ending: the discarded replies never enter the\ncontext, the turn spends the [error ceilings](GgRunLimits) like any other failed turn, and\nthe loop asks the same question again — so a model that loops once loses a turn rather than\nthe run, and the run ends only when the ceilings say it should.",
           "type": "string"
         },
         {
@@ -1266,17 +1318,22 @@
         },
         {
           "const": "model_parse",
-          "description": "A `2xx` response could not be parsed into a reply. Retrying an already-successful-but-\nmalformed response would not help, so the turn ends on it.",
+          "description": "A `2xx` response could not be read into a reply — an unparseable envelope, an error object\nin a success status, or tool call arguments that are not JSON. Answered as an error turn:\nnothing entered the context, the turn spends the [error ceilings](GgRunLimits), and the\nloop asks again, so a reply gg could not read costs the model a turn rather than the run.\n(A reply that was no tool call at all parses fine and keeps its meaning through the\n[`missing_completion`](Self::MissingCompletionNoCall) types instead.)",
+          "type": "string"
+        },
+        {
+          "const": "model_provider_mismatch",
+          "description": "The gateway served the call from a provider other than the one the launch pinned. The\nrequest was well-formed and the provider answered it; the answer is unusable because the\ncost recorded from it on would be on a different price basis. gg ends the run as a harness\nfailure rather than scoring it against the model.",
           "type": "string"
         },
         {
           "const": "model_timeout",
-          "description": "The model call ran into the run's\n[**per-call ceiling**](GgRunLimits::model_call_timeout_secs) without producing a reply — a\nstalled provider, not a refusal. Unlike every other `model_` type this one does **not**\nend the session: the turn is recorded as this error and the loop asks again, so a stalled\nendpoint costs the run one bounded error turn per stall and the run ends only when the\n[error ceilings](GgRunLimits) say it should.",
+          "description": "The model call ran into the run's\n[**per-call ceiling**](GgRunLimits::model_call_timeout_secs) without producing a reply — a\nstalled provider, not a refusal. Answered as an error turn like\n[`ModelParse`](Self::ModelParse) and [`ModelResponseLoop`](Self::ModelResponseLoop): the\nturn is recorded as this error and the loop asks again, so a stalled endpoint costs the\nrun one bounded error turn per stall and the run ends only when the\n[error ceilings](GgRunLimits) say it should.",
           "type": "string"
         },
         {
           "const": "model_length_capped",
-          "description": "The reply hit the **provider's output cap** (`finish_reason: length`) and was rejected\nwhole: a length-capped reply is presumed a degenerate generation, so it never enters the\ncontext, its usage is kept out of the run's cost and turn metrics (tallied on\n[`GgSessionSummary::rejected_responses`] instead), and the turn is retried on the same\nterms as [`ModelTimeout`](Self::ModelTimeout) — recorded as this error, bounded by the\nerror ceilings.",
+          "description": "The reply hit the **provider's output cap** (`finish_reason: length`) and was rejected\nwhole: a length-capped reply is presumed a degenerate generation, so it never enters the\ncontext, its usage is kept out of the run's work cost (it fed no work, and is tallied on\n[`GgSessionSummary::rejected_responses`] and in the run's\n[total cost](GgSessionSummary::cost) instead), and the turn is retried on the same\nterms as [`ModelTimeout`](Self::ModelTimeout) — recorded as this error, bounded by the\nerror ceilings.",
           "type": "string"
         },
         {
@@ -1387,6 +1444,21 @@
       },
       "required": ["calls"],
       "type": "object"
+    },
+    "GgUsageFigure": {
+      "description": "Which of a session's two cost figures a [`Usage`](GgTelemetryKind::Usage) delta contributed\nto — the answer to \"is this spend the run's work, or one of its faults?\".\n\nA run's cost is recorded twice over: the **work cost** is the sum over the turns that\n[produced a program or a tool call gg ran](GgSessionSummary::work_cost), and the **total** is\nthe sum over every request the run made, including the turns answered as error turns and the\nreplies gg rejected or could not read ([`GgSessionSummary::cost`]). Every delta counts toward\nthe total; this value says whether the delta's turn also fed the work figure, which is what\nkeeps what a run's faults cost readable apart from what its work cost.\n\nSerialized as the plain strings `\"work\"` and `\"total\"`.",
+      "oneOf": [
+        {
+          "const": "work",
+          "description": "The turn produced a program or a tool call gg ran, so its spend is in the work cost **and**\nthe total.",
+          "type": "string"
+        },
+        {
+          "const": "total",
+          "description": "The request produced nothing gg ran — a rejected or unparseable reply, a reply with no\ncall, or one gg refused — so its spend is in the total alone. A delta that carries no\nfigure is read as this one.",
+          "type": "string"
+        }
+      ]
     }
   },
   "$id": "https://docs.testcabinet.ai/schema/gg/telemetry-event.schema.json",
@@ -1399,6 +1471,16 @@
         "capabilitySet": {
           "$ref": "https://docs.testcabinet.ai/schema/gg/capability-set.schema.json",
           "description": "The [capability set](GgCapabilitySet) the session is running — its exact,\nresolved configuration, announced up front so a console watching the stream\nknows which capabilities are live before any of them has produced an event.\nWithout it a live view can only guess what a run is capable of and must\noffer every surface, including the ones this run's configuration disabled."
+        },
+        "modelProviders": {
+          "additionalProperties": {
+            "items": {
+              "$ref": "#/$defs/GgProviderCandidate"
+            },
+            "type": "array"
+          },
+          "description": "The ordered candidate list each bound model may run on, beside the routing\nkey. Every request names exactly one of them; a response from any other\nprovider ends the run.",
+          "type": "object"
         },
         "routingKey": {
           "description": "The **routing key** gg minted at launch: a cuid2 sent on every request of the run\nas both `session_id` and `prompt_cache_key`, so a provider dashboard row can be\nmatched to the run it belongs to. Minted rather than derived from the session id,\nwhich is caller-supplied text of any length, so it is always inside every\nprovider's cap on either field.",
@@ -1605,6 +1687,17 @@
           ],
           "description": "The cost of this accounting, when it could be determined."
         },
+        "figure": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GgUsageFigure"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Which of the session's two cost figures this turn's spend fed — the\n[work cost](GgSessionSummary::work_cost) or the [total](GgSessionSummary::cost) alone.\n\nEvery delta counts toward the total; `work` marks the ones that also count toward the\nwork cost, so what a run's faults cost stays readable apart from what its work cost.\nAbsent, the delta is read as [`total`](GgUsageFigure::Total)."
+        },
         "modelId": {
           "description": "The concrete model id that spent this — the model the\n[profile](Self::Usage::profile_id) resolved to for the agent that took the turn.",
           "type": "string"
@@ -1617,6 +1710,10 @@
           "description": "The upstream **provider** that served the call, when the gateway reported one\n(OpenRouter's `provider` response field). A model id is served by several providers\nbehind one name, and provider-shaped failures are only attributable — and a provider\nonly blacklistable — if every call's spend names who served it.",
           "type": ["string", "null"]
         },
+        "reconciled": {
+          "description": "Whether the output/reasoning split above is **gg's bound** rather than the provider's\nown. A reply is never recorded with fewer output tokens than its own estimated size —\nthe figure the [message log](Self::Prompt) charges it — so a provider whose\nreasoning figure leaves the reply no room is recorded with the reply's size as output,\nthe remainder of `completion_tokens` as reasoning, and this flag set: the mark that\nsays the output figure is gg's rather than the provider's. Absent on a row recorded\nexactly as the provider reported it, which is the ordinary one.",
+          "type": "boolean"
+        },
         "tokens": {
           "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/TokenMetrics",
           "description": "The normalized token counts for this accounting."
@@ -1624,13 +1721,16 @@
         "type": {
           "const": "usage",
           "type": "string"
+        },
+        "wire": {
+          "description": "The provider's **usage object, verbatim** as the gateway returned it, beside the\n[mapped counts](Self::Usage::tokens) — the record a disagreement between the two is\nread off. A provider reports its completion total and, in its details, how much of\nthat total was reasoning; gg records\n[output as the remainder](Self::Usage::reconciled), and a provider whose details leave\nthe reply no room is visible here for exactly what it said rather than only as gg's\ncorrected split of it.\n\nPresent on every row that reported usage: an unmapped call is a call whose spend\ncannot be checked, which is the condition this field exists to end. Held as\nfree-form JSON rather than a typed shape because it is the provider's, not ours —\nevery field it carries is a fact about the gateway's own vocabulary, and the event's\ntyped fields above are already the normalized form of the parts gg maps."
         }
       },
       "required": ["type", "profileId", "modelId", "tokens"],
       "type": "object"
     },
     {
-      "description": "A model reply gg **rejected whole** instead of using: today, exactly the replies that hit\nthe provider's output cap (`finish_reason: length`), which are presumed degenerate.\n\nA rejected reply never enters the context, and its usage is deliberately **excluded** from\nthe run's cost and turn metrics — no [`Usage`](Self::Usage) delta is emitted for it — so\nthis event is the only place the spend appears, and\n[`GgSessionSummary::rejected_responses`] is its durable sum. The turn that produced it is\nrecorded as a [`model_length_capped`](GgTurnErrorType::ModelLengthCapped) error and\nretried, bounded by the error ceilings.",
+      "description": "A model reply gg **rejected whole** instead of using: today, exactly the replies that hit\nthe provider's output cap (`finish_reason: length`), which are presumed degenerate.\n\nA rejected reply never enters the context and never counts as the run's work: a\n[`Usage`](Self::Usage) delta carries its spend with\n[`figure: total`](GgUsageFigure::Total), so the price lands in the run's\n[total cost](GgSessionSummary::cost) and stays out of its\n[work cost](GgSessionSummary::work_cost), and this event — with\n[`GgSessionSummary::rejected_responses`] as its durable sum — remains the only place the\nspend appears *as a rejection*. The turn that produced it is recorded as a\n[`model_length_capped`](GgTurnErrorType::ModelLengthCapped) error and retried, bounded by\nthe error ceilings.",
       "properties": {
         "chars": {
           "description": "The rejected reply's length in characters, measured by gg — the figure a later\noutput ceiling would be judged against.",
@@ -1647,7 +1747,7 @@
               "type": "null"
             }
           ],
-          "description": "The rejected call's cost, when the provider reported one. Excluded from the run's\nrecorded cost on the same terms as the tokens."
+          "description": "The rejected call's cost, when the provider reported one — in the run's\n[total cost](GgSessionSummary::cost) on the same terms as the tokens, and out of its\n[work cost](GgSessionSummary::work_cost)."
         },
         "provider": {
           "description": "The upstream provider that served the rejected call, when the gateway named one — the\nattribution that makes a provider-shaped failure blacklistable.",
@@ -1659,7 +1759,7 @@
         },
         "tokens": {
           "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/TokenMetrics",
-          "description": "The usage the provider billed for the rejected call — spend the run's own metrics do\nnot include, kept here so nothing is silently lost."
+          "description": "The usage the provider billed for the rejected call — the same figure its\n[`Usage`](Self::Usage) delta carries into the run's total cost, kept here so the\nrejection is answerable on its own terms too."
         },
         "type": {
           "const": "response_rejected",
@@ -2644,6 +2744,60 @@
         }
       },
       "required": ["type", "breach"],
+      "type": "object"
+    },
+    {
+      "description": "One stall or one unexpected cache miss, against the provider the request was sent to.\n\nThe fact the run record's per-provider [`stalls`](GgProviderStat::stalls) and\n[`cache_misses`](GgProviderStat::cache_misses) are folded from. A stall is also retried,\nand logged as a retry; a miss's reply stands. Emitted on the stream of the agent whose\nrequest saw it.",
+      "properties": {
+        "fault": {
+          "$ref": "#/$defs/GgProviderFault",
+          "description": "[`Stall`](GgProviderFault::Stall) or [`CacheMiss`](GgProviderFault::CacheMiss)."
+        },
+        "modelId": {
+          "description": "The model the request was for.",
+          "type": "string"
+        },
+        "provider": {
+          "description": "The provider the request named, spelled as its [candidate](GgProviderCandidate) is.",
+          "type": "string"
+        },
+        "type": {
+          "const": "provider_fault",
+          "type": "string"
+        }
+      },
+      "required": ["type", "modelId", "provider", "fault"],
+      "type": "object"
+    },
+    {
+      "description": "The run left one [candidate](GgProviderCandidate) for the next on its model's list, for the\nrequest that decided it and every request after it, in every agent of the run.\n\nEmitted once per move, on the stream of the agent whose request decided it. A run whose\nmodel is on its last candidate never moves, so a failure there reaches the agent loop as\nthe failed model call an outage is.",
+      "properties": {
+        "detail": {
+          "description": "The last failure's cause, or the miss count that reached the limit, for a reader.",
+          "type": "string"
+        },
+        "fault": {
+          "$ref": "#/$defs/GgProviderFault",
+          "description": "What decided the move: [`FailedCall`](GgProviderFault::FailedCall),\n[`Unavailable`](GgProviderFault::Unavailable) or\n[`CacheMiss`](GgProviderFault::CacheMiss)."
+        },
+        "from": {
+          "description": "The provider the run left, spelled as its candidate is.",
+          "type": "string"
+        },
+        "modelId": {
+          "description": "The model whose candidate changed.",
+          "type": "string"
+        },
+        "to": {
+          "description": "The provider the run moved to.",
+          "type": "string"
+        },
+        "type": {
+          "const": "provider_switch",
+          "type": "string"
+        }
+      },
+      "required": ["type", "modelId", "from", "to", "fault", "detail"],
       "type": "object"
     },
     {

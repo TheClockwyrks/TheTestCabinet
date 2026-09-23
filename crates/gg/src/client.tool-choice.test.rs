@@ -20,13 +20,9 @@ const MODEL: &str = "qwen/qwen3.8-max-0902";
 /// The refusal a thinking-mode provider answers a pinned choice with.
 const REFUSAL: &str = r#"{"error":{"message":"The tool_choice parameter does not support being set to required or object in thinking mode","code":400}}"#;
 
-/// A buffered reply that makes no call, which a provider on `auto` is free to answer with.
-const NO_CALL: &str =
-    r#"{"choices":[{"message":{"role":"assistant","content":"done"},"finish_reason":"stop"}]}"#;
-
-/// The same reply as a server-sent event stream, for a client on the streaming transport.
-const NO_CALL_STREAMED: &str = "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"done\"},\
-                                \"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n";
+/// A streamed reply that makes no call, which a provider on `auto` is free to answer with.
+const NO_CALL: &str = "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"done\"},\
+                       \"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n";
 
 /// One scripted reply: a status and its body.
 type Reply = (u16, &'static str);
@@ -170,15 +166,11 @@ async fn a_refused_pin_is_resent_on_auto_and_later_requests_start_there() {
     );
 }
 
-/// The streaming transport takes the same downgrade.
+/// A client whose replies loop detection watches takes the same downgrade.
 #[tokio::test(start_paused = true)]
-async fn a_refused_pin_is_resent_on_auto_by_the_streaming_transport() {
+async fn a_refused_pin_is_resent_on_auto_with_loop_detection_armed() {
     let memory = ToolChoiceMemory::default();
-    let (client, sent, sink) = scripted(
-        MODEL,
-        &memory,
-        vec![(400, REFUSAL), (200, NO_CALL_STREAMED)],
-    );
+    let (client, sent, sink) = scripted(MODEL, &memory, vec![(400, REFUSAL), (200, NO_CALL)]);
     let client = client.with_loop_detection(GgLoopDetection {
         enabled: true,
         window_words: Some(256),

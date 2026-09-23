@@ -20,6 +20,7 @@ import {
   blankHookDraft,
   blankModelSlot,
   blankPrimaryModelSlot,
+  blankReasoning,
   capabilityDraftFor,
   capabilityParams,
   capabilityActive,
@@ -40,6 +41,7 @@ import {
   moduleHeld,
   openingTurnIsDefault,
   operationHeld,
+  reasoningError,
   renameAgentSlug,
   renameStateDraft,
   resetAgentForMode,
@@ -60,6 +62,8 @@ import {
   AUTHORED_MAX_MODEL_RETRIES,
   AUTHORED_MODEL_CALL_TIMEOUT_SECS,
   AUTHORED_MODEL_RETRY_MAX_DELAY_SECS,
+  AUTHORED_MODEL_STREAM_IDLE_SECS,
+  AUTHORED_PROVIDER_CACHE_MISS_LIMIT,
   AUTHORED_MEMORY_MAX_COUNT,
   AUTHORED_MEMORY_MAX_LEN_DESCRIPTION,
   AUTHORED_MEMORY_MAX_LEN_PER,
@@ -736,6 +740,98 @@ describe("gg agents", () => {
     const back = capabilitySetFromDraft(draft, null);
     expect(back.agents[0]!.promptCacheTtl).toBe("extended");
     expect(back.agents[1]!.promptCacheTtl).toBeUndefined();
+  });
+
+  it("round-trips the reasoning setting per agent, writing no key at the default", () => {
+    const configured = set({
+      agents: [
+        agent({ reasoning: { effort: "low" } }),
+        agent({
+          name: "scout",
+          modelId: "openai/o-fixed",
+          reasoning: { maxTokens: 60 },
+        }),
+        agent({ name: "sage", modelId: "openai/o-fixed" }),
+      ],
+    });
+    const draft = draftFromCapabilitySet(configured);
+    // Each declaration loads onto the arm its one half names, with the other field left
+    // clear — a budget is text here, exactly as the loop-detection knobs are.
+    expect(draft.agents[0]!.reasoning).toEqual({
+      kind: "effort",
+      effort: "low",
+      maxTokens: "",
+    });
+    expect(draft.agents[1]!.reasoning).toEqual({
+      kind: "maxTokens",
+      effort: "",
+      maxTokens: "60",
+    });
+    // An agent that names no setting loads on the untouched lever — gg's own reading of
+    // an absent key, and the provider default the run then starts at.
+    expect(draft.agents[2]!.reasoning).toEqual(blankReasoning());
+
+    const back = capabilitySetFromDraft(draft, null);
+    expect(back.agents[0]!.reasoning).toEqual({ effort: "low" });
+    expect(back.agents[1]!.reasoning).toEqual({ maxTokens: 60 });
+    expect(back.agents[2]!.reasoning).toBeUndefined();
+  });
+
+  it("keeps both halves of a reasoning setting naming both, and refuses to save it", () => {
+    // gg refuses to launch a declaration naming both an effort and a budget rather than
+    // read either half of it, so the console refuses the save. The load keeps both halves
+    // visible on the untouched arm so the operator resolves the contradiction — instead
+    // of the editor silently dropping one of the two they wrote.
+    const configured = set({
+      agents: [agent({ reasoning: { effort: "high", maxTokens: 60 } })],
+    });
+    const draft = draftFromCapabilitySet(configured);
+    expect(draft.agents[0]!.reasoning).toEqual({
+      kind: "default",
+      effort: "high",
+      maxTokens: "60",
+    });
+    expect(reasoningError(draft.agents[0]!.reasoning)).toContain("both");
+    expect(draftSaveError(draft)).toContain("both");
+    expect(agentSaveError(draft, draft.agents[0]!.id)).toContain("both");
+
+    // Choosing the effort arm is the operator saying which one to keep, and the setting
+    // is whole again.
+    draft.agents[0]!.reasoning = {
+      kind: "effort",
+      effort: "high",
+      maxTokens: "",
+    };
+    expect(draftSaveError(draft)).toBeNull();
+  });
+
+  it("refuses a reasoning setting naming both or neither, or a budget that is no count", () => {
+    // Exactly three states are well-formed: the untouched lever, one effort level, and
+    // one budget. Everything else is a save refused, exactly as gg refuses the launch.
+    expect(reasoningError(blankReasoning())).toBeNull();
+    expect(
+      reasoningError({ kind: "effort", effort: "minimal", maxTokens: "" }),
+    ).toBeNull();
+    expect(
+      reasoningError({ kind: "maxTokens", effort: "", maxTokens: "60" }),
+    ).toBeNull();
+
+    // Both halves at once, whichever arm is up.
+    expect(
+      reasoningError({ kind: "default", effort: "low", maxTokens: "60" }),
+    ).toContain("both");
+    // A lever moved onto an arm that then names nothing: neither an effort nor a budget.
+    expect(
+      reasoningError({ kind: "effort", effort: "", maxTokens: "" }),
+    ).not.toBeNull();
+    // A budget owes a whole count of one or more reasoning tokens. Zero is refused rather
+    // than read as `none` — that demand has a spelling of its own — and empty, fractional
+    // and half-typed text are no count of tokens at all.
+    for (const maxTokens of ["", "0", "12.5", "tokens", "-3"]) {
+      expect(
+        reasoningError({ kind: "maxTokens", effort: "", maxTokens }),
+      ).toContain("whole count");
+    }
   });
 
   it("fills in the knobs an armed stored detector was short of", () => {
@@ -2011,6 +2107,8 @@ describe("gg run limits", () => {
       maxParallel: AUTHORED_MAX_PARALLEL,
       replayMaxBytes: AUTHORED_REPLAY_MAX_MIB * BYTES_PER_MIB,
       modelCallTimeoutSecs: AUTHORED_MODEL_CALL_TIMEOUT_SECS,
+      modelStreamIdleSecs: AUTHORED_MODEL_STREAM_IDLE_SECS,
+      providerCacheMissLimit: AUTHORED_PROVIDER_CACHE_MISS_LIMIT,
       maxModelRetries: AUTHORED_MAX_MODEL_RETRIES,
       modelRetryMaxDelaySecs: AUTHORED_MODEL_RETRY_MAX_DELAY_SECS,
       maxConsecutiveErrors: AUTHORED_MAX_CONSECUTIVE_ERRORS,
@@ -2085,6 +2183,38 @@ describe("gg run limits", () => {
     const draft = emptyDraft();
     draft.limits.modelCallTimeoutSecs = "0";
     expect(draftSaveError(draft)).toContain("greater than zero");
+  });
+
+  it("refuses a zero stream idle bound, and saves a cleared one as absent", () => {
+    const draft = emptyDraft();
+    draft.limits.modelStreamIdleSecs = "0";
+    expect(draftSaveError(draft)).toContain("greater than zero");
+    // A cleared field is the run's default of 60 seconds, which gg supplies for an
+    // absent key, so the saved set leaves the key out.
+    draft.limits.modelStreamIdleSecs = "";
+    expect(draftSaveError(draft)).toBeNull();
+    expect(
+      capabilitySetFromDraft(draft, null).limits?.modelStreamIdleSecs,
+    ).toBeUndefined();
+    draft.limits.modelStreamIdleSecs = "45";
+    expect(
+      capabilitySetFromDraft(draft, null).limits?.modelStreamIdleSecs,
+    ).toBe(45);
+  });
+
+  it("refuses a zero cache-miss limit, and saves a cleared one as absent", () => {
+    const draft = emptyDraft();
+    draft.limits.providerCacheMissLimit = "0";
+    expect(draftSaveError(draft)).toContain("greater than zero");
+    draft.limits.providerCacheMissLimit = "";
+    expect(draftSaveError(draft)).toBeNull();
+    expect(
+      capabilitySetFromDraft(draft, null).limits?.providerCacheMissLimit,
+    ).toBeUndefined();
+    draft.limits.providerCacheMissLimit = "5";
+    expect(
+      capabilitySetFromDraft(draft, null).limits?.providerCacheMissLimit,
+    ).toBe(5);
   });
 
   it("refuses a zero retry delay ceiling, and honours a zero retry count", () => {
@@ -2672,6 +2802,7 @@ describe("a state machine", () => {
         modelId: "anthropic/claude-opus-4.8",
         customInstructions: "be brief",
         promptCacheTtl: "extended",
+        reasoning: { effort: "high" },
         subagents: [
           { agentId: "builder", description: "", scopes: ["subagent"] },
         ],
@@ -2683,6 +2814,7 @@ describe("a state machine", () => {
     expect(shell.customInstructions).toBeUndefined();
     expect(shell.systemPromptTemplate).toBeUndefined();
     expect(shell.promptCacheTtl).toBeUndefined();
+    expect(shell.reasoning).toBeUndefined();
     expect(shell.subagents).toBeUndefined();
   });
 
@@ -2692,6 +2824,22 @@ describe("a state machine", () => {
     const set = machineSet(LINEAR);
     set.agents![0]!.modelId = "";
     expect(draftSaveError(draftFromCapabilitySet(set))).toBeNull();
+  });
+
+  // Nor about how hard its models are asked to think, whatever a stored declaration
+  // claimed: a machine takes no turns, so its reasoning is reset on commit and written by
+  // no serializer, and a save refused over it would be a fault in a value no control can
+  // show and no run would read.
+  it("refuses no save over a machine's reasoning, which gg never reads", () => {
+    const configured = machineSet(LINEAR, {
+      reasoning: { effort: "low", maxTokens: 12 },
+    });
+    const draft = draftFromCapabilitySet(configured);
+    expect(draftSaveError(draft)).toBeNull();
+    expect(agentSaveError(draft, draft.agents[0]!.id)).toBeNull();
+    expect(
+      capabilitySetFromDraft(draft, null).agents[0]!.reasoning,
+    ).toBeUndefined();
   });
 
   // And a slot a machine was pointed at under an earlier type feeds nothing, so the
@@ -2717,6 +2865,7 @@ describe("a state machine", () => {
     expect(committed.customInstructions).toBe("");
     expect(committed.subagents).toEqual([]);
     expect(committed.promptCacheTtl).toBe("standard");
+    expect(committed.reasoning).toEqual(blankReasoning());
   });
 
   // The [mode markers](isModeCapability) are the one entry in the catalog that names a

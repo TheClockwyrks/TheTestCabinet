@@ -19,6 +19,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::convert::Infallible;
+use std::sync::Arc;
 
 use axum::Json;
 use axum::body::Body;
@@ -97,9 +98,19 @@ pub async fn launch(
         bind_launch_configuration(set, &names).map_err(ApiError::bad_request)?;
     }
     crate::bootstrap::seed_launch_prices(&state.db, &state.prices, &launch_models(&body)).await;
-    resolve_gg_model_facts(&state.db, &state.prices, &mut body)
+    let record = candidate_record(&state, [&body]).await;
+    resolve_gg_model_facts(&state.db, &state.prices, &record, &mut body)
         .await
         .map_err(ApiError::bad_request)?;
+    // Stamp the model's curated list price onto the launch, refusing a model
+    // that has none. A gg run's per-bound-model prices ride in
+    // `gg_model_prices`, resolved inside `resolve_gg_model_facts`.
+    if let Some(prices) = resolve_model_price(&state.db, &body)
+        .await
+        .map_err(ApiError::bad_request)?
+    {
+        body.model_prices = Some(prices);
+    }
     let new = build_new_job(&body, resolve_test_type(&state, &body), &now, &attribution)
         .map_err(ApiError::bad_request)?;
     let id = new.id.clone();
@@ -174,6 +185,8 @@ pub async fn launch_batch(
     let batch_models: Vec<(String, HarnessSlug)> =
         body.runs.iter().flat_map(launch_models).collect();
     crate::bootstrap::seed_launch_prices(&state.db, &state.prices, &batch_models).await;
+    // The stored gg runs every gg run's candidate lists are ordered by, loaded once per batch.
+    let record = candidate_record(&state, &body.runs).await;
 
     // Validate and mint each requested run up front. A rejected run records its
     // error at its index and is dropped from the insert set; an accepted run
@@ -216,10 +229,21 @@ pub async fn launch_batch(
             _ => Ok(()),
         };
         let minted = match bound {
-            Ok(()) => match resolve_gg_model_facts(&state.db, &state.prices, &mut run).await {
-                Ok(()) => build_new_job(&run, test_type, &now, &attribution),
-                Err(reason) => Err(reason),
-            },
+            Ok(()) => {
+                match resolve_gg_model_facts(&state.db, &state.prices, &record, &mut run).await {
+                    Ok(()) => match resolve_model_price(&state.db, &run).await {
+                        // A gg run's per-bound-model prices ride in `gg_model_prices`;
+                        // a flat run's model price is stamped here.
+                        Ok(Some(prices)) => {
+                            run.model_prices = Some(prices);
+                            build_new_job(&run, test_type, &now, &attribution)
+                        }
+                        Ok(None) => build_new_job(&run, test_type, &now, &attribution),
+                        Err(reason) => Err(reason),
+                    },
+                    Err(reason) => Err(reason),
+                }
+            }
             Err(reason) => Err(reason),
         };
         match minted {
@@ -289,27 +313,28 @@ pub(super) fn launch_models(body: &LaunchBody) -> Vec<(String, HarnessSlug)> {
 }
 
 /// Fill in a **gg** launch's per-model catalog facts — the
-/// [context window](LaunchBody::gg_model_windows) and the
-/// [input modalities](LaunchBody::gg_model_modalities) of every model the run's capability
-/// set binds — or the reason the run cannot start.
+/// [context window](LaunchBody::gg_model_windows), the
+/// [provider candidate list](LaunchBody::gg_model_providers) and the
+/// [input modalities](LaunchBody::gg_model_modalities) of every model the run's capability set
+/// binds — or the reason the run cannot start.
 ///
 /// This is the push that lets gg hold no model table of its own. The catalog is the
 /// backend's, so the backend answers the question here — once, at the moment the run is
 /// triggered — and the figures travel with the launch request to the driver, into the gg
 /// invocation, and out to the agent loop, which measures window fullness (and therefore the
-/// compaction trigger) against the window and decides whether it may show a model a
-/// reference image from the modalities. A run container never has to reach back for one.
+/// compaction trigger) against the window, sends every request to one candidate of the list,
+/// and decides whether it may show a model a reference image from the modalities. A run
+/// container never has to reach back for one.
 ///
-/// Resolution is two steps per model:
+/// Per model, the window and the modalities come from the
+/// [catalog](super::models::launch_facts_for) — the observations the backend already holds —
+/// and from a live [per-model fetch](test_cabinet_core::OpenRouterPrices::model_launch_facts)
+/// only when the catalog has not observed the window yet (the first run against a
+/// just-released model). The candidate list is always built from the model's endpoints listing
+/// read live at this moment, filtered by the model's catalog entry and ordered by each
+/// provider's fault rate across `record`, the stored gg runs (see [`CatalogCandidates`](super::model_candidates::CatalogCandidates)).
 ///
-/// 1. the [catalog](super::models::launch_facts_for) — the observations the backend
-///    already holds; then
-/// 2. a live [per-model fetch](test_cabinet_core::OpenRouterPrices::model_launch_facts)
-///    from OpenRouter, for a model the catalog has not observed yet (the first run against a
-///    just-released model). Only the models this run needs are fetched, not the catalog, and
-///    both facts come out of one request.
-///
-/// The two facts fail differently, on purpose:
+/// The facts fail differently, on purpose:
 ///
 /// - **No context window fails the launch.** An assumed window is not a smaller version of
 ///   the right answer: it silently mis-scales every fullness figure, moves the compaction
@@ -320,30 +345,54 @@ pub(super) fn launch_models(body: &LaunchBody) -> Vec<(String, HarnessSlug)> {
 ///   (see [`crate::api::gg`] and gg's own vision handling). Refusing to launch because
 ///   OpenRouter did not annotate a model would block runs over a fact that only affects
 ///   whether one tool result may carry a picture.
+/// - **No candidate fails the launch**, with the filter that emptied the list. So does an
+///   endpoints listing that cannot be read: the list is built from it, and a run with no list
+///   would leave the choice of provider to OpenRouter.
 ///
 /// Whatever the client sent is discarded first — these are backend-resolved facts, not
 /// client input.
 pub(super) async fn resolve_gg_model_facts(
     db: &crate::db::Db,
     prices: &test_cabinet_core::OpenRouterPrices,
+    record: &[Arc<crate::stats::GgRunFacts>],
     body: &mut LaunchBody,
 ) -> Result<(), String> {
     body.gg_model_windows.clear();
+    body.gg_model_providers.clear();
     body.gg_model_modalities.clear();
+    body.gg_model_prices.clear();
     let Some(set) = body.gg_capability_set.as_ref() else {
         return Ok(());
     };
-    let facts = gg_model_facts(db, prices, set, &body.model, body.harness).await?;
+    let facts = gg_model_facts(db, prices, record, set, &body.model, body.harness).await?;
     facts.apply(body);
     Ok(())
 }
 
-/// The per-model catalog facts one gg capability set's launch carries: a context window for
-/// every model it binds, and the input modalities of the models the catalog knows them for.
+/// The stored gg runs the candidate lists of `bodies` are ordered by, loaded only when one of
+/// them is a gg launch: a third-party-harness enqueue builds no list and should not pay for the
+/// corpus.
+pub(super) async fn candidate_record<'a>(
+    state: &AppState,
+    bodies: impl IntoIterator<Item = &'a LaunchBody>,
+) -> Arc<Vec<Arc<crate::stats::GgRunFacts>>> {
+    if bodies
+        .into_iter()
+        .any(|body| body.gg_capability_set.is_some())
+    {
+        super::stats::recorded_run_facts(state).await
+    } else {
+        Arc::new(Vec::new())
+    }
+}
+
+/// The per-model catalog facts one gg capability set's launch carries: a context window and a
+/// provider candidate list for every model it binds, and the input modalities of the models the
+/// catalog knows them for.
 ///
-/// A value of its own, rather than only ever two fields written straight onto a
+/// A value of its own, rather than only ever fields written straight onto a
 /// [`LaunchBody`], because the resolution that produces it is the one part of minting a gg job
-/// that can **fail** and can reach the network. A caller about to launch many runs of one
+/// that can **fail** and reaches the network. A caller about to launch many runs of one
 /// member — a coverage plan's top-up — resolves it once, before it decides what to launch, so
 /// that a member it cannot resolve costs the plan nothing rather than costing it the buffer
 /// slots the scheduler had already handed that member.
@@ -351,9 +400,14 @@ pub(super) async fn resolve_gg_model_facts(
 pub(super) struct GgModelFacts {
     /// The context window every bound model is measured against.
     windows: std::collections::BTreeMap<String, u64>,
+    /// The ordered provider candidates every bound model's requests are served by.
+    providers: std::collections::BTreeMap<String, Vec<test_cabinet_core::gg::GgProviderCandidate>>,
     /// The input modalities of the bound models the catalog (or OpenRouter) lists them for.
     /// A model with none is simply absent: unknown modalities are not a launch failure.
     modalities: std::collections::BTreeMap<String, Vec<String>>,
+    /// The curated list price (USD per token) every bound model is scored at. A
+    /// model with none refuses the launch, so every bound model is present.
+    prices: std::collections::BTreeMap<String, test_cabinet_core::TokenPrices>,
 }
 
 impl GgModelFacts {
@@ -361,7 +415,9 @@ impl GgModelFacts {
     /// arrived carrying — they are backend-resolved facts, not client input.
     pub(super) fn apply(self, body: &mut LaunchBody) {
         body.gg_model_windows = self.windows;
+        body.gg_model_providers = self.providers;
         body.gg_model_modalities = self.modalities;
+        body.gg_model_prices = self.prices;
     }
 }
 
@@ -370,6 +426,7 @@ impl GgModelFacts {
 pub(super) async fn gg_model_facts(
     db: &crate::db::Db,
     prices: &test_cabinet_core::OpenRouterPrices,
+    record: &[Arc<crate::stats::GgRunFacts>],
     set: &test_cabinet_core::gg::GgCapabilitySet,
     launch_model: &str,
     harness: HarnessSlug,
@@ -383,8 +440,14 @@ pub(super) async fn gg_model_facts(
     }
     let mut facts = GgModelFacts::default();
     for model_id in models {
-        let resolved = resolve_one_model_facts(db, prices, model_id, harness).await?;
+        let reasoning = binds_reasoning(set, model_id);
+        let resolved =
+            resolve_one_model_facts(db, prices, record, model_id, harness, reasoning).await?;
         facts.windows.insert(model_id.to_string(), resolved.window);
+        facts
+            .providers
+            .insert(model_id.to_string(), resolved.candidates);
+        facts.prices.insert(model_id.to_string(), resolved.prices);
         if !resolved.input_modalities.is_empty() {
             facts
                 .modalities
@@ -394,20 +457,65 @@ pub(super) async fn gg_model_facts(
     Ok(facts)
 }
 
-/// One model's resolved launch facts: the window (which a launch cannot proceed without)
-/// and the input modalities (which may legitimately be unknown).
-struct ResolvedModelFacts {
-    window: u64,
-    input_modalities: Vec<String>,
+/// Whether a request of `model_id` in a run of `set` may carry `reasoning`: whether any agent
+/// whose own model it is sets a [reasoning setting](test_cabinet_core::gg::GgAgentConfig::reasoning).
+///
+/// A handoff compaction's model is not counted: gg sends the summary request with the provider's
+/// default reasoning whatever the agent chose, so a model bound only as a handoff sends none.
+fn binds_reasoning(set: &test_cabinet_core::gg::GgCapabilitySet, model_id: &str) -> bool {
+    set.agents
+        .iter()
+        .any(|agent| agent.reasoning.is_some() && agent.resolved_model_id() == Some(model_id))
 }
 
-/// One model's launch facts: the catalog's observation, else a live per-model fetch from
-/// OpenRouter, else the reason this run cannot start.
+/// The list price a third-party-harness launch's model is scored at, or the reason the
+/// launch is refused: the model is not in the catalog, or its entry carries no list price.
+/// Every harness is priced this way, whatever cost it reports of its own, because the
+/// comparable cost is a published statistic.
+///
+/// `Ok(None)` for a gg launch, whose per-bound-model prices ride in `gg_model_prices`
+/// (see [`gg_model_facts`]).
+pub(super) async fn resolve_model_price(
+    db: &crate::db::Db,
+    body: &LaunchBody,
+) -> Result<Option<test_cabinet_core::TokenPrices>, String> {
+    if body.harness == HarnessSlug::Gg {
+        return Ok(None);
+    }
+    match db.list_price_for_run_model(&body.model, body.harness).await {
+        Ok(Ok(prices)) => Ok(Some(prices)),
+        Ok(Err(reason)) => Err(reason),
+        Err(db_err) => Err(format!(
+            "could not read the model catalog's list price for `{}`: {db_err}",
+            body.model
+        )),
+    }
+}
+
+/// One model's resolved launch facts: the window, the candidate list and the curated list price
+/// (none of which a launch can proceed without), and the input modalities (which may
+/// legitimately be unknown).
+struct ResolvedModelFacts {
+    window: u64,
+    candidates: Vec<test_cabinet_core::gg::GgProviderCandidate>,
+    input_modalities: Vec<String>,
+    /// The catalog's curated list price for the model — what the run is scored at.
+    prices: test_cabinet_core::TokenPrices,
+}
+
+/// One model's launch facts, or the reason this run cannot start.
+///
+/// The window and the modalities are the catalog's observation, else a live per-model fetch
+/// from OpenRouter. The candidate list is built from the endpoints listing read now, under the
+/// model's catalog entry; `reasoning` is whether an agent bound to it sets a reasoning setting,
+/// which also asks each candidate to support `reasoning`.
 async fn resolve_one_model_facts(
     db: &crate::db::Db,
     prices: &test_cabinet_core::OpenRouterPrices,
+    record: &[Arc<crate::stats::GgRunFacts>],
     model_id: &str,
     harness: HarnessSlug,
+    reasoning: bool,
 ) -> Result<ResolvedModelFacts, String> {
     let stored = match super::models::launch_facts_for(db, model_id, harness).await {
         Ok(facts) => facts,
@@ -419,41 +527,74 @@ async fn resolve_one_model_facts(
             ));
         }
     };
-    // The window is what the launch hinges on. When the catalog has it, the run can start —
-    // even if it has no modality list, which gg is allowed not to know.
-    if let Some(window) = stored.context_window {
-        return Ok(ResolvedModelFacts {
-            window,
-            input_modalities: stored.input_modalities,
-        });
-    }
-    // Not observed yet: ask OpenRouter for this one model. The id to ask under is the same
-    // one prices are looked up by, so a curated model resolves through its configured slug.
+    // The list price the run is scored at comes only from the catalog — never
+    // from a live fetch: a run must not be priced off whatever a provider
+    // happened to charge that day. A catalog read that fails is, exactly like a
+    // failed window read, an unknown rather than "no price".
+    let list_prices = db
+        .list_price_for_run_model(model_id, harness)
+        .await
+        .map_err(|err| {
+            format!("could not read the model catalog's list price for `{model_id}`: {err}")
+        })?;
+    let canonical = test_cabinet_core::model_id::canonical_model_id(model_id, harness);
+    let entry = db.model_config_for_alias(&canonical).await.map_err(|err| {
+        format!("could not read the catalog entry's provider policy for `{model_id}`: {err}")
+    })?;
+    // The id to ask OpenRouter under is the same one prices are looked up by, so a curated model
+    // resolves through its configured slug.
     let lookup = crate::bootstrap::openrouter_lookup_id(db, model_id, harness)
         .await
         .unwrap_or_else(|_| test_cabinet_core::model_id::openrouter_price_id(model_id, harness));
-    match prices.model_launch_facts(&lookup).await {
-        Ok(facts) => match facts.context_window {
-            Some(window) => Ok(ResolvedModelFacts {
-                window,
-                // Prefer the live list; fall back to whatever the catalog held, so a
-                // fetch that answered the window but not the modalities does not
-                // discard an older observation of them.
-                input_modalities: if facts.input_modalities.is_empty() {
-                    stored.input_modalities
-                } else {
-                    facts.input_modalities
-                },
-            }),
-            None => Err(format!(
-                "OpenRouter lists `{lookup}` but reports no context window for it"
-            )),
-        },
-        Err(err) => Err(format!(
-            "no context window is known for `{model_id}` (not in the model catalog, and \
-             looking it up as `{lookup}` failed: {err})"
-        )),
-    }
+
+    // The window first: a model the catalog has not observed is looked up for this one model,
+    // and a run with no window is refused before its providers are asked about.
+    let (window, input_modalities) = match stored.context_window {
+        Some(window) => (window, stored.input_modalities),
+        None => {
+            let facts = prices.model_launch_facts(&lookup).await.map_err(|err| {
+                format!(
+                    "no context window is known for `{model_id}` (the model catalog has observed \
+                     none, and looking it up as `{lookup}` failed: {err})"
+                )
+            })?;
+            let window = facts.context_window.ok_or_else(|| {
+                format!("OpenRouter lists `{lookup}` but reports no context window for it")
+            })?;
+            // Prefer the live list; fall back to whatever the catalog held, so a fetch that
+            // answered the window but not the modalities does not discard an older observation.
+            let modalities = if facts.input_modalities.is_empty() {
+                stored.input_modalities
+            } else {
+                facts.input_modalities
+            };
+            (window, modalities)
+        }
+    };
+
+    let offers = prices.endpoint_offers(&lookup).await.map_err(|err| {
+        format!(
+            "`{model_id}` has no provider candidate list: reading its OpenRouter endpoints \
+             listing as `{lookup}` failed: {err}"
+        )
+    })?;
+    let catalog = super::model_candidates::CatalogCandidates::of(
+        entry.as_ref(),
+        &[model_id, &canonical, &lookup],
+    );
+    let list = catalog
+        .build(&lookup, &offers, reasoning, record)
+        .map_err(|refusal| format!("`{model_id}` has no provider candidate: {refusal}"))?;
+    Ok(ResolvedModelFacts {
+        window,
+        candidates: list
+            .candidates
+            .iter()
+            .map(test_cabinet_core::pricing::ProviderCandidate::to_invocation)
+            .collect(),
+        input_modalities,
+        prices: list_prices?,
+    })
 }
 
 /// The test type of the case version a launch request targets, read from the

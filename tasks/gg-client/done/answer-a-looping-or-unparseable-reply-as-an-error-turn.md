@@ -44,9 +44,9 @@ execution limits page beside the cost ceiling, which stays on the total.
 
 ## Done when
 
-- [ ] An unparseable reply and a spent loop retry are error turns that leave
+- [x] An unparseable reply and a spent loop retry are error turns that leave
       the run running, and the reply stays out of the context.
-- [ ] `session_summary` records the work cost and the total cost, and the
+- [x] `session_summary` records the work cost and the total cost, and the
       `usage` event says which a turn fed.
-- [ ] The telemetry and execution limits pages describe the two figures.
-- [ ] Gates green.
+- [x] The telemetry and execution limits pages describe the two figures.
+- [x] Gates green.

@@ -135,7 +135,10 @@ async fn drive(stages: &[&dyn PostRunStage]) -> PostRunReport {
         container_image: None,
         gg_capability_set: None,
         gg_model_windows: std::collections::BTreeMap::new(),
+        gg_model_providers: std::collections::BTreeMap::new(),
         gg_model_modalities: std::collections::BTreeMap::new(),
+        gg_model_prices: std::collections::BTreeMap::new(),
+        model_prices: None,
     };
     let artifacts = ArtifactCollection::new(PathBuf::from("/tmp/does-not-need-to-exist"));
     let context = PostRunContext {

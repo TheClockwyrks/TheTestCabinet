@@ -41,7 +41,7 @@ public final class Shell {
     }
 
     /**
-     * Run a command with a deadline of the program's own rather than gg's default of 600 seconds.
+     * Run a command with a deadline of the program's own rather than gg's default of 3600 seconds.
      *
      * @param command The command line, run by {@code sh -c} with the workspace as its working
      *     directory.

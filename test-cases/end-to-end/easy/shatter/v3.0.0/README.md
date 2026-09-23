@@ -43,20 +43,19 @@ differs.
 
 ## Contents
 
-| Path                   | Seeded to run? | Purpose                                                                                              |
-| ---------------------- | -------------- | ---------------------------------------------------------------------------------------------------- |
-| `workspaces/`          | Yes            | The starter TypeScript project, `<variant>/<engine>/` plus a shared `none/`, seeded at the run root. |
-| `specs/`               | Yes            | The spec handed to the model, by concern.                                                            |
-| `prompt.hbs`           | No             | Rendered into the model's prompt; not seeded.                                                        |
-| `validation/`          | No             | The case's Vitest validators, one project per engine (`<engine>/`).                                  |
-| `references/`          | No             | The authored, correct build, `<engine>/<variant>/`. Never seeded.                                    |
-| `validation-baseline/` | No             | The validators' media captured against the reference, `<engine>/<variant>/`, shown beside a run's.   |
-| `showcase/`            | No             | Curated demo media per variant, captured from the reference build by the drivers under `capture/`.   |
-| `test-case.toml`       | No             | Manifest: workspaces, engines, toolchain, specs, domains, review items.                              |
-| `variants/`            | No             | One TOML file per variant (listed in `variants`).                                                    |
-| `description.md`       | No             | The site-facing introduction on the case's detail page.                                              |
-| `changelog.md`         | No             | What changed from `v2.0.1`.                                                                          |
-| `README.md`            | No             | This overview.                                                                                       |
+| Path             | Seeded to run? | Purpose                                                                                              |
+| ---------------- | -------------- | ---------------------------------------------------------------------------------------------------- |
+| `workspaces/`    | Yes            | The starter TypeScript project, `<variant>/<engine>/` plus a shared `none/`, seeded at the run root. |
+| `specs/`         | Yes            | The spec handed to the model, by concern.                                                            |
+| `prompt.hbs`     | No             | Rendered into the model's prompt; not seeded.                                                        |
+| `validation/`    | No             | The case's Vitest validators, one project per engine (`<engine>/`).                                  |
+| `references/`    | No             | The authored, correct build, `<engine>/<variant>/`. Never seeded.                                    |
+| `showcase/`      | No             | Curated demo media per variant, captured from the reference build by the drivers under `capture/`.   |
+| `test-case.toml` | No             | Manifest: workspaces, engines, toolchain, specs, domains, review items.                              |
+| `variants/`      | No             | One TOML file per variant (listed in `variants`).                                                    |
+| `description.md` | No             | The site-facing introduction on the case's detail page.                                              |
+| `changelog.md`   | No             | What changed from `v2.0.1`.                                                                          |
+| `README.md`      | No             | This overview.                                                                                       |
 
 There is deliberately no `reference/`, no `reference-impl/`, no `specs/proof.md`
 and no `assets/`. This version declares no `[[reference]]`, no `[[proof]]` and no
@@ -128,8 +127,10 @@ project holds no game code for a variant to differ in, so both variants share
 
 The case declares no reference mockups and no proof captures. The media a
 reviewer looks at is produced by the validators under `validation/`, from
-scenarios the case controls, and the same suites run against each reference build
-to produce the baseline it is shown beside. Capture never decides anything: a
+scenarios the case controls, and the same suites run against each reference
+build to produce the baseline it is shown beside, which lives in the
+`cold-storage` submodule under this version's
+`validation-baseline/<engine>/<variant>/`. Capture never decides anything: a
 point passes or fails on its assertions, and the recording is what a reviewer
 looks at afterwards to see what the build actually drew while it did. A failing
 scenario still writes what it recorded.

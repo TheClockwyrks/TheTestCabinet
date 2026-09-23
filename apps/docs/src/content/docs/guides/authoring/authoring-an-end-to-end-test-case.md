@@ -36,9 +36,13 @@ test-cases/<type>/<difficulty>/<slug>/<version>/
   references/            # reference implementations, one per engine (NOT seeded)
   showcase/              # per-variant demo media captured from a reference (NOT seeded)
   validation/            # the validators review points are decided by (NOT seeded)
-  validation-baseline/   # committed baseline media, per engine and variant
   assets/                # sprites the model must use, SEEDED (omit if none)
 ```
+
+The baseline media captured from the reference implementations is committed to
+the `cold-storage` submodule under the same path, in
+`validation-baseline/<engine>/<variant>/` (see [where baselines
+live](/components/core/validation/#where-baselines-live)).
 
 A run receives the selected variant's seeded specs, the case's assets, and the
 workspace for the run's engine; an engine run also receives the vendored
@@ -135,8 +139,7 @@ and is never seeded into a run. See
 
 The reference implementations are what
 [`tcab capture-baselines`](/components/cli/overview/#commands) drives to
-produce the committed baseline media under
-`validation-baseline/<engine>/<variant>/`, what
+produce the committed baseline media in cold storage, what
 [`tcab publish-reference`](/components/cli/overview/#commands) deploys for the
 case page's Play tab, and what step 7 verifies the validators against.
 
@@ -215,8 +218,10 @@ Run each engine's suite against that engine's reference implementation with
 that fails there is a broken validator, not a failing build. Then confirm each
 validator discriminates by breaking the rule it covers in a scratch copy of the
 reference and confirming exactly the expected check fails. When the suites pass, run
-[`tcab capture-baselines`](/components/cli/overview/#commands) and commit the
-media it writes under `validation-baseline/<engine>/<variant>/`.
+[`tcab capture-baselines`](/components/cli/overview/#commands) with the
+`cold-storage` submodule checked out. Commit the media it writes there, push it
+to that repository's `master`, and commit the moved submodule pointer beside the
+case.
 
 ### 8. Write the non-seeded docs
 

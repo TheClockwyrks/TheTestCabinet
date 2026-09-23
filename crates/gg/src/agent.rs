@@ -157,10 +157,11 @@ use test_cabinet_core::gg::{
     CAPABILITY_SUBAGENTS, DEFAULT_SIGNAL_THRESHOLD_PERCENT, GG_WORKSPACE_SKILLS_DIR, GgAgentApi,
     GgAgentApiFunction, GgAgentConfig, GgAgentStatus, GgAgentTransitionKind, GgCallFailure,
     GgCapabilitySet, GgContextAction, GgContextSource, GgHookAgentKind, GgHookEvent,
-    GgIssueReviewPhase, GgLimitBreach, GgLimitKind, GgProgramLanguage, GgReviewer, GgRosterEntry,
-    GgRunLimits, GgSlotBinding, GgSubagentScope, GgTelemetryKind, GgUndocumentedCalls,
-    MAX_OPENING_TREE_DEPTH, PARAM_SIGNAL_THRESHOLD_PERCENT, PARAM_SKILLS_DIR, PARAM_TOP_FILE_VIEWS,
-    PARAM_WINDOW_LIMIT, PROJECT_MANAGEMENT_PARAM_MERGE_AGENT,
+    GgIssueReviewPhase, GgLimitBreach, GgLimitKind, GgProgramLanguage, GgProviderCandidate,
+    GgReasoning, GgReviewer, GgRosterEntry, GgRunLimits, GgSlotBinding, GgSubagentScope,
+    GgTelemetryKind, GgUndocumentedCalls, GgUsageFigure, MAX_OPENING_TREE_DEPTH,
+    PARAM_SIGNAL_THRESHOLD_PERCENT, PARAM_SKILLS_DIR, PARAM_TOP_FILE_VIEWS, PARAM_WINDOW_LIMIT,
+    PROJECT_MANAGEMENT_PARAM_MERGE_AGENT,
 };
 use test_cabinet_core::gg_session_journal::GG_SESSION_JOURNAL_PATH;
 use test_cabinet_core::gg_session_record::{
@@ -174,7 +175,9 @@ use crate::archive::ArchiveStore;
 use crate::board::{BoardCaps, BoardRuntime, IssuePolicy, IssueStatus};
 use crate::cancel::CancelWatch;
 use crate::capture::{GgRecorder, RecordedSeed, RecordingClient};
-use crate::client::{AgentIdentity, ClientFactory, DefaultClientFactory, RoutingKey, provider_for};
+use crate::client::{
+    AgentIdentity, ClientFactory, DefaultClientFactory, ProviderKind, RoutingKey, provider_for,
+};
 use crate::compaction::{
     self, CompactionRequest, CompactionSetup, CompactionVerdict, PendingCompaction, RestoredFile,
 };
@@ -193,14 +196,15 @@ use crate::git;
 use crate::hooks::{HookAgent, HookFailure, HookRuntime};
 use crate::limits::{
     AgentLimits, CeilingLatch, FatalFault, RunLimits, RunSpend, TurnErrorType, TurnOutcome,
-    declared_model_call_timeout, declared_retry_policy, resolve_run_limits,
+    declared_model_call_timeout, declared_model_stream_idle, declared_provider_cache_miss_limit,
+    declared_retry_policy, resolve_run_limits,
 };
 use crate::loopguard::LoopGuardConfig;
 use crate::memories::{MemoriesRuntime, MemoryRegistry, MemoryScope, MemoryStrategy};
 use crate::message_log::finish_reason_token;
 use crate::model::{
-    FinishReason, LoopAborts, Message, ModelClient, ModelError, ModelResponse, ToolCall,
-    ToolDefinition,
+    FinishReason, LoopAborts, Message, ModelClient, ModelError, ModelResponse, ReplySpend,
+    ToolCall, ToolDefinition,
 };
 use crate::modules::{
     CapabilityModules, HistorySetup, InheritedModules, Module, ModuleIdMint, ModuleIds, ModuleKind,
@@ -655,10 +659,13 @@ impl SlotAccounting {
 /// model id); its `slot` field carries the profile **id** so the resolved model is attributed to
 /// the right profile in telemetry — the display name is not unique, so keying attribution on it
 /// would fold two profiles that happen to share a name into one line of spend. Its
-/// [prompt-cache lifetime](GgAgentConfig::prompt_cache_ttl) and its
+/// [prompt-cache lifetime](GgAgentConfig::prompt_cache_ttl), its
+/// [reasoning setting](GgAgentConfig::reasoning) and its
 /// [loop-detection policy](GgAgentConfig::loop_detection) carry this profile's choices through to
-/// the client built for it — the second of which also decides that client's **transport**, since a
-/// detector can only watch a reply that arrives in pieces.
+/// the client built for it — the reasoning setting riding every request that client makes, turns
+/// and the compaction summaries written on the agent's own model alike, and the last of which also
+/// deciding that client's **transport**, since a detector can only watch a reply that arrives in
+/// pieces.
 ///
 /// Naming an [FSM shell](crate::fsm::is_shell) resolves the
 /// [entry state's](GgCapabilitySet::dispatched_agent) profile instead, model and per-agent levers
@@ -682,6 +689,7 @@ fn profile_binding(set: &GgCapabilitySet, profile: &str) -> Result<GgSlotBinding
         .ok_or_else(|| format!("the `{profile_id}` agent profile has no model bound"))?;
     Ok(GgSlotBinding::new(profile_id, model_id)
         .with_prompt_cache_ttl(agent.prompt_cache_ttl)
+        .with_reasoning(agent.reasoning)
         .with_loop_detection(agent.loop_detection))
 }
 
@@ -845,7 +853,10 @@ pub async fn run(invocation: &GgInvocation, emitter: &Emitter) -> SessionOutcome
         emitter,
         SessionSeams::live(
             declared_model_call_timeout(&invocation.capability_set.limits),
+            declared_model_stream_idle(&invocation.capability_set.limits),
             declared_retry_policy(&invocation.capability_set.limits),
+            invocation.model_providers.clone(),
+            declared_provider_cache_miss_limit(&invocation.capability_set.limits),
         ),
     )
     .await
@@ -891,15 +902,25 @@ impl SessionSeams {
     /// `model_call_timeout` is the run's [per-call model ceiling](declared_model_call_timeout),
     /// read from the declared limits rather than from the resolved ones because the factory is
     /// built before there is an agent to resolve them for. Resolution is pure, so the two
-    /// readings cannot disagree. `retry_policy` is the same reading of the retry schedule
+    /// readings cannot disagree. `model_stream_idle` is the same reading of the
+    /// [stream-idle bound](declared_model_stream_idle), and `retry_policy` of the retry schedule
     /// ([`declared_retry_policy`]).
-    pub fn live(model_call_timeout: Duration, retry_policy: crate::client::RetryPolicy) -> Self {
+    pub fn live(
+        model_call_timeout: Duration,
+        model_stream_idle: Duration,
+        retry_policy: crate::client::RetryPolicy,
+        model_providers: BTreeMap<String, Vec<GgProviderCandidate>>,
+        cache_miss_limit: u64,
+    ) -> Self {
         let routing_key = RoutingKey::mint();
         Self {
             factory: Arc::new(DefaultClientFactory::new(
                 routing_key.clone(),
                 model_call_timeout,
+                model_stream_idle,
                 retry_policy,
+                model_providers,
+                cache_miss_limit,
             )),
             shell: real_shell(),
             routing_key,
@@ -966,6 +987,7 @@ pub(crate) async fn run_with_seams(
     // this run rather than offering every surface gg has.
     root_emitter.emit(GgTelemetryKind::SessionStarted {
         capability_set: Box::new(set.clone()),
+        model_providers: invocation.model_providers.clone(),
         routing_key: Some(seams.routing_key.to_string()),
     });
 
@@ -1018,6 +1040,13 @@ pub(crate) async fn run_with_seams(
     // has no fallback to guess one with, by design, so this is a hard launch failure rather
     // than a run with silently mis-scaled context accounting.
     if let Err(err) = validate_model_windows(set, &invocation.model_windows) {
+        root_emitter.emit(log("error", err));
+        root_emitter.emit(session_ended("error"));
+        return SessionOutcome::HarnessError;
+    }
+    // Launch check 3b: every bound model must name the one provider its requests are pinned to,
+    // reported together like the windows.
+    if let Err(err) = validate_model_providers(set, &invocation.model_providers) {
         root_emitter.emit(log("error", err));
         root_emitter.emit(session_ended("error"));
         return SessionOutcome::HarnessError;
@@ -1492,6 +1521,7 @@ fn record_session_seed(orch: &Orchestrator, invocation: &GgInvocation) {
         // which is the honest answer rather than one committed for the record's sake.
         baseline_commit: orch.baseline_commit.as_deref(),
         model_windows: captured_model_windows(orch, invocation),
+        model_providers: invocation.model_providers.clone(),
         model_modalities: captured_model_modalities(orch, invocation),
     });
 }
@@ -3963,9 +3993,13 @@ async fn drive_agent(
             );
         }
         // A handoff strategy condenses on a **second** model, resolved through the same factory
-        // every agent's own model is. This binding keeps the standard prompt-cache lifetime whatever
-        // the agent chose: a handoff is a one-shot summary request, so an extended entry would be
-        // paid for and never read.
+        // every agent's own model is. This binding keeps the standard prompt-cache lifetime, the
+        // disarmed loop detector and the provider's default reasoning whatever the agent chose: a
+        // handoff is a one-shot summary request, so an extended entry would be paid for and never
+        // read, and a reply abandoned mid-summary is a whole compaction lost to a retry. The
+        // agent's [reasoning setting](GgAgentConfig::reasoning) is tuned to the agent's own model
+        // — a token budget one provider accepts is one another refuses — so it rides the summaries
+        // that run on that model and not the ones a second model writes.
         //
         // A named model that will not resolve **ends the run**. gg used to warn and leave
         // `handoff_client` unset, after which `CompactionSetup::client` handed back the agent's own
@@ -6308,9 +6342,8 @@ struct LoopEnd {
     handoff: Option<Handoff>,
     /// Whether this agent ended because the **provider** failed its model call: the client's
     /// [retry schedule](crate::client::RetryPolicy) spent, or a fatal status on the first attempt.
-    /// Always under [`STATUS_MODEL_ERROR`], which a reply loop detection discarded on every attempt
-    /// also ends under; that one is the model's failure and leaves this `false`. The root's is
-    /// what makes a session exit `1` rather than be scored.
+    /// Always under [`STATUS_MODEL_ERROR`], which a model that cannot accept the run's images also
+    /// ends under and leaves this `false`. The root's is what makes a session exit `1` rather than be scored.
     provider_failure: bool,
 }
 
@@ -7071,7 +7104,20 @@ impl Agent {
                             return hook_failed(self, emitter, &limits, failure, turn);
                         }
                         let (request, fallback) =
-                            compaction::condense_out_of_band(context, client, &compaction).await;
+                            match compaction::condense_out_of_band(context, client, &compaction)
+                                .await
+                            {
+                                Ok(condensed) => condensed,
+                                // A reply from another provider on the summarizer's call is the same
+                                // harness failure it is on a turn. Raised on the run's latch, which
+                                // stops the tree at the next turn boundary; the thread is compacted
+                                // from the fixed note so it is whole until then.
+                                Err(err) => {
+                                    emitter.emit(log("error", format!("compaction failed: {err}")));
+                                    limits.fault.in_agent(&self.id, &self.profile_id, &err);
+                                    (compaction::fallback_request(), true)
+                                }
+                            };
                         let files = restore_compact_files(&request.files, tool_ctx, emitter).await;
                         // Read *before* the rewrite too, for the reason the files are: the keys are
                         // in the window `clear_ephemeral` is about to empty.
@@ -7191,24 +7237,31 @@ impl Agent {
             // The same boundary on the turn's phase accounting: everything before this was
             // assembling the request, everything after handling what it returned.
             turn_timer.model_call_started();
-            // The model call, retried **within this turn** for the two failures the loop recovers
+            // The model call, retried **within this turn** for the four failures the loop recovers
             // from rather than dying on:
             //
-            // - a call that hit the run's [per-call ceiling](crate::limits::RunLimits::model_call_timeout)
-            //   — a stalled provider;
+            // - a call that hit the run's
+            //   [per-call ceiling](crate::limits::RunLimits::model_call_timeout) — a stalled
+            //   provider;
             // - a reply that hit the **provider's output cap** (`finish_reason: length`), which is
-            //   presumed a degenerate generation and rejected whole.
+            //   presumed a degenerate generation and rejected whole;
+            // - a reply gg **could not read** (`ModelError::Parse`) — an unreadable stream, or
+            //   tool call arguments the provider cut off mid-JSON;
+            // - a reply that [looped](crate::loopguard) on every attempt the client made
+            //   (`ModelError::ResponseLoop`).
             //
-            // Both are recorded as error turns first — they spend the consecutive-error count and
-            // the error-rate window exactly as a failed model call does, which is what bounds a
+            // All four are recorded as error turns first — they spend the consecutive-error count
+            // and the error-rate window exactly as a failed model call does, which is what bounds a
             // model (or an endpoint) that keeps doing it — and then the same request is simply
             // asked again: nothing entered the context, so the retry is byte-identical and the
-            // turn keeps its number. A rejected attempt is therefore absent from the run's turn
-            // count and its usage absent from the run's tokens and cost (the `ResponseRejected`
-            // event and the summary's rejected rollup carry the spend instead); only the error
-            // ceilings — and the run-wide deadline and an operator's kill, both re-checked
-            // between attempts because a retry chain can outlast a turn boundary — decide when to
-            // stop asking.
+            // turn keeps its number. An attempt that produced no usable reply is therefore absent
+            // from the run's turn count (the `ResponseRejected` event and the summary's rejected
+            // rollup carry a rejection's spend besides), while any usage the provider reported
+            // before giving up on the reply is counted into the run's **total** cost through a
+            // `Usage` delta marked `total` — never its work cost, since no work was done with it.
+            // Only the error ceilings — and the run-wide deadline and an operator's kill, both
+            // re-checked between attempts because a retry chain can outlast a turn boundary —
+            // decide when to stop asking.
             let response = loop {
                 let attempt_started = Instant::now();
                 let recoverable = match complete_with_vision_recovery(
@@ -7224,9 +7277,11 @@ impl Agent {
                     // A length-capped reply is rejected whole, before anything reads it: it never
                     // becomes the assistant turn, so the next attempt's context does not carry it.
                     // Recorded twice, deliberately — the `ResponseRejected` event (and its summary
-                    // rollup) carries the spend the run's own metrics exclude, and the message log
+                    // rollup) keeps it answerable as a rejection, and the message log
                     // keeps the rejected exchange itself so a degenerate reply is inspectable
-                    // rather than merely counted.
+                    // rather than merely counted. Its spend follows the same double rule: the
+                    // `Usage` delta the shared tail below emits marks it `total`, so the price is
+                    // in the run's total cost and out of its work cost.
                     Ok(response) if response.finish_reason == FinishReason::Length => {
                         let size = ResponseSize::of(&response);
                         emitter.emit(GgTelemetryKind::ResponseRejected {
@@ -7251,7 +7306,11 @@ impl Agent {
                         );
                         // What loop detection discarded on the way to this reply rides on the
                         // rejection's own error turn — the reply it preceded is not becoming one.
-                        (TurnErrorType::ModelLengthCapped, response.loop_aborts)
+                        (
+                            TurnErrorType::ModelLengthCapped,
+                            response.loop_aborts,
+                            Some(ReplySpend::of(&response)),
+                        )
                     }
                     Ok(response) => break response,
                     // A timed-out call: the client surfaced it without spending its own retry
@@ -7259,22 +7318,49 @@ impl Agent {
                     // bounded retry is this one.
                     Err(err @ ModelError::Timeout { .. }) => {
                         emitter.emit(log("error", model_call_retried(turn, &err)));
-                        (TurnErrorType::ModelTimeout, LoopAborts::none())
+                        (TurnErrorType::ModelTimeout, LoopAborts::none(), None)
+                    }
+                    // A reply gg could not read: the envelope unparseable, an error object in a
+                    // `2xx`, or tool call arguments that are not JSON, which is what a provider
+                    // that cuts the arguments off produces. Answered as a `model_parse` error turn: nothing was pushed (there was nothing to
+                    // push), the ceilings spend, and the same request goes out again. A reply
+                    // that was no tool call at all never arrives here — it parses, and the loop
+                    // files it under its `missing_completion` types — so this arm's meaning stays
+                    // "a reply existed and gg could not read it". Any usage the provider reported
+                    // before the reply stopped making sense is the run's spend and rides out to
+                    // the total cost; it bought no work, so it never enters the work cost.
+                    Err(err @ ModelError::Parse { .. }) => {
+                        emitter.emit(log("error", model_call_retried(turn, &err)));
+                        // Take what the provider billed before the reply stopped making sense —
+                        // the arm's guard above is what makes this destructure total, and the
+                        // spend was boxed precisely so this arm is the one that pays for it.
+                        let ModelError::Parse { spend, .. } = err else {
+                            unreachable!("the match arm's pattern is `Parse`")
+                        };
+                        (
+                            TurnErrorType::ModelParse,
+                            LoopAborts::none(),
+                            spend.map(|spend| *spend),
+                        )
+                    }
+                    // A reply that looped on every attempt the client made: each discarded reply
+                    // never entered the context, so the retry is byte-identical, and the error
+                    // ceilings — not the first loop — are what bound a model that keeps doing it.
+                    // The discarded replies' size rides the error turn the shared tail below
+                    // records; their spend cannot, because a stream gg dropped never delivered
+                    // its usage payload.
+                    Err(err @ ModelError::ResponseLoop { discarded, .. }) => {
+                        emitter.emit(log("error", model_call_retried(turn, &err)));
+                        (TurnErrorType::ModelResponseLoop, discarded, None)
                     }
                     Err(err) => {
                         // Surface the failure loudly — a `Log(error)` and a failed
                         // session end — rather than discarding the run silently. A
                         // retry-exhausted transient failure and a fatal one both end the
                         // session here; the client has already exhausted its own retries, so
-                        // there is nothing left to retry at the turn level in Phase 0.
-                        //
-                        // A [generation loop](crate::loopguard) that survived every attempt is one of
-                        // those retry-exhausted failures and ends the session on exactly the same terms
-                        // — but it is named separately, because "retries exhausted" would send an
-                        // operator looking at the provider for an outage that never happened. What
-                        // actually happened is that the model kept writing the same thing and gg kept
-                        // throwing it away.
-                        //
+                        // there is nothing left to retry at the turn level in Phase 0. What
+                        // *could* be answered as an error turn — a timeout, an unreadable reply
+                        // and a reply that looped every attempt — was, in the three arms above.
                         // The classification is made ONCE, as the value that is recorded, and the log
                         // line's phrase is read back off it, so no aggregate can disagree with what the
                         // line says.
@@ -7289,6 +7375,14 @@ impl Agent {
                                 // failing at its work, so it ends the session under its own status —
                                 // which the session runner turns into a launch failure.
                                 STATUS_AUTH_ERROR
+                            } else if matches!(err, ModelError::ProviderMismatch { .. }) {
+                                // A reply from a provider other than the pin is gg's to refuse: the
+                                // cost recorded from it on would be on a different basis, so the run
+                                // ends as a harness failure rather than a score against the model.
+                                // Raised on the run's latch too, so a mismatch in any agent — not
+                                // only the root — stops the whole tree.
+                                limits.fault.in_agent(&self.id, &self.profile_id, &err);
+                                STATUS_INTERNAL_ERROR
                             } else {
                                 STATUS_MODEL_ERROR
                             },
@@ -7347,12 +7441,11 @@ impl Agent {
                             emitter,
                             &limits,
                             TurnOutcome::Error(error_type),
-                            // A turn that never got a reply at all still says what it threw away
-                            // trying: every attempt looped, so the error carries the whole tally.
-                            match &err {
-                                ModelError::ResponseLoop { discarded, .. } => *discarded,
-                                _ => LoopAborts::none(),
-                            },
+                            // Nothing here throws replies away any more: the one error that could
+                            // carry a whole tally (a spent loop retry) is answered as an error
+                            // turn above, and every failure that still ends the session is a
+                            // refusal or an exhausted schedule, none of which ever read a reply.
+                            LoopAborts::none(),
                             ResponseSize::none(),
                         );
                         return LoopEnd {
@@ -7370,8 +7463,7 @@ impl Agent {
                             ending: None,
                             limit: None,
                             // The provider's failure, not the model's: the client spent its whole
-                            // schedule, or the provider refused the request outright. A reply loop
-                            // detection discarded on every attempt is the model's, and stays out.
+                            // schedule, or the provider refused the request outright.
                             provider_failure: status.as_str() == STATUS_MODEL_ERROR
                                 && matches!(
                                     err,
@@ -7385,7 +7477,27 @@ impl Agent {
                 // The shared recoverable tail: the attempt is an error turn — counted against the
                 // ceilings on exactly the terms a failed model call is — and if no ceiling (nor
                 // the run's clock, nor an operator) says stop, the same request goes out again.
-                let (error_type, aborts) = recoverable;
+                let (error_type, aborts, billed) = recoverable;
+                // What a rejected or unreadable attempt still billed for, counted before the turn
+                // is recorded so every ending below reads totals that include it. The attempt
+                // produced no program and no tool call gg ran, so its delta is marked `total`:
+                // the spend reaches the run's **total** cost — the figure the closing summary
+                // prints and the cost ceiling reads — and stays out of the work cost. A timeout
+                // and a spent loop retry pass `None`: a stalled provider and a stream gg dropped
+                // never delivered a usage payload to count.
+                if let Some(billed) = billed {
+                    let (tokens, cost) = (billed.tokens, billed.cost);
+                    record_usage_delta(
+                        billed,
+                        &self.profile_id,
+                        client.model_id(),
+                        GgUsageFigure::Total,
+                        emitter,
+                    );
+                    total_tokens = add_counts(total_tokens, tokens);
+                    total_cost = add_cost(total_cost, cost);
+                    limits.spend.add(cost);
+                }
                 if let Some(breach) = self.record_turn(
                     &mut agent_limits,
                     emitter,
@@ -7471,12 +7583,22 @@ impl Agent {
                 ));
             }
 
-            record_usage(&response, emitter, &self.profile_id, client.model_id());
+            // The delta names the figure this turn's spend fed; see [`usage_figure`].
+            let figure = usage_figure(&response, code.enabled, pending_compaction);
+            record_usage_delta(
+                ReplySpend::of(&response),
+                &self.profile_id,
+                client.model_id(),
+                figure,
+                emitter,
+            );
             total_tokens = add_counts(total_tokens, response.usage);
             total_cost = add_cost(total_cost, response.cost);
             // The same figure, folded into the run-wide total every agent's cost ceiling reads. Fed
             // here rather than at the agent's end, because a subagent forty turns deep must
-            // contribute to the run's spend while it is still running.
+            // contribute to the run's spend while it is still running. The ceiling reads the
+            // run's **total** — every request, the rejected and unreadable ones the shared tail
+            // above counted included — never only its work.
             limits.spend.add(response.cost);
 
             // The assistant turn is recorded exactly as the model sent it, in **both** modes: its
@@ -9138,10 +9260,11 @@ fn model_call_failed(
     format!("model turn {turn} failed — {}: {err}", error_type.phrase())
 }
 
-/// The operator's `error` line for a **timed-out model call** — the recoverable failure the loop
-/// answers by recording an error turn and asking again, unlike [`model_call_failed`]'s, which end
-/// the session. That the turn is retried, and the ceilings that bound how often, are gg's handling
-/// of the failure rather than the failure, so the line reports the symptom and stops there.
+/// The operator's `error` line for a **recoverable model failure** — a timed-out call, a reply gg
+/// could not read, a reply that looped every attempt — the failures the loop answers by recording
+/// an error turn and asking again, unlike [`model_call_failed`]'s, which end the session. That the
+/// turn is retried, and the ceilings that bound how often, are gg's handling of the failure rather
+/// than the failure, so the line reports the symptom and stops there.
 fn model_call_retried(turn: usize, err: &ModelError) -> String {
     format!(
         "model turn {turn} — {}: {err}",
@@ -9218,6 +9341,10 @@ fn recorded_limits(limits: &RunLimits, max_parallel: usize) -> GgRunLimits {
         max_turns: limits.max_turns.map(|turns| turns as u64),
         max_runtime_secs: limits.max_runtime.map(|budget| budget.as_secs()),
         model_call_timeout_secs: Some(limits.model_call_timeout.as_secs()),
+        // The idle bound a stalled stream is cancelled on, recorded on the same terms as the
+        // model-call ceiling beside it: both are always in force, and an absent one resolves to
+        // the default rather than to "off", so the figure recorded is the one the run ran under.
+        model_stream_idle_secs: Some(limits.model_stream_idle.as_secs()),
         // The retries after the first attempt the schedule allowed: the resolved figure, which
         // for a set that wrote nothing is the default — recorded on the same terms as the
         // model-call ceiling, which is always in force too.
@@ -9229,6 +9356,7 @@ fn recorded_limits(limits: &RunLimits, max_parallel: usize) -> GgRunLimits {
         max_error_rate: limits.error_rate.map(|rate| rate.max_rate),
         error_rate_window: limits.error_rate.map(|rate| rate.window as u64),
         max_cost: limits.max_cost,
+        provider_cache_miss_limit: Some(limits.provider_cache_miss_limit),
         // Recorded on the same terms as the error ceilings: the capture ceiling in force is a fact
         // about the run, and a truncated record is far easier to read beside the number that
         // truncated it.
@@ -10581,15 +10709,61 @@ pub(crate) fn window_ceiling_notes(
 /// The [window override](window_limit) is read here for its figure alone — an enabled one writing
 /// none, or `0`, refuses the launch. Whether the figure is above the model's window is not a
 /// launch question: the override is a ceiling, and [`resolve_window_limit`] clamps it to the model's
-/// own once the run's windows are in hand.
+/// own once the run's windows are in hand. The [reasoning setting](check_reasoning) is read here
+/// for the same reason: it is a whole lever of its own, and gg sends it exactly as written or not
+/// at all.
 pub(crate) fn check_launch(profile: &GgAgentConfig, report: &mut crate::validate::LaunchReport) {
     resolve_top_file_views(profile, report);
     resolve_signal_threshold(profile, report);
     AutoloadSetup::resolve(profile, report);
     check_allowlists(profile, report);
     check_opening_turn(profile, report);
+    check_reasoning(profile.reasoning.as_ref(), report);
     // The figure itself is not wanted here, only the refusal an unhonourable one reports.
     let _ = window_limit(profile, report);
+}
+
+/// A [reasoning setting](GgReasoning) that could not be sent as written — one naming both of its
+/// values, naming neither, or naming a budget of zero.
+///
+/// The setting is sent as one key of the unified `reasoning` request object, so a declaration has
+/// to say which: gg substitutes nothing between the two halves of a contradictory declaration, and
+/// a run that quietly picked one would record a setting its operator never chose. A zero budget is
+/// refused on the same terms as [`GgRunLimits`] refuses a zero
+/// ceiling — it names no tokens a reply could think in — and the demand it approximates has a
+/// spelling of its own, the `none` effort.
+fn check_reasoning(reasoning: Option<&GgReasoning>, report: &mut crate::validate::LaunchReport) {
+    let Some(reasoning) = reasoning else {
+        return;
+    };
+    match (reasoning.effort, reasoning.max_tokens) {
+        (Some(_), Some(_)) => report.report(
+            crate::validate::LaunchDefect::run_level(
+                "reasoning",
+                "effort + maxTokens",
+                "a reasoning setting names one thing — an effort level or a token budget — and \
+                 this one names both. Name the one this agent's model should be held to.",
+            )
+            .known(["effort", "maxTokens"]),
+        ),
+        (None, None) => report.report(
+            crate::validate::LaunchDefect::run_level(
+                "reasoning",
+                "",
+                "this reasoning setting names neither an effort level nor a token budget, so \
+                 there is nothing to send. Name one of the two, or leave the setting out to run \
+                 the model at its provider's default.",
+            )
+            .known(["effort", "maxTokens"]),
+        ),
+        (None, Some(0)) => report.report(crate::validate::LaunchDefect::run_level(
+            "reasoning.maxTokens",
+            "0",
+            "a budget of zero names no reasoning tokens a reply could think in. Name a count of \
+             one or more, or the `none` effort to turn reasoning off.",
+        )),
+        (Some(_), None) | (None, Some(_)) => {}
+    }
 }
 
 /// The run-wide half of this module's [launch pass](crate::validate::validate_launch)
@@ -10767,6 +10941,40 @@ fn validate_model_windows(
     Err(format!(
         "the invocation carries no context window for the model(s) {}: re-launch once the model \
          catalog knows them",
+        missing
+            .iter()
+            .map(|id| format!("`{id}`"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    ))
+}
+
+/// Check that every model `set` binds carries a [usable](GgProviderCandidate::usable_list)
+/// candidate list, reporting every model without one together.
+///
+/// A model the [mock client](crate::client::ProviderKind::Mock) answers is exempt: it sends no
+/// request, so there is no provider to name.
+fn validate_model_providers(
+    set: &GgCapabilitySet,
+    providers: &BTreeMap<String, Vec<GgProviderCandidate>>,
+) -> Result<(), String> {
+    let missing: Vec<&str> = set
+        .bound_model_ids()
+        .into_iter()
+        .filter(|id| provider_for(&GgSlotBinding::new("", *id)) != ProviderKind::Mock)
+        .filter(|id| {
+            !providers
+                .get(*id)
+                .is_some_and(|candidates| GgProviderCandidate::usable_list(candidates))
+        })
+        .collect();
+    if missing.is_empty() {
+        return Ok(());
+    }
+    Err(format!(
+        "the invocation carries no usable provider candidate list for the model(s) {}: every \
+         bound model needs a `modelProviders` entry listing at least one candidate, each naming \
+         a provider and a quantization",
         missing
             .iter()
             .map(|id| format!("`{id}`"))
@@ -12410,25 +12618,78 @@ const IMAGE_STRIPPED_NOTE: &str = "[The image could not be shown: the model runn
      does not accept image input. Reading it again will not help — work from the written \
      specification instead.]";
 
-/// Emit a [`Usage`](GgTelemetryKind::Usage) event for a turn when it reported any
-/// tokens or cost, attributed to the `slot` (agent profile) and `model_id` that spent it.
+/// Which of the run's two cost figures a reply's spend feeds: [`Work`](GgUsageFigure::Work) when
+/// the reply produced a program or a tool call gg runs, [`Total`](GgUsageFigure::Total) otherwise.
+///
+/// Decided off the reply before anything is dispatched, by the same rules dispatch applies:
+///
+/// - under responses as code, a `submit_program` call carrying a `program` string is a program;
+///   a call to any other tool is refused, and a `submit_program` call without one runs nothing;
+/// - under tool calling, a pending self-summarization takes the reply as the summary and
+///   dispatches none of its calls, and any other pending compaction refuses every call it does
+///   not [admit](PendingCompaction::admits).
+fn usage_figure(
+    response: &ModelResponse,
+    code_enabled: bool,
+    pending_compaction: Option<PendingCompaction>,
+) -> GgUsageFigure {
+    let works = if code_enabled {
+        response.tool_calls.iter().any(|call| {
+            call.name == completion::SUBMIT_PROGRAM_TOOL
+                && code::submitted_program(call).program.is_ok()
+        })
+    } else {
+        match pending_compaction {
+            Some(pending) => response
+                .tool_calls
+                .iter()
+                .any(|call| pending.admits(&call.name)),
+            None => !response.tool_calls.is_empty(),
+        }
+    };
+    if works {
+        GgUsageFigure::Work
+    } else {
+        GgUsageFigure::Total
+    }
+}
+
+/// Emit a [`Usage`](GgTelemetryKind::Usage) delta for a model request when it reported any tokens
+/// or cost, attributed to the `slot` (agent profile) and `model_id` that spent it and naming the
+/// [figure](GgUsageFigure) its turn fed, which [`usage_figure`] decides for a usable reply and is
+/// always [`Total`](GgUsageFigure::Total) for one that was rejected or could not be read.
 ///
 /// The attribution is what makes a *live* multi-model run readable: a bare delta can only be
 /// summed into one figure, so a console watching a run that spans several models could show the
 /// money going out but not where — the per-model split had to wait for the end-of-agent
 /// [`SlotUsage`](GgTelemetryKind::SlotUsage) rollups. Stamping each delta with its own
 /// `(slot, model)` makes every consumer's breakdown derivable from the first turn on, and summing
-/// the deltas of one key reproduces that key's rollup exactly.
-fn record_usage(response: &ModelResponse, emitter: &Emitter, profile_id: &str, model_id: &str) {
-    if response.usage == TokenCounts::default() && response.cost.is_none() {
+/// the deltas of one key reproduces that key's rollup exactly — the figure mark included, since
+/// the [summary](crate::summary) folds the work figure from these same marks.
+fn record_usage_delta(
+    spend: ReplySpend,
+    profile_id: &str,
+    model_id: &str,
+    figure: GgUsageFigure,
+    emitter: &Emitter,
+) {
+    if spend.tokens == TokenCounts::default() && spend.cost.is_none() {
         return;
     }
     emitter.emit(GgTelemetryKind::Usage {
         profile_id: profile_id.to_string(),
         model_id: model_id.to_string(),
-        tokens: response.usage,
-        cost: response.cost,
-        provider: response.provider.clone(),
+        tokens: spend.tokens,
+        cost: spend.cost,
+        figure: Some(figure),
+        provider: spend.provider,
+        // The provider's own object, verbatim, beside the counts mapped off it, and the mark
+        // saying when the output/reasoning split is the [bound](ModelResponse::usage_reconciled)
+        // rather than what the provider reported. Both ride through unchanged: what gg mapped and
+        // what gg corrected are exactly the two things a reader of this row checks against the
+        // original.
+        wire: spend.wire,
+        reconciled: spend.reconciled,
     });
 }
 

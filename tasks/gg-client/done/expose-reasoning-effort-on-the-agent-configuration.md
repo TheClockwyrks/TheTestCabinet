@@ -42,10 +42,10 @@ parameter from the `driving-gg-directly` skill.
 
 ## Done when
 
-- [ ] `GgAgentConfig` carries an optional `reasoning` setting and the console
+- [x] `GgAgentConfig` carries an optional `reasoning` setting and the console
       form offers it.
-- [ ] Every request of a configured agent carries the object; an agent without
+- [x] Every request of a configured agent carries the object; an agent without
       the setting sends none.
-- [ ] `session_started` records the setting.
-- [ ] The configurations page describes it.
-- [ ] Gates green.
+- [x] `session_started` records the setting.
+- [x] The configurations page describes it.
+- [x] Gates green.

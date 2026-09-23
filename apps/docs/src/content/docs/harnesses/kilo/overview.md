@@ -4,8 +4,8 @@ title: Overview
 
 Kilo Code (slug `kilo`) is a command-line coding agent driven non-interactively
 through its `kilo run` subcommand. It reaches its model through OpenRouter, so a
-Kilo Code run reports OpenRouter-style model IDs and is priced from OpenRouter's
-listed rates. The harness itself is documented at [kilo.ai](https://kilo.ai/).
+Kilo Code run reports OpenRouter-style model IDs and is priced from the model's
+list price. The harness itself is documented at [kilo.ai](https://kilo.ai/).
 
 ## Model IDs
 
@@ -43,7 +43,7 @@ same name. See [Authentication](/harnesses/kilo/authentication/).
 
 ## Pricing
 
-The comparable-cost lookup strips the leading `openrouter/` before consulting
-OpenRouter, so `openrouter/anthropic/claude-opus-4.8` is priced as
-`anthropic/claude-opus-4.8`. The comparable cost is always OpenRouter-derived.
-See [Metrics](/harnesses/kilo/metrics/).
+The leading `openrouter/` is stripped before the catalog lookup, so
+`openrouter/anthropic/claude-opus-4.8` is priced as `anthropic/claude-opus-4.8`.
+The comparable cost is computed from the model's curated list price. See
+[Metrics](/harnesses/kilo/metrics/).

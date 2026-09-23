@@ -15,8 +15,8 @@ when it is set, which is how Goose is given a key of its own while the other
 OpenRouter harnesses share `OPENROUTER_API_KEY`.
 
 Billing is charged against the OpenRouter account backing the key, and the run's
-cost is derived from OpenRouter pricing applied to the tokens Goose reports. See
-[Metrics](/harnesses/goose/metrics/).
+comparable cost is computed from the model's list price applied to the tokens
+Goose reports. See [Metrics](/harnesses/goose/metrics/).
 
 The key is supplied only as a container environment secret.
 

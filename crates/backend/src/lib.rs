@@ -291,7 +291,7 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         // their `migrated = false` row and it is retried next startup; never blocks.
         tracing::warn!(error = %err, "skipping legacy coverage-plan backfill");
     }
-    if let Err(err) = crate::bootstrap::normalize_free_runs(&db, &prices).await {
+    if let Err(err) = crate::bootstrap::normalize_free_runs(&db).await {
         // Never block startup on this best-effort normalization.
         tracing::warn!(error = %err, "skipping :free run normalization");
     }

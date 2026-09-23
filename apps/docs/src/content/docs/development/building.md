@@ -12,6 +12,63 @@ run-container image, credentials) is covered by
 [First Time Setup](/guides/setup/first-time-setup/). Running the services on your
 own machine is covered by [Running](/development/running/).
 
+## Cloning
+
+The repository lives on Azure Repos and is mirrored to GitHub, and a clone from
+either host works the same way. Each submodule is a separate repository, such as
+[`cold-storage`](#cold-storage).
+
+A plain clone downloads the superproject alone and leaves each submodule
+directory empty. It builds and passes every gate, because nothing in the build,
+the tests, or CI reads a submodule's contents. Fetch a submodule into it later
+when a task needs one:
+
+```sh
+git clone <superproject-url>
+git submodule update --init --depth 1 cold-storage
+```
+
+A recursive clone also downloads every submodule at the commit the superproject
+pins, which for `cold-storage` is about 2 GB of media. `--shallow-submodules`
+fetches only each pinned commit rather than the submodule's history:
+
+```sh
+git clone --recurse-submodules --shallow-submodules <superproject-url>
+```
+
+### Submodule URLs
+
+`.gitmodules` names every submodule by a URL relative to the superproject, such
+as `../cold-storage`. Git resolves it against the remote the superproject was
+cloned from. On Azure that is the sibling repository in the
+`genyume/the-test-cabinet` project, and on GitHub it is `TheClockwyrks/<name>`.
+A submodule repository therefore has the same name on both hosts, while the
+superproject's name may differ.
+
+### Mirrors and pins
+
+Each submodule repository carries its own Azure pipeline,
+`.azure-pipelines/mirror.yml`, whose one job force-pushes `master` to the GitHub
+repository of the same name. That job is the only writer of the mirror.
+
+A submodule commit may be pinned once it is on that submodule's `master`. Push
+the submodule commit to `master` first, then commit the moved pointer here.
+`scripts/ci/submodule-pins.sh` gates every superproject commit on this: it fails
+when a pinned commit is not an ancestor of the submodule's `master` on the host
+the superproject was cloned from. A superproject commit that reaches the GitHub
+mirror therefore names only submodule commits the mirror already holds. The gate
+fetches commits without trees or blobs, so it finishes in seconds, and
+`scripts/ci/submodule-pins.test.sh` is its offline table test.
+
+### Submodules in CI
+
+A pipeline job that sets `submodules: true` on its checkout fetches each
+submodule over HTTPS with the job's access token, because the URL is relative.
+The project scopes that token to the repositories a pipeline references, so the
+job names each submodule repository in a `uses:` statement. Jobs that read no
+submodule leave `submodules` off. The pin gate is one of them: it reads the
+token from `SYSTEM_ACCESSTOKEN` and still references the submodule repositories.
+
 ## Layout
 
 The repository is both a Cargo workspace (Rust) and an npm workspace
@@ -121,6 +178,16 @@ under `[workspace.dependencies]` and inherited with `{ workspace = true }`.
 - `apps/web`: `@clockwyrks/web`. The browser
   [web console](/components/web/overview/) that enqueues runs at the backend.
 - `apps/docs`: `@clockwyrks/docs`. This Astro Starlight documentation site.
+
+### Cold storage
+
+`cold-storage/` at the root is a git submodule holding the captured baseline
+validation media, the bulk of the repository's bytes. Its tree mirrors this
+one's, so a test-case version's baselines live at
+`cold-storage/test-cases/<type>/<difficulty>/<slug>/<version>/validation-baseline/<engine>/<variant>/`
+(see [where baselines live](/components/core/validation/#where-baselines-live)).
+Fetch it only to capture or review baselines, or to ingest a catalog that serves
+them.
 
 ### Reference implementations
 

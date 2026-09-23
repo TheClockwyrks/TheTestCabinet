@@ -39,33 +39,35 @@ another provider.
 ### The invocation
 
 `GgInvocation` gains `modelProviders`, keyed by model id like `modelWindows`,
-naming the one OpenRouter provider slug the model's requests go to. It is
+naming the one OpenRouter provider the model's requests go to, spelled as the
+endpoints listing spells its `provider_name`. It is
 required on the same terms as `modelWindows`: a bound model with no provider
 refuses the launch, and validation reports every missing one together.
 
 ### The request
 
 Every request carries OpenRouter's `provider` object with `only` naming the
-pinned slug and `allow_fallbacks` false. The sticky key stays, since it still
+pinned provider and `allow_fallbacks` false. The sticky key stays, since it still
 keeps a run on one endpoint within the provider. With fallbacks refused a
 provider's outage reaches gg as the error it is, so this issue depends on
-[`ride-out-a-provider-outage-with-configurable-retries.md`](done/ride-out-a-provider-outage-with-configurable-retries.md).
+[`ride-out-a-provider-outage-with-configurable-retries.md`](ride-out-a-provider-outage-with-configurable-retries.md).
 
 Every response names the provider that served it, which `usage` already
 records. A response from any other provider ends the run as a harness failure,
-`provider_mismatch`, because the cost recorded from that point would be on a
-different basis. The event names the pinned and the served providers.
+`provider_mismatch` (the turn's error type is `model_provider_mismatch`),
+because the cost recorded from that point would be on a different basis. The
+event names the pinned and the served providers.
 
 ### Resolution at enqueue
 
 The backend resolves the provider with the window. The catalog entry for a
-model carries its provider slug, seeded from the endpoints listing by taking
+model carries its provider pin, seeded from the endpoints listing by taking
 the endpoint whose provider is the model's developer, and set by hand where the
 listing's naming does not match the author segment of the model id. A model
 with no official endpoint refuses the enqueue with the reason, and the console
 shows it on the model rather than on a failed run.
 
-`session_started` records the pin beside the session id.
+`session_started` records the pin.
 
 ### Direct invocations
 
@@ -84,11 +86,11 @@ the policy on the quickstart.
 
 ## Done when
 
-- [ ] A launch with a bound model missing from `modelProviders` is refused.
-- [ ] Every request carries the pinned provider with fallbacks refused.
-- [ ] A response from another provider ends the run as `provider_mismatch`.
-- [ ] The backend resolves and stamps the provider at enqueue and refuses a
+- [x] A launch with a bound model missing from `modelProviders` is refused.
+- [x] Every request carries the pinned provider with fallbacks refused.
+- [x] A response from another provider ends the run as `provider_mismatch`.
+- [x] The backend resolves and stamps the provider at enqueue and refuses a
       model without an official endpoint.
-- [ ] The skill's script and templates carry the field.
-- [ ] The pages above describe the pin and the policy.
-- [ ] Gates green.
+- [x] The skill's script and templates carry the field.
+- [x] The pages above describe the pin and the policy.
+- [x] Gates green.

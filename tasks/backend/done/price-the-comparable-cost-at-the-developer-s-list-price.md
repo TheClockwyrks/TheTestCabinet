@@ -26,7 +26,7 @@ The catalog entry carries the developer's list price: input, output and cached
 input per Mtok, with the date it was taken. An operator enters it from the
 developer's pricing page; Fill from OpenRouter seeds the three figures from the
 official provider's endpoint in the endpoints listing (see
-[`pin-every-run-to-the-model-s-official-provider.md`](../gg-client/pin-every-run-to-the-model-s-official-provider.md))
+[`pin-every-run-to-the-model-s-official-provider.md`](../gg-client/done/pin-every-run-to-the-model-s-official-provider.md))
 for the operator to confirm or correct. A model with no list price is refused at
 enqueue with the reason, since the comparable cost is a published statistic.
 
@@ -45,11 +45,11 @@ defines the comparable cost, and the model form onto the list price.
 
 ## Done when
 
-- [ ] The catalog entry carries a dated list price, and the model form edits it
+- [x] The catalog entry carries a dated list price, and the model form edits it
       with Fill from OpenRouter seeding it from the official endpoint.
-- [ ] A run's comparable cost is computed from the list price alone.
-- [ ] A model without a list price is refused at enqueue.
-- [ ] The refresh records the official endpoint's price as the billed rate and
+- [x] A run's comparable cost is computed from the list price alone.
+- [x] A model without a list price is refused at enqueue.
+- [x] The refresh records the official endpoint's price as the billed rate and
       the Stats tab shows both.
-- [ ] The quickstart, guide and metrics page describe the list price.
-- [ ] Gates green.
+- [x] The quickstart, guide and metrics page describe the list price.
+- [x] Gates green.

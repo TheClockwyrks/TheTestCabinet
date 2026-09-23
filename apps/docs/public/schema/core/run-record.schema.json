@@ -539,15 +539,15 @@
       "type": "object"
     },
     "CostMetrics": {
-      "description": "Cost of a run, recorded two ways.\n\nEach figure is optional: `None` means the cost is **unknown** — typically\nbecause the model's per-token prices could not be resolved (the model is\nabsent from OpenRouter's catalog, or OpenRouter lists a nonsensical price).\nThis is distinct from `Some(0.0)`, a genuinely free run. Keeping the two\napart avoids presenting an unknown cost as `$0.00`.",
+      "description": "Cost of a run, recorded two ways.\n\nEach figure is optional: `None` means the cost is **unknown** — typically\nbecause the model's per-token list prices could not be resolved (the model's\ncatalog entry curates none). This is distinct from `Some(0.0)`, a genuinely\nfree run. Keeping the two apart avoids presenting an unknown cost as `$0.00`.",
       "properties": {
         "actual": {
-          "description": "The amount actually charged for the run, recorded for reference. Equal\nto the comparable figure unless the harness reports its own exact cost.\n`None` when the cost is unknown.",
+          "description": "The amount the run was actually billed, recorded for reference: the\nharness's own accounting where it reports one, otherwise the comparable\nfigure. `None` when the cost is unknown.",
           "format": "double",
           "type": ["number", "null"]
         },
         "comparable": {
-          "description": "The canonical figure shown on the site, stable across providers. It is\nderived from token classes and OpenRouter's listed prices, except for\nharnesses that drive a single provider directly and report their own\nexact cost (such as Claude Code), where that reported cost — itself\nprovider-stable — is used instead. `None` when the cost is unknown.",
+          "description": "The canonical figure shown on the site, stable across providers. It is\ncomputed from the run's token classes and the model's curated list\nprice, and from nothing else: a billed figure never feeds it, so two\nruns of one model at different billed rates still compare on the same\nbasis. `None` when the cost is unknown.",
           "format": "double",
           "type": ["number", "null"]
         }
@@ -767,7 +767,7 @@
           "type": "integer"
         },
         "loopAbortWords": {
-          "description": "Words of generated output across every reply [`loop_aborts`](Self::loop_aborts) counts, and\nthe characters of the same output beside it — the **size** of what was thrown away, where\nthe count beside them is only how often.\n\nThe units are the ones gg measured itself, as the replies streamed. There is deliberately no\ntoken count and no price: gg's [cost](crate::metrics::Cost) and\n[tokens](crate::metrics::TokenCounts) come from the provider's usage payload, which arrives\nat the end of a stream an abandoned reply never reached, so any figure in those units would\nbe an estimate published where every neighbouring figure is a measurement.\n\nThis output is charged to the provider bill and is absent from the run's recorded cost, by\ndesign: a looping reply is a model defect, and a run must not be made to look expensive for\none. The figures here are what makes that omission visible rather than silent.",
+          "description": "Words of generated output across every reply [`loop_aborts`](Self::loop_aborts) counts, and\nthe characters of the same output beside it — the **size** of what was thrown away, where\nthe count beside them is only how often.\n\nThe units are the ones gg measured itself, as the replies streamed. There is deliberately no\ntoken count and no price: gg's [cost](crate::metrics::Cost) and\n[tokens](crate::metrics::TokenCounts) come from the provider's usage payload, which arrives\nat the end of a stream an abandoned reply never reached, so any figure in those units would\nbe an estimate published where every neighbouring figure is a measurement.\n\nThis output is charged to the provider bill, and it reaches neither of the run's cost\nfigures — the [work](GgSessionSummary::work_cost) nor the\n[total](GgSessionSummary::cost) — because gg has no price for it: a looping reply is\ndropped before the stream's usage trailer, so unlike every other spend in this summary it\nis a measurement gg never received rather than one it set aside. The figures here are what\nmakes that omission visible rather than silent.",
           "format": "uint64",
           "minimum": 0,
           "type": "integer"
@@ -890,6 +890,12 @@
     "GgProviderStat": {
       "description": "One `(provider, model)` health slice in a [`GgSessionSummary`] — which upstream provider\nserved a run's model calls, and how the calls it served went. Folded from the run's own\nstream: the [`Usage`](GgTelemetryKind::Usage) deltas contribute the calls with their tokens\nand cost, the [`ResponseRejected`](GgTelemetryKind::ResponseRejected) events the length-capped\nreplies, and the [`TurnOutcome`](GgTelemetryKind::TurnOutcome) events the per-turn judgement,\neach attributed to the provider its own call named.\n\nTwo invariants hold across a summary's slices: their [`turns`](Self::turns) sum to the\n[error rollup](GgErrorSummary::turns)'s denominator, and within a slice `turns` minus\n[`working`](Self::working) minus its error count is its fatal turns.",
       "properties": {
+        "cacheMisses": {
+          "description": "Replies this provider served that were an unexpected cache miss, folded from the\n[`CacheMiss`](GgProviderFault::CacheMiss) faults against it. `0`, and omitted, for a\nprovider that never missed.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
         "calls": {
           "description": "Model calls folded from the [`Usage`](GgTelemetryKind::Usage) deltas — the calls that\nreported usage. A call that reported neither tokens nor cost emits no delta and reaches\nonly the turn figures below.",
           "format": "uint64",
@@ -930,6 +936,12 @@
           "minimum": 0,
           "type": "integer"
         },
+        "stalls": {
+          "description": "Requests sent to this provider whose stream went\n[`modelStreamIdleSecs`](GgRunLimits::model_stream_idle_secs) without a delta, folded from\nthe [`Stall`](GgProviderFault::Stall) faults against it. `0`, and omitted, for a provider\nthat never stalled.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
         "tokens": {
           "$ref": "#/$defs/TokenMetrics",
           "description": "The tokens those calls reported, summed in the shared [`TokenCounts`] units."
@@ -951,7 +963,7 @@
       "type": "object"
     },
     "GgRejectedResponses": {
-      "description": "The run's **rejected-reply** rollup: how many model replies gg refused to use (today, exactly\nthe length-capped ones — see [`GgTelemetryKind::ResponseRejected`]), and the spend they burned.\n\nThis bucket exists so the exclusion is visible rather than silent. A rejected reply's usage is\ndeliberately kept **out** of the run's cost and turn metrics — a degenerate generation must not\nmake a run look expensive or long — but the money was still spent, and \"how often does this\nmodel cap out, and what does it cost?\" is a question the owner asks of the durable record.\nFolded from the [`ResponseRejected`](GgTelemetryKind::ResponseRejected) events the run emitted.",
+      "description": "The run's **rejected-reply** rollup: how many model replies gg refused to use (today, exactly\nthe length-capped ones — see [`GgTelemetryKind::ResponseRejected`]), and the spend they burned.\n\nThis bucket exists so the exclusion is visible rather than silent. A rejected reply's usage\nnever counts as the run's **work** — a degenerate generation must not make a run's work look\nexpensive or long — but it is in the run's [total cost](GgSessionSummary::cost) like every\nother request's, and \"how often does this model cap out, and what did those attempts cost?\" is\na question the owner asks of the durable record. Folded from the\n[`ResponseRejected`](GgTelemetryKind::ResponseRejected) events the run emitted.",
       "properties": {
         "cost": {
           "anyOf": [
@@ -962,7 +974,7 @@
               "type": "null"
             }
           ],
-          "description": "Their cost, summed, when the provider reported any — spend absent from the run's recorded\ncost by design."
+          "description": "Their cost, summed, when the provider reported any — in the run's\n[total cost](GgSessionSummary::cost), never its\n[work cost](GgSessionSummary::work_cost)."
         },
         "count": {
           "description": "How many replies were rejected.",
@@ -972,7 +984,7 @@
         },
         "tokens": {
           "$ref": "#/$defs/TokenMetrics",
-          "description": "The tokens the provider billed for them, summed — spend absent from the run's own\n[token totals](crate::metrics::TokenCounts) by design."
+          "description": "The tokens the provider billed for them, summed — absent from the run's\n[work](GgSessionSummary::work_cost) figures by design, and inside its\n[total](GgSessionSummary::cost) ones like every other request's."
         }
       },
       "required": ["count", "tokens"],

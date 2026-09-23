@@ -82,6 +82,21 @@
       },
       "type": "object"
     },
+    "GgProviderCandidate": {
+      "description": "One provider a model may run on, and the quantization that endpoint serves.\n\nA [`GgInvocation::model_providers`] entry is an ordered list of these: the order a run tries\nthem in, and a one-entry list is a pin. Every request names one of them as OpenRouter's\n`provider.only` and `provider.quantizations`, with fallbacks refused.",
+      "properties": {
+        "provider": {
+          "description": "The provider, spelled as OpenRouter's endpoints listing spells its `provider_name`\n(`Z.AI`, `DeepInfra`).",
+          "type": "string"
+        },
+        "quantization": {
+          "description": "The quantization the provider's endpoint declares (`fp8`, `bf16`, or `unknown` for a\nprovider the catalog entry accepts despite it).",
+          "type": "string"
+        }
+      },
+      "required": ["provider", "quantization"],
+      "type": "object"
+    },
     "GgSessionAgent": {
       "description": "One agent the record captured, and how it came to exist — the table that tells a reader\nwhich agent every [entry](GgSessionEntry) belongs to, and where that agent came from.\n**One row per agent, not per turn**: repeating a provenance tuple on every entry would\ndefeat the pooling thesis outright.",
       "properties": {
@@ -585,6 +600,11 @@
           "type": "string"
         },
         {
+          "const": "provider_mismatch",
+          "description": "The gateway served the call from a provider other than the one the launch pinned. The\nreply is unusable: the cost recorded from it on would be on a different price basis, so\nthe run ends as a harness failure.",
+          "type": "string"
+        },
+        {
           "const": "response_loop",
           "description": "Every attempt at the request was abandoned mid-stream by\n[loop detection](crate::gg::GgLoopDetection) — the model produced a repetition, not a reply,\non all of them. Retryable at the turn level and counted against the run's error ceiling,\nexactly like [`RetryExhausted`](Self::RetryExhausted), and kept apart from it because the\ntwo are diagnosed completely differently: one is the provider failing, the other is the\nmodel failing.\n\nThe record carries only the attempts that were *returned*, never the discarded ones: the\nrecorder journals the response a turn actually got, so a reply the guard abandoned never\nentered the context and correctly never enters the record either. The\n[`attempts`](GgSessionModelError::attempts) count is how many were discarded before the loop\ngave up.",
           "type": "string"
@@ -748,6 +768,16 @@
             "$ref": "#/$defs/GgSessionModalities"
           },
           "description": "The **final, resolved** modality state of each bound slot.\n\nResolved, not initial, and that distinction is load-bearing: vision recovery can\ncall the model twice for one turn and only the successful stripped call is\nrecorded, so a reader that started from an un-denied vision state would\nsend images on the first image turn and drift for a reason that has nothing to do\nwith any real change.",
+          "type": "object"
+        },
+        "modelProviders": {
+          "additionalProperties": {
+            "items": {
+              "$ref": "#/$defs/GgProviderCandidate"
+            },
+            "type": "array"
+          },
+          "description": "The ordered candidate list each bound model may run on. Recorded because a\nrun's cost is on those providers' price bases, and a reader that guessed the\nlist would price the run against a different one.",
           "type": "object"
         },
         "modelWindows": {

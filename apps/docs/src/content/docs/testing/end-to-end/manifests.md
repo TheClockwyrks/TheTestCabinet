@@ -804,8 +804,9 @@ assert }` object, or a factory returning one. Its `id` names the verdict the
   the model's build to capture the actual media. The baseline is the same thing
   run against the variant's `reference_implementation` for the same engine, a
   fixed property of the case version, so it is captured once by
-  [`tcab capture-baselines`](/components/cli/overview/#commands), committed under
-  the version folder at `validation-baseline/<engine>/<variant>/`, and served
+  [`tcab capture-baselines`](/components/cli/overview/#commands), committed to
+  the `cold-storage` submodule under the version's mirrored
+  `validation-baseline/<engine>/<variant>/`, and served
   case-scoped. The engine is part of the path because a variant has one reference
   implementation per engine and the two are different builds: a run is only
   comparable against the one it was itself built on. The reviewer sees expected

@@ -40,7 +40,7 @@ use test_cabinet_core::{
     ContainerRuntime, ContainerSpec, ContainerStart, CredFile, CredSource, EngineCatalog,
     EngineSelection, EventFormat, EventSink, ExecOutput, FsRepoSeeder, HarnessInvocation,
     HarnessOutcome, HarnessRegistry, HarnessSlug, ManualClock, MapCreds, MediaKind, NoopEventSink,
-    OpenRouterPrices, OrchestratorCatalog, OrchestratorSelection, OutputSink, OutputStream,
+    OrchestratorCatalog, OrchestratorSelection, OutputSink, OutputStream,
     PrerenderedReferenceRenderer, ProofFile, RenderedReference, Result as CoreResult,
     RunCancellation, RunEngine, RunRequest, SubscriptionSpec, TestCaseCatalog, TestCaseVersion,
     TokenCounts, Usage, ValidationSummary, Validator, Variant,
@@ -352,7 +352,6 @@ fn engine<R: ContainerRuntime>(
         validator: SlowValidator {
             clock: clock.clone(),
         },
-        prices: OpenRouterPrices::new(),
         output_dir: out_dir.to_path_buf(),
         creds: Some(Box::new(MapCreds::new(
             [(
@@ -383,7 +382,10 @@ fn request(test_case: &TestCaseVersion, variant: &Variant, harness: HarnessSlug)
         gg_capability_set: (harness == HarnessSlug::Gg)
             .then(test_cabinet_core::gg::GgCapabilitySet::default),
         gg_model_windows: Default::default(),
+        gg_model_providers: Default::default(),
         gg_model_modalities: Default::default(),
+        gg_model_prices: Default::default(),
+        model_prices: None,
     }
 }
 

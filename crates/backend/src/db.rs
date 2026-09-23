@@ -6404,7 +6404,7 @@ pub struct StoredModel {
 }
 
 /// The write payload for [`Db::upsert_model_config`].
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ModelConfigWrite {
     pub slug: String,
     pub display_name: String,
@@ -6413,6 +6413,40 @@ pub struct ModelConfigWrite {
     pub provider_logo_svg: Option<String>,
     pub description_md: Option<String>,
     pub openrouter_slug: Option<String>,
+    /// The developer provider set by hand: the OpenRouter provider name of the model
+    /// developer's own endpoint, or `None` to take the one the endpoints listing names for the
+    /// model id's author segment.
+    pub provider_pin: Option<String>,
+    /// The native quantization set by hand, lowercased, or `None` to take the highest level any
+    /// endpoint declares.
+    pub native_quantization: Option<String>,
+    /// The input half of the price ceiling, USD per million tokens. Set with
+    /// [`max_output_price`](Self::max_output_price) or not at all.
+    pub max_input_price: Option<f64>,
+    /// The output half of the price ceiling, USD per million tokens.
+    pub max_output_price: Option<f64>,
+    /// The providers a gg run of the model never uses. Empty is stored as `NULL`.
+    pub banned_providers: Vec<String>,
+    /// The providers accepted despite declaring `unknown` quantization. Empty is stored as
+    /// `NULL`.
+    pub unknown_quantization_providers: Vec<String>,
+    /// The developer's published list price per **token** of input, in USD (the
+    /// form enters per Mtok; the store carries per token). The write is
+    /// **all-or-nothing**: a caller writes all three prices plus
+    /// `list_price_as_of`, or nothing — the store enforces nothing but the API
+    /// layer does.
+    pub list_price_input: Option<f64>,
+    /// The developer's published list price per **token** of cached input, in
+    /// USD. See [`list_price_input`](Self::list_price_input).
+    pub list_price_cached_input: Option<f64>,
+    /// The developer's published list price per **token** of output, in USD.
+    /// See [`list_price_input`](Self::list_price_input).
+    pub list_price_output: Option<f64>,
+    /// The date the operator took the list-price figures.
+    pub list_price_as_of: Option<String>,
+    /// Where the list-price figures came from (`hand` for an operator-entered
+    /// set).
+    pub list_price_source: Option<String>,
     /// The canonical model ids this config claims, each with its harness family
     /// (at least one).
     pub aliases: Vec<AliasEntry>,
@@ -6433,6 +6467,28 @@ pub struct PriceWrite {
     /// The accepted input modalities as a comma-separated lowercase list, or
     /// `None` when OpenRouter reported none (unknown, not "text only").
     pub input_modalities: Option<String>,
+    /// The developer provider observed for the model, or `None` when the listing named no
+    /// endpoint from its developer.
+    pub provider_pin: Option<String>,
+}
+
+/// The stored form of a catalog entry's provider list: a JSON array of names, or `NULL` for an
+/// empty list.
+fn provider_list_column(providers: &[String]) -> Option<String> {
+    (!providers.is_empty())
+        .then(|| serde_json::to_string(providers).expect("a list of strings always serializes"))
+}
+
+/// Read a catalog entry's provider list column back: `NULL`, and a value that does not parse as
+/// a JSON array of strings, are an empty list. Blank names are dropped.
+pub fn provider_list(column: Option<&str>) -> Vec<String> {
+    column
+        .and_then(|raw| serde_json::from_str::<Vec<String>>(raw).ok())
+        .unwrap_or_default()
+        .into_iter()
+        .map(|name| name.trim().to_string())
+        .filter(|name| !name.is_empty())
+        .collect()
 }
 
 /// Project a stored `model_alias` row into an [`AliasEntry`], parsing its
@@ -6527,6 +6583,19 @@ impl Db {
             provider_logo_svg: Set(write.provider_logo_svg),
             description_md: Set(write.description_md),
             openrouter_slug: Set(write.openrouter_slug),
+            provider_pin: Set(write.provider_pin),
+            native_quantization: Set(write.native_quantization),
+            max_input_price: Set(write.max_input_price),
+            max_output_price: Set(write.max_output_price),
+            banned_providers: Set(provider_list_column(&write.banned_providers)),
+            unknown_quantization_providers: Set(provider_list_column(
+                &write.unknown_quantization_providers,
+            )),
+            list_price_input: Set(write.list_price_input),
+            list_price_cached_input: Set(write.list_price_cached_input),
+            list_price_output: Set(write.list_price_output),
+            list_price_as_of: Set(write.list_price_as_of),
+            list_price_source: Set(write.list_price_source),
             created_at: Set(created_at),
             updated_at: Set(write.now),
         };
@@ -6540,6 +6609,17 @@ impl Db {
                         model::Column::ProviderLogoSvg,
                         model::Column::DescriptionMd,
                         model::Column::OpenrouterSlug,
+                        model::Column::ProviderPin,
+                        model::Column::NativeQuantization,
+                        model::Column::MaxInputPrice,
+                        model::Column::MaxOutputPrice,
+                        model::Column::BannedProviders,
+                        model::Column::UnknownQuantizationProviders,
+                        model::Column::ListPriceInput,
+                        model::Column::ListPriceCachedInput,
+                        model::Column::ListPriceOutput,
+                        model::Column::ListPriceAsOf,
+                        model::Column::ListPriceSource,
                         model::Column::UpdatedAt,
                     ])
                     .to_owned(),
@@ -6624,6 +6704,7 @@ impl Db {
             context_length: Set(write.context_length),
             released_at: Set(write.released_at),
             input_modalities: Set(write.input_modalities),
+            provider_pin: Set(write.provider_pin),
         })
         .exec(&self.conn())
         .await?;
@@ -6641,6 +6722,49 @@ impl Db {
             .await?)
     }
 
+    /// The catalog's curated list price for a run's model, or a human-readable
+    /// reason the model has none. `Ok(Ok(_))` when the model is curated and fully
+    /// priced; `Ok(Err(reason))` when it is unpriced.
+    pub async fn list_price_for_run_model(
+        &self,
+        model_id: &str,
+        harness: HarnessSlug,
+    ) -> Result<std::result::Result<TokenPrices, String>> {
+        let canonical = test_cabinet_core::model_id::canonical_model_id(model_id, harness);
+        let Some(alias) = model_alias::Entity::find()
+            .filter(model_alias::Column::Alias.eq(&canonical))
+            .one(&self.conn())
+            .await?
+        else {
+            return Ok(Err(format!(
+                "model `{canonical}` is not in the model catalog; add it (the Models section) with the developer's list price to run it"
+            )));
+        };
+        let config = model::Entity::find_by_id(alias.model_slug)
+            .one(&self.conn())
+            .await?;
+        let Some(config) = config else {
+            return Ok(Err(format!(
+                "model `{canonical}` is not in the model catalog; add it (the Models section) with the developer's list price to run it"
+            )));
+        };
+        match (
+            config.list_price_input,
+            config.list_price_cached_input,
+            config.list_price_output,
+        ) {
+            (Some(uncached_input), Some(cached_input), Some(output)) => Ok(Ok(TokenPrices {
+                uncached_input: Some(uncached_input),
+                cached_input: Some(cached_input),
+                output: Some(output),
+            })),
+            _ => Ok(Err(format!(
+                "model `{canonical}` ({}) has no list price; set it on the model's catalog entry (the Models section) to run it",
+                config.display_name
+            ))),
+        }
+    }
+
     /// The curated `openrouter_slug` of the model that claims `alias`, if any. Used
     /// to price a run's model against its configured OpenRouter slug rather than a
     /// slug guessed from the run's model id.
@@ -6656,6 +6780,29 @@ impl Db {
             .one(&self.conn())
             .await?
             .and_then(|m| m.openrouter_slug))
+    }
+
+    /// The curated model that claims `alias`, with its aliases, or `None` for an alias no curated
+    /// model claims.
+    pub async fn model_config_for_alias(&self, alias: &str) -> Result<Option<StoredModel>> {
+        let Some(row) = model_alias::Entity::find()
+            .filter(model_alias::Column::Alias.eq(alias))
+            .one(&self.conn())
+            .await?
+        else {
+            return Ok(None);
+        };
+        self.get_model_config(&row.model_slug).await
+    }
+
+    /// The hand-set developer provider of the curated model that claims `alias`, if one is set.
+    /// Absent means the observed listing name is the developer provider.
+    pub async fn provider_pin_for_alias(&self, alias: &str) -> Result<Option<String>> {
+        Ok(self
+            .model_config_for_alias(alias)
+            .await?
+            .and_then(|stored| stored.config.provider_pin)
+            .filter(|provider| !provider.trim().is_empty()))
     }
 
     /// Every `(id, alias, harness_family)` triple across all curated models. Used
@@ -6710,10 +6857,11 @@ impl Db {
     /// an OpenRouter-accessed harness whose model id carries a trailing `:tag`,
     /// strip the tag from the lifted `model_id` column and the record's
     /// `subject.modelId`, and recompute the run's comparable cost at the base
-    /// model's price (from `base_prices`, keyed by OpenRouter id). A run whose base
-    /// price is unavailable has its cost set to unknown rather than left at the
-    /// misleading `$0.00` a free tag produces. Idempotent (an already-stripped run
-    /// is unchanged) and best-effort per row. Returns how many runs were rewritten.
+    /// model's **curated list price** (from `list_prices`, keyed by canonical
+    /// model id). A run whose base model has no list price has its cost set to
+    /// unknown rather than left at the misleading `$0.00` a free tag produces.
+    /// Idempotent (an already-stripped run is unchanged) and best-effort per row.
+    /// Returns how many runs were rewritten.
     ///
     /// Only rows whose `model_id` actually carries a `:` are loaded — the same
     /// predicate [`Self::has_free_tag_candidates`] gates on. A `:`-free model id can
@@ -6722,7 +6870,7 @@ impl Db {
     /// almost always zero work.
     pub async fn normalize_free_model_ids(
         &self,
-        base_prices: &std::collections::HashMap<String, TokenPrices>,
+        list_prices: &std::collections::HashMap<String, TokenPrices>,
     ) -> Result<usize> {
         let rows = run::Entity::find()
             .filter(run::Column::ModelId.contains(":"))
@@ -6744,9 +6892,8 @@ impl Db {
                 continue;
             };
             record.subject.model_id = base.clone();
-            let lookup = test_cabinet_core::model_id::openrouter_price_id(&base, harness);
-            let comparable = base_prices
-                .get(&lookup)
+            let comparable = list_prices
+                .get(&base)
                 .and_then(|prices| Cost::comparable_from(&record.metrics.tokens, prices));
             record.metrics.cost = Cost {
                 comparable,

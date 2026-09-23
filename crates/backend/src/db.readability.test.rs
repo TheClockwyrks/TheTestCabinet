@@ -353,11 +353,17 @@ const SCHEMA_BASE_URL: &str = "https://docs.testcabinet.ai/schema/";
 /// Generation 3 is the toolchain summary's `ToolchainTests` gaining `tests` and
 /// `testsTruncated` — the per-test entries beside the per-file rows. Neither is
 /// optional or defaulted, so a record stored with a test report before this change
-/// lacks both keys and no longer reads. Its digest last moved when the gg run
-/// limits gained `maxModelRetries` and `modelRetryMaxDelaySecs`, the model-request
-/// retry schedule: both are `Option`s that are absent on every record stored before
-/// it and resolve to the defaults there, exactly as `modelCallTimeoutSecs` did, so
-/// stored records go on reading and the generation does not move.
+/// lacks both keys and no longer reads. Its digest last moved when gg's agent
+/// profile gained `reasoning`, gg's run limits gained `modelStreamIdleSecs`, the gg
+/// session summary gained its two cost figures, `cost` and `workCost`, on each slot
+/// and in the run-wide rollup, and the `usage` telemetry event gained `wire`,
+/// `reconciled` and the `figure` naming which cost figure its turn fed, the run
+/// limits gained `providerCacheMissLimit`, and gg's per-provider health slice gained
+/// `stalls` and `cacheMisses`: every one of them is optional and absent on the
+/// records stored before it, so stored records go on reading and the generation does
+/// not move. The same holds for the cost figures' descriptions rewritten when the
+/// comparable cost moved to the curated list price, which change no shape a stored
+/// record is read against.
 ///
 /// Generation 2 was the gg agent profile's `openingTurn` becoming required: every gg
 /// record stored before it lacks the key and no longer reads. Its digest last moved
@@ -378,7 +384,7 @@ const RECORD_SHAPES: &[(u32, &str)] = &[
     ),
     (
         3,
-        "e16abf8a7f85c84be497a921ede27447af6e2c00413e6c1400ac471d872901b0",
+        "bfde3ca3b2a402e701617b30846708fbf8cc95d1fe2ea18bb21480c6754ba909",
     ),
 ];
 
