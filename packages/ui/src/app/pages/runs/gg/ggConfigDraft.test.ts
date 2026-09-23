@@ -2097,6 +2097,8 @@ describe("gg run limits", () => {
     draft.limits.maxModelRetries = "0";
     expect(draftSaveError(draft)).toBeNull();
     expect(capabilitySetFromDraft(draft, null).limits?.maxModelRetries).toBe(0);
+    draft.limits.maxModelRetries = "2.5";
+    expect(draftSaveError(draft)).toContain("whole number of retries");
   });
 
   it("refuses a ceiling that is not a number in its own units", () => {

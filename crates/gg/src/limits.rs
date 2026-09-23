@@ -554,10 +554,13 @@ pub fn declared_model_call_timeout(declared: &GgRunLimits) -> Duration {
 /// on the first failure, which a study comparing retry budgets legitimately wants.
 pub fn declared_retry_policy(declared: &GgRunLimits) -> RetryPolicy {
     RetryPolicy {
+        // The first attempt plus the retries after it. A count past what a `u32` holds is a
+        // schedule no run outlives, so it saturates rather than wrapping to a small one.
         max_attempts: declared
             .max_model_retries
-            .and_then(|retries| u32::try_from(retries).ok())
-            .map_or(RetryPolicy::default().max_attempts, |retries| retries + 1),
+            .map_or(RetryPolicy::default().max_attempts, |retries| {
+                u32::try_from(retries).unwrap_or(u32::MAX).saturating_add(1)
+            }),
         ..RetryPolicy::default().with_max_delay(match declared.model_retry_max_delay_secs {
             Some(0) | None => DEFAULT_MODEL_RETRY_MAX_DELAY,
             Some(secs) => Duration::from_secs(secs),

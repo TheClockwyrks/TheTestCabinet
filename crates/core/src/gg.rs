@@ -4563,12 +4563,14 @@ pub struct GgRunLimits {
     /// The ceiling, in seconds, on **one model request** — the bound that turns a provider which
     /// has stopped answering into an error turn the agent asks again from.
     ///
-    /// The one key on this type an absence answers with a **figure** rather than with "off":
-    /// **absent is fifteen minutes** (900 seconds), because there is no run whose calls may hang
-    /// forever, and `0` is refused on the same terms as every other unhonourable figure. How it is
-    /// applied follows the transport the agent's [loop detection](GgLoopDetection) selects: the
-    /// buffering one bounds the whole call, and the streaming one bounds the wait for the response
-    /// head and the gap between chunks, so a reply still arriving is never cut.
+    /// One of the three keys on this type an absence answers with a **figure** rather than with
+    /// "off", beside the [retry schedule](Self::max_model_retries): **absent is fifteen minutes**
+    /// (900 seconds), because there is no run whose calls may hang forever, and `0` is refused on
+    /// the same terms as every other unhonourable figure. How it is applied follows the transport
+    /// the agent's [loop detection](GgLoopDetection) selects: the buffering one bounds each
+    /// attempt, with the backoff between attempts outside it, and the streaming one bounds the
+    /// wait for the response head and the gap between chunks, so a reply still arriving is never
+    /// cut.
     ///
     /// Unlike the ceilings above it, breaching this one does not stop the run. The turn is
     /// recorded as a [`ModelTimeout`](GgTurnErrorType::ModelTimeout) error and the agent asks
@@ -4581,21 +4583,14 @@ pub struct GgRunLimits {
     )]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub model_call_timeout_secs: Option<u64>,
-    /// How many times a failed model request is **retried** after its first attempt, inside the
-    /// model client, before the failure ends the session.
+    /// How many times the model client **retries** a failed request after its first attempt: one
+    /// answered `429` or `5xx`, or one that failed in transport.
     ///
-    /// The second of the two keys an absence answers with a **figure** rather than with "off":
-    /// **absent is ten**. A failed request — one answered `429` or `5xx`, or one that never
-    /// reached the provider at all — is a transient condition far more often than not, and ten
-    /// retries against the [delay ceiling](Self::model_retry_max_delay_secs) waits about five
-    /// minutes in all: the difference between an outage that costs a run minutes and one that
-    /// costs the run.
-    ///
-    /// Unlike the turn ceiling, `0` is honoured as written: it is a run that gives up on the
-    /// first failure, which a study comparing retry budgets legitimately wants. The retries are
-    /// the client's own; the turn loop keeps its one decision — recover or end — and a timed-out
-    /// call still bypasses this budget entirely, since each retry of a stall would cost the
-    /// [per-call ceiling](Self::model_call_timeout_secs) again.
+    /// Absent is **ten**, on the terms the [model-call ceiling](Self::model_call_timeout_secs)
+    /// takes a figure: every failed request is retried on some schedule. `0` is honoured as
+    /// written, a run that gives up on the first failure. The retries are the client's own, and a
+    /// timed-out call bypasses them, since each retry of a stall would cost the per-call ceiling
+    /// again.
     #[serde(
         deserialize_with = "count::option_u64",
         default,
@@ -4603,20 +4598,13 @@ pub struct GgRunLimits {
     )]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub max_model_retries: Option<u64>,
-    /// The ceiling, in seconds, on **one retry's backoff delay** — the cap the
-    /// [retries](Self::max_model_retries) double up to and then wait at.
+    /// The ceiling, in seconds, on **one retry's backoff delay**: the first retry waits one
+    /// second, each later one twice the last, capped here.
     ///
-    /// Absent is **sixty seconds**: the first retry waits one second, each next waits twice the
-    /// last, and the ceiling caps the wait from the seventh retry on, so the default ten retries
-    /// against it wait about five minutes in all and thirty retries at the same ceiling wait about
-    /// half an hour. `0` is refused rather than honoured: a run that retries on a schedule of zero
-    /// delay is a run hammering a provider that just said it is down, which is the one thing a
-    /// backoff schedule exists to prevent.
-    ///
-    /// A `429` or `503` that carries a `Retry-After` waits that long instead when it is longer
-    /// than the schedule's delay: the provider's own word about when it can serve again is a
-    /// better figure than gg's guess, and it is the same word either way when the schedule's wait
-    /// is already the longer one.
+    /// Absent is **sixty seconds**, which against the default ten retries waits about five
+    /// minutes in all. `0` is refused, since a schedule of no waits hammers a provider that has
+    /// just said it is down. A `429` or `503` carrying a `Retry-After` in seconds waits that long
+    /// instead when it is longer than the schedule's delay.
     #[serde(
         deserialize_with = "count::option_u64",
         default,

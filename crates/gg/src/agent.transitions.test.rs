@@ -475,6 +475,100 @@ async fn run_exec(
     sink.events()
 }
 
+/// A stand-in for a live client's retry announcements: every call says one `warn` on whatever
+/// stream the agent calling it [handed over](ModelClient::announce_retries_on), then answers from
+/// `inner`.
+struct Announcing {
+    inner: MockClient,
+    stream: std::sync::Mutex<Option<Emitter>>,
+}
+
+/// The line an [`Announcing`] client says on each call.
+const ANNOUNCED: &str = "retry announced";
+
+#[async_trait::async_trait]
+impl ModelClient for Announcing {
+    async fn complete(
+        &self,
+        messages: &[Message],
+        tools: &[ToolDefinition],
+    ) -> Result<ModelResponse, ModelError> {
+        if let Some(emitter) = self.stream.lock().unwrap().as_ref() {
+            emitter.emit(GgTelemetryKind::Log {
+                level: "warn".to_string(),
+                message: ANNOUNCED.to_string(),
+            });
+        }
+        self.inner.complete(messages, tools).await
+    }
+
+    fn model_id(&self) -> &str {
+        self.inner.model_id()
+    }
+
+    fn announce_retries_on(&self, emitter: &Emitter) {
+        *self.stream.lock().unwrap() = Some(emitter.clone());
+    }
+}
+
+/// A client's retries are said on the stream of the agent calling it, under that agent's own id:
+/// the root's under the root's, and an `exec` successor's under the successor's, which no origin
+/// or profile could have named at the time the client was resolved.
+#[tokio::test]
+async fn a_clients_retries_are_announced_on_the_calling_incarnations_own_stream() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-exec".to_string()), Box::new(sink.clone()));
+    let announcing = |binding: &GgSlotBinding| -> Box<dyn ModelClient> {
+        let inner = match binding.model_id.as_str() {
+            "mock/exec-before" => MockClient::with_exec_before_script(&binding.model_id),
+            "mock/exec-after" => MockClient::with_exec_after_script(&binding.model_id),
+            other => MockClient::new(other.to_string(), Vec::new()),
+        };
+        Box::new(Announcing {
+            inner,
+            stream: std::sync::Mutex::new(None),
+        })
+    };
+    let factory = ScriptedFactory::new()
+        .slot(ROOT_PROFILE_ID, announcing)
+        .slot("after", announcing);
+    let outcome = run_with_factory(
+        &invocation(dir.path(), exec_set()),
+        &emitter,
+        Arc::new(factory),
+    )
+    .await;
+    assert_eq!(outcome, SessionOutcome::Ran);
+
+    let events = sink.events();
+    let successor = events
+        .iter()
+        .find_map(|event| match &event.kind {
+            GgTelemetryKind::AgentTransition { to_agent_id, .. } => Some(to_agent_id.clone()),
+            _ => None,
+        })
+        .expect("the exec was reported as a transition");
+    let announced_by: std::collections::BTreeSet<String> = events
+        .iter()
+        .filter(|event| {
+            matches!(&event.kind, GgTelemetryKind::Log { level, message }
+                if level == "warn" && message == ANNOUNCED)
+        })
+        .map(|event| {
+            event
+                .agent_id
+                .clone()
+                .expect("an agent's stream stamps its id")
+        })
+        .collect();
+    assert_eq!(
+        announced_by,
+        [ROOT_AGENT_ID.to_string(), successor].into_iter().collect(),
+        "each incarnation's calls announce on its own stream, and nowhere else"
+    );
+}
+
 /// An `exec` **replaces** the running agent: the successor is a second incarnation of the same
 /// agent (same depth, parented to its predecessor), it carries the conversation, it does not carry
 /// the capability its own profile turns off, and it starts the one only it has.

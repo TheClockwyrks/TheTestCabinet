@@ -617,14 +617,14 @@ pub(crate) async fn run_gg_session(
     //          validated — SessionEnded{status:"error"};
     //        * a credential the provider *rejected* mid-flight, so nothing about the model
     //          was exercised either — SessionEnded{status:"auth_error"};
-    //        * the provider itself failing mid-flight — every retry of the run's schedule
-    //          spent, or a response fatal on the first attempt — SessionEnded{status:
-    //          "model_error"}. Nothing about the model was exercised by an outage either,
-    //          and the failure is the one a retry stands a chance of walking past;
+    //        * the provider failing the root's model call, with the run's whole retry
+    //          schedule spent or a fatal status on the first attempt —
+    //          SessionEnded{status:"model_error"}. An outage says nothing about the model
+    //          either, and it is the failure a retry stands a chance of walking past;
     //        * a defect in gg itself — SessionEnded{status:"internal_error"}: a state gg's
     //          own launch validation proves unreachable, gg's sandbox machinery failing
     //          under a turn the model answered, or an agent task that panicked. Unlike the
-    //          two above, this session *did*
+    //          first two above, this session *did*
     //          run against a working model: the key was accepted and turns were taken. What
     //          disqualifies it is that gg stopped it on its own mistake, so whatever tree it
     //          left describes a run the model never got to finish, and scoring it would
@@ -646,18 +646,16 @@ pub(crate) async fn run_gg_session(
     //      wall-clock budget, the run's spend, or either error ceiling. That is not
     //      a malfunction and not ours — it is the model's outcome against a
     //      safeguard the configuration chose — so it is classified apart from the
-    //      three above as `RunState::LimitExceeded`, which is publishable as a
+    //      four above as `RunState::LimitExceeded`, which is publishable as a
     //      per-model statistic and is the one harness stop that is never retried:
     //      a second attempt on the same configuration reaches the same ceiling.
     //      Which ceiling, and by how much, is the sentence gg logged as it raised
     //      the breach; the sink pairs that sentence with the `limit_exceeded` event
     //      that follows it, and the detail carries it for the same reason as above.
-    //    - Exit 0 means a session ran to a natural end. A mid-session `model_error` — the
-    //      provider unreachable past the whole retry schedule, or a response fatal on the
-    //      first attempt — exits 1 instead: the failure is the provider's rather than the
-    //      model's or the configuration's, so it is classified with the launch fatals and
-    //      credential refusals above as a retryable harness error rather than collected as a
-    //      run one outage cut short.
+    //    - Exit 0 means a session ran to a natural end. That includes a `model_error` the
+    //      model caused (a reply loop detection discarded on every attempt) and one a
+    //      subagent met, both collected and scored; the provider failing the root is the
+    //      exit-1 case above.
     if output.idle_timed_out {
         return Err(Error::HarnessHung {
             slug: GG_SLUG.to_string(),
@@ -702,7 +700,8 @@ pub(crate) async fn run_gg_session(
 /// [`EXIT_LIMIT_EXCEEDED`](crate::gg::EXIT_LIMIT_EXCEEDED) says the session ran and some agent of
 /// it breached one of the five execution ceilings the capability set armed, which is the model's
 /// outcome against a safeguard somebody chose. Everything else says there was no run to score at
-/// all: a launch fatal, a credential the provider refused, or a defect in gg.
+/// all: a launch fatal, a credential the provider refused, a provider that failed the root's model
+/// call past its retry schedule, or a defect in gg.
 ///
 /// The split is what keeps the first out of the retry loop. Both would otherwise be an
 /// [`HarnessInvocation`](Error::HarnessInvocation) and therefore a

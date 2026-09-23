@@ -2210,7 +2210,7 @@ export interface RunLimitSpec {
   // What a `count` counts, named so a refused entry says what it wanted. Ceilings count
   // different things — agents, turns, seconds, errors — and one wrong noun in a
   // validation message is the operator reading the wrong field.
-  unit?: "agents" | "turns" | "seconds" | "errors";
+  unit?: "agents" | "turns" | "seconds" | "errors" | "retries";
   placeholder?: string;
   hint: string;
   // What a fresh configuration's field is seeded with — and, when the ceiling is
@@ -2240,12 +2240,10 @@ export const AUTHORED_REPLAY_MAX_MIB = 256;
 export const AUTHORED_MODEL_CALL_TIMEOUT_SECS = 900;
 
 // The schedule a failed model request is retried on: ten retries after the first attempt,
-// the first waiting a second, each next twice the last, capped at this ceiling. Ten
-// retries against sixty seconds waits about five minutes in all — the difference between
-// a pinned provider's outage costing a run minutes and costing the run. Like the
-// model-call timeout neither field has an unarmed setting: an emptied one is conducted
-// under the default. Unlike it, a retry count of 0 is honoured — it is a run that gives
-// up on the first failure — while a delay ceiling of 0 is refused.
+// the first waiting a second, each later one twice the last, capped at sixty seconds.
+// Like the model-call timeout neither field has an unarmed setting, so an emptied one is
+// conducted under the default. A retry count of 0 is honoured as a run that gives up on
+// the first failure, while a delay ceiling of 0 is refused.
 export const AUTHORED_MAX_MODEL_RETRIES = 10;
 export const AUTHORED_MODEL_RETRY_MAX_DELAY_SECS = 60;
 
@@ -2295,10 +2293,10 @@ export const RUN_LIMIT_SPECS: ReadonlyArray<RunLimitSpec> = [
     key: "maxModelRetries",
     label: "Model retries",
     kind: "count",
-    unit: "errors",
+    unit: "retries",
     placeholder: String(AUTHORED_MAX_MODEL_RETRIES),
     defaultValue: String(AUTHORED_MAX_MODEL_RETRIES),
-    hint: "How many times a failed model request is retried after its first attempt, inside the client, before the failure ends the session. Each retry waits on the backoff schedule below and is logged with its attempt, cause and delay; a 429 or 503 carrying Retry-After waits that long instead when it is longer. An emptied field is conducted under 10; 0 is honoured as written — a run that gives up on the first failure. A timed-out call bypasses this budget: each retry of a stall would cost the per-call ceiling again, and the turn-level retry bounds that.",
+    hint: "How many times a model request that failed with a 429, a 5xx or a transport error is retried after its first attempt. Each retry waits on the backoff schedule below and is logged with its attempt, cause and delay. When the retries are spent the agent ends, and a root that ends this way exits as a retryable harness error. An emptied field is conducted under 10, and 0 gives up on the first failure. A timed-out call is not retried here: the agent asks again on its next turn.",
   },
   {
     key: "modelRetryMaxDelaySecs",
@@ -2307,7 +2305,7 @@ export const RUN_LIMIT_SPECS: ReadonlyArray<RunLimitSpec> = [
     unit: "seconds",
     placeholder: String(AUTHORED_MODEL_RETRY_MAX_DELAY_SECS),
     defaultValue: String(AUTHORED_MODEL_RETRY_MAX_DELAY_SECS),
-    hint: "The ceiling on one retry's backoff delay: the first retry waits a second, each next waits twice the last, and this caps the wait from the seventh on. The default ten retries against it waits about five minutes in all, and thirty retries at the same ceiling about half an hour — set the pair by what the run is worth against what an outage costs. An emptied field is conducted under 60 seconds; 0 is refused, since a run that retries on a schedule of no waits hammers a provider that just said it is down.",
+    hint: "The ceiling on one retry's backoff delay. The first retry waits a second and each later one twice the last, capped here. Ten retries against 60 seconds wait about five minutes in all, and thirty about half an hour, so set the pair by what the run is worth against what an outage costs. A 429 or 503 asking for a longer wait with Retry-After gets it. An emptied field is conducted under 60 seconds, and 0 is refused.",
   },
   {
     key: "maxConsecutiveErrors",

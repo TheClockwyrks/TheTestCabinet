@@ -104,12 +104,12 @@ use test_cabinet_core::gg::GgCapabilitySet;
 use test_cabinet_core::gg_session_journal::{GgJournalInterner, GgJournalLine};
 use test_cabinet_core::gg_session_record::{
     GG_SESSION_FORMAT_VERSION, GG_SESSION_STREAM_MAX_BYTES, GG_SESSION_TOOL_MAX_BYTES,
-    GgClientRole, GgSessionAgent, GgSessionAgentOrigin, GgSessionCommand, GgSessionEntry,
-    GgSessionEntryKind, GgSessionFileRegion, GgSessionImage, GgSessionInterner,
-    GgSessionModalities, GgSessionModelError, GgSessionModelErrorKind, GgSessionPromptItem,
-    GgSessionPromptSlot, GgSessionRecorder, GgSessionRequestShape, GgSessionRetention,
-    GgSessionSeed, GgSessionToolCall, GgSessionToolOutcome, GgSessionTruncation,
-    GgSessionTruncationReason, GgShellCwd, GgShellOrigin,
+    GgClientRole, GgSessionAgent, GgSessionCommand, GgSessionEntry, GgSessionEntryKind,
+    GgSessionFileRegion, GgSessionImage, GgSessionInterner, GgSessionModalities,
+    GgSessionModelError, GgSessionModelErrorKind, GgSessionPromptItem, GgSessionPromptSlot,
+    GgSessionRecorder, GgSessionRequestShape, GgSessionRetention, GgSessionSeed, GgSessionToolCall,
+    GgSessionToolOutcome, GgSessionTruncation, GgSessionTruncationReason, GgShellCwd,
+    GgShellOrigin,
 };
 
 use crate::context::{PromptItem, PromptSlot, Retention};
@@ -1144,32 +1144,6 @@ fn split_tool_data(data: Option<&ApiData>) -> (Option<Value>, Option<String>) {
     }
 }
 
-/// The queue id a request from an agent of `origin` records under — the provenance key the
-/// record's [provenance table](GgSessionAgent::origin) binds the live agent back to.
-///
-/// One spelling for the one rule: an agent's request queue, its recorded row and its
-/// [emitter's stream](crate::telemetry::Emitter::for_agent) all key on the same
-/// [origin](GgSessionAgentOrigin), so the figure names it the same way everywhere it appears.
-pub fn origin_key(origin: &GgSessionAgentOrigin) -> String {
-    match origin {
-        GgSessionAgentOrigin::Root => "root".to_string(),
-        GgSessionAgentOrigin::Spawn { parent, ordinal } => format!("spawn:{parent}:{ordinal}"),
-        GgSessionAgentOrigin::Succession {
-            predecessor,
-            ordinal,
-        } => format!("succession:{predecessor}:{ordinal}"),
-        GgSessionAgentOrigin::IssueAttempt { issue, attempt } => {
-            format!("issue:{issue}:{attempt}")
-        }
-        GgSessionAgentOrigin::Reviewer {
-            issue,
-            round,
-            position,
-        } => format!("reviewer:{issue}:{round}:{position}"),
-        GgSessionAgentOrigin::Merge { issue, ordinal } => format!("merge:{issue}:{ordinal}"),
-    }
-}
-
 /// A [`ModelClient`] decorator that streams each turn's **model I/O** into a [`GgRecorder`].
 ///
 /// It wraps the agent's real client and is the sole model-I/O recording seam: every `complete` the
@@ -1303,6 +1277,10 @@ impl ModelClient for RecordingClient {
 
     fn model_id(&self) -> &str {
         self.inner.model_id()
+    }
+
+    fn announce_retries_on(&self, emitter: &crate::telemetry::Emitter) {
+        self.inner.announce_retries_on(emitter);
     }
 }
 
