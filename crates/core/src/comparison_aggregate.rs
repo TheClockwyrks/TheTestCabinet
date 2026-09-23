@@ -93,6 +93,14 @@ fn aggregate_arm(
         .collect();
     let cost = MetricSummary::compute(&costs, seed);
     let tokens_summary = MetricSummary::compute(&tokens, seed);
+    // The harness session alone. Setup, teardown, and validation are the
+    // cabinet's time, and a run recorded before the stage durations were
+    // measured reports none — left out rather than folded in as a zero.
+    let sessions: Vec<f64> = arm_runs
+        .iter()
+        .filter_map(|r| r.metrics.session_seconds)
+        .collect();
+    let session_duration = MetricSummary::compute(&sessions, seed);
 
     // Automated-only scores, over the runs that carry validators. A run whose
     // covered denominator is zero (no auto-checkable points ran) contributes to
@@ -135,6 +143,7 @@ fn aggregate_arm(
         live_run_ids,
         cost,
         tokens: tokens_summary,
+        session_duration,
         score,
         pass_rate,
         diagnostics: diagnostics_of(&arm_runs),

@@ -80,6 +80,9 @@ export interface LeaderboardFoldEntry {
   costs: number[];
   /** The token totals of the runs that reported any. */
   tokens: number[];
+  /** The session durations, in seconds, of the runs that recorded one. A run
+   * written before the stage durations were measured contributes nothing. */
+  sessions: number[];
   /** The most recent contributing run's start time, for recency tie-breaks. */
   latestStartedAt: string;
 }
@@ -155,6 +158,9 @@ export function foldLeaderboardEntries(
     // are excluded from the respective list rather than folded in as zero.
     const cost = run.metrics.cost.comparable;
     const tokens = totalTokens(run.metrics);
+    // Null on a record written before the stage durations were measured, which
+    // is left out of the mean rather than folded in as a session of zero.
+    const session = run.metrics.sessionSeconds ?? null;
 
     let entry = entries.get(key);
     if (!entry) {
@@ -173,6 +179,7 @@ export function foldLeaderboardEntries(
         grades: [],
         costs: [],
         tokens: [],
+        sessions: [],
         latestStartedAt: run.startedAt,
       };
       entries.set(key, entry);
@@ -185,6 +192,7 @@ export function foldLeaderboardEntries(
     if (grade) entry.grades.push(grade);
     if (cost !== null) entry.costs.push(cost);
     if (tokens !== null) entry.tokens.push(tokens);
+    if (session !== null) entry.sessions.push(session);
     if (run.startedAt > entry.latestStartedAt) {
       entry.latestStartedAt = run.startedAt;
     }

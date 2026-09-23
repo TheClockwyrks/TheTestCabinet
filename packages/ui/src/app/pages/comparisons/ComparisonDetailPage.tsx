@@ -7,7 +7,6 @@ import {
   distributionChart,
   stackedBarChart,
 } from "@clockwyrks/ui";
-import type { DistributionGroup } from "@clockwyrks/ui";
 import type { ComparisonPublishOutcome } from "../../../client/clients";
 import { useAuth } from "../../../client/auth";
 import {
@@ -22,7 +21,7 @@ import { useTestCaseName } from "../../data/useTestCaseName";
 import { engineName, resolveEngineSlug } from "../../data/engines";
 import { useConfirm } from "../../components/ConfirmDialog";
 import { GG_HARNESS_SLUG } from "../../data/runLinks";
-import { formatCompact, formatUsd } from "../../format";
+import { formatCompact, formatRunTime, formatUsd } from "../../format";
 import { useRunsRuntime } from "../../runtime/runsRuntime";
 import { launchBatch } from "../runs/launchBatch";
 import { bindModelSlots } from "../runs/gg/ggConfigDraft";
@@ -31,11 +30,12 @@ import { routes } from "../../routes";
 import { categoricalColor } from "../../../primitives/plot/palette";
 import {
   appendRunIds,
+  armDistributionGroups,
   armTopUps,
   harnessArmLaunchItems,
   countedRunIds,
   isGgArm,
-  medianRatio,
+  presentedRatio,
   pruneDeadRunIds,
   toolCallChartData,
   totalMissingRuns,
@@ -46,7 +46,7 @@ import exec from "../runs/RunExec.module.scss";
 import styles from "./Comparisons.module.scss";
 
 // The comparison detail page (`/comparisons/:id`) — the heart of the feature.
-// Per arm it presents the cost/token distribution (a box + whiskers + bootstrap
+// Per arm it presents the cost/token/session-duration distribution (a box +
 // CI over the arm's runs — never a single averaged bar, and never merged across
 // arms), the automated-only score, the pass rate with its Wilson interval, and
 // the tool-call diagnostics that explain *why* one arm costs more. Any confound
@@ -366,38 +366,15 @@ export function ComparisonDetailPage() {
     comparison.config.arms.map((arm, i) => [arm.id, categoricalColor(i)]),
   );
 
-  const costGroups: DistributionGroup[] = arms
-    .filter((a) => a.cost)
-    .map((a) => ({
-      label: a.arm.label,
-      color: colorForArm.get(a.arm.id),
-      n: a.cost!.n,
-      points: [],
-      median: a.cost!.median,
-      mean: a.cost!.mean,
-      min: a.cost!.min,
-      max: a.cost!.max,
-      q1: a.cost!.q1,
-      q3: a.cost!.q3,
-      ciLow: a.cost!.ciLow,
-      ciHigh: a.cost!.ciHigh,
-    }));
-  const tokenGroups: DistributionGroup[] = arms
-    .filter((a) => a.tokens)
-    .map((a) => ({
-      label: a.arm.label,
-      color: colorForArm.get(a.arm.id),
-      n: a.tokens!.n,
-      points: [],
-      median: a.tokens!.median,
-      mean: a.tokens!.mean,
-      min: a.tokens!.min,
-      max: a.tokens!.max,
-      q1: a.tokens!.q1,
-      q3: a.tokens!.q3,
-      ciLow: a.tokens!.ciLow,
-      ciHigh: a.tokens!.ciHigh,
-    }));
+  // Cost, tokens, and session duration, each summarized per arm on the terms
+  // the comparisons statistics page sets for a right-skewed metric.
+  const costGroups = armDistributionGroups(arms, "cost", colorForArm);
+  const tokenGroups = armDistributionGroups(arms, "tokens", colorForArm);
+  const sessionGroups = armDistributionGroups(
+    arms,
+    "sessionDuration",
+    colorForArm,
+  );
 
   const toolCallData = toolCallChartData(
     arms.map((a) => ({
@@ -413,18 +390,11 @@ export function ComparisonDetailPage() {
     (a.confounds ?? []).map((c) => ({ armLabel: a.arm.label, confound: c })),
   );
 
-  // The presented (never a verdict) median-cost ratio for exactly two arms, both
-  // with a resolved cost distribution — "arm's median cost is ~R× the other's"
-  // (docs/comparisons/statistics.md). Ordered so the ratio reads >= 1.
-  const costPair: [(typeof arms)[number], (typeof arms)[number]] | null =
-    arms.length === 2 && arms[0]!.cost && arms[1]!.cost
-      ? ([arms[0]!, arms[1]!].sort(
-          (x, y) => y.cost!.median - x.cost!.median,
-        ) as [(typeof arms)[number], (typeof arms)[number]])
-      : null;
-  const [hi, lo] = costPair ?? [null, null];
-  const costRatio =
-    hi && lo ? medianRatio(hi.cost!.median, lo.cost!.median) : null;
+  // The presented (never a verdict) median ratios for exactly two arms, "arm's
+  // median cost is ~R× the other's" (docs/comparisons/statistics.md). Cost and
+  // session duration are each ordered on their own.
+  const costRatio = presentedRatio(arms, "cost");
+  const sessionRatio = presentedRatio(arms, "sessionDuration");
 
   return (
     <PageLayout>
@@ -566,12 +536,22 @@ export function ComparisonDetailPage() {
         </div>
       )}
 
-      {costRatio !== null && !Number.isNaN(costRatio) && hi && lo && (
+      {costRatio && (
         <p className={styles.ratioCallout}>
-          {hi.arm.label}&rsquo;s median cost is ~{costRatio.toFixed(1)}×{" "}
-          {lo.arm.label}
-          &rsquo;s ({formatUsd(hi.cost!.median)} vs {formatUsd(lo.cost!.median)}
-          ).
+          {costRatio.higher.arm.label}&rsquo;s median cost is ~
+          {costRatio.ratio.toFixed(1)}× {costRatio.lower.arm.label}&rsquo;s (
+          {formatUsd(costRatio.higher.cost!.median)} vs{" "}
+          {formatUsd(costRatio.lower.cost!.median)}).
+        </p>
+      )}
+      {sessionRatio && (
+        <p className={styles.ratioCallout}>
+          {sessionRatio.higher.arm.label}&rsquo;s median session duration is ~
+          {sessionRatio.ratio.toFixed(1)}× {sessionRatio.lower.arm.label}
+          &rsquo;s ({formatRunTime(
+            sessionRatio.higher.sessionDuration!.median,
+          )}{" "}
+          vs {formatRunTime(sessionRatio.lower.sessionDuration!.median)}).
         </p>
       )}
 
@@ -612,6 +592,22 @@ export function ComparisonDetailPage() {
                   })
           }
           empty="No token data yet for this comparison's runs."
+        />
+
+        <ChartWidget
+          title="Session duration"
+          chartTitle="Session duration distribution by arm"
+          hint="The harness session alone, in seconds. Box = IQR, whiskers = min/max, tick = median, thin band = bootstrap 95% CI on the median. A run recorded before session durations were measured contributes nothing."
+          spec={
+            sessionGroups.length === 0
+              ? undefined
+              : (palette) =>
+                  distributionChart(sessionGroups, palette, {
+                    y: "seconds",
+                    formatValue: (v) => formatRunTime(v),
+                  })
+          }
+          empty="No session durations recorded yet for this comparison's runs."
         />
 
         {/* A peer of the three charts rather than a hand-rolled section: same

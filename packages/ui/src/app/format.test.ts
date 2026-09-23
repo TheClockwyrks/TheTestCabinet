@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatTimeAgo, formatUsdExact } from "./format";
+import { formatRunTime, formatTimeAgo, formatUsdExact } from "./format";
 
 describe("formatUsdExact", () => {
   it("renders full dollars and cents with exactly two decimals", () => {
@@ -12,6 +12,18 @@ describe("formatUsdExact", () => {
 
   it("renders an unknown figure as an em dash", () => {
     expect(formatUsdExact(null)).toBe("—");
+  });
+});
+
+describe("formatRunTime", () => {
+  it("renders minutes and seconds", () => {
+    expect(formatRunTime(42)).toBe("42s");
+    expect(formatRunTime(125)).toBe("2m 5s");
+  });
+
+  it("carries a fractional mean that rounds up to the next minute", () => {
+    expect(formatRunTime(59.6)).toBe("1m 0s");
+    expect(formatRunTime(119.7)).toBe("2m 0s");
   });
 });
 

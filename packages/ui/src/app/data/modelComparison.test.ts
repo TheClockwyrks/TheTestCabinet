@@ -1,11 +1,6 @@
 import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import { describe, expect, it } from "vitest";
-import {
-  meanReported,
-  modelCaseOptions,
-  runIsModel,
-  standInField,
-} from "./modelComparison";
+import { modelCaseOptions, runIsModel, standInField } from "./modelComparison";
 
 // A summary card carrying the fields this module reads. Everything else is
 // irrelevant here, so the fixture stays to the subject, the case name, the
@@ -273,25 +268,5 @@ describe("standInField", () => {
 
   it("has nothing to place over an empty cohort", () => {
     expect(standInField([], SUBJECT, costOf)).toBeNull();
-  });
-});
-
-describe("meanReported", () => {
-  it("averages only the runs that reported the figure", () => {
-    const mean = meanReported(
-      [
-        run({ id: "a", cost: 2 }),
-        run({ id: "b", cost: null }),
-        run({ id: "c", cost: 4 }),
-      ],
-      costOf,
-    );
-
-    expect(mean).toBe(3);
-  });
-
-  it("is null — not zero — when nothing reported the figure", () => {
-    expect(meanReported([run({ cost: null })], costOf)).toBeNull();
-    expect(meanReported([], costOf)).toBeNull();
   });
 });

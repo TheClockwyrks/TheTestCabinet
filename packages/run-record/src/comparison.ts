@@ -10,8 +10,8 @@
 import type { HarnessSlug, TokenMetrics } from "./index";
 
 /**
- * A descriptive summary of one numeric metric (comparable cost, total tokens)
- * over an arm's `N` runs.
+ * A descriptive summary of one numeric metric (comparable cost, total tokens,
+ * session duration) over an arm's `N` runs.
  *
  * The bar a view draws is the [`median`](Self::median) — the honest "typical"
  * run for a skewed metric — but the summary carries the full spread so the view
@@ -336,6 +336,13 @@ export type ComparisonArmResult = {
    * The total-token distribution across the arm's runs.
    */
   tokens?: MetricSummary;
+  /**
+   * The session-duration (seconds) distribution across the arm's runs: the
+   * harness session alone, since setup, teardown, and validation are the
+   * cabinet's time. A run recorded before the stage durations were measured
+   * contributes nothing, on the same terms as a run missing its cost.
+   */
+  sessionDuration?: MetricSummary;
   /**
    * The automated-only score across the arm's runs.
    */

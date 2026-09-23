@@ -62,11 +62,14 @@ coordinate](/components/ui/overview/#the-case-detail-coordinate), and a visitor
 can widen that cohort across versions and engines. A board widened across
 engines keeps each engine's rows apart, because runs under different engines
 measure different work. A case's metrics share the board's scope, so both
-describe the same cohort.
+describe the same cohort. The metrics chart rating, points, tokens, cost, and
+session duration per model.
 
 Rows are ranked by average score, descending, then by the better best overall
-rating, then by recency. A game jam carries a whole-game overall grade in place
-of a domain rating.
+rating, then by recency. Beside the score the board reports each pair's mean
+comparable cost, mean token total, and mean session duration, each taken over
+the runs that recorded the figure. A game jam carries a whole-game overall
+grade in place of a domain rating.
 
 A run's score is carried on its projection row. A validator-rated run's score
 is its validators' earned share of the declared checklist weight while the run

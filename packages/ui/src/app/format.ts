@@ -127,9 +127,12 @@ export function formatReleaseDate(iso: string): string {
   }).format(new Date(iso));
 }
 
+// A duration in whole seconds, as minutes and seconds. Rounded before it is
+// split, so a mean such as 119.7s reads "2m 0s" rather than "1m 60s".
 export function formatRunTime(seconds: number): string {
-  const minutes = Math.floor(seconds / 60);
-  const rest = Math.round(seconds % 60);
+  const whole = Math.round(seconds);
+  const minutes = Math.floor(whole / 60);
+  const rest = whole % 60;
   if (minutes === 0) {
     return `${rest}s`;
   }

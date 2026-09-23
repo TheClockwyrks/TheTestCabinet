@@ -22,7 +22,7 @@ const MODE_OPTIONS: ReadonlyArray<SegmentedOption<ChartMode>> = [
  * the version scope use so the controls in a chart's header read as one family.
  *
  * Unlike {@link ChartSortControl} this is deliberately **per chart**. The order
- * control is linked across a page because four charts describing one roster are
+ * control is linked across a page because the charts describing one roster are
  * only comparable while they agree on where each bar sits; how one of them draws
  * its own distribution is nobody else's business, and linking it would mean a
  * reader could not put a scatter of cost beside a bar of tokens.

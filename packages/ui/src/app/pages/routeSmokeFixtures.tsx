@@ -259,6 +259,7 @@ function runSummary(id: string, slug: string): RunSummary {
     },
     metrics: {
       runTimeSeconds: 60,
+      sessionSeconds: 40,
       tokens: {
         uncachedInput: 100,
         cachedInput: null,

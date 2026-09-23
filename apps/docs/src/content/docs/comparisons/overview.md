@@ -4,11 +4,11 @@ title: "Overview"
 
 A harness comparison is The Test Cabinet's A/B test. It runs the same benchmark
 under several harnesses, or several [gg](/gg/overview/) configurations, holds
-every other variable constant, and presents the cost, token, and score data side
-by side so a reader can judge for themselves. This section documents the metric
-split the capability depends on, the experiment that produces the data, the
-diagnostics that explain a cost gap, the statistics that summarize noisy runs,
-and how a comparison and its runs reach the public site.
+every other variable constant, and presents the cost, token, session duration,
+and score data side by side so a reader can judge for themselves. This section
+documents the metric split the capability depends on, the experiment that
+produces the data, the diagnostics that explain a cost gap, the statistics that
+summarize noisy runs, and how a comparison and its runs reach the public site.
 
 ## The harness axis
 

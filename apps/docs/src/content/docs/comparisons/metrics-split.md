@@ -11,12 +11,12 @@ console and the public site group runs identically.
 
 ## Aggregators
 
-Four client-side aggregators use the pair as their fold key. The fold happens
+The client-side aggregators use the pair as their fold key. The fold happens
 entirely in the client.
 
 | Location                                                                              | What it groups                                   |
 | ------------------------------------------------------------------------------------- | ------------------------------------------------ |
-| `packages/ui/src/primitives/MetricChartWidget.tsx` — `meanBars()` / `runBars()`       | the points, token and cost bars                  |
+| `packages/ui/src/primitives/MetricChartWidget.tsx` — `meanBars()` / `runBars()`       | the points, token, cost and duration bars        |
 | `packages/ui/src/app/pages/testcases/[slug]/TestCaseMetricsPage.tsx` — `ratingModels` | the ratings chart                                |
 | `packages/ui/src/app/pages/testcases/[slug]/TestCaseMetricsPage.tsx` — `points`       | the mean points per bar, and the order tie-break |
 | `packages/ui/src/app/pages/testcases/[slug]/TestCaseLeaderboardPage.tsx` — `accs`     | the leaderboard                                  |
@@ -48,16 +48,16 @@ the split needs no schema support of its own.
 The Metrics tab carries one order control, rendered into every chart's header
 row on its trailing edge. The sliders are linked: they all read and write a
 single `ChartSort` held by the page, so moving any one of them moves the rest.
-That is the point — four charts describing one roster are only comparable while
+That is the point. The charts describe one roster and are only comparable while
 they agree on where each bar sits.
 
-| Order          | What it means                                                                                           |
-| -------------- | ------------------------------------------------------------------------------------------------------- |
-| `alphabetical` | By bar label. The default, and what Plot does on its own with an ordinal domain it infers.              |
-| `best`         | Best-first on each chart's own metric: lowest cost, fewest tokens, highest average rating, most points. |
+| Order          | What it means                                                                                    |
+| -------------- | ------------------------------------------------------------------------------------------------ |
+| `alphabetical` | By bar label. The default, and what Plot does on its own with an ordinal domain it infers.       |
+| `best`         | Best-first on the chart's own metric: lowest cost, fewest tokens, shortest session, most points. |
 
 `best` is per-chart by design — every chart sorts on the metric it draws, so the
-four are deliberately _not_ in the same order under it. Ties are split the same
+charts are deliberately not in the same order under it. Ties are split the same
 way everywhere: by the pair's mean points, highest first, then by label so the
 result never depends on the input order. A bar whose metric is unknown sorts
 last rather than being read as a zero (which under a lowest-first metric would
@@ -73,8 +73,8 @@ where the bars sit.
 
 ## Display mode
 
-The token and cost charts each carry a display control, rendered into the same
-header row as the order control.
+The token, cost, and session duration charts each carry a display control,
+rendered into the same header row as the order control.
 
 | Mode      | What it draws                                               |
 | --------- | ----------------------------------------------------------- |
@@ -101,7 +101,10 @@ identical under either.
 Quartiles are cut by the linearly interpolated quantile the [comparison
 statistics](/comparisons/statistics/) define, so a box here and a box on a
 comparison agree. These charts fold in the browser over whatever runs the reader
-has scoped, and summarize without a bootstrap interval.
+has scoped, and summarize without a bootstrap interval. Session duration is
+the harness session alone, and a run recorded before the stage durations were
+measured is left out of that chart. It is comparable across runs of one model
+because every run is pinned to that model's own provider.
 
 ## gg exclusion
 

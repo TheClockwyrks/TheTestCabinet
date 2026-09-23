@@ -44,16 +44,22 @@ function header(title: string): HTMLElement {
 const METRICS = routes.testCaseMetrics(FIXTURE_IDS.slug);
 
 describe("the Metrics tab's chart controls", () => {
-  it("gives the two resource charts a display control and the rest none", async () => {
-    // The user asked for tokens and cost. Points is a bounded fraction of one
-    // checklist and Ratings is already a per-run count, so neither gains a
-    // distribution view — if that changes, this is the test to change with it.
+  it("gives the resource charts a display control and the rest none", async () => {
+    // Tokens, cost, and session duration are the skewed ones. Points is a
+    // bounded fraction of one checklist and Ratings is already a per-run count,
+    // so neither gains a distribution view — if that changes, this is the test
+    // to change with it.
     await visit(METRICS, stockedGallery("run-metrics-1"));
     expect(
       screen.getByRole("radiogroup", { name: "Average tokens display" }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("radiogroup", { name: "Average cost display" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("radiogroup", {
+        name: "Average session duration display",
+      }),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("radiogroup", { name: "Average points display" }),
@@ -172,12 +178,29 @@ describe("the Metrics tab's chart controls", () => {
     expect(modified.defaultPrevented).toBe(false);
   });
 
+  it("charts session duration per model beside tokens and cost", async () => {
+    await visit(METRICS, stockedGallery("run-metrics-9"));
+    expect(
+      screen.getByRole("img", {
+        name: "Average session duration by harness & model",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/comparable across runs of one model/),
+    ).toBeInTheDocument();
+  });
+
   it("renders on the read-only static gallery, which has no backend", async () => {
     // The site host builds its data from a build-time snapshot. Nothing the
     // charts need may reach for a console.
     await visit(METRICS, readOnlyGallery("run-metrics-5"));
     expect(
       screen.getByRole("radiogroup", { name: "Average cost display" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", {
+        name: "Average session duration by harness & model",
+      }),
     ).toBeInTheDocument();
   });
 });
@@ -194,5 +217,9 @@ describe("the game jam's Metrics tab", () => {
     );
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.getByText(/chart a distribution/i)).toBeInTheDocument();
+    // The note explains the duration chart, so it goes where the chart goes.
+    expect(
+      screen.queryByText(/comparable across runs of one model/),
+    ).not.toBeInTheDocument();
   });
 });
