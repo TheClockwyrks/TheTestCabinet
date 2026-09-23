@@ -90,10 +90,10 @@ const FAKE_MODEL_ENV: &str = "TCAB_GG_FAKE_MODEL";
 /// The provider token that selects the mock (as `provider` or a `model_id` prefix).
 const MOCK_PROVIDER: &str = "mock";
 /// `X-Title` sent to OpenRouter to identify the app on its dashboards.
-const GG_X_TITLE: &str = "The Test Cabinet gg";
+const GG_X_TITLE: &str = "gg";
 /// `HTTP-Referer` sent to OpenRouter — an app-identity hint used for its rankings,
 /// not a navigational URL.
-const GG_HTTP_REFERER: &str = "https://github.com/the-test-cabinet/gg";
+const GG_HTTP_REFERER: &str = "https://testcabinet.ai/";
 /// The header form of the [session key](build_request_body), which OpenRouter accepts
 /// interchangeably with the `session_id` body field.
 const SESSION_ID_HEADER: &str = "x-session-id";
