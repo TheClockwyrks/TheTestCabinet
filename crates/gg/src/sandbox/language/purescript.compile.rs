@@ -715,6 +715,14 @@ fn invoke_purs(files: &[String], context: &PrepareContext) -> Result<CompilerRep
     context
         .compiler(&purs)
         .map_err(|error| format!("{}{error}", spawn_prefix(&purs, PURS_ENV)))?
+        // One Haskell capability rather than one per core. `purs` is linked `-with-rtsopts=-N`, so
+        // by default every compile starts a worker per core and runs the parallel collector across
+        // them — for a compile that type-checks one program against a precompiled library set and
+        // has nothing to spread. On one capability the same compile takes the same wall time for
+        // about a third of the CPU, and it stops contending with the other preparations compiling
+        // beside it. The flags go first: the RTS reads them wherever they are, but a reader of the
+        // command line should see them apart from the compiler's own.
+        .args(["+RTS", "-N1", "-RTS"])
         .arg("compile")
         // Structured diagnostics on stdout: an error's own code and its exact span, rather than
         // prose gg would have to scrape a location out of.
