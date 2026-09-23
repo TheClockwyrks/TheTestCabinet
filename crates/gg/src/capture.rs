@@ -1164,8 +1164,11 @@ fn split_tool_data(data: Option<&ApiData>) -> (Option<Value>, Option<String>) {
 /// model step the session took. The `model_id` and error behavior pass straight through, so
 /// wrapping is invisible to the loop.
 pub struct RecordingClient {
-    /// The wrapped real client.
-    inner: Box<dyn ModelClient>,
+    /// The wrapped real client. Shared (`Arc`) rather than boxed because the session's own frame
+    /// keeps a handle to the same client — to [price the replies](ModelClient::price_generation)
+    /// loop detection abandoned, at session end — after this wrapper has been handed to the agent's
+    /// turn loop.
+    inner: std::sync::Arc<dyn ModelClient>,
     /// The shared recorder this client's I/O is streamed into.
     recorder: std::sync::Arc<GgRecorder>,
     /// The id of the agent this client drives, stamped onto every recorded entry.
@@ -1180,7 +1183,7 @@ impl RecordingClient {
     /// Wrap `inner` so each of its `complete` calls is recorded under `agent_id` into `recorder`,
     /// as the agent's own turn loop.
     pub fn new(
-        inner: Box<dyn ModelClient>,
+        inner: std::sync::Arc<dyn ModelClient>,
         recorder: std::sync::Arc<GgRecorder>,
         agent_id: impl Into<String>,
     ) -> Self {
@@ -1205,7 +1208,7 @@ impl RecordingClient {
     /// and a reader serves the wrong one to whichever asked first — so the discriminator
     /// is not labelling, it is the correctness condition for capturing this client at all.
     pub fn for_compaction(
-        inner: Box<dyn ModelClient>,
+        inner: std::sync::Arc<dyn ModelClient>,
         recorder: std::sync::Arc<GgRecorder>,
         agent_id: impl Into<String>,
     ) -> Self {
@@ -1294,6 +1297,18 @@ impl ModelClient for RecordingClient {
 
     fn announce_retries_on(&self, emitter: &crate::telemetry::Emitter) {
         self.inner.announce_retries_on(emitter);
+    }
+
+    /// Forwarded like everything else a decorator must not change: the record of abandoned replies
+    /// is the run's, shared across every client, and wrapping one in capture must neither hide nor
+    /// duplicate it.
+    fn abandoned_replies(&self) -> Vec<crate::model::AbandonedReply> {
+        self.inner.abandoned_replies()
+    }
+
+    /// Forwarded to the real client's own lookup — the gateway is its transport, capture or not.
+    async fn price_generation(&self, generation_id: &str) -> Option<crate::model::ReplySpend> {
+        self.inner.price_generation(generation_id).await
     }
 }
 

@@ -90,8 +90,10 @@ the stream as it ran. It records the run's spend as two figures, on each
 `slotCosts` entry and summed run-wide:
 
 - `cost`, the total cost: the sum over every request that reported a price,
-  including the [error turns](/gg/execution-limits/#model-api-errors) and the
-  rejected replies. The run's `maxCost` ceiling reads this figure.
+  including the [error turns](/gg/execution-limits/#model-api-errors), the
+  rejected replies and the replies loop detection
+  [abandoned](/gg/execution-limits/#abandoned-replies), which are priced at
+  session end. The run's `maxCost` ceiling reads this figure.
 - `workCost`, the work cost: the sum over the turns that produced a program or
   a tool call gg ran.
 

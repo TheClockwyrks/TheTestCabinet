@@ -75,8 +75,8 @@ use test_cabinet_core::metrics::{Cost, TokenCounts};
 use crate::context::{BpeTokenEstimator, TokenEstimator};
 use crate::loopguard::{LoopGuard, LoopGuardConfig, LoopVerdict, resolve_loop_guard};
 use crate::model::{
-    FinishReason, LoopAborts, Message, ModelClient, ModelError, ModelResponse, ReplySpend, Role,
-    ToolCall, ToolDefinition,
+    AbandonedReply, FinishReason, LoopAborts, Message, ModelClient, ModelError, ModelResponse,
+    ReplySpend, Role, ToolCall, ToolDefinition,
 };
 use crate::telemetry::Emitter;
 
@@ -475,6 +475,16 @@ pub struct OpenRouterClient {
     /// once per model per run: an agent's successor, its subagents and its handoff compaction all
     /// ask on `auto` once any of them has been refused. See [`ToolChoiceMemory`].
     tool_choice: ToolChoiceMemory,
+    /// The run's [record of the replies](AbandonedReplies) loop detection abandoned on this
+    /// client's streams, kept so the session can price them at its end. Shared with every other
+    /// client the run's [factory](DefaultClientFactory) builds, so one read at session end sees
+    /// the whole run's abandons; a client built without one keeps a record of its own.
+    abandoned: AbandonedReplies,
+    /// The [agent profile](GgSlotBinding::slot) (slot) this client was resolved for — what an
+    /// [abandoned reply](AbandonedReply)'s price is booked to at session end, since a run spans
+    /// several models and the price belongs to the model that generated it. Empty for a client
+    /// built directly rather than [from a binding](Self::from_binding).
+    profile_id: String,
     /// The run's [routing key](RoutingKey), the same value on every agent's client. It pins the
     /// whole run's requests to one provider endpoint, so an agent's successive turns reuse the
     /// prefix the last turn cached and sibling agents that open on the same prefix reuse each
@@ -563,6 +573,8 @@ impl OpenRouterClient {
             api_key: api_key.into(),
             retry,
             tool_choice: ToolChoiceMemory::default(),
+            abandoned: AbandonedReplies::default(),
+            profile_id: String::new(),
             routing_key,
             roster: None,
             cache_trace: CacheTrace::default(),
@@ -597,13 +609,60 @@ impl OpenRouterClient {
         self
     }
 
+    /// This client keeping the replies it abandons on `record`, the run-wide
+    /// [record](AbandonedReplies) its [factory](DefaultClientFactory) shares between every client
+    /// it builds. A client built without it keeps a record of its own.
+    pub fn with_abandoned_replies(mut self, record: AbandonedReplies) -> Self {
+        self.abandoned = record;
+        self
+    }
+
+    /// This client accounting its abandoned replies to `profile` — the
+    /// [agent profile](GgSlotBinding::slot) (slot) it was [resolved](Self::from_binding) for,
+    /// which is what a price read back at session end is booked to.
+    ///
+    /// A client built without one records its abandons with no profile, which prices them onto no
+    /// slot — every client a run drives is built [from a binding](Self::from_binding), so that is
+    /// a shape only a direct test construction produces.
+    pub fn with_profile(mut self, profile: impl Into<String>) -> Self {
+        self.profile_id = profile.into();
+        self
+    }
+
     /// Post `body` to `url` — one attempt's request, on whichever transport the caller is.
     async fn post(&self, url: &str, body: &Value) -> reqwest::Result<reqwest::Response> {
         #[cfg(test)]
         if let Some(gateway) = &self.gateway {
-            return Ok(gateway(&self.attempt(url).json(body).build()?));
+            return Ok(gateway(
+                &self
+                    .attempt(reqwest::Method::POST, url)
+                    .json(body)
+                    .build()?,
+            ));
         }
-        self.attempt(url).json(body).send().await
+        self.attempt(reqwest::Method::POST, url)
+            .json(body)
+            .send()
+            .await
+    }
+
+    /// `GET` `url` with `query` — the generation ledger's lookup, on whichever transport the
+    /// caller is. Shares [`post`](Self::post)'s headers and test seam, so a lookup and a turn are
+    /// one gateway to a test.
+    async fn get(&self, url: &str, query: &[(&str, &str)]) -> reqwest::Result<reqwest::Response> {
+        #[cfg(test)]
+        if let Some(gateway) = &self.gateway {
+            return Ok(gateway(
+                &self
+                    .attempt(reqwest::Method::GET, url)
+                    .query(query)
+                    .build()?,
+            ));
+        }
+        self.attempt(reqwest::Method::GET, url)
+            .query(query)
+            .send()
+            .await
     }
 
     /// This client bounding each of its calls by `timeout` — the run's resolved
@@ -734,12 +793,19 @@ impl OpenRouterClient {
         )
         .with_prompt_cache_ttl(binding.prompt_cache_ttl)
         .with_reasoning(binding.reasoning)
-        .with_loop_detection(binding.loop_detection))
+        .with_loop_detection(binding.loop_detection)
+        .with_profile(binding.slot.clone()))
     }
 
     /// The chat-completions URL for this client's base.
     fn endpoint(&self) -> String {
         format!("{}/chat/completions", self.base_url.trim_end_matches('/'))
+    }
+
+    /// The generation-ledger URL for this client's base — where a reply abandoned mid-stream is
+    /// priced at session end, since its stream never delivered a usage payload.
+    fn generation_endpoint(&self) -> String {
+        format!("{}/generation", self.base_url.trim_end_matches('/'))
     }
 
     /// The candidate this client's model is on, which a request body is built naming.
@@ -796,10 +862,10 @@ impl OpenRouterClient {
     ///
     /// The headers are the run's identity and its [routing key](RoutingKey); a request that
     /// quietly stopped sending the key would cost the agent its prompt cache.
-    fn attempt(&self, url: &str) -> reqwest::RequestBuilder {
+    fn attempt(&self, method: reqwest::Method, url: &str) -> reqwest::RequestBuilder {
         let mut request = self
             .http
-            .post(url)
+            .request(method, url)
             .header(
                 reqwest::header::AUTHORIZATION,
                 format!("Bearer {}", self.api_key),
@@ -885,9 +951,50 @@ impl ModelClient for OpenRouterClient {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(emitter.clone());
     }
+
+    fn abandoned_replies(&self) -> Vec<AbandonedReply> {
+        self.abandoned.list()
+    }
+
+    async fn price_generation(&self, generation_id: &str) -> Option<ReplySpend> {
+        self.lookup_generation(generation_id).await
+    }
 }
 
 impl OpenRouterClient {
+    /// Look one generation up on the gateway's generation ledger — `GET /api/v1/generation?id=…` —
+    /// and answer what it was billed, or `None` when the ledger never answered.
+    ///
+    /// A stream abandoned mid-reply never delivered its usage, so the price lives only on the
+    /// ledger — and the ledger settles a cancelled stream's entry only after a delay, answering
+    /// `404` until it does. That `404` is "not yet" rather than "never", so it is retried every
+    /// [`GENERATION_LOOKUP_RETRY`] for as long as [`GENERATION_LOOKUP_BUDGET`] allows, which is
+    /// what bounds the whole lookup at a few tens of seconds. Any other status, and a transport
+    /// failure, is the ledger answering as best it ever will and gives up at once.
+    async fn lookup_generation(&self, generation_id: &str) -> Option<ReplySpend> {
+        let deadline = tokio::time::Instant::now() + GENERATION_LOOKUP_BUDGET;
+        loop {
+            let response = match tokio::time::timeout_at(
+                deadline,
+                self.get(&self.generation_endpoint(), &[("id", generation_id)]),
+            )
+            .await
+            {
+                Ok(Ok(response)) => response,
+                // The budget expired mid-request, or the request failed outright: either way
+                // the ledger never answered.
+                Ok(Err(_)) | Err(_) => return None,
+            };
+            match response.status().as_u16() {
+                200 => return generation_spend(&response.text().await.ok()?),
+                404 if tokio::time::Instant::now() + GENERATION_LOOKUP_RETRY <= deadline => {
+                    tokio::time::sleep(GENERATION_LOOKUP_RETRY).await;
+                }
+                _ => return None,
+            }
+        }
+    }
+
     /// POST one already-built request body, with this client's retry/backoff policy and its
     /// classification of what came back — the shared transport behind both
     /// [`complete`](ModelClient::complete) and
@@ -1015,7 +1122,17 @@ impl OpenRouterClient {
                                         // abandoned attempt gg can vouch for: the provider's usage
                                         // payload arrives at the end of a stream that was never
                                         // read to its end.
+                                        // The record keeps the generation id beside it, which
+                                        // is the handle the price of that size is read back
+                                        // under at session end.
                                         loop_aborts.record(generated.words, generated.chars);
+                                        self.abandoned.record(AbandonedReply {
+                                            generation_id: generated.generation_id.clone(),
+                                            words: generated.words,
+                                            chars: generated.chars,
+                                            profile_id: self.profile_id.clone(),
+                                            model_id: self.model_id.clone(),
+                                        });
                                         last_err = format!("abandoned a looping reply: {detail}");
                                         last_trip = Some(detail);
                                         last_looped = true;
@@ -1303,17 +1420,22 @@ enum StreamOutcome {
     Malformed(ModelError),
 }
 
-/// How much output an abandoned attempt had generated by the moment its stream was dropped.
+/// What an abandoned attempt had generated by the moment its stream was dropped: the size, and the
+/// generation id it is later priced under.
 ///
-/// Measured by the [guard](LoopGuard) rather than reported by the provider, for the reason the
-/// [tally](LoopAborts) it feeds gives: the usage payload arrives at the *end* of a stream that was
-/// deliberately never read to its end.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// The size is measured by the [guard](LoopGuard) rather than reported by the provider, for the
+/// reason the [tally](LoopAborts) it feeds gives: the usage payload arrives at the *end* of a
+/// stream that was deliberately never read to its end. The generation id travels on the same
+/// record because both describe the one discarded reply — see [`AbandonedReply`], the record this
+/// becomes once the client knows the slot that generated it.
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct Generated {
     /// Completed words the guard counted.
     words: u64,
     /// Characters the guard counted, as characters rather than bytes.
     chars: u64,
+    /// The generation id the stream named, if any.
+    generation_id: Option<String>,
 }
 
 /// How long a `deadline` has left, or zero when it has already passed.
@@ -1427,6 +1549,7 @@ where
             let generated = Generated {
                 words: guard.as_ref().map_or(0, LoopGuard::words_seen),
                 chars: guard.as_ref().map_or(0, LoopGuard::chars_seen) as u64,
+                generation_id: accumulator.generation_id().map(str::to_string),
             };
             return StreamOutcome::Looping {
                 detail: format!(
@@ -1536,6 +1659,35 @@ impl ToolChoiceMemory {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .insert(model_id.to_string())
+    }
+}
+
+/// The run's record of the replies [loop detection](crate::loopguard) abandoned mid-stream — one
+/// [record](AbandonedReply) per abandoned reply, carrying its size and its generation id, kept so
+/// the session can price them at its end.
+///
+/// Cloning shares the record, exactly as [`ToolChoiceMemory`] is shared: the run's
+/// [factory](DefaultClientFactory) holds one and hands it to every client it builds, so one read
+/// at session end sees the whole run's abandons — the root's, every subagent's, and every
+/// succession's. A client built without one keeps a record of its own.
+#[derive(Debug, Clone, Default)]
+pub struct AbandonedReplies(Arc<Mutex<Vec<AbandonedReply>>>);
+
+impl AbandonedReplies {
+    /// Keep one abandoned reply's [record](AbandonedReply).
+    fn record(&self, reply: AbandonedReply) {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(reply);
+    }
+
+    /// Every abandoned reply kept so far, in the order they were abandoned.
+    pub fn list(&self) -> Vec<AbandonedReply> {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
     }
 }
 
@@ -2235,6 +2387,140 @@ fn split_completion(
 }
 
 // ---------------------------------------------------------------------------
+// The generation ledger (pure)
+// ---------------------------------------------------------------------------
+
+/// How long one generation lookup keeps retrying the ledger's `404` before giving up: **30
+/// seconds** in total.
+///
+/// A gateway settles a cancelled stream's ledger entry only after a delay — about ten seconds —
+/// so the first lookup of a reply abandoned near session end is answered `404` for a while. The
+/// budget is comfortably past that delay without stalling a session's epilogue for long, and it is
+/// what bounds a lookup at "a few tens of seconds" however the ledger behaves. Lookups for a run's
+/// abandoned replies all start together, so the whole session-end pass is bounded by this figure
+/// rather than by it times the count.
+const GENERATION_LOOKUP_BUDGET: Duration = Duration::from_secs(30);
+
+/// The delay between a generation lookup's retries: **2 seconds** — short enough that an entry
+/// that settles ten seconds after the cancel is priced seconds later, long enough that the
+/// schedule is a handful of requests rather than a flood.
+const GENERATION_LOOKUP_RETRY: Duration = Duration::from_secs(2);
+
+/// `GET /api/v1/generation?id=…`'s envelope: the ledger's record under `data`.
+#[derive(Debug, Deserialize)]
+struct WireGenerationEnvelope {
+    #[serde(default)]
+    data: Option<WireGeneration>,
+}
+
+/// The generation ledger's record for one generation: what the request was billed
+/// (`total_cost`), its token counts, and who served it — beside the record **verbatim** as it
+/// arrived. A reply abandoned mid-stream has no usage payload (the stream never delivered one), so
+/// this is the only place its price exists; see [`WireGeneration::spend`].
+#[derive(Debug)]
+struct WireGeneration {
+    /// What the request was billed, in USD.
+    total_cost: Option<f64>,
+    /// The prompt tokens the ledger recorded, cached ones included — see [`Self::spend`] for how
+    /// the two prompt figures map.
+    native_tokens_prompt: Option<u64>,
+    /// Of the prompt tokens, how many were served from the provider's cache.
+    native_tokens_cached: Option<u64>,
+    /// The completion tokens the ledger recorded, reasoning included.
+    native_tokens_completion: Option<u64>,
+    /// Of the completion tokens, how many were the model's reasoning.
+    native_tokens_reasoning: Option<u64>,
+    /// The upstream provider that served the request, as the ledger names it.
+    provider_name: Option<String>,
+    /// The record verbatim, exactly as parsed off the wire — kept for the reason
+    /// [`WireUsage::to_wire`] keeps the usage object: a published figure is checkable only while
+    /// the record holds what the provider said.
+    raw: Value,
+}
+
+/// The mapped fields of a [`WireGeneration`], as the wire carries them.
+#[derive(Deserialize)]
+struct WireGenerationFields {
+    #[serde(default)]
+    total_cost: Option<f64>,
+    #[serde(default)]
+    native_tokens_prompt: Option<u64>,
+    #[serde(default)]
+    native_tokens_cached: Option<u64>,
+    #[serde(default)]
+    native_tokens_completion: Option<u64>,
+    #[serde(default)]
+    native_tokens_reasoning: Option<u64>,
+    #[serde(default)]
+    provider_name: Option<String>,
+}
+
+impl<'de> Deserialize<'de> for WireGeneration {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        // Read the whole record first — the verbatim half — and then map the fields off it. One
+        // read, so the two halves cannot describe different records.
+        let raw = Value::deserialize(deserializer)?;
+        let fields = WireGenerationFields::deserialize(&raw).map_err(serde::de::Error::custom)?;
+        Ok(Self {
+            total_cost: fields.total_cost,
+            native_tokens_prompt: fields.native_tokens_prompt,
+            native_tokens_cached: fields.native_tokens_cached,
+            native_tokens_completion: fields.native_tokens_completion,
+            native_tokens_reasoning: fields.native_tokens_reasoning,
+            provider_name: fields.provider_name,
+            raw,
+        })
+    }
+}
+
+impl WireGeneration {
+    /// The spend this record reports, mapped onto the shared metrics contract exactly as
+    /// [`map_usage`] maps a stream's usage block: cached input subtracted from the prompt total,
+    /// reasoning subtracted from the completion total (saturating, so a slightly inconsistent
+    /// record can never underflow), and the `total_cost` as both cost figures.
+    ///
+    /// There is no reply left to bound the output/reasoning split against (the reply was abandoned
+    /// mid-stream), so the ledger's own split stands and nothing is
+    /// [`reconciled`](ModelResponse::usage_reconciled).
+    fn spend(&self) -> ReplySpend {
+        let cached_input = self.native_tokens_cached;
+        let uncached_input = self
+            .native_tokens_prompt
+            .map(|prompt| prompt.saturating_sub(cached_input.unwrap_or(0)));
+        let reasoning = self.native_tokens_reasoning;
+        let output = self
+            .native_tokens_completion
+            .map(|completion| completion.saturating_sub(reasoning.unwrap_or(0)));
+        ReplySpend {
+            tokens: TokenCounts {
+                uncached_input,
+                cached_input,
+                output,
+                reasoning,
+            },
+            cost: self.total_cost.map(|cost| Cost {
+                comparable: Some(cost),
+                actual: Some(cost),
+            }),
+            provider: self.provider_name.clone(),
+            wire: Some(self.raw.clone()),
+            reconciled: false,
+        }
+    }
+}
+
+/// Parse `GET /api/v1/generation?id=…`'s body into the spend it reports, or `None` when the body
+/// is no generation record — which leaves the reply unpriced exactly as a lookup that never
+/// answered does.
+fn generation_spend(body: &str) -> Option<ReplySpend> {
+    let envelope: WireGenerationEnvelope = serde_json::from_str(body).ok()?;
+    Some(envelope.data?.spend())
+}
+
+// ---------------------------------------------------------------------------
 // Wire response types
 // ---------------------------------------------------------------------------
 
@@ -2447,6 +2733,10 @@ pub struct StreamAccumulator {
     usage: Option<WireUsage>,
     /// Whether the terminal `data: [DONE]` sentinel has been seen.
     done: bool,
+    /// The generation id, from the `id` on the first chunk that carried one — the handle a reply
+    /// [loop detection](crate::loopguard) abandons is priced under at session end, since a stream
+    /// dropped mid-reply never delivers its usage.
+    generation_id: Option<String>,
     /// The upstream provider the chunks named, from the first chunk that carried one.
     provider: Option<String>,
     /// Whether the push currently being assembled carried a delta from the model — set by
@@ -2505,6 +2795,7 @@ impl StreamAccumulator {
             finish_reason: None,
             usage: None,
             done: false,
+            generation_id: None,
             provider: None,
             saw_delta: false,
         }
@@ -2567,6 +2858,13 @@ impl StreamAccumulator {
         self.done
     }
 
+    /// The generation id the stream has named so far, if any — the `id` of the first chunk that
+    /// carried one. Read when a reply is [abandoned](StreamOutcome::Looping), so the run can price
+    /// it at session end under the one id the ledger knows it by.
+    pub fn generation_id(&self) -> Option<&str> {
+        self.generation_id.as_deref()
+    }
+
     /// The upstream provider the chunks have named so far, if any — read when a stalled stream is
     /// abandoned, so the [timeout](ModelError::Timeout) can say who was serving it.
     pub fn provider(&self) -> Option<&str> {
@@ -2622,6 +2920,9 @@ impl StreamAccumulator {
         }
         if let Some(usage) = chunk.usage {
             self.usage = Some(usage);
+        }
+        if self.generation_id.is_none() {
+            self.generation_id = chunk.id.filter(|id| !id.is_empty());
         }
         if self.provider.is_none() {
             self.provider = chunk.provider.filter(|provider| !provider.is_empty());
@@ -2766,6 +3067,10 @@ fn reply_size(text: Option<&str>, tool_calls: &[ToolCall]) -> Option<u64> {
 /// One `chat.completion.chunk` object, as it arrives on a `data:` line.
 #[derive(Debug, Deserialize)]
 struct WireStreamChunk {
+    /// The gateway's id for this generation, stamped on every chunk. It is the handle the run
+    /// prices an abandoned reply's output under at session end — see [`AbandonedReply`].
+    #[serde(default)]
+    id: Option<String>,
     #[serde(default)]
     choices: Vec<WireStreamChoice>,
     /// Present only on the final chunk, and only because the request asked for
@@ -4705,6 +5010,10 @@ pub fn provider_for(binding: &GgSlotBinding) -> ProviderKind {
 /// `roster` is the run's [candidate list](ProviderRoster), shared by every client built for the
 /// run, carrying how many unexpected misses leave a provider. A model the roster does not name
 /// sends no provider object.
+///
+/// `abandoned` is the run's [record of abandoned replies](AbandonedReplies), shared the same way,
+/// so the session's pricing pass sees the whole run's abandons through whichever client it reads.
+#[allow(clippy::too_many_arguments)]
 pub fn client_for_slot(
     binding: &GgSlotBinding,
     routing_key: &RoutingKey,
@@ -4713,6 +5022,7 @@ pub fn client_for_slot(
     retry_policy: RetryPolicy,
     roster: &ProviderRoster,
     tool_choice: &ToolChoiceMemory,
+    abandoned: &AbandonedReplies,
 ) -> Result<Box<dyn ModelClient>, ModelError> {
     match provider_for(binding) {
         ProviderKind::Mock => Ok(Box::new(mock_client_for(&binding.model_id))),
@@ -4722,6 +5032,7 @@ pub fn client_for_slot(
                 .with_stream_idle(model_stream_idle)
                 .with_retry_policy(retry_policy)
                 .with_tool_choice_memory(tool_choice.clone())
+                .with_abandoned_replies(abandoned.clone())
                 .with_roster(roster.clone()),
         )),
     }
@@ -4895,6 +5206,10 @@ pub struct DefaultClientFactory {
     /// The run's [record of refused tool-choice pins](ToolChoiceMemory), shared by every live
     /// client this factory builds.
     tool_choice: ToolChoiceMemory,
+    /// The run's [record of the replies](AbandonedReplies) loop detection abandoned, shared by
+    /// every live client this factory builds so the session's pricing pass sees the whole run's
+    /// abandons through one read.
+    abandoned: AbandonedReplies,
 }
 
 impl DefaultClientFactory {
@@ -4919,6 +5234,7 @@ impl DefaultClientFactory {
             retry_policy,
             roster: ProviderRoster::new(model_providers).with_miss_limit(cache_miss_limit),
             tool_choice: ToolChoiceMemory::default(),
+            abandoned: AbandonedReplies::default(),
         }
     }
 
@@ -4941,6 +5257,7 @@ impl ClientFactory for DefaultClientFactory {
             self.retry_policy,
             &self.roster,
             &self.tool_choice,
+            &self.abandoned,
         )
     }
 }
@@ -4976,6 +5293,10 @@ mod tool_choice_tests;
 #[cfg(test)]
 #[path = "client.reasoning.test.rs"]
 mod reasoning_tests;
+
+#[cfg(test)]
+#[path = "client.generation.test.rs"]
+mod generation_tests;
 
 #[cfg(test)]
 #[path = "client.moves.test.rs"]

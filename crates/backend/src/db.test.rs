@@ -133,6 +133,7 @@ fn gg_record(id: &str) -> RunRecord {
         compile_ms: 0,
         errors: Default::default(),
         tool_calls: 0,
+        loop_abort_unpriced: 0,
         provider_stats: Vec::new(),
         issues_created: 2,
         issues_completed: 2,

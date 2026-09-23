@@ -406,6 +406,7 @@ fn session_summary() -> GgSessionSummary {
             tool_failures: BTreeMap::from([("not-found".to_string(), 5)]),
         },
         tool_calls: 0,
+        loop_abort_unpriced: 1,
         provider_stats: Vec::new(),
         issues_created: 0,
         issues_completed: 0,

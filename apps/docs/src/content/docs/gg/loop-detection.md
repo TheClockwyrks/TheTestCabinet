@@ -169,7 +169,8 @@ retry loop.
    looping reply is never streamed as an assistant message, never enters the
    context window, and never appears in the
    [session record](/gg/analysis/session-records/), which journals the response
-   a turn was given. What survives it is a count and a size.
+   a turn was given. What survives it is a count, a size, and the generation id
+   its price is read back under.
 4. The turn logs one `warn` naming what was thrown away:
 
 ```text
@@ -196,9 +197,8 @@ model that loops once loses a turn rather than the run. An armed ceiling is what
 stops a model that keeps looping, under `limit_exceeded`. The turn is recorded
 with the base error kind `model_api` and the error type `model_response_loop`,
 together with how many replies were discarded and how much they generated.
-Their cost is in neither of the run's
-[cost figures](/gg/execution-limits/#maxcost), because an abandoned stream never
-delivers its usage.
+Their price reaches the run's total cost at session end, as
+[what the discarded output costs](#what-the-discarded-output-costs) describes.
 
 The [session record](/gg/analysis/session-records/) keeps the failure as a
 recorded model error of kind `response_loop` carrying how many replies were
@@ -360,22 +360,20 @@ across every recorded run?"
 ## What the discarded output costs
 
 A reply that was generated is billed whether or not anybody reads it, so the
-tokens behind those characters are on the provider's invoice. They are absent
-from the run's recorded cost and token counts, by ruling: a looping reply is a
-model defect, and a run must not be made to look expensive for one.
+tokens behind those characters are on the provider's invoice. A stream gg drops
+mid-reply never delivers its usage, so gg keeps the generation id of every
+reply it abandons and, once at session end, looks each one up on OpenRouter's
+generation endpoint. The returned price goes into the run's total cost and never
+its work cost, since the reply produced no program and no tool call. The summary's
+`loopAbortUnpriced` counts the replies the lookup could not price.
+[Abandoned replies](/gg/execution-limits/#abandoned-replies) specifies the
+lookup, its retry bound and the figures it feeds.
 
-gg publishes the size in words and characters, and publishes no token count and
-no price for it. Cost and tokens come from the provider's usage payload, which
-arrives at the end of a stream that was deliberately never read to its end, so
-there is no measurement to report and an estimate would sit where every
-neighbouring figure is measured. Words and characters are what the detector
-counted itself as the reply streamed.
-
-The run's [cost ceiling](/gg/execution-limits/) is measured against the recorded
-cost and therefore never sees this output either. A run whose every turn loops
-once and then succeeds spends roughly double at the provider while staying well
-inside a ceiling, which is why `loopAbortChars` is the figure that says it is
-happening.
+The run's [cost ceiling](/gg/execution-limits/#maxcost) reads the recorded cost
+at turn boundaries, before the lookup has run, so it never sees this output. A
+run whose every turn loops once and then succeeds spends roughly double at the
+provider while staying well inside a ceiling, which is why `loopAbortChars` is
+the figure that says it is happening while the run is live.
 
 ## Boundaries
 

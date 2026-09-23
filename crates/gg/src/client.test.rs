@@ -1175,6 +1175,7 @@ fn client_for_slot_builds_mock_for_mock_binding() {
         RetryPolicy::default(),
         &ProviderRoster::default(),
         &ToolChoiceMemory::default(),
+        &AbandonedReplies::default(),
     )
     .expect("mock client");
     assert_eq!(client.model_id(), "mock/echo");
