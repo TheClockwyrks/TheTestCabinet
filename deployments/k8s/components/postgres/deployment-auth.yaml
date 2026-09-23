@@ -33,7 +33,7 @@ spec:
     spec:
       containers:
         - name: auth
-          image: REPLACE_REGISTRY/tcab-auth-service:latest # CI publishes ghcr.io/<owner>/tcab-auth-service; pin a :<git-sha> tag
+          image: REPLACE_REGISTRY/tcab-auth-service:latest # the Azure pipeline publishes testcabinet.azurecr.io/tcab-auth-service:<git-sha>
           resources:
             # MEMORY REQUEST == LIMIT. The scheduler packs a node by requests and
             # ignores limits, so a gap between them is memory promised twice; an

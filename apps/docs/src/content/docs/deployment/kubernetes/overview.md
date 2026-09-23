@@ -109,9 +109,11 @@ pipeline's deploy sets all of them to `testcabinet.azurecr.io/<image>:<sha>` for
 the commit being deployed (see [Deploying](#deploying)), so the service images,
 the driver, and the run images it stages
 [audio packs](/components/core/execution/#staged-audio) into always come from
-the same build. The generic `staging` and `prod` overlays pin placeholder
-registries with an `images:` block and a `patch-dispatcher-driver-image.yaml`
-for a deployment that sets its images by hand.
+the same build. The generic `staging` and `prod` overlays pin every image to the
+ACR at a placeholder commit, `REPLACE_SHA`, with an `images:` block and a
+`patch-dispatcher-driver-image.yaml` that also sets `TCAB_CONTAINER_TAG`, for a
+deployment that sets its images by hand. The run images need no registry
+setting, because the driver's default registry is `testcabinet.azurecr.io`.
 
 ## Cluster prerequisites
 
