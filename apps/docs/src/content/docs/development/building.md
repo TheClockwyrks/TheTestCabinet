@@ -454,11 +454,10 @@ The other root scripts delegate to each workspace that defines them:
 `npm run lint` also runs `lint:specs` and `lint:format` after the per-workspace
 linters.
 
-`npm run test` runs `vitest` in each workspace and is one of the pre-commit
-gates. Iterate on the gallery's own suite with `npm run test -w
-@clockwyrks/ui`. On a clean checkout, build the workspace runtime packages
-first with `npm run build:packages`, since the tests import them from a built
-`dist/`.
+`npm run test` runs `vitest` in each workspace. Iterate on the gallery's own
+suite with `npm run test -w @clockwyrks/ui`. On a clean checkout, build the
+workspace runtime packages first with `npm run build:packages`, since the tests
+import them from a built `dist/`.
 
 ### Every page loads
 
