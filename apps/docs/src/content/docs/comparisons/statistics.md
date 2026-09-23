@@ -56,10 +56,9 @@ noise can fake a difference. The summaries below stay honest at either end.
 
 For comparable cost, total tokens, and session duration,
 `MetricSummary::compute` returns `n`, the median, the mean, the min, the max,
-the first and third quartiles, the
-interquartile range, and a bootstrap confidence interval on the median. A run
-missing a metric is left out of that metric's distribution rather than folded in
-as a zero.
+the first and third quartiles, the interquartile range, and a bootstrap
+confidence interval on the median. A run missing a metric is left out of that
+metric's distribution rather than folded in as a zero.
 
 The interval comes from 10,000 bootstrap resamples, taking the 2.5th and 97.5th
 percentiles of the resulting medians. Bootstrapping assumes no normality,

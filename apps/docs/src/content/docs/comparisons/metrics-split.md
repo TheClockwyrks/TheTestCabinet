@@ -51,10 +51,10 @@ single `ChartSort` held by the page, so moving any one of them moves the rest.
 That is the point. The charts describe one roster and are only comparable while
 they agree on where each bar sits.
 
-| Order          | What it means                                                                                      |
-| -------------- | -------------------------------------------------------------------------------------------------- |
-| `alphabetical` | By bar label. The default, and what Plot does on its own with an ordinal domain it infers.         |
-| `best`         | Best-first on the chart's own metric: lowest cost, fewest tokens, shortest session, most points.   |
+| Order          | What it means                                                                                    |
+| -------------- | ------------------------------------------------------------------------------------------------ |
+| `alphabetical` | By bar label. The default, and what Plot does on its own with an ordinal domain it infers.       |
+| `best`         | Best-first on the chart's own metric: lowest cost, fewest tokens, shortest session, most points. |
 
 `best` is per-chart by design — every chart sorts on the metric it draws, so the
 charts are deliberately not in the same order under it. Ties are split the same

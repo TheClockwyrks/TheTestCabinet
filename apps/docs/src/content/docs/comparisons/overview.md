@@ -7,9 +7,8 @@ under several harnesses, or several [gg](/gg/overview/) configurations, holds
 every other variable constant, and presents the cost, token, session duration,
 and score data side by side so a reader can judge for themselves. This section
 documents the metric split the capability depends on, the experiment that
-produces the data, the
-diagnostics that explain a cost gap, the statistics that summarize noisy runs,
-and how a comparison and its runs reach the public site.
+produces the data, the diagnostics that explain a cost gap, the statistics that
+summarize noisy runs, and how a comparison and its runs reach the public site.
 
 ## The harness axis
 
