@@ -8,8 +8,8 @@
 # with `failed to compute cache key: "/path": not found`, preceded by the giveaway
 # `transferring context: 2B`. Nothing else in this repository can see that. The Rust
 # suite, `contract-drift.sh`, the lints and the front-end builds all pass on a tree
-# whose images cannot be built at all, and the image builds themselves live on a
-# GitHub workflow that only runs on master/staging — so the defect lands, and is
+# whose images cannot be built at all, and the image builds themselves run only on
+# master/staging, after the gates — so the defect lands, and is
 # found by whoever next needs a run container. It has happened twice: once when the
 # Blender image added its two authoring helpers, and once when the gg toolchain
 # builder added the Java arm's installer, which broke the `-gg` variant of EVERY

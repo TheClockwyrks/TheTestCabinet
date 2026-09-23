@@ -4,9 +4,9 @@
 # keeps a release from ever publishing a binary that fails to build, link, or
 # even start.
 #
-# It runs on every target platform so a platform-specific break is caught before
-# release: Azure DevOps runs it on Linux and Windows; GitHub runs it on macOS
-# (Azure has no macOS agents). The checks are deliberately dependency-free — no
+# It runs on every platform `tcab` is released for, Linux and Windows, so a
+# platform-specific break is caught before release. The checks are deliberately
+# dependency-free — no
 # container runtime, run-container image, or API keys — so they validate the binary
 # itself, reliably, on any agent. The cross-platform runtime surface
 # (`host_path`, work-dir resolution, runtime detection) is covered by the unit
@@ -48,8 +48,8 @@ if [[ ! -x "$bin" ]]; then
 	exit 1
 fi
 
-# Run the shared smoke check — the same one the release pipeline runs on each
-# shipped artifact — so CI and release validate the binary identically.
+# Run the shared smoke check. On a release tag the pipeline publishes this very
+# binary, so CI and release validate it identically.
 log "smoke: $bin"
 ./scripts/ci/smoke-binary.sh "$bin"
 

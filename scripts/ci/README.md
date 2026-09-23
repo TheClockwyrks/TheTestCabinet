@@ -1,26 +1,17 @@
 # CI scripts
 
-Shared scripts invoked by both CI systems:
+The scripts the Azure pipeline (`azure-pipelines.yml`) runs. Azure Pipelines is
+the project's only CI: it gates every commit on Linux and Windows, mirrors gated
+commits to GitHub, builds every image into the Test Cabinet Azure Container
+Registry, publishes `tcab` and gg, and deploys staging, production and the docs
+site. The GitHub repository is a mirror and runs nothing (see
+[`.github/README.md`](../../.github/README.md)).
 
-- **Azure DevOps** (`azure-pipelines.yml`) is the primary CI and the one CI/CD
-  pipeline: it gates every commit, mirrors gated commits to GitHub, builds every
-  image into the Test Cabinet Azure Container Registry, publishes gg, and
-  deploys staging, production and the docs site. It runs every check, on both
-  the Linux and Windows platforms. If a check can run without a macOS agent, it
-  runs here — a release must never be the first thing to fail.
-- **GitHub Actions** (`.github/workflows/`) runs the critical subset so a green
-  GitHub run still means the components actually build and pass. It
-  also owns **macOS** validation, since Azure has no macOS agents — but because
-  macOS runners are costly and only needed at release time, that check runs
-  **on demand** in the separate `binary-macos.yml` workflow (manual trigger or
-  release-invoked) rather than on every change. GitHub additionally owns the
-  **release pipeline** (`release.yml` / `release-promote.yml`), since public
-  releases cannot be cut from the private Azure repository.
-
-Keeping the real commands here — rather than inline in each pipeline's YAML —
-means both systems run exactly the same checks. The pipeline YAML is responsible
-only for provisioning toolchains (Rust, Node), caching, and the credentials a
-step runs under; the scripts own the actual validation, builds and deploys.
+Keeping the real commands here rather than inline in the pipeline's YAML means a
+failing job reproduces locally by running the same script. The pipeline YAML is
+responsible only for provisioning toolchains (Rust, Node), caching, and the
+credentials a step runs under; the scripts own the actual validation, builds and
+deploys.
 
 Each script resolves the repository root from its own location (via `lib.sh`)
 and can be run from anywhere, including locally:
@@ -37,11 +28,11 @@ validation policies on those branches (Azure Repos ignores a `pr:` block), and
 any other branch runs the gates only. It has three stages, each after the one
 before it has passed:
 
-| Stage    | Runs on                   | Jobs                                                                                                                                                                                                                                                                                                                                                          |
-| -------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `gates`  | every run                 | `rust`, `binary`, `web`, `webtest`, `specs`, `format`, `validators`, `frozen`, `audiopacks`, `specvocabulary`, `buildcontext`, `contract`, `manifests` (`k8s-manifests.sh`); on `master`, `staging` and tags `gg_amd64`/`gg_arm64` (`gg-dist.sh`, plus `gg-version-gate.sh` on a tag); then `mirror` (`mirror.sh`) on `master`, `staging`, `nightly` and tags |
-| `images` | `master`, `staging`, tags | on `master` and `staging`: the audio store (`audio-store-image.sh`), every run-container image (`run-images.sh`) and every service image (`service-image.sh`), per architecture, then fused by `manifest.sh`; on `master` and tags: `gg_publish` (`publish-gg.sh`)                                                                                            |
-| `deploy` | `master`, `staging`       | `deploy_staging` (environment `tcab-staging`, on `staging`) or `deploy_prod` (environment `tcab-prod`, on `master`) running `deploy.sh`, and `docs` running `deploy-docs.sh`                                                                                                                                                                                  |
+| Stage    | Runs on                   | Jobs                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| -------- | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gates`  | every run                 | `rust`, `binary` (the `tcab-linux` and `tcab-windows` artifacts on a tag), `web`, `webtest`, `specs`, `format`, `validators`, `frozen`, `audiopacks`, `specvocabulary`, `buildcontext`, `contract`, `manifests` (`k8s-manifests.sh`); on `master`, `staging` and tags `gg_amd64`/`gg_arm64` (`gg-dist.sh`, plus `gg-version-gate.sh` on a tag); then `mirror` (`mirror.sh`) on `master`, `staging`, `nightly` and tags |
+| `images` | `master`, `staging`, tags | on `master` and `staging`: the audio store (`audio-store-image.sh`), every run-container image (`run-images.sh`) and every service image (`service-image.sh`), per architecture, then fused by `manifest.sh`; on `master` and tags: `gg_publish` (`publish-gg.sh`)                                                                                                                                                     |
+| `deploy` | `master`, `staging`       | `deploy_staging` (environment `tcab-staging`, on `staging`) or `deploy_prod` (environment `tcab-prod`, on `master`) running `deploy.sh`, and `docs` running `deploy-docs.sh`                                                                                                                                                                                                                                           |
 
 Every image is built natively: `amd64` on Microsoft-hosted `ubuntu-24.04` agents
 and `arm64` on the organisation's arm64 pool
@@ -77,7 +68,6 @@ pipeline. Checkouts leave submodules off.
 | `smoke-binary.sh`                | run a built binary (`--version`/`--help`/commands)                                                                                                                                                                                                                                                                                                                                                             | yes      |
 | `web-build.sh`                   | `npm ci`, type-check + `vite build` of the front ends                                                                                                                                                                                                                                                                                                                                                          | yes      |
 | `web-test.sh`                    | `npm ci`, build the workspace runtime packages, `vitest run` across every workspace, `node --test` over `scripts/lib`                                                                                                                                                                                                                                                                                          | yes      |
-| `desktop-build.sh`               | `npm ci`, build the workspace runtime packages, type-check + `vite build` of the desktop UI, then clippy/rustdoc/build/test `crates/desktop`                                                                                                                                                                                                                                                                   | yes      |
 | `specs-lint.sh`                  | markdownlint + cspell over `test-cases/**`                                                                                                                                                                                                                                                                                                                                                                     | no       |
 | `format-check.sh`                | `prettier --check` over the whole checkout, frozen versions and `.prettierignore` aside                                                                                                                                                                                                                                                                                                                        | no       |
 | `contract-drift.sh`              | regenerate TS bindings, JSON Schemas and gg's prompt templates, fail on diff                                                                                                                                                                                                                                                                                                                                   | yes      |
@@ -99,8 +89,8 @@ pipeline. Checkouts leave submodules off.
 | `deploy-docs.sh`                 | build `apps/docs` and deploy it with `wrangler` to `test-cabinet-docs` (`master`) or `test-cabinet-docs-staging` (`staging`)                                                                                                                                                                                                                                                                                   | —        |
 
 "Critical" scripts are the ones that catch a genuinely broken change (a crate or
-front end failing to build or test), so they run on both CI systems. The lint
-scripts run on Azure DevOps only.
+front end failing to build or test); the others catch lint, formatting and
+consistency drift.
 
 `spec-vocabulary-check.sh` is the spec counterpart of the seeded-contract check
 that runs after `contract-drift.sh`: that one covers the packages a run vendors,
@@ -163,9 +153,9 @@ compile only under `cfg(test)`, and no image build runs tests — and
 [cargo-nextest](https://nexte.st) (the repo's runner, configured in
 `.config/nextest.toml`), which the devcontainer already ships but bare CI agents
 do not, so every job that runs tests installs it first — pinned to
-`NEXTEST_VERSION` so CI matches the devcontainer. It is cross-platform (Linux,
-Windows, macOS) because `binary-smoke.sh` runs on all three. nextest does not
-execute doctests, so the test scripts additionally run `cargo test --doc`.
+`NEXTEST_VERSION` so CI matches the devcontainer. It is cross-platform because
+`binary-smoke.sh` runs on Linux and Windows. nextest does not execute doctests,
+so the test scripts additionally run `cargo test --doc`.
 
 `install-gg-toolchains.sh` is the other provisioning helper, and it is a
 prerequisite rather than a convenience. gg drives a model in one of eleven
@@ -178,8 +168,8 @@ nothing is committed — so a machine without those toolchains cannot compile
 `test-cabinet-gg`, which means it cannot run `rust-test.sh`, `rust-lint.sh`, or
 anything else scoped `--workspace`. This script composes the per-arm installers
 into one pinned list that every such surface calls: the devcontainer's
-`postCreateCommand`, the CI scripts here, the release workflow's `gg` job, and
-the driver image's gg build stage. It is idempotent (a second call is a no-op in
+`postCreateCommand`, the CI scripts here, and the driver image's gg build
+stage. It is idempotent (a second call is a no-op in
 about a second) and costs ~1.9 GB installed. The two prerequisites it will not
 install itself are the Ruby interpreter (a distribution package, and so part of
 the machine) and the npm workspaces (`npm ci`, which two of the eleven arms
@@ -199,8 +189,8 @@ touches, so they go in a prefix of their own rather than widening the run list
 and every run image with it.
 
 Every surface that compiles `test-cabinet-gg` therefore calls **both** —
-`rust-test.sh`, the release workflow's `gg` job, the driver image's gg build
-stage and the devcontainer's gg layer. (`contract-drift.sh` is deliberately not
+`rust-test.sh`, `gg-dist.sh`, the driver image's gg build stage and the
+devcontainer's gg layer. (`contract-drift.sh` is deliberately not
 on that list any more: it stopped building gg when the backend's committed
 `gg_reference.json` was retired, so it needs neither installer — see its
 header.) Skipping the second one
@@ -221,32 +211,18 @@ cannot reach it: a suite there would otherwise be executed by no gate. The suite
 hermetic — no network, no ffmpeg, no object store — so they cost this job under a
 second and need nothing the job does not already have.
 
-`desktop-build.sh` covers the Tauri desktop app —
-both its React UI (`apps/desktop`) and its Rust shell (`crates/desktop`). It exists
-because the app used to be validated nowhere but the Release workflow, which is
-the last possible place to find a break: a release fanned out to three platforms
-and all three failed in the UI's `tsc -b`, on code no earlier gate had ever
-compiled. It is also the only script that lints and tests `test-cabinet-desktop`,
-the one crate the Rust scripts exclude, so between them the Cargo workspace is
-covered with no holes. Its runner is the only one that needs the Linux GUI system
-libraries, which it installs from the devcontainer's curated list
-(`.devcontainer/languages/rust/tauri.sh`) rather than a second copy of it. It does
-**not** produce the platform installers or their k3d/kubectl sidecars: that is
-release-time packaging and stays in `release.yml`.
-
 `binary-smoke.sh` is the release gate that keeps a flat-out-broken binary from
 ever being published: it builds `tcab` in the shipped release profile, runs the
 suite in that profile, and then hands the produced binary to `smoke-binary.sh`,
-with no container runtime or API keys required. It runs per platform — Azure on
-Linux and Windows continuously, GitHub on macOS on demand (the `binary-macos.yml`
-workflow) — so each target's binary is proven to build and start before a release.
+with no container runtime or API keys required. It runs on Linux and Windows on
+every commit. On a `v*` tag the `binary` job publishes the binary it just
+smoke-tested as the run's `tcab-linux` or `tcab-windows` artifact, so the
+released `tcab` is exactly the one the gate checked.
 
 `smoke-binary.sh` is the single definition of that smoke check: given a path, it
 runs the binary's `--version`/`--help` and confirms its subcommands are wired up.
-The release pipeline (`release.yml`) calls it on **each platform's shipped
-artifact**, so the exact check that guards CI also guards a release — a green
-Azure run is never the only thing between a broken binary and users. It takes a
-binary path rather than resolving the repo root, so it does not use `lib.sh`.
+It takes a binary path rather than resolving the repo root, so it does not use
+`lib.sh`.
 
 `lib.sh` is a sourced helper (not a standalone script): it resolves the repo root
 and provides the `log` helper, the registry name (`CI_REGISTRY`), the
@@ -317,28 +293,14 @@ Pages project for `master` or `staging`, with `CLOUDFLARE_API_TOKEN` and
 
 ## Scope
 
-These cover **every component the project ships**. On the Rust side that is the
-whole Cargo workspace — the `tcab` CLI (`crates/cli`), the `tcab-backend`
-(`crates/backend`) server, the run-topology services (`tcab-dispatcher`,
-`tcab-driver`, `tcab-artifacts`), the `crates/core`/`crates/telemetry` libraries
-they share, and the Tauri desktop shell (`crates/desktop`). On the TypeScript side
-it is the front ends built by `web-build.sh` — the gallery (`apps/site`), the
-operator web console (`apps/web`), and these docs (`apps/docs`) — plus the desktop
-UI (`apps/desktop`) built by `desktop-build.sh`, all on top of
-`packages/run-record` and the source-consumed `packages/ui`; plus, through
-`web-test.sh`, every workspace's unit suite.
-
-The desktop app is split across two scripts rather than folded into the rest, for
-one reason: its Linux build needs GUI system libraries nothing else does. So the
-Rust scripts pass `--workspace --exclude test-cabinet-desktop` rather than a bare
-`--workspace` — the one excluded crate is the only one with that dependency — and
-`desktop-build.sh` picks it up on a runner that installs them. Excluded from the
-common runners, not from CI.
-
-### The one gap: macOS
-
-Nothing a CI agent can build is left for a release to discover. The single
-exception is **macOS**, which Azure has no agents for: the macOS `tcab` binary is
-checked on demand by GitHub's `binary-macos.yml`, and the macOS desktop app is
-first built when `release.yml` bundles it. Every other platform and component is
-validated on every change.
+These cover every component the project ships. On the Rust side that is the
+whole Cargo workspace apart from the Tauri desktop shell (`crates/desktop`): the
+`tcab` CLI (`crates/cli`), the `tcab-backend` (`crates/backend`) server, the
+run-topology services (`tcab-dispatcher`, `tcab-driver`, `tcab-artifacts`), and
+the `crates/core`/`crates/telemetry` libraries they share. The Rust scripts pass
+`--workspace --exclude test-cabinet-desktop`, because that crate alone needs GUI
+system libraries. On the TypeScript side it is the front ends built by
+`web-build.sh` (the gallery `apps/site`, the operator web console `apps/web`,
+and these docs `apps/docs`) on top of `packages/run-record` and the
+source-consumed `packages/ui`, plus, through `web-test.sh`, every workspace's
+unit suite.

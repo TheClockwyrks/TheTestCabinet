@@ -229,8 +229,7 @@ cargo test --workspace --exclude test-cabinet-desktop --doc
 ```
 
 Only the Tauri desktop shell is excluded, so per-change CI runners need none of
-the desktop app's GUI system libraries. The desktop app is built and bundled for
-every platform by the [release](/development/releasing/) workflow.
+the desktop app's GUI system libraries.
 
 Tests run under `cargo-nextest`, configured by `.config/nextest.toml`; install
 it with `scripts/ci/install-nextest.sh`. nextest does not execute doctests, so
@@ -318,8 +317,8 @@ npm ci                                     # the pinned tsc two arms reflect wit
 ```
 
 The two lists stay separate. The first is every toolchain that a gg run and gg's
-reflectors execute; it is installed by the devcontainer image, both CI systems,
-the release workflow, and the run images. The second is a .NET SDK and an
+reflectors execute; it is installed by the devcontainer image, the Azure
+pipeline, and the run images. The second is a .NET SDK and an
 unpruned wasi-sdk that exactly one arm's artifact build needs, since C#'s guest
 is Mono's IL interpreter, relinked. It installs under its own prefix
 `~/.local/share/tcab/gg-build/` so the eleven-arm list keeps its meaning and the
@@ -608,8 +607,8 @@ machine's own toolchains, which is the form to run while working on an arm. See
 
 ## Continuous integration
 
-`azure-pipelines.yml` is the pipeline that gates a commit, mirrors it to GitHub,
-builds its images, and deploys it. Every job delegates to a script under
+`azure-pipelines.yml` is the project's only CI. It gates a commit, mirrors it to
+GitHub, builds its images, releases it, and deploys it. Every job delegates to a script under
 `scripts/ci/`, so a failure reproduces locally by running the same script; the
 scripts are listed in `scripts/ci/README.md`. Pushes to `master`, `staging`,
 `nightly`, and `v*` tags trigger it. Pull requests into `master` and `staging`
@@ -631,7 +630,9 @@ which fails when a submodule pin is absent from that submodule's `master`
 `staging`, and tags, `gg_amd64` and `gg_arm64` build the static gg binaries
 natively, and on a tag build the step "gg version matches the tag" fails when
 `gg --version` differs from the tag with its `v` stripped, naming `crates/gg` and
-`crates/core` as the crates to bump.
+`crates/core` as the crates to bump. On a tag, `binary` also publishes the
+`tcab` it smoke-tested as the run's `tcab-linux` and `tcab-windows` artifacts;
+see [Releasing `tcab`](/development/releasing/#releasing-tcab).
 
 The `mirror` job runs after every gate on `master`, `staging`, `nightly`, and
 `v*` tags. It force-pushes the branch with its tags, or the tag, to
@@ -664,11 +665,6 @@ variables:
 
 The secret variables must be set on the pipeline before `master` or `staging`
 builds can complete their images and deploy stages.
-
-The GitHub workflows under `.github/workflows/` run on the mirror. `ci.yml`
-repeats the critical checks, `binary-macos.yml` validates the macOS binary on
-demand, and `release.yml` and `release-promote.yml` cut the public `tcab`
-release; see [Releasing](/development/releasing/).
 
 ## Desktop app (Tauri)
 
