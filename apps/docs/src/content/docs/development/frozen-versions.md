@@ -33,6 +33,13 @@ marker itself excluded. That listing covers every tracked path, blob hash, and
 file mode under the directory, so an edit, an addition, a deletion, a rename, or
 a permission flip all move the digest.
 
+A version's baseline validation media lives in the `cold-storage` submodule
+rather than in the version folder (see [where baselines
+live](/components/core/validation/#where-baselines-live)), so the digest never
+covers it. A baseline is evidence beside a verdict and backs no point, so
+recapturing a frozen version's baselines changes no recorded score and needs no
+new version.
+
 Two gates recompute and compare it:
 
 | Gate                            | Where             | Catches                                                    |
