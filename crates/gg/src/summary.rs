@@ -43,8 +43,8 @@ use std::sync::Mutex;
 
 use test_cabinet_core::gg::{
     GgCallFailure, GgErrorSummary, GgIssueReviewPhase, GgIssueStatus, GgLimitBreach,
-    GgProgramLanguage, GgProviderStat, GgRejectedResponses, GgRunLimits, GgSessionSummary,
-    GgSlotCost, GgTelemetryKind, GgTurnErrorKind, GgTurnErrorType, GgTurnOutcome,
+    GgProgramLanguage, GgProviderFault, GgProviderStat, GgRejectedResponses, GgRunLimits,
+    GgSessionSummary, GgSlotCost, GgTelemetryKind, GgTurnErrorKind, GgTurnErrorType, GgTurnOutcome,
     GgUndocumentedCalls, GgUsageFigure,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
@@ -708,15 +708,20 @@ impl SessionSummaryTracker {
                 // Joined from the usage deltas at finalize — see [`SummaryState::slot_deltas`].
                 work_cost: None,
             }),
-            // A stall is retried as a transport failure, and the retry's warn line is the one place
-            // the stream names it. Counted on the provider the line names. An unexpected cache miss
-            // is a good turn, so its warn line is the one place the stream names it too.
-            GgTelemetryKind::Log { level, message } if level == "warn" => {
-                let model = agent_id.and_then(|agent_id| state.attribution(agent_id).model.clone());
-                if let Some(provider) = stall_provider(message) {
-                    state.provider_slice(Some(provider), model).stalls += 1;
-                } else if let Some(provider) = miss_provider(message) {
-                    state.provider_slice(Some(provider), model).cache_misses += 1;
+            // The faults gg holds against a provider, on the provider the request named and the
+            // model it was for.
+            GgTelemetryKind::ProviderFault {
+                model_id,
+                provider,
+                fault,
+            } => {
+                let slice = state.provider_slice(Some(provider.clone()), Some(model_id.clone()));
+                match fault {
+                    GgProviderFault::Stall => slice.stalls += 1,
+                    GgProviderFault::CacheMiss => slice.cache_misses += 1,
+                    // A move is recorded by `ProviderSwitch`, which names its cause; neither of
+                    // these is emitted as a fault of its own.
+                    GgProviderFault::FailedCall | GgProviderFault::Unavailable => {}
                 }
             }
             // lifecycle, assistant text and tool calls (their results are counted above), the

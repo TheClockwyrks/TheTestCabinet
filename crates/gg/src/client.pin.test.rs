@@ -1,6 +1,6 @@
-//! The **provider pin** on the live client: a reply from any provider other than the pinned one
-//! is refused as [`ModelError::ProviderMismatch`], whether or not loop detection watches the
-//! stream, and one from the pinned provider passes however OpenRouter spelled it.
+//! The **candidate in force** on the live client: a reply from any provider other than the one the
+//! request named is refused as [`ModelError::ProviderMismatch`], whether or not loop detection
+//! watches the stream, and one from the named provider passes however OpenRouter spelled it.
 
 use test_cabinet_core::gg::GgLoopDetection;
 
@@ -34,7 +34,10 @@ fn pinned_client(pin: &str, body: String) -> OpenRouterClient {
         RetryPolicy::default(),
         None,
     )
-    .with_provider(pin)
+    .with_roster(ProviderRoster::pinned(
+        "openai/gpt-5.6",
+        test_cabinet_core::gg::GgProviderCandidate::new(pin, "fp8"),
+    ))
     .answered_by(move |_| {
         http::Response::builder()
             .status(200)
@@ -110,12 +113,15 @@ fn the_factory_pins_each_model_to_its_own_provider() {
     let providers = BTreeMap::from([
         (
             "openai/gpt-5.6".to_string(),
-            vec![test_cabinet_core::gg::GgProviderCandidate::new("OpenAI", "fp8")],
+            vec![test_cabinet_core::gg::GgProviderCandidate::new(
+                "OpenAI", "fp8",
+            )],
         ),
         (
             "anthropic/claude-opus-4.8".to_string(),
             vec![test_cabinet_core::gg::GgProviderCandidate::new(
-                "Anthropic", "bf16",
+                "Anthropic",
+                "bf16",
             )],
         ),
     ]);
@@ -128,7 +134,9 @@ fn the_factory_pins_each_model_to_its_own_provider() {
         DEFAULT_PROVIDER_CACHE_MISS_LIMIT,
     );
     assert_eq!(
-        factory.candidate_for("openai/gpt-5.6").map(|candidate| candidate.provider),
+        factory
+            .candidate_for("openai/gpt-5.6")
+            .map(|candidate| candidate.provider),
         Some("OpenAI".to_string())
     );
     assert_eq!(

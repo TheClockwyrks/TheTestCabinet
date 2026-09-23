@@ -246,10 +246,10 @@ agent's previous request left there. It is a miss when all of these hold:
 
 - the agent's previous request went to the same provider, less than five
   minutes earlier, which is the shortest cache lifetime gg asks for;
-- this request repeats that request's tools and messages unchanged, so its
-  shared prefix is at least that request's input tokens;
-- the shared prefix is at least 4,096 tokens, above every provider's minimum
-  cacheable size;
+- the shared prefix, the tools and leading messages of that request this one
+  repeats unchanged, is at least 4,096 tokens, above every provider's minimum
+  cacheable size. gg estimates it from that request's input tokens in
+  proportion to the bytes repeated;
 - the reply's `cached_tokens` is below half the shared prefix, which leaves room
   for a provider that caches in blocks.
 

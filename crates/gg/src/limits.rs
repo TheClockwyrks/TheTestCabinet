@@ -61,12 +61,14 @@
 //! is [refused](resolve_run_limits) here. The other required run-level value, `maxParallel`, is
 //! resolved by [`SubagentConfig`](crate::subagents::SubagentConfig), which owns the pool it bounds.
 //!
-//! `modelCallTimeoutSecs` and `modelStreamIdleSecs` are two of the four keys an absence answers
-//! with a figure rather than with "off" — the [retry schedule](RunLimits::retry_policy) is the
-//! other pair. Every model call is made under a ceiling, so an absent `modelCallTimeoutSecs` takes
+//! `modelCallTimeoutSecs` and `modelStreamIdleSecs` are two of the five keys an absence answers
+//! with a figure rather than with "off" — the [retry schedule](RunLimits::retry_policy) is another
+//! pair, and [`providerCacheMissLimit`](RunLimits::provider_cache_miss_limit) the fifth. Every
+//! model call is made under a ceiling, so an absent `modelCallTimeoutSecs` takes
 //! [`DEFAULT_MODEL_CALL_TIMEOUT`]; every reply is read as a stream, so an absent
-//! `modelStreamIdleSecs` takes
-//! [`DEFAULT_MODEL_STREAM_IDLE`]. A zero for either is
+//! `modelStreamIdleSecs` takes [`DEFAULT_MODEL_STREAM_IDLE`]; and every provider is held to a
+//! cache-miss limit, so an absent `providerCacheMissLimit` takes
+//! [`DEFAULT_PROVIDER_CACHE_MISS_LIMIT`]. A zero for any of the three is
 //! [refused](resolve_run_limits) like any other figure nothing can run under.
 //!
 //! # This module decides; the loop acts
@@ -115,7 +117,7 @@ use std::time::Duration;
 
 use crate::client::{
     DEFAULT_MODEL_CALL_TIMEOUT, DEFAULT_MODEL_RETRY_MAX_DELAY, DEFAULT_MODEL_STREAM_IDLE,
-    RetryPolicy,
+    DEFAULT_PROVIDER_CACHE_MISS_LIMIT, RetryPolicy,
 };
 use test_cabinet_core::gg::{
     GgCapabilitySet, GgLimitBreach, GgLimitKind, GgRunLimits, GgTurnErrorKind, GgTurnErrorType,
@@ -591,18 +593,9 @@ pub fn declared_model_stream_idle(declared: &GgRunLimits) -> Duration {
 /// limits for, and the `0` a launch [refuses](resolve_run_limits) takes the default so this
 /// function stays [total](crate::validate#the-resolver-contract) on the same terms.
 ///
-/// A `0` for the retries is honoured as written rather than defaulted: it is a run that gives up
-/// on the first failure, which a study comparing retry budgets legitimately wants.
-/// How many unexpected cache misses leave a provider, given the run's declared
-/// [limits](GgRunLimits): the figure written, or [`DEFAULT_PROVIDER_CACHE_MISS_LIMIT`] when the
-/// key is absent. `0` is honoured as written — a run that leaves a provider on its first
-/// unexpected miss — so this function is [total](crate::validate#the-resolver-contract) on the
-/// same terms as the resolver around it.
-pub fn declared_provider_cache_miss_limit(declared: &GgRunLimits) -> u64 {
-    declared
-        .provider_cache_miss_limit
-        .unwrap_or(crate::client::DEFAULT_PROVIDER_CACHE_MISS_LIMIT)
-}
+/// A `0` for the retries is honoured as written rather than defaulted: it is a run that leaves a
+/// provider on its first failure, which a study comparing retry budgets legitimately wants.
+pub fn declared_retry_policy(declared: &GgRunLimits) -> RetryPolicy {
     RetryPolicy {
         // The first attempt plus the retries after it. A count past what a `u32` holds is a
         // schedule no run outlives, so it saturates rather than wrapping to a small one.
@@ -615,6 +608,19 @@ pub fn declared_provider_cache_miss_limit(declared: &GgRunLimits) -> u64 {
             Some(0) | None => DEFAULT_MODEL_RETRY_MAX_DELAY,
             Some(secs) => Duration::from_secs(secs),
         })
+    }
+}
+
+/// How many unexpected cache misses leave a provider, given the run's declared
+/// [limits](GgRunLimits): the figure written, or [`DEFAULT_PROVIDER_CACHE_MISS_LIMIT`] when the
+/// key is absent. The `0` a launch [refuses](resolve_run_limits) takes the default too, so this
+/// function is [total](crate::validate#the-resolver-contract) on the same terms as the resolver
+/// around it. Read on the same terms as [`declared_model_call_timeout`], by the launch building
+/// the run's [client factory](crate::client::DefaultClientFactory).
+pub fn declared_provider_cache_miss_limit(declared: &GgRunLimits) -> u64 {
+    match declared.provider_cache_miss_limit {
+        Some(0) | None => DEFAULT_PROVIDER_CACHE_MISS_LIMIT,
+        Some(limit) => limit,
     }
 }
 
@@ -687,8 +693,8 @@ pub struct RunLimits {
     /// filled in for a set that left the keys out.
     pub retry_policy: RetryPolicy,
     /// How many unexpected cache misses leave a provider. Present on every run: a set that writes
-    /// no `providerCacheMissLimit` takes [`DEFAULT_PROVIDER_CACHE_MISS_LIMIT`], and `0` is honoured
-    /// as a run that leaves a provider on its first unexpected miss.
+    /// no `providerCacheMissLimit` takes [`DEFAULT_PROVIDER_CACHE_MISS_LIMIT`], and a `0` is
+    /// [refused](resolve_run_limits), since it would leave a provider before it served a turn.
     pub provider_cache_miss_limit: u64,
 }
 
@@ -805,6 +811,9 @@ pub(crate) const LIMIT_MODEL_STREAM_IDLE_SECS: &str = "modelStreamIdleSecs";
 
 /// The `limits` key naming the [retry budget](RunLimits::retry_policy)'s delay ceiling.
 pub(crate) const LIMIT_MODEL_RETRY_MAX_DELAY_SECS: &str = "modelRetryMaxDelaySecs";
+
+/// The `limits` key naming the [cache-miss limit](RunLimits::provider_cache_miss_limit).
+pub(crate) const LIMIT_PROVIDER_CACHE_MISS_LIMIT: &str = "providerCacheMissLimit";
 
 /// The `limits` key naming the [consecutive-error ceiling](RunLimits::max_consecutive_errors).
 pub(crate) const LIMIT_MAX_CONSECUTIVE_ERRORS: &str = "maxConsecutiveErrors";
@@ -1011,6 +1020,18 @@ pub fn resolve_run_limits(
     }
     let retry_policy = declared_retry_policy(&declared);
 
+    // Every provider is held to a miss limit, so absence is the default rather than an off. Zero
+    // would leave a provider before it served a turn, and is refused on the same terms as every
+    // other unhonourable figure.
+    if declared.provider_cache_miss_limit == Some(0) {
+        report.report(unarmable(
+            LIMIT_PROVIDER_CACHE_MISS_LIMIT,
+            0,
+            "a provider allowed no cache misses would be left before it served a turn",
+        ));
+    }
+    let provider_cache_miss_limit = declared_provider_cache_miss_limit(&declared);
+
     // Absent leaves it unarmed, on the same terms as the turn ceiling: an agent stopped after five
     // failed turns in a row was stopped by a threshold its operator chose, and there is no fifth
     // turn gg would have picked on their behalf.
@@ -1087,7 +1108,7 @@ pub fn resolve_run_limits(
         max_cost,
         replay_max_bytes,
         retry_policy,
-        provider_cache_miss_limit: declared_provider_cache_miss_limit(&declared),
+        provider_cache_miss_limit,
     }
 }
 

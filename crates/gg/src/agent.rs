@@ -157,8 +157,8 @@ use test_cabinet_core::gg::{
     CAPABILITY_SUBAGENTS, DEFAULT_SIGNAL_THRESHOLD_PERCENT, GG_WORKSPACE_SKILLS_DIR, GgAgentApi,
     GgAgentApiFunction, GgAgentConfig, GgAgentStatus, GgAgentTransitionKind, GgCallFailure,
     GgCapabilitySet, GgContextAction, GgContextSource, GgHookAgentKind, GgHookEvent,
-    GgIssueReviewPhase, GgLimitBreach, GgLimitKind, GgProgramLanguage, GgReasoning, GgReviewer,
-    GgProviderCandidate, GgRosterEntry, GgRunLimits, GgSlotBinding, GgSubagentScope,
+    GgIssueReviewPhase, GgLimitBreach, GgLimitKind, GgProgramLanguage, GgProviderCandidate,
+    GgReasoning, GgReviewer, GgRosterEntry, GgRunLimits, GgSlotBinding, GgSubagentScope,
     GgTelemetryKind, GgUndocumentedCalls, GgUsageFigure, MAX_OPENING_TREE_DEPTH,
     PARAM_SIGNAL_THRESHOLD_PERCENT, PARAM_SKILLS_DIR, PARAM_TOP_FILE_VIEWS, PARAM_WINDOW_LIMIT,
     PROJECT_MANAGEMENT_PARAM_MERGE_AGENT,
@@ -196,8 +196,8 @@ use crate::git;
 use crate::hooks::{HookAgent, HookFailure, HookRuntime};
 use crate::limits::{
     AgentLimits, CeilingLatch, FatalFault, RunLimits, RunSpend, TurnErrorType, TurnOutcome,
-    declared_model_call_timeout, declared_model_stream_idle, declared_retry_policy,
-    resolve_run_limits,
+    declared_model_call_timeout, declared_model_stream_idle, declared_provider_cache_miss_limit,
+    declared_retry_policy, resolve_run_limits,
 };
 use crate::loopguard::LoopGuardConfig;
 use crate::memories::{MemoriesRuntime, MemoryRegistry, MemoryScope, MemoryStrategy};

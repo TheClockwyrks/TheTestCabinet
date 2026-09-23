@@ -51,8 +51,13 @@ fn invocation(dir: &Path, set: GgCapabilitySet) -> GgInvocation {
         .bound_model_ids()
         .into_iter()
         .map(|id| {
-            let provider = id.split(['/', ':']).next().unwrap_or(id).to_string();
-            (id.to_string(), provider)
+            let provider = id.split(['/', ':']).next().unwrap_or(id);
+            (
+                id.to_string(),
+                vec![test_cabinet_core::gg::GgProviderCandidate::new(
+                    provider, "fp8",
+                )],
+            )
         })
         .collect::<BTreeMap<_, _>>();
     GgInvocation {

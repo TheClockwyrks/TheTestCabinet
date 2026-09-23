@@ -10411,6 +10411,7 @@ fn every_launch_mints_its_own_routing_key() {
         crate::client::DEFAULT_MODEL_STREAM_IDLE,
         crate::client::RetryPolicy::default(),
         BTreeMap::new(),
+        crate::client::DEFAULT_PROVIDER_CACHE_MISS_LIMIT,
     );
     let second = SessionSeams::substituted(first.factory.clone(), real_shell());
     assert!(cuid2::is_cuid2(first.routing_key.as_str()));

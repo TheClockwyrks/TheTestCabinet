@@ -1174,7 +1174,6 @@ fn client_for_slot_builds_mock_for_mock_binding() {
         DEFAULT_MODEL_STREAM_IDLE,
         RetryPolicy::default(),
         &ProviderRoster::default(),
-        DEFAULT_PROVIDER_CACHE_MISS_LIMIT,
         &ToolChoiceMemory::default(),
     )
     .expect("mock client");
