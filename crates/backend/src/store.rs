@@ -1479,9 +1479,9 @@ impl DefinitionStore {
     /// `<item>__<output>.<ext>`.
     ///
     /// Baseline media is a fixed property of the case version — synthesized once at
-    /// `tcab capture-baselines` time from the reference implementation, committed
-    /// under the version folder, and copied into the store at ingest (like any other
-    /// committed definition file). It is served case-scoped, the invariant
+    /// `tcab capture-baselines` time from the reference implementation, committed to
+    /// the cold-storage submodule, and copied from there into the stored version at
+    /// ingest. It is served case-scoped, the invariant
     /// counterpart to a run's *actual* validation media (served run-scoped by the
     /// artifact service). Mirrors [`read_reference`](Self::read_reference).
     ///

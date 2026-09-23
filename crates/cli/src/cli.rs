@@ -79,10 +79,10 @@ pub enum Command {
     #[command(name = "publish-reference")]
     PublishReference(PublishReferenceArgs),
 
-    /// (Re)generate a case version's committed **baseline** validation media by
-    /// driving its debug scripts against its reference implementation(s). Needs no
-    /// deployment environment or credentials — just the case's toolchain and a
-    /// browser.
+    /// (Re)generate a case version's **baseline** validation media in the
+    /// cold-storage submodule (or `TCAB_COLD_STORAGE_DIR`) by driving its debug
+    /// scripts against its reference implementation(s). Needs no deployment
+    /// environment or credentials — just the case's toolchain and a browser.
     #[command(name = "capture-baselines")]
     CaptureBaselines(CaptureBaselinesArgs),
 
@@ -478,8 +478,9 @@ pub struct PublishReferenceArgs {
     #[arg(long)]
     pub dry_run: bool,
 
-    /// Deploy without re-capturing the committed **baseline** validation media
-    /// (`validation-baseline/<variant>/`), leaving whatever is committed in place.
+    /// Deploy without re-capturing the **baseline** validation media in cold
+    /// storage (`validation-baseline/<engine>/<variant>/`), leaving whatever is
+    /// committed there in place.
     /// Use it when the baselines are known to be current for this build — the
     /// capture drives every debug script in a browser and dominates the command's
     /// runtime. To regenerate that media *without* deploying, use

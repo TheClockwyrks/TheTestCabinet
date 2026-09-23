@@ -17,8 +17,8 @@
 //!    site lands in the same `dist/`|`build/`|`out/` a run's build uses. Then
 //!    synthesize the variant's committed **baseline** validation media from that
 //!    build, driving the case's debug scripts against the reference implementation
-//!    once and writing each output under
-//!    `<version>/validation-baseline/<variant>/`. The baseline is a fixed property
+//!    once and writing each output under the version's baseline directory in the
+//!    cold-storage submodule, in `<engine>/<variant>/`. The baseline is a fixed property
 //!    of the case version, so a run's validation only ever produces the *actual*
 //!    media and never re-drives the reference implementation. Pass
 //!    `--skip-baselines` when the committed media is already current to deploy
@@ -45,13 +45,14 @@
 
 use anyhow::{Context, Result, bail};
 use test_cabinet_core::{
-    SystemCommandRunner, TestCaseCatalog, TestCaseVersion, TestType, deploy_pages_build,
+    ColdStorage, SystemCommandRunner, TestCaseCatalog, TestCaseVersion, TestType,
+    deploy_pages_build,
     reference_lock::{REFERENCE_LOCK_FILENAME, ReferenceLock},
 };
 
 use super::capture_baselines::{
-    Target, baseline_dir, build_reference, capture_variant_baseline, catalog_root, resolve_version,
-    select_targets,
+    Target, baseline_dir, build_reference, capture_variant_baseline, catalog_root,
+    ensure_cold_storage, resolve_version, select_targets,
 };
 use crate::cli::{DeployEnv, PublishReferenceArgs};
 
@@ -81,6 +82,7 @@ pub async fn execute(args: PublishReferenceArgs) -> Result<()> {
     // Resolve the case at the requested version — or its newest version when the
     // positional `<version>` is omitted — from the local catalog.
     let catalog = TestCaseCatalog::new(catalog_root());
+    let cold = ColdStorage::for_catalog(catalog.root());
     let version = resolve_version(&catalog, &args.slug, args.version.as_deref())?;
     let test_case = catalog
         .resolve(&args.slug, &version)
@@ -140,7 +142,7 @@ pub async fn execute(args: PublishReferenceArgs) -> Result<()> {
             } else {
                 println!(
                     "    baseline:  {}",
-                    baseline_dir(&test_case, target.engine, &target.variant.slug).display()
+                    baseline_dir(&cold, &test_case, target.engine, &target.variant.slug)?.display()
                 );
             }
             println!(
@@ -164,6 +166,9 @@ pub async fn execute(args: PublishReferenceArgs) -> Result<()> {
         .as_ref()
         .context("this case declares no [build] table")?;
 
+    if !args.skip_baselines {
+        ensure_cold_storage(&cold)?;
+    }
     let runner = SystemCommandRunner;
 
     // Deploy each targeted variant in turn, collecting the `(variant, served URL)` of
@@ -175,6 +180,7 @@ pub async fn execute(args: PublishReferenceArgs) -> Result<()> {
     for target in &targets {
         match publish_one(
             &runner,
+            &cold,
             &test_case,
             *target,
             project,
@@ -244,6 +250,7 @@ pub async fn execute(args: PublishReferenceArgs) -> Result<()> {
 /// shared [`deploy_pages_build`].
 async fn publish_one(
     runner: &SystemCommandRunner,
+    cold: &ColdStorage,
     test_case: &TestCaseVersion,
     target: Target<'_>,
     project: &str,
@@ -264,7 +271,7 @@ async fn publish_one(
             target.label()
         );
     } else {
-        capture_variant_baseline(test_case, target, &out)?;
+        capture_variant_baseline(cold, test_case, target, &out)?;
     }
 
     // Deploy to Cloudflare Pages under this variant's branch alias and read the

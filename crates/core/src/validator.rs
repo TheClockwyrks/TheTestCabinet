@@ -886,12 +886,13 @@ fn capture_baseline_suites(
 /// by [`crate::playable::serve_validation_file`].
 pub(crate) const VALIDATION_MEDIA_DIR: &str = ".vendor/validation";
 
-/// The version-folder-relative directory a case's committed **baseline** validation
-/// media lives under, one sub-directory per engine and variant:
-/// `validation-baseline/<engine>/<variant>/`. Synthesized once at capture-baselines
-/// time from the reference implementation and committed beside the case, then served
-/// case-scoped by the backend — the invariant counterpart to the per-run
-/// `VALIDATION_MEDIA_DIR` *actual* media.
+/// The directory a case version's **baseline** validation media lives under, one
+/// sub-directory per engine and variant: `validation-baseline/<engine>/<variant>/`.
+/// Synthesized once at capture-baselines time from the reference implementation and
+/// committed to the cold-storage submodule beneath the version's mirrored path (see
+/// [`crate::ColdStorage::validation_baseline_dir`]). Ingest copies it into the stored
+/// version under this same name, and the backend serves it case-scoped from there —
+/// the invariant counterpart to the per-run `VALIDATION_MEDIA_DIR` *actual* media.
 ///
 /// The engine comes first because it is what makes two captures of the same variant
 /// different media: a variant has one reference implementation PER ENGINE, and the
@@ -973,7 +974,7 @@ pub fn validation_published_extension(kind: MediaKind) -> &'static str {
 /// `.`), so the name stays a single path segment and cannot escape the media directory.
 ///
 /// Both the model's *actual* media (under a run's `VALIDATION_MEDIA_DIR`) and a
-/// case's *baseline* media (under the version folder's [`VALIDATION_BASELINE_DIR`]`/
+/// case's *baseline* media (under the version's [`VALIDATION_BASELINE_DIR`]`/
 /// <engine>/<variant>/`) use this same name; the directory, not the name, tells them
 /// apart.
 pub fn validation_media_name(verdict_id: &str, output_id: &str, kind: MediaKind) -> String {

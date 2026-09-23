@@ -222,17 +222,64 @@ fn resolve_version_prefers_an_explicit_version() {
 }
 
 #[test]
-fn baseline_dir_is_engine_and_variant_scoped_under_the_version_folder() {
+fn baseline_dir_is_engine_and_variant_scoped_under_the_mirrored_cold_storage_path() {
     let mut case = test_case(&[("base", &["none"][..])]);
     case.root = PathBuf::from("test-cases/end-to-end/easy/carom/v1.0.0");
+    let cold = ColdStorage::at("", "cold-storage");
 
     assert_eq!(
-        baseline_dir(&case, "none", "base"),
-        PathBuf::from("test-cases/end-to-end/easy/carom/v1.0.0")
-            .join(VALIDATION_BASELINE_DIR)
+        baseline_dir(&cold, &case, "none", "base").expect("the version is in the checkout"),
+        PathBuf::from("cold-storage/test-cases/end-to-end/easy/carom/v1.0.0")
+            .join(test_cabinet_core::VALIDATION_BASELINE_DIR)
             .join("none")
             .join("base")
     );
+}
+
+#[test]
+fn baseline_dir_follows_an_overridden_cold_storage_root() {
+    let mut case = test_case(&[("base", &["none"][..])]);
+    case.root = PathBuf::from("/repo/test-cases/end-to-end/easy/carom/v1.0.0");
+    let cold = ColdStorage::at("/repo", "/mnt/media");
+
+    assert_eq!(
+        baseline_dir(&cold, &case, "none", "base").expect("the version is in the checkout"),
+        PathBuf::from(
+            "/mnt/media/test-cases/end-to-end/easy/carom/v1.0.0/validation-baseline/none/base"
+        )
+    );
+}
+
+#[test]
+fn baseline_dir_refuses_a_version_outside_the_checkout() {
+    let mut case = test_case(&[("base", &["none"][..])]);
+    case.root = PathBuf::from("/elsewhere/test-cases/end-to-end/easy/carom/v1.0.0");
+    let cold = ColdStorage::at("/repo", "/repo/cold-storage");
+
+    assert!(baseline_dir(&cold, &case, "none", "base").is_err());
+}
+
+#[test]
+fn an_uninitialized_submodule_directory_is_refused() {
+    // nextest runs each test in its own process, so clearing the override here
+    // touches no other test.
+    unsafe { std::env::remove_var(COLD_STORAGE_DIR_ENV) };
+    let checkout = tempfile::tempdir().expect("tempdir");
+    let root = checkout.path().join("cold-storage");
+    let cold = ColdStorage::at(checkout.path(), &root);
+
+    assert!(
+        ensure_cold_storage(&cold).is_err(),
+        "a missing root is refused"
+    );
+    std::fs::create_dir(&root).expect("create the empty submodule directory");
+    assert!(
+        ensure_cold_storage(&cold).is_err(),
+        "the empty directory git leaves for an uninitialized submodule is refused"
+    );
+    std::fs::write(root.join(".git"), "gitdir: ../.git/modules/cold-storage\n")
+        .expect("mark the submodule checked out");
+    ensure_cold_storage(&cold).expect("a checked-out submodule is accepted");
 }
 
 #[test]
@@ -245,9 +292,11 @@ fn two_engines_of_one_variant_capture_into_separate_directories() {
     let mut case = test_case(&[("base", &["none", "simple-2d"][..])]);
     case.root = PathBuf::from("test-cases/end-to-end/easy/carom/v1.0.0");
 
+    let cold = ColdStorage::at("", "cold-storage");
+
     assert_ne!(
-        baseline_dir(&case, "none", "base"),
-        baseline_dir(&case, "simple-2d", "base"),
+        baseline_dir(&cold, &case, "none", "base").expect("resolves"),
+        baseline_dir(&cold, &case, "simple-2d", "base").expect("resolves"),
     );
 }
 
@@ -284,4 +333,15 @@ fn a_capture_fault_names_the_units_that_did_not_run_clean() {
              ball-spin, rail-bounce"
         ),
     );
+}
+
+#[test]
+fn an_overridden_root_needs_only_to_exist() {
+    let media = tempfile::tempdir().expect("tempdir");
+    // nextest runs each test in its own process, so the override is this test's alone.
+    unsafe { std::env::set_var(COLD_STORAGE_DIR_ENV, media.path()) };
+    let cold = ColdStorage::for_checkout("/repo");
+
+    assert_eq!(cold.root(), media.path());
+    ensure_cold_storage(&cold).expect("an existing override directory is accepted");
 }

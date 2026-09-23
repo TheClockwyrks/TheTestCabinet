@@ -1080,3 +1080,129 @@ fn an_unscoped_validator_stores_no_engine_restriction() {
         "an unscoped validator stores the empty list, which means every supported engine"
     );
 }
+
+/// The cold-storage counterpart of `write_e2e_case`'s version folder, under `root`.
+fn cold_baseline_dir(root: &std::path::Path, folder: &str) -> std::path::PathBuf {
+    root.join("test-cases/end-to-end/easy")
+        .join(folder)
+        .join("v1.0.0")
+        .join(test_cabinet_core::VALIDATION_BASELINE_DIR)
+}
+
+#[test]
+fn ingest_copies_a_version_s_baselines_from_cold_storage_into_the_store() {
+    let checkout = TempDir::new().unwrap();
+    write_e2e_case(checkout.path(), "demo", "demo");
+    let cold_root = checkout.path().join(test_cabinet_core::COLD_STORAGE_DIR);
+    let baselines = cold_baseline_dir(&cold_root, "demo").join("none/base");
+    write(&baselines.join("spin__still.png"), "png:still");
+    write(&baselines.join("img.9f2c1ab4.png"), "png:store");
+
+    let store_dir = TempDir::new().unwrap();
+    let store = DefinitionStore::open(store_dir.path()).unwrap();
+    Ingestor::new(checkout.path(), &store)
+        .with_cold_storage(ColdStorage::at(checkout.path(), &cold_root))
+        .scan(&IngestRequest::default())
+        .expect("scan ingests the case");
+
+    assert_eq!(
+        store
+            .list_validation_baseline("demo", "v1.0.0", "none", "base")
+            .unwrap(),
+        vec![
+            "img.9f2c1ab4.png".to_string(),
+            "spin__still.png".to_string()
+        ],
+    );
+    assert_eq!(
+        store
+            .read_validation_baseline("demo", "v1.0.0", "none", "base", "spin__still.png")
+            .unwrap(),
+        b"png:still",
+    );
+}
+
+#[test]
+fn ingest_without_cold_storage_succeeds_with_empty_baselines() {
+    let checkout = TempDir::new().unwrap();
+    write_e2e_case(checkout.path(), "demo", "demo");
+    // The empty directory git leaves for an uninitialized submodule.
+    std::fs::create_dir_all(checkout.path().join(test_cabinet_core::COLD_STORAGE_DIR)).unwrap();
+
+    let store_dir = TempDir::new().unwrap();
+    let store = DefinitionStore::open(store_dir.path()).unwrap();
+    let report = Ingestor::new(checkout.path(), &store)
+        .with_cold_storage(ColdStorage::at(
+            checkout.path(),
+            checkout.path().join(test_cabinet_core::COLD_STORAGE_DIR),
+        ))
+        .scan(&IngestRequest::default())
+        .expect("a checkout without the submodule still ingests");
+
+    assert_eq!(report.test_case_versions.len(), 1);
+    assert!(report.test_case_versions[0].ingested);
+    assert!(
+        store
+            .list_validation_baseline("demo", "v1.0.0", "none", "base")
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        !store
+            .version_dir("demo", "v1.0.0")
+            .join(test_cabinet_core::VALIDATION_BASELINE_DIR)
+            .exists()
+    );
+}
+
+#[test]
+fn ingest_reads_baselines_from_an_overridden_cold_storage_root() {
+    let checkout = TempDir::new().unwrap();
+    write_e2e_case(checkout.path(), "demo", "demo");
+    let elsewhere = TempDir::new().unwrap();
+    write(
+        &cold_baseline_dir(elsewhere.path(), "demo").join("simple-2d/base/spin__clip.webm"),
+        "webm:clip",
+    );
+
+    let store_dir = TempDir::new().unwrap();
+    let store = DefinitionStore::open(store_dir.path()).unwrap();
+    Ingestor::new(checkout.path(), &store)
+        .with_cold_storage(ColdStorage::at(checkout.path(), elsewhere.path()))
+        .scan(&IngestRequest::default())
+        .expect("scan ingests the case");
+
+    assert_eq!(
+        store
+            .read_validation_baseline("demo", "v1.0.0", "simple-2d", "base", "spin__clip.webm")
+            .unwrap(),
+        b"webm:clip",
+    );
+}
+
+#[test]
+fn ingest_defaults_to_the_checkout_s_cold_storage_submodule() {
+    // nextest runs each test in its own process, so clearing the override here
+    // touches no other test.
+    unsafe { std::env::remove_var(test_cabinet_core::COLD_STORAGE_DIR_ENV) };
+    let checkout = TempDir::new().unwrap();
+    write_e2e_case(checkout.path(), "demo", "demo");
+    write(
+        &cold_baseline_dir(&checkout.path().join("cold-storage"), "demo")
+            .join("none/base/spin__still.png"),
+        "png:still",
+    );
+
+    let store_dir = TempDir::new().unwrap();
+    let store = DefinitionStore::open(store_dir.path()).unwrap();
+    Ingestor::new(checkout.path(), &store)
+        .scan(&IngestRequest::default())
+        .expect("scan ingests the case");
+
+    assert_eq!(
+        store
+            .read_validation_baseline("demo", "v1.0.0", "none", "base", "spin__still.png")
+            .unwrap(),
+        b"png:still",
+    );
+}
