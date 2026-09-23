@@ -136,7 +136,6 @@ fn a_required_tool_request_streams_with_the_agent_that_asked_for_it() {
         None,
         CacheTtl::Standard,
         true,
-        ToolChoicePin::Pinned.body(&tool),
     );
     let buffered = build_required_tool_request_body(
         "openai/gpt-5.6",
@@ -145,7 +144,6 @@ fn a_required_tool_request_streams_with_the_agent_that_asked_for_it() {
         None,
         CacheTtl::Standard,
         false,
-        ToolChoicePin::Pinned.body(&tool),
     );
 
     assert_eq!(streamed["stream"], json!(true));

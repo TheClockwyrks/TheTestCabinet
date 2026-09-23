@@ -10,11 +10,9 @@ the outcomes a turn can have, and how a session is ended from inside a program.
 ## The submission gg accepts
 
 Every request offers exactly one tool, `submit_program`, and pins the
-provider's tool choice to it, so a reply answers with a call. A provider that
-refuses a pinned tool choice — a `400` naming `tool_choice` — is answered with
-the same request on `auto`, where the client stays for the rest of the run,
-and the downgrade is logged once. On `auto` the call is asked for rather than
-forced, and a reply that makes none is the error turn below. The call's
+provider's tool choice to it where the provider takes a forced tool choice, so
+a reply answers with a call. Where it does not, the call is asked for on
+`auto`, and a reply that makes none is the error turn below. The call's
 `program` string **is** the program: bare code, with no fence around it and no
 prose inside it, processed exactly as written. gg runs no analysis of its own
 to decide whether the string is a program — it is prepared by the agent's
@@ -66,8 +64,14 @@ turn whose submission failed to compile is an error turn, so a configured
 [error ceiling](/gg/execution-limits/) can stop a model that has started
 submitting prose. A reply that makes **no** `submit_program` call at all runs
 nothing and is an error turn of its own (`missing_completion_no_program`).
-That is also what a run reads when its provider took the downgrade above and
-the model, on `auto`, answered without the call.
+
+A provider that refuses the pin answers with a `400` whose body names
+`tool_choice`. gg re-sends the same request at once with `tool_choice` set to
+`auto`, outside the retry schedule, and records the refusal for the model. Every
+later required-tool request for that model in the run is sent on `auto` from
+the start, whether an agent's turn or a handoff compaction sends it. The
+downgrade is logged once per model per run, as a `warn` naming the model and
+the provider's message.
 
 Each call is acknowledged in the transcript by its own `tool` result, pushed
 directly after the assistant message and before anything runs. A call that
