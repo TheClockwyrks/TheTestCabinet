@@ -1134,8 +1134,8 @@ per-provider evidence, kept strictly separate. An open read.
 Run evidence: one entry per upstream provider observed in any run's
 `providerStats` slices, each carrying its per-model rows and a total. A row
 reports contributing runs, calls with their summed tokens and USD cost,
-length-capped rejections, and the attributed turns split into working turns and
-an error breakdown keyed by turn error type. The `provider: null` entry
+length-capped rejections, stalls, unexpected cache misses, and the attributed
+turns split into working turns and an error breakdown keyed by turn error type. The `provider: null` entry
 collects the calls that named no provider and sorts last; a `modelId: null` row
 is a slice recorded before the agent's first usage delta named its model, on a
 run more than one model served.

@@ -9,10 +9,10 @@ run already appears in the Models section; curating one gives it a Test Cabinet
 display name, aliases, a provider logo, and a description. Curation is an in-app
 edit that takes effect immediately, with nothing to commit, build, or release.
 
-Every run is pinned to the model developer's own OpenRouter provider, and nowhere
-else. A model whose official endpoint OpenRouter does not list, or which the
-account's privacy settings exclude, is not testable. Enqueue refuses it with the
-reason rather than launching it on another provider.
+Every run runs on one provider at a time, chosen from the ordered candidate list
+the backend builds for the model at enqueue. OpenRouter is the gateway and the
+bill. A model with no candidate is not testable, and enqueue refuses it with the
+reason rather than launching it.
 
 The full walkthrough is
 [Adding or Updating a Model](/guides/devops/adding-or-updating-a-model/).
@@ -54,15 +54,26 @@ Prices are recorded by the backend rather than edited here: when the model is
 saved, when a run using it is enqueued, when a run completes, and on a 24-hour
 refresh. The model's Stats tab shows the latest per-Mtok rates.
 
-The catalog records each model's provider pin with its prices, from OpenRouter's
-endpoints listing: the endpoint whose `provider_name` matches the author segment
-of the model id, ignoring case and punctuation. The model's Stats tab shows the
-pin, or "no official endpoint" when the listing has none. Where the developer's
-listing name does not match the id (`qwen/…` served by `Alibaba`), enter it in
-the form's Provider pin field; a pin set there wins over the observed one.
+The catalog records, beside each model's prices, the facts the candidate list is
+built from. Native quantization is the highest level any endpoint of the model
+declares, and a level entered in the form's Native quantization field wins over
+the observed one. The price ceiling is the developer endpoint's input and output
+rates when that endpoint is listed, and a ceiling entered in the form's Price
+ceiling field when it is not. The ban list names the providers a run of the
+model never tries, one slug per line. Allowed unknown names the providers whose
+`unknown` quantization is accepted by name. The model's Stats tab shows the
+native level, the ceiling, the ban list and the allow list.
 
-At enqueue the backend resolves the pin with the context window and stamps both
-onto the launch. A model with no pin refuses the enqueue, naming the model.
+At enqueue the backend reads the model's endpoints listing and keeps an endpoint
+whose quantization is the native level (an endpoint declaring `unknown` only
+when the catalog entry allows that provider by name), whose input and output
+prices are at or below the ceiling, which publishes a cache-read price, which
+supports every parameter the run sends, and which is absent from the ban list.
+The developer's own endpoint comes first when it passes. The rest follow by the
+provider's fault rate across the backend's recorded runs of the model, then by
+price. The resulting list is stamped onto the launch with the context window. A
+model with no candidate refuses the enqueue, naming the model and the reason. A
+model whose developer endpoint is excluded runs on the next candidate.
 
 ## Verify
 

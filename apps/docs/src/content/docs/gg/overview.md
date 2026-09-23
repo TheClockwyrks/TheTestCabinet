@@ -146,36 +146,96 @@ An agent loop re-sends its whole conversation every turn, so most of what a run
 pays for is the same tokens repeatedly: the system prompt, the tool schemas, the
 build prompt, any [autoloaded specifications](/gg/autoload-specifications/), and
 the thread so far. gg asks for a provider prompt cache on every request. Two
-things have to hold for a cached read to happen, and gg does both.
+things have to hold for a cached read to happen, and gg does both: the request
+has to reach the endpoint that holds the cache, and it has to stay on one
+provider long enough for that cache to be worth building.
 
-The request has to reach the endpoint that holds the cache, and it has to stay
-on the provider the run's cost is recorded against. Every request carries
-OpenRouter's `provider` object with `only` naming the one provider the launch
-pinned the model to, and `allow_fallbacks` false. The pin is the model
-developer's own endpoint. Every request of the run carries it, including a
-subagent's and a handoff compaction's.
+### The candidate list
 
-A response from any other provider ends the run as a harness failure, because
-the cost recorded from that point would be on a different price basis. The turn
-is recorded as a `model_provider_mismatch` error, the session record's model
-error as `provider_mismatch`, and both name the pinned provider and the one that
-served the call. The two are compared ignoring case and punctuation, so `z-ai`
-and `Z.AI` are one provider.
+OpenRouter is the gateway and the bill. Which of a model's providers serves a
+request is gg's choice, made from the ordered candidate list the launch carries
+as `modelProviders`. A candidate names a provider slug and the quantization it
+serves. The list is what a run of that model may use, in the order it tries
+them, and a one-entry list is a pin: every request of the run goes to that one
+provider.
+
+The backend builds the list at enqueue from OpenRouter's endpoints listing,
+keeping an endpoint that passes every filter:
+
+- Its declared quantization is the model's native level. Native is the highest
+  level any endpoint of the model declares, and a catalog entry can set the
+  level by hand. An endpoint declaring `unknown` is left out unless the catalog
+  entry allows that provider by name.
+- Its input and output prices are at or below the developer endpoint's rates,
+  or at or below the ceiling the catalog entry sets when the developer endpoint
+  is unavailable.
+- It publishes a cache-read price, so a prefix is worth building there at all.
+- It supports every parameter the run sends: `tools` and `tool_choice` for a
+  tool-calling agent, and `reasoning` when the agent sets an effort.
+- It is absent from the catalog entry's ban list.
+
+The developer's own endpoint comes first when it passes. The rest follow by the
+provider's fault rate across the backend's recorded runs of the model, then by
+price. A model with no candidate refuses the enqueue with the reason, and the
+console shows the reason on the model. A model whose developer endpoint is
+excluded runs on the next candidate.
+
+### The request
+
+Every request names exactly one candidate: `provider.only` carries its slug,
+`provider.quantizations` its level, and `allow_fallbacks` is false. Every
+request of the run carries the candidate in force, including a subagent's and a
+handoff compaction's. A reply served by any other provider ends the run as a
+harness failure, because the cost recorded from that point would be on a
+different price basis. The turn is recorded as a `model_provider_mismatch`
+error, the session record's model error as `provider_mismatch`, and both name
+the candidate and the provider that served the call. The two are compared
+ignoring case and punctuation, so `z-ai` and `Z.AI` are one provider.
 
 Within that provider, the request has to reach the endpoint that holds the
 cache. gg mints one routing key per run at launch, a cuid2, and every client in
 the run stamps it on every request as `session_id`. That covers the root agent,
 every [subagent](/gg/subagents/) and the client a compaction resolves. A run's
-turns therefore stay on one endpoint of the pinned provider, and agents that
+turns therefore stay on one endpoint of the provider in force, and agents that
 open on the same prefix reuse each other's warmed cache.
 
 `session_id` is OpenRouter's sticky-routing key, and gg sends the same key as
 `prompt_cache_key` for the providers that read the OpenAI-style field.
 `prompt_cache_key` alone leaves routing on OpenRouter's fallback, which is free
 to balance byte-identical requests across endpoints and reads as a 0% cache rate
-turn after turn. The key is a preference within the pin. With fallbacks refused,
-a provider's outage reaches gg as the error it is and is retried on the run's
-[retry schedule](/gg/execution-limits/).
+turn after turn. The key is a preference within the candidate. With fallbacks
+refused, a provider's outage reaches gg as the error it is and is retried on
+the run's [retry schedule](/gg/execution-limits/).
+
+The key is minted rather than taken from the run's session id, which is
+caller-supplied text of any length. A cuid2 is 24 characters, inside both
+OpenRouter's 256-character cap on `session_id` and OpenAI's 64-character cap on
+`prompt_cache_key`, and the only property routing needs is that every request of
+the run carries the same value. The key is announced on `session_started` and
+kept in the [session record](/gg/session-record/), so a provider dashboard row
+can be matched to its run.
+
+### Moving to the next candidate
+
+Faults are counted per provider within the run, and two kinds are told apart.
+
+A failed call is an HTTP error, a rate limit, a transport error or a stall. The
+client's retry schedule retries it on the same provider. When the schedule is
+spent, the run moves to the next candidate for that request and every request
+after it.
+
+An unexpected cache miss is a reply whose `cached_tokens` is below the shared
+prefix of the previous request on the same provider, sent within that request's
+cache lifetime and above the provider's minimum cacheable size. The reply
+stands, since it is a good turn, and the miss is counted. A provider that
+reaches [`providerCacheMissLimit`](/gg/execution-limits/#providercachemisslimit)
+is left at the next request. A miss is the cheapest moment to move, since the
+prefix has to be rebuilt either way.
+
+A move emits `provider_switch`, naming the provider left, the provider taken
+and the fault that decided it. The run's cost record already slices per
+provider, so a run that moved says so on its own. A run whose last candidate is
+spent ends as the harness failure an outage ends on.
 
 The key is minted rather than taken from the run's session id, which is
 caller-supplied text of any length. A cuid2 is 24 characters, inside both

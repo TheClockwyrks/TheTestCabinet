@@ -209,33 +209,48 @@ has.summary:true | stats sum(summary.errors.byType.program_api_error) as fights 
 
 ## Provider attribution
 
-Every request of a run is pinned to one provider, the model developer's own
-endpoint, and each call's `usage` event records the provider that served it. A
-response from any other provider ends the run as a harness failure: the turn is
-recorded as `model_provider_mismatch`, and its error names the pinned provider
-and the served one.
+Every request of a run names exactly one candidate from the model's list:
+`provider.only` carries its slug, `provider.quantizations` its level, and
+fallbacks are refused. Each call's `usage` event records the provider that
+served it. A response from any other provider ends the run as a harness
+failure: the turn is recorded as `model_provider_mismatch`, and its error names
+the candidate and the served provider.
+
+A run moves to the next candidate in two cases, and each move is its own
+`provider_switch` event naming the provider left, the provider taken and the
+fault that decided it. A spent [retry schedule](/gg/execution-limits/#maxmodelretries-and-modelretrymaxdelaysecs)
+moves the run for the request that spent it and every request after it. A
+provider that reaches
+[`providerCacheMissLimit`](/gg/execution-limits/#providercachemisslimit)
+unexpected cache misses is left at the next request, and the reply that crossed
+the limit stands. A run whose last candidate is spent ends as the harness
+failure an outage ends on.
 
 OpenRouter names the serving provider on each response, and provider-specific
 failures are only diagnosable from a record that says who served what. The
 summary therefore carries `providerStats`: one slice per `(provider, model)` pair
-observed, folded from the same stream as the rollups above. A pinned run has one
-provider per model.
+observed, folded from the same stream as the rollups above. A run that stayed
+on its first candidate has one provider per model; a run that moved has one
+slice per provider it spent against.
 
 ```jsonc
 "providerStats": [
   { "provider": "DeepInfra", "modelId": "qwen/qwen3.8-2.4t-a95b",
     "calls": 41, "tokens": { "uncachedInput": 63167, "output": 71310 },
     "cost": { "comparable": 0.70, "actual": 0.70 },
-    "turns": 41, "working": 39, "errors": { "transpile_compile": 2 } }
+    "turns": 41, "working": 39, "errors": { "transpile_compile": 2 },
+    "stalls": 1, "cacheMisses": 0 }
 ]
 ```
 
 Each slice records the calls that reported usage (`calls`, with their summed
 tokens and cost), the length-capped replies the provider served (`rejected`),
-and the turns attributed to it: `turns`, the `working` (progressed or finished)
-turns among them, and an `errors` map keyed by the same `errorType` wire ids
-`byType` uses. Two invariants hold: the slices' `turns` sum to `errors.turns`,
-and a slice's `turns` minus `working` minus its error count is its fatal turns.
+the turns attributed to it (`turns`, the `working` turns among them, and an
+`errors` map keyed by the same `errorType` wire ids `byType` uses), the stalls
+the provider's streams produced (`stalls`) and the unexpected cache misses its
+replies produced (`cacheMisses`). Two invariants hold: the slices' `turns` sum
+to `errors.turns`, and a slice's `turns` minus `working` minus its error count
+is its fatal turns.
 
 A turn is attributed to the provider named by its own call's `usage`, `prompt`
 or `response_rejected` event. A call that produced no reply — a model timeout —

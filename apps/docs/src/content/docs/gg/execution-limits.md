@@ -26,9 +26,10 @@ host records such a run as
 Four further bounds are declared, resolved and recorded with those five.
 [`maxParallel`](#parallelism) queues agents rather than stopping them,
 `replayMaxBytes` bounds the [session capture journal](/gg/session-record/)
-rather than the run, and [`modelCallTimeoutSecs`](#modelcalltimeoutsecs) and
-[`modelStreamIdleSecs`](#modelstreamidlesecs) bound one model request rather
-than the run that made it. [Cancellation](#cancellation)
+rather than the run, and [`modelCallTimeoutSecs`](#modelcalltimeoutsecs),
+[`modelStreamIdleSecs`](#modelstreamidlesecs) and
+[`providerCacheMissLimit`](#providercachemisslimit) bound one model request, or
+the provider serving it, rather than the run that made it. [Cancellation](#cancellation)
 stops a run on an operator's instruction, with no threshold declared anywhere.
 
 [Loop detection](/gg/loop-detection/) bounds a single reply rather than a run. A
@@ -123,13 +124,15 @@ neither has an off it could take instead.
 - `replayMaxBytes` bounds the [session capture journal](/gg/session-record/),
   which gg writes on every run.
 
-`modelCallTimeoutSecs` and `modelStreamIdleSecs` are two of four keys an absence
-answers with a figure rather than with "off": every model call is made under
-both, so a configuration that leaves them out is conducted under 900 and 60
-seconds, and one that writes `0` for either is refused. `maxModelRetries` and
-`modelRetryMaxDelaySecs` are the other two: every failed model request is
-retried on a schedule, so a configuration that leaves them out retries ten times
-against a 60-second delay ceiling. See [model API errors](#model-api-errors).
+`modelCallTimeoutSecs`, `modelStreamIdleSecs` and `providerCacheMissLimit` are
+three of the keys an absence answers with a figure rather than with "off". A
+configuration that leaves the first two out is conducted under 900 and 60
+seconds, and one that writes `0` for either is refused. `providerCacheMissLimit`
+defaults to 2, and `0` is honoured as a run that leaves a provider on its first
+unexpected miss. `maxModelRetries` and `modelRetryMaxDelaySecs` are the other
+two: every failed model request is retried on a schedule, so a configuration
+that leaves them out retries ten times against a 60-second delay ceiling. See
+[model API errors](#model-api-errors).
 
 The other five are ceilings, and a ceiling is armed by writing it. `maxTurns`,
 `maxRuntimeSecs`, `maxCost`, `maxConsecutiveErrors`, and `maxErrorRate` with its
@@ -263,6 +266,21 @@ other retry, with a cause that names the stall and the provider the stream had
 named, if any, such as `the stream stalled: no delta from the model for 60s
 (provider: Z.AI)`.
 
+### `providerCacheMissLimit`
+
+How many unexpected cache misses a provider may accumulate before the run
+leaves it. An unexpected miss is a reply whose `cached_tokens` is below the
+shared prefix of the previous request on the same provider, sent within that
+request's [cache lifetime](/gg/configurations/#prompt-cache-lifetime) and above
+the provider's minimum cacheable size. The reply stands, and the miss is
+counted against the provider in force.
+
+A configuration that leaves the key out is conducted under 2, and `0` is
+honoured as a run that leaves a provider on its first unexpected miss. A
+provider that reaches the limit is left at the next request: the run moves to
+the next candidate on its list and emits `provider_switch`. A provider that
+never reaches it serves the run to the end.
+
 ### `maxModelRetries` and `modelRetryMaxDelaySecs`
 
 The schedule the model client retries a failed request on. A request answered
@@ -294,7 +312,9 @@ model request attempt 3 of 11 failed (HTTP 502: bad gateway); retrying in 4.0s
 ```
 
 Like the model-call timeout, the schedule never stops a run by being reached.
-Spending it is what turns a provider's failure into a
+Spending it moves the run to the next candidate on the model's list for that
+request and every request after it, recorded as `provider_switch`. A run whose
+last candidate is spent turns the provider's failure into a
 [failed model call](#model-api-errors). A call that hits
 [`modelCallTimeoutSecs`](#modelcalltimeoutsecs) bypasses the schedule, because
 each retry would cost the ceiling again, and the turn-level retry is the bounded
@@ -619,6 +639,7 @@ ceiling that produced it:
   "slots": [{ "slot": "primary", "modelId": "anthropic/claude-opus-5" }],
   "limits": { "maxParallel": 16, "maxTurns": 60, "maxRuntimeSecs": 5400,
               "modelCallTimeoutSecs": 900, "modelStreamIdleSecs": 60,
+              "providerCacheMissLimit": 2,
               "maxModelRetries": 10, "modelRetryMaxDelaySecs": 60,
               "maxConsecutiveErrors": 5,
               "maxErrorRate": 0.5, "errorRateWindow": 10,
@@ -629,12 +650,12 @@ ceiling that produced it:
 In the console the limits are a Run limits fieldset above the capability groups
 in the [configuration](/gg/configurations/) editor, one field per key. A fresh
 configuration is seeded with the parallelism and journal figures, a model-call
-timeout of 900 seconds, a stream idle bound of 60 seconds, the retry schedule's
-10 retries against a 60-second delay ceiling, a consecutive-error ceiling of 5,
+timeout of 900 seconds, a stream idle bound of 60 seconds, a cache-miss limit of
+2, the retry schedule's 10 retries against a 60-second delay ceiling, a
+consecutive-error ceiling of 5,
 and an error rate of 0.2 over a window of 50 turns; the turn, runtime and cost
 fields start empty. Each seeded error figure is a guardrail the operator keeps,
 changes, or clears. An empty ceiling field is an unarmed ceiling, except the
-model-call timeout, the stream idle bound and the retry schedule, which an empty
 field conducts under their defaults; a stored configuration that omitted a
 ceiling opens with that field empty.
 
@@ -650,12 +671,14 @@ that integer, so `60` and `60.0` are one declaration.
 | any of the five ceilings absent                                           | that ceiling unarmed                                               |
 | `modelCallTimeoutSecs` absent                                             | every model call bounded at 900 seconds                            |
 | `modelStreamIdleSecs` absent                                              | every model call cancelled after 60 seconds without a delta        |
+| `providerCacheMissLimit` absent                                           | a provider is left after 2 unexpected cache misses                 |
+| `providerCacheMissLimit: 0`                                               | honoured: the first unexpected miss leaves the provider            |
 | `maxModelRetries` or `modelRetryMaxDelaySecs` absent                      | failed requests retried 10 times against a 60-second delay ceiling |
-| `maxModelRetries: 0`                                                      | honoured: the first failure ends the session                       |
+| `maxModelRetries: 0`                                                      | honoured: the first failure moves the run to the next candidate    |
 | one error-rate half declared, the other not                               | refused                                                            |
 | `maxErrorRate: 0.0`                                                       | armed: any error at all, once the window is full                   |
 | `errorRateWindow` ≥ a set `maxTurns`                                      | armed as declared, warned that it can fire only on the last turn   |
-| any key but `maxErrorRate` and `maxModelRetries` declared `0` or negative | refused                                                            |
+| any key but `maxErrorRate`, `maxModelRetries` and `providerCacheMissLimit` declared `0` or negative | refused                                                            |
 | `maxErrorRate` outside `0.0..=1.0`, or a float that is not finite         | refused                                                            |
 | a key gg cannot read as the number it is                                  | refused                                                            |
 

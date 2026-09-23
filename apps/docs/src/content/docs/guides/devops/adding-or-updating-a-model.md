@@ -57,10 +57,17 @@ A model record has these fields:
 - OpenRouter slug, the id OpenRouter lists the model under, used for the
   comparable-cost lookup. It is separate from the aliases, so a model can carry
   it without ever being run through an OpenRouter harness.
-- Provider pin, the OpenRouter provider every gg run of the model is pinned to.
-  Blank takes the official endpoint the catalog observes; set it where the
-  developer's `provider_name` on the endpoints listing does not match the author
-  segment of the model id.
+- Native quantization, the quantization level a run of the model requires.
+  Blank takes the highest level any endpoint of the model declares; set it
+  where that observation is wrong.
+- Price ceiling, the input and output rates, in USD per million tokens, an
+  endpoint must be at or below when the developer endpoint is unavailable.
+  Blank takes the developer endpoint's own rates.
+- Provider ban list, the providers a run of the model never tries, one slug
+  per line.
+- Allowed unknown, the providers whose `unknown` quantization the catalog
+  accepts by name, one slug per line. Every other `unknown` endpoint is left
+  out.
 
 ### Alias harness families
 
