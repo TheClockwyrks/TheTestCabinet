@@ -882,34 +882,14 @@ fn sandbox_failure_decision(
     }
 }
 
-/// The body of a `Compiler error` message: the arm's diagnostic, and the
-/// [supporting material](crate::sandbox::supporting) drawn from the library set its catalogue
-/// declares.
+/// The body of a `Compiler error` message: the arm's rendered diagnostic, alone.
 ///
-/// The set is delivered here rather than in the system prompt because the mistake it prevents — a
-/// program written against a package this arm does not carry — is one the compiler **detects**, and
-/// a detectable fact is delivered when it is detected. A model that never writes an import never
-/// reads it; the one that did reads it beside the diagnostic that made it relevant.
-///
-/// Which of the set is delivered is decided from the diagnostic. The arm reads the imports its own
-/// compiler could not resolve
-/// ([`unresolved_imports`](crate::sandbox::ProgramLanguage::unresolved_imports)) and the material is
-/// the modules that match them, so an ordinary misspelling is answered with the name it meant rather
-/// than with an inventory. A diagnostic naming no import, and one whose names match nothing, is
-/// answered with the whole set. Either way the material is held to
-/// [one bound](crate::sandbox::supporting) every arm shares, so what a rejection costs the next turn
-/// is comparable across arms.
-///
-/// It goes after the diagnostic, separated by a blank line, so the compiler's own first line is
-/// still the first line of the message. An arm whose catalogue declares no set — the two whose
-/// programs get their runtime's own standard library and nothing else — is answered with the
-/// diagnostic alone, with no trailing blank line to say a section was omitted.
-fn compiler_error_body(language: GgProgramLanguage, diagnostic: &str) -> String {
-    let arm = sandbox::language(language);
-    match sandbox::supporting(arm.catalogue(), &arm.unresolved_imports(diagnostic)) {
-        Some(libraries) => format!("{diagnostic}\n\n{libraries}"),
-        None => diagnostic.to_string(),
-    }
+/// Everything after the heading is the compiler's output. gg's processing of that output only
+/// ever removes, the way the caps in `sandbox/language/diagnostics.rs` remove, and adds nothing.
+/// The diagnostic arrives here already rendered by the arm that read it: `PrepareError::Compile`
+/// carries that arm's string, and the band and the turn record carry it on untouched.
+fn compiler_error_body(_language: GgProgramLanguage, diagnostic: &str) -> String {
+    diagnostic.to_string()
 }
 
 /// The class a refused [knowledge](crate::knowledge) load carries — the same split

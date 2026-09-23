@@ -906,14 +906,6 @@ pub(super) fn placed() -> Result<&'static Placed, String> {
         .map_err(Clone::clone)
 }
 
-/// **The packages `javac` said this program could not import**, read out of the rendering
-/// [`Diagnostic::render`](Diagnostic::render) produced.
-///
-/// `javac` names the package rather than the type: an `import java.utl.List;` is reported as
-/// `package java.utl does not exist`, located at the import line. The message is taken in
-/// `Locale.ROOT`, so the sentence is the same on every machine.
-pub(super) fn unresolved_imports(diagnostic: &str) -> Vec<String> {
-    diagnostic
         .lines()
         .flat_map(|line| {
             crate::sandbox::language::diagnostics::named(line, "package ", " does not exist")

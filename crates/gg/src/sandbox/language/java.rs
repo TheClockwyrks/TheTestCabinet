@@ -158,10 +158,6 @@ impl ProgramLanguage for Java {
         Some("javac")
     }
 
-    /// [What `javac` says a program could not import](compile::unresolved_imports), read out of the
-    /// `package … does not exist` wording this arm's own diagnostics carry.
-    fn unresolved_imports(&self, diagnostic: &str) -> Vec<String> {
-        compile::unresolved_imports(diagnostic)
     }
 
     /// Start one JVM and place the compiler driver and the SDK jar now, so the first code turn pays

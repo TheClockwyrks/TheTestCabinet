@@ -177,10 +177,6 @@ impl ProgramLanguage for Kotlin {
         Some("kotlinc")
     }
 
-    /// [What `kotlinc` says a program could not import](compile::unresolved_imports), read out of the
-    /// `unresolved reference` wording this arm's own diagnostics carry.
-    fn unresolved_imports(&self, diagnostic: &str) -> Vec<String> {
-        compile::unresolved_imports(diagnostic)
     }
 
     /// Start one JVM and place the compiler driver and the SDK jar now, so the first code turn pays

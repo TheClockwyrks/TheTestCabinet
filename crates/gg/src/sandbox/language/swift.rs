@@ -214,10 +214,6 @@ impl ProgramLanguage for Swift {
         Some("swiftc")
     }
 
-    /// [What `swiftc` says a program could not import](compile::unresolved_imports), read out of the
-    /// `no such module` wording this arm's own diagnostics carry.
-    fn unresolved_imports(&self, diagnostic: &str) -> Vec<String> {
-        compile::unresolved_imports(diagnostic)
     }
 
     /// Unpack the embedded guest archive and library set now, so the first code turn does not.

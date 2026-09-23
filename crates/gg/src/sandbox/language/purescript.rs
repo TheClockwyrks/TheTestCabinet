@@ -201,10 +201,6 @@ impl ProgramLanguage for PureScript {
         Some("purs")
     }
 
-    /// [What `purs` says a program could not import](compile::unresolved_imports), read out of the
-    /// `ModuleNotFound` wording this arm's own diagnostics carry.
-    fn unresolved_imports(&self, diagnostic: &str) -> Vec<String> {
-        compile::unresolved_imports(diagnostic)
     }
 
     /// Unpack the embedded library tree — 1.4 MB into 1,430 files, once per machine — so the first

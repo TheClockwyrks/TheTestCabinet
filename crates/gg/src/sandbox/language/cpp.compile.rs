@@ -1263,15 +1263,6 @@ fn fingerprint(archive: &[u8]) -> u64 {
     hasher.finish()
 }
 
-/// **The headers `clang++` said this program could not include**, read out of the text this arm
-/// [renders](rendered).
-///
-/// `clang++` reports an unresolvable `#include` as a fatal error quoting the spelling the program
-/// wrote: `'vectr' file not found`. The quotes are the compiler's and the angle brackets are not
-/// carried into them, which is why [matching](crate::sandbox::supporting) strips the brackets this
-/// arm's catalogue spells its modules with.
-pub(super) fn unresolved_imports(diagnostic: &str) -> Vec<String> {
-    diagnostic
         .lines()
         .filter(|line| line.contains("file not found"))
         .filter_map(|line| {
