@@ -101,8 +101,13 @@ const RUNS: RunSummary[] = [
     caseName: "Space Invaders",
     cost: 2,
   }),
-  run({ id: "eeeee", modelId: "openai/gpt", cost: 1 }),
-  run({ id: "ffffff", modelId: "google/gemini", cost: 2 }),
+  run({ id: "eeeee", modelId: "openai/gpt", cost: 1, sessionSeconds: 60 }),
+  run({
+    id: "ffffff",
+    modelId: "google/gemini",
+    cost: 2,
+    sessionSeconds: 80,
+  }),
 ];
 
 function galleryValue(summaries: RunSummary[]): GalleryDataInput {
@@ -173,6 +178,12 @@ describe("ModelOverviewPage", () => {
     // reads their mean rather than 10m.
     expect(labelledValue("Carom · Base", "Mean session time")).toBe("2m 0s");
     expect(screen.queryByText("Mean run time")).toBeNull();
+    // The same mean, placed against the field: both rivals sit below 2m, so
+    // Claude is slower than the whole field.
+    const meter = screen.getByRole("meter", {
+      name: /Session duration: slower than/,
+    });
+    expect(meter.getAttribute("aria-valuenow")).toBe("100");
   });
 
   it("shows an em dash when no run in the cohort recorded a session", async () => {

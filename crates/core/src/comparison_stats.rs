@@ -8,7 +8,8 @@
 //!
 //! The metrics have different shapes and each gets the summary that does not lie
 //! about it:
-//! - **Cost and tokens are right-skewed** — a floor with a long upper tail. They
+//! - **Cost, tokens, and session duration are right-skewed** — a floor with a long
+//!   upper tail. They
 //!   are summarized with the [`MetricSummary`] (median + IQR + min/max, alongside
 //!   the mean, because the gap between mean and median is itself informative), with
 //!   a bootstrap confidence interval on the median that makes no normality

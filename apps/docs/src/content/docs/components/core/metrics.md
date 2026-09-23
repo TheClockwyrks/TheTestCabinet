@@ -30,8 +30,9 @@ sits outside the run time, which is frozen before the validation pass and before
 every post-run stage.
 
 The session duration is the figure that describes a model, and the run time
-answers what a run cost in machine time. Both depend heavily on which provider
-served the requests.
+answers what a run cost in machine time. Every run of a model is pinned to
+that model's own provider, so the session duration is comparable across runs
+of one model. The run time still varies with the machine the run landed on.
 
 Each stage duration is optional. `null` means the run recorded no figure for
 that stage, which is distinct from `0`. A cancellation skips validation, so a

@@ -18,12 +18,18 @@ measure resources, not rank](/components/core/metrics/).
 
 Each metric has its own shape, and each is summarized on its own terms.
 
-Cost and tokens are right-skewed. A run has a floor, since it cannot cost less
-than the minimum work, and a long upper tail. The median is the honest typical
-run, and it is reported with its spread: the min and max, and the interquartile
-range. The mean is reported alongside it, because the mean is what is actually
-paid averaged over many runs, and for a skewed metric it sits above the median.
-The gap between them is informative.
+Cost, tokens, and session duration are right-skewed. A run has a floor, since
+it cannot cost less than the minimum work or finish faster than the work
+itself, and a long upper tail. The median is the honest typical run, and it is
+reported with its spread: the min and max, and the interquartile range. The
+mean is reported alongside it, because the mean is what is actually paid or
+waited, averaged over many runs, and for a skewed metric it sits above the
+median. The gap between them is informative.
+
+Session duration is the harness session alone, in seconds. Setup, teardown,
+and validation are the cabinet's time, so they take no part in the comparison.
+A run recorded before the stage durations were measured contributes nothing,
+on the same terms as a run whose cost or tokens are unknown.
 
 Pass rate is a proportion. A plain average understates the uncertainty of a
 small sample, so it is summarized with a Wilson score interval.
@@ -48,8 +54,9 @@ noise can fake a difference. The summaries below stay honest at either end.
 
 ## Per-arm statistics
 
-For comparable cost and for total tokens, `MetricSummary::compute` returns `n`,
-the median, the mean, the min, the max, the first and third quartiles, the
+For comparable cost, total tokens, and session duration,
+`MetricSummary::compute` returns `n`, the median, the mean, the min, the max,
+the first and third quartiles, the
 interquartile range, and a bootstrap confidence interval on the median. A run
 missing a metric is left out of that metric's distribution rather than folded in
 as a zero.
@@ -73,8 +80,10 @@ run's earned-over-total point.
 When exactly two arms are placed side by side, the effect size is presented as
 the ratio of their medians, ordered so the ratio reads at least one, with both
 medians spelled out beside it. The ratio is a presented number, and both
-distributions are drawn under it. A ratio is reported only when both arms have a
-cost distribution and the denominator median is above zero.
+distributions are drawn under it. A ratio is reported for a metric only when
+both arms have a distribution for it and the denominator median is above zero.
+Cost and session duration each get their own, since the slower arm is not
+necessarily the more expensive one.
 
 No p-value and no significance badge is shown. A significance verdict is a
 verdict, and at three runs per arm a rank-based test would mislead.

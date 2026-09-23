@@ -22,7 +22,7 @@ import { useTestCaseName } from "../../data/useTestCaseName";
 import { engineName, resolveEngineSlug } from "../../data/engines";
 import { useConfirm } from "../../components/ConfirmDialog";
 import { GG_HARNESS_SLUG } from "../../data/runLinks";
-import { formatCompact, formatUsd } from "../../format";
+import { formatCompact, formatRunTime, formatUsd } from "../../format";
 import { useRunsRuntime } from "../../runtime/runsRuntime";
 import { launchBatch } from "../runs/launchBatch";
 import { bindModelSlots } from "../runs/gg/ggConfigDraft";
@@ -46,7 +46,7 @@ import exec from "../runs/RunExec.module.scss";
 import styles from "./Comparisons.module.scss";
 
 // The comparison detail page (`/comparisons/:id`) — the heart of the feature.
-// Per arm it presents the cost/token distribution (a box + whiskers + bootstrap
+// Per arm it presents the cost/token/session-duration distribution (a box +
 // CI over the arm's runs — never a single averaged bar, and never merged across
 // arms), the automated-only score, the pass rate with its Wilson interval, and
 // the tool-call diagnostics that explain *why* one arm costs more. Any confound
@@ -398,6 +398,25 @@ export function ComparisonDetailPage() {
       ciLow: a.tokens!.ciLow,
       ciHigh: a.tokens!.ciHigh,
     }));
+  // Session duration, on the same terms as cost and tokens: the median, its
+  // spread, and the mean. An arm whose runs predate the stage durations has
+  // none, and is left out rather than drawn at zero.
+  const sessionGroups: DistributionGroup[] = arms
+    .filter((a) => a.sessionDuration)
+    .map((a) => ({
+      label: a.arm.label,
+      color: colorForArm.get(a.arm.id),
+      n: a.sessionDuration!.n,
+      points: [],
+      median: a.sessionDuration!.median,
+      mean: a.sessionDuration!.mean,
+      min: a.sessionDuration!.min,
+      max: a.sessionDuration!.max,
+      q1: a.sessionDuration!.q1,
+      q3: a.sessionDuration!.q3,
+      ciLow: a.sessionDuration!.ciLow,
+      ciHigh: a.sessionDuration!.ciHigh,
+    }));
 
   const toolCallData = toolCallChartData(
     arms.map((a) => ({
@@ -425,6 +444,20 @@ export function ComparisonDetailPage() {
   const [hi, lo] = costPair ?? [null, null];
   const costRatio =
     hi && lo ? medianRatio(hi.cost!.median, lo.cost!.median) : null;
+
+  // The same presented ratio for session duration, ordered independently of
+  // cost: the slower arm is not necessarily the more expensive one.
+  const sessionPair: [(typeof arms)[number], (typeof arms)[number]] | null =
+    arms.length === 2 && arms[0]!.sessionDuration && arms[1]!.sessionDuration
+      ? ([arms[0]!, arms[1]!].sort(
+          (x, y) => y.sessionDuration!.median - x.sessionDuration!.median,
+        ) as [(typeof arms)[number], (typeof arms)[number]])
+      : null;
+  const [slow, fast] = sessionPair ?? [null, null];
+  const sessionRatio =
+    slow && fast
+      ? medianRatio(slow.sessionDuration!.median, fast.sessionDuration!.median)
+      : null;
 
   return (
     <PageLayout>
@@ -574,6 +607,14 @@ export function ComparisonDetailPage() {
           ).
         </p>
       )}
+      {sessionRatio !== null && !Number.isNaN(sessionRatio) && slow && fast && (
+        <p className={styles.ratioCallout}>
+          {slow.arm.label}&rsquo;s median session is ~{sessionRatio.toFixed(1)}×{" "}
+          {fast.arm.label}
+          &rsquo;s ({formatRunTime(slow.sessionDuration!.median)} vs{" "}
+          {formatRunTime(fast.sessionDuration!.median)}).
+        </p>
+      )}
 
       {/* Every figure on this page is a widget in one column, and the column is
           the only thing that spaces them. A section that sets its own margins
@@ -612,6 +653,22 @@ export function ComparisonDetailPage() {
                   })
           }
           empty="No token data yet for this comparison's runs."
+        />
+
+        <ChartWidget
+          title="Session duration"
+          chartTitle="Session duration distribution by arm"
+          hint="The harness session alone, in seconds. Box = IQR, whiskers = min/max, tick = median, thin band = bootstrap 95% CI on the median. A run recorded before session durations were measured contributes nothing."
+          spec={
+            sessionGroups.length === 0
+              ? undefined
+              : (palette) =>
+                  distributionChart(sessionGroups, palette, {
+                    y: "seconds",
+                    formatValue: (v) => formatRunTime(v),
+                  })
+          }
+          empty="No session durations recorded yet for this comparison's runs."
         />
 
         {/* A peer of the three charts rather than a hand-rolled section: same

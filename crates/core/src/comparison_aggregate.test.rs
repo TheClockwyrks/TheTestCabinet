@@ -429,8 +429,54 @@ fn an_arm_with_no_present_runs_summarizes_to_nothing() {
     let arms = aggregate_comparison(&config, &items, &runs, &all_live(&config));
     assert_eq!(arms[0].n_observed, 0);
     assert!(arms[0].cost.is_none());
+    assert!(arms[0].tokens.is_none());
+    assert!(arms[0].session_duration.is_none());
     assert!(arms[0].score.is_none());
     assert!(arms[0].pass_rate.is_none());
+}
+
+/// Session duration is summarized on the same terms as cost: the harness session
+/// alone, and a run recorded before the stage durations were measured contributes
+/// nothing rather than a zero that would drag the median down.
+#[test]
+fn session_duration_summarizes_measured_runs_and_skips_unmeasured_ones() {
+    let items = [item("a", 3)];
+    let mut runs = BTreeMap::new();
+    for (id, session) in [
+        ("pi-1", Some(90.0)),
+        ("pi-2", Some(150.0)),
+        // Written before stage durations were measured.
+        ("pi-3", None),
+    ] {
+        let mut run = record(Run {
+            id,
+            harness: HarnessSlug::Pi,
+            model: "anthropic/claude-opus-4.8",
+            cost: 0.5,
+            tokens: 100,
+            tool_calls: &[],
+            scripts: vec![script("a", true)],
+            auth: AuthMode::ApiKey,
+        });
+        run.metrics.session_seconds = session;
+        runs.insert(id.to_string(), run);
+    }
+
+    let mut config = pi_vs_kilo();
+    config.arms.truncate(1);
+    config.arms[0].run_ids = vec!["pi-1".into(), "pi-2".into(), "pi-3".into()];
+
+    let arms = aggregate_comparison(&config, &items, &runs, &all_live(&config));
+    let summary = arms[0]
+        .session_duration
+        .as_ref()
+        .expect("a session distribution");
+    // The unmeasured run is out of the sample entirely.
+    assert_eq!(summary.n, 2);
+    assert!((summary.median - 120.0).abs() < 1e-9);
+    assert!((summary.mean - 120.0).abs() < 1e-9);
+    assert!((summary.min - 90.0).abs() < 1e-9);
+    assert!((summary.max - 150.0).abs() < 1e-9);
 }
 
 /// The same run, moved onto an engine. Written as a mutation rather than another

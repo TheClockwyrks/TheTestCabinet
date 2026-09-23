@@ -337,6 +337,13 @@ export type ComparisonArmResult = {
    */
   tokens?: MetricSummary;
   /**
+   * The session-duration (seconds) distribution across the arm's runs: the
+   * harness session alone, since setup, teardown, and validation are the
+   * cabinet's time. A run recorded before the stage durations were measured
+   * contributes nothing, on the same terms as a run missing its cost.
+   */
+  sessionDuration?: MetricSummary;
+  /**
    * The automated-only score across the arm's runs.
    */
   score?: ArmScore;

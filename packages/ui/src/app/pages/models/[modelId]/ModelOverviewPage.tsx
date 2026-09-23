@@ -17,7 +17,6 @@ import {
 } from "../../../components/VersionScope";
 import type { ModelSummary } from "../../../data/models";
 import {
-  meanReported,
   modelCaseOptions,
   runIsModel,
   standInField,
@@ -54,6 +53,10 @@ const costValue = (run: RunSummary): number | null =>
   run.metrics.cost.comparable;
 const tokensValue = (run: RunSummary): number | null =>
   totalTokens(run.metrics);
+// The harness session alone. Null on a record written before the stage
+// durations were measured, which keeps it out of the mean and the field.
+const sessionValue = (run: RunSummary): number | null =>
+  run.metrics.sessionSeconds ?? null;
 // A run's reviewer score as a fraction of the points on offer. A checklist with
 // nothing on offer has no fraction to contribute, so it is unreported rather than
 // a perfect (or zero) score.
@@ -341,19 +344,10 @@ function CohortReport({
     () => ({
       cost: standInField(fieldCompleted, model.modelIds, costValue),
       tokens: standInField(fieldCompleted, model.modelIds, tokensValue),
+      session: standInField(fieldCompleted, model.modelIds, sessionValue),
       score: standInField(fieldCompleted, model.modelIds, scoreValue),
     }),
     [fieldCompleted, model.modelIds],
-  );
-
-  // The session alone, never the run time: setup is shared by every run of the
-  // case and dominates a run's wall clock, so a mean run time by model reports
-  // mostly how long the container took to build. A run recorded before session
-  // durations were measured reports none, and `meanReported` skips it.
-  const meanSession = useMemo(
-    () =>
-      meanReported(modelCompleted, (run) => run.metrics.sessionSeconds ?? null),
-    [modelCompleted],
   );
 
   if (loading) {
@@ -411,7 +405,11 @@ function CohortReport({
               />
               <Tile
                 label="Mean session time"
-                value={meanSession === null ? "—" : formatRunTime(meanSession)}
+                value={
+                  standings.session
+                    ? formatRunTime(standings.session.value)
+                    : "—"
+                }
               />
             </div>
             {/* The averages above are over completed runs, the two rings below
@@ -467,6 +465,7 @@ function ComparisonBlock({
   standings: {
     cost: FieldStanding | null;
     tokens: FieldStanding | null;
+    session: FieldStanding | null;
     score: FieldStanding | null;
   };
   modelName: string;
@@ -474,9 +473,12 @@ function ComparisonBlock({
   // Each measure has its own field — a model whose prices could not be resolved
   // is in the token field but not the cost one — so the headline count is the
   // widest of them rather than whichever measure happened to be listed first.
-  const present = [standings.cost, standings.tokens, standings.score].filter(
-    (standing): standing is FieldStanding => standing !== null,
-  );
+  const present = [
+    standings.cost,
+    standings.tokens,
+    standings.session,
+    standings.score,
+  ].filter((standing): standing is FieldStanding => standing !== null);
   if (present.length === 0) return null;
   const others = Math.max(...present.map((s) => s.fieldSize)) - 1;
 
@@ -509,6 +511,12 @@ function ComparisonBlock({
             standing={standings.tokens}
             format={(value) => formatCompact(Math.round(value))}
             comparison="heavier than"
+          />
+          <Standing
+            label="Session duration"
+            standing={standings.session}
+            format={(value) => formatRunTime(value)}
+            comparison="slower than"
           />
           <Standing
             label="Reviewer score"

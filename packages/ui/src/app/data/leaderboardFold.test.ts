@@ -27,6 +27,7 @@ function run(
     overallGrade?: string;
     cost?: number | null;
     tokens?: number | null;
+    sessionSeconds?: number | null;
   } = {},
 ): RunSummary {
   const score =
@@ -51,6 +52,9 @@ function run(
         reasoning: null,
       },
       cost: { comparable: fields.cost === undefined ? 1 : fields.cost },
+      ...(fields.sessionSeconds === null || fields.sessionSeconds === undefined
+        ? {}
+        : { sessionSeconds: fields.sessionSeconds }),
     },
     score: score
       ? { ...score, overallGrade: fields.overallGrade, reviews: 1 }
@@ -145,6 +149,16 @@ describe("foldLeaderboardEntries", () => {
     ]);
     expect(entries[0]!.costs).toEqual([2.5, 0]);
     expect(entries[0]!.tokens).toEqual([1_000, 500]);
+  });
+
+  it("excludes unrecorded session durations from the list", () => {
+    const entries = foldLeaderboardEntries([
+      run("a", { sessionSeconds: 90 }),
+      // A record written before stage durations were measured.
+      run("b", { sessionSeconds: null }),
+      run("c", { sessionSeconds: 150 }),
+    ]);
+    expect(entries[0]!.sessions).toEqual([90, 150]);
   });
 
   it("keeps the most recent contributing run's start time", () => {

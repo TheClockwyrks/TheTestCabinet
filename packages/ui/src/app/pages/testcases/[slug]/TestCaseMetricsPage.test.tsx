@@ -44,16 +44,22 @@ function header(title: string): HTMLElement {
 const METRICS = routes.testCaseMetrics(FIXTURE_IDS.slug);
 
 describe("the Metrics tab's chart controls", () => {
-  it("gives the two resource charts a display control and the rest none", async () => {
-    // The user asked for tokens and cost. Points is a bounded fraction of one
-    // checklist and Ratings is already a per-run count, so neither gains a
-    // distribution view — if that changes, this is the test to change with it.
+  it("gives the resource charts a display control and the rest none", async () => {
+    // Tokens, cost, and session duration are the skewed ones. Points is a
+    // bounded fraction of one checklist and Ratings is already a per-run count,
+    // so neither gains a distribution view — if that changes, this is the test
+    // to change with it.
     await visit(METRICS, stockedGallery("run-metrics-1"));
     expect(
       screen.getByRole("radiogroup", { name: "Average tokens display" }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("radiogroup", { name: "Average cost display" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("radiogroup", {
+        name: "Average session duration display",
+      }),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("radiogroup", { name: "Average points display" }),

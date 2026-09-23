@@ -37,7 +37,7 @@ import {
 } from "../../../components/ColumnMenu";
 import { useColumnVisibility } from "../../../components/useColumnVisibility";
 import { LoadingState } from "../../../components/LoadingState";
-import { formatCompact, formatUsd } from "../../../format";
+import { formatCompact, formatRunTime, formatUsd } from "../../../format";
 import styles from "./TestCaseLeaderboardPage.module.scss";
 
 // The run-score resolution moved into the shared leaderboard fold; re-exported
@@ -46,8 +46,8 @@ export { resolveRunScore } from "../../../data/leaderboardFold";
 
 // One `(harness, model)` pair's aggregate result on this case + variant, folded
 // across ALL of that pair's scored runs (not just its single best). The
-// score/rating extremes and the cost/token means are what the configurable
-// columns render. The board splits by harness as well as model — the same model
+// score/rating extremes and the cost, token, and session means are what the
+// configurable columns render. The board splits by harness as well as model — the same model
 // under two harnesses is two rows, never one merged rank (see
 // docs/comparisons/metrics-split). A board widened across engines splits by the
 // run's engine too: runs under different engines measure different work, so
@@ -90,12 +90,15 @@ interface Entry {
   averageCost: number | null;
   /** Mean token total across the model's runs, excluding runs with none. */
   averageTokens: number | null;
+  /** Mean session duration across the model's runs, excluding runs that
+   * recorded none. */
+  averageSession: number | null;
   /** The most recent run's start time, for the recency tie-break. */
   latestStartedAt: string;
 }
 
 // A metric column of the board. The rank (#) and model columns are fixed and
-// rendered outside this set; these seven are toggleable via the picker, three of
+// rendered outside this set; these eight are toggleable via the picker, four of
 // them visible by default. Each carries its own grid track width so the template
 // can be built from the visible subset.
 interface LeaderboardColumn {
@@ -165,8 +168,20 @@ function tokensCell(tokens: number | null): ReactNode {
   );
 }
 
-// The seven toggleable metric columns, in display order. Only Average Score,
-// Best Rating, and Average Cost start visible; the other four are available from
+function sessionCell(seconds: number | null): ReactNode {
+  return (
+    <span className={styles.num}>
+      {seconds === null ? (
+        <span className={styles.none}>—</span>
+      ) : (
+        formatRunTime(seconds)
+      )}
+    </span>
+  );
+}
+
+// The toggleable metric columns, in display order. Average Score, Best Rating,
+// Average Cost, and Average Session start visible; the others are available from
 // the column picker. Module-level so the array identity is stable across renders
 // (the visibility hook and picker memoize on it).
 const METRIC_COLUMNS: readonly LeaderboardColumn[] = [
@@ -233,6 +248,15 @@ const METRIC_COLUMNS: readonly LeaderboardColumn[] = [
     numeric: true,
     render: (e) => tokensCell(e.averageTokens),
   },
+  {
+    id: "averageSession",
+    label: "Average Session",
+    optional: true,
+    defaultVisible: true,
+    width: "9rem",
+    numeric: true,
+    render: (e) => sessionCell(e.averageSession),
+  },
 ];
 
 // The two fixed leading grid tracks: the rank gutter and the model name.
@@ -240,10 +264,11 @@ const FIXED_TRACKS = ["2.5rem", "1fr"];
 
 // The Leaderboard tab (`/test-cases/:slug/leaderboard`): each model that has a
 // scored run of the selected variant, ranked by average points. A model appears
-// once, its runs folded into score extremes/mean, rating extremes, and cost/token
-// means. Unlike the rest of the gallery, this IS a ranking — the score is what it
-// ranks on. Which metric columns show is user-configurable (the ▦ picker or a
-// header right-click); Average Score / Best Rating / Average Cost start visible.
+// once, its runs folded into score extremes/mean, rating extremes, and
+// cost/token/session means. Unlike the rest of the gallery, this IS a ranking —
+// the score is what it ranks on. Which metric columns show is user-configurable
+// (the ▦ picker or a header right-click); Average Score, Best Rating, Average
+// Cost, and Average Session start visible.
 export function TestCaseLeaderboardPage() {
   return (
     <TestCaseDetailLayout tab="leaderboard">
@@ -366,6 +391,7 @@ function ReviewLeaderboard({ ctx }: { ctx: DetailTabContext }) {
         worstGrade: worstGrade(entry.grades),
         averageCost: mean(entry.costs),
         averageTokens: mean(entry.tokens),
+        averageSession: mean(entry.sessions),
         latestStartedAt: entry.latestStartedAt,
       }),
     );
