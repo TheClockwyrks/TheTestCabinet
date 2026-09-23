@@ -1623,14 +1623,16 @@ async fn a_turn_that_made_no_tool_call_publishes_a_missing_completion_error() {
 /// **A model call that failed is published like any other error turn**, and it is the one error
 /// path that can carry discarded attempts.
 ///
-/// A reply that looped on every attempt reaches the loop as an exhausted model call — the contract
-/// has no separate base *kind* for it, deliberately — so it lands under `model_api`, and says which
+/// A reply that looped on every attempt reaches the loop as an error turn — the contract has no
+/// separate base *kind* for it, deliberately — so it lands under `model_api`, and says which
 /// `model_api` failure it was: `model_response_loop`, not `model_retry_exhausted`. What is *not*
-/// lost is what it cost: the three replies the detector threw away ride on the same event, and the
-/// operator log names the loop rather than blaming a provider outage that never happened — in the
-/// recorded type's own words, so the two cannot describe one failure differently.
+/// lost is what it cost: the three replies the detector threw away ride on the same event. The
+/// loop asks again with nothing in the context, and an **armed ceiling** — not the first loop —
+/// is what ends the run, so a model that loops once loses a turn rather than the run. The
+/// operator log names the loop rather than blaming a provider outage that never happened — in
+/// the recorded type's own words, so the two cannot describe one failure differently.
 #[tokio::test]
-async fn a_reply_that_looped_on_every_attempt_ends_the_run_on_its_own_message() {
+async fn a_reply_that_looped_on_every_attempt_spends_the_ceilings_on_its_own_message() {
     let dir = TempDir::new().unwrap();
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
@@ -1645,35 +1647,48 @@ async fn a_reply_that_looped_on_every_attempt_ends_the_run_on_its_own_message() 
         &emitter,
         setup_from(GgRunLimits {
             max_turns: Some(5),
+            max_consecutive_errors: Some(2),
             ..GgRunLimits::authored()
         }),
         no_code(),
     )
     .await;
 
-    // Ends on the same terms retry exhaustion does — the model failed at its work, so the run is a
-    // `model_error` rather than a host fault or a refused credential.
-    assert_eq!(end.status, "model_error");
+    // The ceiling, not the loop, ends the run: the turn was retried on the same terms a
+    // length-capped reply is, and the consecutive count is what finally said stop.
+    assert_eq!(end.status, "limit_exceeded");
     assert_eq!(
-        end.turns, 1,
-        "the failed call is still a turn that happened"
+        end.limit.as_ref().map(|breach| breach.limit),
+        Some(GgLimitKind::ConsecutiveErrors)
     );
 
     let events = sink.events();
     assert_eq!(
         turn_outcomes(&events),
-        vec![(
-            GgTurnOutcome::Error,
-            Some(GgTurnErrorKind::ModelApi),
-            1,
-            1,
-            3
-        )],
-        "the discarded attempts are counted even though no reply survived"
+        vec![
+            (
+                GgTurnOutcome::Error,
+                Some(GgTurnErrorKind::ModelApi),
+                1,
+                1,
+                3
+            ),
+            (
+                GgTurnOutcome::Error,
+                Some(GgTurnErrorKind::ModelApi),
+                2,
+                2,
+                3
+            ),
+        ],
+        "every attempt is an error turn carrying the whole tally, and the second one breaches"
     );
     assert_eq!(
         turn_error_types(&events),
-        vec![GgTurnErrorType::ModelResponseLoop],
+        vec![
+            GgTurnErrorType::ModelResponseLoop,
+            GgTurnErrorType::ModelResponseLoop
+        ],
         "the distinction the log line names is recorded too"
     );
 

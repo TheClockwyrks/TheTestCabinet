@@ -45,7 +45,7 @@ use test_cabinet_core::gg::{
     GgCallFailure, GgErrorSummary, GgIssueReviewPhase, GgIssueStatus, GgLimitBreach,
     GgProgramLanguage, GgProviderStat, GgRejectedResponses, GgRunLimits, GgSessionSummary,
     GgSlotCost, GgTelemetryKind, GgTurnErrorKind, GgTurnErrorType, GgTurnOutcome,
-    GgUndocumentedCalls,
+    GgUndocumentedCalls, GgUsageFigure,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
@@ -109,8 +109,10 @@ struct SummaryState {
     /// with the one the run records.
     errors: GgErrorSummary,
     /// The run's [rejected-reply rollup](GgRejectedResponses), folded from the
-    /// [`ResponseRejected`](GgTelemetryKind::ResponseRejected) events — the one place a rejected
-    /// call's spend appears, since it is deliberately excluded from the run's own usage.
+    /// [`ResponseRejected`](GgTelemetryKind::ResponseRejected) events — the place a rejected
+    /// call's spend is answerable *as a rejection*. Its price is in the run's
+    /// [total cost](GgSessionSummary::cost) through the same call's `Usage` delta, and out of
+    /// the work cost, which is over turns that produced something.
     rejected: GgRejectedResponses,
     /// The longest reply of any turn the provider did not cut off at its output cap, in
     /// characters — the model's raw text plus the `program` string of every `submit_program` call
@@ -148,7 +150,15 @@ struct SummaryState {
     /// Every distinct issue id observed at [`Done`](GgIssueStatus::Done) on the board.
     issues_completed: BTreeSet<String>,
     /// One entry per [`SlotUsage`](GgTelemetryKind::SlotUsage) rollup, captured in emission order.
+    /// Each entry's `work_cost` is joined on at [finalize](SessionSummaryTracker::finalize) from
+    /// [`slot_deltas`](Self::slot_deltas), since the rollup carries the total alone.
     slot_costs: Vec<GgSlotCost>,
+    /// The run's [`Usage`](GgTelemetryKind::Usage) deltas folded per `(profile, model)`: every
+    /// delta into the total, and the deltas marked [`work`](GgUsageFigure::Work) into the work
+    /// cost as well. The work cost is joined onto the matching [`slot_costs`](Self::slot_costs)
+    /// entry at finalize, and a key no rollup arrived for becomes an entry of its own, so the
+    /// summary's total always agrees with the sum of the deltas.
+    slot_deltas: BTreeMap<(String, String), SlotDeltas>,
     /// The run's [provider-health rollup](GgProviderStat), keyed `(provider, model)` — a
     /// [`BTreeMap`] so [finalize](SessionSummaryTracker::finalize) emits the slices in a
     /// deterministic order (the providerless slice first, then lexicographic) without a sort of
@@ -604,19 +614,33 @@ impl SessionSummaryTracker {
             }
             // One delta per model call that reported usage — the call-level half of the provider
             // rollup: which provider served the call, on which model, at what token spend. The
-            // run-wide totals deliberately stay on the `SlotUsage` rollups; this fold only
-            // re-slices the deltas by serving provider.
+            // run-wide slot totals deliberately stay on the `SlotUsage` rollups (every delta's
+            // spend is folded into its agent's totals when the delta is counted, so the two agree
+            // by construction); this fold only re-slices the deltas by serving provider, and joins
+            // the work figure onto the slot it names — a delta marked `work` is a turn that
+            // produced a program or a tool call gg ran, and its cost is the slot's work cost.
             GgTelemetryKind::Usage {
+                profile_id,
                 model_id,
                 tokens,
                 cost,
                 provider,
+                figure,
                 ..
             } => {
                 let slice = state.provider_slice(provider.clone(), Some(model_id.clone()));
                 slice.calls += 1;
                 slice.tokens = fold_counts(slice.tokens, *tokens);
                 slice.cost = fold_cost(slice.cost, *cost);
+                let slot = state
+                    .slot_deltas
+                    .entry((profile_id.clone(), model_id.clone()))
+                    .or_default();
+                slot.tokens = fold_counts(slot.tokens, *tokens);
+                slot.cost = fold_cost(slot.cost, *cost);
+                if *figure == Some(GgUsageFigure::Work) {
+                    slot.work_cost = fold_cost(slot.work_cost, *cost);
+                }
                 if let Some(agent_id) = agent_id {
                     let attribution = state.attribution(agent_id);
                     attribution.model = Some(model_id.clone());
@@ -632,10 +656,11 @@ impl SessionSummaryTracker {
                     state.attribution(agent_id).pending = Some(provider.clone());
                 }
             }
-            // A reply gg rejected whole (a length-capped one). Its usage is deliberately absent
-            // from every other rollup — no `Usage` delta was emitted for it — so this fold is the
-            // only place the spend reaches the durable record. The provider that served it is
-            // re-sliced onto the provider rollup, where "which provider caps out?" is answerable.
+            // A reply gg rejected whole (a length-capped one). The rejection's spend reaches the
+            // durable record twice over, deliberately: on this rollup — the only place it appears
+            // *as a rejection* — and on the `Usage` delta marked `total` that carries it into the
+            // run's total cost (never its work cost). The provider that served it is re-sliced
+            // onto the provider rollup, where "which provider caps out?" is answerable.
             GgTelemetryKind::ResponseRejected {
                 tokens,
                 cost,
@@ -676,6 +701,8 @@ impl SessionSummaryTracker {
                 model_id: model_id.clone(),
                 tokens: *tokens,
                 cost: *cost,
+                // Joined from the usage deltas at finalize — see [`SummaryState::slot_deltas`].
+                work_cost: None,
             }),
             // Every other event carries no aggregatable figure of its own: session/turn
             // lifecycle, assistant text and tool calls (their results are counted above), the
@@ -702,6 +729,39 @@ impl SessionSummaryTracker {
     /// exactly what a run that ended before the resolver ran should say.
     pub fn finalize(&self, terminal_status: &str) -> GgSessionSummary {
         let state = self.inner.lock().expect("summary tracker lock");
+        // The per-slot rollup with its two figures joined: the total each `SlotUsage` event
+        // carried, and the work cost folded from the run's `Usage` deltas — see
+        // [`SummaryState::slot_deltas`]. Built ahead of the summary so the run-wide rollup below is
+        // summed from exactly the entries the summary carries.
+        let mut slot_costs = state.slot_costs.clone();
+        let mut slot_deltas = state.slot_deltas.clone();
+        for entry in &mut slot_costs {
+            entry.work_cost = slot_deltas
+                .remove(&(entry.profile_id.clone(), entry.model_id.clone()))
+                .and_then(|deltas| deltas.work_cost);
+        }
+        // A slot that spent but whose rollup never arrived (a run that ended before its agents
+        // joined) is recorded from its deltas, so its spend is in both run-wide figures.
+        for ((profile_id, model_id), deltas) in slot_deltas {
+            slot_costs.push(GgSlotCost {
+                profile_id,
+                model_id,
+                tokens: deltas.tokens,
+                cost: deltas.cost,
+                work_cost: deltas.work_cost,
+            });
+        }
+        // The run-wide rollup of the two figures: `cost` is the total over every request the run
+        // made that reported a price — errored and rejected attempts included, because each one's
+        // spend was folded into its agent's totals when its delta was counted — and `work_cost`
+        // is the work over the turns that produced a program or a tool call gg ran. Each is the
+        // sum of its figure across `slot_costs`, by construction rather than by agreement.
+        let cost = slot_costs
+            .iter()
+            .fold(None, |acc, entry| fold_cost(acc, entry.cost));
+        let work_cost = slot_costs
+            .iter()
+            .fold(None, |acc, entry| fold_cost(acc, entry.work_cost));
         GgSessionSummary {
             terminal_status: terminal_status.to_string(),
             agents_spawned: state.agents_spawned,
@@ -730,7 +790,9 @@ impl SessionSummaryTracker {
             undocumented_calls: state.undocumented.clone(),
             issues_created: state.issues_created.len() as u64,
             issues_completed: state.issues_completed.len() as u64,
-            slot_costs: state.slot_costs.clone(),
+            slot_costs,
+            cost,
+            work_cost,
             // The map key carries the identity and the accumulator the counts; the map's own
             // order (providerless first, then lexicographic) is the deterministic order the
             // contract promises, so this is a walk rather than a sort.
@@ -754,6 +816,15 @@ impl SessionSummaryTracker {
             limit_hit: state.limit_hit.clone(),
         }
     }
+}
+
+/// One `(profile, model)`'s [`Usage`](GgTelemetryKind::Usage) deltas, folded: the tokens and cost
+/// of every delta, and the cost of the deltas marked [`work`](GgUsageFigure::Work).
+#[derive(Debug, Clone, Default)]
+struct SlotDeltas {
+    tokens: TokenCounts,
+    cost: Option<Cost>,
+    work_cost: Option<Cost>,
 }
 
 /// Sum two [`TokenCounts`], keeping a class `None` only when it is unreported on both sides —

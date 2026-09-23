@@ -149,7 +149,7 @@ fn every_model_error_is_recorded_as_its_own_type_under_one_base_kind() {
             TurnErrorType::ModelVisionUnsupported,
         ),
         (
-            ModelError::Parse("bad json".to_string()),
+            ModelError::parse("bad json".to_string()),
             TurnErrorType::ModelParse,
         ),
     ];
@@ -343,7 +343,7 @@ fn model_error_classifies_auth_failures() {
             attempts: 4,
             last: "HTTP 503".to_string(),
         },
-        ModelError::Parse("bad json".to_string()),
+        ModelError::parse("bad json".to_string()),
     ] {
         assert!(
             !other.is_auth_failure(),

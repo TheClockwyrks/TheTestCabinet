@@ -1,12 +1,14 @@
-//! The model-call **rejection loop** through the live session: a timed-out call and a
-//! length-capped reply are recorded as error turns, kept out of the run's context and its
-//! metrics, and retried **on the same turn** — bounded by the error ceilings and by nothing else.
+//! The model-call **recovery loop** through the live session: a timed-out call, a length-capped
+//! reply, an unparseable reply and a reply that looped on every attempt are recorded as error
+//! turns, kept out of the run's context, and retried **on the same turn** — bounded by the error
+//! ceilings and by nothing else.
 //!
-//! These hold the owner rulings from the killed five-model pong batch: a stalled provider must
-//! cost the run one bounded error turn per stall rather than the whole run (or twenty hung
-//! minutes), and a reply that hit the provider's output cap is presumed degenerate — recorded
-//! with the spend it burned, excluded from the run's cost and turn count, and never shown to the
-//! model's next turn.
+//! These hold the owner rulings from the killed five-model pong batch and the hy4 incident
+//! beside it: a stalled provider must cost the run one bounded error turn per stall rather than
+//! the whole run (or twenty hung minutes); a reply that hit the provider's output cap is presumed
+//! degenerate — recorded with the spend it burned, charged to the run's **total** cost and never
+//! its work cost, and never shown to the model's next turn; and a reply gg could not read, or one
+//! the loop detector abandoned on every attempt, loses the model a turn rather than the run.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -91,9 +93,9 @@ fn length_capped_reply() -> ModelResponse {
     }
 }
 
-/// The finishing program with real usage on it, so the run has exactly one accountable turn: its
-/// spend is what the run's own metrics must show once the rejected call's is excluded, and its
-/// completion tokens (output plus reasoning) are the maximum the summary must report.
+/// The finishing program with real usage on it, so the run has exactly one turn that did work: its
+/// spend is the run's whole work cost, and its completion tokens (output plus reasoning) are the
+/// maximum the summary must report.
 fn finishing_reply_with_usage() -> ModelResponse {
     ModelResponse {
         usage: TokenCounts {
@@ -161,9 +163,9 @@ fn without_trailing_slots(messages: &[Message]) -> &[Message] {
 
 /// A reply that hit the provider's cap is rejected whole: it is recorded — a dedicated event with
 /// the spend it burned, an error turn against the ceilings, the exchange in the message log — and
-/// it reaches nothing else. Not the context (the retry's request is byte-identical), not the
-/// run's usage (no `Usage` delta, no slot cost), and not the turn count (the retry reuses the
-/// turn). The session then simply carries on.
+/// it reaches nothing but the run's **total** cost: not the context (the retry's request is
+/// byte-identical), not the work cost (its `Usage` delta is marked `total`), and not the turn
+/// count (the retry reuses the turn). The session then simply carries on.
 #[tokio::test]
 async fn a_length_capped_reply_is_rejected_recorded_and_retried_on_the_same_turn() {
     let dir = TempDir::new().unwrap();
@@ -214,20 +216,34 @@ async fn a_length_capped_reply_is_rejected_recorded_and_retried_on_the_same_turn
     assert_eq!(cost.and_then(|cost| cost.actual), Some(1.25));
     assert_eq!(provider.as_deref(), Some("cap-provider"));
 
-    // (b) the run's own usage excludes the rejected call entirely: the only `Usage` delta is the
-    // finishing turn's, attributed to the provider that served it.
-    let usage: Vec<(TokenCounts, Option<String>)> = events
+    // (b) the run's usage carries both requests, and each delta names the figure its turn fed:
+    // the rejected call's is marked `total` — its price is the run's fault, not its work — and
+    // the finishing turn's is `work`, attributed to the provider that served it.
+    let usage: Vec<(Option<GgUsageFigure>, TokenCounts, Option<String>)> = events
         .iter()
         .filter_map(|e| match &e.kind {
             GgTelemetryKind::Usage {
-                tokens, provider, ..
-            } => Some((*tokens, provider.clone())),
+                figure,
+                tokens,
+                provider,
+                ..
+            } => Some((*figure, *tokens, provider.clone())),
             _ => None,
         })
         .collect();
-    assert_eq!(usage.len(), 1, "the rejected call emits no usage delta");
-    assert_eq!(usage[0].0.output, Some(42));
-    assert_eq!(usage[0].1.as_deref(), Some("good-provider"));
+    assert_eq!(usage.len(), 2, "both priced requests emit a delta");
+    let rejected_delta = usage
+        .iter()
+        .find(|(figure, ..)| *figure == Some(GgUsageFigure::Total))
+        .expect("the rejected call's delta, marked `total`");
+    assert_eq!(rejected_delta.1.output, Some(65_000));
+    assert_eq!(rejected_delta.2.as_deref(), Some("cap-provider"));
+    let work_delta = usage
+        .iter()
+        .find(|(figure, ..)| *figure == Some(GgUsageFigure::Work))
+        .expect("the finishing turn's delta, marked `work`");
+    assert_eq!(work_delta.1.output, Some(42));
+    assert_eq!(work_delta.2.as_deref(), Some("good-provider"));
 
     // The message log still holds the rejected exchange — the record the owner reads a degenerate
     // reply out of — as a `Prompt` whose finish reason is the provider's own `length`.
@@ -250,8 +266,9 @@ async fn a_length_capped_reply_is_rejected_recorded_and_retried_on_the_same_turn
         "the rejected exchange is on the message log: {finishes:?}"
     );
 
-    // The durable summary: the rejected bucket carries the excluded spend, the error rollup names
-    // the type, and the run's cost/turn figures show only the turn that worked.
+    // The durable summary: the rejected bucket still answers "how often, at what price?", the
+    // error rollup names the type, and the two cost figures tell the run's work from its faults —
+    // the total over both requests, the work over the finishing turn only.
     let summary = session_summary(&events).expect("a session summary");
     assert_eq!(summary.rejected_responses.count, 1);
     assert_eq!(summary.rejected_responses.tokens.output, Some(65_000));
@@ -273,12 +290,30 @@ async fn a_length_capped_reply_is_rejected_recorded_and_retried_on_the_same_turn
         FINISHING_PROGRAM.chars().count() as u64
     );
     assert_eq!(summary.max_response_output_tokens, 42 + 8);
-    // The per-slot rollup excludes the rejected call too.
+    // The per-slot rollup carries both figures: the total over every request the slot made, the
+    // work over the turns that produced something — and the run-wide rollup beside it sums the
+    // same two.
     assert_eq!(summary.slot_costs.len(), 1);
-    assert_eq!(summary.slot_costs[0].tokens.output, Some(42));
+    assert_eq!(summary.slot_costs[0].tokens.output, Some(65_000 + 42));
+    let total = summary.slot_costs[0]
+        .cost
+        .and_then(|cost| cost.actual)
+        .expect("the slot's total cost");
+    assert!((total - 1.26).abs() < 1e-9, "total was {total}");
+    let work = summary.slot_costs[0]
+        .work_cost
+        .and_then(|cost| cost.actual)
+        .expect("the slot's work cost");
+    assert_eq!(work, 0.01, "the rejection bought no work");
+    let run_total = summary.cost.and_then(|cost| cost.actual).expect("rollup");
+    assert!(
+        (run_total - 1.26).abs() < 1e-9,
+        "rollup total was {run_total}"
+    );
     assert_eq!(
-        summary.slot_costs[0].cost.and_then(|cost| cost.actual),
-        Some(0.01)
+        summary.work_cost.and_then(|cost| cost.actual),
+        Some(0.01),
+        "the rollup's work figure is the work figure summed"
     );
 }
 
@@ -517,4 +552,343 @@ async fn every_request_extends_the_previous_one() {
             );
         }
     }
+}
+
+/// Every [`Usage`](GgTelemetryKind::Usage) delta on the stream, as `(figure, tokens, cost)` — the
+/// pairs a reader of the event's own mark folds the two cost figures from.
+fn usage_deltas(
+    events: &[GgTelemetryEvent],
+) -> Vec<(Option<GgUsageFigure>, TokenCounts, Option<Cost>)> {
+    events
+        .iter()
+        .filter_map(|e| match &e.kind {
+            GgTelemetryKind::Usage {
+                figure,
+                tokens,
+                cost,
+                ..
+            } => Some((*figure, *tokens, *cost)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// A `submit_program` call whose arguments ran past the point the
+/// provider cut them off, with the usage and cost that provider had already billed for the
+/// request. The reply is unreadable; the spend is not.
+fn unreadable_reply() -> ModelError {
+    ModelError::parse_billed(
+        "tool call #0 (submit_program) had unparseable arguments: EOF while parsing an object",
+        ReplySpend {
+            tokens: TokenCounts {
+                uncached_input: Some(54_000),
+                cached_input: None,
+                output: Some(700),
+                reasoning: None,
+            },
+            cost: Some(Cost {
+                comparable: Some(0.5),
+                actual: Some(0.5),
+            }),
+            provider: Some("cut-provider".to_string()),
+            wire: None,
+            reconciled: false,
+        },
+    )
+}
+
+/// The failure a run whose every attempt looped produces, carrying the tally of what the client
+/// threw away — the size of replies no stream ever delivered a price for.
+fn looping_every_attempt() -> ModelError {
+    ModelError::ResponseLoop {
+        discarded: LoopAborts {
+            attempts: 4,
+            words: 6_130,
+            chars: 38_900,
+        },
+        detail: "3000 consecutive words, 3065 words into the reply".to_string(),
+    }
+}
+
+/// An unparseable reply is one error turn: the run keeps running on a byte-identical retry, the
+/// reply (which gg could not read — there is nothing to push) never reaches the context, and the
+/// price the provider billed before the reply stopped making sense is recorded as the run's
+/// **total** cost and never its work cost. Both deltas say which figure they fed.
+#[tokio::test]
+async fn an_unparseable_reply_is_an_error_turn_and_only_the_total_pays_for_it() {
+    let dir = TempDir::new().unwrap();
+    let client = RecordingClient::failing(
+        "mock/primary",
+        1,
+        unreadable_reply,
+        vec![finishing_reply_with_usage()],
+    );
+    let (outcome, events, requests) =
+        drive_recorded_client(&dir, code_set("mock/primary", json!({})), client).await;
+
+    // The run survived the reply gg could not read and finished on the retry.
+    assert_eq!(outcome, SessionOutcome::Ran);
+    assert_eq!(ended_with(&events), "completed");
+
+    // Nothing entered the context: the retried request is byte-identical to the failed attempt's.
+    assert_eq!(requests.len(), 2, "one unreadable attempt, one retry");
+    assert_eq!(
+        requests[0], requests[1],
+        "the unreadable reply never entered the context"
+    );
+
+    // The attempt never became a turn of its own; the error turn spent one consecutive count.
+    assert_eq!(turns_started(&events), 1);
+    assert_eq!(
+        turn_error_types(&events),
+        vec![(GgTurnErrorType::ModelParse, 1)],
+        "an unparseable reply is a `model_parse` error turn, not a session end"
+    );
+
+    let summary = session_summary(&events).expect("a session summary");
+    assert_eq!(summary.errors.by_type.get("model_parse"), Some(&1));
+
+    // The two figures: the total carries both requests' prices, the work only the turn that
+    // produced a program.
+    assert_eq!(summary.slot_costs.len(), 1);
+    assert_eq!(
+        summary.slot_costs[0].tokens.output,
+        Some(700 + 42),
+        "the total's tokens are every priced request's"
+    );
+    let total = summary.slot_costs[0]
+        .cost
+        .and_then(|cost| cost.actual)
+        .expect("the slot's total cost");
+    assert!((total - 0.51).abs() < 1e-9, "total was {total}");
+    assert_eq!(
+        summary.slot_costs[0].work_cost.and_then(|cost| cost.actual),
+        Some(0.01),
+        "the unreadable reply bought no work"
+    );
+    let run_total = summary.cost.and_then(|cost| cost.actual).expect("rollup");
+    assert!(
+        (run_total - 0.51).abs() < 1e-9,
+        "rollup total was {run_total}"
+    );
+    assert_eq!(
+        summary.work_cost.and_then(|cost| cost.actual),
+        Some(0.01),
+        "the rollup's work figure is the work figure summed"
+    );
+
+    // And each delta named its figure on the way in.
+    let deltas = usage_deltas(&events);
+    assert_eq!(deltas.len(), 2, "both priced requests emit a delta");
+    assert!(
+        deltas
+            .iter()
+            .any(|(figure, ..)| *figure == Some(GgUsageFigure::Total)),
+        "the unreadable reply's delta is marked `total`: {deltas:?}"
+    );
+    assert!(
+        deltas
+            .iter()
+            .any(|(figure, ..)| *figure == Some(GgUsageFigure::Work)),
+        "the finishing turn's delta is marked `work`: {deltas:?}"
+    );
+}
+
+/// A reply the loop detector abandoned on every client attempt is one error turn on the same
+/// terms: the discarded replies never enter the context, their size rides the turn's outcome
+/// event, and their (unreportable) spend costs the run's totals nothing because a dropped stream
+/// never delivered a price. The run carries on; only the error ceilings can end it.
+#[tokio::test]
+async fn a_reply_that_looped_on_every_attempt_is_an_error_turn_and_the_run_carries_on() {
+    let dir = TempDir::new().unwrap();
+    let client = RecordingClient::failing(
+        "mock/primary",
+        1,
+        looping_every_attempt,
+        vec![finishing_reply_with_usage()],
+    );
+    let (outcome, events, requests) =
+        drive_recorded_client(&dir, code_set("mock/primary", json!({})), client).await;
+
+    assert_eq!(outcome, SessionOutcome::Ran);
+    assert_eq!(ended_with(&events), "completed");
+
+    // Not one discarded reply reached the context: the retry is byte-identical to the attempt.
+    assert_eq!(requests.len(), 2, "one looping attempt, one retry");
+    assert_eq!(
+        requests[0], requests[1],
+        "the discarded replies never entered the context"
+    );
+
+    assert_eq!(turns_started(&events), 1);
+    assert_eq!(
+        turn_error_types(&events),
+        vec![(GgTurnErrorType::ModelResponseLoop, 1)],
+        "a spent loop retry is a `model_response_loop` error turn, not a session end"
+    );
+
+    // What was thrown away rides the error turn's outcome event, figure and all three sizes.
+    let outcome_event = events
+        .iter()
+        .find_map(|e| match &e.kind {
+            GgTelemetryKind::TurnOutcome {
+                error_type: Some(GgTurnErrorType::ModelResponseLoop),
+                loop_aborts,
+                loop_abort_words,
+                loop_abort_chars,
+                ..
+            } => Some((*loop_aborts, *loop_abort_words, *loop_abort_chars)),
+            _ => None,
+        })
+        .expect("the looped attempt's turn outcome");
+    assert_eq!(outcome_event, (4, 6_130, 38_900));
+
+    let summary = session_summary(&events).expect("a session summary");
+    assert_eq!(summary.errors.by_type.get("model_response_loop"), Some(&1));
+    // No stream ever delivered a price for the discarded replies, so the run's only priced
+    // request is the finishing turn — which is both its total and its work.
+    let deltas = usage_deltas(&events);
+    assert_eq!(
+        deltas.len(),
+        1,
+        "a dropped stream reports no usage: {deltas:?}"
+    );
+    assert_eq!(deltas[0].0, Some(GgUsageFigure::Work));
+    let total = summary.cost.and_then(|cost| cost.actual).expect("total");
+    assert_eq!(total, 0.01);
+    assert_eq!(summary.work_cost.and_then(|cost| cost.actual), Some(0.01));
+}
+
+/// A model that can only produce replies gg cannot read is stopped by the **error ceilings**,
+/// exactly as one whose calls keep failing is — otherwise an unparseable reply would retry
+/// unbounded. The run ends `limit_exceeded` on the ceiling's own terms, never `model_error`, and
+/// the request count shows the attempts never became turns.
+#[tokio::test]
+async fn unreadable_replies_alone_stop_the_run_on_the_error_ceilings() {
+    let dir = TempDir::new().unwrap();
+    let mut set = code_set("mock/primary", json!({}));
+    set.limits = GgRunLimits {
+        max_turns: Some(20),
+        max_consecutive_errors: Some(2),
+        ..GgRunLimits::authored()
+    };
+    // Every call fails and the script is never reached — a reply gg cannot read, every time.
+    let client = RecordingClient::failing("mock/primary", 999, unreadable_reply, Vec::new());
+    let (outcome, events, requests) = drive_recorded_client(&dir, set, client).await;
+
+    assert_eq!(outcome, SessionOutcome::LimitExceeded);
+    assert!(matches!(
+        &events.last().expect("a terminal event").kind,
+        GgTelemetryKind::SessionEnded { status } if status == "limit_exceeded"
+    ));
+    // The liveness proof: the ceiling of two stopped the loop after exactly two unreadable
+    // replies — the run stopped on its ceilings rather than ending on the first parse failure.
+    assert_eq!(requests.len(), 2);
+    assert_eq!(turns_started(&events), 1, "the retries reuse the turn");
+    let breaches = limit_breaches(&events);
+    assert_eq!(breaches.len(), 1);
+    assert_eq!(breaches[0].limit, GgLimitKind::ConsecutiveErrors);
+    let summary = session_summary(&events).expect("a session summary");
+    assert_eq!(
+        summary.errors.by_type.get("model_parse"),
+        Some(&2),
+        "each unreadable reply spent a consecutive error"
+    );
+    assert_eq!(summary.errors.max_consecutive, 2);
+}
+
+/// A reply making `calls`, with nothing else on it — the input [`usage_figure`] reads.
+fn reply_calling(calls: Vec<ToolCall>) -> ModelResponse {
+    ModelResponse {
+        text: None,
+        tool_calls: calls,
+        finish_reason: FinishReason::ToolCalls,
+        usage: TokenCounts::default(),
+        cost: None,
+        provider: None,
+        loop_aborts: LoopAborts::none(),
+        usage_wire: None,
+        usage_reconciled: false,
+    }
+}
+
+/// One tool call named `name` carrying `arguments`.
+fn calling(name: &str, arguments: Value) -> ToolCall {
+    ToolCall {
+        id: format!("call-{name}"),
+        name: name.to_string(),
+        arguments,
+    }
+}
+
+/// A reply's spend is work exactly when gg runs something it produced: a `submit_program` call
+/// carrying a program under responses as code, and a dispatched tool call under tool calling. A
+/// call gg refuses, a `submit_program` call with no program, and a reply taken whole as a
+/// compaction summary all feed the total alone.
+#[test]
+fn a_reply_is_work_only_when_gg_runs_what_it_produced() {
+    let program = calling(
+        completion::SUBMIT_PROGRAM_TOOL,
+        json!({ "program": FINISHING_PROGRAM }),
+    );
+    let empty_submission = calling(completion::SUBMIT_PROGRAM_TOOL, json!({}));
+    let shell = calling("shell", json!({ "command": "ls" }));
+    let compact = calling(COMPACT_TOOL, json!({ "summary": "done so far" }));
+
+    // Responses as code.
+    assert_eq!(
+        usage_figure(&reply_calling(vec![program.clone()]), true, None),
+        GgUsageFigure::Work
+    );
+    assert_eq!(
+        usage_figure(&reply_calling(vec![shell.clone()]), true, None),
+        GgUsageFigure::Total,
+        "a tool this mode does not offer is refused, so nothing ran"
+    );
+    assert_eq!(
+        usage_figure(&reply_calling(vec![empty_submission]), true, None),
+        GgUsageFigure::Total,
+        "a submission with no program runs nothing"
+    );
+    assert_eq!(
+        usage_figure(&reply_calling(Vec::new()), true, None),
+        GgUsageFigure::Total
+    );
+
+    // Tool calling.
+    assert_eq!(
+        usage_figure(&reply_calling(vec![shell.clone()]), false, None),
+        GgUsageFigure::Work
+    );
+    assert_eq!(
+        usage_figure(&reply_calling(Vec::new()), false, None),
+        GgUsageFigure::Total,
+        "a reply with no call is a missing completion"
+    );
+    assert_eq!(
+        usage_figure(
+            &reply_calling(vec![shell.clone()]),
+            false,
+            Some(PendingCompaction::Summary)
+        ),
+        GgUsageFigure::Total,
+        "a self-summarization turn dispatches none of its calls"
+    );
+    assert_eq!(
+        usage_figure(
+            &reply_calling(vec![shell]),
+            false,
+            Some(PendingCompaction::CompactCall)
+        ),
+        GgUsageFigure::Total,
+        "a pending compaction refuses every call it does not admit"
+    );
+    assert_eq!(
+        usage_figure(
+            &reply_calling(vec![compact]),
+            false,
+            Some(PendingCompaction::CompactCall)
+        ),
+        GgUsageFigure::Work
+    );
 }
