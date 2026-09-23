@@ -48,6 +48,7 @@ import {
   ALWAYS_BOUND_OPERATIONS,
   AUTHORED_HOOK_TIMEOUT_SECS,
   AUTHORED_MODEL_CALL_TIMEOUT_SECS,
+  AUTHORED_MODEL_RETRY_MAX_DELAY_SECS,
   BYTES_PER_MIB,
   CAPABILITIES,
   DEFAULT_OPENING_TURN,
@@ -480,6 +481,8 @@ export function blankRunLimits(): GgRunLimitsDraft {
     maxTurns: "",
     maxRuntimeSecs: "",
     modelCallTimeoutSecs: "",
+    maxModelRetries: "",
+    modelRetryMaxDelaySecs: "",
     maxConsecutiveErrors: "",
     maxErrorRate: "",
     errorRateWindow: "",
@@ -2269,6 +2272,11 @@ export function runLimitsError(limits: GgRunLimitsDraft): string | null {
     // under rather than a way to switch it off — which is what an empty field does.
     if (spec.key === "modelCallTimeoutSecs" && value === 0) {
       return `${spec.label} must be greater than zero. Clear the field to take gg's default of ${AUTHORED_MODEL_CALL_TIMEOUT_SECS} seconds.`;
+    }
+    // The retry delay ceiling is the backoff's whole point: zero is a run hammering a
+    // provider that just said it is down, not a way to retry faster.
+    if (spec.key === "modelRetryMaxDelaySecs" && value === 0) {
+      return `${spec.label} must be greater than zero. Clear the field to take gg's default of ${AUTHORED_MODEL_RETRY_MAX_DELAY_SECS} seconds.`;
     }
     if (spec.kind === "fraction" && (value < 0 || value > 1)) {
       return `${spec.label} must be between 0 and 1.`;

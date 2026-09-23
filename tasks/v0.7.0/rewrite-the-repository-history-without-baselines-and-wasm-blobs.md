@@ -17,13 +17,13 @@ is enabled and before
 
 The pack is dominated by two kinds of blob that the tree no longer needs.
 
-| Reachable set                                          | Compressed size |
-| ------------------------------------------------------ | --------------- |
-| Whole pack                                             | 5.37 GiB        |
-| `validation-baseline/` blobs across all refs           | 4.61 GiB        |
-| `crates/gg/src/sandbox` wasm and gz blobs, all refs    | 0.19 GiB        |
-| `master` alone                                         | 0.89 GiB        |
-| Expected after the rewrite                             | about 0.3 GiB   |
+| Reachable set                                       | Compressed size |
+| --------------------------------------------------- | --------------- |
+| Whole pack                                          | 5.37 GiB        |
+| `validation-baseline/` blobs across all refs        | 4.61 GiB        |
+| `crates/gg/src/sandbox` wasm and gz blobs, all refs | 0.19 GiB        |
+| `master` alone                                      | 0.89 GiB        |
+| Expected after the rewrite                          | about 0.3 GiB   |
 
 The wasm and gz files are already deleted from the tree. The baselines leave the
 tree in the cold-storage issue, so by the time this runs both kinds exist only in

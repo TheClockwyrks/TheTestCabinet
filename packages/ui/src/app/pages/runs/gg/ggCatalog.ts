@@ -2239,6 +2239,16 @@ export const AUTHORED_REPLAY_MAX_MIB = 256;
 // states it rather than leaving the operator to discover it.
 export const AUTHORED_MODEL_CALL_TIMEOUT_SECS = 900;
 
+// The schedule a failed model request is retried on: ten retries after the first attempt,
+// the first waiting a second, each next twice the last, capped at this ceiling. Ten
+// retries against sixty seconds waits about five minutes in all — the difference between
+// a pinned provider's outage costing a run minutes and costing the run. Like the
+// model-call timeout neither field has an unarmed setting: an emptied one is conducted
+// under the default. Unlike it, a retry count of 0 is honoured — it is a run that gives
+// up on the first failure — while a delay ceiling of 0 is refused.
+export const AUTHORED_MAX_MODEL_RETRIES = 10;
+export const AUTHORED_MODEL_RETRY_MAX_DELAY_SECS = 60;
+
 // The guardrails, in the order they read as a sentence: how much of the run happens
 // at once, then how long it may go on for, then how badly it may go, then how much it
 // may cost — and last, the one that bounds not the run but the record kept of it.
@@ -2280,6 +2290,24 @@ export const RUN_LIMIT_SPECS: ReadonlyArray<RunLimitSpec> = [
     placeholder: String(AUTHORED_MODEL_CALL_TIMEOUT_SECS),
     defaultValue: String(AUTHORED_MODEL_CALL_TIMEOUT_SECS),
     hint: "Ceiling on one model request, and the one field here an empty value does not unarm: a call gg would wait on forever is no setting, so a cleared field is conducted under 900 seconds and 0 is refused. A request that hits it is an error turn the agent asks again from, rather than a stop. The buffering transport measures the whole call; the streaming one measures the wait for the response head and the gap between chunks, so a long reply is never cut for being long.",
+  },
+  {
+    key: "maxModelRetries",
+    label: "Model retries",
+    kind: "count",
+    unit: "errors",
+    placeholder: String(AUTHORED_MAX_MODEL_RETRIES),
+    defaultValue: String(AUTHORED_MAX_MODEL_RETRIES),
+    hint: "How many times a failed model request is retried after its first attempt, inside the client, before the failure ends the session. Each retry waits on the backoff schedule below and is logged with its attempt, cause and delay; a 429 or 503 carrying Retry-After waits that long instead when it is longer. An emptied field is conducted under 10; 0 is honoured as written — a run that gives up on the first failure. A timed-out call bypasses this budget: each retry of a stall would cost the per-call ceiling again, and the turn-level retry bounds that.",
+  },
+  {
+    key: "modelRetryMaxDelaySecs",
+    label: "Model retry max delay (seconds)",
+    kind: "count",
+    unit: "seconds",
+    placeholder: String(AUTHORED_MODEL_RETRY_MAX_DELAY_SECS),
+    defaultValue: String(AUTHORED_MODEL_RETRY_MAX_DELAY_SECS),
+    hint: "The ceiling on one retry's backoff delay: the first retry waits a second, each next waits twice the last, and this caps the wait from the seventh on. The default ten retries against it waits about five minutes in all, and thirty retries at the same ceiling about half an hour — set the pair by what the run is worth against what an outage costs. An emptied field is conducted under 60 seconds; 0 is refused, since a run that retries on a schedule of no waits hammers a provider that just said it is down.",
   },
   {
     key: "maxConsecutiveErrors",

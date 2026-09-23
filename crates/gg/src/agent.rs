@@ -103,9 +103,9 @@
 //!   **run** rather than to the agent that met it — see below;
 //! - `"error"` — a launch failure (no bound slot, or the client could not resolve).
 //!
-//! A launch failure (`"error"`) exits the process `1`, and so do two of the endings above, so
-//! that `core` records a harness error rather than a tree to score. They are read off different
-//! things:
+//! A launch failure (`"error"`) exits the process `1`, and so do three of the endings above,
+//! so that `core` records a retryable harness error rather than a tree to score. They are read
+//! off different things:
 //!
 //! - a gg defect (`"internal_error"`) is read off the **whole tree**. The first agent to meet one
 //!   raises it on the run's [fault latch](crate::fault); every other agent — the root included —
@@ -114,9 +114,14 @@
 //!   not produce the tree it leaves behind, so there is nothing in it to score and nothing to
 //!   compare a clean run against. A panicked agent reaches no boundary of its own, so the
 //!   [teardown] raises the latch on its behalf and wakes whoever was waiting on it;
-//! - an auth failure (`"auth_error"`) is read off the **root**, and only the root: the session's
-//!   status is the root's [`LoopEnd`]. A subagent whose credential was refused is a
-//!   [failed](GgAgentStatus::Failed) node in a session that can still complete and be scored.
+//! - a provider failure (`"model_error"`) is read off the **root**, and only the root: the
+//!   session's status is the root's [`LoopEnd`]. The client had already retried the failure on
+//!   the run's whole [schedule](crate::client::RetryPolicy) before the loop saw it, so the
+//!   failure is the provider's rather than the model's or the configuration's, and a retryable
+//!   harness error is what an outage is. A subagent whose model failed is a
+//!   [failed](GgAgentStatus::Failed) node in a session that can still complete and be scored;
+//! - an auth failure (`"auth_error"`) is read off the **root** on the same terms: a subagent
+//!   whose credential was refused is likewise a failed node in a run that can carry on.
 //!
 //! A **breached [ceiling](crate::limits)** exits on a third code
 //! ([`EXIT_LIMIT_EXCEEDED`](test_cabinet_core::gg::EXIT_LIMIT_EXCEEDED)), and is read off the whole
@@ -411,14 +416,14 @@ pub(crate) fn is_failure_status(status: &str) -> bool {
 ///
 /// - [`Ran`](Self::Ran) — [`STATUS_COMPLETED`], the turn ceiling's [`STATUS_EXHAUSTED`], the
 ///   wall clock's [`STATUS_TIMED_OUT`], the other three ceilings' [`STATUS_LIMIT_EXCEEDED`], an
-///   operator's [`STATUS_CANCELED`], a [`STATUS_MODEL_ERROR`], a broken script's
-///   [`STATUS_HOOK_ERROR`], and a backstop that stopped working
-///   ([`STATUS_COMPACTION_FAILED`]) — **unless** a ceiling was breached or gg broke;
+///   operator's [`STATUS_CANCELED`], a broken script's [`STATUS_HOOK_ERROR`], and a backstop
+///   that stopped working ([`STATUS_COMPACTION_FAILED`]) — **unless** a ceiling was breached,
+///   the model failed, or gg broke;
 /// - [`LimitExceeded`](Self::LimitExceeded) — any agent of the run breached one of the five
 ///   [ceilings](RunLimits), whatever status that agent's own loop ended under;
-/// - [`HarnessError`](Self::HarnessError) — a launch failure, [`STATUS_AUTH_ERROR`] as the
-///   **root's** ending, or [`STATUS_INTERNAL_ERROR`] wherever in the tree the defect behind it was
-///   raised.
+/// - [`HarnessError`](Self::HarnessError) — a launch failure, [`STATUS_MODEL_ERROR`] or
+///   [`STATUS_AUTH_ERROR`] as the **root's** ending, or [`STATUS_INTERNAL_ERROR`] wherever in the
+///   tree the defect behind it was raised.
 ///
 /// Written out rather than illustrated with a few, because a partial list here reads as the whole
 /// rule, and a reader who found their status missing from it would have to guess which side of the
@@ -448,19 +453,30 @@ pub enum SessionOutcome {
     /// agent was already ended by its own ceiling and every other agent went on working. Only the
     /// exit code is new.
     LimitExceeded,
-    /// Whatever happened, it was **ours**, so there is no run to score: the invocation could not
-    /// launch a session at all (no root profile, no model bound to it, or a client that could not
-    /// be resolved), the **root's** model calls were refused because the run's credential was
-    /// rejected ([`STATUS_AUTH_ERROR`]), or **any agent of the run** walked into a gg defect
-    /// mid-session ([`STATUS_INTERNAL_ERROR`]). The process exits `1`, so `core` records a
-    /// harness error rather than a scoreable run — none of the three is the model's doing, and
-    /// scoring any of them would blame a model for our mistake.
+    /// Whatever happened, there is no run to score: the invocation could not launch a session
+    /// at all (no root profile, no model bound to it, or a client that could not be resolved),
+    /// the **root's** model calls all failed — retry budget spent against an outage, or a
+    /// response fatal on the first attempt ([`STATUS_MODEL_ERROR`]) — the **root's** model calls
+    /// were refused because the run's credential was rejected ([`STATUS_AUTH_ERROR`]), or **any
+    /// agent of the run** walked into a gg defect mid-session ([`STATUS_INTERNAL_ERROR`]). The
+    /// process exits `1`, so `core` records a retryable harness error rather than a scoreable
+    /// run — none of the four is the model's doing, and scoring any of them would blame a model
+    /// for somebody else's failure.
     ///
-    /// The credential is read off the root because the session's status is the root's ending, and a
-    /// subagent that never got a client contributed nothing to the tree. A gg defect is read off
-    /// the run's [fault latch](crate::fault) instead, because it is the *tree* that is spoiled by
-    /// one: an agent our own machinery stopped leaves work missing from a run whose record does not
-    /// say so, and comparing that against a clean run is comparing a measurement with a mistake.
+    /// A `model_error` is the provider's failure rather than the model's or the configuration's:
+    /// the client had already retried the failure on the run's whole schedule before the loop
+    /// saw it, and the tree the run leaves behind is work one provider's outage cut short, so it
+    /// is not a measurement of the model any more than a refused credential is. The host retries
+    /// a harness error, which is exactly what a provider outage wants. Read off the root, on the
+    /// same terms as the credential: the session's status is the root's ending, and a subagent
+    /// whose model failed is a [failed](GgAgentStatus::Failed) node in a run that can still
+    /// complete and be scored.
+    ///
+    /// The credential is read off the root for the same reason, and a gg defect is read off the
+    /// run's [fault latch](crate::fault) instead, because it is the *tree* that is spoiled by
+    /// one: an agent our own machinery stopped leaves work missing from a run whose record does
+    /// not say so, and comparing that against a clean run is comparing a measurement with a
+    /// mistake.
     HarnessError,
 }
 
@@ -836,6 +852,8 @@ pub async fn run(invocation: &GgInvocation, emitter: &Emitter) -> SessionOutcome
         SessionSeams::live(
             Some(invocation.session_id.clone()),
             declared_model_call_timeout(&invocation.capability_set.limits),
+            crate::limits::declared_retry_policy(&invocation.capability_set.limits),
+            emitter,
         ),
     )
     .await
@@ -872,12 +890,31 @@ impl SessionSeams {
     /// `model_call_timeout` is the run's [per-call model ceiling](declared_model_call_timeout),
     /// read from the declared limits rather than from the resolved ones because the factory is
     /// built before there is an agent to resolve them for. Resolution is pure, so the two
-    /// readings cannot disagree.
-    pub fn live(session_key: Option<String>, model_call_timeout: Duration) -> Self {
-        Self::substituted(
-            Arc::new(DefaultClientFactory::new(session_key, model_call_timeout)),
-            real_shell(),
-        )
+    /// readings cannot disagree. `retry_policy` is the same reading of the retry schedule
+    /// ([`declared_retry_policy`](crate::limits::declared_retry_policy)), and `base_emitter` is
+    /// the stream each client announces its retries on, scoped to the agent the client was
+    /// resolved for.
+    pub fn live(
+        session_key: Option<String>,
+        model_call_timeout: Duration,
+        retry_policy: crate::client::RetryPolicy,
+        base_emitter: &Emitter,
+    ) -> Self {
+        // Each retry a live client spends is announced on the stream of the agent the client was
+        // resolved for — the factory is handed the agent's identity, and the emitter scoped from
+        // it is the stream a reader of "what did this run wait on?" is standing on. The emitter
+        // the wire closes over is the *base* one: scoping per identity is what `for_agent` is
+        // for, and the origin and role the identity carries are the same attribution the
+        // resolution itself is keyed by.
+        let emitter = base_emitter.clone();
+        let factory = DefaultClientFactory::new(session_key, model_call_timeout, retry_policy)
+            .with_retry_reporting(Arc::new(move |identity: &AgentIdentity| {
+                let scoped = emitter.for_agent(crate::capture::origin_key(&identity.origin), None);
+                Box::new(move |message: String| {
+                    scoped.emit(log("warn", message));
+                })
+            }));
+        Self::substituted(Arc::new(factory), real_shell())
     }
 
     /// Both seams named explicitly. The **only** constructor, so a recorded model can never be
@@ -1331,21 +1368,32 @@ pub(crate) async fn run_with_seams(
     root_emitter.emit(session_ended(status));
     // A session whose credential was refused reached no model, so it is not a run
     // outcome to be scored — it is the same operator fault as a missing key, which
-    // fails at launch check 2 above. A session gg's own defect ended is not one either, for the
-    // stronger reason: whatever tree it left was produced by a run that stopped on *our* mistake,
-    // and the model never got the chance the record would appear to be reporting on. Exit non-zero
-    // for both so `core` records a harness error instead of collecting a tree and scoring it
-    // against the model.
+    // fails at launch check 2 above. A session whose model calls all failed is not one either:
+    // the retries were spent against the provider before the loop saw the failure, so the
+    // failure is the provider's, and `1` is what the host records as a retryable harness error
+    // — which is exactly what an outage wants. A session gg's own defect ended is not one
+    // either, for the stronger reason: whatever tree it left was produced by a run that stopped
+    // on *our* mistake, and the model never got the chance the record would appear to be
+    // reporting on. Exit non-zero for all three so `core` records a harness error instead of
+    // collecting a tree and scoring it against the model.
     //
-    // The two are read off different things, and deliberately so. `auth_error` is the **root's**
-    // ending: a subagent whose credential was refused is a failed agent in a session that is still
-    // collected and scored. `internal_error` is the whole tree's, because `status` is (see the
-    // latch read above): gg breaking anywhere disqualifies the run, and there is no version of the
-    // ruling where a defect that happened to strike a subagent produces a scoreable run and the
-    // same defect in the root does not.
-    if end.status == STATUS_AUTH_ERROR || status == STATUS_INTERNAL_ERROR {
+    // The three are read off different things, and deliberately so. `auth_error` and
+    // `model_error` are the **root's** ending: a subagent whose credential was refused, or whose
+    // model failed, is a failed agent in a session that is still collected and scored.
+    // `internal_error` is the whole tree's, because `status` is (see the latch read above): gg
+    // breaking anywhere disqualifies the run, and there is no version of the ruling where a
+    // defect that happened to strike a subagent produces a scoreable run and the same defect in
+    // the root does not.
+    if end.status == STATUS_AUTH_ERROR
+        || end.status == STATUS_MODEL_ERROR
+        || status == STATUS_INTERNAL_ERROR
+    {
         // (The `auth_error` half can only be read on a healthy run: on a broken one the root's own
-        // ending has already been attributed to gg, and the second condition is what fires.)
+        // ending has already been attributed to gg, and the second condition is what fires. The
+        // `model_error` half is the same read: the retries were spent against the provider, or
+        // the first response was fatal, and either way the provider failed rather than the model
+        // — so the host records the retryable harness error rather than scoring a run one
+        // provider's outage cut short.)
         return SessionOutcome::HarnessError;
     }
     // A run that spent one of its own [ceilings](crate::limits) exits on a code of its own, so the
@@ -9141,6 +9189,13 @@ fn recorded_limits(limits: &RunLimits, max_parallel: usize) -> GgRunLimits {
         max_turns: limits.max_turns.map(|turns| turns as u64),
         max_runtime_secs: limits.max_runtime.map(|budget| budget.as_secs()),
         model_call_timeout_secs: Some(limits.model_call_timeout.as_secs()),
+        // The retries after the first attempt the schedule allowed: the resolved figure, which
+        // for a set that wrote nothing is the default — recorded on the same terms as the
+        // model-call ceiling, which is always in force too.
+        max_model_retries: Some(u64::from(
+            limits.retry_policy.max_attempts.saturating_sub(1),
+        )),
+        model_retry_max_delay_secs: Some(limits.retry_policy.max_delay.as_secs()),
         max_consecutive_errors: limits.max_consecutive_errors.map(u64::from),
         max_error_rate: limits.error_rate.map(|rate| rate.max_rate),
         error_rate_window: limits.error_rate.map(|rate| rate.window as u64),

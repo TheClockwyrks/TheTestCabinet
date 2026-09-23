@@ -883,9 +883,18 @@ fn parse_response_rejects_empty_and_error_bodies() {
 fn classify_status_partitions_retryable_from_fatal() {
     assert_eq!(classify_status(200), StatusClass::Success);
     assert_eq!(classify_status(204), StatusClass::Success);
-    assert_eq!(classify_status(429), StatusClass::Retryable);
-    assert_eq!(classify_status(500), StatusClass::Retryable);
-    assert_eq!(classify_status(503), StatusClass::Retryable);
+    assert_eq!(
+        classify_status(429),
+        StatusClass::Retryable { retry_after: None }
+    );
+    assert_eq!(
+        classify_status(500),
+        StatusClass::Retryable { retry_after: None }
+    );
+    assert_eq!(
+        classify_status(503),
+        StatusClass::Retryable { retry_after: None }
+    );
     // Auth and other 4xx are fatal — retrying will not help.
     assert_eq!(classify_status(401), StatusClass::Fatal);
     assert_eq!(classify_status(400), StatusClass::Fatal);
@@ -895,14 +904,132 @@ fn classify_status_partitions_retryable_from_fatal() {
 /// Backoff doubles per attempt and is capped at `max_delay`.
 #[test]
 fn backoff_delay_doubles_and_caps() {
-    let policy = RetryPolicy::default(); // 500ms base, 8s cap
-    assert_eq!(backoff_delay(1, &policy), Duration::from_millis(500));
-    assert_eq!(backoff_delay(2, &policy), Duration::from_millis(1000));
-    assert_eq!(backoff_delay(3, &policy), Duration::from_millis(2000));
-    assert_eq!(backoff_delay(4, &policy), Duration::from_millis(4000));
+    let policy = RetryPolicy::default(); // 1s base, 60s cap
+    assert_eq!(backoff_delay(1, &policy), Duration::from_secs(1));
+    assert_eq!(backoff_delay(2, &policy), Duration::from_secs(2));
+    assert_eq!(backoff_delay(3, &policy), Duration::from_secs(4));
+    assert_eq!(backoff_delay(4, &policy), Duration::from_secs(8));
+    assert_eq!(backoff_delay(6, &policy), Duration::from_secs(32));
     // Beyond the cap it saturates rather than overflowing.
-    assert_eq!(backoff_delay(5, &policy), Duration::from_secs(8));
-    assert_eq!(backoff_delay(64, &policy), Duration::from_secs(8));
+    assert_eq!(backoff_delay(7, &policy), Duration::from_secs(60));
+    assert_eq!(backoff_delay(64, &policy), Duration::from_secs(60));
+}
+
+/// The default policy is the absent-key schedule: ten retries after the first attempt, a
+/// one-second first delay doubling to a sixty-second ceiling — about five minutes in all, which
+/// is what a pinned provider's outage is ridden out on.
+#[test]
+fn the_default_policy_is_the_absent_key_schedule() {
+    let policy = RetryPolicy::default();
+    assert_eq!(policy.max_attempts, DEFAULT_MAX_MODEL_RETRIES + 1);
+    assert_eq!(DEFAULT_MAX_MODEL_RETRIES, 10);
+    assert_eq!(policy.max_delay, DEFAULT_MODEL_RETRY_MAX_DELAY);
+    let waits: u64 = (1..DEFAULT_MAX_MODEL_RETRIES)
+        .map(|attempt| backoff_delay(attempt, &policy).as_secs())
+        .sum();
+    // 1 + 2 + 4 + 8 + 16 + 32 + 60 + 60 + 60 seconds between the eleven attempts.
+    assert_eq!(waits, 243);
+    assert_eq!(policy.base_delay, Duration::from_secs(1));
+}
+
+/// A `Retry-After` header is read as its seconds form; a date, a malformed value and an absent
+/// header are each no answer at all, which leaves the schedule's own delay standing.
+#[test]
+fn retry_after_reads_the_seconds_form_only() {
+    let with_header = |value: &str| {
+        http::Response::builder()
+            .status(503)
+            .header("retry-after", value)
+            .body(reqwest::Body::from(""))
+            .expect("a well-formed response")
+            .into()
+    };
+    assert_eq!(
+        retry_after_delay(&with_header("120")),
+        Some(Duration::from_secs(120))
+    );
+    assert_eq!(
+        retry_after_delay(&with_header(" 45 ")),
+        Some(Duration::from_secs(45))
+    );
+    assert_eq!(retry_after_delay(&with_header("soon")), None);
+    assert_eq!(
+        retry_after_delay(&with_header("Wed, 21 Oct 2026 07:28:00 GMT")),
+        None,
+        "the HTTP-date form is not read: the schedule's delay stands"
+    );
+    let without_header: reqwest::Response = http::Response::builder()
+        .status(429)
+        .body(reqwest::Body::from(""))
+        .expect("a well-formed response")
+        .into();
+    assert_eq!(retry_after_delay(&without_header), None);
+}
+
+/// The wait before a retry is the schedule's delay, or the `Retry-After` the provider asked for
+/// when it is the longer one — in both directions, so neither figure quietly displaces the other.
+#[test]
+fn retry_wait_honours_the_longer_of_the_schedule_and_retry_after() {
+    let policy = RetryPolicy::default();
+    // The provider asked for less than the schedule: the schedule stands.
+    assert_eq!(
+        retry_wait(3, &policy, Some(Duration::from_secs(1))),
+        Duration::from_secs(4)
+    );
+    // The provider asked for more: its word is the wait.
+    assert_eq!(
+        retry_wait(3, &policy, Some(Duration::from_secs(90))),
+        Duration::from_secs(90)
+    );
+    // No answer at all is the schedule alone.
+    assert_eq!(retry_wait(3, &policy, None), Duration::from_secs(4));
+}
+
+/// A failing gateway is retried on the run's configured schedule — attempts after the first
+/// counted, each announced with its attempt, cause and delay — and a `429` carrying a longer
+/// `Retry-After` waits the header's figure rather than the schedule's.
+#[tokio::test(start_paused = true)]
+async fn retries_run_on_the_configured_schedule_with_retry_after_honoured() {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    let requests = Arc::new(AtomicUsize::new(0));
+    let seen = Arc::clone(&requests);
+    // Two `429`s and a `503` carrying a two-minute `Retry-After`, then a usable reply.
+    let client = OpenRouterClient::new(
+        "http://gateway.invalid/api/v1",
+        reqwest::Client::new(),
+        "openai/gpt-5.6",
+        "sk-test",
+        RetryPolicy::default(),
+        None,
+    )
+    .answered_by(move || {
+        let attempt = seen.fetch_add(1, Ordering::SeqCst);
+        let builder = match attempt {
+            0 => http::Response::builder().status(429),
+            1 => http::Response::builder().status(429),
+            2 => http::Response::builder()
+                .status(503)
+                .header("retry-after", "120"),
+            _ => http::Response::builder().status(200),
+        };
+        builder
+            .body(reqwest::Body::from(if attempt < 3 {
+                "overloaded"
+            } else {
+                r#"{"choices":[{"message":{"role":"assistant","content":"done"},"finish_reason":"stop"}]}"#
+            }))
+            .expect("a well-formed response")
+            .into()
+    });
+
+    let started = tokio::time::Instant::now();
+    let outcome = client.complete(&[Message::user("build it")], &[]).await;
+    assert!(outcome.is_ok(), "the fourth attempt answers: {outcome:?}");
+    assert_eq!(requests.load(Ordering::SeqCst), 4);
+    // 1s + 2s + the 120s the `503` asked for — the schedule's own 4s capped at 60 loses to it.
+    assert_eq!(started.elapsed(), Duration::from_secs(123));
 }
 
 // ---------------------------------------------------------------------------
@@ -944,8 +1071,14 @@ fn resolve_provider_kind_selects_mock_by_model_prefix_or_override() {
 /// `client_for_slot` builds a working mock client for a mock binding.
 #[test]
 fn client_for_slot_builds_mock_for_mock_binding() {
-    let client = client_for_slot(&binding("mock/echo"), None, DEFAULT_MODEL_CALL_TIMEOUT)
-        .expect("mock client");
+    let client = client_for_slot(
+        &binding("mock/echo"),
+        None,
+        DEFAULT_MODEL_CALL_TIMEOUT,
+        RetryPolicy::default(),
+        None,
+    )
+    .expect("mock client");
     assert_eq!(client.model_id(), "mock/echo");
 }
 

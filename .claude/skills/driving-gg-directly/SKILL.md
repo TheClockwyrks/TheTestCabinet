@@ -196,12 +196,12 @@ pass. Anything you would put in a system prompt goes in the profile's
 All eight support tools and reasoning on OpenRouter. Re-run
 `scripts/model-windows.sh` before a launch; catalog figures move.
 
-| Model id                       | Window    | Input modalities          |
-| ------------------------------ | --------- | ------------------------- |
-| `x-ai/grok-4.7`                | 500,000   | text, image, file         |
-| `z-ai/glm-5.3-flash`           | 1,310,720 | text, image, video        |
-| `z-ai/glm-5.3`                 | 1,310,720 | text                      |
-| `deepseek/deepseek-v4.1-flash` | 1,048,576 | text, image               |
-| `qwen/qwen3.8-max-0902`        | 1,000,000 | text, image, video        |
-| `tencent/hy4-preview`          | 1,048,576 | text                      |
-| `moonshotai/kimi-k3`           | 1,048,576 | text, image, video        |
+| Model id                       | Window    | Input modalities   |
+| ------------------------------ | --------- | ------------------ |
+| `x-ai/grok-4.7`                | 500,000   | text, image, file  |
+| `z-ai/glm-5.3-flash`           | 1,310,720 | text, image, video |
+| `z-ai/glm-5.3`                 | 1,310,720 | text               |
+| `deepseek/deepseek-v4.1-flash` | 1,048,576 | text, image        |
+| `qwen/qwen3.8-max-0902`        | 1,000,000 | text, image, video |
+| `tencent/hy4-preview`          | 1,048,576 | text               |
+| `moonshotai/kimi-k3`           | 1,048,576 | text, image, video |

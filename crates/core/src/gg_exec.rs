@@ -609,14 +609,18 @@ pub(crate) async fn run_gg_session(
     // Classify the result.
     //    - The idle watchdog firing means gg stopped responding: it is hung, not failed.
     //    - A non-zero exit means the session produced nothing there is any point scoring,
-    //      for one of three reasons, all of them ours rather than the model's — which is
-    //      why each is a harness error rather than a scoreable run:
+    //      for one of four reasons, none of them the model's — which is why each is a harness
+    //      error rather than a scoreable run:
     //        * a launch fatal, so no session ran at all: a malformed config, a bound model
     //          with no context window, a root client that would not resolve (a missing
     //          credential on a live binding), or gg refusing to build a run it had just
     //          validated — SessionEnded{status:"error"};
     //        * a credential the provider *rejected* mid-flight, so nothing about the model
     //          was exercised either — SessionEnded{status:"auth_error"};
+    //        * the provider itself failing mid-flight — every retry of the run's schedule
+    //          spent, or a response fatal on the first attempt — SessionEnded{status:
+    //          "model_error"}. Nothing about the model was exercised by an outage either,
+    //          and the failure is the one a retry stands a chance of walking past;
     //        * a defect in gg itself — SessionEnded{status:"internal_error"}: a state gg's
     //          own launch validation proves unreachable, gg's sandbox machinery failing
     //          under a turn the model answered, or an agent task that panicked. Unlike the
@@ -625,7 +629,7 @@ pub(crate) async fn run_gg_session(
     //          disqualifies it is that gg stopped it on its own mistake, so whatever tree it
     //          left describes a run the model never got to finish, and scoring it would
     //          blame the model for our bug.
-    //      The first two are read off the *root's* ending; the third is read off the whole
+    //      The first three are read off the *root's* ending; the fourth is read off the whole
     //      tree. A gg defect met by any agent — an issue agent, a reviewer, a spawned child —
     //      winds the entire run down under `internal_error`, because the tree a broken run
     //      leaves behind is not the tree that configuration produces and nothing here could
@@ -648,12 +652,12 @@ pub(crate) async fn run_gg_session(
     //      Which ceiling, and by how much, is the sentence gg logged as it raised
     //      the breach; the sink pairs that sentence with the `limit_exceeded` event
     //      that follows it, and the detail carries it for the same reason as above.
-    //    - Exit 0 means a session ran, *including* a mid-session `model_error` (carried
-    //      in the stream, exit 0). Such a run is **not** a clean success — the failure is
-    //      surfaced as an Error event and the produced (likely empty) tree fails
-    //      validation downstream — but it does complete, so it flows on to be collected
-    //      and scored exactly as a third-party model error does. We do not fabricate
-    //      success, and we do not discard a run the model merely failed mid-way.
+    //    - Exit 0 means a session ran to a natural end. A mid-session `model_error` — the
+    //      provider unreachable past the whole retry schedule, or a response fatal on the
+    //      first attempt — exits 1 instead: the failure is the provider's rather than the
+    //      model's or the configuration's, so it is classified with the launch fatals and
+    //      credential refusals above as a retryable harness error rather than collected as a
+    //      run one outage cut short.
     if output.idle_timed_out {
         return Err(Error::HarnessHung {
             slug: GG_SLUG.to_string(),

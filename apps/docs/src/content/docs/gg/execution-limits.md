@@ -122,10 +122,13 @@ neither has an off it could take instead.
 - `replayMaxBytes` bounds the [session capture journal](/gg/session-record/),
   which gg writes on every run.
 
-`modelCallTimeoutSecs` is the one key an absence answers with a figure rather
-than with "off": every model call is made under a ceiling, so a configuration
-that leaves it out is conducted under 900 seconds and one that writes `0` is
-refused.
+`modelCallTimeoutSecs` is one of three keys an absence answers with a figure
+rather than with "off": every model call is made under a ceiling, so a
+configuration that leaves it out is conducted under 900 seconds and one that
+writes `0` is refused. `maxModelRetries` and `modelRetryMaxDelaySecs` are the
+other two: every failed model request is retried on a schedule, so a
+configuration that leaves them out retries ten times against a 60-second delay
+ceiling. See [model API errors](#model-api-errors).
 
 The other five are ceilings, and a ceiling is armed by writing it. `maxTurns`,
 `maxRuntimeSecs`, `maxCost`, `maxConsecutiveErrors`, and `maxErrorRate` with its
@@ -240,6 +243,34 @@ How it is applied follows the transport the agent's
 
 Both report the figure that fired, so a `model_timeout` turn names the ceiling
 the run was conducted under rather than one a reader has to look up.
+
+### `maxModelRetries` and `modelRetryMaxDelaySecs`
+
+The schedule a failed model request is retried on, inside the client, before
+the failure ends the session. `maxModelRetries` is the retries after the first
+attempt, defaulting to 10; `modelRetryMaxDelaySecs` is the ceiling on one
+backoff delay, defaulting to 60 seconds. The first retry waits 1 second, each
+next waits twice the last, and the ceiling caps the wait from the seventh retry
+on, so the defaults wait about five minutes in all and 30 retries at the same
+ceiling wait about half an hour. An operator sets the retries by what the run
+is worth against what an outage costs: a run of a long test case may be hours
+in when the provider it is pinned to goes down.
+
+Each retry is logged at `warn` naming the attempt, the status or transport
+error that provoked it, and the delay before the next. A `429` or `503`
+carrying a `Retry-After` header waits that long instead when it is longer than
+the schedule's delay.
+
+Like the model-call timeout these are bounds a breach of does not stop
+anything: they are the budget the client spends before a failed request ends
+the session, not ceilings the run is judged against. A `0` for the delay
+ceiling refuses the launch, since a run that retries on a schedule of no waits
+hammers a provider that just said it is down. A `0` for the retries is honoured
+as written: a run that gives up on the first failure.
+
+A timed-out call bypasses this budget entirely. Each retry of a stall would
+cost the [`modelCallTimeoutSecs`](#modelcalltimeoutsecs) ceiling again, and the
+turn-level retry is the bounded one.
 
 ## Per agent, or run-wide
 
@@ -504,11 +535,20 @@ every measurement the capability set exists to make.
 A gg session leaves one of three exit codes, and the host classifies the run by
 it before it collects anything.
 
-| Exit | Meaning                                                     | Recorded as                           |
-| ---- | ----------------------------------------------------------- | ------------------------------------- |
-| `0`  | The session ran to a natural end                            | its own outcome, collected and scored |
-| `1`  | A launch failure, a refused root credential, or a gg defect | `harness_error`, retryable            |
-| `3`  | Any agent breached one of the five ceilings                 | `limit_exceeded`, never retried       |
+| Exit | Meaning                                                                     | Recorded as                           |
+| ---- | --------------------------------------------------------------------------- | ------------------------------------- |
+| `0`  | The session ran to a natural end                                            | its own outcome, collected and scored |
+| `1`  | A launch failure, a refused credential, a failed model call, or a gg defect | `harness_error`, retryable            |
+| `3`  | Any agent breached one of the five ceilings                                 | `limit_exceeded`, never retried       |
+
+The exit `1` rows are the failures a retry stands a chance of walking past. A
+failed model call — the run's [retry schedule](#maxmodelretries-and-modelretrymaxdelaysecs)
+spent against an outage, or a response fatal on the first attempt — is the
+provider's failure rather than the model's or the configuration's, so it is
+recorded with the launch failures and credential refusals rather than collected
+as a run one outage cut short. Like the refused root credential it is read off
+the root's ending: a subagent whose model failed is a failed node in a session
+that can still complete and be scored.
 
 Exit `3` is read off the whole tree rather than off the root's ending, the way a
 gg defect is. A subagent that spent its turn budget, or an issue implementer that
@@ -550,7 +590,8 @@ ceiling that produced it:
   "capabilities": [ /* … */ ],
   "slots": [{ "slot": "primary", "modelId": "anthropic/claude-opus-5" }],
   "limits": { "maxParallel": 16, "maxTurns": 60, "maxRuntimeSecs": 5400,
-              "modelCallTimeoutSecs": 900, "maxConsecutiveErrors": 5,
+              "modelCallTimeoutSecs": 900, "maxModelRetries": 10,
+              "modelRetryMaxDelaySecs": 60, "maxConsecutiveErrors": 5,
               "maxErrorRate": 0.5, "errorRateWindow": 10,
               "maxCost": 25.0, "replayMaxBytes": 268435456 }
 }
@@ -559,12 +600,13 @@ ceiling that produced it:
 In the console the limits are a Run limits fieldset above the capability groups
 in the [configuration](/gg/configurations/) editor, one field per key. A fresh
 configuration is seeded with the parallelism and journal figures, a model-call
-timeout of 900 seconds, a consecutive-error ceiling of 5, and an error rate of
-0.2 over a window of 50 turns; the turn, runtime and cost fields start empty.
-Each seeded error figure is a guardrail the operator keeps, changes, or clears.
-An empty ceiling field is an unarmed ceiling, except the model-call timeout,
-which an empty field conducts under 900 seconds; a stored configuration that
-omitted a ceiling opens with that field empty.
+timeout of 900 seconds, the retry schedule's 10 retries against a 60-second
+delay ceiling, a consecutive-error ceiling of 5, and an error rate of 0.2 over
+a window of 50 turns; the turn, runtime and cost fields start empty. Each
+seeded error figure is a guardrail the operator keeps, changes, or clears. An
+empty ceiling field is an unarmed ceiling, except the model-call timeout and
+the retry schedule, which an empty field conducts under their defaults; a
+stored configuration that omitted a ceiling opens with that field empty.
 
 A key that is present is armed exactly as written, and one gg cannot arm that way
 refuses the launch. So does an absent `maxParallel` or `replayMaxBytes`. The
@@ -572,17 +614,19 @@ refusal names every such key in the set at once, so a single pass over the
 document fixes them all. A count declared as an integral JSON number is read as
 that integer, so `60` and `60.0` are one declaration.
 
-| Declaration                                                          | Result                                                           |
-| -------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `maxParallel` or `replayMaxBytes` absent, `limits` absent altogether | refused                                                          |
-| any of the five ceilings absent                                      | that ceiling unarmed                                             |
-| `modelCallTimeoutSecs` absent                                        | every model call bounded at 900 seconds                          |
-| one error-rate half declared, the other not                          | refused                                                          |
-| `maxErrorRate: 0.0`                                                  | armed: any error at all, once the window is full                 |
-| `errorRateWindow` ≥ a set `maxTurns`                                 | armed as declared, warned that it can fire only on the last turn |
-| any key but `maxErrorRate` declared `0` or negative                  | refused                                                          |
-| `maxErrorRate` outside `0.0..=1.0`, or a float that is not finite    | refused                                                          |
-| a key gg cannot read as the number it is                             | refused                                                          |
+| Declaration                                                               | Result                                                             |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `maxParallel` or `replayMaxBytes` absent, `limits` absent altogether      | refused                                                            |
+| any of the five ceilings absent                                           | that ceiling unarmed                                               |
+| `modelCallTimeoutSecs` absent                                             | every model call bounded at 900 seconds                            |
+| `maxModelRetries` or `modelRetryMaxDelaySecs` absent                      | failed requests retried 10 times against a 60-second delay ceiling |
+| `maxModelRetries: 0`                                                      | honoured: the first failure ends the session                       |
+| one error-rate half declared, the other not                               | refused                                                            |
+| `maxErrorRate: 0.0`                                                       | armed: any error at all, once the window is full                   |
+| `errorRateWindow` ≥ a set `maxTurns`                                      | armed as declared, warned that it can fire only on the last turn   |
+| any key but `maxErrorRate` and `maxModelRetries` declared `0` or negative | refused                                                            |
+| `maxErrorRate` outside `0.0..=1.0`, or a float that is not finite         | refused                                                            |
+| a key gg cannot read as the number it is                                  | refused                                                            |
 
 Every ceiling is declared in `capabilitySet.limits`. A capability's params bound
 that capability alone, so the subagents capability's `maxDepth` is the only
@@ -591,11 +635,19 @@ per-capability bound gg reads.
 ### Model API errors
 
 A failed model call ends the session on its first occurrence. The client has
-already retried with exponential backoff over `429`, `5xx` and transport
-failures, so one reaching the loop means the provider failed every attempt
-within a single turn, and counting it against a ceiling would be a second retry
-layer with a worse backoff and no jitter. A refused credential exits `1`, so it
-is never scored against a model that never ran.
+already retried on the run's [schedule](#maxmodelretries-and-modelretrymaxdelaysecs)
+over `429`, `5xx` and transport failures — ten retries by default, the first
+waiting a second, each next twice the last, capped at the delay ceiling, each
+retry logged at `warn` with its attempt, cause and delay — so one reaching the
+loop means the provider failed every attempt within a single turn, and counting
+it against a ceiling would be a second retry layer with a worse backoff and no
+jitter. A session that ends here — the retries spent, or a response fatal on
+the first attempt — ends under `model_error` and the process exits `1`: the
+failure is the provider's rather than the model's or the configuration's, and
+`1` is what the host records as a retryable harness error, so a pinned
+provider's outage costs a run minutes rather than the run. A refused credential
+exits `1` on the same terms, so it is never scored against a model that never
+ran.
 
 A reply that [looped](/gg/loop-detection/) on every one of the client's attempts
 arrives here too and ends the session on the same terms. It is named separately
@@ -629,8 +681,8 @@ operator's kill (both re-checked between attempts) decide when to stop asking.
   session summary's `rejectedResponses` rollup sums them. Recorded as
   `model_length_capped`.
 
-A run that ends on these does so under `limit_exceeded`, on whichever error
-ceiling the repeated failures breached, and never under `model_error`.
+A run that ends on these two does so under `limit_exceeded`, on whichever
+error ceiling the repeated failures breached, and never under `model_error`.
 
 ## Breach records
 

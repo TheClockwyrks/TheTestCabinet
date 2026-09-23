@@ -109,7 +109,7 @@ use std::fmt;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
-use crate::client::DEFAULT_MODEL_CALL_TIMEOUT;
+use crate::client::{DEFAULT_MODEL_CALL_TIMEOUT, DEFAULT_MODEL_RETRY_MAX_DELAY, RetryPolicy};
 use test_cabinet_core::gg::{
     GgCapabilitySet, GgLimitBreach, GgLimitKind, GgRunLimits, GgTurnErrorKind, GgTurnErrorType,
     GgTurnOutcome,
@@ -542,6 +542,29 @@ pub fn declared_model_call_timeout(declared: &GgRunLimits) -> Duration {
     }
 }
 
+/// The schedule a run retries its failed model requests on, given the run's declared
+/// [limits](GgRunLimits): `maxModelRetries` retries after the first attempt, each retry's delay
+/// doubling from one second up to the `modelRetryMaxDelaySecs` ceiling, each figure defaulting
+/// when its key is absent. Read on the same terms as [`declared_model_call_timeout`], and beside
+/// it for the same reason: the factory builds the clients before an agent exists to resolve
+/// limits for, and the `0` a launch [refuses](resolve_run_limits) takes the default so this
+/// function stays [total](crate::validate#the-resolver-contract) on the same terms.
+///
+/// A `0` for the retries is honoured as written rather than defaulted: it is a run that gives up
+/// on the first failure, which a study comparing retry budgets legitimately wants.
+pub fn declared_retry_policy(declared: &GgRunLimits) -> RetryPolicy {
+    RetryPolicy {
+        max_attempts: declared
+            .max_model_retries
+            .and_then(|retries| u32::try_from(retries).ok())
+            .map_or(RetryPolicy::default().max_attempts, |retries| retries + 1),
+        ..RetryPolicy::default().with_max_delay(match declared.model_retry_max_delay_secs {
+            Some(0) | None => DEFAULT_MODEL_RETRY_MAX_DELAY,
+            Some(secs) => Duration::from_secs(secs),
+        })
+    }
+}
+
 /// The resolved [execution ceilings](test_cabinet_core::gg::GgRunLimits) one run is bounded by.
 ///
 /// Every optional field is `None` for a ceiling the set left unarmed, and gg leaves unarmed every
@@ -588,6 +611,13 @@ pub struct RunLimits {
     /// [`armed_summary`](RunLimits::armed_summary)**, which names the ceilings that can end a run.
     /// This one ends only the recording of one.
     pub replay_max_bytes: Option<u64>,
+    /// The schedule the run's model requests retry on — `maxModelRetries` retries after the
+    /// first attempt, each retry's delay doubling from one second up to the
+    /// `modelRetryMaxDelaySecs` ceiling. Like [`model_call_timeout`](Self::model_call_timeout) it
+    /// is not an execution ceiling and never ends a run: it is the budget the client spends before
+    /// a failed request ends one, present on every run, the defaults filled in for a set that
+    /// left the keys out.
+    pub retry_policy: RetryPolicy,
 }
 
 /// A recent-error-rate ceiling and the lookback it is measured over.
@@ -697,6 +727,9 @@ pub(crate) const LIMIT_MAX_RUNTIME_SECS: &str = "maxRuntimeSecs";
 
 /// The `limits` key naming the [model-call ceiling](RunLimits::model_call_timeout).
 pub(crate) const LIMIT_MODEL_CALL_TIMEOUT_SECS: &str = "modelCallTimeoutSecs";
+
+/// The `limits` key naming the [retry budget](RunLimits::retry_policy)'s delay ceiling.
+pub(crate) const LIMIT_MODEL_RETRY_MAX_DELAY_SECS: &str = "modelRetryMaxDelaySecs";
 
 /// The `limits` key naming the [consecutive-error ceiling](RunLimits::max_consecutive_errors).
 pub(crate) const LIMIT_MAX_CONSECUTIVE_ERRORS: &str = "maxConsecutiveErrors";
@@ -873,6 +906,19 @@ pub fn resolve_run_limits(
     }
     let model_call_timeout = declared_model_call_timeout(&declared);
 
+    // A delay ceiling of `0` is a schedule of no waits — a run hammering a provider that just
+    // said it is down — so it is refused on the same terms as every other unhonourable figure.
+    // A retry count of `0` is honoured as written: it is a run that gives up on the first
+    // failure, which is a legitimate thing to configure and behaves as written.
+    if declared.model_retry_max_delay_secs == Some(0) {
+        report.report(unarmable(
+            LIMIT_MODEL_RETRY_MAX_DELAY_SECS,
+            0,
+            "a retry waiting no time is a retry against a provider that just said it is down",
+        ));
+    }
+    let retry_policy = declared_retry_policy(&declared);
+
     // Absent leaves it unarmed, on the same terms as the turn ceiling: an agent stopped after five
     // failed turns in a row was stopped by a threshold its operator chose, and there is no fifth
     // turn gg would have picked on their behalf.
@@ -947,6 +993,7 @@ pub fn resolve_run_limits(
         error_rate,
         max_cost,
         replay_max_bytes,
+        retry_policy,
     }
 }
 

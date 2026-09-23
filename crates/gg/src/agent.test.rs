@@ -163,6 +163,7 @@ fn no_limits(max_turns: usize) -> LimitsSetup {
             error_rate: None,
             max_cost: None,
             replay_max_bytes: None,
+            retry_policy: crate::client::RetryPolicy::default(),
         },
         deadline: None,
         cancel: CancelWatch::disabled(),
@@ -5141,6 +5142,66 @@ async fn run_reports_a_refused_credential_as_a_launch_failure() {
             GgTelemetryKind::SessionEnded { status } if status == "auth_error"
         )),
         "the session must end `auth_error`, not `model_error`"
+    );
+}
+
+/// A session whose model calls all fail — the retry budget spent against an outage — ends
+/// `model_error` and exits non-zero: the failure is the provider's rather than the model's or the
+/// configuration's, and `1` is what the host records as a retryable harness error rather than
+/// collecting a tree one outage cut short.
+#[tokio::test]
+async fn run_reports_exhausted_retries_as_a_harness_error() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-outage".to_string()), Box::new(sink.clone()));
+    let inv = invocation(dir.path(), GgCapabilitySet::minimal("mock/primary"));
+    let factory = ScriptedFactory::new().slot(ROOT_PROFILE_ID, |_| {
+        Box::new(FailingClient {
+            mode: FailureMode::Retryable,
+        })
+    });
+
+    assert_eq!(
+        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
+        SessionOutcome::HarnessError,
+    );
+
+    let events = sink.events();
+    assert!(
+        events.iter().any(|e| matches!(
+            &e.kind,
+            GgTelemetryKind::SessionEnded { status } if status == "model_error"
+        )),
+        "the session ends `model_error` — the provider's failure, named in the stream"
+    );
+}
+
+/// A response fatal on the first attempt is the same ruling: the provider failed before any
+/// retry could help, the session ends `model_error`, and the process exits non-zero.
+#[tokio::test]
+async fn run_reports_a_fatal_response_as_a_harness_error() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-fatal".to_string()), Box::new(sink.clone()));
+    let inv = invocation(dir.path(), GgCapabilitySet::minimal("mock/primary"));
+    let factory = ScriptedFactory::new().slot(ROOT_PROFILE_ID, |_| {
+        Box::new(FailingClient {
+            mode: FailureMode::Fatal,
+        })
+    });
+
+    assert_eq!(
+        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
+        SessionOutcome::HarnessError,
+    );
+
+    let events = sink.events();
+    assert!(
+        events.iter().any(|e| matches!(
+            &e.kind,
+            GgTelemetryKind::SessionEnded { status } if status == "model_error"
+        )),
+        "the session ends `model_error`"
     );
 }
 
