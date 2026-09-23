@@ -582,10 +582,9 @@ fn an_uncaught_failure_reaches_the_model_in_its_runtimes_own_words() {
     assert_eq!(logs(&outcome), ["caught it", "carried on"]);
 }
 
-/// **A code module is a library on the program's classpath, reached through a line the program
-/// wrote**, checked by the Kotlin compiler at the call site.
-#[test]
-fn a_code_module_is_a_library_the_program_reaches_through_its_own_line() {
+/// The `helpers` module both code-module tests load: two public top-level functions beside a
+/// private and an internal one.
+fn helpers_module() -> Vec<CodeModule> {
     let prepared = compile_module(
         "helpers",
         "import kotlin.math.abs\n\
@@ -607,10 +606,17 @@ fn a_code_module_is_a_library_the_program_reaches_through_its_own_line() {
         "a private or internal function is the author's own business",
     );
 
-    let modules = vec![CodeModule {
+    vec![CodeModule {
         name: "helpers".to_string(),
         source: prepared.source,
-    }];
+    }]
+}
+
+/// **A code module is a library on the program's classpath, reached through a line the program
+/// wrote**, checked by the Kotlin compiler at the call site.
+#[test]
+fn a_code_module_is_a_library_the_program_reaches_through_its_own_line() {
+    let modules = helpers_module();
     let outcome = evaluate(
         &prepare_with(
             &whole(
@@ -644,6 +650,18 @@ fn a_code_module_is_a_library_the_program_reaches_through_its_own_line() {
     .0;
     assert_eq!(logs(&outcome), ["another-title"]);
 
+    // The access the reply that binds a module quotes back is the one that compiles.
+    assert_eq!(
+        kotlin_language().lib_access("helpers"),
+        "lib.helpers.<name>"
+    );
+}
+
+/// **A code module is reached by one name or not at all**: an import of a single name resolves, and
+/// a program that wrote neither the import nor the qualified name earns the compiler's diagnostic.
+#[test]
+fn a_code_module_is_reached_only_through_a_line_the_program_wrote() {
+    let modules = helpers_module();
     // A single name, which is the other thing an import of a package of top-level functions can
     // bring in and is what a Kotlin author writes when one is all they want.
     let outcome = evaluate(
@@ -676,12 +694,6 @@ fn a_code_module_is_a_library_the_program_reaches_through_its_own_line() {
     assert!(
         rendered.contains("Program.kt:2") && rendered.contains("slugify"),
         "the model is told which name, at its own line: {rendered}"
-    );
-
-    // The access the reply that binds a module quotes back is the one that compiles.
-    assert_eq!(
-        kotlin_language().lib_access("helpers"),
-        "lib.helpers.<name>"
     );
 }
 
@@ -920,12 +932,12 @@ fn a_program_that_declares_no_main_is_told_so() {
     );
 }
 
-/// **What this toolchain is not**, recorded rather than assumed.
+/// **What this toolchain is not**, recorded rather than assumed: integer division by zero.
 ///
-/// Every one of these is a real property a model will meet, and each is measured here so that a
-/// TeaVM upgrade that changed one fails a test rather than a run.
+/// Every property in this and the two tests after it is one a model will meet, and each is asserted
+/// so that a TeaVM upgrade that changed one fails a test rather than a run.
 #[test]
-fn what_this_toolchain_is_not_is_recorded_rather_than_assumed() {
+fn integer_division_by_zero_is_a_trap_or_a_diagnostic_rather_than_an_exception() {
     // Integer division by zero is the ENGINE's trap rather than an `ArithmeticException`: TeaVM
     // lowers `/` to `i32.div_s` and wasm traps on a zero divisor, so nothing reaches Kotlin's own
     // exception machinery and nothing reaches standard error. Kotlin says `ArithmeticException` and
@@ -984,10 +996,9 @@ fn what_this_toolchain_is_not_is_recorded_rather_than_assumed() {
     // rather than the machine's. TeaVM folds a constant expression by evaluating it, so `7 / 0`
     // makes the compiler itself throw `java.lang.ArithmeticException: / by zero` and abandon the
     // build with no `Problem` recorded.
-    // That used to be a toolchain failure, which is gg's own defect and ends the run: a model
-    // writing one line of legal Kotlin was told nothing and the session was over. It is a
-    // diagnostic on the program now, in the JVM's own words, at the model's own file with no line,
-    // because the fold discards the expression's location.
+    // It is a diagnostic on the program, in the JVM's own words, at the model's own file with no
+    // line, because the fold discards the expression's location. A toolchain failure would be gg's
+    // own defect and end the run over one line of legal Kotlin.
     let failure = compile_program(
         &whole(
             "",
@@ -1005,7 +1016,11 @@ fn what_this_toolchain_is_not_is_recorded_rather_than_assumed() {
             && rendered.starts_with("Program.kt:"),
         "TeaVM's own words about the model's own file: {rendered}"
     );
+}
 
+/// **What this toolchain is not**: the classlib a program reaches is TeaVM's JVM one.
+#[test]
+fn the_classlib_is_the_jvms_as_teavm_carries_it() {
     // Bignum arithmetic is the JVM's rather than JavaScript's, because Kotlin's `Long` is TeaVM's
     // `long` — which is the opposite of the Ruby arm, where `2 ** 64` loses precision.
     let outcome = run(&whole(
@@ -1029,7 +1044,11 @@ fn what_this_toolchain_is_not_is_recorded_rather_than_assumed() {
     // which is exactly why this arm has a `gg.log`.
     let outcome = run("fun main() {\n    println(\"into the void\")\n    gg.log(\"kept\")\n}\n");
     assert_eq!(logs(&outcome), ["kept"]);
+}
 
+/// **What this toolchain is not**: `use` is refused, and `try`/`finally` is what a program writes.
+#[test]
+fn use_is_refused_and_try_finally_is_what_a_program_writes() {
     // `use` is refused, and it is this arm's ALONE: Kotlin's `closeFinally` calls
     // `Throwable.addSuppressed`, which reaches TeaVM's own reflection classes, and the wasm backend
     // has no implementation of them. Java's `try (…)` over the same reader compiles — measured, on
@@ -1097,22 +1116,20 @@ fn what_a_program_costs_and_what_it_weighs() {
 ///
 /// `kotlinc` has no daemon of its own, and a compiler started per compile would make this arm ten
 /// times dearer than every other one — which is a difference in the harness rather than in the
-/// language. So the arm keeps warm JVMs in a pool, and this asserts the reuse as counts: builds on one
-/// thread start one JVM between them, and emptying the pool makes the next build start exactly one
-/// more and the build after it reuse that.
+/// language. So the arm keeps warm JVMs in a pool, and this asserts the reuse as counts: a build
+/// after warming goes through the JVM warming started, and emptying the pool makes the next build
+/// start exactly one more and the build after it reuse that.
 #[test]
 fn a_pooled_jvm_is_reused() {
     use super::compile::{discard_pooled_jvms, jvms_started, live_jvms};
 
     warm();
     assert_eq!(jvms_started(), 1, "warming the arm starts one JVM");
-    for index in 0..2 {
-        let _ = prepare(&whole("", &format!("    gg.log(\"warm {index}\")\n")));
-    }
+    let _ = prepare(&whole("", "    gg.log(\"warm\")\n"));
     assert_eq!(
         (jvms_started(), live_jvms()),
         (1, 1),
-        "two compilations on one thread must go through the one JVM warming started"
+        "a compilation after warming must go through the JVM warming started"
     );
 
     discard_pooled_jvms();

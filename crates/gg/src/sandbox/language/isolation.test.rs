@@ -26,22 +26,39 @@ use super::*;
 // What the gate protects
 // ---------------------------------------------------------------------------------------------
 
-/// **The gate**, for one language: both halves, [`WIDTH`] at a time.
+/// **The gate**, for one of a language's two preparation steps, [`WIDTH`] at a time.
 ///
 /// Besides the marker checks, this is what asserts that a workspace belongs to one agent and to all
 /// of that agent's preparations: [`breaches`] reports a [`Breach::UnstableWorkspace`] when one
 /// agent's preparations stood on two trees and a [`Breach::SharedWorkspace`] when two agents stood on
 /// one, read from the same [`PrepareContext::opened_workspace`] every arm reports through.
+fn assert_half_isolated(preparation: LanguagePreparation) {
+    let breaches = breaches(&preparation);
+    assert!(
+        breaches.is_empty(),
+        "{} is not isolated per preparation:\n{}",
+        preparation.describe(),
+        render(&breaches)
+    );
+}
+
+/// The gate over both of a language's steps.
 fn assert_isolated(language: &'static dyn ProgramLanguage) {
-    for preparation in preparations(language) {
-        let breaches = breaches(&preparation);
-        assert!(
-            breaches.is_empty(),
-            "{} is not isolated per preparation:\n{}",
-            preparation.describe(),
-            render(&breaches)
-        );
-    }
+    preparations(language)
+        .into_iter()
+        .for_each(assert_half_isolated);
+}
+
+/// The gate over a language's program step.
+fn assert_program_isolated(language: &'static dyn ProgramLanguage) {
+    let [program, _] = preparations(language);
+    assert_half_isolated(program);
+}
+
+/// The gate over a language's module step.
+fn assert_module_isolated(language: &'static dyn ProgramLanguage) {
+    let [_, module] = preparations(language);
+    assert_half_isolated(module);
 }
 
 /// The gate, one test per registered language.
@@ -49,10 +66,18 @@ fn assert_isolated(language: &'static dyn ProgramLanguage) {
 /// A language wiring up a compiler with a shared working directory, a shared output path or a shared
 /// daemon fails here — before it has ever mis-attributed one agent's program to another in a run
 /// anybody paid for.
+///
+/// One test per step as well as per language, so each test prepares one step's inputs.
 mod gate {
     use super::*;
 
-    crate::sandbox::language::test_each_language!(super::assert_isolated);
+    mod program {
+        crate::sandbox::language::test_each_language!(super::super::assert_program_isolated);
+    }
+
+    mod module {
+        crate::sandbox::language::test_each_language!(super::super::assert_module_isolated);
+    }
 
     /// The [fixture](crate::sandbox::language::fixture) language, driven beside the registered set.
     ///

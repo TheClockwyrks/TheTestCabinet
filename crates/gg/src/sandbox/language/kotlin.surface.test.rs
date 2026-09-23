@@ -396,12 +396,12 @@ fn every_operation_crosses_the_membrane_from_its_kotlin_spelling() {
 }
 
 #[test]
-fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_are_reached_too() {
+fn the_views_the_program_library_and_the_endings_are_reached_too() {
     // The five families that are NOT gg tools, so none of them appears in the crossing table above —
     // and two of them are where a program puts something in front of the model, which makes them the
-    // ones a silent bridging mistake would cost the most. Between this, the table, and the member
-    // functions driven at the end of this function, every entry this arm's catalogue describes has
-    // been driven through the real membrane.
+    // ones a silent bridging mistake would cost the most. Between this, the table, the member
+    // functions and the documentation module driven by the two tests below, every entry this arm's
+    // catalogue describes has been driven through the real membrane.
     let (outcome, log) = run_as(
         "val read = gg.views.openFile(\"notes.md\", offset = 1, limit = 2)\n\
          gg.views.openText(\"summary\", \"eight files, two failing\")\n\
@@ -517,7 +517,11 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
         "{:?}",
         outcome.completion
     );
+}
 
+/// **The member functions**, each called the way its catalogue entry says it is written.
+#[test]
+fn the_member_functions_are_reached_on_the_values_that_carry_them() {
     // THE MEMBER FUNCTIONS, each called the way its catalogue entry says it is written: on the value
     // the call before it handed back, with no `import` line anywhere in the program.
     //
@@ -590,6 +594,31 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
         Some(json!({ "agentId": "agent-1", "message": "prefer the simpler parser" }))
     );
 
+    // Exhaustive by construction, the way the crossing table is: a fifth member function added to
+    // this arm's SDK fails here rather than shipping as a name nothing has ever called.
+    let kotlin =
+        crate::sandbox::language::language(test_cabinet_core::gg::GgProgramLanguage::Kotlin);
+    let mut catalogued: Vec<&str> = crate::sandbox::catalogue_functions(kotlin)
+        .iter()
+        .filter(|function| function.receiver.is_some())
+        .map(|function| function.fqn)
+        .collect();
+    catalogued.sort_unstable();
+    assert_eq!(
+        catalogued,
+        [
+            "gg.board.IssueCreated.wait",
+            "gg.delegation.SubagentHandle.send",
+            "gg.memories.MemoryHit.read",
+            "gg.programs.ProgramSummary.source",
+        ],
+        "every member function this arm catalogues needs a call in the programs above"
+    );
+}
+
+/// **The documentation module**, driven from Kotlin's own spellings.
+#[test]
+fn the_documentation_module_is_reached_from_kotlins_own_spellings() {
     // THE DOCUMENTATION MODULE, which is the family a session begins in: the prompt names no
     // function, so this is the only call a model can make before it has been told a name. It is
     // driven from Kotlin's own spellings — the query alone, and the filters alone with no query at
@@ -661,27 +690,6 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
         logs(&outcome),
         ["0 0"],
         "the capability was granted and the closes still did not answer"
-    );
-
-    // Exhaustive by construction, the way the crossing table is: a fifth member function added to
-    // this arm's SDK fails here rather than shipping as a name nothing has ever called.
-    let kotlin =
-        crate::sandbox::language::language(test_cabinet_core::gg::GgProgramLanguage::Kotlin);
-    let mut catalogued: Vec<&str> = crate::sandbox::catalogue_functions(kotlin)
-        .iter()
-        .filter(|function| function.receiver.is_some())
-        .map(|function| function.fqn)
-        .collect();
-    catalogued.sort_unstable();
-    assert_eq!(
-        catalogued,
-        [
-            "gg.board.IssueCreated.wait",
-            "gg.delegation.SubagentHandle.send",
-            "gg.memories.MemoryHit.read",
-            "gg.programs.ProgramSummary.source",
-        ],
-        "every member function this arm catalogues needs a call in the program above"
     );
 }
 
@@ -905,7 +913,7 @@ fn libraries() -> Vec<Library> {
             // NOT `print`, which is this package's most obvious member and reaches nobody: gg
             // attaches a standard error to a program and deliberately no standard output. And not
             // `use` either, which this arm does not carry — see
-            // `what_this_toolchain_is_not_is_recorded_rather_than_assumed`.
+            // `substrate::use_is_refused_and_try_finally_is_what_a_program_writes`.
             probe: "gg.log(java.io.StringReader(\"printed\").readText())",
             expected: "printed",
         },
