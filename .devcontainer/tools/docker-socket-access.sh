@@ -24,9 +24,11 @@ if [ -n "${TCAB_HOST_RUNTIME_SOCKET:-}" ] && [ ! -e "$SOCK" ]; then
 	else
 		echo "warning: TCAB_HOST_RUNTIME_SOCKET=$TCAB_HOST_RUNTIME_SOCKET is not a socket." >&2
 		echo "         The host runtime is unreachable, so 'make -C deployments/local local-up'" >&2
-		echo "         will not work. On macOS + Podman, check that the machine is ROOTFUL and" >&2
-		echo "         that PODMAN_SOCKET_DIR in .devcontainer/.env names the directory holding" >&2
-		echo "         podman.sock:  podman machine ssh 'ls /run/podman'" >&2
+		echo "         will not work. On macOS + Podman, PODMAN_SOCKET_DIR in .devcontainer/.env" >&2
+		echo "         must name the VM directory holding the socket of the podman service that" >&2
+		echo "         runs this container — the path in the Default row of" >&2
+		echo "         'podman system connection list'. '.devcontainer/setup-host.sh --force'" >&2
+		echo "         reads it off the machine for you." >&2
 	fi
 fi
 
