@@ -2,12 +2,11 @@
 title: Releasing
 ---
 
-This page covers cutting a release of the downloadable binaries and the desktop
-app, publishing [`gg`](/gg/overview/), and the one-time configuration behind the
-project's deployed static sites.
-For the whole `vX.Y.Z` sequence these workflows sit inside — preparing the
-release on `nightly`, rehearsing it on staging, and landing the catalog and the
-services in production afterwards — see
+This page covers releasing `tcab` and [`gg`](/gg/overview/) from a version
+tag, and the one-time configuration behind the project's deployed static sites.
+For the whole `vX.Y.Z` sequence the tag sits inside, from preparing the release
+on `nightly` and rehearsing it on staging to landing the catalog and the
+services in production, see
 [Cutting a Release](/guides/devops/cutting-a-release/) and its
 [quickstart](/quickstarts/devops/cut-a-release/). Standing the always-on services
 up as staging or production environments is covered by
@@ -15,47 +14,40 @@ up as staging or production environments is covered by
 by [Running](/development/running/); building locally is covered by
 [Building](/development/building/).
 
-## Releasing the binaries and desktop app
+## Release tags
 
-Public releases are cut on GitHub, driven by two manual workflows so artifacts
-are tested before they reach users.
+A release is a `vX.Y.Z` tag on `master` in Azure Repos. Pushing it runs the
+[Azure pipeline](/development/building/#continuous-integration) for the tag:
 
-1. Run the Release workflow (`.github/workflows/release.yml`,
-   `workflow_dispatch`) with the version tag, for example `v0.1.0`. For Linux
-   (static musl, see
-   [Portable builds](/development/building/#portable-static-builds)), Windows,
-   and macOS it builds:
-   - the headless binaries as archives, covering the `tcab` CLI, the
-     `tcab-backend` store/API, and the `tcab-dispatcher`, `tcab-driver`, and
-     `tcab-artifacts` services, smoke-testing each platform's `tcab` with
-     `scripts/ci/smoke-binary.sh`;
-   - the [Tauri desktop app](/components/tauri/overview/) as the platform's
-     installer: a `.deb` on Linux, a `.dmg` on macOS, an `.msi` and an NSIS
-     `.exe` on Windows.
+- the gates, including the `binary` job on Linux and Windows and the gg version
+  gate;
+- `gg_publish`, which uploads gg's release objects;
+- the `mirror` job, which pushes the tag to the GitHub mirror.
 
-   It publishes everything, with a `SHA256SUMS`, to a GitHub prerelease at
-   that tag. Re-running for the same tag refreshes its assets.
+The services ship as the images the pipeline deploys from `master`, and the docs
+site from the pipeline's `docs` job, so a tag releases no service or site of its
+own.
 
-2. Download the prerelease artifacts and exercise them.
-3. Run the Release (promote) workflow
-   (`.github/workflows/release-promote.yml`) with the same tag to flip the
-   prerelease into the latest full release. It rebuilds nothing, so the artifacts
-   you tested are the ones published.
+The tag names the version of `gg`, so `crates/gg` and `crates/core` are bumped
+to it before tagging; see [Releasing `gg`](#releasing-gg).
 
-The per-platform `tcab` smoke check is the same `scripts/ci/smoke-binary.sh` the
-CI binary job runs, so the CLI is validated continuously and again on the shipped
-artifact. The services and the desktop app are exercised by hand from the
-prerelease.
+## Releasing `tcab`
 
-Both halves of the desktop app are compiled and tested on every change by
-`scripts/ci/desktop-build.sh`, on Linux and Windows in Azure and on the same
-`ubuntu-22.04` image `release.yml` bundles on in GitHub. `release.yml` builds the
-desktop UI through the root `build:packages` script, which is the single source
-of truth for which workspace packages the UI's typecheck resolves its imports
-against. The macOS desktop app is the one artifact a release is first to build,
-because no Azure agent can build it.
+The `binary` job release-builds `tcab` on Linux and Windows, runs the suite in
+the release profile, and smoke-tests the produced binary with
+`scripts/ci/smoke-binary.sh`. On a tag run it publishes that smoke-tested binary
+as a pipeline artifact:
 
-### Releasing `gg`
+| Artifact       | Contents                  |
+| -------------- | ------------------------- |
+| `tcab-linux`   | `tcab` for Linux `x86_64` |
+| `tcab-windows` | `tcab.exe` for Windows    |
+
+The tag's pipeline run is where a release of `tcab` is downloaded from. Every
+other platform builds `tcab` from source with `cargo build --release -p
+test-cabinet-cli`.
+
+## Releasing `gg`
 
 [`gg`](/gg/overview/) is fetched by a running deployment into a run container
 rather than downloaded by a person, so its release host is the Azure Blob
@@ -101,74 +93,23 @@ A prerelease tag such as `v0.7.0-rc1` equals no crate version, so nothing
 resolves it by default. Point a deployment at one explicitly with
 `TCAB_GG_RELEASE_VERSION=0.7.0-rc1`.
 
-#### `gg-reference.tar.gz`
+### `gg-reference.tar.gz`
 
 The same upload publishes the reference documents `tcab-backend` serves at
 `GET /gg/reference` and `GET /gg/reference/{language}`: `index.json` plus one
 document per program language, projected by the freshly built `gg` itself
-(`gg reference --out`). The backend reads them from disk because it must not link
-`test-cabinet-gg`.
+(`gg reference --out`). The backend reads them from the directory
+`TCAB_GG_REFERENCE` names because it must not link `test-cabinet-gg`. The backend
+image bakes the identical files at `/opt/gg-reference` and sets the variable
+itself.
 
-A backend deployed from the release tarballs rather than from the container
-image needs this object unpacked too:
-
-```sh
-GG_RELEASES=https://testcabinetartifacts.blob.core.windows.net/gg-releases
-curl -fsSL "$GG_RELEASES/v0.7.0/gg-reference.tar.gz" | tar -xz -C /srv/test-cabinet
-# then, in the backend's environment:
-TCAB_GG_REFERENCE=/srv/test-cabinet/gg-reference
-```
-
-Without it the backend starts, serves everything else, logs one warning at boot,
-and answers `503` on the two reference endpoints, so the console's gg Reference
-section is the only thing that degrades. The container images need none of this:
-the backend image bakes the identical files at `/opt/gg-reference` and sets the
-variable itself.
+Without them the backend starts, serves everything else, logs one warning at
+boot, and answers `503` on the two reference endpoints, so the console's gg
+Reference section is the only thing that degrades.
 
 It is a single object built on the `x86_64` leg alone, with no triple in its
 name, because the content is JSON projected from data compiled into gg and is
 identical on every platform.
-
-### The audio store a released driver needs
-
-A driver stages each run's declared [audio packs](/components/core/execution/#staged-audio)
-into the run container out of a host audio store, so a `tcab-driver` (or `tcab`)
-deployed from these tarballs rather than from the driver image needs one on disk:
-
-```sh
-scripts/fetch-audio-store.sh /srv/test-cabinet/audio-store
-# then, in the driver's environment:
-TCAB_AUDIO_STORE=/srv/test-cabinet/audio-store
-```
-
-The script pulls the public `test-cabinet-audio-store` image and copies the tree
-out of it, so it needs no audio credential. Without a store, a run whose case
-declares packs fails at container start naming both the path and the script;
-end-to-end, adversarial, and performance runs are unaffected. The `tcab-driver`
-container image needs none of this: it copies the same tree in at
-`/opt/tcab-audio`, which is where the driver looks by default.
-
-### macOS code signing
-
-The macOS `.dmg` is neither code-signed nor notarized: the Release workflow
-builds it with a bare `cargo tauri build`. macOS therefore marks a downloaded app
-with the `com.apple.quarantine` attribute, and Gatekeeper refuses to launch it,
-reporting "“The Test Cabinet” is damaged and can't be opened. You should move it
-to the Trash." The app is unsigned rather than corrupt, and the symptom is most
-pronounced on Apple Silicon.
-
-The prerelease notes carry the workaround, which is to clear the quarantine
-attribute once after installing:
-
-```sh
-xattr -dr com.apple.quarantine "/Applications/The Test Cabinet.app"
-```
-
-`xattr` is more reliable than right-click Open, which Gatekeeper withholds for
-the "damaged" state on Apple Silicon. Signing with a Developer ID Application
-certificate and notarizing the `.dmg` in the workflow removes the step; Tauri
-reads `APPLE_CERTIFICATE`/`APPLE_SIGNING_IDENTITY` and the notarization
-credentials from the environment.
 
 ## Static-site topology
 
@@ -250,12 +191,9 @@ prerequisites, and the release gate live in the
   read back from `wrangler` rather than constructed.
 - Both reuse the same `CLOUDFLARE_API_TOKEN` ("Cloudflare Pages: Edit") and
   `CLOUDFLARE_ACCOUNT_ID` as the docs deploy. They are the only secrets involved,
-  since there is no backend push. The
-  [`publish-reference.yml`](/guides/devops/publishing-a-reference-implementation/#from-ci)
-  `workflow_dispatch` job derives its environment from the branch (`master` →
-  prod, `staging` → staging), deploys, and commits the updated lockfile back to
-  the branch, which needs `contents: write`. An operator then runs
-  `scripts/reingest-cluster.sh --env <env>` from a VPN-connected machine.
+  since there is no backend push. After committing the updated lockfile, an
+  operator runs `scripts/reingest-cluster.sh --env <env>` from a VPN-connected
+  machine.
 
 The lockfile holds a URL per environment, keyed by environment first. Each
 backend reads only its own environment's entries, selected by its `TCAB_ENV`, so

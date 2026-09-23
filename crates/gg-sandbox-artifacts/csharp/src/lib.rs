@@ -35,4 +35,4 @@
 //! every arm's build toolchain since the artifacts did), and it is the same answer: a
 //! toolchain that is required is a toolchain that is INSTALLED, by a pinned idempotent script every
 //! surface runs, rather than worked around by committing 35 MB whose currency nobody can see.
-//! `containers/gg-ci/Dockerfile`'s `build-toolchains` stage is where CI gets it.
+//! `scripts/ci/install-gg-build-toolchains.sh` is where CI gets it.

@@ -48,8 +48,7 @@ USER $USERNAME
 #                exits 1 rather than skipping when it can find neither, so without this
 #                the whole 1.9 GB layer dies three arms in. (The wasm32 target is in fact
 #                already installed by `languages/rust/targets.sh`; the script cannot SEE
-#                that without a `rustc` to ask.) The sibling CI image sets the same path
-#                for the same reason — see `containers/gg-ci/Dockerfile`'s `ENV PATH`.
+#                that without a `rustc` to ask.)
 #
 # The `rust/` scripts above still call rustup by absolute path, and should: they run in the
 # layer that installs it, where this PATH entry points at a directory that does not exist
@@ -166,8 +165,7 @@ RUN bash /tmp/scripts/browsers.sh && \
 # The slice is deleted in the install RUN so that nothing SHIPS a stale half-repository
 # for someone to read a pin out of by mistake. That is hygiene and not a saving: each of
 # the four COPYs below is its own layer and already carries those bytes, and a later
-# `rm -rf` can only write a whiteout over them (`containers/gg-ci/Dockerfile` says the
-# same thing about its own `rm -rf /gg-repo`). What makes that acceptable is the size —
+# `rm -rf` can only write a whiteout over them. What makes that acceptable is the size —
 # the whole slice measures ~230 kB, which is why it is worth exactly this much effort
 # and no more.
 #

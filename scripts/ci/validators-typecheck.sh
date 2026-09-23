@@ -13,7 +13,7 @@
 # runtimes, `@clockwyrks/case-harness`, vitest, `@napi-rs/canvas`). It needs no
 # credentials, no network beyond that install, and no Rust.
 #
-# This is critical validation: both Azure DevOps and GitHub run it.
+# This is critical validation the Azure pipeline runs.
 set -euo pipefail
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"

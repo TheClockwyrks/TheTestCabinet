@@ -154,7 +154,7 @@ ALL_IMGS := $(BACKEND_IMG) $(AUTH_IMG) $(DISPATCHER_IMG) $(DRIVER_IMG) $(ARTIFAC
 # build time (see `containers/build.sh` and `containers/*/Dockerfile`). These are
 # DISTINCT from the long-lived service images above: a run pod is a per-run Job the
 # dispatcher creates, running one of these images. In a deployment they come from
-# ghcr (core's `resolve_run_image` defaults to `ghcr.io/theclockwyrks/…:latest`);
+# the Test Cabinet ACR (core's `resolve_run_image` defaults to `testcabinet.azurecr.io`);
 # locally the `run-images` target builds them from THIS checkout and imports them so
 # a change to the baked-in tooling actually reaches run pods, with the local
 # dispatcher overlay pointing `TCAB_CONTAINER_REGISTRY`/`_TAG` at this prefix/tag.
@@ -172,14 +172,12 @@ RUN_IMAGE_TAG    := local
 # because `containers/build.sh` builds it and names everything it builds
 # `$(IMAGE_NAME_PREFIX)<name>:$(IMAGE_TAG)`.
 #
-# IT IS BUILT HERE, NEVER PULLED. The Dockerfile's default for that build arg is the
-# published `ghcr.io/theclockwyrks/test-cabinet-audio-store:latest`, which is the right
-# default for a deployment (a store pinned by digest, independent of the checkout) and
-# exactly the wrong one locally, twice over: it makes `make images` fail on any machine
-# that cannot pull that reference, and it makes trying an audio change require
-# publishing a container image first. The `audio-store` target below builds the store
-# from THIS checkout and `images` passes this ref in as `AUDIO_STORE_IMAGE`, so no local
-# build reaches a registry for audio at all.
+# IT IS BUILT HERE, NEVER PULLED. The published store lives in the Test Cabinet ACR,
+# and taking it locally would be wrong twice over: it makes `make images` fail on any
+# machine that cannot pull from that registry, and it makes trying an audio change
+# require publishing a container image first. The `audio-store` target below builds the
+# store from THIS checkout and `images` passes this ref in as `AUDIO_STORE_IMAGE`, so no
+# local build reaches a registry for audio at all.
 AUDIO_STORE_IMG := $(RUN_IMAGE_PREFIX)audio-store:$(RUN_IMAGE_TAG)
 
 # The run images grouped by TEST TYPE, so a `run-images-<type>` target (and, for
@@ -244,7 +242,7 @@ GG_IMAGE_NAMES          := $(addsuffix -gg,$(E2E_IMAGE_NAMES) $(FULL_STACK_IMAGE
 # base-wasm's packages rather than the bare base's, and it is the only run image that is
 # both. Named here rather than derived
 # because they are the same five `containers/build.sh` names in GG_SELFCHECK_IMAGES and the
-# same five `.github/workflows/build-containers.yml` asserts by name. What keeps three lists
+# same five `scripts/ci/run-images.sh` asserts by name. What keeps three lists
 # from drifting apart is not agreement between them: `assert_gg_environments`, in build.sh,
 # re-derives the grouping from the Dockerfiles and fails a gated build if any variant's
 # environment has no representative.
@@ -455,9 +453,9 @@ endef
 # The driver stages each run's declared `[audio] packs` into its run container out of a
 # host store at /opt/tcab-audio (crates/core `audio_stage`), and the driver IMAGE is what
 # carries that store in a deployment: services.Dockerfile has a
-# `FROM ${AUDIO_STORE_IMAGE}` stage it copies the tree from. That build arg defaults to
-# the published ghcr image, and a local build must NOT take that default — see
-# AUDIO_STORE_IMG above for why. This target produces the ref `images` passes in instead.
+# `FROM ${AUDIO_STORE_IMAGE}` stage it copies the tree from. A local build passes a
+# store built from the checkout rather than the published one — see AUDIO_STORE_IMG
+# above for why. This target produces the ref `images` passes in.
 #
 # Three sources, in order:
 #
@@ -527,10 +525,10 @@ audio-store:
 # per image, imported in k3d's direct mode. The reasons are written down there.
 #
 # The `audio-store` prerequisite builds the store the DRIVER line copies in, from this
-# checkout, and the driver build is pointed at it with `--build-arg AUDIO_STORE_IMAGE`.
-# Without that override the driver stage takes the Dockerfile's default and tries to pull
-# the published ghcr store, which makes a local build depend on a registry and makes an
-# audio change untestable until it has been published. See the `audio-store` target.
+# checkout, and the driver build is pointed at it with `--build-arg AUDIO_STORE_IMAGE`,
+# which the Dockerfile requires for that target. Building the store locally keeps a local
+# build off the registry and makes an audio change testable before it has been
+# published. See the `audio-store` target.
 #
 # THE BACKEND AND DRIVER LINES ARE THE SLOW ONES, AND THE FIRST RUN IS MUCH THE
 # SLOWEST. Both depend on the gg stage: the driver bakes the `gg` binary itself, and the
@@ -560,7 +558,7 @@ images: audio-store
 
 # Build the run-container images (the base + per-asset-kind images with their
 # baked-in modeling tool compiled from `crates/`) and import them into the cluster,
-# so run pods use THIS checkout's tooling instead of the published ghcr images. This
+# so run pods use THIS checkout's tooling instead of the published ACR images. This
 # is the run-pod counterpart of the service-image `images` target and is what closes
 # the gap where a change to `voxel-anim`/`draw`/the core modeling library never
 # reaches a run: those tools live in these images, not in any service.
@@ -687,7 +685,7 @@ run-images-gg:
 # — the same binary the driver image bakes in) and hands it to `containers/build.sh
 # --gg-selfcheck`, which drives every arm's real bootstrap turn inside each image it builds,
 # as the unprivileged `node` run user, in the gap where CI pushes. It is the SAME
-# invocation `.github/workflows/build-containers.yml` publishes behind, which is what makes a
+# invocation `scripts/ci/run-images.sh` publishes behind, which is what makes a
 # green run here mean something: not a local approximation of the gate, the gate.
 #
 # FIVE IMAGES, NOT TWENTY-SEVEN. `/opt/gg` is byte-identical across every variant (the
@@ -1018,7 +1016,7 @@ local-grafana:
 # and the Foray/Lattice tooling). Those are rebuilt by the separate `run-images`
 # target (folded into `local-up`); run it by hand after changing that baked-in
 # tooling or the core modeling library it links, otherwise a run pod keeps executing
-# the previously-imported (or ghcr) image and a tooling change silently never reaches
+# the previously-imported (or ACR) image and a tooling change silently never reaches
 # a run. The `apply` dependency is what makes a
 # rebuild also pick up MANIFEST
 # changes — RBAC, env, volumes — not just new image bytes; without it a Role or env

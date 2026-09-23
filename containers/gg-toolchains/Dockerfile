@@ -6,9 +6,8 @@
 # every gg run image copies the same tree.
 #
 # It IS published, though, and this file is where that fact belongs — `containers/build.sh`
-# and `containers/README.md` both point a reader here, and it used to say the opposite.
-# `build.sh` pushes it under `PUSH=1` and `.github/workflows/build-containers.yml`'s
-# manifest job fuses its two arch tags, so the exact tree baked into every `-gg` variant is
+# and `containers/README.md` both point a reader here. `build.sh` pushes it under `PUSH=1`
+# and the Azure pipeline's run-image manifest job fuses its two arch tags, so the exact tree baked into every `-gg` variant is
 # pullable and pinned by digest on its own terms; the argument for paying for that is where
 # `GG_TOOLCHAINS_IMAGE` is defined in `build.sh`, and is not repeated here.
 #

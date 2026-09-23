@@ -5,7 +5,7 @@
 # names and the frozen test-case versions are left out. Needs the npm workspace
 # installed for the pinned `prettier`; no credentials, no Rust.
 #
-# This is non-critical validation: Azure DevOps runs it, GitHub leaves it to Azure.
+# The Azure pipeline runs it as the `format` gate.
 set -euo pipefail
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"

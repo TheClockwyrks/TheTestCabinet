@@ -42,9 +42,8 @@ sudo rm -rf \
 	/usr/local/share/chromium \
 	/usr/local/share/boost
 
-# Preloaded container images: this pipeline builds no containers (that lives in
-# the GitHub build-service-images workflow), so the baked-in images are dead
-# weight. Guarded so a missing daemon or empty image list never fails the step.
+# Preloaded container images: no build here starts from any of them, so they are
+# dead weight. Guarded so a missing daemon or empty image list never fails the step.
 log "pruning preloaded Docker images"
 sudo docker image prune --all --force || true
 

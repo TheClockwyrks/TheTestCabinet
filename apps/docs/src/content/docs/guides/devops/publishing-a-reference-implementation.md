@@ -317,23 +317,6 @@ When the backend has no R2 configuration, the reconcile is skipped rather than
 reconciling to empty, mirroring how a missing lockfile leaves the build table
 untouched.
 
-## From CI
-
-The same flow is wired as an on-demand GitHub Actions job,
-`.github/workflows/publish-reference.yml` (`workflow_dispatch`), so the build,
-deploy, and lockfile commit happen off your machine. The target environment is
-derived from the branch: dispatch it on `master` to publish production, on
-`staging` to publish staging. Any other branch is refused.
-
-Its inputs are `slug` (required), `version` (blank = newest), and `variant`
-(blank = every variant that declares a reference). It needs only
-`CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`, builds and deploys, then
-commits and pushes the lockfile back to the branch. It deploys with
-`--skip-baselines`, because its checkout leaves out the `cold-storage`
-submodule, so capture and commit the baselines locally first. Re-ingest is left to the
-operator, so run `scripts/reingest-cluster.sh --env <env>` after the workflow
-pushes. A `publish-reference` concurrency group serializes runs.
-
 ## Reference implementation and reference mockup
 
 A `[[reference]]` visual mockup is a rendered screenshot of a single view that is

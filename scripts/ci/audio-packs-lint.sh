@@ -7,7 +7,7 @@
 # wrapper exists; the check itself is the one command
 # development/building.md documents.
 #
-# It runs on both CI systems, and on the commit hook (.pre-commit-config.yaml
+# It runs in the Azure pipeline, and on the commit hook (.pre-commit-config.yaml
 # invokes the checker directly, since a working tree already has node_modules),
 # exactly as scripts/ci/frozen-check.sh backstops the frozen-paths.sh hook. It is
 # the ONLY enforcement of the rule that every non-frozen full-stack version and

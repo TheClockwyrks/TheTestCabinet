@@ -396,7 +396,7 @@ pub struct RunEnvironment {
     /// The run-container image the run executed in: the single shared base image,
     /// the same for every harness. The full, pullable reference pulled by digest
     /// from the registry (for example,
-    /// `ghcr.io/theclockwyrks/test-cabinet-base@sha256:…`), or the local-build
+    /// `testcabinet.azurecr.io/test-cabinet-base@sha256:…`), or the local-build
     /// fallback tag for an offline run.
     pub container_image: String,
     /// The Node.js version reported by `node --version` inside the container

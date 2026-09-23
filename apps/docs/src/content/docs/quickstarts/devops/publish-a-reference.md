@@ -138,11 +138,3 @@ git add cold-storage
 `publish-reference` re-captures the same media as part of its build and refuses
 to deploy a target whose capture failed; `--skip-baselines` deploys without
 re-capturing when the committed media is already current.
-
-## From CI
-
-The `publish-reference.yml` workflow (`workflow_dispatch`) builds, deploys, and
-commits the lockfile. It deploys with `--skip-baselines`, so capture and commit
-the baselines locally first. The environment is derived from the branch it is
-dispatched on: `master` publishes prod and `staging` publishes staging. Run
-`scripts/reingest-cluster.sh` afterwards.

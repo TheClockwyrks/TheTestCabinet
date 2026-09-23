@@ -363,7 +363,7 @@ fn write_reference(directory: &std::path::Path) -> Result<(), ReferenceWriteErro
 /// A filesystem failure while writing the reference, **carrying the path it was attempting**.
 ///
 /// `std::io::Error` does not, and a bare `Permission denied (os error 13)` in the `RUN` line of an
-/// image build or the release workflow leaves an operator with no way to tell which of thirteen
+/// image build or of `scripts/ci/gg-dist.sh` leaves an operator with no way to tell which of thirteen
 /// paths was refused. The endpoint that serves these documents goes to some trouble to name the
 /// directory it searched when they are missing; the command that writes them should not be less
 /// specific about not writing them.
