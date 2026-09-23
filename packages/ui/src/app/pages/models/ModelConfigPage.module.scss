@@ -74,6 +74,18 @@
   min-height: 9rem;
 }
 
+// A one-name-per-line list: a few rows, not a prose field.
+.textareaShort {
+  min-height: 5rem;
+}
+
+// A hint that qualifies a whole row of fields rather than one field, set under
+// the row with the same rhythm a field's own bottom margin gives.
+.fieldBlockHint {
+  display: block;
+  margin: calc(-1 * #{t.$space-md}) 0 t.$space-lg;
+}
+
 // --- OpenRouter fill-in --------------------------------------------------------
 
 // The slug input and its fill action on one line, wrapping when cramped — the

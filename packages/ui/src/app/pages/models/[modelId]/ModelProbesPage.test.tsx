@@ -50,6 +50,11 @@ const MODEL = {
   contextLength: null,
   providerPin: null,
   providerPinSetByHand: false,
+  nativeQuantization: null,
+  maxInputPrice: null,
+  maxOutputPrice: null,
+  bannedProviders: [],
+  unknownQuantizationProviders: [],
   releasedAt: null,
   inputModalities: [],
 } as unknown as ModelSummary;

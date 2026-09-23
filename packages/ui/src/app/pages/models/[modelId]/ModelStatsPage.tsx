@@ -3,16 +3,19 @@ import {
   CATEGORICAL_COLORS,
   DonutChartWidget,
   ReliabilityRingWidget,
+  Spinner,
   type DonutSegment,
   type ReliabilitySegment,
 } from "@clockwyrks/ui";
 import { rollupRuns } from "@clockwyrks/run-stats/rollup";
 import type {
+  ModelCandidates,
   RacAccuracy,
   ToolCallingAccuracy,
 } from "../../../../client/types";
 import type { ModelSummary } from "../../../data/models";
 import { useModelAccuracy } from "../../../data/useModelAccuracy";
+import { useModelCandidates } from "../../../data/useModelCandidates";
 import { useModelRunSummaries } from "../../../data/useModelRunSummaries";
 import {
   formatCompact,
@@ -195,6 +198,8 @@ function StatsContent({ model }: { model: ModelSummary }) {
         </div>
       </section>
 
+      <ProviderCandidates model={model} />
+
       {/* Specs: the context window, release date, and accepted input modalities
           OpenRouter reports. The modalities are not trivia — they decide whether a
           gg run may show this model the reference images a test case's specs ship,
@@ -210,11 +215,6 @@ function StatsContent({ model }: { model: ModelSummary }) {
                 : "—"
             }
             muted={model.contextLength == null}
-          />
-          <Stat
-            label="Provider pin"
-            value={model.providerPin ?? "no official endpoint"}
-            muted={model.providerPin == null}
           />
           <Stat
             label="Release date"
@@ -247,6 +247,140 @@ function StatsContent({ model }: { model: ModelSummary }) {
       </section>
     </>
   );
+}
+
+// Provider candidates: the list the next gg enqueue of the model would build
+// from OpenRouter's endpoints listing, in the order a run tries them, or the
+// reason it would refuse. Read live and Bearer-gated, so it is absent where the
+// transport cannot read it (the static site) and asks a signed-out viewer to
+// sign in.
+function ProviderCandidates({ model }: { model: ModelSummary }) {
+  const state = useModelCandidates(model.slug);
+  if (state.status === "unavailable") return null;
+  return (
+    <section className={styles.section}>
+      <h2 className={styles.sectionTitle}>Provider candidates</h2>
+      {state.status === "signedOut" && (
+        <p className={styles.accuracyNote}>
+          Sign in to see the providers a gg run of this model would use, using
+          the account control in the top bar.
+        </p>
+      )}
+      {state.status === "loading" && (
+        <Spinner variant="flap" label="Reading OpenRouter's endpoints…" />
+      )}
+      {state.status === "error" && (
+        <p className={styles.accuracyNote} role="alert">
+          Couldn&apos;t read the provider candidates. {state.message}
+        </p>
+      )}
+      {state.status === "ready" && (
+        <CandidateList model={model} list={state.candidates} />
+      )}
+    </section>
+  );
+}
+
+function CandidateList({
+  model,
+  list,
+}: {
+  model: ModelSummary;
+  list: ModelCandidates;
+}) {
+  const policy = policySummary(model, list);
+  return (
+    <>
+      {list.refusal ? (
+        <p className={styles.refusal} role="alert">
+          A gg run of this model would be refused: {list.refusal}.
+        </p>
+      ) : (
+        <div className={styles.tableWrap}>
+          <table className={styles.candidates}>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Provider</th>
+                <th>Quantization</th>
+                <th className={styles.numeric}>Input / Mtok</th>
+                <th className={styles.numeric}>Output / Mtok</th>
+                <th className={styles.numeric}>Cache read / Mtok</th>
+                <th className={styles.numeric}>Fault rate</th>
+              </tr>
+            </thead>
+            <tbody>
+              {list.candidates.map((candidate, index) => (
+                <tr key={candidate.provider}>
+                  <td>{index + 1}</td>
+                  <td>
+                    {candidate.provider}
+                    {candidate.developer && (
+                      <span className={styles.developer}>developer</span>
+                    )}
+                  </td>
+                  <td>{candidate.quantization}</td>
+                  <td className={styles.numeric}>
+                    {formatUsd(candidate.inputPrice)}
+                  </td>
+                  <td className={styles.numeric}>
+                    {formatUsd(candidate.outputPrice)}
+                  </td>
+                  <td className={styles.numeric}>
+                    {formatUsd(candidate.cacheReadPrice)}
+                  </td>
+                  <td className={styles.numeric}>
+                    {formatFaultRate(candidate.faultRate)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p className={styles.accuracyNote}>
+        {policy}. The list is read from OpenRouter now, for an agent that sets
+        no reasoning; an enqueue whose agents set one also drops the providers
+        that do not support it. A fault rate of — means no recorded run used the
+        provider.
+      </p>
+    </>
+  );
+}
+
+// One line naming what the list was filtered by: the native level, the
+// developer provider, and the catalog entry's own settings where it has any.
+function policySummary(model: ModelSummary, list: ModelCandidates): string {
+  const parts = [
+    `Native quantization ${list.nativeQuantization ?? "unknown"}${
+      model.nativeQuantization ? " (set by hand)" : ""
+    }`,
+  ];
+  if (model.providerPin) {
+    parts.push(
+      `developer provider ${model.providerPin}${
+        model.providerPinSetByHand ? " (set by hand)" : ""
+      }`,
+    );
+  }
+  if (model.maxInputPrice != null && model.maxOutputPrice != null) {
+    parts.push(
+      `price ceiling ${formatUsd(model.maxInputPrice)} / ${formatUsd(
+        model.maxOutputPrice,
+      )} per Mtok when no developer endpoint is listed`,
+    );
+  }
+  if (model.bannedProviders.length > 0) {
+    parts.push(`banned: ${model.bannedProviders.join(", ")}`);
+  }
+  return parts.join(" · ");
+}
+
+// A fault rate as a percentage, or an em dash for a provider no recorded run
+// used (which the order reads as zero).
+function formatFaultRate(rate: number | null): string {
+  if (rate === null) return "—";
+  return `${(rate * 100).toFixed(rate < 0.1 ? 1 : 0)}%`;
 }
 
 // Title-case a modality token for display (`image` → `Image`). The catalog stores

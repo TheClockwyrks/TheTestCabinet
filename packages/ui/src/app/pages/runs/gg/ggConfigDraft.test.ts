@@ -63,6 +63,7 @@ import {
   AUTHORED_MODEL_CALL_TIMEOUT_SECS,
   AUTHORED_MODEL_RETRY_MAX_DELAY_SECS,
   AUTHORED_MODEL_STREAM_IDLE_SECS,
+  AUTHORED_PROVIDER_CACHE_MISS_LIMIT,
   AUTHORED_MEMORY_MAX_COUNT,
   AUTHORED_MEMORY_MAX_LEN_DESCRIPTION,
   AUTHORED_MEMORY_MAX_LEN_PER,
@@ -2107,6 +2108,7 @@ describe("gg run limits", () => {
       replayMaxBytes: AUTHORED_REPLAY_MAX_MIB * BYTES_PER_MIB,
       modelCallTimeoutSecs: AUTHORED_MODEL_CALL_TIMEOUT_SECS,
       modelStreamIdleSecs: AUTHORED_MODEL_STREAM_IDLE_SECS,
+      providerCacheMissLimit: AUTHORED_PROVIDER_CACHE_MISS_LIMIT,
       maxModelRetries: AUTHORED_MAX_MODEL_RETRIES,
       modelRetryMaxDelaySecs: AUTHORED_MODEL_RETRY_MAX_DELAY_SECS,
       maxConsecutiveErrors: AUTHORED_MAX_CONSECUTIVE_ERRORS,
@@ -2198,6 +2200,21 @@ describe("gg run limits", () => {
     expect(
       capabilitySetFromDraft(draft, null).limits?.modelStreamIdleSecs,
     ).toBe(45);
+  });
+
+  it("refuses a zero cache-miss limit, and saves a cleared one as absent", () => {
+    const draft = emptyDraft();
+    draft.limits.providerCacheMissLimit = "0";
+    expect(draftSaveError(draft)).toContain("greater than zero");
+    draft.limits.providerCacheMissLimit = "";
+    expect(draftSaveError(draft)).toBeNull();
+    expect(
+      capabilitySetFromDraft(draft, null).limits?.providerCacheMissLimit,
+    ).toBeUndefined();
+    draft.limits.providerCacheMissLimit = "5";
+    expect(
+      capabilitySetFromDraft(draft, null).limits?.providerCacheMissLimit,
+    ).toBe(5);
   });
 
   it("refuses a zero retry delay ceiling, and honours a zero retry count", () => {
