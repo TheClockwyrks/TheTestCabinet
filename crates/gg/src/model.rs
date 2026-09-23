@@ -457,14 +457,17 @@ pub enum ModelError {
         served: String,
     },
     /// The call ran into the run's
-    /// [**per-call ceiling**](crate::limits::RunLimits::model_call_timeout) without producing a
-    /// reply — a stalled provider, not a refusal.
+    /// [**per-attempt ceiling**](crate::limits::RunLimits::model_call_timeout) without producing a
+    /// reply — a provider whose silence ran past the whole attempt's bound, not a refusal.
     ///
     /// The one `ModelError` the turn loop does **not** end the session on. The client surfaces a
     /// timeout immediately rather than spending its own retry budget on it — every internal retry
-    /// of a stall costs the full ceiling again — and the loop records the turn as a
-    /// [`ModelTimeout`](TurnErrorType::ModelTimeout) error and asks again, so the retry that
-    /// bounds a stalled endpoint is the turn-level one the error ceilings govern.
+    /// of a ceiling-long silence costs the full ceiling again — and the loop records the turn as a
+    /// [`ModelTimeout`](TurnErrorType::ModelTimeout) error and asks again, so the retry that bounds
+    /// a silent endpoint is the turn-level one the error ceilings govern. A reply that merely goes
+    /// quiet mid-stream never reaches this error: it is bounded sooner by the
+    /// [stream-idle bound](crate::limits::RunLimits::model_stream_idle), cancelled and retried on
+    /// the client's own schedule as a transport failure.
     #[error(
         "model call timed out after {}s{}",
         .after.as_secs(),
@@ -474,8 +477,8 @@ pub enum ModelError {
         /// The ceiling that was hit.
         after: std::time::Duration,
         /// The upstream provider that was serving the stalled call, when the stream got far
-        /// enough to name one — what makes a provider-shaped stall blacklistable. `None` on the
-        /// buffering transport, whose reply arrives all at once or not at all.
+        /// enough to name one — what makes a provider-shaped stall blacklistable. `None` when no
+        /// chunk arrived that could have named one, which is most silences.
         provider: Option<String>,
     },
 }

@@ -62,6 +62,7 @@ import {
   AUTHORED_MAX_MODEL_RETRIES,
   AUTHORED_MODEL_CALL_TIMEOUT_SECS,
   AUTHORED_MODEL_RETRY_MAX_DELAY_SECS,
+  AUTHORED_MODEL_STREAM_IDLE_SECS,
   AUTHORED_MEMORY_MAX_COUNT,
   AUTHORED_MEMORY_MAX_LEN_DESCRIPTION,
   AUTHORED_MEMORY_MAX_LEN_PER,
@@ -2105,6 +2106,7 @@ describe("gg run limits", () => {
       maxParallel: AUTHORED_MAX_PARALLEL,
       replayMaxBytes: AUTHORED_REPLAY_MAX_MIB * BYTES_PER_MIB,
       modelCallTimeoutSecs: AUTHORED_MODEL_CALL_TIMEOUT_SECS,
+      modelStreamIdleSecs: AUTHORED_MODEL_STREAM_IDLE_SECS,
       maxModelRetries: AUTHORED_MAX_MODEL_RETRIES,
       modelRetryMaxDelaySecs: AUTHORED_MODEL_RETRY_MAX_DELAY_SECS,
       maxConsecutiveErrors: AUTHORED_MAX_CONSECUTIVE_ERRORS,
@@ -2179,6 +2181,23 @@ describe("gg run limits", () => {
     const draft = emptyDraft();
     draft.limits.modelCallTimeoutSecs = "0";
     expect(draftSaveError(draft)).toContain("greater than zero");
+  });
+
+  it("refuses a zero stream idle bound, and saves a cleared one as absent", () => {
+    const draft = emptyDraft();
+    draft.limits.modelStreamIdleSecs = "0";
+    expect(draftSaveError(draft)).toContain("greater than zero");
+    // A cleared field is the run's default of 60 seconds, which gg supplies for an
+    // absent key, so the saved set leaves the key out.
+    draft.limits.modelStreamIdleSecs = "";
+    expect(draftSaveError(draft)).toBeNull();
+    expect(
+      capabilitySetFromDraft(draft, null).limits?.modelStreamIdleSecs,
+    ).toBeUndefined();
+    draft.limits.modelStreamIdleSecs = "45";
+    expect(
+      capabilitySetFromDraft(draft, null).limits?.modelStreamIdleSecs,
+    ).toBe(45);
   });
 
   it("refuses a zero retry delay ceiling, and honours a zero retry count", () => {

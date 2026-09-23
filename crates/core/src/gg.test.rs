@@ -657,6 +657,7 @@ fn run_limits_round_trip_camel_case_and_omit_every_unset_ceiling() {
         max_turns: Some(60),
         max_runtime_secs: Some(5_400),
         model_call_timeout_secs: Some(900),
+        model_stream_idle_secs: Some(60),
         max_model_retries: Some(10),
         model_retry_max_delay_secs: Some(60),
         max_consecutive_errors: Some(5),
@@ -673,6 +674,7 @@ fn run_limits_round_trip_camel_case_and_omit_every_unset_ceiling() {
             "maxTurns": 60,
             "maxRuntimeSecs": 5_400,
             "modelCallTimeoutSecs": 900,
+            "modelStreamIdleSecs": 60,
             "maxModelRetries": 10,
             "modelRetryMaxDelaySecs": 60,
             "maxConsecutiveErrors": 5,
@@ -696,6 +698,14 @@ fn run_limits_round_trip_camel_case_and_omit_every_unset_ceiling() {
     );
     assert!(!cost_only.is_empty());
     assert!(GgRunLimits::default().is_empty());
+    // The stream-idle bound is optional on the wire like every other limits key, even though a
+    // run always resolves one — so a stored set that predates it still parses and a set that
+    // leaves it out is a set asking for the default, not a set that cannot be read.
+    let no_idle = serde_json::to_value(GgRunLimits::default()).unwrap();
+    assert!(no_idle.get("modelStreamIdleSecs").is_none(), "{no_idle}");
+    let parsed: GgRunLimits =
+        serde_json::from_value(json!({ "modelStreamIdleSecs": 45 })).expect("deserialize");
+    assert_eq!(parsed.model_stream_idle_secs, Some(45));
 }
 
 /// **A count is a count however JSON spells it.** JSON has no integer type, so a sweep generated

@@ -23,11 +23,12 @@ breaches any of them, in any agent of its tree, stops early and gg exits `3`. Th
 host records such a run as
 [`limit_exceeded`](/components/core/run-records/#status) and never retries it.
 
-Three further bounds are declared, resolved and recorded with those five.
+Four further bounds are declared, resolved and recorded with those five.
 [`maxParallel`](#parallelism) queues agents rather than stopping them,
 `replayMaxBytes` bounds the [session capture journal](/gg/session-record/)
-rather than the run, and [`modelCallTimeoutSecs`](#modelcalltimeoutsecs) bounds
-one model request rather than the run that made it. [Cancellation](#cancellation)
+rather than the run, and [`modelCallTimeoutSecs`](#modelcalltimeoutsecs) and
+[`modelStreamIdleSecs`](#modelstreamidlesecs) bound one model request rather
+than the run that made it. [Cancellation](#cancellation)
 stops a run on an operator's instruction, with no threshold declared anywhere.
 
 [Loop detection](/gg/loop-detection/) bounds a single reply rather than a run. A
@@ -122,13 +123,13 @@ neither has an off it could take instead.
 - `replayMaxBytes` bounds the [session capture journal](/gg/session-record/),
   which gg writes on every run.
 
-`modelCallTimeoutSecs` is one of three keys an absence answers with a figure
-rather than with "off": every model call is made under a ceiling, so a
-configuration that leaves it out is conducted under 900 seconds and one that
-writes `0` is refused. `maxModelRetries` and `modelRetryMaxDelaySecs` are the
-other two: every failed model request is retried on a schedule, so a
-configuration that leaves them out retries ten times against a 60-second delay
-ceiling. See [model API errors](#model-api-errors).
+`modelCallTimeoutSecs` and `modelStreamIdleSecs` are two of four keys an absence
+answers with a figure rather than with "off": every model call is made under
+both, so a configuration that leaves them out is conducted under 900 and 60
+seconds, and one that writes `0` for either is refused. `maxModelRetries` and
+`modelRetryMaxDelaySecs` are the other two: every failed model request is
+retried on a schedule, so a configuration that leaves them out retries ten times
+against a 60-second delay ceiling. See [model API errors](#model-api-errors).
 
 The other five are ceilings, and a ceiling is armed by writing it. `maxTurns`,
 `maxRuntimeSecs`, `maxCost`, `maxConsecutiveErrors`, and `maxErrorRate` with its
@@ -224,32 +225,49 @@ ceiling measures exactly what the run record reports.
 
 ### `modelCallTimeoutSecs`
 
-The ceiling on **one model request**, in seconds, and the one bound on this page
-a breach of does not stop anything: a request that hits it is recorded as a
-`model_timeout` error turn and the agent asks the same question again. A
-configuration that leaves the key out is conducted under 900 seconds, because
-there is no run whose calls may hang forever, and `0` refuses the launch.
+The ceiling on one attempt at a model request, in seconds, from sending the
+request to the last chunk of its reply. A breach does not stop anything: the
+attempt is recorded as a `model_timeout` error turn and the agent asks the same
+question again. A configuration that leaves the key out is conducted under 900
+seconds, because there is no run whose calls may hang forever, and `0` refuses
+the launch.
 
-How it is applied follows the transport the agent's
-[loop detection](/gg/loop-detection/) selects.
+A reply that goes quiet is cut sooner by
+[`modelStreamIdleSecs`](#modelstreamidlesecs), so the ceiling is what bounds a
+reply whose deltas keep arriving for longer than it. The backoff between the
+client's retries sits outside it, so a long retry schedule runs to its end under
+any ceiling. A timeout surfaces immediately, without spending the retry
+schedule, since each retry would cost the full ceiling again. A `model_timeout`
+turn names the figure that fired.
 
-- Buffering, which every agent without loop detection runs, receives its reply
-  all at once or not at all. The ceiling is a total-duration cap on each
-  attempt, from sending the request to reading the last byte of the reply. The
-  backoff between the client's retries sits outside it, so a long retry
-  schedule runs to its end under any ceiling.
-- Streaming receives the reply incrementally, and a stream still producing bytes
-  is not stalled however long it runs. The ceiling is an idle cap on the wait
-  for the response head and on the gap between chunks, so a long reply is never
-  cut for being long.
+### `modelStreamIdleSecs`
 
-Both report the figure that fired, so a `model_timeout` turn names the ceiling
-the run was conducted under rather than one a reader has to look up.
+How long a model request may go without a delta from the model, in seconds,
+before the attempt is cancelled. Every reply is read as a
+[stream](/gg/loop-detection/#the-transport), and the clock restarts on each
+chunk whose `delta` carries content, reasoning or tool-call arguments. It starts
+when the request is sent, so a provider that never sends a response head is
+cut by it too. Keep-alive comments and blank lines leave it running, which is
+what separates a provider that has stopped answering from a model that is still
+thinking: a model that reasons for minutes streams reasoning deltas for the
+whole of that time.
+
+A configuration that leaves the key out is conducted under 60 seconds, and `0`
+refuses the launch. A provider that sends nothing until its reply is complete
+needs a figure above its longest reply, at which point
+[`modelCallTimeoutSecs`](#modelcalltimeoutsecs) is the bound that fires first.
+
+A cancelled attempt is a transport failure. It is retried on the client's
+[schedule](#maxmodelretries-and-modelretrymaxdelaysecs) and logged like any
+other retry, with a cause that names the stall and the provider the stream had
+named, if any, such as `the stream stalled: no delta from the model for 60s
+(provider: Z.AI)`.
 
 ### `maxModelRetries` and `modelRetryMaxDelaySecs`
 
 The schedule the model client retries a failed request on. A request answered
-`429` or `5xx`, or one that failed in transport, is retried; any other status is
+`429` or `5xx`, one that failed in transport, or one whose stream
+[stalled](#modelstreamidlesecs) is retried; any other status is
 [fatal](#model-api-errors) on its first response.
 
 - `maxModelRetries` is the number of retries after the first attempt. It
@@ -277,10 +295,10 @@ model request attempt 3 of 11 failed (HTTP 502: bad gateway); retrying in 4.0s
 
 Like the model-call timeout, the schedule never stops a run by being reached.
 Spending it is what turns a provider's failure into a
-[failed model call](#model-api-errors). A timed-out call bypasses the schedule,
-because each retry of a stall would cost the
-[`modelCallTimeoutSecs`](#modelcalltimeoutsecs) ceiling again, and the
-turn-level retry is the bounded one.
+[failed model call](#model-api-errors). A call that hits
+[`modelCallTimeoutSecs`](#modelcalltimeoutsecs) bypasses the schedule, because
+each retry would cost the ceiling again, and the turn-level retry is the bounded
+one.
 
 ## Per agent, or run-wide
 
@@ -600,8 +618,9 @@ ceiling that produced it:
   "capabilities": [ /* … */ ],
   "slots": [{ "slot": "primary", "modelId": "anthropic/claude-opus-5" }],
   "limits": { "maxParallel": 16, "maxTurns": 60, "maxRuntimeSecs": 5400,
-              "modelCallTimeoutSecs": 900, "maxModelRetries": 10,
-              "modelRetryMaxDelaySecs": 60, "maxConsecutiveErrors": 5,
+              "modelCallTimeoutSecs": 900, "modelStreamIdleSecs": 60,
+              "maxModelRetries": 10, "modelRetryMaxDelaySecs": 60,
+              "maxConsecutiveErrors": 5,
               "maxErrorRate": 0.5, "errorRateWindow": 10,
               "maxCost": 25.0, "replayMaxBytes": 268435456 }
 }
@@ -610,13 +629,14 @@ ceiling that produced it:
 In the console the limits are a Run limits fieldset above the capability groups
 in the [configuration](/gg/configurations/) editor, one field per key. A fresh
 configuration is seeded with the parallelism and journal figures, a model-call
-timeout of 900 seconds, the retry schedule's 10 retries against a 60-second
-delay ceiling, a consecutive-error ceiling of 5, and an error rate of 0.2 over
-a window of 50 turns; the turn, runtime and cost fields start empty. Each
-seeded error figure is a guardrail the operator keeps, changes, or clears. An
-empty ceiling field is an unarmed ceiling, except the model-call timeout and
-the retry schedule, which an empty field conducts under their defaults; a
-stored configuration that omitted a ceiling opens with that field empty.
+timeout of 900 seconds, a stream idle bound of 60 seconds, the retry schedule's
+10 retries against a 60-second delay ceiling, a consecutive-error ceiling of 5,
+and an error rate of 0.2 over a window of 50 turns; the turn, runtime and cost
+fields start empty. Each seeded error figure is a guardrail the operator keeps,
+changes, or clears. An empty ceiling field is an unarmed ceiling, except the
+model-call timeout, the stream idle bound and the retry schedule, which an empty
+field conducts under their defaults; a stored configuration that omitted a
+ceiling opens with that field empty.
 
 A key that is present is armed exactly as written, and one gg cannot arm that way
 refuses the launch. So does an absent `maxParallel` or `replayMaxBytes`. The
@@ -629,6 +649,7 @@ that integer, so `60` and `60.0` are one declaration.
 | `maxParallel` or `replayMaxBytes` absent, `limits` absent altogether      | refused                                                            |
 | any of the five ceilings absent                                           | that ceiling unarmed                                               |
 | `modelCallTimeoutSecs` absent                                             | every model call bounded at 900 seconds                            |
+| `modelStreamIdleSecs` absent                                              | every model call cancelled after 60 seconds without a delta        |
 | `maxModelRetries` or `modelRetryMaxDelaySecs` absent                      | failed requests retried 10 times against a 60-second delay ceiling |
 | `maxModelRetries: 0`                                                      | honoured: the first failure ends the session                       |
 | one error-rate half declared, the other not                               | refused                                                            |
@@ -671,16 +692,13 @@ same turn. Nothing enters the context between the attempts, so the retry is
 byte-identical, and only the error ceilings, the run's wall clock and an
 operator's kill (both re-checked between attempts) decide when to stop asking.
 
-- A timed-out call. Every model call runs under the run's
-  [`modelCallTimeoutSecs`](#modelcalltimeoutsecs) ceiling: a total-duration cap
-  on each attempt of the buffered transport, whose reply arrives all at once or
-  not at all, and
-  an idle cap on the [streaming](/gg/loop-detection/) one, which measures the
-  wait for the response head and the gap between chunks, so a stream that is
-  still producing is never cut however long it runs. A timeout
-  surfaces immediately, without spending the client's internal retry budget:
-  each internal retry of a stall would cost the full ceiling again, and the
-  turn-level retry is the bounded one. Recorded as `model_timeout`.
+- A timed-out call. Every attempt runs under the run's
+  [`modelCallTimeoutSecs`](#modelcalltimeoutsecs) ceiling over its whole
+  duration. A timeout surfaces immediately, without spending the client's
+  retry schedule, since each retry would cost the full ceiling again.
+  Recorded as `model_timeout`. A stream that stalls within the ceiling is not
+  this failure: it is retried by the client under
+  [`modelStreamIdleSecs`](#modelstreamidlesecs).
 - A length-capped reply. A reply whose finish reason is `length` hit the
   provider's own output cap, and gg presumes it is a degenerate generation
   rather than work. It is rejected whole: it never enters the context, and its

@@ -47,12 +47,12 @@ it.
 
 ## Done when
 
-- [ ] Every agent's replies are read as a stream, whether or not loop
+- [x] Every agent's replies are read as a stream, whether or not loop
       detection is armed.
-- [ ] A stream with no delta for `modelStreamIdleSecs` is cancelled and
+- [x] A stream with no delta for `modelStreamIdleSecs` is cancelled and
       retried on the client's schedule, and the retry is logged as a stall.
-- [ ] `GgRunLimits` carries `modelStreamIdleSecs`, absent means 60, and the
+- [x] `GgRunLimits` carries `modelStreamIdleSecs`, absent means 60, and the
       console's limits form offers it.
-- [ ] The execution limits, configurations and loop detection pages describe
+- [x] The execution limits, configurations and loop detection pages describe
       the bound and the transport.
-- [ ] Gates green.
+- [x] Gates green.

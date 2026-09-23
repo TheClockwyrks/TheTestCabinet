@@ -16,9 +16,15 @@ use super::*;
 use crate::model::{Message, ModelClient, ModelError};
 use crate::telemetry::{CollectingSink, Emitter};
 
-/// A usable completion body, for the attempt that finally answers.
-const ANSWER: &str =
-    r#"{"choices":[{"message":{"role":"assistant","content":"done"},"finish_reason":"stop"}]}"#;
+/// A usable completion, streamed as the one transport's server-sent events: one text delta, then
+/// the usage trailer and the terminal sentinel — the shape every `200` in this file answers with,
+/// for the attempt that finally replies.
+const ANSWER: &str = concat!(
+    "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"done\"}}]}\n\n",
+    "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n",
+    "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":5}}\n\n",
+    "data: [DONE]\n\n",
+);
 
 /// One scripted reply: a status, the `Retry-After` it carries if any, and its body.
 type Reply = (u16, Option<&'static str>, &'static str);
@@ -36,6 +42,7 @@ fn scripted(policy: RetryPolicy, replies: Vec<Reply>) -> (OpenRouterClient, Arc<
         policy,
         None,
     )
+    .with_stream_idle(CONFIGURED_IDLE)
     .answered_by(move |_| {
         let n = seen.fetch_add(1, Ordering::SeqCst);
         let (status, retry_after, body) = replies[n.min(replies.len() - 1)];
@@ -43,13 +50,30 @@ fn scripted(policy: RetryPolicy, replies: Vec<Reply>) -> (OpenRouterClient, Arc<
         if let Some(value) = retry_after {
             builder = builder.header("retry-after", value);
         }
-        builder
-            .body(reqwest::Body::from(body))
-            .expect("a well-formed response")
-            .into()
+        let streaming = status == 200;
+        if streaming {
+            builder = builder.header("content-type", "text/event-stream");
+        }
+        // The scripted `200` is a stream of exactly one chunk holding the whole transcript: the
+        // line parser cuts the events apart, and a test that never needs a chunk to arrive late
+        // gains nothing from splitting them.
+        let body = if streaming {
+            reqwest::Body::wrap_stream(futures_util::stream::iter([Ok::<
+                &'static str,
+                std::io::Error,
+            >(body)]))
+        } else {
+            reqwest::Body::from(body)
+        };
+        builder.body(body).expect("a well-formed response").into()
     });
     (client, requests)
 }
+
+/// The stream-idle bound the tests configure: unlike [`DEFAULT_MODEL_STREAM_IDLE`], so a stall cut
+/// by the default instead reads differently on the paused clock, and short enough that a scripted
+/// reply never owes the clock a real wait.
+const CONFIGURED_IDLE: Duration = Duration::from_secs(9);
 
 /// A schedule of `retries` retries against a `ceiling`-second delay ceiling, read the way a run's
 /// declared limits are.
@@ -331,37 +355,74 @@ async fn each_retry_is_announced_on_the_calling_agents_stream() {
     );
 }
 
-/// The streaming transport retries on the same schedule and honours `Retry-After` the same way.
+/// A stream that stalls is a transport failure like any other: the attempt is cancelled at the
+/// [idle bound](CONFIGURED_IDLE), the retry is announced naming the stall, and the next attempt is
+/// waited for on the schedule the run configured — exactly as a reset connection is.
+///
+/// The stream is a real stalling one: a first chunk carrying a delta that names the provider, then
+/// a stream that never yields again. What the paused clock reads is the whole cost of the stall —
+/// the idle bound, not the call ceiling the same silence once ran out.
 #[tokio::test(start_paused = true)]
-async fn the_streaming_transport_retries_on_the_same_schedule() {
-    let (client, requests) = scripted(
+async fn a_stalled_stream_is_cancelled_and_retried_on_the_clients_schedule() {
+    let requests = Arc::new(AtomicUsize::new(0));
+    let seen = Arc::clone(&requests);
+    let client = OpenRouterClient::new(
+        "http://gateway.invalid/api/v1",
+        reqwest::Client::new(),
+        "openai/gpt-5.6",
+        "sk-test",
         schedule(2, 60),
-        vec![(503, Some("20"), "overloaded"), (502, None, "bad gateway")],
-    );
-    let client = client.with_loop_detection(test_cabinet_core::gg::GgLoopDetection {
-        enabled: true,
-        window_words: Some(256),
-        repeat_threshold: Some(32),
-        min_offenders: Some(2),
-        min_saturated_run: Some(3000),
-        max_response_chars: Some(0),
+        None,
+    )
+    .with_stream_idle(CONFIGURED_IDLE)
+    .with_model_call_timeout(Duration::from_secs(3600))
+    .answered_by(move |_| {
+        let attempt = seen.fetch_add(1, Ordering::SeqCst);
+        let builder = http::Response::builder()
+            .status(200)
+            .header("content-type", "text/event-stream");
+        let body = if attempt == 0 {
+            // The stall: one delta, then nothing ever again.
+            reqwest::Body::wrap_stream(
+                futures_util::stream::iter([Ok::<&'static str, std::io::Error>(
+                    "data: {\"provider\":\"slowco\",\"choices\":[{\"index\":0,\
+                     \"delta\":{\"content\":\"working\"}}]}\n\n",
+                )])
+                .chain(futures_util::stream::pending()),
+            )
+        } else {
+            reqwest::Body::wrap_stream(futures_util::stream::iter([Ok::<
+                &'static str,
+                std::io::Error,
+            >(ANSWER)]))
+        };
+        builder.body(body).expect("a well-formed response").into()
     });
-    assert!(
-        client.streams(),
-        "loop detection puts the client on the streaming transport"
-    );
     let sink = CollectingSink::new();
     client.announce_retries_on(&Emitter::with_sink(None, Box::new(sink.clone())));
 
     let started = tokio::time::Instant::now();
     let outcome = client.complete(&[Message::user("build it")], &[]).await;
 
-    assert!(
-        matches!(outcome, Err(ModelError::RetryExhausted { attempts: 3, .. })),
-        "{outcome:?}"
+    assert_eq!(
+        outcome.expect("the second attempt answers").text.as_deref(),
+        Some("done")
     );
-    assert_eq!(requests.load(Ordering::SeqCst), 3);
-    // The 20 s the `503` asked for, then the schedule's 2 s.
-    assert_eq!(started.elapsed(), Duration::from_secs(22));
-    assert_eq!(warnings(&sink).len(), 2);
+    assert_eq!(requests.load(Ordering::SeqCst), 2);
+    assert_eq!(
+        started.elapsed(),
+        CONFIGURED_IDLE + Duration::from_secs(1),
+        "the stall cost its idle bound and one schedule wait, not the call ceiling"
+    );
+    assert_eq!(
+        warnings(&sink),
+        vec![(
+            None,
+            format!(
+                "model request attempt 1 of 3 failed (the stream stalled: no delta from the model \
+                 for {}s (provider: slowco)); retrying in 1.0s",
+                CONFIGURED_IDLE.as_secs()
+            )
+        )]
+    );
 }

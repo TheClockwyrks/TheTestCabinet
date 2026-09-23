@@ -32,7 +32,6 @@ fn build_request_body_uses_openai_tools_shape() {
         None,
         CacheTtl::Standard,
         None,
-        false,
     );
 
     assert_eq!(body["model"], json!("openai/gpt-5.6"));
@@ -66,16 +65,7 @@ fn build_request_body_encodes_tool_call_arguments_as_string() {
         Message::tool_result("call_1", "wrote 13 bytes"),
     ];
 
-    let body = build_request_body(
-        "m",
-        &messages,
-        &[],
-        None,
-        None,
-        CacheTtl::Standard,
-        None,
-        false,
-    );
+    let body = build_request_body("m", &messages, &[], None, None, CacheTtl::Standard, None);
 
     let wire_call = &body["messages"][0]["tool_calls"][0];
     assert_eq!(wire_call["id"], json!("call_1"));
@@ -110,7 +100,6 @@ fn build_request_body_omits_tools_when_none() {
         None,
         CacheTtl::Standard,
         None,
-        false,
     );
     assert!(body.get("tools").is_none());
     assert!(body.get("tool_choice").is_none());
@@ -130,7 +119,6 @@ fn build_request_body_pins_the_provider_and_refuses_fallbacks() {
         Some("openai"),
         CacheTtl::Standard,
         None,
-        false,
     );
     assert_eq!(body["provider"]["only"], json!(["openai"]));
     assert_eq!(body["provider"]["allow_fallbacks"], json!(false));
@@ -144,7 +132,6 @@ fn build_request_body_pins_the_provider_and_refuses_fallbacks() {
         None,
         CacheTtl::Standard,
         None,
-        false,
     );
     assert!(unpinned.get("provider").is_none());
 }
@@ -169,7 +156,6 @@ fn build_request_body_sends_the_reasoning_object_and_only_what_it_names() {
             None,
             CacheTtl::Standard,
             reasoning,
-            false,
         )
     };
 
@@ -192,9 +178,8 @@ fn build_request_body_sends_the_reasoning_object_and_only_what_it_names() {
     );
 }
 
-/// A compaction summary is a request of the agent too — it runs on the agent's model at the
-/// agent's task — so the required-tool body a summary is requested with carries the same object
-/// the turns do.
+/// A compaction summary written on the agent's own model is a request of the agent too, so the
+/// required-tool body a summary is requested with carries the same object the turns do.
 #[test]
 fn build_required_tool_request_body_sends_the_reasoning_object() {
     let tool = ToolDefinition {
@@ -213,7 +198,6 @@ fn build_required_tool_request_body_sends_the_reasoning_object() {
             effort: Some(GgReasoningEffort::Minimal),
             max_tokens: None,
         }),
-        false,
     );
     assert_eq!(body["reasoning"], json!({ "effort": "minimal" }));
     assert_eq!(body["tool_choice"]["function"]["name"], json!("compact"));
@@ -238,7 +222,6 @@ fn build_request_body_sends_an_attached_image_as_a_content_part() {
         None,
         CacheTtl::Standard,
         None,
-        false,
     );
 
     let tool_msg = &body["messages"][1];
@@ -282,7 +265,6 @@ fn a_marker_model_sends_every_content_message_as_parts() {
         None,
         CacheTtl::Standard,
         None,
-        false,
     );
 
     // Every message — breakpoint or not — carries the same one-element array shape…
@@ -326,7 +308,6 @@ fn build_request_body_sends_no_markers_to_an_implicitly_caching_model() {
             None,
             CacheTtl::Standard,
             None,
-            false,
         );
         assert!(
             markers(&body).is_empty(),
@@ -413,7 +394,6 @@ fn build_request_body_marks_the_opening_context_and_the_tail() {
         None,
         CacheTtl::Standard,
         None,
-        false,
     );
 
     // The anchor is the last message before the first assistant turn (the fixed preamble), and
@@ -569,7 +549,6 @@ fn build_request_body_marks_the_last_part_of_an_image_message() {
         None,
         CacheTtl::Extended,
         None,
-        false,
     );
 
     let parts = body["messages"][1]["content"]
@@ -633,7 +612,6 @@ fn build_request_body_extends_the_ttl_of_the_stable_breakpoints() {
         None,
         CacheTtl::Extended,
         None,
-        false,
     );
 
     let extended = json!({ "type": "ephemeral", "ttl": "1h" });
@@ -674,7 +652,6 @@ fn build_request_body_qualifies_no_marker_at_the_standard_lifetime() {
         None,
         CacheTtl::Standard,
         None,
-        false,
     );
 
     let standard = json!({ "type": "ephemeral" });
@@ -709,7 +686,6 @@ fn build_request_body_extends_a_lone_anchor() {
         None,
         CacheTtl::Extended,
         None,
-        false,
     );
 
     assert_eq!(
@@ -736,7 +712,6 @@ fn build_request_body_orders_extended_markers_before_the_rolling_one() {
             None,
             CacheTtl::Extended,
             None,
-            false,
         );
         let sent = markers(&body);
         let rolling = sent
@@ -982,6 +957,7 @@ fn client_for_slot_builds_mock_for_mock_binding() {
         &binding("mock/echo"),
         &RoutingKey::mint(),
         DEFAULT_MODEL_CALL_TIMEOUT,
+        DEFAULT_MODEL_STREAM_IDLE,
         RetryPolicy::default(),
         None,
         &ToolChoiceMemory::default(),
