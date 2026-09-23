@@ -16,7 +16,7 @@ session the same way on the first response.
 Today an outage is hidden by OpenRouter: on 2026-09-22 OpenAI answered one
 request of a `openai/gpt-5.6-sol` run with a `502`, OpenRouter moved the run to
 Azure, and gg saw a successful response. Once
-[`pin-every-run-to-the-model-s-official-provider.md`](pin-every-run-to-the-model-s-official-provider.md)
+[`pin-every-run-to-the-model-s-official-provider.md`](../pin-every-run-to-the-model-s-official-provider.md)
 refuses fallbacks, that `502` comes back to gg, and a 3.5 s schedule gives up
 inside the outage that produced it.
 
@@ -53,11 +53,11 @@ error it produces.
 
 ## Done when
 
-- [ ] `GgRunLimits` carries `maxModelRetries` and `modelRetryMaxDelaySecs`,
+- [x] `GgRunLimits` carries `maxModelRetries` and `modelRetryMaxDelaySecs`,
       absent means 10 and 60, and the console's limits form offers both.
-- [ ] A request failing with `429`, `5xx` or a transport error is retried on the
+- [x] A request failing with `429`, `5xx` or a transport error is retried on the
       configured schedule, honouring `Retry-After`.
-- [ ] Each retry is logged with its attempt, cause and delay.
-- [ ] A session ended by spent retries or a fatal response exits `1`.
-- [ ] The execution limits page states the schedule and the exit.
-- [ ] Gates green.
+- [x] Each retry is logged with its attempt, cause and delay.
+- [x] A session ended by spent retries or a fatal response exits `1`.
+- [x] The execution limits page states the schedule and the exit.
+- [x] Gates green.
