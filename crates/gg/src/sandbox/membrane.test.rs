@@ -287,10 +287,12 @@ fn a_program_past_the_run_deadline_is_refused_at_its_next_tool_call() {
 }
 
 /// A run with budget left is not refused — the guard bounds a spent budget, not every deadline.
+///
+/// The deadline is a year away, so no machine is slow enough to spend it before the call.
 #[test]
 fn a_program_within_the_run_deadline_is_serviced() {
     let log = CallLog::default();
-    let deadline = Instant::now() + Duration::from_secs(60);
+    let deadline = Instant::now() + Duration::from_secs(365 * 24 * 60 * 60);
     let mut state = membrane_with(&log, &all_operations(), Some(deadline), canned_outcome);
 
     state

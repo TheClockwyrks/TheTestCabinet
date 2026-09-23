@@ -11,6 +11,7 @@
 //! here as a property of the latch and again through the loop in `agent.waits.test.rs`.
 
 use super::*;
+use std::future::Future;
 
 /// A healthy run has no fault, and that is the state every run starts in.
 #[test]
@@ -96,32 +97,40 @@ fn a_dispatch_fault_with_no_assignee_names_only_the_issue() {
 /// A fault raised **before** anybody asks resolves the wait immediately. An agent that suspended
 /// itself while the run was healthy, and only reads the latch once released, would otherwise sit
 /// waiting for a second fault that a one-shot latch can never produce.
-#[tokio::test]
-async fn awaiting_an_already_raised_fault_resolves_at_once() {
+#[test]
+fn awaiting_an_already_raised_fault_resolves_at_once() {
     let latch = FaultLatch::default();
     latch.in_agent("agent-2", "Coder", "the wasm host would not start");
 
-    tokio::time::timeout(std::time::Duration::from_secs(5), latch.until_raised())
-        .await
-        .expect("a latch that already holds a fault answers without waiting");
+    let mut waiting = std::pin::pin!(latch.until_raised());
+    let mut context = std::task::Context::from_waker(std::task::Waker::noop());
+    assert!(
+        waiting.as_mut().poll(&mut context).is_ready(),
+        "a latch that already holds a fault answers on its first poll"
+    );
 }
 
 /// A fault raised **while** an agent is awaiting the latch releases it, through a clone — which is
 /// the shape every real release has, since the agent that breaks is never the agent that is
 /// suspended.
-#[tokio::test]
-async fn awaiting_the_latch_is_released_by_a_later_fault() {
+///
+/// The wait is polled by hand: once before the fault, which registers it and must leave it
+/// pending, and once after, which must find it released.
+#[test]
+fn awaiting_the_latch_is_released_by_a_later_fault() {
     let latch = FaultLatch::default();
-    let waiter = latch.clone();
-    let awaiting = tokio::spawn(async move { waiter.until_raised().await });
+    let breaking = latch.clone();
+    let mut waiting = std::pin::pin!(latch.until_raised());
+    let mut context = std::task::Context::from_waker(std::task::Waker::noop());
+    assert!(
+        waiting.as_mut().poll(&mut context).is_pending(),
+        "a healthy run's latch must not answer"
+    );
 
-    // One yield is enough on the single-threaded test runtime to run the spawned task up to its
-    // await, so what follows releases a registered waiter rather than answering it on arrival.
-    tokio::task::yield_now().await;
-    latch.in_agent("agent-4", "Reviewer", "its task panicked");
+    breaking.in_agent("agent-4", "Reviewer", "its task panicked");
 
-    tokio::time::timeout(std::time::Duration::from_secs(5), awaiting)
-        .await
-        .expect("the waiter is released by the fault rather than left for the run's deadline")
-        .expect("the awaiting task ran to completion");
+    assert!(
+        waiting.as_mut().poll(&mut context).is_ready(),
+        "the waiter is released by the fault rather than left for the run's deadline"
+    );
 }
