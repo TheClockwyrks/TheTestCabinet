@@ -1278,6 +1278,10 @@ impl ModelClient for RecordingClient {
     fn model_id(&self) -> &str {
         self.inner.model_id()
     }
+
+    fn announce_retries_on(&self, emitter: &crate::telemetry::Emitter) {
+        self.inner.announce_retries_on(emitter);
+    }
 }
 
 /// A [`ShellRunner`] decorator that streams every command line an agent reaches into a

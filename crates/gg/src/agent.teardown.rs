@@ -276,6 +276,7 @@ impl AgentTeardown {
             final_text: stopped_text(status, Some(&detail)),
             ending: None,
             limit: None,
+            provider_failure: false,
             handoff: None,
         };
         if let Some(emitter) = &self.emitter {

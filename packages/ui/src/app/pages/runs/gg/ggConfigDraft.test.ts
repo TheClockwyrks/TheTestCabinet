@@ -57,7 +57,9 @@ import {
   AUTHORED_MAX_CONSECUTIVE_ERRORS,
   AUTHORED_MAX_ERROR_RATE,
   AUTHORED_MAX_PARALLEL,
+  AUTHORED_MAX_MODEL_RETRIES,
   AUTHORED_MODEL_CALL_TIMEOUT_SECS,
+  AUTHORED_MODEL_RETRY_MAX_DELAY_SECS,
   AUTHORED_MEMORY_MAX_COUNT,
   AUTHORED_MEMORY_MAX_LEN_DESCRIPTION,
   AUTHORED_MEMORY_MAX_LEN_PER,
@@ -2009,6 +2011,8 @@ describe("gg run limits", () => {
       maxParallel: AUTHORED_MAX_PARALLEL,
       replayMaxBytes: AUTHORED_REPLAY_MAX_MIB * BYTES_PER_MIB,
       modelCallTimeoutSecs: AUTHORED_MODEL_CALL_TIMEOUT_SECS,
+      maxModelRetries: AUTHORED_MAX_MODEL_RETRIES,
+      modelRetryMaxDelaySecs: AUTHORED_MODEL_RETRY_MAX_DELAY_SECS,
       maxConsecutiveErrors: AUTHORED_MAX_CONSECUTIVE_ERRORS,
       maxErrorRate: AUTHORED_MAX_ERROR_RATE,
       errorRateWindow: AUTHORED_ERROR_RATE_WINDOW,
@@ -2081,6 +2085,20 @@ describe("gg run limits", () => {
     const draft = emptyDraft();
     draft.limits.modelCallTimeoutSecs = "0";
     expect(draftSaveError(draft)).toContain("greater than zero");
+  });
+
+  it("refuses a zero retry delay ceiling, and honours a zero retry count", () => {
+    const draft = emptyDraft();
+    draft.limits.modelRetryMaxDelaySecs = "0";
+    expect(draftSaveError(draft)).toContain("greater than zero");
+    // A retry count of zero is a legitimate setting — a run that gives up on the first
+    // failure — rather than the delay ceiling's unhonourable figure.
+    draft.limits.modelRetryMaxDelaySecs = "60";
+    draft.limits.maxModelRetries = "0";
+    expect(draftSaveError(draft)).toBeNull();
+    expect(capabilitySetFromDraft(draft, null).limits?.maxModelRetries).toBe(0);
+    draft.limits.maxModelRetries = "2.5";
+    expect(draftSaveError(draft)).toContain("whole number of retries");
   });
 
   it("refuses a ceiling that is not a number in its own units", () => {

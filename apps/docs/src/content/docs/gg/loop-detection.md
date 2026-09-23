@@ -193,11 +193,12 @@ characters read before it was abandoned); discarded 4 response(s) totalling 4904
 characters of generated output
 ```
 
-That ends the session with the terminal status `model_error`, on the terms
-[a failed model call always has](/gg/execution-limits/#model-api-errors). The
-turn is recorded with the base error kind `model_api` and the error type
-`model_response_loop`. What is worth acting on beyond that is how many replies
-were discarded and how much they generated.
+That ends the agent with the terminal status `model_error`, on the terms
+[a failed model call](/gg/execution-limits/#model-api-errors) has. The failure
+is the model's rather than the provider's, so a root that ends on it exits `0`
+and the run is scored. The turn is recorded with the base error kind
+`model_api` and the error type `model_response_loop`. What is worth acting on
+beyond that is how many replies were discarded and how much they generated.
 
 The [session record](/gg/analysis/session-records/) keeps the failure as a
 recorded model error of kind `response_loop` carrying how many replies were

@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
 use crate::limits::TurnErrorType;
+use crate::telemetry::Emitter;
 
 /// The role a [`Message`] plays in the conversation sent to a model.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -561,6 +562,17 @@ pub trait ModelClient: Send + Sync {
     /// The concrete model id this client is bound to (for telemetry and per-slot
     /// accounting).
     fn model_id(&self) -> &str;
+
+    /// Announce each retry this client spends on `emitter`, the stream of the agent about to
+    /// call it, as a `warn` naming the attempt, its cause and the delay before the next.
+    ///
+    /// Called by the agent rather than set by the [factory](crate::client::ClientFactory),
+    /// because the factory is handed an agent's origin and the stream is scoped to its id. A
+    /// client that never retries (a scripted mock, a replayed recording) has nothing to
+    /// announce, which is the default; a decorator forwards it to the client it wraps.
+    fn announce_retries_on(&self, emitter: &Emitter) {
+        let _ = emitter;
+    }
 }
 
 #[cfg(test)]

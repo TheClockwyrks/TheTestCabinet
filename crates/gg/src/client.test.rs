@@ -3,7 +3,6 @@ use crate::model::{
     FinishReason, ImageContent, Message, ModelClient, ModelError, ToolCall, ToolDefinition,
 };
 use serde_json::json;
-use std::time::Duration;
 use test_cabinet_core::gg::{GgSlotBinding, PRIMARY_SLOT};
 
 // ---------------------------------------------------------------------------
@@ -875,37 +874,6 @@ fn parse_response_rejects_empty_and_error_bodies() {
 }
 
 // ---------------------------------------------------------------------------
-// Retry classification & backoff
-// ---------------------------------------------------------------------------
-
-/// `2xx` is success, `429`/`5xx` are retryable, other statuses (incl. auth) are fatal.
-#[test]
-fn classify_status_partitions_retryable_from_fatal() {
-    assert_eq!(classify_status(200), StatusClass::Success);
-    assert_eq!(classify_status(204), StatusClass::Success);
-    assert_eq!(classify_status(429), StatusClass::Retryable);
-    assert_eq!(classify_status(500), StatusClass::Retryable);
-    assert_eq!(classify_status(503), StatusClass::Retryable);
-    // Auth and other 4xx are fatal — retrying will not help.
-    assert_eq!(classify_status(401), StatusClass::Fatal);
-    assert_eq!(classify_status(400), StatusClass::Fatal);
-    assert_eq!(classify_status(404), StatusClass::Fatal);
-}
-
-/// Backoff doubles per attempt and is capped at `max_delay`.
-#[test]
-fn backoff_delay_doubles_and_caps() {
-    let policy = RetryPolicy::default(); // 500ms base, 8s cap
-    assert_eq!(backoff_delay(1, &policy), Duration::from_millis(500));
-    assert_eq!(backoff_delay(2, &policy), Duration::from_millis(1000));
-    assert_eq!(backoff_delay(3, &policy), Duration::from_millis(2000));
-    assert_eq!(backoff_delay(4, &policy), Duration::from_millis(4000));
-    // Beyond the cap it saturates rather than overflowing.
-    assert_eq!(backoff_delay(5, &policy), Duration::from_secs(8));
-    assert_eq!(backoff_delay(64, &policy), Duration::from_secs(8));
-}
-
-// ---------------------------------------------------------------------------
 // Provider selection
 // ---------------------------------------------------------------------------
 
@@ -944,8 +912,13 @@ fn resolve_provider_kind_selects_mock_by_model_prefix_or_override() {
 /// `client_for_slot` builds a working mock client for a mock binding.
 #[test]
 fn client_for_slot_builds_mock_for_mock_binding() {
-    let client = client_for_slot(&binding("mock/echo"), None, DEFAULT_MODEL_CALL_TIMEOUT)
-        .expect("mock client");
+    let client = client_for_slot(
+        &binding("mock/echo"),
+        None,
+        DEFAULT_MODEL_CALL_TIMEOUT,
+        RetryPolicy::default(),
+    )
+    .expect("mock client");
     assert_eq!(client.model_id(), "mock/echo");
 }
 

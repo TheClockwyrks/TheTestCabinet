@@ -23,7 +23,7 @@
 //! A known failure of an existing harness is discarding a whole run on a single
 //! transient API error. [`OpenRouterClient`] guards against that with **bounded
 //! exponential backoff** ([`RetryPolicy`]): it retries `429`, `5xx`, and transport
-//! errors up to a small cap, and only then returns
+//! errors on the schedule the run's limits configure, and only then returns
 //! [`ModelError::RetryExhausted`]. A `4xx`
 //! (auth or otherwise) returns [`ModelError::Fatal`]
 //! immediately — retrying will not help. The retry loop lives **inside the client**,
@@ -65,7 +65,9 @@ use std::time::Duration;
 use futures_util::StreamExt;
 use serde::Deserialize;
 use serde_json::{Value, json};
-use test_cabinet_core::gg::{GgLoopDetection, GgPromptCacheTtl, GgSlotBinding, ROOT_PROFILE_ID};
+use test_cabinet_core::gg::{
+    GgLoopDetection, GgPromptCacheTtl, GgSlotBinding, GgTelemetryKind, ROOT_PROFILE_ID,
+};
 use test_cabinet_core::gg_session_record::{GgClientRole, GgSessionAgentOrigin};
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
@@ -74,6 +76,7 @@ use crate::model::{
     FinishReason, LoopAborts, Message, ModelClient, ModelError, ModelResponse, Role, ToolCall,
     ToolDefinition,
 };
+use crate::telemetry::Emitter;
 
 #[cfg(doc)]
 use crate::loopguard::ResolvedLoopGuard;
@@ -105,8 +108,9 @@ const ERROR_BODY_CAP: usize = 2000;
 /// ceiling is applied differs by [transport](OpenRouterClient), because the two fail differently:
 ///
 /// - The **buffering** transport gets its reply all at once or not at all, so the ceiling is a
-///   **total-duration** cap over the whole call, internal retries included: the configured
-///   duration without a complete reply is a stall whatever the client was doing with them.
+///   **total-duration** cap on each attempt: the configured duration without a complete reply is
+///   a stall. The backoff between attempts sits outside it, so the run's retry schedule is
+///   waited out in full whatever the ceiling.
 /// - The **streaming** transport delivers the reply incrementally, and a stream that is still
 ///   producing bytes is not stalled however long it runs — a legitimately long program can stream
 ///   for longer than any total cap worth having. Its ceiling is therefore an **idle** cap: the
@@ -251,7 +255,28 @@ pub const MOCK_COMPACTION_SUMMARY: &str = "Building a minimal HTML5 canvas game 
 // Retry policy
 // ---------------------------------------------------------------------------
 
+/// The retries after the first attempt a run takes when its
+/// [limits](test_cabinet_core::gg::GgRunLimits) write no `maxModelRetries`: **ten**.
+///
+/// Against the default [delay ceiling](DEFAULT_MODEL_RETRY_MAX_DELAY) the [schedule](backoff_delay)
+/// waits about five minutes across the ten, long enough to outlast a pinned provider's brief
+/// outage rather than give up inside it.
+pub const DEFAULT_MAX_MODEL_RETRIES: u32 = 10;
+
+/// The ceiling on one retry's backoff delay a run takes when its
+/// [limits](test_cabinet_core::gg::GgRunLimits) write no `modelRetryMaxDelaySecs`: sixty seconds.
+/// Against it the default ten retries wait about five minutes in all, and thirty retries at the
+/// same ceiling wait about half an hour.
+pub const DEFAULT_MODEL_RETRY_MAX_DELAY: Duration = Duration::from_secs(60);
+
 /// Bounded exponential-backoff policy for [`OpenRouterClient`].
+///
+/// The schedule the run configures through its
+/// [limits](test_cabinet_core::gg::GgRunLimits): `maxModelRetries` retries after the first
+/// attempt ([`max_attempts`](Self::max_attempts) is that count plus one), the first retry
+/// waiting one second and each next twice the last, capped at the `modelRetryMaxDelaySecs`
+/// ceiling. The [defaults](Self::default) are the absent-key figures, so a client built without
+/// the run's limits retries on the same schedule as one whose configuration wrote none.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RetryPolicy {
     /// Total attempts (the first try plus retries) before giving up.
@@ -262,12 +287,21 @@ pub struct RetryPolicy {
     pub max_delay: Duration,
 }
 
+impl RetryPolicy {
+    /// This policy with its delay ceiling set — the `modelRetryMaxDelaySecs` the run configured.
+    pub fn with_max_delay(mut self, max_delay: Duration) -> Self {
+        self.max_delay = max_delay;
+        self
+    }
+}
+
 impl Default for RetryPolicy {
     fn default() -> Self {
         Self {
-            max_attempts: 4,
-            base_delay: Duration::from_millis(500),
-            max_delay: Duration::from_secs(8),
+            // The first attempt plus the default retries after it.
+            max_attempts: DEFAULT_MAX_MODEL_RETRIES + 1,
+            base_delay: Duration::from_secs(1),
+            max_delay: DEFAULT_MODEL_RETRY_MAX_DELAY,
         }
     }
 }
@@ -290,7 +324,9 @@ pub fn backoff_delay(attempt: u32, policy: &RetryPolicy) -> Duration {
 pub enum StatusClass {
     /// A `2xx`: parse the body as a completion.
     Success,
-    /// A `429` or `5xx`: transient, worth retrying.
+    /// A `429` or `5xx`: transient, worth retrying. A `429` or `503` carrying a `Retry-After`
+    /// header waits that long instead of the schedule's delay when it is the longer one (see
+    /// [`retry_after_delay`]).
     Retryable,
     /// Any other status (notably `4xx` auth/validation): fatal, do not retry.
     Fatal,
@@ -304,6 +340,33 @@ pub fn classify_status(status: u16) -> StatusClass {
         429 => StatusClass::Retryable,
         500..=599 => StatusClass::Retryable,
         _ => StatusClass::Fatal,
+    }
+}
+
+/// The wait a response's `Retry-After` header asks for, when it asks for one.
+///
+/// Read as the **seconds** form only. The header's other spelling is an HTTP date, which would
+/// take the local clock to turn into a wait; a date, like a malformed value, is read as no answer,
+/// and the schedule's own delay stands exactly as an absent header leaves it.
+pub fn retry_after_delay(response: &reqwest::Response) -> Option<Duration> {
+    response
+        .headers()
+        .get(reqwest::header::RETRY_AFTER)?
+        .to_str()
+        .ok()?
+        .trim()
+        .parse::<u64>()
+        .ok()
+        .map(Duration::from_secs)
+}
+
+/// The delay the retry that follows attempt `attempt` (1-based) waits: the
+/// [schedule's](backoff_delay), or the `Retry-After` a `429` or `503` carried when it is the
+/// longer one.
+pub fn retry_wait(attempt: u32, policy: &RetryPolicy, retry_after: Option<Duration>) -> Duration {
+    match retry_after {
+        Some(asked) => backoff_delay(attempt, policy).max(asked),
+        None => backoff_delay(attempt, policy),
     }
 }
 
@@ -368,6 +431,12 @@ pub struct OpenRouterClient {
     /// [transport](Self) the client is on. [`DEFAULT_MODEL_CALL_TIMEOUT`] describes what the
     /// ceiling means on each of the two.
     model_call_timeout: Duration,
+    /// The stream each retry is announced on, as a `warn` naming the attempt, the status or
+    /// transport error that provoked it, and the delay before the next attempt. Set by
+    /// [`announce_retries_on`](ModelClient::announce_retries_on) when the agent that will call
+    /// this client takes it up, because only the agent knows the id its stream is scoped to.
+    /// `None` announces nothing, which is a client no agent has taken up.
+    retry_stream: Mutex<Option<Emitter>>,
     /// Test-only: where each attempt's response comes from instead of the network, so a test can
     /// hand the client a reply whose body is exactly the chunks it chooses, ready or pending, and
     /// drive the whole call on a paused clock with no socket whose readiness could race it.
@@ -405,6 +474,7 @@ impl OpenRouterClient {
             stable_ttl: CacheTtl::Standard,
             loop_guard: None,
             model_call_timeout: DEFAULT_MODEL_CALL_TIMEOUT,
+            retry_stream: Mutex::new(None),
             #[cfg(test)]
             gateway: None,
         }
@@ -441,11 +511,38 @@ impl OpenRouterClient {
         self
     }
 
+    /// One retry announced on the [stream](Self::retry_stream) the calling agent handed over:
+    /// the attempt that just failed (`attempt`, 1-based), the status or transport error that
+    /// failed it, and the delay before the next attempt.
+    fn announce_retry(&self, attempt: u32, cause: &str, delay: Duration) {
+        let stream = self
+            .retry_stream
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(emitter) = stream.as_ref() {
+            emitter.emit(GgTelemetryKind::Log {
+                level: "warn".to_string(),
+                message: retry_message(attempt, self.retry.max_attempts, cause, delay),
+            });
+        }
+    }
+
     /// This client with `ttl` as the [lifetime](CacheTtl) its stable cache markers ask for — the
     /// agent profile's [configured choice](GgPromptCacheTtl), which
     /// [`client_for_slot`] carries in on the binding.
     pub fn with_prompt_cache_ttl(mut self, ttl: GgPromptCacheTtl) -> Self {
         self.stable_ttl = ttl.into();
+        self
+    }
+
+    /// This client retrying on `policy` — the run's resolved
+    /// [retry schedule](crate::limits::RunLimits::retry_policy), which [`client_for_slot`]
+    /// carries in from the launch beside the [per-call ceiling](Self::with_model_call_timeout).
+    ///
+    /// A client built without it takes the [defaults](RetryPolicy::default) — the absent-key
+    /// figures, so the two readings cannot disagree.
+    pub fn with_retry_policy(mut self, policy: RetryPolicy) -> Self {
+        self.retry = policy;
         self
     }
 
@@ -580,6 +677,13 @@ impl ModelClient for OpenRouterClient {
     fn model_id(&self) -> &str {
         &self.model_id
     }
+
+    fn announce_retries_on(&self, emitter: &Emitter) {
+        *self
+            .retry_stream
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(emitter.clone());
+    }
 }
 
 impl OpenRouterClient {
@@ -604,33 +708,14 @@ impl OpenRouterClient {
     /// The **buffering** transport: post the request, read the whole body, [parse](parse_response)
     /// it. gg's original and still its default — see [`send`](Self::send).
     ///
-    /// The whole call — every attempt, backoff included — runs under the run's
+    /// Each attempt, from the request to the last byte of its reply, runs under the run's
     /// [per-call ceiling](DEFAULT_MODEL_CALL_TIMEOUT) as a **total-duration** cap: a buffered
-    /// reply arrives all at once or not at all, so there is no progress to watch, and the run's
-    /// ceiling elapsing without a complete reply is a stall whichever attempt it happened on. The
+    /// reply arrives all at once or not at all, so there is no progress to watch, and the ceiling
+    /// elapsing without a complete reply is a stall. The backoff between attempts sits outside
+    /// the cap, so the run's retry schedule is waited out in full however short the ceiling. The
     /// elapse is a [`ModelError::Timeout`] with no provider (nothing was read that could name
-    /// one).
+    /// one), returned at once rather than retried.
     async fn send_buffered(
-        &self,
-        body: Value,
-        messages: &[Message],
-    ) -> Result<ModelResponse, ModelError> {
-        match tokio::time::timeout(
-            self.model_call_timeout,
-            self.send_buffered_inner(body, messages),
-        )
-        .await
-        {
-            Ok(outcome) => outcome,
-            Err(_) => Err(ModelError::Timeout {
-                after: self.model_call_timeout,
-                provider: None,
-            }),
-        }
-    }
-
-    /// [`send_buffered`](Self::send_buffered) without its ceiling — the attempt loop itself.
-    async fn send_buffered_inner(
         &self,
         body: Value,
         messages: &[Message],
@@ -643,38 +728,32 @@ impl OpenRouterClient {
         let carries_images = messages.iter().any(|message| !message.images.is_empty());
 
         for attempt in 1..=self.retry.max_attempts {
-            let sent = self.post(&url, &body).await;
-
-            match sent {
-                // Transport-level failure (connect/timeout/etc.): always retryable.
-                Err(err) => last_err = format!("transport error: {err}"),
-                Ok(resp) => {
-                    let status = resp.status().as_u16();
-                    match classify_status(status) {
-                        StatusClass::Success => {
-                            let text = resp.text().await.map_err(|err| {
-                                ModelError::Parse(format!("reading response body: {err}"))
-                            })?;
-                            return parse_response(&text);
-                        }
-                        StatusClass::Fatal => {
-                            let body = resp.text().await.unwrap_or_default();
-                            // A refusal of the *images* rather than of the request: the
-                            // loop can recover from this one by dropping them and
-                            // retrying, so it is reported as its own error rather than
-                            // ending the run as an ordinary fatal 4xx. See `refusal`.
-                            return Err(self.refusal(status, &body, carries_images));
-                        }
-                        StatusClass::Retryable => {
-                            let body = resp.text().await.unwrap_or_default();
-                            last_err = format!("HTTP {status}: {}", truncate(&body));
-                        }
-                    }
+            let attempted = tokio::time::timeout(
+                self.model_call_timeout,
+                self.buffered_attempt(&url, &body, carries_images),
+            )
+            .await;
+            // What the retry after this attempt waits, when the attempt just made has a say in
+            // it: a `429` or `503` carrying `Retry-After` asks for a wait of its own, honoured
+            // when it is longer than the schedule's delay.
+            let retry_after = match attempted {
+                Err(_) => {
+                    return Err(ModelError::Timeout {
+                        after: self.model_call_timeout,
+                        provider: None,
+                    });
                 }
-            }
+                Ok(BufferedAttempt::Done(outcome)) => return outcome,
+                Ok(BufferedAttempt::Retry { cause, retry_after }) => {
+                    last_err = cause;
+                    retry_after
+                }
+            };
 
             if attempt < self.retry.max_attempts {
-                tokio::time::sleep(backoff_delay(attempt, &self.retry)).await;
+                let delay = retry_wait(attempt, &self.retry, retry_after);
+                self.announce_retry(attempt, &last_err, delay);
+                tokio::time::sleep(delay).await;
             }
         }
 
@@ -682,6 +761,53 @@ impl OpenRouterClient {
             attempts: self.retry.max_attempts,
             last: last_err,
         })
+    }
+
+    /// One buffered attempt: post the request and read the whole reply, then classify it.
+    /// Everything here runs under the attempt's [ceiling](Self::send_buffered); the backoff
+    /// after a retryable failure is the caller's, outside it.
+    async fn buffered_attempt(
+        &self,
+        url: &str,
+        body: &Value,
+        carries_images: bool,
+    ) -> BufferedAttempt {
+        let resp = match self.post(url, body).await {
+            Ok(resp) => resp,
+            // Transport-level failure (connect/reset/etc.): always retryable.
+            Err(err) => {
+                return BufferedAttempt::Retry {
+                    cause: format!("transport error: {err}"),
+                    retry_after: None,
+                };
+            }
+        };
+        let status = resp.status().as_u16();
+        match classify_status(status) {
+            StatusClass::Success => BufferedAttempt::Done(match resp.text().await {
+                Ok(text) => parse_response(&text),
+                Err(err) => Err(ModelError::Parse(format!("reading response body: {err}"))),
+            }),
+            StatusClass::Fatal => {
+                let body = resp.text().await.unwrap_or_default();
+                // A refusal of the *images* rather than of the request: the loop can recover from
+                // this one by dropping them and retrying, so it is reported as its own error
+                // rather than ending the run as an ordinary fatal 4xx. See `refusal`.
+                BufferedAttempt::Done(Err(self.refusal(status, &body, carries_images)))
+            }
+            StatusClass::Retryable => {
+                let retry_after = if status == 429 || status == 503 {
+                    retry_after_delay(&resp)
+                } else {
+                    None
+                };
+                let body = resp.text().await.unwrap_or_default();
+                BufferedAttempt::Retry {
+                    cause: format!("HTTP {status}: {}", truncate(&body)),
+                    retry_after,
+                }
+            }
+        }
     }
 
     /// The **streaming** transport: ask for server-sent events, assemble the reply with a
@@ -738,6 +864,10 @@ impl OpenRouterClient {
                     }
                 };
 
+            // See `send_buffered` — the `Retry-After` a retryable status carries asks for a
+            // wait of its own, honoured when it is longer than the schedule's delay.
+            let mut retry_after = None;
+
             match sent {
                 // Transport-level failure (connect/timeout/etc.): always retryable.
                 Err(err) => last_err = format!("transport error: {err}"),
@@ -780,6 +910,9 @@ impl OpenRouterClient {
                             return Err(self.refusal(status, &body, carries_images));
                         }
                         StatusClass::Retryable => {
+                            if status == 429 || status == 503 {
+                                retry_after = retry_after_delay(&resp);
+                            }
                             let body = resp.text().await.unwrap_or_default();
                             last_err = format!("HTTP {status}: {}", truncate(&body));
                         }
@@ -788,7 +921,9 @@ impl OpenRouterClient {
             }
 
             if attempt < self.retry.max_attempts {
-                tokio::time::sleep(backoff_delay(attempt, &self.retry)).await;
+                let delay = retry_wait(attempt, &self.retry, retry_after);
+                self.announce_retry(attempt, &last_err, delay);
+                tokio::time::sleep(delay).await;
             }
         }
 
@@ -826,6 +961,26 @@ impl OpenRouterClient {
             message: truncate(body),
         }
     }
+}
+
+/// How one [buffered attempt](OpenRouterClient::buffered_attempt) ended.
+enum BufferedAttempt {
+    /// A reply or a failure no retry can help: the call's outcome.
+    Done(Result<ModelResponse, ModelError>),
+    /// A retryable failure: what went wrong, and the `Retry-After` it carried, if any.
+    Retry {
+        cause: String,
+        retry_after: Option<Duration>,
+    },
+}
+
+/// The `warn` line a retry is announced with: the attempt that failed (1-based) out of
+/// `max_attempts`, the status or transport error that failed it, and the wait before the next.
+pub fn retry_message(attempt: u32, max_attempts: u32, cause: &str, delay: Duration) -> String {
+    format!(
+        "model request attempt {attempt} of {max_attempts} failed ({cause}); retrying in {:.1}s",
+        delay.as_secs_f64(),
+    )
 }
 
 /// How one streamed attempt ended.
@@ -3747,21 +3902,22 @@ pub fn provider_for(binding: &GgSlotBinding) -> ProviderKind {
 /// [prompt-cache lifetime](GgSlotBinding::prompt_cache_ttl), by contrast, is the *agent's* own
 /// choice and differs from one profile to the next.
 ///
-/// `model_call_timeout` is the run's resolved
-/// [`modelCallTimeoutSecs`](crate::limits::RunLimits::model_call_timeout), run-wide like the
-/// session key: every agent's client, and the second client a
-/// [handoff compaction](crate::compaction) resolves, calls under the one ceiling the launch
-/// recorded.
+/// `model_call_timeout` and `retry_policy` are the run's resolved
+/// [limits](crate::limits::RunLimits), run-wide like the session key: every agent's client, and
+/// the second client a [handoff compaction](crate::compaction) resolves, calls under the one
+/// ceiling and retries on the one schedule the launch recorded.
 pub fn client_for_slot(
     binding: &GgSlotBinding,
     session_key: Option<&str>,
     model_call_timeout: Duration,
+    retry_policy: RetryPolicy,
 ) -> Result<Box<dyn ModelClient>, ModelError> {
     match provider_for(binding) {
         ProviderKind::Mock => Ok(Box::new(mock_client_for(&binding.model_id))),
         ProviderKind::OpenRouter => Ok(Box::new(
             OpenRouterClient::from_binding(binding, session_key)?
-                .with_model_call_timeout(model_call_timeout),
+                .with_model_call_timeout(model_call_timeout)
+                .with_retry_policy(retry_policy),
         )),
     }
 }
@@ -3920,19 +4076,27 @@ pub struct DefaultClientFactory {
     session_key: Option<String>,
     /// The run's resolved per-call ceiling, stamped on every live client this factory builds.
     model_call_timeout: Duration,
+    /// The run's resolved [retry schedule](crate::limits::RunLimits::retry_policy), stamped on
+    /// every live client this factory builds beside the ceiling.
+    retry_policy: RetryPolicy,
 }
 
 impl DefaultClientFactory {
     /// A factory that stamps `session_key` (the run's session id) on every live client it builds.
     /// `None` builds clients that send no session key at all (the pre-caching behavior).
     ///
-    /// `model_call_timeout` is the run's resolved
-    /// [`modelCallTimeoutSecs`](crate::limits::RunLimits::model_call_timeout), bounding every call
-    /// every client it builds makes.
-    pub fn new(session_key: Option<String>, model_call_timeout: Duration) -> Self {
+    /// `model_call_timeout` and `retry_policy` are the run's resolved
+    /// [limits](crate::limits::RunLimits): the ceiling every call every client it builds makes
+    /// runs under, and the schedule each retries on before giving up.
+    pub fn new(
+        session_key: Option<String>,
+        model_call_timeout: Duration,
+        retry_policy: RetryPolicy,
+    ) -> Self {
         Self {
             session_key,
             model_call_timeout,
+            retry_policy,
         }
     }
 }
@@ -3943,6 +4107,7 @@ impl ClientFactory for DefaultClientFactory {
             binding,
             self.session_key.as_deref(),
             self.model_call_timeout,
+            self.retry_policy,
         )
     }
 }
@@ -3958,3 +4123,7 @@ mod streaming_tests;
 #[cfg(test)]
 #[path = "client.timeout.test.rs"]
 mod timeout_tests;
+
+#[cfg(test)]
+#[path = "client.retry.test.rs"]
+mod retry_tests;

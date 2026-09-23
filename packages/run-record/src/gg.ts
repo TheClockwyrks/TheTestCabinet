@@ -1835,12 +1835,14 @@ export type GgRunLimits = {
    * The ceiling, in seconds, on **one model request** — the bound that turns a provider which
    * has stopped answering into an error turn the agent asks again from.
    *
-   * The one key on this type an absence answers with a **figure** rather than with "off":
-   * **absent is fifteen minutes** (900 seconds), because there is no run whose calls may hang
-   * forever, and `0` is refused on the same terms as every other unhonourable figure. How it is
-   * applied follows the transport the agent's [loop detection](GgLoopDetection) selects: the
-   * buffering one bounds the whole call, and the streaming one bounds the wait for the response
-   * head and the gap between chunks, so a reply still arriving is never cut.
+   * One of the three keys on this type an absence answers with a **figure** rather than with
+   * "off", beside the [retry schedule](Self::max_model_retries): **absent is fifteen minutes**
+   * (900 seconds), because there is no run whose calls may hang forever, and `0` is refused on
+   * the same terms as every other unhonourable figure. How it is applied follows the transport
+   * the agent's [loop detection](GgLoopDetection) selects: the buffering one bounds each
+   * attempt, with the backoff between attempts outside it, and the streaming one bounds the
+   * wait for the response head and the gap between chunks, so a reply still arriving is never
+   * cut.
    *
    * Unlike the ceilings above it, breaching this one does not stop the run. The turn is
    * recorded as a [`ModelTimeout`](GgTurnErrorType::ModelTimeout) error and the agent asks
@@ -1848,6 +1850,27 @@ export type GgRunLimits = {
    * when an error ceiling says it should.
    */
   modelCallTimeoutSecs?: number;
+  /**
+   * How many times the model client **retries** a failed request after its first attempt: one
+   * answered `429` or `5xx`, or one that failed in transport.
+   *
+   * Absent is **ten**, on the terms the [model-call ceiling](Self::model_call_timeout_secs)
+   * takes a figure: every failed request is retried on some schedule. `0` is honoured as
+   * written, a run that gives up on the first failure. The retries are the client's own, and a
+   * timed-out call bypasses them, since each retry of a stall would cost the per-call ceiling
+   * again.
+   */
+  maxModelRetries?: number;
+  /**
+   * The ceiling, in seconds, on **one retry's backoff delay**: the first retry waits one
+   * second, each later one twice the last, capped here.
+   *
+   * Absent is **sixty seconds**, which against the default ten retries waits about five
+   * minutes in all. `0` is refused, since a schedule of no waits hammers a provider that has
+   * just said it is down. A `429` or `503` carrying a `Retry-After` in seconds waits that long
+   * instead when it is longer than the schedule's delay.
+   */
+  modelRetryMaxDelaySecs?: number;
   /**
    * How many **error turns in a row** end an agent. **Absent leaves it unarmed** — gg arms no
    * error ceiling nobody wrote, so an agent stopped by this one was stopped by a threshold its

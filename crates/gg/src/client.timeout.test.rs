@@ -62,11 +62,10 @@ const CONFIGURED: Duration = Duration::from_secs(37);
 const FIRST_EVENT: &str = "data: {\"provider\":\"slowco\",\"choices\":[{\"index\":0,\
                            \"delta\":{\"content\":\"working\"}}]}\n\n";
 
-/// The buffered transport under a gateway whose reply never finishes: the whole call — retries
-/// included — is cut at the total-duration ceiling the run configured, surfaces as
-/// [`ModelError::Timeout`], and spends exactly **one** request: a stall is never retried inside the
-/// client, because each internal retry would cost the full ceiling again and the turn-level retry
-/// is the bounded one.
+/// The buffered transport under a gateway whose reply never finishes: the attempt is cut at the
+/// total-duration ceiling the run configured, surfaces as [`ModelError::Timeout`], and spends
+/// exactly **one** request: a stall is never retried inside the client, because each internal
+/// retry would cost the full ceiling again and the turn-level retry is the bounded one.
 #[tokio::test(start_paused = true)]
 async fn a_stalled_gateway_times_out_the_buffered_call_without_spending_retries() {
     let (client, requests) = stalled_client("");
@@ -92,7 +91,56 @@ async fn a_stalled_gateway_times_out_the_buffered_call_without_spending_retries(
     assert_eq!(
         requests.load(Ordering::SeqCst),
         1,
-        "the ceiling covers the whole call — a stall is not retried internally"
+        "a stall is not retried internally"
+    );
+}
+
+/// The buffered ceiling bounds **each attempt**, not the backoff between them: a schedule whose
+/// waits add up to far more than the ceiling runs to its answer, and an attempt that stalls after
+/// earlier ones failed is cut at the ceiling measured from its own start.
+#[tokio::test(start_paused = true)]
+async fn the_buffered_ceiling_bounds_each_attempt_and_leaves_the_backoff_outside() {
+    let requests = Arc::new(AtomicUsize::new(0));
+    let seen = Arc::clone(&requests);
+    let client = OpenRouterClient::new(
+        "http://gateway.invalid/api/v1",
+        reqwest::Client::new(),
+        "openai/gpt-5.6",
+        "sk-test",
+        RetryPolicy::default(),
+        None,
+    )
+    .with_model_call_timeout(CONFIGURED)
+    .answered_by(move || {
+        let attempt = seen.fetch_add(1, Ordering::SeqCst);
+        let builder = http::Response::builder();
+        match attempt {
+            // Two `503`s asking for a minute each: two minutes of waiting, past the ceiling.
+            0 | 1 => builder
+                .status(503)
+                .header("retry-after", "60")
+                .body(reqwest::Body::from("overloaded")),
+            // Then an attempt that never finishes answering.
+            _ => builder.status(200).body(reqwest::Body::wrap_stream(
+                futures_util::stream::pending::<Result<&'static str, std::io::Error>>(),
+            )),
+        }
+        .expect("a well-formed response")
+        .into()
+    });
+
+    let started = tokio::time::Instant::now();
+    let outcome = client.complete(&[Message::user("build it")], &[]).await;
+
+    assert!(
+        matches!(outcome, Err(ModelError::Timeout { after, .. }) if after == CONFIGURED),
+        "the stalled third attempt times out: {outcome:?}"
+    );
+    assert_eq!(requests.load(Ordering::SeqCst), 3);
+    assert_eq!(
+        started.elapsed(),
+        Duration::from_secs(120) + CONFIGURED,
+        "both waits ran in full, and the ceiling was measured from the third attempt"
     );
 }
 

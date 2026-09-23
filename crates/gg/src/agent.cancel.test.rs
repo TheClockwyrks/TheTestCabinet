@@ -22,6 +22,7 @@ fn cancelable(max_turns: usize, sentinel: PathBuf) -> LimitsSetup {
             error_rate: None,
             max_cost: None,
             replay_max_bytes: None,
+            retry_policy: crate::client::RetryPolicy::default(),
         },
         deadline: None,
         spend: Arc::new(RunSpend::default()),

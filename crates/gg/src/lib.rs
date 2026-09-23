@@ -269,8 +269,10 @@ async fn run_session(config: &std::path::Path) -> ExitCode {
     // A session that ran to a natural end exits `0` — its outcome is in the telemetry — and the
     // two ways that is not the whole story get a code each.
     //
-    // `1` is a failure that was gg's own or the operator's (no model to run, a rejected credential,
-    // a gg defect), because none of those leaves a run to score at all.
+    // `1` is a failure that was gg's own, the provider's, or the operator's (no model to run, a
+    // rejected credential, a gg defect, a model request the whole retry schedule could not get
+    // answered), because none of those leaves a run to score at all — and it is the code the host
+    // records as a retryable harness error, which is what a provider outage wants.
     //
     // `3` is a run stopped by one of its own [ceilings](limits): every ceiling is a safeguard the
     // configuration armed and none is expected to be reached, so a run that reached one is neither

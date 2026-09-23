@@ -1288,6 +1288,14 @@ async fn a_run_that_arms_no_ceiling_says_so_and_launches() {
         "an unset turn ceiling is recorded as unbounded"
     );
     assert_eq!(summary.limits.max_consecutive_errors, Some(1_000));
+    assert_eq!(
+        (
+            summary.limits.max_model_retries,
+            summary.limits.model_retry_max_delay_secs
+        ),
+        (Some(10), Some(60)),
+        "the retry schedule is in force on every run, and an absent one is recorded as its defaults"
+    );
 }
 
 /// **An unrecognized shell output mode warns on the root stream and launches anyway.**

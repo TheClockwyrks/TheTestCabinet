@@ -84,6 +84,7 @@ fn bare_limits() -> RunLimits {
         error_rate: None,
         max_cost: None,
         replay_max_bytes: None,
+        retry_policy: RetryPolicy::default(),
     }
 }
 
@@ -164,6 +165,11 @@ fn the_required_values_alone_are_a_complete_declaration() {
     assert_eq!(limits.error_rate, None);
     assert_eq!(limits.max_cost, None);
     assert_eq!(limits.replay_max_bytes, Some(AUTHORED_REPLAY_MAX_BYTES));
+    assert_eq!(
+        limits.retry_policy,
+        RetryPolicy::default(),
+        "the retry schedule is in force on every run, defaults and all"
+    );
 }
 
 #[test]
@@ -259,6 +265,61 @@ fn a_zero_model_call_ceiling_is_refused() {
         })
         .starts_with(
             "limits.modelCallTimeoutSecs = `0` — a model call allowed no seconds cannot start"
+        )
+    );
+}
+
+/// **The retry schedule has no unarmed reading either.** A set that writes neither key retries ten
+/// times against a sixty-second delay ceiling: an outage is ridden out on the defaults rather than
+/// inside them.
+#[test]
+fn an_absent_retry_schedule_takes_the_defaults() {
+    let limits = resolve_cleanly(required_only());
+
+    assert_eq!(limits.retry_policy, RetryPolicy::default());
+    assert_eq!(limits.retry_policy.max_attempts, 11);
+    assert_eq!(limits.retry_policy.max_delay, Duration::from_secs(60));
+}
+
+/// Written figures are the schedule the run's requests retry on, exactly as written.
+#[test]
+fn a_declared_retry_schedule_resolves_to_what_was_written() {
+    let limits = resolve_cleanly(GgRunLimits {
+        max_model_retries: Some(30),
+        model_retry_max_delay_secs: Some(600),
+        ..required_only()
+    });
+
+    assert_eq!(limits.retry_policy.max_attempts, 31);
+    assert_eq!(limits.retry_policy.max_delay, Duration::from_secs(600));
+}
+
+/// **A zero retry count is honoured**: it is a run that gives up on the first failure, which a
+/// study comparing retry budgets legitimately wants — not the delay ceiling's unhonourable
+/// figure.
+#[test]
+fn a_zero_retry_count_gives_up_on_the_first_failure() {
+    let limits = resolve_cleanly(GgRunLimits {
+        max_model_retries: Some(0),
+        ..required_only()
+    });
+
+    assert_eq!(limits.retry_policy.max_attempts, 1);
+}
+
+/// **A zero delay ceiling is refused rather than honoured**: a run that retries on a schedule of
+/// no waits hammers a provider that just said it is down, which is the one thing a backoff
+/// schedule exists to prevent.
+#[test]
+fn a_zero_retry_delay_ceiling_is_refused() {
+    assert!(
+        sole_refusal(GgRunLimits {
+            model_retry_max_delay_secs: Some(0),
+            ..required_only()
+        })
+        .starts_with(
+            "limits.modelRetryMaxDelaySecs = `0` — a retry waiting no time is a retry against a \
+             provider that just said it is down"
         )
     );
 }
@@ -536,6 +597,8 @@ fn every_unusable_ceiling_is_named_in_one_refusal() {
             max_turns: Some(0),
             max_runtime_secs: Some(0),
             model_call_timeout_secs: Some(0),
+            max_model_retries: None,
+            model_retry_max_delay_secs: Some(0),
             max_consecutive_errors: Some(0),
             max_error_rate: Some(-3.0),
             error_rate_window: Some(0),
@@ -559,6 +622,7 @@ fn every_unusable_ceiling_is_named_in_one_refusal() {
             "limits.maxTurns",
             "limits.maxRuntimeSecs",
             "limits.modelCallTimeoutSecs",
+            "limits.modelRetryMaxDelaySecs",
             "limits.maxConsecutiveErrors",
             "limits.maxErrorRate",
             "limits.errorRateWindow",
