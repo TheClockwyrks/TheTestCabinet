@@ -8,7 +8,7 @@
 // in the same pass.
 
 import type { GgCapabilitySet } from "./gg";
-import type { HarnessSlug, RunRecord } from "./index";
+import type { HarnessSlug, RunRecord, TokenPrices } from "./index";
 
 /**
  * The state a driver reports for a job via `POST /jobs/{id}/status`.
@@ -138,6 +138,27 @@ export type LaunchBody = {
    * the provider refuses it. Empty for every non-gg run.
    */
   ggModelModalities?: { [key in string]: Array<string> };
+  /**
+   * The curated **list price** (USD per token) each model this **gg** run may
+   * bind is scored at, resolved from the model catalog at enqueue and stamped
+   * here on the same terms as [`gg_model_windows`](Self::gg_model_windows).
+   *
+   * A run's comparable cost is computed from the developer's published list
+   * price — entered on the model's catalog entry — and nothing else, so the
+   * figure is stable across providers and discounts. A gg run binding a model
+   * with no list price is refused at enqueue rather than priced off whatever
+   * a provider happened to charge that day. Empty for every non-gg run, whose
+   * single model's price rides in [`model_prices`](Self::model_prices).
+   */
+  ggModelPrices?: { [key in string]: TokenPrices };
+  /**
+   * The curated list price (USD per token) of the launch's model, resolved from
+   * the model catalog at enqueue and stamped here so the driver prices the run's
+   * comparable cost from it without reaching the catalog. `None` for a gg run
+   * (whose per-model prices ride in `gg_model_prices`) and for a run enqueued
+   * before the catalog priced models.
+   */
+  modelPrices?: TokenPrices;
 };
 
 /**

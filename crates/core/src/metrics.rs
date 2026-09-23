@@ -115,15 +115,24 @@ fn sum_reported(a: Option<u64>, b: Option<u64>) -> Option<u64> {
 /// which is distinct from `Some(0.0)` (a genuinely free class). A class priced
 /// `None` poisons any cost it contributes to rather than being silently treated
 /// as free — see [`Cost::comparable_from`].
+#[cfg_attr(
+    feature = "contract",
+    derive(ts_rs::TS, schemars::JsonSchema),
+    ts(rename = "TokenPrices"),
+    schemars(rename = "TokenPrices")
+)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenPrices {
     /// Price per uncached input token, or `None` when unknown.
+    #[serde(default)]
     pub uncached_input: Option<f64>,
     /// Price per cached input token, or `None` when unknown.
+    #[serde(default)]
     pub cached_input: Option<f64>,
     /// Price per output token (also applied to reasoning tokens), or `None` when
     /// unknown.
+    #[serde(default)]
     pub output: Option<f64>,
 }
 

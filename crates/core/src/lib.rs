@@ -1877,26 +1877,53 @@ where
         // whenever the cluster was busy. `scheduling_wait` is zero for runtimes (a
         // local Docker/Podman) that admit the container immediately.
         let measured = self.clock.now().saturating_sub(run_started);
-        // Resolve the prices the comparable cost is computed from. The lookup runs
-        // for every run, whatever the harness reported: a harness-reported cost is
-        // the billed figure and lands in the actual cost alone, while the
-        // comparable cost is always computed from the list prices — including for
-        // a harness whose native model ID never appears in OpenRouter's catalog,
-        // which simply records an unknown comparable cost below.
+        // Resolve the list prices the comparable cost is computed from. The
+        // comparable cost is computed from the developer's published list price
+        // and nothing else — the figure the backend resolved out of the model
+        // catalog at enqueue and stamped onto the request — so two runs of one
+        // model compare on the same basis however each was billed, and the 24-hour
+        // refresh's observation of the billed rate (which lives on the catalog
+        // entry, not here) never rewrites it. A harness-reported cost is the billed
+        // figure and lands in the actual cost alone.
         //
-        // The model ID is mapped to the slug OpenRouter lists it under (for
-        // example Codex's `gpt-5.5` becomes `openai/gpt-5.5`), collapsing an
-        // `openrouter/` routing prefix and a `:free`-style variant tag so a
-        // free-tagged run is priced at the model's base rate, not $0.
-        let lookup_id = crate::model_id::openrouter_price_id(&request.model_id, request.harness);
-        let prices = match self.prices.token_prices(&lookup_id).await {
-            Ok(prices) => prices,
-            Err(err) => {
-                eprintln!(
-                    "warning: could not fetch OpenRouter prices for `{lookup_id}` ({err}); \
-                     recording unknown (null) comparable cost"
-                );
-                TokenPrices::default()
+        // A backend-driven run always arrives priced (a catalog model with no list
+        // price is refused at enqueue), so a catalog-driven run never touches the
+        // network for a price: an absent entry means the price is unknown, not that
+        // it should be fetched. Only a catalog-free host (a local in-process run)
+        // falls through to fetching the model's current listed price itself, and it
+        // is priced at whatever the listing reports that day. The model ID is
+        // mapped to the slug OpenRouter lists it under (for example Codex's
+        // `gpt-5.5` becomes `openai/gpt-5.5`), collapsing an `openrouter/` routing
+        // prefix and a `:free`-style variant tag so a free-tagged run is priced at
+        // the model's base rate, not $0.
+        //
+        // A gg run's outcome tokens are summed run-wide across every model the
+        // capability set bound (see `gg_exec::ingest_gg_stream`), while the catalog
+        // prices per model — so the run is priced at its primary model's entry, the
+        // model the run is published under.
+        let prices = if request.is_gg() {
+            request
+                .gg_model_prices
+                .get(&request.model_id)
+                .copied()
+                .unwrap_or_default()
+        } else {
+            match request.model_prices {
+                Some(prices) => prices,
+                None => {
+                    let lookup_id =
+                        crate::model_id::openrouter_price_id(&request.model_id, request.harness);
+                    match self.prices.token_prices(&lookup_id).await {
+                        Ok(prices) => prices,
+                        Err(err) => {
+                            eprintln!(
+                                "warning: could not fetch OpenRouter prices for `{lookup_id}` ({err}); \
+                                 recording unknown (null) comparable cost"
+                            );
+                            TokenPrices::default()
+                        }
+                    }
+                }
             }
         };
 

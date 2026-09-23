@@ -372,7 +372,7 @@ fn main() -> Result<()> {
             file: "index.ts",
             decls: ts_decls![&cfg;
                 rr::HarnessSlug, rr::HarnessFamily, rr::RunState, rr::AuthMode, rr::RunEnvironment, rr::RunTooling,
-                tc::TestType, tc::AssetKind, tc::AssetDimension, rr::RunSubject, m::TokenCounts, m::Cost, m::RunMetrics,
+                tc::TestType, tc::AssetKind, tc::AssetDimension, rr::RunSubject, m::TokenCounts, m::TokenPrices, m::Cost, m::RunMetrics,
                 tc::MediaKind, val::ProofResult, val::CheckResult, val::StepResult,
                 val::DebugScriptResult, val::Inconclusive, val::AutoVerdict, val::Assertion, val::DebugScriptOutput,
                 val::AssetGenResult, val::AssetFrameResult, tc::SheetSpec, tc::SheetSequence,
