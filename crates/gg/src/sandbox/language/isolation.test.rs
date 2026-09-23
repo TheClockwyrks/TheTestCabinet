@@ -19,24 +19,22 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use std::path::PathBuf;
 
-use super::super::compile::{AgentWorkspace, CompilerPool, PrepareContext};
+use super::super::compile::{CompilerPool, PrepareContext, TEST_POOL_CAPACITY};
 use super::*;
 
 // ---------------------------------------------------------------------------------------------
 // What the gate protects
 // ---------------------------------------------------------------------------------------------
 
-/// **The gate.** Every registered language, both halves, sixteen at a time.
+/// **The gate**, for one language: both halves, [`WIDTH`] at a time.
 ///
-/// A language added to the registry is inside this the moment it compiles, because the list is
-/// derived from [`all_languages`](super::super::all_languages) rather than written out here. A
-/// language wiring up a compiler with a shared working directory, a shared output path or a shared
-/// daemon fails here — before it has ever mis-attributed one agent's program to another in a run
-/// anybody paid for.
-#[test]
-fn every_registered_language_prepares_only_its_own_program_under_concurrency() {
-    for preparation in preparations() {
-        let breaches = breaches(preparation.as_ref());
+/// Besides the marker checks, this is what asserts that a workspace belongs to one agent and to all
+/// of that agent's preparations: [`breaches`] reports a [`Breach::UnstableWorkspace`] when one
+/// agent's preparations stood on two trees and a [`Breach::SharedWorkspace`] when two agents stood on
+/// one, read from the same [`PrepareContext::opened_workspace`] every arm reports through.
+fn assert_isolated(language: &'static dyn ProgramLanguage) {
+    for preparation in preparations(language) {
+        let breaches = breaches(&preparation);
         assert!(
             breaches.is_empty(),
             "{} is not isolated per preparation:\n{}",
@@ -46,47 +44,68 @@ fn every_registered_language_prepares_only_its_own_program_under_concurrency() {
     }
 }
 
-/// **A workspace belongs to one agent and to all of that agent's preparations** — both halves,
-/// asserted directly, so that a language whose corruption happened to be invisible in one run's
-/// artifacts is still caught by the thing that made it possible.
+/// One test per registered language, so each arm's toolchain warms up in its own process and the
+/// arms run in parallel rather than one after another.
 ///
-/// The two halves fail in opposite directions and neither implies the other. Two agents on one tree
-/// is the precondition of the measured `purs` corruption. One agent on two trees is the regression
-/// that would quietly restore a tree per preparation, and every marker check in the gate would go on
-/// passing while a session re-staged its language's library set on every turn.
-#[test]
-fn a_workspace_belongs_to_one_agent_and_to_all_of_its_preparations() {
-    for preparation in preparations() {
-        let opened = |agent: &AgentWorkspace, first: usize| -> Vec<PathBuf> {
-            (first..first + 2)
-                .filter_map(|n| {
-                    let context = PrepareContext::for_agent(agent, preparation.persistent_work());
-                    let source = preparation.source(&format!("gg-workspace-{n:03}-marker"));
-                    let _ = preparation.prepare(&source, &context);
-                    context.opened_workspace().map(Path::to_path_buf)
-                })
-                .collect()
-        };
-        let one = AgentWorkspace::new();
-        let other = AgentWorkspace::new();
-        let mine = opened(&one, 0);
-        let theirs = opened(&other, 2);
+/// A language wiring up a compiler with a shared working directory, a shared output path or a shared
+/// daemon fails here — before it has ever mis-attributed one agent's program to another in a run
+/// anybody paid for. [`every_registered_language_is_gated`] holds the list to the registry.
+macro_rules! gate_every_language {
+    ($($test:ident => $id:ident),* $(,)?) => {
+        /// Every language a test below is generated for.
+        const GATED: &[GgProgramLanguage] = &[$(GgProgramLanguage::$id),*];
 
-        for paths in [&mine, &theirs] {
-            assert!(
-                paths.windows(2).all(|pair| pair[0] == pair[1]),
-                "{} handed one agent's preparations different workspaces: {paths:?}",
-                preparation.describe()
-            );
-        }
-        for path in &mine {
-            assert!(
-                !theirs.contains(path),
-                "{} handed two agents {}",
-                preparation.describe(),
-                path.display()
-            );
-        }
+        $(
+            #[test]
+            fn $test() {
+                assert_isolated(crate::sandbox::language::language(GgProgramLanguage::$id));
+            }
+        )*
+    };
+}
+
+/// The per-language gate tests, under one name so a filter can select them together.
+mod gate {
+    use super::*;
+    use test_cabinet_core::gg::GgProgramLanguage;
+
+    gate_every_language! {
+        typescript => TypeScript,
+        javascript => JavaScript,
+        python => Python,
+        ruby => Ruby,
+        purescript => PureScript,
+        java => Java,
+        kotlin => Kotlin,
+        rust => Rust,
+        swift => Swift,
+        cpp => Cpp,
+        csharp => CSharp,
+    }
+
+    /// **A language added to the registry is gated the moment it compiles.** The tests above are
+    /// written out per language so they run in parallel, so this is what stops the list drifting
+    /// from [`GgProgramLanguage::ALL`].
+    #[test]
+    fn every_registered_language_is_gated() {
+        let mut gated = GATED.to_vec();
+        let mut registered = GgProgramLanguage::ALL.to_vec();
+        gated.sort_by_key(|id| format!("{id:?}"));
+        registered.sort_by_key(|id| format!("{id:?}"));
+        assert_eq!(gated, registered);
+    }
+
+    /// The [fixture](crate::sandbox::language::fixture) language, driven beside the registered set.
+    ///
+    /// TypeScript's artifact is produced in memory by the strip and only validated by `tsc`, so
+    /// corrupting its check directory moves no bytes; the fixture's — like
+    /// [Ruby](crate::sandbox::language::ruby)'s, whose prepared bytes are the JavaScript Opal wrote into
+    /// the workspace — are read back off a filesystem, which is the shape every compiled language
+    /// has. The fixture is the cheap subject of that shape, with no process and no compiler, so it
+    /// keeps these checks biting whatever the registered arms cost.
+    #[test]
+    fn fixture() {
+        assert_isolated(crate::sandbox::language::fixture::fixture_language());
     }
 }
 
@@ -181,7 +200,7 @@ fn caught(breaches: &[Breach], shape: fn(&Breach) -> bool) -> bool {
 struct SharedOutputTree {
     /// The one output path every preparation writes to — the bug, expressed as a field.
     output: std::path::PathBuf,
-    /// The pause that makes all sixteen write before any of them reads.
+    /// The pause that makes every preparation write before any of them reads.
     rendezvous: Rendezvous,
 }
 
@@ -247,7 +266,7 @@ static NEXT_FIXTURE: AtomicUsize = AtomicUsize::new(0);
 /// **The gate catches the measured `purs` corruption.**
 ///
 /// Not "reports an error" — reports the *right* error: that one preparation's artifact carries
-/// another preparation's program. Every one of the sixteen still succeeded and every one of them
+/// another preparation's program. Every preparation still succeeded and every one of them
 /// still produced an artifact, which is exactly the reason no exit code and no diagnostic would ever
 /// have found this.
 #[test]
@@ -278,7 +297,7 @@ struct SharedBuildStrategy {
     strategy: Mutex<String>,
     /// Whether anyone has built yet — the "no output for three of four" half.
     built: AtomicBool,
-    /// The pause that makes all sixteen load before any of them builds.
+    /// The pause that makes every preparation load before any of them builds.
     rendezvous: Rendezvous,
 }
 
@@ -381,8 +400,8 @@ impl Preparation for MemoisedCompile {
     }
 }
 
-/// **A memoised compile is caught**: fifteen preparations get the sixteenth's program, and every one
-/// of them reports success.
+/// **A memoised compile is caught**: every preparation gets whichever one filled the memo first,
+/// and every one of them reports success.
 #[test]
 fn a_memoised_compile_is_caught_handing_out_one_preparations_artifact() {
     let breaches = breaches(&MemoisedCompile {
@@ -439,7 +458,7 @@ impl Preparation for MiskeyedCache {
 /// **A miskeyed cache is caught** — by the marker check, which is the only kind of check the gate
 /// makes and is enough for the fourth of the four broken preparations as it was for the other three.
 ///
-/// A cache keyed on a constant hands fifteen preparations the sixteenth's artifact, so fifteen of
+/// A cache keyed on a constant hands every preparation the first one's artifact, so all but one of
 /// them are carrying a marker that is not their own. There is nothing subtler here to find: the
 /// corruption is wholesale, exactly as it would be in a language that memoised its compiles.
 #[test]
@@ -551,7 +570,7 @@ impl Preparation for PrivateWorkspace {
 }
 
 /// **The private workspace is sufficient** for the `purs` shape: the same fixed-name write, the same
-/// sixteen preparations, no corruption.
+/// preparations, no corruption.
 #[test]
 fn a_private_workspace_survives_what_the_shared_output_tree_did_not() {
     let breaches = breaches(&PrivateWorkspace);
@@ -583,7 +602,7 @@ impl Preparation for PooledDaemon {
     }
 
     fn prepare(&self, source: &str, _context: &PrepareContext) -> Result<String, String> {
-        static POOL: CompilerPool<Daemon> = CompilerPool::new(4);
+        static POOL: CompilerPool<Daemon> = CompilerPool::new(TEST_POOL_CAPACITY);
 
         let mut daemon = POOL.checkout(|| {
             Ok::<_, String>(Daemon {
@@ -599,7 +618,8 @@ impl Preparation for PooledDaemon {
 }
 
 /// **The pool is sufficient** for the TeaVM shape: a warm compiler with real state between two
-/// steps, driven sixteen ways through four instances, and every artifact belongs to its own program.
+/// steps, driven [`WIDTH`] ways through one fewer instance, so one preparation waits and is handed an
+/// instance another returned — and every artifact belongs to its own program.
 #[test]
 fn a_pooled_daemon_survives_what_the_shared_build_strategy_did_not() {
     let breaches = breaches(&PooledDaemon);
@@ -654,11 +674,11 @@ fn a_breach_names_which_preparation_got_whose_program() {
     assert!(rendered.contains("gg-isolation-011-marker"), "{rendered}");
 }
 
-/// A preparation that succeeds on its own and fails the moment sixteen of it run together — a lock
+/// A preparation that succeeds on its own and fails the moment several of it run together — a lock
 /// nobody took, a file another preparation removed, a daemon another preparation was mid-build on.
 ///
 /// It tells the two phases apart the way [`Rendezvous`] does, by counting: the gate prepares each of
-/// the sixteen inputs serially before it prepares any of them concurrently, so the first `WIDTH`
+/// the inputs serially before it prepares any of them concurrently, so the first `WIDTH`
 /// calls are the baseline and everything after is the concurrent run.
 struct FailsOnlyUnderConcurrency {
     /// How many preparations have passed through, across both phases.
@@ -687,19 +707,19 @@ impl Preparation for FailsOnlyUnderConcurrency {
 ///
 /// This is the band [`Breach::Contended`] exists for, and it is the reason the gate prepares
 /// everything serially first: without that pass there would be nothing to tell "this input is
-/// broken" apart from "this input broke when sixteen of it ran", and the two want opposite
+/// broken" apart from "this input broke when several of it ran", and the two want opposite
 /// responses from whoever reads the failure.
 ///
 /// It matters that this is asserted rather than assumed. `Contended` is the **only** report a
 /// concurrent `Err` gets — the loop in [`breaches`] pushes it and moves on to the next preparation —
-/// so a gate that stopped producing it would not fail loudly, it would pass quietly while sixteen
-/// preparations errored.
+/// so a gate that stopped producing it would not fail loudly, it would pass quietly while every
+/// concurrent preparation errored.
 ///
 /// **Verified by mutation, twice.** Replacing the push with a bare `continue` does not even compile:
 /// the workspace denies warnings, and `Contended` is constructed at exactly that one site, so the
 /// build fails with *"variant `Contended` is never constructed"*. That is the stronger of the two
 /// results — the lint proves the branch is live — but it proves nothing about this test, so the
-/// second mutation reports only the *first* contended failure instead of all sixteen, which compiles
+/// second mutation reports only the *first* contended failure instead of all of them, which compiles
 /// and fails here on the count.
 #[test]
 fn a_failure_that_only_appears_under_concurrency_is_reported_as_contention() {
@@ -814,7 +834,7 @@ fn one_agents_preparations_handed_two_workspaces_are_reported() {
     );
 }
 
-/// And the ordinary case: sixteen real preparations are handed sixteen different trees.
+/// And the ordinary case: preparations in different agents are handed different trees.
 #[test]
 fn no_workspace_is_handed_out_twice_in_an_ordinary_run() {
     assert!(
@@ -824,7 +844,7 @@ fn no_workspace_is_handed_out_twice_in_an_ordinary_run() {
     let breaches = breaches(&PrivateWorkspace);
     assert!(
         breaches.is_empty(),
-        "sixteen preparations that each opened a workspace got sixteen different ones:\n{}",
+        "preparations that each opened a workspace got different ones:\n{}",
         render(&breaches)
     );
 }

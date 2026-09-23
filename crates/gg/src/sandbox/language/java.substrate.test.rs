@@ -997,8 +997,8 @@ fn a_pooled_jvm_is_reused_and_the_first_one_is_the_expensive_one() {
     prepare(&whole(&["Gg"], "        Gg.log(\"warm\");\n"));
     let first_cold = first_cold.elapsed();
 
-    // Three more through the same pool. The pool has four JVMs and this is one thread, so every one
-    // of these is served by the JVM the first left behind.
+    // Three more through the same pool. The pool holds more than one JVM and this is one thread, so
+    // every one of these is served by the JVM the first left behind.
     let mut warm_builds: Vec<_> = (0..3).map(timed_build).collect();
 
     // **The reuse itself**, which is not a measurement: four compilations on one thread, and if the

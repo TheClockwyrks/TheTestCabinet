@@ -31,7 +31,7 @@
 //! between them.
 //!
 //! Isolation is **not** here, in any form. The seam's own gate drives this arm's program and module
-//! steps sixteen ways along with every other language's, and it needs nothing from this arm to do
+//! steps concurrently along with every other language's, and it needs nothing from this arm to do
 //! it: it searches an artifact for markers, and this arm's artifacts carry them as written. What
 //! used to be here beside the gate was the derivation for a byte-equality check the gate no longer
 //! makes — a projection that set this arm's `.debug_*` sections and `swiftc`'s random module stamp

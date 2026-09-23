@@ -25,23 +25,23 @@
 //! One property — a result belongs to **its own** input — in the two arrangements a run really
 //! produces.
 //!
-//! **Sixteen preparations, one after another, in one agent's [workspace](super::Workspace).** That
-//! is a session: an agent's turns, the modules its reads load and the on-use scripts they queue all
-//! compile in the tree the agent was given when it started. Each of the sixteen must succeed, must
-//! carry its own marker, and must carry **no earlier preparation's** marker — which is what says the
-//! previous response's sources and build output were gone before this one wrote. All sixteen must
-//! also have been handed the *same* tree, since an agent that got a fresh one per preparation would
+//! **[`WIDTH`] preparations, one after another, in one agent's [workspace](super::Workspace).**
+//! That is a session: an agent's turns, the modules its reads load and the on-use scripts they queue
+//! all compile in the tree the agent was given when it started. Each must succeed, must carry its
+//! own marker, and must carry **no earlier preparation's** marker — which is what says the previous
+//! response's sources and build output were gone before this one wrote. All of them must also have
+//! been handed the *same* tree, since an agent that got a fresh one per preparation would
 //! satisfy every other check here while quietly costing a session what it was given a tree to avoid.
 //!
 //! A failure to prepare in this phase is failing on its own account rather than under contention — a
 //! harness fault, or a language that cannot prepare its own SDK's call — so it is reported as a
 //! [`Breach::Baseline`] and the second phase is abandoned.
 //!
-//! **Sixteen agents at once, one preparation each.** That is a run at `limits.maxParallel`. Each
-//! result must succeed, must carry its own marker, and must carry **no other agent's** marker — the
-//! `purs` shape, where one artifact held two agents' programs, and the TeaVM shape, where a build
-//! silently produced nothing. Plus one thing observed rather than derived: no two of the sixteen
-//! agents were handed the same tree.
+//! **[`WIDTH`] agents at once, one preparation each, released together.** That is a run with
+//! several agents in flight. Each result must succeed, must carry its own marker, and must carry **no
+//! other agent's** marker — the `purs` shape, where one artifact held two agents' programs, and the
+//! TeaVM shape, where a build silently produced nothing. Plus one thing observed rather than
+//! derived: no two of the agents were handed the same tree.
 //!
 //! # Why there is no byte-for-byte comparison
 //!
@@ -102,17 +102,33 @@ use std::path::{Path, PathBuf};
 use std::sync::Barrier;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use super::ProgramLanguage;
 use super::compile::{AgentWorkspace, PrepareContext};
-use super::{ProgramLanguage, all_languages};
 
 /// How many agents the gate drives at once, and how many preparations it drives in one of them.
 ///
-/// `limits.maxParallel`'s ceiling, because that is how many agents a run may have in flight, and a
-/// gate that proved isolation at four would prove nothing about the sixteenth. The measured `purs`
-/// corruption needed eight to show itself. The same number is reused for the length of one agent's
-/// sequence, so both phases of [`breaches`] do the same amount of work and a broken preparation can
-/// tell the two apart by counting its calls.
-pub(super) const WIDTH: usize = 16;
+/// Three, because that is the smallest number at which every breach the gate reports can occur:
+///
+/// * **Sequentially**, a [`Breach::Stale`] needs a second preparation to find the first one's
+///   leftovers, and a third also catches a leftover from two turns back — an arm that clears only
+///   the previous turn's output. A [`Breach::UnstableWorkspace`] needs two.
+/// * **Concurrently**, every corruption the gate exists for is a *pairwise* collision — two agents
+///   in one output tree, one build strategy, one memoised result — and the barrier puts every
+///   preparation inside the step together, so two are enough to collide. The third is for the
+///   [`CompilerPool`](super::CompilerPool): an arm that pools a warm compiler only waits for one, and
+///   only hands an instance one agent returned to a *different* agent, when more preparations arrive
+///   than the pool holds. Under test every pool is built with
+///   [`TEST_POOL_CAPACITY`](super::compile::TEST_POOL_CAPACITY), which is one less than this.
+///
+/// A run allows more agents than this (`limits.maxParallel` is sixteen), but a larger width adds
+/// only more pairs of the same collision. What keeps a real toolchain from colliding at any width is
+/// structural and asserted elsewhere: every workspace is a private tree created with `create_dir`
+/// under a unique name, and [a source check](tests::a_language_module_reaches_a_compiler_only_through_the_seam)
+/// holds every arm to the seam that hands those trees out.
+///
+/// The same number is the length of one agent's sequence, so both phases of [`breaches`] do the same
+/// amount of work and a broken preparation can tell them apart by counting its calls.
+pub(super) const WIDTH: usize = super::compile::TEST_POOL_CAPACITY + 1;
 
 /// One thing the gate can drive: something that turns a source carrying a marker into a prepared
 /// artifact.
@@ -166,7 +182,7 @@ pub(super) enum Breach {
     /// failure — a harness failure, or a language that cannot prepare its own SDK's call — and
     /// reported separately so the two are never confused.
     Baseline {
-        /// Which of the sixteen inputs.
+        /// Which of the inputs.
         marker: String,
         /// What preparing it said.
         error: String,
@@ -174,7 +190,7 @@ pub(super) enum Breach {
     /// It prepared alone and failed under concurrency. Contention: a lock nobody took, a file
     /// another preparation removed, a daemon another preparation was mid-build on.
     Contended {
-        /// Which of the sixteen inputs.
+        /// Which of the inputs.
         marker: String,
         /// What preparing it said this time.
         error: String,
@@ -182,7 +198,7 @@ pub(super) enum Breach {
     /// The artifact does not contain its own input's marker — including the case where there is no
     /// artifact at all. The TeaVM shape: a build that silently produced nothing.
     Missing {
-        /// Which of the sixteen inputs.
+        /// Which of the inputs.
         marker: String,
         /// What came back instead, capped.
         prepared: String,
@@ -190,7 +206,7 @@ pub(super) enum Breach {
     /// The artifact contains **another agent's** marker. The `purs` shape: one artifact holding two
     /// agents' programs.
     Foreign {
-        /// Which of the sixteen inputs this artifact was for.
+        /// Which of the inputs this artifact was for.
         marker: String,
         /// Whose marker turned up in it.
         foreign: String,
@@ -203,7 +219,7 @@ pub(super) enum Breach {
     /// different causes and different fixes. A foreign marker means an arm reached outside the tree
     /// it was given; a stale one means the tree it was given still held the last turn's files.
     Stale {
-        /// Which of the sixteen sequential inputs this artifact was for.
+        /// Which of the sequential inputs this artifact was for.
         marker: String,
         /// Which earlier one of them turned up in it.
         earlier: String,
@@ -275,14 +291,14 @@ impl std::fmt::Display for Breach {
 /// Drive `preparation` through both arrangements a run produces and report every way a result failed
 /// to belong to its own input.
 ///
-/// **One agent first**, sixteen inputs one after another in the tree that agent was given. Nothing
+/// **One agent first**, [`WIDTH`] inputs one after another in the tree that agent was given. Nothing
 /// here can be corrupted by concurrency, so an input that fails to prepare is failing on its own
 /// account and is reported as a [`Breach::Baseline`], and the concurrent phase is abandoned rather
 /// than allowed to report the same failure a moment later as an isolation breach. What this phase
 /// asserts beyond that is the whole of the sequential-reuse guarantee: each artifact carries its own
-/// marker and no earlier one's, and every one of the sixteen was handed the same tree.
+/// marker and no earlier one's, and every one of them was handed the same tree.
 ///
-/// **Sixteen agents next**, one preparation each, released together. Every artifact must carry its
+/// **[`WIDTH`] agents next**, one preparation each, released together. Every artifact must carry its
 /// own marker and no other agent's, and no two agents may have been handed the same tree.
 ///
 /// A preparation that cannot keep one agent's own turns apart is not asked whether it can keep two
@@ -304,7 +320,7 @@ pub(super) fn breaches(preparation: &dyn Preparation) -> Vec<Breach> {
                 let barrier = &barrier;
                 scope.spawn(move || {
                     // One agent per thread, each starting its session here, which is what the
-                    // sixteen concurrent agents of a run at `limits.maxParallel` are.
+                    // concurrent agents of a run are.
                     let agent = AgentWorkspace::new();
                     let context = PrepareContext::for_agent(&agent, preparation.persistent_work());
                     // Every preparation is inside the step before any of them leaves it, which is
@@ -369,7 +385,7 @@ fn one_agents_session(
             Ok(prepared) => prepared,
             // Abandoned at the first one, and alone in what comes back: an input that cannot be
             // prepared with nothing else running says nothing about isolation, and reporting the
-            // fifteen after it would bury the one fact worth reading.
+            // ones after it would bury the one fact worth reading.
             Err(error) => {
                 return vec![Breach::Baseline {
                     marker: marker.clone(),
@@ -380,7 +396,7 @@ fn one_agents_session(
         if let Some(path) = context.opened_workspace() {
             opened.push(path.to_path_buf());
         }
-        // Only the markers already prepared can have been left behind; the rest of the sixteen have
+        // Only the markers already prepared can have been left behind; the rest of the inputs have
         // not been written yet, so finding one would mean the marker itself is not distinguishing.
         breaches.extend(marker_breaches(
             preparation,
@@ -454,7 +470,7 @@ fn marker_breaches(
 /// That is exactly what makes the check worth keeping and exactly what makes it untestable through
 /// the front door: it is the canary on that construction, and it would earn its keep on the day
 /// somebody made those paths reusable. So the detector is proved directly, by
-/// [its own test](tests::two_agents_handed_one_workspace_are_reported), rather than by a sixteen-way
+/// [its own test](tests::two_agents_handed_one_workspace_are_reported), rather than by a concurrent
 /// run that can never produce the input.
 pub(super) fn shared_workspaces<'a>(
     handed: impl IntoIterator<Item = (&'a str, Option<&'a Path>)>,
@@ -513,40 +529,28 @@ fn excerpt(prepared: &str) -> String {
     format!("{}…", &prepared[..end])
 }
 
-/// Both halves of one registered language, as preparations the gate can drive.
+/// Both halves of one language, as preparations the gate can drive.
 ///
 /// Both, because a module compiles exactly as a program does and a turn that reads three code skills
 /// compiles three of them beside its own program. A language that isolated one and not the other
 /// would corrupt a code skill's namespace instead of a program, which is the same bug in a place
 /// nobody would think to look.
-pub(super) fn preparations() -> Vec<Box<dyn Preparation>> {
-    let mut preparations: Vec<Box<dyn Preparation>> = Vec::new();
-    // The [fixture](super::fixture) is driven beside the registered set, and it stays here even now
-    // that a real compiled arm has landed. TypeScript's artifact is produced in memory by the strip
-    // and only validated by `tsc`, so corrupting its check directory moves no bytes; the fixture's —
-    // and [Ruby](super::ruby)'s, whose prepared bytes are the JavaScript Opal wrote into the
-    // workspace — are read back off a filesystem, which is the shape every compiled language has.
-    // The fixture is the cheap subject of that shape (no process, no 2.9 MB compiler), so it is what
-    // keeps these checks biting when the expensive one is skipped or slow.
-    let languages = all_languages().chain(std::iter::once(
-        super::fixture::fixture_language() as &'static dyn ProgramLanguage
-    ));
-    for language in languages {
-        preparations.push(Box::new(LanguagePreparation {
+pub(super) fn preparations(language: &'static dyn ProgramLanguage) -> [LanguagePreparation; 2] {
+    [
+        LanguagePreparation {
             language,
             half: Half::Program,
-        }));
-        preparations.push(Box::new(LanguagePreparation {
+        },
+        LanguagePreparation {
             language,
             half: Half::Module,
-        }));
-    }
-    preparations
+        },
+    ]
 }
 
 /// The name the gate's module half is loaded under, spelled as each language spells a binding key.
 ///
-/// One key for all sixteen of a phase's preparations, which is what a session really does when a
+/// One key for all of a phase's preparations, which is what a session really does when a
 /// model rewrites the memory behind a key it already has: each preparation opens that key's
 /// directory in the band empty and builds into it. An artifact carrying an earlier preparation's
 /// marker under this key is therefore a band that was not cleared.
@@ -562,7 +566,7 @@ enum Half {
 }
 
 /// One registered language's program or module step, as the gate sees it.
-struct LanguagePreparation {
+pub(super) struct LanguagePreparation {
     /// The language.
     language: &'static dyn ProgramLanguage,
     /// Which step.
@@ -678,11 +682,11 @@ fn artifact(language: &'static dyn ProgramLanguage, prepared: super::PreparedPro
 ///
 /// A race reproduced by luck is a test that passes on a quiet machine, which for a gate guarding a
 /// silent-corruption bug is worse than no test. A broken preparation pauses here between the two
-/// halves of its own critical section, so all sixteen have written before any of them reads — the
+/// halves of its own critical section, so every one has written before any of them reads — the
 /// same interleaving both measured bugs took, made certain.
 ///
-/// It has to be a no-op during the gate's **serial baseline**, or the first of the sixteen would
-/// wait for fifteen preparations that have not started. Which phase a call is in is decided by
+/// It has to be a no-op during the gate's **serial baseline**, or the first input would wait for
+/// preparations that have not started. Which phase a call is in is decided by
 /// counting: [`breaches`] prepares each input once alone and once together, in that order, so calls
 /// `0..WIDTH` are the baseline and calls `WIDTH..2 * WIDTH` are the concurrent run. A broken
 /// preparation must therefore be broken *only* under concurrency — one that failed its own baseline

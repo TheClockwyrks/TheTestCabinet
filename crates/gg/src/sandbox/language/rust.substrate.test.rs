@@ -29,9 +29,8 @@
 //! file, line and column; that a `main` returning `Err` is reported as itself; that a program which
 //! names nothing of gg's still runs; and the two bands `rustc` produces between them.
 //!
-//! Isolation is **not** here. This arm's own hand-pointed copy of the gate was deleted at
-//! registration in favour of the seam's, which drives this arm's program and module steps sixteen
-//! ways along with every other language's.
+//! Isolation is **not** here. The seam's gate drives this arm's program and module steps
+//! concurrently along with every other language's.
 //!
 //! The **SDK** is deliberately not here: a program in this file calls the raw generated bindings,
 //! which no model will ever be shown, so that what these tests prove is the substrate rather than

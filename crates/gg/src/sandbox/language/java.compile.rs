@@ -141,12 +141,18 @@ const MAX_BUILDS: usize = 64;
 
 /// How many warm JVMs may exist at once.
 ///
-/// Not `WIDTH` in `language/isolation.rs`. A JVM with TeaVM loaded holds several hundred
-/// megabytes, so sixteen of them is a container that swaps rather than an arm that is four times
-/// faster; a preparation that arrives when all four are out waits, which costs nothing because
-/// preparation runs on a blocking task. Four is what the feasibility study measured concurrency at
-/// (1.3–2.5 s per agent at 4-way on 2 cores).
+/// Not `limits.maxParallel`. A JVM with TeaVM loaded holds several hundred megabytes, so sixteen of
+/// them is a container that swaps rather than an arm that is four times faster; a preparation that
+/// arrives when all four are out waits, which costs nothing because preparation runs on a blocking
+/// task. Four is what the feasibility study measured concurrency at (1.3–2.5 s per agent at 4-way
+/// on 2 cores).
+///
+/// Under test it is the seam's test-only `TEST_POOL_CAPACITY`, so the isolation gate drives more
+/// preparations than the pool holds.
+#[cfg(not(test))]
 const POOL_SIZE: usize = 4;
+#[cfg(test)]
+const POOL_SIZE: usize = crate::sandbox::language::compile::TEST_POOL_CAPACITY;
 
 /// How long one build may take before the daemon is retired and the failure reported as a
 /// [toolchain failure](PrepareFailure::Toolchain).

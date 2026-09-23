@@ -218,8 +218,8 @@ mod register;
 /// The **per-agent compiler isolation gate**: the assertion that preparing a program is a function of
 /// that program alone, held under the concurrency a run really produces.
 ///
-/// `#[cfg(test)]` for the same reason [`agreement`] is — it spawns compilers sixteen at a time, which
-/// is a test's budget and not a turn's. Its module documentation carries the two measured
+/// `#[cfg(test)]` for the same reason [`agreement`] is — it spawns compilers several at a time,
+/// which is a test's budget and not a turn's. Its module documentation carries the two measured
 /// silent-corruption bugs it reproduces.
 #[cfg(test)]
 #[path = "language/isolation.rs"]

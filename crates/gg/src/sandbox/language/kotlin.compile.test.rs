@@ -2,12 +2,11 @@
 //! the diagnostic bands and the generated entry class. Nothing here starts a JVM, which is why every
 //! case in this file runs in microseconds.
 //!
-//! Two things it deliberately no longer holds. The sixteen-way isolation gate lived here while this
-//! arm had no wire id for [the seam's own gate](crate::sandbox::language::isolation) to reach it by;
-//! now that it is registered, that gate drives both halves of this arm along with every other
-//! language's, and a second copy would be 32 real builds asserting a property already asserted. And
-//! the generated entry class is [shared with the Java arm](crate::sandbox::language::jvm) and
-//! asserted there — what is left here is the one line this arm adds to it.
+//! Two things it deliberately does not hold. Concurrent isolation is asserted by
+//! [the seam's gate](crate::sandbox::language::isolation), which drives both halves of this arm
+//! along with every other registered language's. And the generated entry class is
+//! [shared with the Java arm](crate::sandbox::language::jvm) and asserted there — what is left here
+//! is the one line this arm adds to it.
 
 use super::*;
 

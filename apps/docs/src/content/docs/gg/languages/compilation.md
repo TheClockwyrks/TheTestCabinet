@@ -335,18 +335,26 @@ The isolation gate drives every registered language's program step and module
 step in two phases, each input carrying a distinguishable marker inside a call's
 argument.
 
-The sequential phase prepares sixteen inputs one after another in a single
-agent's compile workspace. It asserts three things: each input prepared, each
-artifact carries its own marker and no earlier preparation's, and every one of
-the sixteen was handed the same workspace path. An input that fails to prepare
-here is failing on its own account rather than under contention, so it is
-reported as a baseline failure and the concurrent phase is abandoned.
+Both phases are three wide. Three sequential preparations catch a leftover from
+the previous turn and from the one before it. Every corruption the concurrent
+phase exists for is a collision between two agents, and the third concurrent
+agent exceeds the compiler pool: under test every `CompilerPool` holds two
+instances, so one preparation waits and is handed an instance another agent
+returned.
 
-The concurrent phase drives sixteen agents at once, each with a compile
-workspace of its own and one preparation in it. It asserts the same three things
-per agent: each preparation succeeded, each artifact carries its own marker, and
-each artifact carries no other agent's marker. Alongside them the gate reports
-any workspace path handed to more than one agent.
+The sequential phase prepares its inputs one after another in a single agent's
+compile workspace. It asserts three things: each input prepared, each artifact
+carries its own marker and no earlier preparation's, and every input was handed
+the same workspace path. An input that fails to prepare here is failing on its
+own account rather than under contention, so it is reported as a baseline
+failure and the concurrent phase is abandoned.
+
+The concurrent phase drives its agents at once, each with a compile workspace of
+its own and one preparation in it, released together from a barrier. It asserts
+the same three things per agent: each preparation succeeded, each artifact
+carries its own marker, and each artifact carries no other agent's marker.
+Alongside them the gate reports any workspace path handed to more than one
+agent.
 
 A third gate counts. It loads code modules into one agent and then prepares
 program after program in that agent's workspace, and requires the number of

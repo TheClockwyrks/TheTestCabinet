@@ -1547,6 +1547,16 @@ impl Drop for CompilerDaemon {
     }
 }
 
+/// The capacity every arm's [`CompilerPool`] is built with under test.
+///
+/// One less than the [isolation gate's width](super::isolation::WIDTH), so the gate's concurrent
+/// phase always has a preparation that finds every instance checked out, waits, and is handed an
+/// instance another agent returned — the path a small pool exists to make safe, and one a pool at
+/// production capacity would only reach with more agents than the gate drives. It also bounds how
+/// many warm JVMs one test process starts.
+#[cfg(test)]
+pub(crate) const TEST_POOL_CAPACITY: usize = 2;
+
 /// **A pool of long-lived compiler instances, checked out exclusively** — the sanctioned answer for
 /// a toolchain whose cost is in starting up.
 ///
@@ -1562,6 +1572,8 @@ impl Drop for CompilerDaemon {
 /// discipline: there is no way to observe an instance that someone else is compiling with, and no
 /// `&mut` to be had twice.
 ///
+/// [Java](super::java) and [Kotlin](super::kotlin) each hold one, of warm TeaVM JVMs.
+///
 /// `capacity` bounds how many instances exist at once — a warm JVM or an IDE server has a real memory
 /// cost, and 16 of them is not automatically better than four. A preparation that arrives when every
 /// instance is out **waits**, which is correct here and costs nothing: preparation runs on a blocking
@@ -1575,11 +1587,6 @@ impl Drop for CompilerDaemon {
 /// let mut daemon = POOL.checkout(Daemon::start)?;
 /// let artifact = daemon.compile(source)?;
 /// ```
-// No registered language keeps a warm compiler yet — TypeScript spawns `tsc` per check. This is
-// built and tested ahead of the first one that does, because the alternative that language would
-// otherwise reach for is the `static` daemon that silently produced no output for three of four
-// concurrent TeaVM builds.
-#[allow(dead_code)]
 pub struct CompilerPool<T> {
     /// The most instances that may exist at once.
     capacity: usize,
@@ -1590,7 +1597,6 @@ pub struct CompilerPool<T> {
 }
 
 /// What a pool knows about its instances.
-#[allow(dead_code)]
 struct PoolState<T> {
     /// Instances built and not currently held by anyone.
     idle: Vec<T>,
@@ -1598,7 +1604,6 @@ struct PoolState<T> {
     live: usize,
 }
 
-#[allow(dead_code)]
 impl<T> CompilerPool<T> {
     /// A pool holding at most `capacity` instances.
     ///
@@ -1716,7 +1721,6 @@ impl<T> CompilerPool<T> {
 /// does not have the instance, so nothing else can be handed it — which is the whole of the
 /// guarantee, and the reason a daemon behind this is safe where the same daemon behind a `static` is
 /// not.
-#[allow(dead_code)]
 pub struct Checkout<'a, T> {
     /// The pool to give it back to.
     pool: &'a CompilerPool<T>,
@@ -1728,7 +1732,6 @@ pub struct Checkout<'a, T> {
     lent: Option<T>,
 }
 
-#[allow(dead_code)]
 impl<T> Checkout<'_, T> {
     /// Throw this instance away rather than returning it to the pool.
     ///

@@ -128,12 +128,18 @@ const MAX_BUILDS: usize = 64;
 
 /// How many warm JVMs may exist at once.
 ///
-/// Not `WIDTH` in `language/isolation.rs`, for the reason
-/// [Java's pool](super::super::java::compile) is not either: a JVM holding the Kotlin compiler *and*
-/// TeaVM holds several hundred megabytes, so sixteen of them is a container that swaps rather than an
-/// arm that is four times faster. A preparation that arrives when all four are out waits, which costs
-/// nothing because preparation runs on a blocking task.
+/// Not `limits.maxParallel`, for the reason [Java's pool](super::super::java::compile) is not
+/// either: a JVM holding the Kotlin compiler *and* TeaVM holds several hundred megabytes, so sixteen
+/// of them is a container that swaps rather than an arm that is four times faster. A preparation
+/// that arrives when all four are out waits, which costs nothing because preparation runs on a
+/// blocking task.
+///
+/// Under test it is the seam's test-only `TEST_POOL_CAPACITY`, so the isolation gate drives more
+/// preparations than the pool holds.
+#[cfg(not(test))]
 const POOL_SIZE: usize = 4;
+#[cfg(test)]
+const POOL_SIZE: usize = crate::sandbox::language::compile::TEST_POOL_CAPACITY;
 
 /// How long one build may take before the daemon is retired and the failure reported as a
 /// [toolchain failure](PrepareFailure::Toolchain).

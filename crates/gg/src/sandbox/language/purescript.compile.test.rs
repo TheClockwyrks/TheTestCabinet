@@ -731,7 +731,7 @@ fn the_shared_tree_is_sealed_and_each_preparation_gets_its_own() {
     }
 
     // And two preparations compiling the same source get two trees, which is the property the
-    // isolation gate drives at sixteen.
+    // isolation gate drives concurrently.
     let first = PrepareContext::detached();
     let second = PrepareContext::detached();
     assert!(compile_program(HELLO, &[], &first).is_ok());

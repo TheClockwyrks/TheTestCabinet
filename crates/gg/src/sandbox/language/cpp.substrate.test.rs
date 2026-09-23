@@ -30,11 +30,9 @@
 //! two preparations of one C++ program produce byte-identical components, which is
 //! `-ffile-prefix-map` doing what [`compile`](super::compile) says it does.
 //!
-//! The gate itself is **not** here. This arm's own hand-pointed copy of it was deleted at
-//! registration, exactly as [Rust](super::super::rust)'s and [Swift](super::super::swift)'s were:
-//! the seam derives its language list from the registry, so from the moment `language: "cpp"`
-//! resolves, this arm's program and module steps are driven sixteen ways along with every other
-//! registered language's.
+//! The isolation gate is **not** here. The seam derives its language list from the registry, so
+//! from the moment `language: "cpp"` resolves, this arm's program and module steps are driven
+//! concurrently along with every other registered language's.
 //!
 //! The programs below are written the way a model writes one — their own `#include`, `gg::log`,
 //! `gg::files::read_file` — because the SDK is what a program actually has. What they are *for* is

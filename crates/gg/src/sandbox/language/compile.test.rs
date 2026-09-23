@@ -4,7 +4,7 @@
 //!
 //! These test the *affordances*. What tests the property they exist to guarantee — that a
 //! preparation's result belongs to its own input under real concurrency — is the
-//! [isolation gate](crate::sandbox::language::isolation), which drives whole preparations sixteen
+//! [isolation gate](crate::sandbox::language::isolation), which drives whole preparations several
 //! at a time and is where the two measured corruption bugs are reproduced.
 
 use std::sync::atomic::{AtomicUsize, Ordering};

@@ -29,7 +29,7 @@
 //! flag list says it does rather than anything the seam requires.
 //!
 //! The isolation gate is **not** here. The seam derives its language list from the registry, so from
-//! the moment `language: "csharp"` resolves, this arm's program step is driven sixteen ways along
+//! the moment `language: "csharp"` resolves, this arm's program step is driven concurrently along
 //! with every other registered language's — searching each artifact for markers, which is all it
 //! asks of any arm.
 //!

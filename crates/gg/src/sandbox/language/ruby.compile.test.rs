@@ -4,30 +4,11 @@
 //! would, through a [`PrepareContext`] the sandbox mints, so what is proven is the path a run takes
 //! rather than a rehearsal of it.
 //!
-//! Isolation is **not** here, in any form, and that is the same deletion the
-//! [Rust](crate::sandbox::language::rust), [Swift](crate::sandbox::language::swift) and
-//! [C++](crate::sandbox::language::cpp) arms each made at registration rather than a gap this arm
-//! left. The [seam's own gate](crate::sandbox::language::isolation) drives this arm's program *and*
-//! module steps sixteen ways along with every other language's — Ruby is in
-//! [`all_languages`](crate::sandbox::all_languages), so both of its halves are in
-//! [`preparations`](crate::sandbox::language::isolation::preparations) — and it needs nothing from
+//! Isolation is **not** here, in any form. The
+//! [seam's own gate](crate::sandbox::language::isolation) drives this arm's program *and* module
+//! steps concurrently along with every other registered language's, and it needs nothing from
 //! this arm to do it: it searches an artifact for markers, and the JavaScript Opal writes carries
 //! them as the model spelled them.
-//!
-//! What stood here was a hand-pointed copy of exactly that gate, driving `program.rb` and
-//! `module.rb` through the same [`breaches`](crate::sandbox::language::isolation::breaches). It
-//! proved nothing the seam's run of it does not, and it cost sixty-four more real `node` compiles to
-//! prove it: measured on this repository's dev container at 6.3 s run on its own and **117.5 s**
-//! under `cargo nextest run --workspace`, against nextest's default hard kill at 120 s. It passed
-//! that run with 2.5 s to spare, which is the coin flip `.config/nextest.toml` bounds every other
-//! compiled arm away from — and on a CI runner with a quarter of the cores it is a termination,
-//! which reads as a hang rather than as a gate doing what it says. It is deleted rather than
-//! bounded, because a duplicate gate is not made correct by being given longer to run.
-//!
-//! What is left is bounded, and the reason is in `.config/nextest.toml` beside the other compiled
-//! arms: the seven tests below were measured with a worst of 7.6 s in one full workspace run and
-//! 41.5 s in another taken within the hour, which is what a group of real `node` processes costs
-//! depending on what else the scheduler is holding.
 
 use super::*;
 

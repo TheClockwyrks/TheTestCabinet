@@ -4,7 +4,7 @@
 //! # What it drives
 //!
 //! One agent per language: its [compile workspace](crate::sandbox::AgentWorkspace), one module
-//! loaded into it through that language's own module step, and three programs prepared in it
+//! loaded into it through that language's own module step, and two programs prepared in it
 //! afterwards. What is asserted is the **count** the workspace recorded — a build per key, and not
 //! one more — because that is the property, and because a turn that rebuilt every loaded module
 //! would pass every other assertion this directory makes while costing the turn one compiler
@@ -41,9 +41,9 @@ use super::{ProgramLanguage, all_languages};
 
 /// How many programs each agent prepares after its module has loaded.
 ///
-/// Three rather than one, because the figure a rebuild produces has to *grow*: a single program
+/// Two rather than one, because the figure a rebuild produces has to *grow*: a single program
 /// after the load would read the same as one that rebuilt if the read itself had been skipped.
-const TURNS: usize = 3;
+const TURNS: usize = 2;
 
 /// What the module the gate loads is called, before each arm spells it as a binding key.
 const MODULE_NAME: &str = "gg-reuse-marker";

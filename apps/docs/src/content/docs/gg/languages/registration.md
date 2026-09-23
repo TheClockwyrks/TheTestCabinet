@@ -219,7 +219,7 @@ below.
     one seeds the same code default whatever the language, the other walks
     `GgProgramLanguage::ALL`.
 12. Run the gates. The isolation gate drives the new arm's program and module
-    steps sixteen ways and requires every artifact to carry its own input. The
+    steps concurrently and requires every artifact to carry its own input. The
     authorship gate drives the same two steps and records what the preparation
     did to the bytes it was handed. The runtime-failure gate drives five shapes
     of failure through the arm's real preparation and run and requires the
