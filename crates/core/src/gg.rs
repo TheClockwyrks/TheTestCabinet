@@ -2951,6 +2951,21 @@ pub struct GgAgentConfig {
     /// spread far enough apart, to outlive five minutes.
     #[serde(default, skip_serializing_if = "GgPromptCacheTtl::is_standard")]
     pub prompt_cache_ttl: GgPromptCacheTtl,
+    /// How hard this agent asks its model to think, carried on every request of the agent as the
+    /// unified `reasoning` request object — see [`GgReasoning`] for the two ways to name it and
+    /// what each sends.
+    ///
+    /// `None`, and a configuration that never touched the lever omits the key entirely: no
+    /// parameter is sent and the model runs at its provider's default. A declaration that is
+    /// present must name exactly one of its two values, and one that does not is
+    /// [refused at launch](GgReasoning::is_honourable) rather than read as either.
+    ///
+    /// Beside the [prompt-cache lifetime](Self::prompt_cache_ttl) because it is the other
+    /// per-agent lever over how a request is made rather than what it says, and offered by the
+    /// console's agent form beside it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub reasoning: Option<GgReasoning>,
     /// Whether gg watches this agent's replies for a [generation loop](GgLoopDetection), and with
     /// what knobs. Off unless an operator arms it, because arming it also moves this agent onto the
     /// streaming transport — a per-agent choice, made for the profiles whose model is observed to
@@ -3023,6 +3038,7 @@ impl GgAgentConfig {
             custom_instructions: None,
             system_prompt_template: None,
             prompt_cache_ttl: GgPromptCacheTtl::default(),
+            reasoning: None,
             loop_detection: GgLoopDetection::default(),
             subagents: Vec::new(),
             hooks: Vec::new(),
@@ -3388,6 +3404,124 @@ impl GgPromptCacheTtl {
     /// configuration that never touched the knob omits the field entirely.
     pub fn is_standard(&self) -> bool {
         matches!(self, Self::Standard)
+    }
+}
+
+/// The [effort](GgReasoning::effort) levels a reasoning setting names — the vocabulary
+/// OpenRouter's unified `reasoning` request object speaks, which the provider maps onto whatever
+/// the model's own parameter is called.
+///
+/// [`Low`](Self::Low) and below are what a run reaches for when a model's default effort is more
+/// than its task warrants: a small model reasoning at full effort on a two-hundred-token program
+/// spends thousands of reasoning tokens and minutes per request on work that needs neither.
+/// [`None`](Self::None) is the same demand stated absolutely.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum GgReasoningEffort {
+    /// The provider's highest effort.
+    XHigh,
+    /// High effort.
+    High,
+    /// Medium effort.
+    Medium,
+    /// Low effort.
+    Low,
+    /// The least reasoning the provider can do with a reasoning model still reasoning.
+    Minimal,
+    /// No reasoning at all.
+    None,
+}
+
+impl GgReasoningEffort {
+    /// Every level, in declaration order — what an editor offers and what a validation enumerates.
+    pub const ALL: [GgReasoningEffort; 6] = [
+        GgReasoningEffort::XHigh,
+        GgReasoningEffort::High,
+        GgReasoningEffort::Medium,
+        GgReasoningEffort::Low,
+        GgReasoningEffort::Minimal,
+        GgReasoningEffort::None,
+    ];
+
+    /// The level's wire spelling — the same string its
+    /// [serialization](GgReasoningEffort#impl-Serialize-for-GgReasoningEffort) produces, and what
+    /// the `reasoning` request object's `effort` field is written with.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            GgReasoningEffort::XHigh => "xhigh",
+            GgReasoningEffort::High => "high",
+            GgReasoningEffort::Medium => "medium",
+            GgReasoningEffort::Low => "low",
+            GgReasoningEffort::Minimal => "minimal",
+            GgReasoningEffort::None => "none",
+        }
+    }
+}
+
+impl fmt::Display for GgReasoningEffort {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// How hard one [agent](GgAgentConfig::reasoning) asks its model to think: an
+/// [effort](Self::effort) level or a [budget](Self::max_tokens) of reasoning tokens, exactly one
+/// of the two. Absent from a profile entirely, the model runs at its provider's default and gg
+/// sends no `reasoning` parameter for that agent at all.
+///
+/// It rides on **every request of the agent's own model**, its turns and the compaction summaries
+/// written on that model alike, as OpenRouter's unified `reasoning` request object, one key wide:
+/// `{"effort": "low"}` or `{"max_tokens": 8192}`. The provider maps that object onto whatever the
+/// model's own parameter is, so the vocabulary here is the unified one rather than any one
+/// provider's spelling.
+///
+/// The two are **exclusive**, and a declaration that names both, names neither, or names a
+/// [`max_tokens`](Self::max_tokens) of zero is refused at launch rather than read as either one:
+/// gg substitutes nothing, and a run that quietly picked one half of a contradictory declaration
+/// would record a setting its operator never chose. A budget of zero is refused rather than read
+/// as [`none`](GgReasoningEffort::None) for the same reason — that demand has a spelling of its
+/// own, and this one names no count of tokens a reply could think in.
+///
+/// Per agent rather than per run because the effort is a property of the *task*: a run whose root
+/// writes whole programs wants more of it than the reviewer reading their diff, and a study that
+/// varies one against the other is one configuration with two profiles.
+///
+/// A handoff summarizer bound to a second model is sent none: the setting is
+/// tuned to the agent's own model, and a budget one provider accepts is one another refuses.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct GgReasoning {
+    /// The effort level, one of [`GgReasoningEffort`]. Mutually exclusive with
+    /// [`max_tokens`](Self::max_tokens).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub effort: Option<GgReasoningEffort>,
+    /// The reasoning-token budget, for the providers that cap reasoning by tokens rather than
+    /// naming a level. A whole count of one or more (`60` and `60.0` are the same count), and
+    /// mutually exclusive with [`effort`](Self::effort).
+    #[serde(
+        default,
+        deserialize_with = "count::option_u64",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub max_tokens: Option<u64>,
+}
+
+impl GgReasoning {
+    /// Whether this declaration names exactly one of the two — an [effort](Self::effort) or a
+    /// non-zero [budget](Self::max_tokens) — and so can be sent as written.
+    ///
+    /// The rule the launch check refuses on: `false` for a declaration naming both, naming
+    /// neither, or naming a budget of zero.
+    pub fn is_honourable(&self) -> bool {
+        match (self.effort, self.max_tokens) {
+            (Some(_), None) => true,
+            (None, Some(tokens)) => tokens > 0,
+            _ => false,
+        }
     }
 }
 
@@ -3856,6 +3990,14 @@ pub struct GgSlotBinding {
     /// binding was built for opts into the extended one.
     #[serde(default, skip_serializing_if = "GgPromptCacheTtl::is_standard")]
     pub prompt_cache_ttl: GgPromptCacheTtl,
+    /// The [reasoning setting](GgReasoning) the client built for this binding sends on every
+    /// request — carried here for the same reason the [prompt-cache lifetime](Self::prompt_cache_ttl)
+    /// is: the binding is what a client is resolved from, and how hard the model is asked to think
+    /// is a property of the *agent* whose work that client serves, not of the model it runs on.
+    /// `None` unless the agent profile this binding was built for named one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub reasoning: Option<GgReasoning>,
     /// The [loop detection](GgLoopDetection) the client built for this binding runs with — carried
     /// here for the same reason the [prompt-cache lifetime](Self::prompt_cache_ttl) is: the binding
     /// is what a client is resolved from, and whether replies are watched for a generation loop is a
@@ -3875,6 +4017,7 @@ impl GgSlotBinding {
             model_id: model_id.into(),
             model_slot: None,
             prompt_cache_ttl: GgPromptCacheTtl::default(),
+            reasoning: None,
             loop_detection: GgLoopDetection::default(),
         }
     }
@@ -3887,6 +4030,7 @@ impl GgSlotBinding {
             model_id: String::new(),
             model_slot: Some(model_slot.into()),
             prompt_cache_ttl: GgPromptCacheTtl::default(),
+            reasoning: None,
             loop_detection: GgLoopDetection::default(),
         }
     }
@@ -3895,6 +4039,14 @@ impl GgSlotBinding {
     /// for — how an agent profile's choice reaches the client resolved for it.
     pub fn with_prompt_cache_ttl(mut self, ttl: GgPromptCacheTtl) -> Self {
         self.prompt_cache_ttl = ttl;
+        self
+    }
+
+    /// This binding with `reasoning` as the [reasoning setting](GgReasoning) its client sends on
+    /// every request — how an agent profile's choice reaches the client resolved for it. `None`
+    /// leaves every request of this binding without a `reasoning` parameter.
+    pub fn with_reasoning(mut self, reasoning: Option<GgReasoning>) -> Self {
+        self.reasoning = reasoning;
         self
     }
 

@@ -733,6 +733,7 @@ describe("round-tripping a stored configuration", () => {
     const draft = patchAgent(imported.draft, imported.agentId, {
       customInstructions: "Be brief.",
       promptCacheTtl: "extended",
+      reasoning: { kind: "maxTokens", effort: "", maxTokens: "60" },
     });
     const trip = roundTrip(draft, [saved]);
 
@@ -741,7 +742,7 @@ describe("round-tripping a stored configuration", () => {
       {
         profileId: imported.agentId,
         agentId: "saved-1",
-        overrides: ["customInstructions", "promptCacheTtl"],
+        overrides: ["customInstructions", "promptCacheTtl", "reasoning"],
       },
     ]);
   });
