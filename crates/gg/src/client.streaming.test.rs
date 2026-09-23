@@ -585,7 +585,7 @@ fn arguments_that_never_became_json_are_a_parse_failure() {
 
     let err = accumulator.finish().expect_err("unparseable arguments");
     let message = err.to_string();
-    assert!(matches!(err, ModelError::Parse(_)), "{message}");
+    assert!(matches!(err, ModelError::Parse { .. }), "{message}");
     assert!(message.contains("write_file"), "{message}");
 }
 
@@ -724,7 +724,7 @@ fn a_stream_that_ended_without_saying_anything_is_a_failure() {
     let err = StreamAccumulator::new()
         .finish()
         .expect_err("nothing was ever said");
-    assert!(matches!(err, ModelError::Parse(_)), "{err}");
+    assert!(matches!(err, ModelError::Parse { .. }), "{err}");
     assert!(err.to_string().contains("finish reason"), "{err}");
 }
 
@@ -762,7 +762,7 @@ fn a_provider_error_object_mid_stream_is_a_parse_failure() {
         .push_bytes(event(json!({ "error": { "message": "rate limited" } })).as_bytes())
         .expect_err("a provider error is not a reply");
 
-    assert!(matches!(err, ModelError::Parse(_)), "{err}");
+    assert!(matches!(err, ModelError::Parse { .. }), "{err}");
     let message = err.to_string();
     assert!(
         message.contains("provider returned an error object"),
@@ -784,7 +784,7 @@ fn an_unreadable_chunk_is_a_parse_failure() {
     let err = accumulator
         .push_bytes(b"data: {not json at all\n\n")
         .expect_err("an unreadable chunk");
-    assert!(matches!(err, ModelError::Parse(_)), "{err}");
+    assert!(matches!(err, ModelError::Parse { .. }), "{err}");
 }
 
 /// A peer that sends bytes and never a line break is refused rather than buffered without limit.
@@ -802,7 +802,7 @@ fn a_line_that_never_ends_is_refused_rather_than_buffered_forever() {
         }
     }
     let err = err.expect("an unterminated line is refused");
-    assert!(matches!(err, ModelError::Parse(_)), "{err}");
+    assert!(matches!(err, ModelError::Parse { .. }), "{err}");
     assert!(err.to_string().contains("no line break"), "{err}");
 }
 

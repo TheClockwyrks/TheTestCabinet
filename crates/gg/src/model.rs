@@ -378,7 +378,12 @@ impl LoopAborts {
 ///
 /// The retry loop itself lives inside [`OpenRouterClient`](crate::client::OpenRouterClient), so a
 /// `ModelError` reaching the [turn loop](crate::agent) means every attempt within one turn already
-/// failed and the session ends on it. Two decisions are then made from the variant, and they are the
+/// failed. Three shapes the loop **answers** rather than ends on: a [`Timeout`](Self::Timeout), a
+/// [`Parse`](Self::Parse) and a [`ResponseLoop`](Self::ResponseLoop) are recorded as error turns —
+/// they spend the run's [error ceilings](crate::limits::RunLimits), nothing enters the context
+/// between attempts, and the loop asks the same question again — so a stalled endpoint, a reply gg
+/// could not read and a model that looped every attempt each cost the model a turn rather than the
+/// run. The rest end the agent, and two decisions are then made from the variant, and they are the
 /// only two:
 ///
 /// * **how the run is scored** — [`is_auth_failure`](Self::is_auth_failure) says the run's
@@ -433,10 +438,26 @@ pub enum ModelError {
         /// A (truncated) copy of the provider's error body.
         message: String,
     },
-    /// A `2xx` response could not be parsed into a [`ModelResponse`]. Fatal — retrying
-    /// an already-successful-but-malformed response would not help.
-    #[error("could not parse model response: {0}")]
-    Parse(String),
+    /// A `2xx` response could not be read into a [`ModelResponse`] — an unparseable envelope, an
+    /// error object in a success status, or tool call arguments that are not JSON (the shape a
+    /// provider cuts off mid-arguments produces).
+    ///
+    /// Answered as a [`model_parse`](TurnErrorType::ModelParse) error turn: nothing entered the
+    /// context, the turn spends the run's error ceilings exactly as a failed call does, and the
+    /// loop asks the same question again — so a reply gg could not read costs the model a turn
+    /// rather than the run. What the reply *reported* before it stopped making sense rides the
+    /// `spend` field so the turn's price still reaches the run's total cost; it is never work's.
+    /// Boxed so this arm does not make the whole error expensive to move — the spend is the
+    /// exceptional part of the variant, not the rule.
+    #[error("could not parse model response: {message}")]
+    Parse {
+        /// What could not be read, and where.
+        message: String,
+        /// What the request billed for before the reply stopped making sense, as
+        /// [`parse_billed`](Self::parse_billed) recorded it; `None` when the stream had reported
+        /// nothing yet.
+        spend: Option<Box<ReplySpend>>,
+    },
     /// Every attempt the client made was abandoned mid-stream by
     /// [loop detection](crate::loopguard): the model answered with a repetition rather than a
     /// reply, and kept doing so until the retry policy ran out.
@@ -444,7 +465,12 @@ pub enum ModelError {
     /// The same shape of failure as [`RetryExhausted`](Self::RetryExhausted) — the client's own
     /// retry budget ran out — and, like it, neither a host fault nor a misconfiguration: the
     /// request was well-formed and the provider answered it, the answer was just worthless. A later
-    /// turn, on a shorter context, routinely succeeds.
+    /// turn, on a shorter context, routinely succeeds — which is why the loop answers this as a
+    /// [`model_response_loop`](TurnErrorType::ModelResponseLoop) error turn rather than an ending:
+    /// the discarded replies never entered the context, the turn spends the error ceilings, and
+    /// the same request goes out again, so a model that loops once loses a turn rather than the
+    /// run. The replies' spend cannot follow them here — a stream gg dropped never delivered its
+    /// usage — so the error carries their [size](LoopAborts) and nothing it cannot measure.
     ///
     /// It exists as its own variant rather than folding into `RetryExhausted` because the two say
     /// completely different things to an operator reading the run's log. `RetryExhausted` means
@@ -511,7 +537,73 @@ pub enum ModelError {
     },
 }
 
+/// What one model request billed for, read even when the reply it carried was unusable: the
+/// provider's usage and cost as reported, and who served it. The price of a reply
+/// [gg could not read](ModelError::Parse) or [rejected whole](crate::limits::TurnErrorType::ModelLengthCapped)
+/// is still the run's spend, so it rides out on the request's
+/// [`Usage`](test_cabinet_core::gg::GgTelemetryKind::Usage) delta marked
+/// [`total`](test_cabinet_core::gg::GgUsageFigure::Total) — into the run's
+/// [total cost](test_cabinet_core::gg::GgSessionSummary::cost) and never its
+/// [work cost](test_cabinet_core::gg::GgSessionSummary::work_cost), since no program and no tool
+/// call came of it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReplySpend {
+    /// The provider's normalized token usage for the request.
+    pub tokens: TokenCounts,
+    /// The request's cost, when the provider reported one.
+    pub cost: Option<Cost>,
+    /// The upstream provider that named itself on the request.
+    pub provider: Option<String>,
+    /// The provider's usage object verbatim, as [`ModelResponse::usage_wire`] carries it.
+    pub wire: Option<serde_json::Value>,
+    /// Whether the output/reasoning split is gg's bound rather than the provider's, as
+    /// [`ModelResponse::usage_reconciled`] says it.
+    pub reconciled: bool,
+}
+
+impl ReplySpend {
+    /// The spend of a reply the loop holds in hand — a rejected length-capped one — where usage,
+    /// cost and provider all come straight off the response.
+    pub fn of(response: &ModelResponse) -> Self {
+        Self {
+            tokens: response.usage,
+            cost: response.cost,
+            provider: response.provider.clone(),
+            wire: response.usage_wire.clone(),
+            reconciled: response.usage_reconciled,
+        }
+    }
+
+    /// Whether anything was reported at all — the question [`ModelError::parse_billed`] asks
+    /// before it boxes, so a failure that struck before any usage did carries `None` rather than
+    /// an all-empty spend nothing can tell from absence.
+    pub fn reported(&self) -> bool {
+        self.tokens != TokenCounts::default() || self.cost.is_some() || self.provider.is_some()
+    }
+}
+
 impl ModelError {
+    /// A [`Parse`](Self::Parse) that carries no spend: the shape a test builds when the price of
+    /// the unreadable reply is beside its point. gg itself always builds the error through
+    /// [`parse_billed`](Self::parse_billed), which records whatever the stream had reported.
+    #[cfg(test)]
+    pub fn parse(message: impl Into<String>) -> Self {
+        ModelError::Parse {
+            message: message.into(),
+            spend: None,
+        }
+    }
+
+    /// A [`Parse`](Self::Parse) carrying what the request billed for before the reply stopped
+    /// making sense, or no spend at all when nothing was reported.
+    pub fn parse_billed(message: impl Into<String>, spend: ReplySpend) -> Self {
+        let spend = spend.reported().then(|| Box::new(spend));
+        ModelError::Parse {
+            message: message.into(),
+            spend,
+        }
+    }
+
     /// Whether this error means the run's **credential** was refused: a
     /// [`MissingApiKey`](Self::MissingApiKey), or a [`Fatal`](Self::Fatal) `401`/`403`
     /// from the provider.
@@ -549,7 +641,7 @@ impl ModelError {
             ModelError::RetryExhausted { .. } => TurnErrorType::ModelRetryExhausted,
             ModelError::ResponseLoop { .. } => TurnErrorType::ModelResponseLoop,
             ModelError::VisionUnsupported { .. } => TurnErrorType::ModelVisionUnsupported,
-            ModelError::Parse(_) => TurnErrorType::ModelParse,
+            ModelError::Parse { .. } => TurnErrorType::ModelParse,
             ModelError::ProviderMismatch { .. } => TurnErrorType::ModelProviderMismatch,
             ModelError::Timeout { .. } => TurnErrorType::ModelTimeout,
         }

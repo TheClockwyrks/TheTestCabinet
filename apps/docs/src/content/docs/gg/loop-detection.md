@@ -183,18 +183,22 @@ generic exhausted retry, because "retries exhausted" would send an operator
 looking at the provider for an outage that never happened:
 
 ```text
-model turn 14 failed — model looped every attempt: model looped: 2 words repeated
+model turn 14 — model looped every attempt: model looped: 2 words repeated
 across 3000 consecutive words, 3065 words into the reply (3065 words, 12261
 characters read before it was abandoned); discarded 4 response(s) totalling 49044
 characters of generated output
 ```
 
-That ends the agent with the terminal status `model_error`, on the terms
-[a failed model call](/gg/execution-limits/#model-api-errors) has. The failure
-is the model's rather than the provider's, so a root that ends on it exits `0`
-and the run is scored. The turn is recorded with the base error kind
-`model_api` and the error type `model_response_loop`. What is worth acting on
-beyond that is how many replies were discarded and how much they generated.
+That is answered as an error turn. None of the discarded replies entered the
+context, the [error ceilings](/gg/execution-limits/#model-api-errors) spend as
+they do for any other failed turn, and the same request goes out again, so a
+model that loops once loses a turn rather than the run. An armed ceiling is what
+stops a model that keeps looping, under `limit_exceeded`. The turn is recorded
+with the base error kind `model_api` and the error type `model_response_loop`,
+together with how many replies were discarded and how much they generated.
+Their cost is in neither of the run's
+[cost figures](/gg/execution-limits/#maxcost), because an abandoned stream never
+delivers its usage.
 
 The [session record](/gg/analysis/session-records/) keeps the failure as a
 recorded model error of kind `response_loop` carrying how many replies were

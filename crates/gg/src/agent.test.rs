@@ -491,17 +491,46 @@ struct RecordingClient {
     turn: AtomicUsize,
     /// The scripted responses, one per turn.
     script: Vec<ModelResponse>,
-    /// Every request's messages, in turn order.
+    /// Every request's messages, in turn order — the failing ones too, since "the retry's request
+    /// is byte-identical to the failed attempt's" is read off exactly this list.
     seen: Mutex<Vec<Vec<Message>>>,
+    /// How many calls still fail before the script is read — the leading failures
+    /// [`blame`](Self::blame) invents. `0` for an ordinary scripted run.
+    failing: AtomicUsize,
+    /// The failure those leading calls return, fresh per call ([`ModelError`] is not `Clone`).
+    blame: Option<Box<dyn Fn() -> ModelError + Send + Sync>>,
 }
 
 impl RecordingClient {
     fn new(model_id: &str, script: Vec<ModelResponse>) -> Arc<Self> {
+        Self::build(model_id, script, 0, None)
+    }
+
+    /// The same client whose first `failures` calls fail with `blame`'s error before the script is
+    /// read — a reply the loop must answer as an error turn and ask again about, recorded on the
+    /// same terms as any other request so the retry can be compared against the attempt.
+    fn failing(
+        model_id: &str,
+        failures: usize,
+        blame: impl Fn() -> ModelError + Send + Sync + 'static,
+        script: Vec<ModelResponse>,
+    ) -> Arc<Self> {
+        Self::build(model_id, script, failures, Some(Box::new(blame)))
+    }
+
+    fn build(
+        model_id: &str,
+        script: Vec<ModelResponse>,
+        failures: usize,
+        blame: Option<Box<dyn Fn() -> ModelError + Send + Sync>>,
+    ) -> Arc<Self> {
         Arc::new(Self {
             model_id: model_id.to_string(),
             turn: AtomicUsize::new(0),
             script,
             seen: Mutex::new(Vec::new()),
+            failing: AtomicUsize::new(failures),
+            blame,
         })
     }
 
@@ -519,6 +548,18 @@ impl ModelClient for RecordingClient {
         _tools: &[ToolDefinition],
     ) -> Result<ModelResponse, ModelError> {
         self.seen.lock().unwrap().push(messages.to_vec());
+        // Fail the leading calls before the script is read — and only when there is a failure to
+        // invent, so an ordinary scripted run never decrements the counter.
+        if let Some(blame) = &self.blame
+            && self
+                .failing
+                .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |left| {
+                    left.checked_sub(1)
+                })
+                .is_ok()
+        {
+            return Err(blame());
+        }
         let turn = self.turn.fetch_add(1, Ordering::SeqCst);
         Ok(self
             .script
@@ -557,10 +598,19 @@ async fn drive_recorded_code_run(
     set: GgCapabilitySet,
     script: Vec<ModelResponse>,
 ) -> (SessionOutcome, Vec<GgTelemetryEvent>, Vec<Vec<Message>>) {
+    drive_recorded_client(dir, set, RecordingClient::new("mock/primary", script)).await
+}
+
+/// [`drive_recorded_code_run`]'s over a caller-built client — the run whose leading calls fail is
+/// assembled by the test that needs it, so the failing shape and the script stay in one place.
+async fn drive_recorded_client(
+    dir: &TempDir,
+    set: GgCapabilitySet,
+    client: Arc<RecordingClient>,
+) -> (SessionOutcome, Vec<GgTelemetryEvent>, Vec<Vec<Message>>) {
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-code".to_string()), Box::new(sink.clone()));
     let inv = invocation(dir.path(), set);
-    let client = RecordingClient::new("mock/primary", script);
     let shared = Arc::clone(&client);
     let factory = ScriptedFactory::new().slot(ROOT_PROFILE_ID, move |_| {
         Box::new(SharedRecordingClient(Arc::clone(&shared)))
@@ -708,9 +758,11 @@ enum FailureMode {
     /// A refused credential — the class that must not be scored against the model.
     Auth,
     /// Every attempt degenerated into a [generation loop](crate::loopguard) and was discarded, so
-    /// the client ran out of attempts with nothing to show for them. Retryable-exhausted like
-    /// [`Retryable`](Self::Retryable), and deliberately reported under its own name: "retries
-    /// exhausted" would send an operator looking for a provider outage that never happened.
+    /// the client ran out of attempts with nothing to show for them. Deliberately reported under
+    /// its own name rather than as [`Retryable`](Self::Retryable)'s exhaustion: "retries
+    /// exhausted" would send an operator looking for a provider outage that never happened. The
+    /// turn loop answers it as an error turn — the discarded replies never enter the context, the
+    /// consecutive count spends, and an armed ceiling is what ends the run.
     Looping,
     /// The gateway answered from a provider other than the pin.
     ProviderMismatch,
@@ -5457,14 +5509,22 @@ async fn usage_records_a_reconciled_row_beside_the_providers_object() {
     );
 }
 
-/// A root whose every attempt looped ends `model_error` too, but the failure is the model's rather
-/// than the provider's: the session exits `0` and the run is collected and scored.
+/// A root whose every attempt looped is the model's failure, and the run stops on its **error
+/// ceilings** rather than ending under `model_error` — so it is collected and scored exactly as
+/// any run a ceiling stopped is, and never mistaken for the provider outage "retries exhausted"
+/// would have implied.
 #[tokio::test]
-async fn run_scores_a_root_that_looped_every_attempt() {
+async fn run_stops_a_root_that_looped_every_attempt_on_the_error_ceilings() {
     let dir = TempDir::new().unwrap();
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-loop".to_string()), Box::new(sink.clone()));
-    let inv = invocation(dir.path(), GgCapabilitySet::minimal("mock/primary"));
+    let mut set = GgCapabilitySet::minimal("mock/primary");
+    set.limits = GgRunLimits {
+        max_turns: Some(5),
+        max_consecutive_errors: Some(2),
+        ..GgRunLimits::authored()
+    };
+    let inv = invocation(dir.path(), set);
     let factory = ScriptedFactory::new().slot(ROOT_PROFILE_ID, |_| {
         Box::new(FailingClient {
             mode: FailureMode::Looping,
@@ -5473,14 +5533,22 @@ async fn run_scores_a_root_that_looped_every_attempt() {
 
     assert_eq!(
         run_with_factory(&inv, &emitter, Arc::new(factory)).await,
-        SessionOutcome::Ran,
+        SessionOutcome::LimitExceeded,
+    );
+    let events = sink.events();
+    assert!(
+        events.iter().any(|e| matches!(
+            &e.kind,
+            GgTelemetryKind::SessionEnded { status } if status == "limit_exceeded"
+        )),
+        "the ceiling — not the first loop — ends the session"
     );
     assert!(
-        sink.events().iter().any(|e| matches!(
+        !events.iter().any(|e| matches!(
             &e.kind,
             GgTelemetryKind::SessionEnded { status } if status == "model_error"
         )),
-        "the session still ends `model_error`"
+        "a looped reply is an error turn, not a session-ending model error"
     );
 }
 

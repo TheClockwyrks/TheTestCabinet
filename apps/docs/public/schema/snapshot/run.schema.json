@@ -25,7 +25,7 @@
           "type": "integer"
         },
         "loopAbortWords": {
-          "description": "Words of generated output across every reply [`loop_aborts`](Self::loop_aborts) counts, and\nthe characters of the same output beside it — the **size** of what was thrown away, where\nthe count beside them is only how often.\n\nThe units are the ones gg measured itself, as the replies streamed. There is deliberately no\ntoken count and no price: gg's [cost](crate::metrics::Cost) and\n[tokens](crate::metrics::TokenCounts) come from the provider's usage payload, which arrives\nat the end of a stream an abandoned reply never reached, so any figure in those units would\nbe an estimate published where every neighbouring figure is a measurement.\n\nThis output is charged to the provider bill and is absent from the run's recorded cost, by\ndesign: a looping reply is a model defect, and a run must not be made to look expensive for\none. The figures here are what makes that omission visible rather than silent.",
+          "description": "Words of generated output across every reply [`loop_aborts`](Self::loop_aborts) counts, and\nthe characters of the same output beside it — the **size** of what was thrown away, where\nthe count beside them is only how often.\n\nThe units are the ones gg measured itself, as the replies streamed. There is deliberately no\ntoken count and no price: gg's [cost](crate::metrics::Cost) and\n[tokens](crate::metrics::TokenCounts) come from the provider's usage payload, which arrives\nat the end of a stream an abandoned reply never reached, so any figure in those units would\nbe an estimate published where every neighbouring figure is a measurement.\n\nThis output is charged to the provider bill, and it reaches neither of the run's cost\nfigures — the [work](GgSessionSummary::work_cost) nor the\n[total](GgSessionSummary::cost) — because gg has no price for it: a looping reply is\ndropped before the stream's usage trailer, so unlike every other spend in this summary it\nis a measurement gg never received rather than one it set aside. The figures here are what\nmakes that omission visible rather than silent.",
           "format": "uint64",
           "minimum": 0,
           "type": "integer"
@@ -209,7 +209,7 @@
       "type": "object"
     },
     "GgRejectedResponses": {
-      "description": "The run's **rejected-reply** rollup: how many model replies gg refused to use (today, exactly\nthe length-capped ones — see [`GgTelemetryKind::ResponseRejected`]), and the spend they burned.\n\nThis bucket exists so the exclusion is visible rather than silent. A rejected reply's usage is\ndeliberately kept **out** of the run's cost and turn metrics — a degenerate generation must not\nmake a run look expensive or long — but the money was still spent, and \"how often does this\nmodel cap out, and what does it cost?\" is a question the owner asks of the durable record.\nFolded from the [`ResponseRejected`](GgTelemetryKind::ResponseRejected) events the run emitted.",
+      "description": "The run's **rejected-reply** rollup: how many model replies gg refused to use (today, exactly\nthe length-capped ones — see [`GgTelemetryKind::ResponseRejected`]), and the spend they burned.\n\nThis bucket exists so the exclusion is visible rather than silent. A rejected reply's usage\nnever counts as the run's **work** — a degenerate generation must not make a run's work look\nexpensive or long — but it is in the run's [total cost](GgSessionSummary::cost) like every\nother request's, and \"how often does this model cap out, and what did those attempts cost?\" is\na question the owner asks of the durable record. Folded from the\n[`ResponseRejected`](GgTelemetryKind::ResponseRejected) events the run emitted.",
       "properties": {
         "cost": {
           "anyOf": [
@@ -220,7 +220,7 @@
               "type": "null"
             }
           ],
-          "description": "Their cost, summed, when the provider reported any — spend absent from the run's recorded\ncost by design."
+          "description": "Their cost, summed, when the provider reported any — in the run's\n[total cost](GgSessionSummary::cost), never its\n[work cost](GgSessionSummary::work_cost)."
         },
         "count": {
           "description": "How many replies were rejected.",
@@ -230,7 +230,7 @@
         },
         "tokens": {
           "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/TokenMetrics",
-          "description": "The tokens the provider billed for them, summed — spend absent from the run's own\n[token totals](crate::metrics::TokenCounts) by design."
+          "description": "The tokens the provider billed for them, summed — absent from the run's\n[work](GgSessionSummary::work_cost) figures by design, and inside its\n[total](GgSessionSummary::cost) ones like every other request's."
         }
       },
       "required": ["count", "tokens"],

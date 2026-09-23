@@ -1368,6 +1368,7 @@ fn usage_telemetry_reuses_the_shared_token_and_cost_types() {
                 comparable: Some(0.021),
                 actual: Some(0.021),
             }),
+            figure: Some(GgUsageFigure::Work),
             provider: Some("anthropic".to_string()),
             wire: Some(json!({
                 "prompt_tokens": 1500,
@@ -1382,6 +1383,11 @@ fn usage_telemetry_reuses_the_shared_token_and_cost_types() {
     assert_eq!(value["profileId"], json!(ROOT_PROFILE_ID));
     assert_eq!(value["provider"], json!("anthropic"));
     assert_eq!(value["modelId"], json!("anthropic/claude-opus-5"));
+    assert_eq!(
+        value["figure"],
+        json!("work"),
+        "the delta names the cost figure its turn fed"
+    );
     // The provider's object rides verbatim — its own snake_case keys, untouched by the
     // event's camelCase mapping.
     assert_eq!(
@@ -1414,6 +1420,7 @@ fn usage_telemetry_carries_the_reconciled_mark_and_omits_an_absent_wire() {
             reasoning: Some(0),
         },
         cost: None,
+        figure: Some(GgUsageFigure::Work),
         provider: Some("Sail Research".to_string()),
         wire: None,
         reconciled: true,

@@ -463,7 +463,7 @@ fn main() -> Result<()> {
                 gg::GgErrorSummary, gg::GgUndocumentedCalls,
                 gg::GgRejectedResponses,
                 gg::GgSlotCost, gg::GgProviderStat, gg::GgSessionSummary,
-                gg::GgTelemetryKind, gg::GgTelemetryEvent,
+                gg::GgTelemetryKind, gg::GgTelemetryEvent, gg::GgUsageFigure,
                 bapi::GgConfig, bapi::GgConfigInput, bapi::GgAgentSource,
                 bapi::GgSavedAgent, bapi::GgSavedAgentInput,
             ],
@@ -882,6 +882,9 @@ fn main() -> Result<()> {
                 // session summary's, but a telemetry reader must be able to resolve the
                 // reference without loading a second document.
                 "GgProgramLanguage",
+                // Which of the session's two cost figures a `Usage` delta fed — the
+                // event's own vocabulary, appearing nowhere else in the contract.
+                "GgUsageFigure",
             ],
             schema: root_schema::<gg::GgTelemetryEvent>(),
         },

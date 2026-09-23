@@ -64,6 +64,8 @@ fn gg_record(id: &str, model: &str) -> RunRecord {
                 issues_created: 0,
                 issues_completed: 0,
                 slot_costs: Vec::new(),
+                cost: None,
+                work_cost: None,
                 effective_tools: vec!["shell".to_string()],
                 limits: Default::default(),
                 limit_hit: None,
