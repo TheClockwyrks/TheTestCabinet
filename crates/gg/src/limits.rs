@@ -581,7 +581,16 @@ pub fn declared_model_stream_idle(declared: &GgRunLimits) -> Duration {
 ///
 /// A `0` for the retries is honoured as written rather than defaulted: it is a run that gives up
 /// on the first failure, which a study comparing retry budgets legitimately wants.
-pub fn declared_retry_policy(declared: &GgRunLimits) -> RetryPolicy {
+/// How many unexpected cache misses leave a provider, given the run's declared
+/// [limits](GgRunLimits): the figure written, or [`DEFAULT_PROVIDER_CACHE_MISS_LIMIT`] when the
+/// key is absent. `0` is honoured as written — a run that leaves a provider on its first
+/// unexpected miss — so this function is [total](crate::validate#the-resolver-contract) on the
+/// same terms as the resolver around it.
+pub fn declared_provider_cache_miss_limit(declared: &GgRunLimits) -> u64 {
+    declared
+        .provider_cache_miss_limit
+        .unwrap_or(crate::client::DEFAULT_PROVIDER_CACHE_MISS_LIMIT)
+}
     RetryPolicy {
         // The first attempt plus the retries after it. A count past what a `u32` holds is a
         // schedule no run outlives, so it saturates rather than wrapping to a small one.
@@ -662,9 +671,13 @@ pub struct RunLimits {
     /// first attempt, each retry's delay doubling from one second up to the
     /// `modelRetryMaxDelaySecs` ceiling. Like [`model_call_timeout`](Self::model_call_timeout) it
     /// is not an execution ceiling and never ends a run: it is the budget the client spends before
-    /// a failed request ends one, present on every run, the defaults filled in for a set that
-    /// left the keys out.
+    /// a failed request moves the run to its next candidate, present on every run, the defaults
+    /// filled in for a set that left the keys out.
     pub retry_policy: RetryPolicy,
+    /// How many unexpected cache misses leave a provider. Present on every run: a set that writes
+    /// no `providerCacheMissLimit` takes [`DEFAULT_PROVIDER_CACHE_MISS_LIMIT`], and `0` is honoured
+    /// as a run that leaves a provider on its first unexpected miss.
+    pub provider_cache_miss_limit: u64,
 }
 
 /// A recent-error-rate ceiling and the lookback it is measured over.
@@ -1062,6 +1075,7 @@ pub fn resolve_run_limits(
         max_cost,
         replay_max_bytes,
         retry_policy,
+        provider_cache_miss_limit: declared_provider_cache_miss_limit(&declared),
     }
 }
 

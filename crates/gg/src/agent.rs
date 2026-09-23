@@ -851,6 +851,7 @@ pub async fn run(invocation: &GgInvocation, emitter: &Emitter) -> SessionOutcome
             declared_model_stream_idle(&invocation.capability_set.limits),
             declared_retry_policy(&invocation.capability_set.limits),
             invocation.model_providers.clone(),
+            declared_provider_cache_miss_limit(&invocation.capability_set.limits),
         ),
     )
     .await
@@ -903,7 +904,8 @@ impl SessionSeams {
         model_call_timeout: Duration,
         model_stream_idle: Duration,
         retry_policy: crate::client::RetryPolicy,
-        model_providers: BTreeMap<String, String>,
+        model_providers: BTreeMap<String, Vec<test_cabinet_core::gg::GgProviderCandidate>>,
+        cache_miss_limit: u64,
     ) -> Self {
         let routing_key = RoutingKey::mint();
         Self {
@@ -913,6 +915,7 @@ impl SessionSeams {
                 model_stream_idle,
                 retry_policy,
                 model_providers,
+                cache_miss_limit,
             )),
             shell: real_shell(),
             routing_key,
@@ -9276,6 +9279,7 @@ fn recorded_limits(limits: &RunLimits, max_parallel: usize) -> GgRunLimits {
         max_error_rate: limits.error_rate.map(|rate| rate.max_rate),
         error_rate_window: limits.error_rate.map(|rate| rate.window as u64),
         max_cost: limits.max_cost,
+        provider_cache_miss_limit: Some(limits.provider_cache_miss_limit),
         // Recorded on the same terms as the error ceilings: the capture ceiling in force is a fact
         // about the run, and a truncated record is far easier to read beside the number that
         // truncated it.
@@ -10822,31 +10826,34 @@ fn validate_model_windows(
     ))
 }
 
-/// Check that every model `set` binds names the one OpenRouter provider its requests are pinned
-/// to, reporting every missing pin together.
+/// Check that every model `set` binds carries an ordered candidate list, reporting every missing
+/// list together.
 ///
 /// A model the [mock client](crate::client::ProviderKind::Mock) answers is exempt: it sends no
-/// request, so there is no provider to pin.
+/// request, so there is no provider to name. An empty list is a missing one: it would send no
+/// `provider.only`.
 fn validate_model_providers(
     set: &GgCapabilitySet,
-    providers: &BTreeMap<String, String>,
+    providers: &BTreeMap<String, Vec<test_cabinet_core::gg::GgProviderCandidate>>,
 ) -> Result<(), String> {
     let missing: Vec<&str> = set
         .bound_model_ids()
         .into_iter()
         .filter(|id| provider_for(&GgSlotBinding::new("", *id)) != ProviderKind::Mock)
         .filter(|id| {
-            providers
-                .get(*id)
-                .is_none_or(|provider| provider.trim().is_empty())
+            providers.get(*id).is_none_or(|candidates| {
+                candidates
+                    .iter()
+                    .all(|candidate| candidate.provider.trim().is_empty())
+            })
         })
         .collect();
     if missing.is_empty() {
         return Ok(());
     }
     Err(format!(
-        "the invocation carries no provider pin for the model(s) {}: every bound model needs a \
-         `modelProviders` entry naming its developer's own OpenRouter provider",
+        "the invocation carries no provider candidate for the model(s) {}: every bound model \
+         needs a `modelProviders` entry naming the providers its requests may be served by",
         missing
             .iter()
             .map(|id| format!("`{id}`"))

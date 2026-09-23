@@ -86,6 +86,7 @@ fn bare_limits() -> RunLimits {
         max_cost: None,
         replay_max_bytes: None,
         retry_policy: RetryPolicy::default(),
+        provider_cache_miss_limit: crate::client::DEFAULT_PROVIDER_CACHE_MISS_LIMIT,
     }
 }
 

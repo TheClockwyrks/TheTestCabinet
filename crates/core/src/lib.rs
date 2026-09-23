@@ -301,15 +301,14 @@ pub struct RunRequest {
     /// falls back to a conservative default. Meaningless for a non-gg run, which leaves
     /// it empty.
     pub gg_model_windows: BTreeMap<String, u64>,
-    /// The OpenRouter provider each model a **gg** run is pinned to, resolved from the
-    /// model catalog alongside [`gg_model_windows`](Self::gg_model_windows). Passed straight
-    /// through to
+    /// The ordered candidate list each model a **gg** run may be served by, resolved
+    /// from the model catalog alongside [`gg_model_windows`](Self::gg_model_windows).
+    /// Passed straight through to
     /// [`GgInvocation::model_providers`](crate::gg::GgInvocation::model_providers).
     ///
-    /// Empty is legal only for a run that binds no model. A gg run missing a pin for a bound
-    /// model is refused before the container is pulled: the model is not testable on another
-    /// provider.
-    pub gg_model_providers: BTreeMap<String, String>,
+    /// Empty is legal only for a run that binds no model. A gg run missing a list for a
+    /// bound model is refused before the container is pulled: the model has no candidate.
+    pub gg_model_providers: BTreeMap<String, Vec<crate::gg::GgProviderCandidate>>,
     /// The input modalities each model a **gg** run may bind accepts, as resolved from
     /// the model catalog alongside [`gg_model_windows`](Self::gg_model_windows). Passed
     /// straight through to
@@ -387,12 +386,12 @@ impl RunRequest {
         )))
     }
 
-    /// Every model a gg run binds must name the one provider its requests are pinned to.
+    /// Every model a gg run binds must carry the ordered candidate list its requests are served
+    /// by.
     ///
-    /// The launch path resolves the pin with the window, so reaching here without one means the
-    /// catalog has no official endpoint for the model. Running it on another provider would put
-    /// the cost on a basis the record does not name, so the run is refused before the container
-    /// is pulled.
+    /// The launch path resolves the list with the window, so reaching here without one means the
+    /// catalog found no endpoint the run may use. A model with no candidate is not testable, so
+    /// the run is refused before the container is pulled.
     fn validate_model_providers(&self) -> Result<()> {
         let Some(set) = self.gg_capability_set.as_ref() else {
             return Ok(());
@@ -401,16 +400,18 @@ impl RunRequest {
             .bound_model_ids()
             .into_iter()
             .filter(|id| {
-                self.gg_model_providers
-                    .get(*id)
-                    .is_none_or(|provider| provider.trim().is_empty())
+                self.gg_model_providers.get(*id).is_none_or(|candidates| {
+                    candidates
+                        .iter()
+                        .all(|candidate| candidate.provider.trim().is_empty())
+                })
             })
             .collect();
         if missing.is_empty() {
             return Ok(());
         }
         Err(Error::GgConfiguration(format!(
-            "no provider pin resolved for model(s) {}",
+            "no provider candidate resolved for model(s) {}",
             missing
                 .iter()
                 .map(|id| format!("`{id}`"))

@@ -4643,6 +4643,24 @@ pub struct GgRunLimits {
     )]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub model_retry_max_delay_secs: Option<u64>,
+    /// How many **unexpected cache misses** a provider may accumulate before the run leaves it
+    /// for the next candidate on its list.
+    ///
+    /// One of the keys an absence answers with a **figure**: **absent is two**, because a provider
+    /// that keeps ignoring its own cache is never a setting an operator can ask for, and `0` is
+    /// honoured as written — a run that leaves a provider on its first unexpected miss.
+    ///
+    /// An unexpected miss is a reply whose cached-token count is below the shared prefix of the
+    /// previous request on the same provider, sent within that request's cache lifetime and above
+    /// the provider's minimum cacheable size. The reply stands, and the miss is counted; a
+    /// provider that reaches this limit is left at the next request.
+    #[serde(
+        deserialize_with = "count::option_u64",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub provider_cache_miss_limit: Option<u64>,
     /// How many **error turns in a row** end an agent. **Absent leaves it unarmed** — gg arms no
     /// error ceiling nobody wrote, so an agent stopped by this one was stopped by a threshold its
     /// operator chose. `0` is refused rather than read as "off": it would end an agent before its
@@ -5414,18 +5432,18 @@ pub struct GgInvocation {
     /// and has nothing to invent one from.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub model_windows: BTreeMap<String, u64>,
-    /// The OpenRouter **provider** each model this run may bind is pinned to — the model's
-    /// own developer, resolved from the catalog when the run was triggered and pushed in here on
-    /// the same terms as [`model_windows`](Self::model_windows). Keyed by the model id the
+    /// The ordered **candidate list** each model this run may bind is served by, resolved from
+    /// OpenRouter's endpoints listing when the run was triggered and pushed in here on the same
+    /// terms as [`model_windows`](Self::model_windows). Keyed by the model id the
     /// [binding](GgSlotBinding::model_id) names.
     ///
-    /// Every request for a model carries this slug as `provider.only` with fallbacks refused, so
-    /// a run stays on one provider and one price basis. A bound model with no entry refuses the
-    /// launch, together with every other missing one: a model whose official endpoint is not
-    /// listed is not testable, and running it on another provider would put the run's cost on a
-    /// basis the record does not name.
+    /// A candidate names one provider and the quantization it serves. Every request names exactly
+    /// one of them — `provider.only` carries its slug, `provider.quantizations` its level, and
+    /// fallbacks are refused — and the list is the order the run tries them in. A one-entry list
+    /// is a pin. A bound model with no entry, or an empty list, refuses the launch together with
+    /// every other missing one: a model with no candidate is not testable.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub model_providers: BTreeMap<String, String>,
+    pub model_providers: BTreeMap<String, Vec<GgProviderCandidate>>,
     /// The **input modalities** each model this run may bind accepts (`text`, `image`,
     /// `file`, …), from the same model catalog and pushed in on the same terms as
     /// [`model_windows`](Self::model_windows). Keyed by the model id the
@@ -6920,6 +6938,44 @@ pub struct GgProviderStat {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     #[cfg_attr(feature = "contract", ts(optional = nullable))]
     pub errors: BTreeMap<String, u64>,
+    /// Streams this provider served that went
+    /// [`modelStreamIdleSecs`](GgRunLimits::model_stream_idle_secs) without a delta — the stalls a
+    /// run of the model was retried out of. `0`, and omitted, for a provider that never stalled.
+    #[serde(default, skip_serializing_if = "is_zero_u64")]
+    #[cfg_attr(feature = "contract", ts(optional = nullable))]
+    pub stalls: u64,
+    /// Replies this provider served that were an unexpected cache miss: `cached_tokens` below the
+    /// shared prefix of the previous request on the same provider, within that request's cache
+    /// lifetime and above the provider's minimum cacheable size. `0`, and omitted, for a provider
+    /// that never missed.
+    #[serde(default, skip_serializing_if = "is_zero_u64")]
+    #[cfg_attr(feature = "contract", ts(optional = nullable))]
+    pub cache_misses: u64,
+}
+
+/// One provider a model may run on, and the quantization that endpoint serves.
+///
+/// A [`GgInvocation::model_providers`] entry is an ordered list of these: the order a run tries
+/// them in, and a one-entry list is a pin. The slug is spelled as OpenRouter's endpoints listing
+/// spells its `provider_name`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct GgProviderCandidate {
+    /// The provider's slug, as the endpoints listing spells `provider_name`.
+    pub provider: String,
+    /// The quantization that endpoint declares (`fp8`, `bf16`, …).
+    pub quantization: String,
+}
+
+impl GgProviderCandidate {
+    /// A candidate naming `provider` at `quantization`.
+    pub fn new(provider: impl Into<String>, quantization: impl Into<String>) -> Self {
+        Self {
+            provider: provider.into(),
+            quantization: quantization.into(),
+        }
+    }
 }
 
 /// The compact, aggregatable summary of one whole gg session — the per-run outcome
@@ -7262,11 +7318,11 @@ pub enum GgTelemetryKind {
         /// Without it a live view can only guess what a run is capable of and must
         /// offer every surface, including the ones this run's configuration disabled.
         capability_set: Box<GgCapabilitySet>,
-        /// The OpenRouter provider each bound model is pinned to, beside the routing
-        /// key. A run's cost is recorded against this pin; a response from any other
+        /// The ordered candidate list each bound model may run on, beside the routing
+        /// key. Every request names exactly one of them; a response from any other
         /// provider ends the run.
         #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-        model_providers: BTreeMap<String, String>,
+        model_providers: BTreeMap<String, Vec<GgProviderCandidate>>,
         /// The **routing key** gg minted at launch: a cuid2 sent on every request of the run
         /// as both `session_id` and `prompt_cache_key`, so a provider dashboard row can be
         /// matched to the run it belongs to. Minted rather than derived from the session id,
@@ -8538,6 +8594,23 @@ pub enum GgTelemetryKind {
         /// the same payload is also the session summary's, and a self-contained record is worth
         /// one repeated string.
         breach: GgLimitBreach,
+    },
+    /// The run left one candidate for the next on its model's list.
+    ///
+    /// Emitted once per move, naming the provider left, the provider taken and the fault that
+    /// decided it. A spent retry schedule moves the run for the request that spent it and every
+    /// request after it; a provider that reaches
+    /// [`provider_cache_miss_limit`](GgRunLimits::provider_cache_miss_limit) unexpected cache
+    /// misses is left at the next request. A run whose last candidate is spent emits none of
+    /// these and ends as the harness failure an outage ends on.
+    ProviderSwitch {
+        /// The provider the run left, spelled as the candidate named it.
+        from: String,
+        /// The provider the run moved to.
+        to: String,
+        /// The fault that decided the move: `retry_exhausted` for a spent retry schedule,
+        /// `cache_miss` for a provider that reached the miss limit.
+        fault: String,
     },
     /// A diagnostic log line from gg itself (not agent output).
     Log {

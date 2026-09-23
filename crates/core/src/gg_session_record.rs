@@ -202,11 +202,11 @@ pub struct GgSessionSeed {
     /// different turn than the run did.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub model_windows: BTreeMap<String, u64>,
-    /// The OpenRouter provider each bound model was pinned to. Recorded because a
-    /// run's cost is on that provider's price basis, and a reader that guessed the pin
-    /// would price the run against a different one.
+    /// The ordered candidate list each bound model may run on. Recorded because a
+    /// run's cost is on those providers' price bases, and a reader that guessed the
+    /// list would price the run against a different one.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub model_providers: BTreeMap<String, String>,
+    pub model_providers: BTreeMap<String, Vec<crate::gg::GgProviderCandidate>>,
     /// The **final, resolved** modality state of each bound slot.
     ///
     /// Resolved, not initial, and that distinction is load-bearing: vision recovery can

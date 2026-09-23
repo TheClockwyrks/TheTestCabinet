@@ -151,3 +151,94 @@ fn the_official_provider_is_the_one_named_for_the_models_author() {
     assert_eq!(official_provider("moonshotai/kimi-k2", ["Novita"]), None);
     assert_eq!(official_provider("qwen/qwen3-coder", ["Alibaba"]), None);
 }
+
+fn offer(
+    provider: &str,
+    quantization: &str,
+    input: f64,
+    output: f64,
+    cache_read: Option<f64>,
+    parameters: &[&str],
+) -> EndpointOffer {
+    EndpointOffer {
+        provider: provider.to_string(),
+        quantization: quantization.to_string(),
+        input: Some(input),
+        output: Some(output),
+        cache_read,
+        supported_parameters: parameters.iter().map(|parameter| parameter.to_string()).collect(),
+    }
+}
+
+/// The developer endpoint comes first, an endpoint above its rates is left out, and one with no
+/// cache-read price is left out. The rest follow by fault rate, then by price.
+#[test]
+fn the_candidate_list_keeps_native_priced_cacheable_endpoints() {
+    let endpoints = vec![
+        offer("Azure", "fp8", 2.5, 10.0, Some(0.25), &["tools", "tool_choice"]),
+        offer("OpenAI", "fp8", 1.0, 4.0, Some(0.1), &["tools", "tool_choice", "reasoning"]),
+        offer("Together", "fp4", 0.4, 1.6, Some(0.04), &["tools", "tool_choice"]),
+        offer("DeepInfra", "fp8", 0.8, 3.2, None, &["tools", "tool_choice"]),
+        offer("Fireworks", "fp8", 0.9, 3.6, Some(0.09), &["tools"]),
+        offer("Novita", "fp8", 0.7, 2.8, Some(0.07), &["tools", "tool_choice"]),
+    ];
+    let mut faults = std::collections::BTreeMap::new();
+    faults.insert(provider_key("Novita"), 0.4);
+    let candidates = provider_candidates(
+        "openai/gpt-5.6-sol",
+        &endpoints,
+        &CandidatePolicy::default(),
+        RunRequirements { tools: true, reasoning: false },
+        &faults,
+    )
+    .expect("two endpoints pass");
+    let names: Vec<&str> = candidates.iter().map(|candidate| candidate.provider.as_str()).collect();
+    assert_eq!(names, ["OpenAI", "Azure"]);
+}
+
+/// A hand-set native level wins, an `unknown` endpoint is kept only when the catalog names that
+/// provider, and a banned provider is left out however cheap it is.
+#[test]
+fn the_catalog_entry_sets_the_level_and_the_ban_list() {
+    let endpoints = vec![
+        offer("DeepSeek", "fp8", 0.1, 0.4, Some(0.01), &[]),
+        offer("Novita", "unknown", 0.1, 0.4, Some(0.01), &[]),
+        offer("Together", "fp8", 0.05, 0.2, Some(0.005), &[]),
+    ];
+    let policy = CandidatePolicy {
+        native_quantization: Some("fp8".to_string()),
+        banned: vec!["Together".to_string()],
+        allow_unknown: vec!["Novita".to_string()],
+        ..CandidatePolicy::default()
+    };
+    let candidates = provider_candidates(
+        "deepseek/deepseek-v4.1-flash",
+        &endpoints,
+        &policy,
+        RunRequirements { tools: false, reasoning: false },
+        &std::collections::BTreeMap::new(),
+    )
+    .expect("the developer and the named unknown both pass");
+    let names: Vec<&str> = candidates.iter().map(|candidate| candidate.provider.as_str()).collect();
+    assert_eq!(names, ["DeepSeek", "Novita"]);
+}
+
+/// A model whose developer endpoint is absent takes the catalog ceiling, and one with no
+/// passing endpoint is refused with the reason.
+#[test]
+fn a_model_with_no_candidate_is_refused() {
+    let endpoints = vec![offer("Novita", "fp4", 1.0, 4.0, Some(0.1), &[])];
+    let err = provider_candidates(
+        "deepseek/deepseek-v4.1-flash",
+        &endpoints,
+        &CandidatePolicy {
+            max_input: Some(0.2),
+            max_output: Some(0.8),
+            ..CandidatePolicy::default()
+        },
+        RunRequirements { tools: false, reasoning: false },
+        &std::collections::BTreeMap::new(),
+    )
+    .expect_err("above the ceiling");
+    assert_eq!(err, CandidateRefusal::NonePassed);
+}

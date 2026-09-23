@@ -210,8 +210,8 @@ pub struct RecordedSeed<'a> {
     /// figure narrowed by any override and reduced by the compaction headroom, which is the
     /// number the fullness signal and the compaction trigger actually use.
     pub model_windows: BTreeMap<String, u64>,
-    /// The OpenRouter provider each bound model was pinned to.
-    pub model_providers: BTreeMap<String, String>,
+    /// The ordered candidate list each bound model may run on.
+    pub model_providers: BTreeMap<String, Vec<test_cabinet_core::gg::GgProviderCandidate>>,
     /// The modality state of each bound model **as it stands now**. Recorded again at the end of
     /// the run if it has moved, so the record carries the resolved state rather than the
     /// declared one.

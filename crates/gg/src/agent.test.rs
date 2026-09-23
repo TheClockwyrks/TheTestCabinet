@@ -100,13 +100,22 @@ fn invocation(dir: &Path, set: GgCapabilitySet) -> GgInvocation {
     }
 }
 
-/// The pin map a launch would push for `set`: the author segment of every bound model id.
-fn test_providers(set: &GgCapabilitySet) -> BTreeMap<String, String> {
+/// The candidate list a launch would push for `set`: one candidate per bound model, its author
+/// segment at the model's own quantization.
+fn test_providers(
+    set: &GgCapabilitySet,
+) -> BTreeMap<String, Vec<test_cabinet_core::gg::GgProviderCandidate>> {
     set.bound_model_ids()
         .into_iter()
         .map(|id| {
             let provider = id.split(['/', ':']).next().unwrap_or(id).to_string();
-            (id.to_string(), provider)
+            (
+                id.to_string(),
+                vec![test_cabinet_core::gg::GgProviderCandidate {
+                    provider,
+                    quantization: "fp8".to_string(),
+                }],
+            )
         })
         .collect()
 }
@@ -178,6 +187,7 @@ fn no_limits(max_turns: usize) -> LimitsSetup {
             max_cost: None,
             replay_max_bytes: None,
             retry_policy: crate::client::RetryPolicy::default(),
+            provider_cache_miss_limit: crate::client::DEFAULT_PROVIDER_CACHE_MISS_LIMIT,
         },
         deadline: None,
         cancel: CancelWatch::disabled(),
@@ -2736,10 +2746,13 @@ fn validate_model_providers_requires_every_bound_model() {
         &set,
         &BTreeMap::from([(
             "anthropic/claude-opus-4.8".to_string(),
-            "anthropic".to_string(),
+            vec![test_cabinet_core::gg::GgProviderCandidate {
+                provider: "anthropic".to_string(),
+                quantization: "fp8".to_string(),
+            }],
         )]),
     )
-    .expect_err("a bound model with no provider pin is a launch failure");
+    .expect_err("a bound model with no candidate list is a launch failure");
     assert!(
         err.contains("openai/gpt-5.4-mini"),
         "unexpected error: {err}"
@@ -2750,8 +2763,20 @@ fn validate_model_providers_requires_every_bound_model() {
     );
 
     let blank = BTreeMap::from([
-        ("anthropic/claude-opus-4.8".to_string(), "  ".to_string()),
-        ("openai/gpt-5.4-mini".to_string(), "openai".to_string()),
+        (
+            "anthropic/claude-opus-4.8".to_string(),
+            vec![test_cabinet_core::gg::GgProviderCandidate {
+                provider: "  ".to_string(),
+                quantization: "fp8".to_string(),
+            }],
+        ),
+        (
+            "openai/gpt-5.4-mini".to_string(),
+            vec![test_cabinet_core::gg::GgProviderCandidate {
+                provider: "openai".to_string(),
+                quantization: "fp8".to_string(),
+            }],
+        ),
     ]);
     let err = validate_model_providers(&set, &blank).expect_err("a blank pin is no pin");
     assert!(

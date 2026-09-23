@@ -726,7 +726,10 @@ fn a_gg_run_with_a_capability_set_is_gg_and_yields_its_set() {
         // The launch resolves a context window for every bound model; a gg run
         // carrying none is refused (see the test below).
         gg_model_windows: BTreeMap::from([("mock/primary".to_string(), 200_000)]),
-        gg_model_providers: BTreeMap::from([("mock/primary".to_string(), "mock".to_string())]),
+        gg_model_providers: BTreeMap::from([(
+            "mock/primary".to_string(),
+            vec![crate::gg::GgProviderCandidate::new("mock", "fp8")],
+        )]),
         gg_model_modalities: Default::default(),
         ..request_with_override(None)
     };
@@ -773,8 +776,14 @@ fn a_gg_run_without_a_model_window_is_a_configuration_error() {
         // Only the primary is covered; the subagent's model is not.
         gg_model_windows: BTreeMap::from([("mock/primary".to_string(), 200_000)]),
         gg_model_providers: BTreeMap::from([
-            ("mock/primary".to_string(), "mock".to_string()),
-            ("openai/gpt-5.4-mini".to_string(), "openai".to_string()),
+            (
+                "mock/primary".to_string(),
+                vec![crate::gg::GgProviderCandidate::new("mock", "fp8")],
+            ),
+            (
+                "openai/gpt-5.4-mini".to_string(),
+                vec![crate::gg::GgProviderCandidate::new("openai", "fp8")],
+            ),
         ]),
         gg_model_modalities: Default::default(),
         ..request_with_override(None)
@@ -805,7 +814,10 @@ fn a_gg_run_without_a_provider_pin_is_a_configuration_error() {
             ("mock/primary".to_string(), 200_000),
             ("openai/gpt-5.4-mini".to_string(), 400_000),
         ]),
-        gg_model_providers: BTreeMap::from([("mock/primary".to_string(), "mock".to_string())]),
+        gg_model_providers: BTreeMap::from([(
+            "mock/primary".to_string(),
+            vec![crate::gg::GgProviderCandidate::new("mock", "fp8")],
+        )]),
         gg_model_modalities: Default::default(),
         ..request_with_override(None)
     };

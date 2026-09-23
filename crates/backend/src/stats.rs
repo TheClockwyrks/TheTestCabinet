@@ -166,6 +166,10 @@ pub struct ProviderCallStatsOut {
     pub working: u64,
     /// The errored turns, keyed by turn error type wire id.
     pub errors: BTreeMap<String, u64>,
+    /// Streams that stalled on this provider.
+    pub stalls: u64,
+    /// Unexpected cache misses this provider's replies produced.
+    pub cache_misses: u64,
 }
 
 /// One provider's probe evidence.
@@ -318,6 +322,8 @@ pub fn fold_provider_stats(facts: &[Arc<GgRunFacts>]) -> (u64, u64, Vec<Provider
             for (kind, count) in &slice.errors {
                 *stats.errors.entry(kind.clone()).or_default() += count;
             }
+            stats.stalls += slice.stalls;
+            stats.cache_misses += slice.cache_misses;
         }
     }
 
@@ -340,6 +346,8 @@ pub fn fold_provider_stats(facts: &[Arc<GgRunFacts>]) -> (u64, u64, Vec<Provider
         for (kind, count) in &acc.stats.errors {
             *t.errors.entry(kind.clone()).or_default() += count;
         }
+        t.stalls += acc.stats.stalls;
+        t.cache_misses += acc.stats.cache_misses;
         rows.push(ProviderModelStatsOut {
             model_id: model,
             stats: ProviderCallStatsOut {
@@ -365,6 +373,43 @@ pub fn fold_provider_stats(facts: &[Arc<GgRunFacts>]) -> (u64, u64, Vec<Provider
         .collect();
     out.sort_by_key(provider_order);
     (facts.len() as u64, runs_with, out)
+}
+
+/// The fault rate of each provider across the recorded runs of `model_id`, keyed by the
+/// [provider key](test_cabinet_core::pricing::provider_key) the candidate order sorts on.
+///
+/// A fault is an errored turn, a stall, or an unexpected cache miss. The rate is those over the
+/// provider's calls, so a provider the record has never seen sorts as zero and a provider that
+/// served nothing sorts last.
+pub fn provider_fault_rates(facts: &[Arc<GgRunFacts>], model_id: &str) -> BTreeMap<String, f64> {
+    let mut cells: BTreeMap<String, (u64, u64)> = BTreeMap::new();
+    for run in facts {
+        if run.model_id != model_id && run.sole_model() != Some(model_id) {
+            continue;
+        }
+        for slice in &run.provider_stats {
+            let Some(provider) = slice.provider.as_deref() else {
+                continue;
+            };
+            let (faults, calls) = cells
+                .entry(test_cabinet_core::pricing::provider_key(provider))
+                .or_default();
+            let errors = slice.errors.values().sum::<u64>();
+            *faults += errors + slice.stalls + slice.cache_misses;
+            *calls += slice.calls.max(slice.turns);
+        }
+    }
+    cells
+        .into_iter()
+        .map(|(provider, (faults, calls))| {
+            let rate = if calls == 0 {
+                f64::MAX
+            } else {
+                faults as f64 / calls as f64
+            };
+            (provider, rate)
+        })
+        .collect()
 }
 
 /// A provider entry's sort key: named providers by calls (largest first) then

@@ -212,6 +212,10 @@ struct ProviderAcc {
     /// The errored turns among them, keyed by [`GgTurnErrorType::wire_id`] exactly as
     /// [`GgErrorSummary::by_type`] is.
     errors: BTreeMap<String, u64>,
+    /// Streams that stalled on this provider.
+    stalls: u64,
+    /// Unexpected cache misses this provider's replies produced.
+    cache_misses: u64,
 }
 
 /// What the tracker knows about one agent between its events — the state provider attribution
@@ -677,7 +681,17 @@ impl SessionSummaryTracker {
                 tokens: *tokens,
                 cost: *cost,
             }),
-            // Every other event carries no aggregatable figure of its own: session/turn
+            // A stall is retried as a transport failure, and the retry's warn line is the one place
+            // the stream names it. Counted on the provider the line names. An unexpected cache miss
+            // is a good turn, so its warn line is the one place the stream names it too.
+            GgTelemetryKind::Log { level, message } if level == "warn" => {
+                let model = agent_id.and_then(|agent_id| state.attribution(agent_id).model.clone());
+                if let Some(provider) = stall_provider(message) {
+                    state.provider_slice(Some(provider), model).stalls += 1;
+                } else if let Some(provider) = miss_provider(message) {
+                    state.provider_slice(Some(provider), model).cache_misses += 1;
+                }
+            }
             // lifecycle, assistant text and tool calls (their results are counted above), the
             // knowledge-state snapshots (skills/memories/tasks), agent-status/worktree/
             // succession transitions, diagnostic logs, and the terminal summary/ended events
@@ -747,6 +761,8 @@ impl SessionSummaryTracker {
                     turns: acc.turns,
                     working: acc.working,
                     errors: acc.errors.clone(),
+                    stalls: acc.stalls,
+                    cache_misses: acc.cache_misses,
                 })
                 .collect(),
             effective_tools: state.effective_tools.clone(),
@@ -756,7 +772,17 @@ impl SessionSummaryTracker {
     }
 }
 
-/// Sum two [`TokenCounts`], keeping a class `None` only when it is unreported on both sides —
+/// The provider a stall's warn line names, from `(provider: Z.AI)`.
+fn stall_provider(message: &str) -> Option<String> {
+    let rest = message.split_once("(provider: ")?.1;
+    Some(rest.trim_end_matches(')').trim().to_string())
+}
+
+/// The provider an unexpected-miss warn line names, from `unexpected cache miss from OpenAI`.
+fn miss_provider(message: &str) -> Option<String> {
+    let rest = message.split_once("unexpected cache miss from ")?.1;
+    Some(rest.split_whitespace().next()?.to_string())
+}
 /// the metrics contract's "unreported is distinct from zero", applied to the rejected rollup.
 fn fold_counts(acc: TokenCounts, delta: TokenCounts) -> TokenCounts {
     let add = |a: Option<u64>, b: Option<u64>| match (a, b) {

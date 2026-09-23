@@ -370,6 +370,156 @@ pub fn backoff_delay(attempt: u32, policy: &RetryPolicy) -> Duration {
         .min(policy.max_delay)
 }
 
+/// How many unexpected cache misses a provider may accumulate before the run leaves it, when
+/// the run's [limits](test_cabinet_core::gg::GgRunLimits) write no `providerCacheMissLimit`.
+pub const DEFAULT_PROVIDER_CACHE_MISS_LIMIT: u64 = 2;
+
+/// The fault a [`provider_switch`](test_cabinet_core::gg::GgTelemetryKind::ProviderSwitch) names:
+/// a spent retry schedule, or a provider that reached the miss limit.
+pub const FAULT_RETRY_EXHAUSTED: &str = "retry_exhausted";
+
+/// The fault a move on the miss limit names.
+pub const FAULT_CACHE_MISS: &str = "cache_miss";
+
+/// The smallest prefix a provider's cache will hold, in tokens. A shared prefix below it cannot
+/// be a miss: the provider was never going to cache it.
+const MIN_CACHEABLE_TOKENS: u64 = 1024;
+
+/// The run's record of which candidate each model is on, shared by every client the run's
+/// [factory](DefaultClientFactory) builds.
+///
+/// A move is the run's, not one agent's: the client that spent a provider advances the index,
+/// and every later request of every agent of that model names the candidate now in force.
+#[derive(Debug, Clone, Default)]
+pub struct ProviderRoster {
+    inner: Arc<Mutex<BTreeMap<String, ModelRoster>>>,
+}
+
+/// One model's candidates and where the run is among them.
+#[derive(Debug, Clone)]
+struct ModelRoster {
+    /// The ordered list the launch carried.
+    candidates: Vec<test_cabinet_core::gg::GgProviderCandidate>,
+    /// The index of the candidate in force.
+    index: usize,
+    /// Unexpected cache misses accumulated against the candidate in force.
+    misses: u64,
+    /// The previous request on the candidate in force: its prefix size, when it was sent, and
+    /// how long its cache entries live.
+    previous: Option<CachedRequest>,
+}
+
+/// One request a later one can be a miss against.
+#[derive(Debug, Clone, Copy)]
+struct CachedRequest {
+    /// The prefix the request sent, in tokens.
+    prefix: u64,
+    /// When it was sent.
+    sent: std::time::Instant,
+    /// How long that provider keeps the entry.
+    lifetime: Duration,
+}
+
+impl ProviderRoster {
+    /// A roster holding `model_providers`, each model starting on its first candidate.
+    pub fn new(
+        model_providers: BTreeMap<String, Vec<test_cabinet_core::gg::GgProviderCandidate>>,
+    ) -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(
+                model_providers
+                    .into_iter()
+                    .map(|(model, candidates)| {
+                        (
+                            model,
+                            ModelRoster {
+                                candidates,
+                                index: 0,
+                                misses: 0,
+                                previous: None,
+                            },
+                        )
+                    })
+                    .collect(),
+            )),
+        }
+    }
+
+    /// The candidate `model_id` is on, or `None` when the launch gave it no list.
+    fn current(
+        &self,
+        model_id: &str,
+    ) -> Option<test_cabinet_core::gg::GgProviderCandidate> {
+        self.locked()
+            .get(model_id)
+            .and_then(|roster| roster.candidates.get(roster.index).cloned())
+    }
+
+    /// Move `model_id` to its next candidate, returning the provider left and the one taken.
+    ///
+    /// `None` when the model has no list, or the candidate in force is its last: a run whose
+    /// last candidate is spent ends rather than moving.
+    fn advance(&self, model_id: &str) -> Option<(String, String)> {
+        let mut rosters = self.locked();
+        let roster = rosters.get_mut(model_id)?;
+        let from = roster.candidates.get(roster.index)?.provider.clone();
+        let next = roster.index + 1;
+        let to = roster.candidates.get(next)?.provider.clone();
+        roster.index = next;
+        roster.misses = 0;
+        roster.previous = None;
+        Some((from, to))
+    }
+
+    /// Record one reply's cached-token count against the candidate in force, and whether it is
+    /// an unexpected miss.
+    ///
+    /// A miss is a reply whose `cached_tokens` is below the shared prefix of the previous
+    /// request on the same provider, sent within that request's cache lifetime and above the
+    /// provider's minimum cacheable size. The first request on a provider has nothing to miss
+    /// against.
+    fn note_cache(
+        &self,
+        model_id: &str,
+        cached_tokens: u64,
+        prefix: u64,
+        lifetime: Duration,
+    ) -> bool {
+        let mut rosters = self.locked();
+        let Some(roster) = rosters.get_mut(model_id) else {
+            return false;
+        };
+        let miss = roster.previous.is_some_and(|previous| {
+            previous.sent.elapsed() <= previous.lifetime
+                && previous.prefix >= MIN_CACHEABLE_TOKENS
+                && cached_tokens < previous.prefix.min(prefix)
+        });
+        if miss {
+            roster.misses += 1;
+        }
+        roster.previous = Some(CachedRequest {
+            prefix,
+            sent: std::time::Instant::now(),
+            lifetime,
+        });
+        miss
+    }
+
+    /// How many unexpected misses the candidate in force has accumulated.
+    fn misses(&self, model_id: &str) -> u64 {
+        self.locked()
+            .get(model_id)
+            .map(|roster| roster.misses)
+            .unwrap_or(0)
+    }
+
+    fn locked(&self) -> std::sync::MutexGuard<'_, BTreeMap<String, ModelRoster>> {
+        self.inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+}
+
 /// How an HTTP status should be treated by the retry loop.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StatusClass {
@@ -474,13 +624,15 @@ pub struct OpenRouterClient {
     /// sending both means no intermediary that filters one of them can quietly cost the run its
     /// cache). `None` leaves the key off the wire entirely.
     routing_key: Option<RoutingKey>,
-    /// The OpenRouter provider this client's requests are pinned to — the model's own
-    /// developer, resolved at enqueue and pushed in as
-    /// [`GgInvocation::model_providers`](test_cabinet_core::gg::GgInvocation::model_providers).
-    /// Sent as `provider.only` with fallbacks refused, so a run cannot be moved onto another
-    /// provider's price basis. `None` sends no pin, which a launched run never does: the launch
-    /// refuses a bound model with none.
-    provider: Option<String>,
+    /// The run's [candidate roster](ProviderRoster), shared with every other client the run's
+    /// [factory](DefaultClientFactory) builds. Each request names the candidate this client's
+    /// model is on — `provider.only` its slug, `provider.quantizations` its level, fallbacks
+    /// refused — and a spent provider advances the roster, so every later request of the run
+    /// names the next one. `None` sends no provider object, which a launched run never does.
+    roster: Option<ProviderRoster>,
+    /// How many unexpected cache misses the candidate in force may accumulate before the run
+    /// leaves it. [`DEFAULT_PROVIDER_CACHE_MISS_LIMIT`] states what absence resolves to.
+    cache_miss_limit: u64,
     /// The [lifetime](CacheTtl) this client's requests ask for on their **stable** cache markers —
     /// the [choice](GgPromptCacheTtl) the agent profile this client was resolved for made. Per
     /// client rather than per run: a client serves one agent, and that is the granularity at which
@@ -545,7 +697,8 @@ impl OpenRouterClient {
             retry,
             tool_choice: ToolChoiceMemory::default(),
             routing_key,
-            provider: None,
+            roster: None,
+            cache_miss_limit: DEFAULT_PROVIDER_CACHE_MISS_LIMIT,
             stable_ttl: CacheTtl::Standard,
             loop_guard: None,
             model_call_timeout: DEFAULT_MODEL_CALL_TIMEOUT,
@@ -633,11 +786,30 @@ impl OpenRouterClient {
         self
     }
 
-    /// This client pinning every request to `provider` — the OpenRouter slug the launch resolved
-    /// for its model, sent as `provider.only` with fallbacks refused. A blank slug is no pin.
+    /// This client pinning every request to `provider` — a one-candidate list, which is a pin.
+    /// A blank slug is no pin.
     pub fn with_provider(mut self, provider: impl Into<String>) -> Self {
         let provider = provider.into();
-        self.provider = (!provider.trim().is_empty()).then_some(provider);
+        if provider.trim().is_empty() {
+            self.roster = None;
+            return self;
+        }
+        self.roster = Some(ProviderRoster::new(BTreeMap::from([(
+            self.model_id.clone(),
+            vec![test_cabinet_core::gg::GgProviderCandidate {
+                provider,
+                quantization: String::new(),
+            }],
+        )])));
+        self
+    }
+
+    /// This client naming its candidates from `roster`, the run-wide record its
+    /// [factory](DefaultClientFactory) shares between every client it builds, and leaving a
+    /// provider after `cache_miss_limit` unexpected misses.
+    pub fn with_roster(mut self, roster: ProviderRoster, cache_miss_limit: u64) -> Self {
+        self.roster = Some(roster);
+        self.cache_miss_limit = cache_miss_limit;
         self
     }
 
@@ -710,7 +882,14 @@ impl OpenRouterClient {
         format!("{}/chat/completions", self.base_url.trim_end_matches('/'))
     }
 
-    /// Reject a reply the pinned provider did not serve.
+    /// The candidate this client's model is on, named on every request it sends.
+    fn candidate(&self) -> Option<test_cabinet_core::gg::GgProviderCandidate> {
+        self.roster
+            .as_ref()
+            .and_then(|roster| roster.current(&self.model_id))
+    }
+
+    /// Reject a reply the candidate in force did not serve.
     ///
     /// OpenRouter names the serving provider on every response, and [`usage`](crate::model)
     /// records it. A response from any other provider ends the call as
@@ -723,13 +902,16 @@ impl OpenRouterClient {
         &self,
         parsed: Result<ModelResponse, ModelError>,
     ) -> Result<ModelResponse, ModelError> {
-        let (Some(pinned), Ok(response)) = (self.provider.as_deref(), &parsed) else {
+        let (Some(pinned), Ok(response)) = (
+            self.candidate().map(|candidate| candidate.provider),
+            &parsed,
+        ) else {
             return parsed;
         };
         match response.provider.as_deref() {
-            Some(served) if !test_cabinet_core::pricing::same_provider(served, pinned) => {
+            Some(served) if !test_cabinet_core::pricing::same_provider(served, &pinned) => {
                 Err(ModelError::ProviderMismatch {
-                    pinned: pinned.to_string(),
+                    pinned: pinned.clone(),
                     served: served.to_string(),
                 })
             }
@@ -786,7 +968,7 @@ impl ModelClient for OpenRouterClient {
             messages,
             tools,
             self.routing_key.as_ref(),
-            self.provider.as_deref(),
+            self.candidate().as_ref(),
             self.stable_ttl,
         );
         self.send(body, messages).await
@@ -812,7 +994,7 @@ impl ModelClient for OpenRouterClient {
             messages,
             tool,
             self.routing_key.as_ref(),
-            self.provider.as_deref(),
+            self.candidate().as_ref(),
             self.stable_ttl,
         );
         if self.tool_choice.refused(&self.model_id) {
@@ -860,6 +1042,20 @@ impl OpenRouterClient {
     async fn send(&self, body: Value, messages: &[Message]) -> Result<ModelResponse, ModelError> {
         let url = self.endpoint();
         let mut last_err = String::new();
+        // How many candidates this one request has moved through. A move restarts the schedule
+        // on the next candidate; the bound keeps a request from walking the whole list twice.
+        let mut moved = 0u32;
+        let candidates = self
+            .roster
+            .as_ref()
+            .and_then(|roster| {
+                roster
+                    .locked()
+                    .get(&self.model_id)
+                    .map(|model| model.candidates.len())
+            })
+            .unwrap_or(1)
+            .max(1);
         // The trip of the most recent abandoned attempt, and what every abandoned attempt so far
         // amounted to. Both survive across attempts because both are reported at the end: the
         // tally on the response that finally works, the trip on the error if none ever does.
@@ -869,8 +1065,12 @@ impl OpenRouterClient {
         // refusal is only recoverable-by-dropping-images if there were images to drop;
         // without that check a coincidentally-similar error body would be misread as one.
         let carries_images = messages.iter().any(|message| !message.images.is_empty());
+        let body_of = body;
 
-        for attempt in 1..=self.retry.max_attempts {
+        while moved < candidates as u32 {
+            let body = self.restamp(body_of.clone());
+            let mut schedule_spent = false;
+            for attempt in 1..=self.retry.max_attempts {
             // Two clocks start with the attempt. The run's [per-call
             // ceiling](DEFAULT_MODEL_CALL_TIMEOUT) caps the attempt's whole duration, from the
             // request to the last chunk; the backoff between attempts sits outside it. An attempt
@@ -928,9 +1128,11 @@ impl OpenRouterClient {
                                         loop_aborts,
                                         ..response
                                     };
-                                    // A reply from a provider other than the pin is not a reply this
-                                    // run can use: its cost would be on a different basis.
-                                    return self.pinned(Ok(response));
+                                    // A reply from a provider other than the candidate in force is not a reply
+                                    // this run can use: its cost would be on a different basis.
+                                    let response = self.pinned(Ok(response))?;
+                                    self.note_reply(&response);
+                                    return Ok(response);
                                 }
                                 StreamOutcome::Looping { detail, generated } => {
                                     // The size is recorded here rather than only rendered into the
@@ -980,6 +1182,16 @@ impl OpenRouterClient {
                 let delay = retry_wait(attempt, &self.retry, retry_after);
                 self.announce_retry(attempt, &last_err, delay);
                 tokio::time::sleep(delay).await;
+            } else {
+                schedule_spent = true;
+            }
+            }
+            if !schedule_spent {
+                break;
+            }
+            moved += 1;
+            if self.move_on(&last_err).is_none() {
+                break;
             }
         }
 
@@ -995,6 +1207,97 @@ impl OpenRouterClient {
                 attempts: self.retry.max_attempts,
                 last: last_err,
             }),
+        }
+    }
+
+    /// A spent retry schedule: move the run to its next candidate and ask this request again on
+    /// it, recorded as `provider_switch`. `None` when the candidate in force is the last, or the
+    /// model has no list — the outage the caller ends on.
+    fn move_on(&self, last: &str) -> Option<String> {
+        let (from, to) = self.roster.as_ref()?.advance(&self.model_id)?;
+        self.announce_switch(&from, &to, FAULT_RETRY_EXHAUSTED);
+        Some(format!("left {from} for {to} after {last}"))
+    }
+
+    /// Record one good reply against the candidate in force, and leave that candidate when its
+    /// unexpected misses reach the limit.
+    ///
+    /// The reply stands either way: it is a good turn, and a miss is the cheapest moment to move,
+    /// since the prefix has to be rebuilt on the next request whatever the run does.
+    fn note_reply(&self, response: &ModelResponse) {
+        let Some(roster) = &self.roster else {
+            return;
+        };
+        let cached = response.usage.cached_input.unwrap_or(0);
+        let prefix = cached + response.usage.uncached_input.unwrap_or(0);
+        let miss = roster.note_cache(
+            &self.model_id,
+            cached,
+            prefix,
+            Duration::from_secs(self.stable_ttl.secs()),
+        );
+        if !miss {
+            return;
+        }
+        self.note_miss();
+        if self.cache_miss_limit > 0 && roster.misses(&self.model_id) < self.cache_miss_limit {
+            return;
+        }
+        if let Some((from, to)) = roster.advance(&self.model_id) {
+            self.announce_switch(&from, &to, FAULT_CACHE_MISS);
+        }
+    }
+
+    /// The one `warn` an unexpected cache miss is logged with, beside the switch it may cause.
+    fn note_miss(&self) {
+        let stream = self
+            .retry_stream
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let Some(emitter) = stream.as_ref() else {
+            return;
+        };
+        let provider = self
+            .candidate()
+            .map(|candidate| candidate.provider)
+            .unwrap_or_default();
+        emitter.emit(test_cabinet_core::gg::GgTelemetryKind::Log {
+            level: "warn".to_string(),
+            message: format!(
+                "unexpected cache miss from {provider} ({}/{})",
+                self.roster
+                    .as_ref()
+                    .map(|roster| roster.misses(&self.model_id))
+                    .unwrap_or(0),
+                self.cache_miss_limit,
+            ),
+        });
+    }
+    ///
+    /// A move happens between schedules of one request, and the body was built before the first
+    /// of them, so each schedule re-stamps it rather than rebuilding the messages.
+    fn restamp(&self, mut body: Value) -> Value {
+        let Some(candidate) = self.candidate() else {
+            return body;
+        };
+        let mut provider = json!({ "only": [candidate.provider], "allow_fallbacks": false });
+        if !candidate.quantization.is_empty() {
+            provider["quantizations"] = json!([candidate.quantization]);
+        }
+        body["provider"] = provider;
+        body
+    }
+    fn announce_switch(&self, from: &str, to: &str, fault: &str) {
+        let stream = self
+            .retry_stream
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(emitter) = stream.as_ref() {
+            emitter.emit(test_cabinet_core::gg::GgTelemetryKind::ProviderSwitch {
+                from: from.to_string(),
+                to: to.to_string(),
+                fault: fault.to_string(),
+            });
         }
     }
 
@@ -1398,7 +1701,7 @@ pub fn build_request_body(
     messages: &[Message],
     tools: &[ToolDefinition],
     routing_key: Option<&RoutingKey>,
-    provider: Option<&str>,
+    candidate: Option<&test_cabinet_core::gg::GgProviderCandidate>,
     stable_ttl: CacheTtl,
 ) -> Value {
     let marked_model = requires_cache_markers(model_id);
@@ -1442,13 +1745,18 @@ pub fn build_request_body(
         body["prompt_cache_key"] = json!(key);
     }
 
-    // The pin. `only` names the one provider this model's requests may be served by, and
-    // `allow_fallbacks: false` makes an outage of that provider the error it is rather than a
-    // silent move onto another provider's price basis. The sticky key stays: it still keeps a
-    // run on one endpoint *within* the pinned provider. Absent only for a caller that has no
-    // pin to send — a unit test of the body, never a launched run.
-    if let Some(provider) = provider.filter(|provider| !provider.is_empty()) {
-        body["provider"] = json!({ "only": [provider], "allow_fallbacks": false });
+    // The candidate in force. `only` names the one provider this request may be served by,
+    // `quantizations` the level that endpoint serves, and `allow_fallbacks: false` makes an
+    // outage of that provider the error it is rather than a silent move onto another provider.
+    // The sticky key stays: it still keeps a run on one endpoint *within* the candidate. Absent
+    // only for a caller that has no candidate to send — a unit test of the body, never a
+    // launched run.
+    if let Some(candidate) = candidate.filter(|candidate| !candidate.provider.is_empty()) {
+        let mut provider = json!({ "only": [candidate.provider], "allow_fallbacks": false });
+        if !candidate.quantization.is_empty() {
+            provider["quantizations"] = json!([candidate.quantization]);
+        }
+        body["provider"] = provider;
     }
 
     if !tools.is_empty() {
@@ -1485,7 +1793,7 @@ pub fn build_required_tool_request_body(
     messages: &[Message],
     tool: &ToolDefinition,
     routing_key: Option<&RoutingKey>,
-    provider: Option<&str>,
+    candidate: Option<&test_cabinet_core::gg::GgProviderCandidate>,
     stable_ttl: CacheTtl,
 ) -> Value {
     let mut body = build_request_body(
@@ -1493,7 +1801,7 @@ pub fn build_required_tool_request_body(
         messages,
         std::slice::from_ref(tool),
         routing_key,
-        provider,
+        candidate,
         stable_ttl,
     );
     body["tool_choice"] = json!({
@@ -1560,7 +1868,14 @@ pub enum CacheTtl {
 }
 
 impl CacheTtl {
-    /// The `cache_control` value this lifetime serializes to. The default lifetime is expressed by
+    /// How long a marker written at this lifetime is kept, which is the window a later reply can
+    /// be an unexpected miss inside.
+    fn secs(self) -> u64 {
+        match self {
+            Self::Standard => 5 * 60,
+            Self::Extended => 60 * 60,
+        }
+    } The default lifetime is expressed by
     /// *omitting* `ttl`, so the standard marker is byte-identical to an unqualified breakpoint.
     fn marker(self) -> Value {
         match self {
@@ -4209,34 +4524,29 @@ pub fn provider_for(binding: &GgSlotBinding) -> ProviderKind {
 /// ceiling, cancels a stream on the one idle bound, and retries on the one schedule the launch
 /// recorded.
 ///
-/// `provider` is the OpenRouter provider the launch [pinned](OpenRouterClient::with_provider) the
-/// binding's model to; `None` sends no pin.
-///
-/// `tool_choice` is the run's [record of refused tool-choice pins](ToolChoiceMemory), shared by
-/// every client built for the run so a refusal is taken once per model rather than once per
-/// client.
+/// `roster` is the run's [candidate list](ProviderRoster), shared by every client built for the
+/// run; `cache_miss_limit` is how many unexpected misses leave a provider. A model the roster
+/// does not name sends no provider object.
 pub fn client_for_slot(
     binding: &GgSlotBinding,
     routing_key: &RoutingKey,
     model_call_timeout: Duration,
     model_stream_idle: Duration,
     retry_policy: RetryPolicy,
-    provider: Option<&str>,
+    roster: &ProviderRoster,
+    cache_miss_limit: u64,
     tool_choice: &ToolChoiceMemory,
 ) -> Result<Box<dyn ModelClient>, ModelError> {
     match provider_for(binding) {
         ProviderKind::Mock => Ok(Box::new(mock_client_for(&binding.model_id))),
-        ProviderKind::OpenRouter => {
-            let mut client = OpenRouterClient::from_binding(binding, routing_key)?
+        ProviderKind::OpenRouter => Ok(Box::new(
+            OpenRouterClient::from_binding(binding, routing_key)?
                 .with_model_call_timeout(model_call_timeout)
                 .with_stream_idle(model_stream_idle)
                 .with_retry_policy(retry_policy)
-                .with_tool_choice_memory(tool_choice.clone());
-            if let Some(provider) = provider {
-                client = client.with_provider(provider);
-            }
-            Ok(Box::new(client))
-        }
+                .with_tool_choice_memory(tool_choice.clone())
+                .with_roster(roster.clone(), cache_miss_limit),
+        )),
     }
 }
 
@@ -4402,9 +4712,11 @@ pub struct DefaultClientFactory {
     /// The run's resolved [retry schedule](crate::limits::RunLimits::retry_policy), stamped on
     /// every live client this factory builds beside the ceiling.
     retry_policy: RetryPolicy,
-    /// The pinned OpenRouter provider of each model this run binds, keyed by model id. A
-    /// live client is stamped with its model's entry, so every request carries `provider.only`.
-    model_providers: BTreeMap<String, String>,
+    /// The run's [candidate roster](ProviderRoster), shared by every live client this factory
+    /// builds, so a move one of them makes is the candidate every later request names.
+    roster: ProviderRoster,
+    /// How many unexpected cache misses leave a provider, stamped on every live client.
+    cache_miss_limit: u64,
     /// The run's [record of refused tool-choice pins](ToolChoiceMemory), shared by every live
     /// client this factory builds.
     tool_choice: ToolChoiceMemory,
@@ -4422,21 +4734,26 @@ impl DefaultClientFactory {
         model_call_timeout: Duration,
         model_stream_idle: Duration,
         retry_policy: RetryPolicy,
-        model_providers: BTreeMap<String, String>,
+        model_providers: BTreeMap<String, Vec<test_cabinet_core::gg::GgProviderCandidate>>,
+        cache_miss_limit: u64,
     ) -> Self {
         Self {
             routing_key,
             model_call_timeout,
             model_stream_idle,
             retry_policy,
-            model_providers,
+            roster: ProviderRoster::new(model_providers),
+            cache_miss_limit,
             tool_choice: ToolChoiceMemory::default(),
         }
     }
 
-    /// The provider the launch pinned `model_id` to, stamped on every live client built for it.
-    fn pin_for(&self, model_id: &str) -> Option<&str> {
-        self.model_providers.get(model_id).map(String::as_str)
+    /// The candidate the launch has `model_id` on.
+    fn candidate_for(
+        &self,
+        model_id: &str,
+    ) -> Option<test_cabinet_core::gg::GgProviderCandidate> {
+        self.roster.current(model_id)
     }
 }
 
@@ -4448,7 +4765,8 @@ impl ClientFactory for DefaultClientFactory {
             self.model_call_timeout,
             self.model_stream_idle,
             self.retry_policy,
-            self.pin_for(&binding.model_id),
+            &self.roster,
+            self.cache_miss_limit,
             &self.tool_choice,
         )
     }
