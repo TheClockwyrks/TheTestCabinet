@@ -1,20 +1,11 @@
 //! The **provider pin** on the live client: a reply from any provider other than the pinned one
-//! is refused as [`ModelError::ProviderMismatch`] on both transports, and one from the pinned
-//! provider passes however OpenRouter spelled it.
+//! is refused as [`ModelError::ProviderMismatch`], whether or not loop detection watches the
+//! stream, and one from the pinned provider passes however OpenRouter spelled it.
 
 use test_cabinet_core::gg::GgLoopDetection;
 
 use super::*;
 use crate::model::{Message, ModelClient, ModelError};
-
-/// A buffered completion served by `provider`.
-fn buffered_reply(provider: &str) -> String {
-    json!({
-        "provider": provider,
-        "choices": [{ "message": { "role": "assistant", "content": "done" }, "finish_reason": "stop" }]
-    })
-    .to_string()
-}
 
 /// A streamed completion whose chunks name `provider`.
 fn streamed_reply(provider: &str) -> String {
@@ -53,7 +44,7 @@ fn pinned_client(pin: &str, body: String) -> OpenRouterClient {
     })
 }
 
-/// Loop detection switched on and fully declared, which is what makes a client stream.
+/// Loop detection switched on and fully declared.
 fn streaming() -> GgLoopDetection {
     GgLoopDetection {
         enabled: true,
@@ -66,8 +57,8 @@ fn streaming() -> GgLoopDetection {
 }
 
 #[tokio::test]
-async fn a_buffered_reply_from_another_provider_is_a_mismatch() {
-    let client = pinned_client("OpenAI", buffered_reply("Azure"));
+async fn a_reply_from_another_provider_is_a_mismatch() {
+    let client = pinned_client("OpenAI", streamed_reply("Azure"));
     let err = client
         .complete(&[Message::user("hi")], &[])
         .await
@@ -80,9 +71,8 @@ async fn a_buffered_reply_from_another_provider_is_a_mismatch() {
 }
 
 #[tokio::test]
-async fn a_streamed_reply_from_another_provider_is_a_mismatch() {
+async fn a_watched_reply_from_another_provider_is_a_mismatch() {
     let client = pinned_client("OpenAI", streamed_reply("Azure")).with_loop_detection(streaming());
-    assert!(client.streams());
     let err = client
         .complete(&[Message::user("hi")], &[])
         .await
@@ -98,18 +88,18 @@ async fn a_streamed_reply_from_another_provider_is_a_mismatch() {
 #[tokio::test]
 async fn a_reply_from_the_pinned_provider_passes() {
     for (pin, served) in [("OpenAI", "OpenAI"), ("z-ai", "Z.AI"), ("xai", "xAI")] {
-        let response = pinned_client(pin, buffered_reply(served))
+        let response = pinned_client(pin, streamed_reply(served))
             .complete(&[Message::user("hi")], &[])
             .await
             .expect("the pinned provider served it");
         assert_eq!(response.provider.as_deref(), Some(served));
 
-        let streamed = pinned_client(pin, streamed_reply(served))
+        let watched = pinned_client(pin, streamed_reply(served))
             .with_loop_detection(streaming())
             .complete(&[Message::user("hi")], &[])
             .await
             .expect("the pinned provider streamed it");
-        assert_eq!(streamed.provider.as_deref(), Some(served));
+        assert_eq!(watched.provider.as_deref(), Some(served));
     }
 }
 
@@ -127,6 +117,7 @@ fn the_factory_pins_each_model_to_its_own_provider() {
     let factory = DefaultClientFactory::new(
         RoutingKey::mint(),
         DEFAULT_MODEL_CALL_TIMEOUT,
+        DEFAULT_MODEL_STREAM_IDLE,
         RetryPolicy::default(),
         providers,
     );

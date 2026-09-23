@@ -45,26 +45,28 @@ climbers built on a configuration are bound to its id.
 
 The Configuration tab carries the [execution ceilings](/gg/execution-limits/)
 the whole run is bounded by: max parallel agents, turns per agent, wall-clock
-seconds, the timeout on one model call, the retries a failed model call gets
-and the ceiling on one retry's delay, consecutive errors, error rate and its
-window, cost, and the size of the session journal. They apply to every
-capability and to both execution modes at once, so they sit beside the
-configuration's identity rather than inside a capability group.
+seconds, the timeout on one model call, the stream idle bound on one model call,
+the retries a failed model call gets and the ceiling on one retry's delay,
+consecutive errors, error rate and its window, cost, and the size of the session
+journal. They apply to every capability and to both execution modes at once, so
+they sit beside the configuration's identity rather than inside a capability
+group.
 
 Max parallel agents and the session journal's size are required: gg runs under
 both on every run, and neither has an off it could take instead. The model-call
 timeout is bounded on every run too, and an emptied field is conducted under 900
-seconds. So is the retry schedule, whose emptied fields are conducted under 10
+seconds. So is the stream idle bound, whose emptied field is conducted under 60
+seconds, and the retry schedule, whose emptied fields are conducted under 10
 retries and a 60-second delay ceiling. Turns per agent, wall-clock seconds,
 cost, consecutive errors, and the error rate with its window are each armed by
 writing a figure and unarmed by leaving the field empty.
 
-A fresh configuration seeds the model-call timeout at 900 seconds, the retry
-schedule at 10 retries against a 60-second delay ceiling, and the error
-ceilings at 5 consecutive errors and a 0.2 rate over 50 turns, for the operator
-to keep, change, or clear; gg itself arms no ceiling the saved configuration did
-not write. [Execution limits](/gg/execution-limits/) states what each one
-bounds.
+A fresh configuration seeds the model-call timeout at 900 seconds, the stream
+idle bound at 60 seconds, the retry schedule at 10 retries against a 60-second
+delay ceiling, and the error ceilings at 5 consecutive errors and a 0.2 rate
+over 50 turns, for the operator to keep, change, or clear; gg itself arms no
+ceiling the saved configuration did not write. [Execution
+limits](/gg/execution-limits/) states what each one bounds.
 
 One capability is worth knowing before running a compaction study. The [context
 window override](/gg/context-visibility/#the-window-a-run-is-measured-against)

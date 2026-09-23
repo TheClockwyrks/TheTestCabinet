@@ -20,8 +20,9 @@
 //!    reinforced.
 //!
 //! Only the fourth is recoverable after the fact. The first three are why this detector reads the
-//! reply **as it streams** rather than judging a completed one, and why arming it
-//! ([`GgLoopDetection::enabled`]) is also what moves an agent onto the streaming transport.
+//! reply **as it streams** rather than judging a completed one. Every reply is a stream — that is
+//! gg's one transport — so arming the detector ([`GgLoopDetection::enabled`]) decides only whether
+//! anything watches it.
 //!
 //! # The rule
 //!
@@ -544,8 +545,9 @@ fn hash_word(word: &str) -> u64 {
 /// The outcome of reading an agent's [loop-detection declaration](GgLoopDetection): the detector to
 /// run, if any, and everything an operator should be told about how it was read.
 pub struct ResolvedLoopGuard {
-    /// The knobs to watch this agent's replies with, or `None` when the detector is **off** — which
-    /// is also what keeps that agent on gg's ordinary non-streaming transport.
+    /// The knobs to watch this agent's replies with, or `None` when the detector is **off** — the
+    /// agent's replies are streamed either way, so this decides only whether anything watches
+    /// them.
     ///
     /// `None` is also what an armed declaration short of a knob resolves to, and there it is the
     /// [named placeholder](NO_DETECTOR_ON_A_REFUSED_LAUNCH) rather than a setting: nothing runs
@@ -580,7 +582,7 @@ const NO_DETECTOR_ON_A_REFUSED_LAUNCH: Option<LoopGuardConfig> = None;
 ///
 /// | Declaration | Resolves to |
 /// | --- | --- |
-/// | `enabled: false`, or absent | the detector is **off**; the agent keeps the non-streaming transport |
+/// | `enabled: false`, or absent | the detector is **off**; the agent's replies are still streamed |
 /// | `enabled: true`, all five knobs written | the detector those five knobs describe |
 /// | `enabled: true`, any knob absent | **refused**, naming each knob that is missing |
 /// | `minSaturatedRun: 0` | `0` — the plain frequency rule (a deliberate choice; see the [module docs](self)) |

@@ -1,6 +1,6 @@
 //! Tests for the **streaming** model transport: the request shape it asks for, the
-//! [`StreamAccumulator`] that assembles a server-sent-event reply, and the wiring that decides
-//! which of the client's two transports an agent gets.
+//! [`StreamAccumulator`] that assembles a server-sent-event reply, and what the
+//! [stream-idle bound](DEFAULT_MODEL_STREAM_IDLE) counts as the model's progress.
 //!
 //! Split from `client.test.rs` — which is already past a thousand lines — rather than appended to
 //! it, on the terms the coding policy allows: one file per subject, both ending in `.test.rs`.
@@ -60,6 +60,7 @@ fn feed(accumulator: &mut StreamAccumulator, transcript: &str) -> String {
     accumulator
         .push_bytes(transcript.as_bytes())
         .expect("the transcript is readable")
+        .text
 }
 
 /// Feed a transcript one byte at a time — the cruellest split a socket can produce, and the one
@@ -70,7 +71,8 @@ fn feed_byte_by_byte(accumulator: &mut StreamAccumulator, transcript: &str) -> S
         delta.push_str(
             &accumulator
                 .push_bytes(&[*byte])
-                .expect("the transcript is readable"),
+                .expect("the transcript is readable")
+                .text,
         );
     }
     delta
@@ -80,12 +82,12 @@ fn feed_byte_by_byte(accumulator: &mut StreamAccumulator, transcript: &str) -> S
 // Request shape
 // ---------------------------------------------------------------------------
 
-/// A streaming request asks for the event stream **and** for usage to ride the final chunk. The
-/// second half is not optional: `usage: {include: true}` alone is answered on a buffered response,
+/// Every request asks for the event stream **and** for usage to ride the final chunk. The second
+/// half is not optional: `usage: {include: true}` alone is answered on a non-streaming response,
 /// and without `stream_options.include_usage` a streamed turn would account zero tokens and zero
 /// cost while appearing to succeed.
 #[test]
-fn build_request_body_asks_for_the_stream_and_its_usage() {
+fn every_request_asks_for_the_stream_and_its_usage() {
     let body = build_request_body(
         "openai/gpt-5.6",
         &[Message::user("build it")],
@@ -93,24 +95,22 @@ fn build_request_body_asks_for_the_stream_and_its_usage() {
         None,
         None,
         CacheTtl::Standard,
-        true,
     );
 
     assert_eq!(body["stream"], json!(true));
     assert_eq!(body["stream_options"]["include_usage"], json!(true));
-    // The buffered request's own usage flag is still sent — the two are different asks.
+    // The request's own usage flag is still sent — the two are different asks.
     assert_eq!(body["usage"]["include"], json!(true));
 }
 
-/// A non-streaming request is byte-identical to the one gg has always sent: neither streaming key
-/// appears at all.
+/// A non-streaming request shape is gone with the buffered read: every request carries the
+/// streaming keys, so there is no second shape for a provider or a proxy to treat differently.
 ///
-/// This is the property that makes the transport safe to add. Every stored configuration leaves
-/// loop detection off, so every existing agent must keep posting exactly the request it posted
-/// before the detector existed — an absent key, not a `false` one, because a provider is free to
-/// treat the two differently.
+/// The request keys are always **present rather than `false`**, which is the property that made
+/// adding the stream safe in the first place and now holds unconditionally: a provider is free to
+/// treat `"stream": false` and an absent key differently, and gg sends the one shape it reads.
 #[test]
-fn build_request_body_mentions_nothing_about_streaming_when_buffering() {
+fn build_request_body_always_carries_the_streaming_keys() {
     let body = build_request_body(
         "openai/gpt-5.6",
         &[Message::user("build it")],
@@ -118,56 +118,39 @@ fn build_request_body_mentions_nothing_about_streaming_when_buffering() {
         None,
         None,
         CacheTtl::Standard,
-        false,
     );
 
-    assert!(body.get("stream").is_none(), "no `stream` key at all");
-    assert!(body.get("stream_options").is_none());
-    assert_eq!(body["usage"]["include"], json!(true));
+    assert_eq!(body["stream"], json!(true), "the key is present, not false");
+    assert_eq!(body["stream_options"]["include_usage"], json!(true));
 }
 
-/// A required-tool request carries the transport choice too: the handoff summarizer runs on the
-/// agent's own model, and a model that loops on a turn loops on a summary.
+/// A required-tool request streams too: the handoff summarizer runs on the agent's own model, and
+/// a model that loops on a turn loops on a summary. The requirement itself is unaffected.
 #[test]
-fn a_required_tool_request_streams_with_the_agent_that_asked_for_it() {
+fn a_required_tool_request_streams_like_any_other() {
     let tool = ToolDefinition::new("compact", "Summarize.", json!({ "type": "object" }));
-    let streamed = build_required_tool_request_body(
+    let body = build_required_tool_request_body(
         "openai/gpt-5.6",
         &[Message::user("summarize")],
         &tool,
         None,
         None,
         CacheTtl::Standard,
-        true,
-    );
-    let buffered = build_required_tool_request_body(
-        "openai/gpt-5.6",
-        &[Message::user("summarize")],
-        &tool,
-        None,
-        None,
-        CacheTtl::Standard,
-        false,
     );
 
-    assert_eq!(streamed["stream"], json!(true));
-    assert!(buffered.get("stream").is_none());
-    // The requirement itself is unaffected by the transport.
-    assert_eq!(streamed["tool_choice"], buffered["tool_choice"]);
-    assert_eq!(
-        streamed["tool_choice"]["function"]["name"],
-        json!("compact")
-    );
+    assert_eq!(body["stream"], json!(true));
+    assert_eq!(body["tool_choice"]["function"]["name"], json!("compact"));
 }
 
 // ---------------------------------------------------------------------------
-// Which transport an agent gets
+// The detector, and only the detector
 // ---------------------------------------------------------------------------
 
-/// A client streams **exactly** when the agent it serves armed loop detection, and the two are one
-/// decision rather than two settings that could disagree.
+/// Arming the detector decides **whether anything watches the stream**, and nothing else: an armed
+/// client holds the detector its declaration describes, a disarmed one holds none, and both ask the
+/// provider for the same streamed reply.
 #[test]
-fn a_client_streams_exactly_when_its_agent_armed_the_detector() {
+fn arming_the_detector_decides_only_whether_anything_watches_the_stream() {
     let client = OpenRouterClient::new(
         "https://example.test/api/v1",
         reqwest::Client::new(),
@@ -176,18 +159,16 @@ fn a_client_streams_exactly_when_its_agent_armed_the_detector() {
         RetryPolicy::default(),
         None,
     );
-    assert!(client.loop_guard.is_none());
     assert!(
-        !client.streams(),
-        "a fresh client buffers, as gg always did"
+        client.loop_guard.is_none(),
+        "a fresh client watches nobody, as gg always did"
     );
 
     // An unarmed declaration is a no-op — which is what every stored configuration sends.
     let unarmed = client.with_loop_detection(GgLoopDetection::default());
-    assert!(!unarmed.streams());
+    assert!(unarmed.loop_guard.is_none());
 
     let armed = unarmed.with_loop_detection(armed_declaration());
-    assert!(armed.streams());
     assert_eq!(armed.loop_guard, Some(ARMED_KNOBS));
 }
 
@@ -219,8 +200,8 @@ fn a_declared_knob_reaches_the_clients_detector() {
 }
 
 /// The binding is how a per-agent lever reaches the client, exactly as it is for the prompt-cache
-/// lifetime — so a profile that armed the detector produces a streaming client and one that did not
-/// produces the buffering one.
+/// lifetime — so a profile that armed the detector produces a watched client and one that did not
+/// produces an unwatched one, both of them streaming.
 ///
 /// Each nextest test runs in its own process, so setting the credential here is isolated.
 #[test]
@@ -251,10 +232,99 @@ fn a_binding_carries_its_agents_loop_detection_into_the_client() {
         }
     }
 
-    assert!(!quiet.expect("a client").streams());
+    assert!(quiet.expect("a client").loop_guard.is_none());
     let watched = watched.expect("a client");
-    assert!(watched.streams());
     assert_eq!(watched.loop_guard.expect("armed").window_words, 64);
+}
+
+// ---------------------------------------------------------------------------
+// What counts as the model's progress
+// ---------------------------------------------------------------------------
+
+/// A chunk carrying content, reasoning or a tool-call fragment **restarts the idle clock**, and the
+/// framing of the stream — the keep-alive comment OpenRouter sends while a slow provider thinks,
+/// blank lines, a bare `index` with nothing on it — does not.
+///
+/// This is the distinction the whole [stream-idle bound](DEFAULT_MODEL_STREAM_IDLE) rests on: a
+/// provider that has stopped answering can send keep-alives forever, and a reader that mistook one
+/// for progress would wait out the whole call ceiling on each.
+#[test]
+fn only_a_delta_from_the_model_counts_as_progress() {
+    let mut accumulator = StreamAccumulator::new();
+
+    // Framing: a keep-alive comment, a blank line, and a bookkeeping chunk whose delta names an
+    // index and carries nothing at all.
+    let framing = concat!(
+        ": OPENROUTER PROCESSING\n",
+        "\n",
+        "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"\"}}]}\n\n",
+        "data: {\"choices\":[{\"index\":0,\"delta\":{}}]}\n\n",
+    );
+    let delta = accumulator
+        .push_bytes(framing.as_bytes())
+        .expect("readable");
+    assert!(!delta.progressed, "framing is not progress: {framing:?}");
+    assert_eq!(delta.text, "");
+
+    // The model's own output, in each of the three channels that carry it.
+    let working = [
+        event(text_chunk("working")),
+        event(json!({ "choices": [{ "delta": { "reasoning": "thinking it through" } }] })),
+        // DeepSeek's spelling of the same thing.
+        event(json!({ "choices": [{ "delta": { "reasoning_content": "still thinking" } }] })),
+        event(json!({ "choices": [{ "delta": { "tool_calls": [
+            { "index": 0, "id": "call_a", "function": { "name": "write_file", "arguments": "{\"pa" } }
+        ] } }] })),
+    ]
+    .concat();
+    let delta = accumulator
+        .push_bytes(working.as_bytes())
+        .expect("readable");
+    assert!(delta.progressed, "the model's output is progress");
+    // Only `content` reaches the detector — reasoning is the model's working, not its answer.
+    assert_eq!(delta.text, "working");
+
+    // The terminal sentinel and the usage trailer are framing too: the reply is over.
+    let trailer = format!(
+        "{}data: [DONE]\n\n",
+        event(json!({ "choices": [], "usage": { "prompt_tokens": 10, "completion_tokens": 5 } })),
+    );
+    let delta = accumulator
+        .push_bytes(trailer.as_bytes())
+        .expect("readable");
+    assert!(!delta.progressed, "the trailer is not progress");
+    assert!(accumulator.done());
+}
+
+/// The model can stream a long silence **as reasoning** and never be read as stalled: the
+/// [stream-idle bound](DEFAULT_MODEL_STREAM_IDLE) measures the gap between deltas, and a model
+/// that reasons for minutes produces reasoning deltas for the whole of that time when the provider
+/// streams them.
+#[test]
+fn reasoning_deltas_count_as_progress() {
+    let mut accumulator = StreamAccumulator::new();
+    for tick in 0..3 {
+        let delta = accumulator
+            .push_bytes(
+                event(json!({
+                    "choices": [{ "delta": { "reasoning": format!("step {tick} of a long argument") } }]
+                }))
+                .as_bytes(),
+            )
+            .expect("readable");
+        assert!(
+            delta.progressed,
+            "each reasoning delta restarts the idle clock"
+        );
+        assert_eq!(delta.text, "", "and none of it becomes the reply");
+    }
+
+    // The assembled reply is the answer alone.
+    accumulator
+        .push_bytes(event(text_chunk("done")).as_bytes())
+        .expect("readable");
+    let response = accumulator.finish_after_stop();
+    assert_eq!(response.text.as_deref(), Some("done"));
 }
 
 // ---------------------------------------------------------------------------
@@ -270,10 +340,12 @@ fn an_event_split_across_reads_is_assembled_only_once_it_completes() {
     let (head, tail) = transcript.split_at(transcript.len() / 2);
 
     let first = accumulator.push_bytes(head.as_bytes()).expect("readable");
-    assert_eq!(first, "", "half an event is not half a reply");
+    assert_eq!(first.text, "", "half an event is not half a reply");
+    assert!(!first.progressed, "and it carries no delta either");
 
     let second = accumulator.push_bytes(tail.as_bytes()).expect("readable");
-    assert_eq!(second, "hello");
+    assert_eq!(second.text, "hello");
+    assert!(second.progressed);
 }
 
 /// A read that cuts a multi-byte character in half does not corrupt the reply.
@@ -294,8 +366,11 @@ fn a_read_that_splits_a_utf8_sequence_does_not_corrupt_the_reply() {
     let (head, tail) = transcript.as_bytes().split_at(cut);
 
     let mut accumulator = StreamAccumulator::new();
-    assert_eq!(accumulator.push_bytes(head).expect("readable"), "");
-    assert_eq!(accumulator.push_bytes(tail).expect("readable"), content);
+    assert_eq!(accumulator.push_bytes(head).expect("readable").text, "");
+    assert_eq!(
+        accumulator.push_bytes(tail).expect("readable").text,
+        content
+    );
 
     let response = accumulator.finish_after_stop();
     assert_eq!(response.text.as_deref(), Some(content));
@@ -771,14 +846,19 @@ impl StreamAccumulator {
     /// assembly rather than the finish reason — an accumulator that was only ever given content
     /// would otherwise be rejected as a stream that never said anything.
     fn finish_after_stop(mut self) -> ModelResponse {
+        let mut delta = Delta::default();
         self.push_line(
             &format!(
                 "data: {}",
                 json!({ "choices": [{ "finish_reason": "stop" }] })
             ),
-            &mut String::new(),
+            &mut delta,
         )
         .expect("a synthetic stop is readable");
+        assert!(
+            !delta.progressed,
+            "a synthetic stop is framing, not a delta"
+        );
         self.finish().expect("assembles")
     }
 }

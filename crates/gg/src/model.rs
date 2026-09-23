@@ -483,14 +483,17 @@ pub enum ModelError {
         served: String,
     },
     /// The call ran into the run's
-    /// [**per-call ceiling**](crate::limits::RunLimits::model_call_timeout) without producing a
-    /// reply — a stalled provider, not a refusal.
+    /// [**per-attempt ceiling**](crate::limits::RunLimits::model_call_timeout) without producing a
+    /// reply — a provider whose silence ran past the whole attempt's bound, not a refusal.
     ///
     /// The one `ModelError` the turn loop does **not** end the session on. The client surfaces a
     /// timeout immediately rather than spending its own retry budget on it — every internal retry
-    /// of a stall costs the full ceiling again — and the loop records the turn as a
-    /// [`ModelTimeout`](TurnErrorType::ModelTimeout) error and asks again, so the retry that
-    /// bounds a stalled endpoint is the turn-level one the error ceilings govern.
+    /// of a ceiling-long silence costs the full ceiling again — and the loop records the turn as a
+    /// [`ModelTimeout`](TurnErrorType::ModelTimeout) error and asks again, so the retry that bounds
+    /// a silent endpoint is the turn-level one the error ceilings govern. A reply that merely goes
+    /// quiet mid-stream never reaches this error: it is bounded sooner by the
+    /// [stream-idle bound](crate::limits::RunLimits::model_stream_idle), cancelled and retried on
+    /// the client's own schedule as a transport failure.
     #[error(
         "model call timed out after {}s{}",
         .after.as_secs(),
@@ -500,8 +503,8 @@ pub enum ModelError {
         /// The ceiling that was hit.
         after: std::time::Duration,
         /// The upstream provider that was serving the stalled call, when the stream got far
-        /// enough to name one — what makes a provider-shaped stall blacklistable. `None` on the
-        /// buffering transport, whose reply arrives all at once or not at all.
+        /// enough to name one — what makes a provider-shaped stall blacklistable. `None` when no
+        /// chunk arrived that could have named one, which is most silences.
         provider: Option<String>,
     },
 }
@@ -545,10 +548,10 @@ impl ReplySpend {
 }
 
 impl ModelError {
-    /// A [`Parse`](Self::Parse) that struck where no usage had arrived yet — an unparseable
-    /// response body, a stream line that was not UTF-8. Every failure that read the provider's
-    /// usage before the reply stopped making sense rides [`parse_billed`](Self::parse_billed)
-    /// instead, because that usage is spend the run made even though the reply is unusable.
+    /// A [`Parse`](Self::Parse) that carries no spend: the shape a test builds when the price of
+    /// the unreadable reply is beside its point. gg itself always builds the error through
+    /// [`parse_billed`](Self::parse_billed), which records whatever the stream had reported.
+    #[cfg(test)]
     pub fn parse(message: impl Into<String>) -> Self {
         ModelError::Parse {
             message: message.into(),
@@ -557,8 +560,7 @@ impl ModelError {
     }
 
     /// A [`Parse`](Self::Parse) carrying what the request billed for before the reply stopped
-    /// making sense — `None` when nothing was reported, on the terms [`parse`](Self::parse)
-    /// builds the same shape with.
+    /// making sense, or no spend at all when nothing was reported.
     pub fn parse_billed(message: impl Into<String>, spend: ReplySpend) -> Self {
         let spend = spend.reported().then(|| Box::new(spend));
         ModelError::Parse {
