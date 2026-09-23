@@ -772,6 +772,14 @@
   color: t.$color-text-muted;
 }
 
+// The reasoning lever's controls — the arm selector, and the one value its arm names.
+// Intrinsic width like the prompt-cache selector they follow in the row, for the same
+// reason: the row's spare space belongs to the model control between them.
+.reasoningField {
+  flex: 0 1 18rem;
+  min-width: 0;
+}
+
 // --- Per-feature sliders ---------------------------------------------------------
 //
 // Granting a sub-feature of a capability without granting the whole thing. Lives inside a

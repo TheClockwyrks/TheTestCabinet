@@ -1994,3 +1994,89 @@ fn refusal_text_or_empty(set: &GgCapabilitySet) -> String {
         .collect::<Vec<_>>()
         .join("\n")
 }
+
+// ---------------------------------------------------------------------------
+// The reasoning setting
+// ---------------------------------------------------------------------------
+
+/// A reasoning setting is one key of the request object, so a declaration has to name which. One
+/// naming both halves is refused rather than read as either — a run that quietly picked one would
+/// record a setting its operator never chose.
+#[test]
+fn a_reasoning_setting_naming_both_refuses_the_launch() {
+    use test_cabinet_core::gg::{GgReasoning, GgReasoningEffort};
+    let mut set = minimal();
+    set.agents[0].reasoning = Some(GgReasoning {
+        effort: Some(GgReasoningEffort::Low),
+        max_tokens: Some(512),
+    });
+    let defects = defects(&set);
+    assert_eq!(defects.len(), 1, "{defects:?}");
+    assert_eq!(defects[0].agent.as_deref(), Some(ROOT_PROFILE_ID));
+    assert_eq!(defects[0].locus, "reasoning");
+    assert_eq!(
+        defects[0].known,
+        vec!["effort".to_string(), "maxTokens".to_string()]
+    );
+}
+
+/// A setting that names neither has nothing to send. It is refused and told what to write, or to
+/// leave the setting out entirely — which is how a profile runs its model at the provider default.
+#[test]
+fn a_reasoning_setting_naming_neither_refuses_the_launch() {
+    use test_cabinet_core::gg::GgReasoning;
+    let mut set = minimal();
+    set.agents[0].reasoning = Some(GgReasoning::default());
+    let text = refusal_text(&set);
+    assert!(text.contains("names neither"), "unexpected refusal: {text}");
+    assert!(
+        text.contains("leave the setting out"),
+        "the refusal says how to run at the default: {text}"
+    );
+}
+
+/// A budget of zero names no tokens a reply could think in, so it is refused like every other
+/// figure that cannot bound anything — and pointed at the `none` effort, which is how a setting
+/// turns reasoning off.
+#[test]
+fn a_zero_reasoning_budget_refuses_the_launch() {
+    use test_cabinet_core::gg::{GgReasoning, GgReasoningEffort};
+    let mut set = minimal();
+    set.agents[0].reasoning = Some(GgReasoning {
+        effort: None,
+        max_tokens: Some(0),
+    });
+    let text = refusal_text(&set);
+    assert!(
+        text.contains("reasoning.maxTokens"),
+        "unexpected refusal: {text}"
+    );
+    assert!(text.contains("`none` effort"), "unexpected refusal: {text}");
+
+    set.agents[0].reasoning = Some(GgReasoning {
+        effort: Some(GgReasoningEffort::None),
+        max_tokens: None,
+    });
+    assert_eq!(
+        defects(&set),
+        Vec::new(),
+        "the `none` effort is the spelling that turns reasoning off"
+    );
+}
+
+/// The well-formed states — one effort, or one non-zero budget — launch untouched.
+#[test]
+fn a_reasoning_setting_naming_one_value_launches() {
+    use test_cabinet_core::gg::{GgReasoning, GgReasoningEffort};
+    let mut set = minimal();
+    set.agents[0].reasoning = Some(GgReasoning {
+        effort: Some(GgReasoningEffort::XHigh),
+        max_tokens: None,
+    });
+    assert_eq!(defects(&set), Vec::new());
+    set.agents[0].reasoning = Some(GgReasoning {
+        effort: None,
+        max_tokens: Some(8_192),
+    });
+    assert_eq!(defects(&set), Vec::new());
+}

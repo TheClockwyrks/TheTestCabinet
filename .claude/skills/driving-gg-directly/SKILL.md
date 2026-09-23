@@ -180,9 +180,13 @@ written. For an unfamiliar model keep `maxCost` (USD, run-wide), `maxTurns`,
 and `maxConsecutiveErrors`; the two minimal templates also set `maxRuntimeSecs`,
 and the study profile leaves it unarmed.
 
+A model that spends minutes reasoning over short programs can be held down
+per agent with `reasoning`, either `{"effort": "low"}` (one of `xhigh`, `high`,
+`medium`, `low`, `minimal`, `none`) or `{"maxTokens": 4096}`. Leave it out to
+run the model at its provider's default.
+
 ### Things gg does not do
 
-- No reasoning or effort parameter is sent. A model runs at its provider default.
 - The only provider is OpenRouter. A model not listed there cannot be run.
 - The shell runs as your user with no sandbox. The templates arm the built-in
   `guard-destructive-shell` hook on `pre-shell`; add an `agent-stop` command

@@ -353,12 +353,13 @@ const SCHEMA_BASE_URL: &str = "https://docs.testcabinet.ai/schema/";
 /// Generation 3 is the toolchain summary's `ToolchainTests` gaining `tests` and
 /// `testsTruncated` — the per-test entries beside the per-file rows. Neither is
 /// optional or defaulted, so a record stored with a test report before this change
-/// lacks both keys and no longer reads. Its digest last moved when gg's run limits
-/// gained `modelStreamIdleSecs`, the gg session summary gained its two cost
-/// figures, `cost` and `workCost`, on each slot and in the run-wide rollup, and the
-/// `usage` telemetry event gained the `figure` naming which one its turn fed: every
-/// one of them is an `Option` absent on the records stored before it, so stored
-/// records go on reading and the generation does not move.
+/// lacks both keys and no longer reads. Its digest last moved when gg's agent
+/// profile gained `reasoning`, gg's run limits gained `modelStreamIdleSecs`, the gg
+/// session summary gained its two cost figures, `cost` and `workCost`, on each slot
+/// and in the run-wide rollup, and the `usage` telemetry event gained the `figure`
+/// naming which one its turn fed: every one of them is an `Option` absent on the
+/// records stored before it, so stored records go on reading and the generation
+/// does not move.
 ///
 /// Generation 2 was the gg agent profile's `openingTurn` becoming required: every gg
 /// record stored before it lacks the key and no longer reads. Its digest last moved
@@ -379,7 +380,7 @@ const RECORD_SHAPES: &[(u32, &str)] = &[
     ),
     (
         3,
-        "cec58d7812acfa75a3735e69f361dd2c978ccb50227a024d91964232ed72a0a7",
+        "0f9ead355237bba3ca52b7d1449db961da1db315471091128020e95c1319f54a",
     ),
 ];
 

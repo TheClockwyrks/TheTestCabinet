@@ -3,7 +3,10 @@ import {
   DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE,
   DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE_CODE,
 } from "@clockwyrks/run-record/gg-system-prompt";
-import type { GgSubagentScope } from "@clockwyrks/run-record/gg";
+import type {
+  GgReasoningEffort,
+  GgSubagentScope,
+} from "@clockwyrks/run-record/gg";
 import { SegmentedControl } from "@clockwyrks/ui";
 import type { Model } from "../../../../client/types";
 import { ModelCombobox } from "../../../components/ModelCombobox";
@@ -53,6 +56,7 @@ import {
   openingTurnIsDefault,
   operationHeld,
   referencedModelSlots,
+  reasoningError,
   setFeatureBundle,
   withCapabilityGrants,
   type GgAgentDraft,
@@ -61,6 +65,7 @@ import {
   type GgHookDraft,
   type GgModelSlotDraft,
   type GgOpeningTreeDraft,
+  type GgReasoningDraft,
 } from "./ggConfigDraft";
 import runExec from "../RunExec.module.scss";
 import gg from "./GgConfigEditor.module.scss";
@@ -76,6 +81,22 @@ const AGENT_MODE_OPTIONS = AGENT_MODES.map((mode) => ({
   value: mode.value,
   label: mode.label,
 }));
+
+// The effort levels a reasoning setting may name, labelled as tersely as the vocabulary
+// itself — the names are OpenRouter's unified spelling and the ones gg reports a run
+// under, so an operator comparing two arms reads `minimal (least)` faster than a sentence
+// about it would be read.
+const REASONING_EFFORT_OPTIONS: ReadonlyArray<{
+  value: GgReasoningEffort;
+  label: string;
+}> = [
+  { value: "xhigh", label: "xhigh" },
+  { value: "high", label: "high" },
+  { value: "medium", label: "medium" },
+  { value: "low", label: "low" },
+  { value: "minimal", label: "minimal (least)" },
+  { value: "none", label: "none (off)" },
+];
 
 /** The per-agent editor's sections. */
 type AgentTab =
@@ -303,6 +324,34 @@ export function GgAgentEditor({
     });
   const loopError = loopDetectionError(agent.loopDetection);
   const loopWarning = loopDetectionWarning(agent.loopDetection);
+  // The reasoning lever's arm and its one value. Moving between arms normalizes the raw
+  // fields rather than leaving both behind: the provider default clears both halves (the
+  // lever is back to untouched), an effort drops any budget and opens on `medium` — a
+  // figure in the field to keep or change, the same philosophy as arming the loop
+  // detector — and a budget drops any effort and leaves its field to the operator, because
+  // gg lends no figure for one. Whichever half a switch keeps is kept as it stands, so a
+  // stored declaration naming both is resolved by choosing the arm of the half the
+  // operator means to keep, instead of the choice costing them both halves.
+  const setReasoningKind = (kind: GgReasoningDraft["kind"]) =>
+    onPatch({
+      reasoning:
+        kind === "default"
+          ? { kind, effort: "", maxTokens: "" }
+          : kind === "effort"
+            ? {
+                kind,
+                effort: agent.reasoning.effort || "medium",
+                maxTokens: "",
+              }
+            : { kind, effort: "", maxTokens: agent.reasoning.maxTokens },
+    });
+  const setReasoningEffort = (effort: GgReasoningEffort) =>
+    onPatch({ reasoning: { ...agent.reasoning, effort } });
+  // The budget is text on the draft ([GgReasoningDraft]), so a half-typed figure survives
+  // a re-render instead of being read as a value.
+  const setReasoningMaxTokens = (maxTokens: string) =>
+    onPatch({ reasoning: { ...agent.reasoning, maxTokens } });
+  const reasonError = reasoningError(agent.reasoning);
   // Changing the type changes nothing else. Everything the other types were configured
   // with stays in the draft untouched, so switching away and back inside one session is
   // not an edit — the wind-back to a type's defaults happens when the agent is
@@ -474,6 +523,7 @@ export function GgAgentEditor({
       (agent.name.trim() ? 0 : 1) +
       (slugError ? 1 : 0) +
       (!isMachine && agent.modelSource === "model-slot" && !boundSlot ? 1 : 0) +
+      (!isMachine && reasonError ? 1 : 0) +
       (!isMachine && loopError ? 1 : 0),
     [agent.mode === "rac" ? "apis" : "tools"]: capabilityProblems,
     slots: slotProblems,
@@ -576,9 +626,10 @@ export function GgAgentEditor({
           </section>
 
           {/* Everything below is a worker's. A machine takes no turns, so it runs no
-              model, keeps no cache, has no reply to watch for a loop and renders no
-              prompt: a control for a value gg would never read is worse than no control,
-              because it invites configuring a run that does not exist. */}
+              model, keeps no cache, is never asked how hard to think, has no reply to
+              watch for a loop and renders no prompt: a control for a value gg would
+              never read is worse than no control, because it invites configuring a run
+              that does not exist. */}
           {!isMachine && (
             <>
               <div className={gg.slotFields}>
@@ -656,6 +707,63 @@ export function GgAgentEditor({
                     <option value="extended">1 hour (costs more)</option>
                   </select>
                 </label>
+                {/* Reasoning — how hard the model is asked to think. The arm selector is
+                    always shown; the one value its arm names appears beside it, and the
+                    provider default names nothing at all, so it offers no value control —
+                    there is none to set. */}
+                <label className={`${runExec.field} ${gg.reasoningField}`}>
+                  <FieldLabel
+                    label="Reasoning"
+                    hint="How hard this agent's model is asked to think, sent as the `reasoning` request object on every request gg makes for this agent — its turns and the compaction summaries written on this agent's model alike. A handoff summarizer on another model runs at its provider's default. Left at the provider default, gg sends no reasoning parameter at all. An effort is one of six levels, `xhigh` down to `none`; a token budget is a whole count of one or more reasoning tokens. Whichever it names is held to every request, so `low` or `minimal` is what a fast small model wants, and `xhigh` is for the hardest work."
+                  />
+                  <select
+                    className={runExec.select}
+                    value={agent.reasoning.kind}
+                    disabled={readOnly}
+                    onChange={(e) =>
+                      setReasoningKind(
+                        e.target.value as GgReasoningDraft["kind"],
+                      )
+                    }
+                  >
+                    <option value="default">Provider default</option>
+                    <option value="effort">Effort</option>
+                    <option value="maxTokens">Token budget</option>
+                  </select>
+                </label>
+                {agent.reasoning.kind === "effort" && (
+                  <label className={`${runExec.field} ${gg.reasoningField}`}>
+                    <span className={runExec.fieldLabel}>Effort level</span>
+                    <select
+                      className={runExec.select}
+                      value={agent.reasoning.effort}
+                      disabled={readOnly}
+                      onChange={(e) =>
+                        setReasoningEffort(e.target.value as GgReasoningEffort)
+                      }
+                    >
+                      {REASONING_EFFORT_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                {agent.reasoning.kind === "maxTokens" && (
+                  <label className={`${runExec.field} ${gg.reasoningField}`}>
+                    <span className={runExec.fieldLabel}>Token budget</span>
+                    <input
+                      className={runExec.input}
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={agent.reasoning.maxTokens}
+                      disabled={readOnly}
+                      onChange={(e) => setReasoningMaxTokens(e.target.value)}
+                    />
+                  </label>
+                )}
               </div>
               {agent.modelSource === "model-slot" && !boundSlot && (
                 <p className={gg.fieldError}>
@@ -671,6 +779,7 @@ export function GgAgentEditor({
                   is never resumed.
                 </p>
               )}
+              {reasonError && <p className={gg.fieldError}>{reasonError}</p>}
 
               {/* Two things gg does *around* this agent, rather than anything the agent
                   may do: watch its reply arrive, and write down what happened. Neither

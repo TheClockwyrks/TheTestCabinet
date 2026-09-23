@@ -95,6 +95,7 @@ fn every_request_asks_for_the_stream_and_its_usage() {
         None,
         None,
         CacheTtl::Standard,
+        None,
     );
 
     assert_eq!(body["stream"], json!(true));
@@ -118,6 +119,7 @@ fn build_request_body_always_carries_the_streaming_keys() {
         None,
         None,
         CacheTtl::Standard,
+        None,
     );
 
     assert_eq!(body["stream"], json!(true), "the key is present, not false");
@@ -136,6 +138,7 @@ fn a_required_tool_request_streams_like_any_other() {
         None,
         None,
         CacheTtl::Standard,
+        None,
     );
 
     assert_eq!(body["stream"], json!(true));

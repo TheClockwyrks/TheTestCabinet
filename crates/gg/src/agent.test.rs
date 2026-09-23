@@ -10155,6 +10155,56 @@ async fn session_started_and_the_journal_record_the_minted_routing_key() {
     assert_eq!(recorded_key.as_deref(), Some(announced.as_str()));
 }
 
+/// `session_started` records each agent profile's reasoning setting, in the resolved capability
+/// set it announces — the run's record of the effort every request of that profile was held to,
+/// per profile rather than as one figure for the run.
+#[tokio::test]
+async fn session_started_records_each_profile_s_reasoning_setting() {
+    use test_cabinet_core::gg::{GgReasoning, GgReasoningEffort};
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("gg-reasoning".to_string()), Box::new(sink.clone()));
+    let mut set = GgCapabilitySet::minimal("mock/echo");
+    set.agents[0].reasoning = Some(GgReasoning {
+        effort: Some(GgReasoningEffort::Low),
+        max_tokens: None,
+    });
+    set.agents.push(GgAgentConfig {
+        slug: "scout".to_string(),
+        name: "Scout".to_string(),
+        model_id: "mock/echo".to_string(),
+        reasoning: Some(GgReasoning {
+            effort: None,
+            max_tokens: Some(512),
+        }),
+        ..GgAgentConfig::root()
+    });
+    let inv = invocation(dir.path(), set);
+
+    assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
+
+    let events = sink.events();
+    let GgTelemetryKind::SessionStarted { capability_set, .. } =
+        &events.first().expect("an event").kind
+    else {
+        panic!("the first event is the `session_started` announcement");
+    };
+    assert_eq!(
+        capability_set.agents[0].reasoning,
+        Some(GgReasoning {
+            effort: Some(GgReasoningEffort::Low),
+            max_tokens: None,
+        })
+    );
+    assert_eq!(
+        capability_set.agents[1].reasoning,
+        Some(GgReasoning {
+            effort: None,
+            max_tokens: Some(512),
+        })
+    );
+}
+
 /// Each launch mints its own key, so two runs are never pinned to one provider endpoint's cache
 /// by accident, and the seams a run is built from carry the key they minted.
 #[test]
