@@ -7,7 +7,7 @@ hosts and re-clone everywhere.
 This issue runs after
 [`move-validation-baselines-into-the-cold-storage-submodule.md`](done/move-validation-baselines-into-the-cold-storage-submodule.md)
 and
-[`port-the-gg-and-tooling-changes-from-the-spec-cabinet-branch-onto-feat-gg.md`](port-the-gg-and-tooling-changes-from-the-spec-cabinet-branch-onto-feat-gg.md),
+[`port-the-gg-and-tooling-changes-from-the-spec-cabinet-branch-onto-feat-gg.md`](done/port-the-gg-and-tooling-changes-from-the-spec-cabinet-branch-onto-feat-gg.md),
 and before the mirror job in
 [`build-ci-cd-on-azure-pipelines-with-deploys-to-staging-and-prod.md`](done/build-ci-cd-on-azure-pipelines-with-deploys-to-staging-and-prod.md)
 is enabled and before

@@ -24,7 +24,7 @@ documentation pages and the test-suites submodule.
 
 The commit hashes below are the ones the branch holds today. This issue runs
 before
-[the history rewrite](rewrite-the-repository-history-without-baselines-and-wasm-blobs.md),
+[the history rewrite](../rewrite-the-repository-history-without-baselines-and-wasm-blobs.md),
 which renumbers every commit.
 
 ## Design
