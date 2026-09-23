@@ -65,7 +65,7 @@ yields versions with no baseline media, and ingest proceeds.
 The ingest sidecar adds a shallow submodule update to its refresh step, so the
 persistent checkout carries the baselines the store copies. The checkout stays on
 the GitHub mirror, which holds the submodule per
-[`address-submodules-by-relative-url-and-mirror-them-to-github.md`](../address-submodules-by-relative-url-and-mirror-them-to-github.md).
+[`address-submodules-by-relative-url-and-mirror-them-to-github.md`](address-submodules-by-relative-url-and-mirror-them-to-github.md).
 CI keeps submodules off, since no gate reads baselines.
 
 ### Frozen versions
