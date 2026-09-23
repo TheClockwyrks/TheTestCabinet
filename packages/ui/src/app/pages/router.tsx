@@ -24,7 +24,7 @@ import { notFoundRoutes } from "./notfound/router";
 // off this host (`/runs/new` on the static gallery, say), which is why the gating
 // can stay where it is rather than being restated for the edge.
 export function AppRoutes() {
-  const { canExecute, harnessAuth, ggData } = useGalleryData();
+  const { canExecute, ggData } = useGalleryData();
   return (
     <Routes>
       {homeRoutes()}
@@ -34,7 +34,7 @@ export function AppRoutes() {
       {ggAnalysisRoutes(canExecute, ggData != null)}
       {otherRoutes(canExecute)}
       {aboutRoutes()}
-      {settingsRoutes(canExecute, harnessAuth != null)}
+      {settingsRoutes(canExecute)}
       {accountRoutes(canExecute)}
       {notFoundRoutes()}
     </Routes>

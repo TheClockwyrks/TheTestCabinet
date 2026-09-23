@@ -3,8 +3,8 @@ import type { LoadProgress, RunEventStreams } from "../../client/types";
 import { useGalleryData } from "./galleryContext";
 
 // The async state of a run's recorded events, for the Events tab. `unsupported`
-// covers a host that can't provide events for the run at all (e.g. a Tauri
-// published run, or a host with no fetcher) — distinct from a `ready` result
+// covers a host that can't provide events for the run at all (a host with no
+// fetcher) — distinct from a `ready` result
 // whose `events` array is empty, which means the run simply recorded none. While
 // `loading`, `progress` carries the latest transfer tick (`null` until the first
 // one, or when the host can't observe the transfer) for the tab's progress bar.

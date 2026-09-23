@@ -149,8 +149,8 @@ export function PlaybackOverlay({
     width: number;
     height: number;
   } | null>(null);
-  // The stage's content box, tracked so Fit follows a resized window (or a desktop
-  // shell whose chrome changes height) instead of freezing at the size it opened at.
+  // The stage's content box, tracked so Fit follows a resized window instead of
+  // freezing at the size it opened at.
   const [viewport, setViewport] = useState<{
     width: number;
     height: number;

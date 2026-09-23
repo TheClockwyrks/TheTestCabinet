@@ -35,8 +35,8 @@ const SIGNED_OUT_REASON =
  * live monitor's {@link KillRunControl} and the runs-list right-click menu so the
  * one set of conditions lives in a single place.
  *
- * Cancellation is possible only on a host that can execute runs (the consoles /
- * Tauri; the static public site cannot), with a worker whose transport supports
+ * Cancellation is possible only on a host that can execute runs (the web console;
+ * the static public site cannot), with a worker whose transport supports
  * it (`killRun`) and a signed-in account whose token authorizes it — mirroring
  * the backend, which is the real gate (it refuses a run that already finished).
  * Unlike deletion this carries no per-run condition: any run the console can

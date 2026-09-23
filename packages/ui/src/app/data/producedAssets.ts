@@ -20,10 +20,9 @@ import { createAssetCache } from "./assetCache";
  *
  * Vite inlines any asset under its `assetsInlineLimit` (4 KB by default) as a
  * base64 `data:` URL — a small sprite sheet is one, while a larger wasm module is
- * emitted as a file. WebKit's WKWebView (the macOS Tauri webview) cannot `fetch()`
- * a `data:` URL: it rejects with `TypeError: Load failed`. Decoding them here keeps
- * the inlining, which is a win for the browser hosts, while letting both players
- * work in the desktop shell too.
+ * emitted as a file. WebKit's WKWebView cannot `fetch()` a `data:` URL: it rejects
+ * with `TypeError: Load failed`. Decoding them here keeps the inlining while
+ * letting both players load their assets on every engine.
  */
 function decodeDataUrl(url: string): {
   mime: string;

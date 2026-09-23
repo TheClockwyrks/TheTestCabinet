@@ -1,8 +1,8 @@
 @use "../../styles/tokens" as t;
 @use "../../styles/halo" as h;
 
-// The Authentication settings surface (desktop only). An intro panel followed by
-// one card per harness, each stacking its method / API-key / subscription rows.
+// The Harnesses settings surface. An intro panel followed by one card per
+// harness, each stacking its setting rows.
 
 .muted {
   margin: 0;
@@ -25,19 +25,12 @@
   color: t.$color-negative;
 }
 
-// One harness's card: the header (name + readiness badge) over its setting rows.
+// One harness's card: the header (name + slug) over its setting rows.
 .card {
   display: flex;
   flex-direction: column;
   gap: t.$space-lg;
   margin-bottom: t.$space-lg;
-}
-
-.cardHead {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: t.$space-md;
 }
 
 .title {
@@ -52,30 +45,6 @@
   color: t.$color-text-muted;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-}
-
-// The readiness pill, toned by verdict.
-.badge {
-  flex: none;
-  padding: t.$space-xs t.$space-sm;
-  border-radius: t.$radius-sm;
-  border: t.$border-hairline solid t.$color-border;
-  font-size: t.$font-sm;
-  white-space: nowrap;
-}
-
-.toneOk {
-  border-color: t.$color-positive;
-  color: t.$color-positive;
-}
-
-.toneWarn {
-  border-color: t.$color-accent-2;
-  color: t.$color-accent-2;
-}
-
-.toneMuted {
-  color: t.$color-text-muted;
 }
 
 // A setting row: a label block beside its control. Stacks on narrow viewports.
@@ -109,8 +78,8 @@
   @include h.halo;
 }
 
-// The API-key entry: a masked field with Save (and Clear when an override is set).
-.keyForm {
+// The limit entry: a number field with Save.
+.limitForm {
   display: flex;
   flex-wrap: wrap;
   gap: t.$space-sm;
@@ -137,10 +106,11 @@
   }
 }
 
-.primary,
-.secondary {
+.primary {
   padding: t.$space-sm t.$space-md;
   font: inherit;
+  color: t.$color-accent;
+  background: t.$color-surface;
   border-radius: t.$radius-md;
   cursor: pointer;
   border: t.$border-hairline solid t.$color-border;
@@ -156,65 +126,4 @@
     opacity: 0.5;
     cursor: default;
   }
-}
-
-.primary {
-  color: t.$color-accent;
-  background: t.$color-surface;
-}
-
-.secondary {
-  color: t.$color-text;
-  background: t.$color-surface;
-}
-
-// The subscription block: the credential-file list over the refresh control.
-.subBody {
-  display: flex;
-  flex-direction: column;
-  gap: t.$space-md;
-  align-items: flex-start;
-}
-
-.files {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: t.$space-xs;
-  width: 100%;
-}
-
-.file {
-  display: flex;
-  align-items: center;
-  gap: t.$space-sm;
-  font-size: t.$font-sm;
-}
-
-.dot {
-  flex: none;
-  width: 0.6rem;
-  height: 0.6rem;
-  border-radius: 50%;
-  background: t.$color-border;
-}
-
-.dotOk {
-  background: t.$color-positive;
-}
-
-.dotMissing {
-  background: t.$color-negative;
-}
-
-.path {
-  color: t.$color-text;
-  word-break: break-all;
-}
-
-.fileState {
-  color: t.$color-text-muted;
-  white-space: nowrap;
 }

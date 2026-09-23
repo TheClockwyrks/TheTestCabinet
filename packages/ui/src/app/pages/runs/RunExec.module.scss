@@ -133,7 +133,7 @@
 }
 
 // Strip the engine-native dropdown chrome (Aqua on macOS WebKit, flat on
-// Chromium) and draw our own chevron so the desktop app and web console match.
+// Chromium) and draw our own chevron so the console matches across browsers.
 .select {
   @include f.select-control;
 }

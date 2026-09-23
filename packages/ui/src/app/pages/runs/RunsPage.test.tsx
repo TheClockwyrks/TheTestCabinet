@@ -415,7 +415,7 @@ function stopWorkers() {
   const value = {
     workers: [],
     activeId: "w1",
-    active: { id: "w1", label: "Worker", url: null, local: true, client },
+    active: { id: "w1", label: "Worker", url: "https://w1.example", client },
     setActive: () => {},
     addWorker: () => {},
     removeWorker: () => {},

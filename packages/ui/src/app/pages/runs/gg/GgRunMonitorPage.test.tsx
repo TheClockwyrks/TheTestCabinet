@@ -628,8 +628,7 @@ function workersValue(events: HarnessEvent[]): WorkersContextValue {
     active: {
       id: "local",
       label: "Local",
-      url: null,
-      local: true,
+      url: "https://worker.example",
       client,
       identity: null,
       backendMatch: "unknown",
@@ -663,8 +662,7 @@ function completingWorkersValue(events: HarnessEvent[]): WorkersContextValue {
     active: {
       id: "local",
       label: "Local",
-      url: null,
-      local: true,
+      url: "https://worker.example",
       client,
       identity: null,
       backendMatch: "unknown",

@@ -3,10 +3,9 @@ import type { BackendClient, WorkerClient } from "./clients";
 import type { BackendIdentity, BackendMatch, WorkerIdentity } from "./types";
 
 // The console reads two contexts: the active backend (catalog + published data)
-// and the worker set (execution). Each app builds the context value with its own
-// transport and state — web with HTTP clients and localStorage, tauri with
-// invoke-backed clients and a built-in local worker — and the console renders
-// against the interfaces alone.
+// and the worker set (execution). The web console builds the context values with
+// the HTTP transport (`@clockwyrks/ui/transport`) and its stored connection state,
+// and the console renders against the interfaces alone.
 
 // --- Backend ---
 
@@ -60,14 +59,12 @@ export function useOptionalBackend(): BackendContextValue | null {
 // One configured worker plus the derived state the console renders: its probed
 // identity and whether it is bound to the active backend.
 export interface WorkerHandle {
-  /** Stable id (the local worker uses the reserved id "local"). */
+  /** Stable id. */
   id: string;
   /** Display label. */
   label: string;
-  /** The worker's base URL, or null for the built-in local (Tauri) worker. */
-  url: string | null;
-  /** True for the Tauri built-in local worker, which can't be removed. */
-  local: boolean;
+  /** The worker's base URL. */
+  url: string;
   client: WorkerClient;
   identity: WorkerIdentity | null;
   /** Whether this worker shares the active backend. */

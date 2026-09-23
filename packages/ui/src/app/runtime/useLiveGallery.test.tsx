@@ -108,7 +108,6 @@ function worker(ids: string[]): WorkerHandle & {
     id: "w1",
     label: "w1",
     url: "https://w1.example",
-    local: false,
     client: { listRuns } as unknown as WorkerClient,
     identity: null,
     backendMatch: "match",
@@ -359,7 +358,6 @@ describe("useLiveGallery", () => {
         id: "w1",
         label: "w1",
         url: "https://w1.example",
-        local: false,
         client: {
           listRuns: async () => [],
           readRun,

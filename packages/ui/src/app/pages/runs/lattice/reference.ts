@@ -33,7 +33,7 @@
 // `tick n / 2500` readout while playing.
 
 // Vite resolves each of these to an emitted URL in every host build (web console,
-// desktop, static site). Nothing downloads until a viewer actually launches a
+// static site). Nothing downloads until a viewer actually launches a
 // playback — these imports are URL strings, not payloads.
 import engineWasmUrl from "./assets/lattice-core.wasm?url";
 import referenceSmallUrl from "./assets/reference-small.json?url";

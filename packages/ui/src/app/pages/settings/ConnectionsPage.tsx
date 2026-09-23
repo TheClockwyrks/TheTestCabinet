@@ -4,7 +4,7 @@ import { SettingsLayout } from "../../layouts/settings/SettingsLayout";
 import { useBackend } from "../../../client/context";
 import styles from "../runs/RunExec.module.scss";
 
-// The Connections tab (`/settings/connections`, web/desktop only). The console
+// The Connections tab (`/settings/connections`, web console only). The console
 // now talks to a single backend URL — the source of truth for test cases,
 // definitions, and published results, and the control plane for executing runs
 // (the backend's `/jobs` queue). There is no separate worker to register: the old

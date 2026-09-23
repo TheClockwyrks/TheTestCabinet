@@ -11,7 +11,7 @@ import {
 } from "../../ratings";
 
 // Reconstruct a writeup's `---\nrating.<domain>: …\n---\n\n<body>` framing from a
-// structured review, so a live host (web/desktop) can feed the gallery the same
+// structured review, so the live host (the web console) can feed the gallery the same
 // raw writeup form `parseWriteup` reads — identical to what the public snapshot
 // emits for the static site. Per-domain functional ratings become
 // `rating.<domain>: <tier>` lines, the run-wide aesthetic tier one bare

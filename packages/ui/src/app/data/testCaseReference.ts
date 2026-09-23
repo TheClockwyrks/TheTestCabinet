@@ -9,7 +9,7 @@ import type { TestCaseSummary } from "./testCases";
 // SHIP WITH THE UI BUNDLE (vendored from the case bundle by
 // `scripts/vendor-lattice-assets.mjs`; see `pages/runs/lattice/reference.ts`). There
 // is nothing for a host to send, and nothing for a host to be missing — the tab works
-// identically on the console, the desktop app, and the static site, with no backend
+// identically on the web console and the static site, with no backend
 // and no snapshot bucket.
 //
 // The trade-off of shipping it rather than serving it is that the set is fixed at

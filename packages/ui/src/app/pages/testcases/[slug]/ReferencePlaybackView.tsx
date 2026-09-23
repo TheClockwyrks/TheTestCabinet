@@ -24,7 +24,7 @@ import styles from "./ReferencePlaybackView.module.scss";
  *
  * Both halves ship with the bundle (see `../../runs/lattice/reference.ts`), so this
  * needs no run, no backend, and no snapshot bucket — it renders identically on the
- * console, the desktop app, and the static site. That is why it takes no props: a
+ * web console and the static site. That is why it takes no props: a
  * performance case's reference is a property of the case's shipped bundle, not of the
  * selected variant (v1 declares a single one) or of the host.
  *

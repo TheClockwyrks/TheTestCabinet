@@ -223,7 +223,7 @@ export function CoveragePlanLayout() {
   // of them is built from. They are kept apart because only the first is worth its own
   // standing notice — the second resolves on its own within a moment of the page
   // opening.
-  const hasWorker = Boolean(worker && (worker.local || token));
+  const hasWorker = Boolean(worker && token);
   const ggTrigger = ggTriggerReadiness(ggLoading, ggError);
   const canTrigger = hasWorker && ggTrigger.ready;
 

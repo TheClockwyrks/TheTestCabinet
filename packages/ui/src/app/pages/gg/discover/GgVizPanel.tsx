@@ -16,7 +16,7 @@
 //
 // Every figure reads its surface, text, border and accent from the live `--tcab-*`
 // custom properties at plot time (`readChartPalette`), so the same component draws
-// correctly in the console, the desktop app and the public static site under
+// correctly in the web console and the public static site under
 // whatever palette each supplies — nothing here hardcodes a background or an ink.
 import { useMemo } from "react";
 import type { PlotOptions } from "@observablehq/plot";

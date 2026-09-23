@@ -1172,7 +1172,6 @@ describe("unresolvedGgProblem", () => {
 // signed-in account, one worker, and a plan whose matrix is whatever the test hands in.
 const worker = {
   id: "w1",
-  local: true,
   client: { launchJobs: vi.fn() } as unknown as WorkerClient,
 };
 

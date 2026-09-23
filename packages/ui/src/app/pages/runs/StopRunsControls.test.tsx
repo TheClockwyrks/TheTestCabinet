@@ -92,7 +92,7 @@ function mount(runs: InProgressRun[], landAfter: number) {
   const workers = {
     workers: [],
     activeId: "w1",
-    active: { id: "w1", label: "w1", url: null, local: true, client },
+    active: { id: "w1", label: "w1", url: "https://w1.example", client },
     setActive: () => {},
     addWorker: () => {},
     removeWorker: () => {},

@@ -41,9 +41,9 @@ vi.mock("../../components/PromptHeader", () => ({
     </>
   ),
 }));
-// A local worker needs no sign-in, so auth never gates the launch here — the gating
-// stays on the row's configuration + model. The token is present only because an
-// account's *saved* gg configurations are read with it (the built-ins need none).
+// Signed in, so auth never gates the launch here — the gating stays on the row's
+// configuration + model. The token also reads the account's *saved* gg
+// configurations (the built-ins need none).
 vi.mock("../../../client/auth", () => ({
   useAuth: () => ({ token: "t" }),
 }));
@@ -250,7 +250,7 @@ function backendValue(
   } as unknown as BackendContextValue;
 }
 
-// A single local worker: `local: true` means no sign-in is required.
+// A single worker; the mocked account's token clears the sign-in gate.
 function workersValue(
   launchGgRun: WorkerClient["launchGgRun"] = vi.fn(),
   launchRunBatch: WorkerClient["launchRunBatch"] = vi.fn(),
@@ -262,8 +262,7 @@ function workersValue(
     active: {
       id: "local",
       label: "Local",
-      url: null,
-      local: true,
+      url: "https://worker.example",
       client,
       identity: null,
       backendMatch: "unknown",

@@ -1,7 +1,6 @@
 // Shared data shapes for the runner/reporter console, independent of transport.
-// The HTTP transport (apps/web) and the Tauri transport (apps/desktop, a later
-// item) both produce and consume these. Fields are camelCase to match both the
-// backend HTTP API and the run-record contract.
+// The HTTP transport (mounted by apps/web) produces and consumes these. Fields are
+// camelCase to match both the backend HTTP API and the run-record contract.
 import type {
   AssetKind,
   AssetSheet,
@@ -968,8 +967,7 @@ export interface UnreadableRunPage {
   total: number;
 }
 
-// A finished run held by a runner (a worker, or the local core in Tauri),
-// awaiting review and/or publishing. Also the shape the backend serves for a
+// A finished run held by a runner, awaiting review and/or publishing. Also the shape the backend serves for a
 // *published* run (`GET /runs/{id}`): its record (links populated), every review
 // submitted against it, and whether it has been published.
 export interface StoredRun {
@@ -1160,8 +1158,8 @@ export interface PublishProgress {
 
 // A live asset-generation preview frame, streamed as the model draws (mirrors the
 // Rust `AssetPreview`, crates/core/src/preview.rs). It travels out of band from
-// the recorded event feed — as the worker's `asset_preview` line on the event
-// stream, or the desktop's `run://<id>/preview` channel — and is never persisted;
+// the recorded event feed — as the `asset_preview` line on the live event
+// stream — and is never persisted;
 // a viewer renders `image` to watch the sprite take shape. Not part of the
 // run-record contract.
 export interface AssetPreview {
@@ -1230,7 +1228,7 @@ export interface LoadProgress {
 
 // A sink for {@link LoadProgress} ticks, passed into a streamed read so the
 // caller can drive a progress bar. A transport that can't observe the transfer
-// (e.g. Tauri IPC, which buffers the whole payload) simply never calls it.
+// (e.g. one that buffers the whole payload) simply never calls it.
 export type ProgressCallback = (progress: LoadProgress) => void;
 
 export type RunOutcome =
@@ -1255,8 +1253,8 @@ export interface RunJob {
   message: string | null;
 }
 
-// A run a worker is currently executing, as `listActiveRuns` returns it (the web
-// worker's `GET /runs/active`, the desktop `list_active_runs` command). A run only
+// A run a worker is currently executing, as `listActiveRuns` returns it (the
+// backend's `GET /jobs/active`). A run only
 // gains a RunRecord at completion, so an in-progress run is described by its launch
 // identity instead. `state` is "running" off the wire; the console widens it to
 // "failed" for a run it has locally observed fail before it dropped out of the
