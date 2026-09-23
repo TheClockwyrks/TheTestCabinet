@@ -58,7 +58,7 @@ pub(crate) use runner::{ShellExecution, ShellRequest, ShellRunner, ShellStatus, 
 /// The tool's name, matched during dispatch and offered to the model.
 pub const SHELL_TOOL: &str = "shell";
 /// Default per-command timeout (seconds) when a call does not specify one.
-const DEFAULT_TIMEOUT_SECS: f64 = 120.0;
+const DEFAULT_TIMEOUT_SECS: f64 = 600.0;
 /// Ceiling on the captured output handed back to the model, in bytes. Output beyond
 /// this is dropped with a truncation note so a noisy command cannot flood context.
 /// Applied under both [policies](OffloadPolicy) — under
@@ -463,7 +463,7 @@ impl Tool for ShellTool {
                     },
                     "timeout_secs": {
                         "type": "number",
-                        "description": "Timeout in seconds (default 120)."
+                        "description": "Timeout in seconds (default 600)."
                     }
                 },
                 "required": ["command"],

@@ -12,7 +12,7 @@ in the Models & tools group of the [configuration](/gg/configurations/) editor.
 A command runs with its working directory set to the workspace root, or to the
 agent's own worktree when it has one. It runs in its own process group, so a
 timeout kill reaches the whole tree rather than `sh` alone, under a per-call
-timeout of 120 seconds, which the caller may raise or lower per call.
+timeout of 600 seconds (ten minutes), which the caller may raise or lower per call.
 
 A non-zero exit is a result rather than a failed call. The exit code and the
 output both come back so the agent can branch on them, because deciding whether
@@ -23,7 +23,7 @@ and one the timeout killed.
 Under [responses as code](/gg/responses-as-code/overview/) a program calls
 `gg.shell.shell(command, { timeoutSecs })` and is handed back the `exitCode`, the
 merged `output`, and whether that output was `truncated`. A call naming no
-`timeoutSecs` runs under the 120-second call timeout; one that is not a positive
+`timeoutSecs` runs under the 600-second call timeout; one that is not a positive
 number of seconds is an `invalid-argument` refusal, the same answer the tool
 surface gives. The
 requested timeout is clamped to 24 hours and then to whatever is left of the

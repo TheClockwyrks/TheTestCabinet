@@ -30,7 +30,7 @@ use crate::tools::{ApiData, DirEntryData, DirEntryKind, SearchMatchData};
 /// gg's own default `shell` timeout, restated here because the membrane must clamp a value *before*
 /// the tool sees it — and a call that arrived at the tool with no timeout at all would be clamped
 /// by nothing.
-const DEFAULT_TIMEOUT_SECS: f64 = 120.0;
+const DEFAULT_TIMEOUT_SECS: f64 = 600.0;
 
 /// The longest `shell` timeout the membrane will forward: a day, which no command in a run
 /// container has any business exceeding.

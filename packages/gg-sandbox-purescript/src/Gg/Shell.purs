@@ -56,7 +56,7 @@ type ShellOutput =
 -- | - `command` — The command line, run by `sh -c` with the workspace as its working directory.
 -- | - `options` — How to run it; `{}` takes gg's own defaults.
 -- | - `options.timeoutSecs` — How long to let it run, in seconds, before killing it. Left out, gg's
--- |   default of 120 applies, clamped to whatever is left of the run's wall-clock budget.
+-- |   default of 600 applies, clamped to whatever is left of the run's wall-clock budget.
 -- |
 -- | # Returns
 -- |
