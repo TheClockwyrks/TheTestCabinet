@@ -91,8 +91,11 @@ What the profile grants:
   run builds and test suites, so the gap between requests near the end of a
   run is routinely past five minutes, and the write premium is cheaper than
   re-reading a late window in full.
-- `maxCost` 25 USD. The OpenRouter key in `.env` has a 50 USD daily ceiling, so
-  two sessions fit in a day and a third needs the ceiling raised.
+- `maxCost` 25 USD. The OpenRouter key in `.env` has a 200 USD daily ceiling,
+  so eight sessions fit in a day.
+- No `maxRuntimeSecs`. An issue run goes for hours, and a model that is plainly
+  slow is killed by the operator rather than by a clock: a run that hit a
+  two-hour ceiling during its final lint pass ended with its work uncommitted.
 
 Both arms have been launched against `mock/test` from this template: the tools
 arm runs to exit `0` and the responses-as-code arm to the expected exit `3`.
@@ -172,7 +175,8 @@ default profile). Add them from the authoring catalog in
 
 `maxParallel` and `replayMaxBytes` are required. The rest are unarmed unless
 written. For an unfamiliar model keep `maxCost` (USD, run-wide), `maxTurns`,
-`maxRuntimeSecs` and `maxConsecutiveErrors`; the templates set all four.
+and `maxConsecutiveErrors`; the two minimal templates also set `maxRuntimeSecs`,
+and the study profile leaves it unarmed.
 
 ### Things gg does not do
 
@@ -196,12 +200,12 @@ pass. Anything you would put in a system prompt goes in the profile's
 All eight support tools and reasoning on OpenRouter. Re-run
 `scripts/model-windows.sh` before a launch; catalog figures move.
 
-| Model id                       | Window    | Input modalities          |
-| ------------------------------ | --------- | ------------------------- |
-| `x-ai/grok-4.7`                | 500,000   | text, image, file         |
-| `z-ai/glm-5.3-flash`           | 1,310,720 | text, image, video        |
-| `z-ai/glm-5.3`                 | 1,310,720 | text                      |
-| `deepseek/deepseek-v4.1-flash` | 1,048,576 | text, image               |
-| `qwen/qwen3.8-max-0902`        | 1,000,000 | text, image, video        |
-| `tencent/hy4-preview`          | 1,048,576 | text                      |
-| `moonshotai/kimi-k3`           | 1,048,576 | text, image, video        |
+| Model id                       | Window    | Input modalities   |
+| ------------------------------ | --------- | ------------------ |
+| `x-ai/grok-4.7`                | 500,000   | text, image, file  |
+| `z-ai/glm-5.3-flash`           | 1,310,720 | text, image, video |
+| `z-ai/glm-5.3`                 | 1,310,720 | text               |
+| `deepseek/deepseek-v4.1-flash` | 1,048,576 | text, image        |
+| `qwen/qwen3.8-max-0902`        | 1,000,000 | text, image, video |
+| `tencent/hy4-preview`          | 1,048,576 | text               |
+| `moonshotai/kimi-k3`           | 1,048,576 | text, image, video |
