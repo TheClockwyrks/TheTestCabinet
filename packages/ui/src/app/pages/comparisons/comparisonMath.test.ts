@@ -3,14 +3,17 @@ import type {
   ComparisonArm,
   ComparisonArmResult,
   ComparisonConfig,
+  MetricSummary,
 } from "@clockwyrks/run-record/comparison";
 import {
+  armDistributionGroups,
   appendRunIds,
   armTopUps,
   countedRunIds,
   harnessArmLaunchItems,
   isGgArm,
   medianRatio,
+  presentedRatio,
   pruneDeadRunIds,
   remainingForArm,
   reportedLiveRunIds,
@@ -420,6 +423,94 @@ describe("medianRatio", () => {
 
   it("is NaN rather than Infinity when the denominator is zero", () => {
     expect(Number.isNaN(medianRatio(5, 0))).toBe(true);
+  });
+});
+
+/** A metric summary with the given median; the rest of its spread is fixed. */
+function summary(median: number): MetricSummary {
+  return {
+    n: 3,
+    median,
+    mean: median + 1,
+    min: median - 1,
+    max: median + 2,
+    q1: median - 0.5,
+    q3: median + 0.5,
+    iqr: 1,
+    ciLow: median - 0.25,
+    ciHigh: median + 0.25,
+  } as MetricSummary;
+}
+
+describe("armDistributionGroups", () => {
+  it("draws each arm's session durations and leaves out an arm with none", () => {
+    const arms = [
+      result({ id: "a", label: "pi" }, { sessionDuration: summary(120) }),
+      // Every run of this arm predates the stage durations.
+      result({ id: "b", label: "kilo" }, { cost: summary(1) }),
+      result({ id: "c", label: "gg" }, { sessionDuration: summary(60) }),
+    ];
+    const groups = armDistributionGroups(
+      arms,
+      "sessionDuration",
+      new Map([
+        ["a", "red"],
+        ["c", "blue"],
+      ]),
+    );
+    expect(groups.map((g) => [g.label, g.color, g.median, g.mean])).toEqual([
+      ["pi", "red", 120, 121],
+      ["gg", "blue", 60, 61],
+    ]);
+    expect(groups[0]).toMatchObject({ ciLow: 119.75, ciHigh: 120.25, n: 3 });
+  });
+});
+
+describe("presentedRatio", () => {
+  it("orders session duration on its own, independent of cost", () => {
+    // pi is the cheaper arm but the slower one.
+    const arms = [
+      result(
+        { id: "a", label: "pi" },
+        { cost: summary(1), sessionDuration: summary(300) },
+      ),
+      result(
+        { id: "b", label: "kilo" },
+        { cost: summary(4), sessionDuration: summary(100) },
+      ),
+    ];
+    const cost = presentedRatio(arms, "cost")!;
+    expect([cost.higher.arm.label, cost.lower.arm.label]).toEqual([
+      "kilo",
+      "pi",
+    ]);
+    expect(cost.ratio).toBeCloseTo(4);
+    const session = presentedRatio(arms, "sessionDuration")!;
+    expect([session.higher.arm.label, session.lower.arm.label]).toEqual([
+      "pi",
+      "kilo",
+    ]);
+    expect(session.ratio).toBeCloseTo(3);
+  });
+
+  it("is null unless both of exactly two arms have the metric", () => {
+    const measured = result({ id: "a" }, { sessionDuration: summary(90) });
+    const unmeasured = result({ id: "b" }, { cost: summary(1) });
+    expect(
+      presentedRatio([measured, unmeasured], "sessionDuration"),
+    ).toBeNull();
+    expect(presentedRatio([measured], "sessionDuration")).toBeNull();
+    expect(
+      presentedRatio([measured, measured, measured], "sessionDuration"),
+    ).toBeNull();
+  });
+
+  it("is null when the lower median is zero", () => {
+    const arms = [
+      result({ id: "a" }, { sessionDuration: summary(90) }),
+      result({ id: "b" }, { sessionDuration: summary(0) }),
+    ];
+    expect(presentedRatio(arms, "sessionDuration")).toBeNull();
   });
 });
 

@@ -1,5 +1,16 @@
 import type { RunSummary } from "@clockwyrks/run-record/snapshot";
-import { describe, expect, it } from "vitest";
+import { act, cleanup, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
+import { afterEach, describe, expect, it } from "vitest";
+import { GalleryApp } from "../../../GalleryApp";
+import type { GalleryDataInput } from "../../../data/galleryContext";
+import { routes } from "../../../routes";
+import {
+  FIXTURE_IDS,
+  HostProviders,
+  readOnlyGallery,
+  stockedGallery,
+} from "../../routeSmokeFixtures";
 import type { ParsedWriteup } from "../../../data/ratings";
 import type { VariantSummary } from "../../../data/testCases";
 import { resolveRunScore } from "./TestCaseLeaderboardPage";
@@ -138,5 +149,37 @@ describe("resolveRunScore", () => {
       grade: "neutral",
       aesthetic: null,
     });
+  });
+});
+
+describe("the Leaderboard tab's resource columns", () => {
+  afterEach(cleanup);
+
+  async function visit(data: GalleryDataInput): Promise<void> {
+    await act(async () => {
+      render(
+        <MemoryRouter
+          initialEntries={[routes.testCaseLeaderboard(FIXTURE_IDS.slug)]}
+        >
+          <HostProviders data={data}>
+            <GalleryApp />
+          </HostProviders>
+        </MemoryRouter>,
+      );
+    });
+  }
+
+  it("reports the mean session duration beside cost, on the console and the site", async () => {
+    for (const data of [
+      stockedGallery("run-board-1"),
+      readOnlyGallery("run-board-2"),
+    ]) {
+      await visit(data);
+      expect(screen.getByText(/^average cost$/i)).toBeInTheDocument();
+      expect(screen.getByText(/^average session$/i)).toBeInTheDocument();
+      // The fixture's runs each spent 40s in the harness session.
+      expect(screen.getByText("40s")).toBeInTheDocument();
+      cleanup();
+    }
   });
 });

@@ -10,8 +10,8 @@
 import type { HarnessSlug, TokenMetrics } from "./index";
 
 /**
- * A descriptive summary of one numeric metric (comparable cost, total tokens)
- * over an arm's `N` runs.
+ * A descriptive summary of one numeric metric (comparable cost, total tokens,
+ * session duration) over an arm's `N` runs.
  *
  * The bar a view draws is the [`median`](Self::median) — the honest "typical"
  * run for a skewed metric — but the summary carries the full spread so the view

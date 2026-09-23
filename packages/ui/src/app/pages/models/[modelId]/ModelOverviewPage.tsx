@@ -452,10 +452,10 @@ function CohortReport({
   );
 }
 
-// The three comparisons, each placing one of the model's figures among the other
+// The comparisons, each placing one of the model's figures among the other
 // models that ran the same cohort. A figure the model never reported has no row
 // (there is nothing to place), and a cohort this model is alone in says so once
-// rather than three times.
+// rather than once per figure.
 function ComparisonBlock({
   cohortLabel,
   standings,

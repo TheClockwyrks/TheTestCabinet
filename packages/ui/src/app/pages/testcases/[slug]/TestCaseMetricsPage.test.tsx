@@ -178,12 +178,29 @@ describe("the Metrics tab's chart controls", () => {
     expect(modified.defaultPrevented).toBe(false);
   });
 
+  it("charts session duration per model beside tokens and cost", async () => {
+    await visit(METRICS, stockedGallery("run-metrics-9"));
+    expect(
+      screen.getByRole("img", {
+        name: "Average session duration by harness & model",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/comparable across runs of one model/),
+    ).toBeInTheDocument();
+  });
+
   it("renders on the read-only static gallery, which has no backend", async () => {
     // The site host builds its data from a build-time snapshot. Nothing the
     // charts need may reach for a console.
     await visit(METRICS, readOnlyGallery("run-metrics-5"));
     expect(
       screen.getByRole("radiogroup", { name: "Average cost display" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", {
+        name: "Average session duration by harness & model",
+      }),
     ).toBeInTheDocument();
   });
 });
@@ -200,5 +217,9 @@ describe("the game jam's Metrics tab", () => {
     );
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.getByText(/chart a distribution/i)).toBeInTheDocument();
+    // The note explains the duration chart, so it goes where the chart goes.
+    expect(
+      screen.queryByText(/comparable across runs of one model/),
+    ).not.toBeInTheDocument();
   });
 });

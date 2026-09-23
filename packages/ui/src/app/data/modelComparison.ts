@@ -244,22 +244,3 @@ export function standInField(
     max: Math.max(...means),
   };
 }
-
-/**
- * The subject model's mean of a figure over the cohort, ignoring runs that did
- * not report it. `null` when no run reported it — distinct from a mean of zero.
- */
-export function meanReported(
-  runs: readonly RunSummary[],
-  value: (run: RunSummary) => number | null,
-): number | null {
-  let sum = 0;
-  let reported = 0;
-  for (const run of runs) {
-    const measured = value(run);
-    if (measured === null) continue;
-    sum += measured;
-    reported += 1;
-  }
-  return reported === 0 ? null : sum / reported;
-}

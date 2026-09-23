@@ -6,7 +6,11 @@ import type {
   ComparisonArmResult,
   ComparisonConfig,
 } from "@clockwyrks/run-record/comparison";
-import type { StackedBarSegment, StackedSeries } from "../../../primitives";
+import type {
+  DistributionGroup,
+  StackedBarSegment,
+  StackedSeries,
+} from "../../../primitives";
 import { OPENROUTER_PROVIDER, resolveLaunchModel } from "../../data/providers";
 import { DEFAULT_ORCHESTRATOR_SLUG } from "../../data/orchestrators";
 import { resolveEngineSlug } from "../../data/engines";
@@ -278,6 +282,76 @@ export function withArmRunIds(
  */
 export function medianRatio(aMedian: number, bMedian: number): number {
   return bMedian === 0 ? NaN : aMedian / bMedian;
+}
+
+/**
+ * The per-arm distributions a comparison reports on the terms the comparisons
+ * statistics page sets for a right-skewed metric: the median with its spread
+ * and the mean (docs/comparisons/statistics.md, "Per-arm statistics").
+ */
+export type ArmMetric = "cost" | "tokens" | "sessionDuration";
+
+/**
+ * Each arm's distribution of `metric`, in the arms' order, as the groups a
+ * distribution chart draws. An arm with no distribution for the metric (none of
+ * its runs reported it, such as runs recorded before the stage durations were
+ * measured) is left out rather than drawn at zero.
+ */
+export function armDistributionGroups(
+  arms: readonly ComparisonArmResult[],
+  metric: ArmMetric,
+  colorForArm: ReadonlyMap<string, string>,
+): DistributionGroup[] {
+  return arms.flatMap((a) => {
+    const summary = a[metric];
+    if (!summary) return [];
+    return [
+      {
+        label: a.arm.label,
+        color: colorForArm.get(a.arm.id),
+        n: summary.n,
+        points: [],
+        median: summary.median,
+        mean: summary.mean,
+        min: summary.min,
+        max: summary.max,
+        q1: summary.q1,
+        q3: summary.q3,
+        ciLow: summary.ciLow,
+        ciHigh: summary.ciHigh,
+      },
+    ];
+  });
+}
+
+/** A two-arm comparison's presented ratio on one metric, higher median first. */
+export interface PresentedRatio {
+  higher: ComparisonArmResult;
+  lower: ComparisonArmResult;
+  /** `higher`'s median over `lower`'s, so it reads at least one. */
+  ratio: number;
+}
+
+/**
+ * The ratio a two-arm comparison presents for `metric` (docs/comparisons/
+ * statistics.md, "Comparing two arms"): the two medians ordered so the ratio
+ * reads at least one. Each metric is ordered on its own, since the slower arm
+ * is not necessarily the more expensive one. `null` unless there are exactly two
+ * arms, both have a distribution for the metric, and the lower median is above
+ * zero.
+ */
+export function presentedRatio(
+  arms: readonly ComparisonArmResult[],
+  metric: ArmMetric,
+): PresentedRatio | null {
+  if (arms.length !== 2) return null;
+  const [a, b] = arms as [ComparisonArmResult, ComparisonArmResult];
+  const aSummary = a[metric];
+  const bSummary = b[metric];
+  if (!aSummary || !bSummary) return null;
+  const [higher, lower] = aSummary.median >= bSummary.median ? [a, b] : [b, a];
+  const ratio = medianRatio(higher[metric]!.median, lower[metric]!.median);
+  return Number.isNaN(ratio) ? null : { higher, lower, ratio };
 }
 
 /** One arm's raw tool-call tally, as carried on `ComparisonArmResult.diagnostics.

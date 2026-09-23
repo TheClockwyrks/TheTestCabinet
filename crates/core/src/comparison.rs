@@ -3,8 +3,8 @@
 //! A comparison runs the same benchmark under several **configurations** — a
 //! third-party harness on a model, or a [gg](crate::gg) capability set with a model
 //! per slot — holds the case and every other variable constant, and presents the
-//! cost, token, session-duration, and score data side by side so a reader can judge for themselves.
-//! This module defines the stored [`ComparisonConfig`] (its controls and arms) and
+//! cost, token, session-duration, and score data side by side so a reader can
+//! judge for themselves. This module defines the stored [`ComparisonConfig`] (its controls and arms) and
 //! the computed read model ([`Comparison`] / [`ComparisonArmResult`]) that
 //! [`crate::comparison_aggregate`] fills in from an arm's runs, summarizing each
 //! with [`crate::comparison_stats`].

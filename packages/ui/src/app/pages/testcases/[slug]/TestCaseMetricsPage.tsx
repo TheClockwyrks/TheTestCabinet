@@ -430,105 +430,104 @@ export function MetricsContent({ ctx }: { ctx: DetailTabContext }) {
         // One full-width widget per metric, each grouping the scoped runs by model.
         // The click handler is on the container rather than on each chart because
         // the anchors it catches are inside DOM Plot owns; see `chartLinkTarget`.
-        <div className={styles.widgets} onClick={followChartLink}>
-          <RatingsChartWidget
-            title="Ratings"
-            models={ratingModels}
-            variantName={variant.name}
-            sort={sort}
-            tieBreak={tieBreak}
-            actions={sortControl}
-          />
-          <MetricChartWidget
-            title="Average points"
-            runs={scopedRuns}
-            subgroup={engineSubgroup}
-            value={pointsValue}
-            unit="points"
-            barMode="meanByModel"
-            betterIs="higher"
-            colorForModel={colorForModel}
-            labelForModel={labelForModel}
-            formatValue={formatPointsValue}
-            sort={sort}
-            tieBreak={tieBreak}
-            actions={sortControl}
-            empty={`No scored runs of ${variant.name} yet. Points appear once runs have been reviewed.`}
-          />
-          {/* The resource metrics carry the Bar/Scatter control. They are the
+        <>
+          <div className={styles.widgets} onClick={followChartLink}>
+            <RatingsChartWidget
+              title="Ratings"
+              models={ratingModels}
+              variantName={variant.name}
+              sort={sort}
+              tieBreak={tieBreak}
+              actions={sortControl}
+            />
+            <MetricChartWidget
+              title="Average points"
+              runs={scopedRuns}
+              subgroup={engineSubgroup}
+              value={pointsValue}
+              unit="points"
+              barMode="meanByModel"
+              betterIs="higher"
+              colorForModel={colorForModel}
+              labelForModel={labelForModel}
+              formatValue={formatPointsValue}
+              sort={sort}
+              tieBreak={tieBreak}
+              actions={sortControl}
+              empty={`No scored runs of ${variant.name} yet. Points appear once runs have been reviewed.`}
+            />
+            {/* The resource metrics carry the Bar/Scatter control. They are the
               skewed ones — a run has a floor and a long upper tail — so the mean a
               bar draws sits above the typical run and the spread behind it is the
               interesting part. Points and Ratings deliberately do not: a points
               bar is a bounded fraction of one checklist and the Ratings chart is
               already a stacked count of every run, which is the same information a
               scatter would add. */}
-          <MetricChartWidget
-            title="Average tokens"
-            runs={scopedRuns}
-            subgroup={engineSubgroup}
-            value={tokensValue}
-            unit="tokens"
-            yTickFormat={TOKEN_TICKS}
-            barMode="meanByModel"
-            distributionModes
-            colorForModel={colorForModel}
-            labelForModel={labelForModel}
-            formatValue={formatCompact}
-            runHref={runHref}
-            describeRun={describeRun}
-            sort={sort}
-            tieBreak={tieBreak}
-            actions={sortControl}
-          />
-          <MetricChartWidget
-            title="Average cost"
-            runs={scopedRuns}
-            subgroup={engineSubgroup}
-            value={costValue}
-            unit="USD"
-            barMode="meanByModel"
-            distributionModes
-            colorForModel={colorForModel}
-            labelForModel={labelForModel}
-            formatValue={formatUsd}
-            runHref={runHref}
-            describeRun={describeRun}
-            sort={sort}
-            tieBreak={tieBreak}
-            actions={sortControl}
-          />
-          <MetricChartWidget
-            title="Average session duration"
-            runs={scopedRuns}
-            subgroup={engineSubgroup}
-            value={sessionValue}
-            unit="seconds"
-            barMode="meanByModel"
-            betterIs="lower"
-            distributionModes
-            colorForModel={colorForModel}
-            labelForModel={labelForModel}
-            formatValue={formatRunTime}
-            runHref={runHref}
-            describeRun={describeRun}
-            sort={sort}
-            tieBreak={tieBreak}
-            actions={sortControl}
-            empty={`No session durations recorded for ${variant.name} yet. A run written before stage durations were measured contributes nothing.`}
-          />
-        </div>
+            <MetricChartWidget
+              title="Average tokens"
+              runs={scopedRuns}
+              subgroup={engineSubgroup}
+              value={tokensValue}
+              unit="tokens"
+              yTickFormat={TOKEN_TICKS}
+              barMode="meanByModel"
+              distributionModes
+              colorForModel={colorForModel}
+              labelForModel={labelForModel}
+              formatValue={formatCompact}
+              runHref={runHref}
+              describeRun={describeRun}
+              sort={sort}
+              tieBreak={tieBreak}
+              actions={sortControl}
+            />
+            <MetricChartWidget
+              title="Average cost"
+              runs={scopedRuns}
+              subgroup={engineSubgroup}
+              value={costValue}
+              unit="USD"
+              barMode="meanByModel"
+              distributionModes
+              colorForModel={colorForModel}
+              labelForModel={labelForModel}
+              formatValue={formatUsd}
+              runHref={runHref}
+              describeRun={describeRun}
+              sort={sort}
+              tieBreak={tieBreak}
+              actions={sortControl}
+            />
+            <MetricChartWidget
+              title="Average session duration"
+              runs={scopedRuns}
+              subgroup={engineSubgroup}
+              value={sessionValue}
+              unit="seconds"
+              barMode="meanByModel"
+              betterIs="lower"
+              distributionModes
+              colorForModel={colorForModel}
+              labelForModel={labelForModel}
+              formatValue={formatRunTime}
+              runHref={runHref}
+              describeRun={describeRun}
+              sort={sort}
+              tieBreak={tieBreak}
+              actions={sortControl}
+              empty={`No session durations recorded for ${variant.name} yet. A run written before stage durations were measured contributes nothing.`}
+            />
+          </div>
+          {/* Why the duration chart compares models at all, stated beside the
+            charts rather than only in the docs. */}
+          <p className={styles.note}>
+            Session duration is the harness session alone, comparable across
+            runs of one model because every run is pinned to that model&rsquo;s
+            own provider. A run recorded before session durations were measured
+            is left out.
+          </p>
+        </>
       )}
-      {/* Session duration is comparable across runs of one model because every
-          run is pinned to that model's own provider. Setup, teardown, and
-          validation are the cabinet's time, so the chart reports the session
-          alone, and a run recorded before the stage durations were measured
-          contributes nothing. */}
-      <p className={styles.note}>
-        Session duration is the harness session alone, comparable across runs of
-        one model because every run is pinned to that model&rsquo;s own
-        provider. A run recorded before session durations were measured is left
-        out.
-      </p>
     </section>
   );
 }

@@ -8,12 +8,11 @@
 //!
 //! The metrics have different shapes and each gets the summary that does not lie
 //! about it:
-//! - **Cost, tokens, and session duration are right-skewed** — a floor with a long
-//!   upper tail. They
-//!   are summarized with the [`MetricSummary`] (median + IQR + min/max, alongside
-//!   the mean, because the gap between mean and median is itself informative), with
-//!   a bootstrap confidence interval on the median that makes no normality
-//!   assumption and stays honest at small `n`.
+//! - **Cost, tokens, and session duration are right-skewed** — a floor with a
+//!   long upper tail. They are summarized with the [`MetricSummary`] (median +
+//!   IQR + min/max, alongside the mean, because the gap between mean and median
+//!   is itself informative), with a bootstrap confidence interval on the median
+//!   that makes no normality assumption and stays honest at small `n`.
 //! - **Pass rate is a proportion** — summarized with a [`PassRate`] carrying a
 //!   Wilson score interval, not a normal one.
 //!
@@ -38,8 +37,8 @@ const CI_ALPHA: f64 = 0.05;
 /// percentile).
 const WILSON_Z: f64 = 1.959_963_984_540_054;
 
-/// A descriptive summary of one numeric metric (comparable cost, total tokens)
-/// over an arm's `N` runs.
+/// A descriptive summary of one numeric metric (comparable cost, total tokens,
+/// session duration) over an arm's `N` runs.
 ///
 /// The bar a view draws is the [`median`](Self::median) — the honest "typical"
 /// run for a skewed metric — but the summary carries the full spread so the view

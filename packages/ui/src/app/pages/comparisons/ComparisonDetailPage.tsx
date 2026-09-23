@@ -7,7 +7,6 @@ import {
   distributionChart,
   stackedBarChart,
 } from "@clockwyrks/ui";
-import type { DistributionGroup } from "@clockwyrks/ui";
 import type { ComparisonPublishOutcome } from "../../../client/clients";
 import { useAuth } from "../../../client/auth";
 import {
@@ -31,11 +30,12 @@ import { routes } from "../../routes";
 import { categoricalColor } from "../../../primitives/plot/palette";
 import {
   appendRunIds,
+  armDistributionGroups,
   armTopUps,
   harnessArmLaunchItems,
   countedRunIds,
   isGgArm,
-  medianRatio,
+  presentedRatio,
   pruneDeadRunIds,
   toolCallChartData,
   totalMissingRuns,
@@ -366,57 +366,15 @@ export function ComparisonDetailPage() {
     comparison.config.arms.map((arm, i) => [arm.id, categoricalColor(i)]),
   );
 
-  const costGroups: DistributionGroup[] = arms
-    .filter((a) => a.cost)
-    .map((a) => ({
-      label: a.arm.label,
-      color: colorForArm.get(a.arm.id),
-      n: a.cost!.n,
-      points: [],
-      median: a.cost!.median,
-      mean: a.cost!.mean,
-      min: a.cost!.min,
-      max: a.cost!.max,
-      q1: a.cost!.q1,
-      q3: a.cost!.q3,
-      ciLow: a.cost!.ciLow,
-      ciHigh: a.cost!.ciHigh,
-    }));
-  const tokenGroups: DistributionGroup[] = arms
-    .filter((a) => a.tokens)
-    .map((a) => ({
-      label: a.arm.label,
-      color: colorForArm.get(a.arm.id),
-      n: a.tokens!.n,
-      points: [],
-      median: a.tokens!.median,
-      mean: a.tokens!.mean,
-      min: a.tokens!.min,
-      max: a.tokens!.max,
-      q1: a.tokens!.q1,
-      q3: a.tokens!.q3,
-      ciLow: a.tokens!.ciLow,
-      ciHigh: a.tokens!.ciHigh,
-    }));
-  // Session duration, on the same terms as cost and tokens: the median, its
-  // spread, and the mean. An arm whose runs predate the stage durations has
-  // none, and is left out rather than drawn at zero.
-  const sessionGroups: DistributionGroup[] = arms
-    .filter((a) => a.sessionDuration)
-    .map((a) => ({
-      label: a.arm.label,
-      color: colorForArm.get(a.arm.id),
-      n: a.sessionDuration!.n,
-      points: [],
-      median: a.sessionDuration!.median,
-      mean: a.sessionDuration!.mean,
-      min: a.sessionDuration!.min,
-      max: a.sessionDuration!.max,
-      q1: a.sessionDuration!.q1,
-      q3: a.sessionDuration!.q3,
-      ciLow: a.sessionDuration!.ciLow,
-      ciHigh: a.sessionDuration!.ciHigh,
-    }));
+  // Cost, tokens, and session duration, each summarized per arm on the terms
+  // the comparisons statistics page sets for a right-skewed metric.
+  const costGroups = armDistributionGroups(arms, "cost", colorForArm);
+  const tokenGroups = armDistributionGroups(arms, "tokens", colorForArm);
+  const sessionGroups = armDistributionGroups(
+    arms,
+    "sessionDuration",
+    colorForArm,
+  );
 
   const toolCallData = toolCallChartData(
     arms.map((a) => ({
@@ -432,32 +390,11 @@ export function ComparisonDetailPage() {
     (a.confounds ?? []).map((c) => ({ armLabel: a.arm.label, confound: c })),
   );
 
-  // The presented (never a verdict) median-cost ratio for exactly two arms, both
-  // with a resolved cost distribution — "arm's median cost is ~R× the other's"
-  // (docs/comparisons/statistics.md). Ordered so the ratio reads >= 1.
-  const costPair: [(typeof arms)[number], (typeof arms)[number]] | null =
-    arms.length === 2 && arms[0]!.cost && arms[1]!.cost
-      ? ([arms[0]!, arms[1]!].sort(
-          (x, y) => y.cost!.median - x.cost!.median,
-        ) as [(typeof arms)[number], (typeof arms)[number]])
-      : null;
-  const [hi, lo] = costPair ?? [null, null];
-  const costRatio =
-    hi && lo ? medianRatio(hi.cost!.median, lo.cost!.median) : null;
-
-  // The same presented ratio for session duration, ordered independently of
-  // cost: the slower arm is not necessarily the more expensive one.
-  const sessionPair: [(typeof arms)[number], (typeof arms)[number]] | null =
-    arms.length === 2 && arms[0]!.sessionDuration && arms[1]!.sessionDuration
-      ? ([arms[0]!, arms[1]!].sort(
-          (x, y) => y.sessionDuration!.median - x.sessionDuration!.median,
-        ) as [(typeof arms)[number], (typeof arms)[number]])
-      : null;
-  const [slow, fast] = sessionPair ?? [null, null];
-  const sessionRatio =
-    slow && fast
-      ? medianRatio(slow.sessionDuration!.median, fast.sessionDuration!.median)
-      : null;
+  // The presented (never a verdict) median ratios for exactly two arms, "arm's
+  // median cost is ~R× the other's" (docs/comparisons/statistics.md). Cost and
+  // session duration are each ordered on their own.
+  const costRatio = presentedRatio(arms, "cost");
+  const sessionRatio = presentedRatio(arms, "sessionDuration");
 
   return (
     <PageLayout>
@@ -599,20 +536,22 @@ export function ComparisonDetailPage() {
         </div>
       )}
 
-      {costRatio !== null && !Number.isNaN(costRatio) && hi && lo && (
+      {costRatio && (
         <p className={styles.ratioCallout}>
-          {hi.arm.label}&rsquo;s median cost is ~{costRatio.toFixed(1)}×{" "}
-          {lo.arm.label}
-          &rsquo;s ({formatUsd(hi.cost!.median)} vs {formatUsd(lo.cost!.median)}
-          ).
+          {costRatio.higher.arm.label}&rsquo;s median cost is ~
+          {costRatio.ratio.toFixed(1)}× {costRatio.lower.arm.label}&rsquo;s (
+          {formatUsd(costRatio.higher.cost!.median)} vs{" "}
+          {formatUsd(costRatio.lower.cost!.median)}).
         </p>
       )}
-      {sessionRatio !== null && !Number.isNaN(sessionRatio) && slow && fast && (
+      {sessionRatio && (
         <p className={styles.ratioCallout}>
-          {slow.arm.label}&rsquo;s median session is ~{sessionRatio.toFixed(1)}×{" "}
-          {fast.arm.label}
-          &rsquo;s ({formatRunTime(slow.sessionDuration!.median)} vs{" "}
-          {formatRunTime(fast.sessionDuration!.median)}).
+          {sessionRatio.higher.arm.label}&rsquo;s median session duration is ~
+          {sessionRatio.ratio.toFixed(1)}× {sessionRatio.lower.arm.label}
+          &rsquo;s ({formatRunTime(
+            sessionRatio.higher.sessionDuration!.median,
+          )}{" "}
+          vs {formatRunTime(sessionRatio.lower.sessionDuration!.median)}).
         </p>
       )}
 
