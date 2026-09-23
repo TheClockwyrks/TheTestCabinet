@@ -111,8 +111,10 @@ jobs:
           set -euo pipefail
           # `--env` (derived from the branch above) selects the Cloudflare Pages
           # project and the lockfile key. The command only writes the lockfile; it
-          # never contacts the backend.
-          args=(--env "$ENVIRONMENT" "$SLUG")
+          # never contacts the backend. Baselines are captured into the cold-storage
+          # submodule and committed there by an author, so this checkout (which
+          # leaves the submodule out) deploys without re-capturing them.
+          args=(--env "$ENVIRONMENT" --skip-baselines "$SLUG")
           if [ -n "$VERSION" ]; then
             args+=("$VERSION")
           fi
