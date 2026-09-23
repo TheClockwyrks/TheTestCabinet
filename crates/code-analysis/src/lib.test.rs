@@ -253,32 +253,144 @@ fn analysing_the_same_tree_twice_gives_the_same_document() {
     assert_eq!(analyse(root.path()), analyse(root.path()));
 }
 
+fn analyse_within(root: &Path, budgets: caps::TreeBudgets) -> CodeAnalysisDocument {
+    analyze_within(
+        &AnalysisRequest {
+            root,
+            seed_commit: None,
+            tree_basis: CodeTreeBasis::PreValidation,
+            root_seeding: crate::walk::RootSeeding::default(),
+        },
+        &budgets,
+    )
+}
+
+/// The production bounds are what [`analyze`] runs under. A change to any of them is a
+/// definition change that bumps the analyzer version, so the values are pinned here rather
+/// than left implied by the constants.
+#[test]
+fn the_default_budgets_are_the_production_caps() {
+    assert_eq!(
+        caps::TreeBudgets::default(),
+        caps::TreeBudgets {
+            max_files: 20_000,
+            max_total_parse_bytes: 64 * 1024 * 1024,
+            max_symbols: 200_000,
+        }
+    );
+}
+
 /// **Determinism under truncation**, which is the half that could plausibly fail. Files are
 /// visited in sorted order, so *which* files a cap drops is a function of the tree rather
 /// than of directory order — and a truncated result says so, because a partial figure that
-/// looks complete is worse than a missing one.
+/// looks complete is worse than a missing one. The cap is set to ten so the tree that
+/// exceeds it is fifteen files; the mechanism is the same one the production cap uses.
 #[test]
 fn a_truncated_analysis_is_deterministic_and_says_so() {
+    let budgets = caps::TreeBudgets {
+        max_files: 10,
+        ..caps::TreeBudgets::default()
+    };
     let root = tempfile::tempdir().expect("a temp dir");
-    let count = caps::MAX_FILES + 50;
-    for index in 0..count {
-        write(root.path(), &format!("notes/n{index:06}.md"), "# note\n");
+    // Written in reverse so creation order and sorted order disagree.
+    for index in (0..15).rev() {
+        write(root.path(), &format!("notes/n{index:02}.md"), "# note\n");
     }
 
-    let first = analyse(root.path());
+    let first = analyse_within(root.path(), budgets);
     assert!(first.summary.notes.truncated);
     assert_eq!(
         first.summary.notes.truncated_by,
         Some(CodeTruncationCap::FileCount)
     );
-    assert_eq!(first.summary.size.files as usize, caps::MAX_FILES);
+    assert_eq!(first.summary.size.files, 10);
     assert_eq!(
         first.files.last().expect("a last file").path,
-        format!("notes/n{:06}.md", caps::MAX_FILES - 1),
+        "notes/n09.md",
         "the sort is what makes the dropped set a function of the tree"
     );
 
-    assert_eq!(first, analyse(root.path()));
+    assert_eq!(first, analyse_within(root.path(), budgets));
+}
+
+/// A tree that exactly fills the file cap is not truncated: the cap drops files past it, and
+/// a flag raised on a complete tree would exclude a result that is whole.
+#[test]
+fn a_tree_that_exactly_fills_the_file_cap_is_not_truncated() {
+    let root = tempfile::tempdir().expect("a temp dir");
+    for index in 0..10 {
+        write(root.path(), &format!("notes/n{index:02}.md"), "# note\n");
+    }
+    let document = analyse_within(
+        root.path(),
+        caps::TreeBudgets {
+            max_files: 10,
+            ..caps::TreeBudgets::default()
+        },
+    );
+    assert!(!document.summary.notes.truncated);
+    assert_eq!(document.summary.size.files, 10);
+}
+
+/// The tree-wide parse budget is spent in sorted order: the file that no longer fits is
+/// counted for size, recorded as over budget, and the result names the cap that fired.
+#[test]
+fn a_spent_parse_budget_leaves_the_later_files_size_only_and_says_so() {
+    let source = "export const a = 1;\n";
+    let root = tree(&[("src/a.ts", source), ("src/b.ts", source)]);
+    let document = analyse_within(
+        root.path(),
+        caps::TreeBudgets {
+            max_total_parse_bytes: source.len() as u64,
+            ..caps::TreeBudgets::default()
+        },
+    );
+    assert_eq!(
+        document.summary.notes.truncated_by,
+        Some(CodeTruncationCap::ParseBytes)
+    );
+    let reasons: Vec<_> = document
+        .files
+        .iter()
+        .map(|file| (file.path.as_str(), file.size_only_reason.as_deref()))
+        .collect();
+    assert_eq!(
+        reasons,
+        [("src/a.ts", None), ("src/b.ts", Some("budget-exhausted"))]
+    );
+}
+
+/// The symbol budget is spent by the functions a parsed file declares; once it is gone, the
+/// next source file is not parsed and the result names the cap that fired.
+#[test]
+fn a_spent_symbol_budget_leaves_the_later_files_size_only_and_says_so() {
+    let root = tree(&[
+        (
+            "src/a.ts",
+            "export function one() {}\nexport function two() {}\n",
+        ),
+        ("src/b.ts", "export function three() {}\n"),
+    ]);
+    let document = analyse_within(
+        root.path(),
+        caps::TreeBudgets {
+            max_symbols: 2,
+            ..caps::TreeBudgets::default()
+        },
+    );
+    assert_eq!(
+        document.summary.notes.truncated_by,
+        Some(CodeTruncationCap::SymbolBudget)
+    );
+    let reasons: Vec<_> = document
+        .files
+        .iter()
+        .map(|file| (file.path.as_str(), file.size_only_reason.as_deref()))
+        .collect();
+    assert_eq!(
+        reasons,
+        [("src/a.ts", None), ("src/b.ts", Some("budget-exhausted"))]
+    );
 }
 
 /// An empty tree produces a document, not a divide-by-zero: every mean and ratio goes

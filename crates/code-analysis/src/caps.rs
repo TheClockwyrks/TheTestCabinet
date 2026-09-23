@@ -47,6 +47,12 @@
 //! *which* files a cap drops is deterministic too, and hitting one marks the result
 //! truncated.
 //!
+//! The three tree-wide bounds are carried as [`TreeBudgets`], whose [`Default`] is the
+//! constants above and is what [`analyze`](crate::analyze) runs under. A caller can pass
+//! smaller ones to [`analyze_within`](crate::analyze_within) to exercise truncation on a
+//! small tree; a result produced under anything but the default is not the definition the
+//! analyzer version stamps, so nothing on the record path does that.
+//!
 //! # Where the stack numbers come from
 //!
 //! [`STACK_BYTES_PER_SOURCE_BYTE`] is measured, not chosen — see its own documentation.
@@ -108,6 +114,32 @@ pub const MAX_TOTAL_PARSE_BYTES: u64 = 64 * 1024 * 1024;
 /// A per-symbol budget rather than a per-file one, because the document carries a row per
 /// function and it is the *document* this protects.
 pub const MAX_SYMBOLS: usize = 200_000;
+
+/// The tree-wide bounds one analysis runs under.
+///
+/// [`Default`] is the production definition — [`MAX_FILES`], [`MAX_TOTAL_PARSE_BYTES`] and
+/// [`MAX_SYMBOLS`] — and is the only value [`analyze`](crate::analyze) uses. The per-file
+/// bounds ([`MAX_PARSED_FILE_BYTES`], [`MAX_BRACKET_NESTING`]) are not here: they protect
+/// the process from a parser stack overflow, and the stack derivation depends on them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TreeBudgets {
+    /// The most files the walk keeps, in sorted order.
+    pub max_files: usize,
+    /// The most bytes handed to a parser across the whole tree.
+    pub max_total_parse_bytes: u64,
+    /// The most functions the analysis scores.
+    pub max_symbols: usize,
+}
+
+impl Default for TreeBudgets {
+    fn default() -> Self {
+        Self {
+            max_files: MAX_FILES,
+            max_total_parse_bytes: MAX_TOTAL_PARSE_BYTES,
+            max_symbols: MAX_SYMBOLS,
+        }
+    }
+}
 
 /// The deepest `(`, `[`, `{`, `<` or closure-`|` nesting either front end will parse.
 ///

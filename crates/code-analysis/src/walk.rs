@@ -109,7 +109,7 @@ pub struct Walk {
     pub skipped_files: u32,
     /// Bytes those files held.
     pub skipped_bytes: u64,
-    /// Whether [`MAX_FILES`](crate::caps::MAX_FILES) truncated the file list.
+    /// Whether the file-count cap truncated the file list.
     pub truncated: bool,
 }
 
@@ -227,6 +227,12 @@ const BINARY_EXTENSIONS: [&str; 25] = [
 /// Reading repository metadata is not "executing the produced code": nothing here runs a
 /// build, a script, or a package manager.
 pub fn walk(root: &Path, seeding: RootSeeding) -> Walk {
+    walk_within(root, seeding, crate::caps::MAX_FILES)
+}
+
+/// [`walk`], keeping at most `max_files` of the sorted file list rather than
+/// [`MAX_FILES`](crate::caps::MAX_FILES).
+pub fn walk_within(root: &Path, seeding: RootSeeding, max_files: usize) -> Walk {
     let mut kept = Vec::new();
     let mut walk = Walk::default();
 
@@ -284,8 +290,8 @@ pub fn walk(root: &Path, seeding: RootSeeding) -> Walk {
 
     walk.gitignore_applied = ignore_files_present(root);
     kept.sort_by(|left, right| left.path.cmp(&right.path));
-    if kept.len() > crate::caps::MAX_FILES {
-        kept.truncate(crate::caps::MAX_FILES);
+    if kept.len() > max_files {
+        kept.truncate(max_files);
         walk.truncated = true;
     }
     walk.files = kept;

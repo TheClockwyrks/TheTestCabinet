@@ -133,15 +133,27 @@ impl AnalyzedFile {
 /// error, because the caller is a post-run stage whose failure would leave a finished run
 /// with no analysis and no explanation of why.
 pub fn analyze(request: &AnalysisRequest<'_>) -> CodeAnalysisDocument {
-    let walk = walk::walk(request.root, request.root_seeding);
+    analyze_within(request, &caps::TreeBudgets::default())
+}
+
+/// [`analyze`] under `budgets` rather than the production [`TreeBudgets`](caps::TreeBudgets).
+///
+/// The tree-wide caps are part of what the analyzer version defines, so a result produced
+/// under anything but the default is not a record figure. This exists so a truncation can
+/// be exercised on a tree of a dozen files instead of one of production scale.
+pub fn analyze_within(
+    request: &AnalysisRequest<'_>,
+    budgets: &caps::TreeBudgets,
+) -> CodeAnalysisDocument {
+    let walk = walk::walk_within(request.root, request.root_seeding, budgets.max_files);
     let authored = authored::resolve(request.root, request.seed_commit);
 
     let mut files = Vec::new();
     let mut truncated_by = walk.truncated.then_some(CodeTruncationCap::FileCount);
     let mut skipped_files = walk.skipped_files;
     let mut skipped_bytes = walk.skipped_bytes;
-    let mut parse_budget = caps::MAX_TOTAL_PARSE_BYTES;
-    let mut symbol_budget = caps::MAX_SYMBOLS;
+    let mut parse_budget = budgets.max_total_parse_bytes;
+    let mut symbol_budget = budgets.max_symbols;
 
     for walked in &walk.files {
         if !authored.contains(&walked.path) {
