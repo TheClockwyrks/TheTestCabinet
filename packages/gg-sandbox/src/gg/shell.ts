@@ -40,7 +40,7 @@ export interface ShellOutput {
  * @ggop shell.shell
  * @param command The command line, run by `sh -c` with the workspace as its working directory.
  * @param options How to run it.
- * @param options.timeoutSecs How long to let it run before killing it. The default is 120, clamped to
+ * @param options.timeoutSecs How long to let it run before killing it. The default is 600, clamped to
  * whatever is left of the run's wall-clock budget.
  * @returns the command's exit status and its merged output, whether or not it succeeded.
  * @throws `ApiError` with `limit-exceeded` when the timeout killed the process, and `io-error`

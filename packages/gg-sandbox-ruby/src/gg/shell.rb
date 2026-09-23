@@ -19,7 +19,7 @@ module GG
     # @param command [String] The command line, run by `sh -c` with the workspace as its working
     #   directory.
     # @param timeout_secs [Numeric, nil] How long to let it run, in seconds, before killing it.
-    #   Leave it out for gg's default of 120, clamped to whatever is left of the run's wall-clock
+    #   Leave it out for gg's default of 600, clamped to whatever is left of the run's wall-clock
     #   budget.
     # @return [GG::Shell::ShellOutput] what the process reported when it finished
     # @raise [GG::Core::ApiError] `:limit_exceeded` when the timeout killed the process, and

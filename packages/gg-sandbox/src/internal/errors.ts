@@ -20,7 +20,7 @@
  * argument, and three mistakes are otherwise silent or unreadable:
  *
  * - `shell("npm test", 300)` reads `options.timeoutSecs` off a number, gets `undefined`, and quietly
- *   uses the 120 s default — the model never learns its timeout was ignored.
+ *   uses the 600 s default — the model never learns its timeout was ignored.
  * - `readFile("a.ts", { offset: -1 })` lowers to `offset: 4292870144` by two's-complement wrap, and
  *   the read fails for a reason that has nothing to do with what was written.
  * - A missing `list<T>` record field throws `TypeError: can't access property "length", vec6 is

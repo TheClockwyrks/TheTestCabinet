@@ -28,7 +28,7 @@ import gg.internal.ggText
  * @ggop shell.shell
  * @param command The command line, run by `sh -c` with the workspace as its working directory.
  * @param timeoutSecs How long to let it run, in seconds, before killing it, clamped to whatever is
- *   left of the run's wall-clock budget. Left out, gg's default of 120 applies.
+ *   left of the run's wall-clock budget. Left out, gg's default of 600 applies.
  * @return what the command printed, and how it exited
  * @throws ApiError `LIMIT_EXCEEDED` when the timeout killed the process, and `IO_ERROR` when it
  *   could not be launched.

@@ -69,7 +69,7 @@ fn a_shell_timeout_is_a_limit_exceeded_error() {
     let mut state = membrane_with(&log, &all_operations(), None, |_, _| {
         ToolOutcome::failed(
             ToolFailure::LimitExceeded,
-            "shell: command timed out after 120s and was killed",
+            "shell: command timed out after 600s and was killed",
         )
     });
 
@@ -213,7 +213,7 @@ fn an_absent_shell_timeout_takes_the_default() {
     assert_eq!(
         log.args("shell")
             .and_then(|args| args.get("timeout_secs").and_then(serde_json::Value::as_f64)),
-        Some(DEFAULT_TIMEOUT_SECS)
+        Some(600.0)
     );
 }
 

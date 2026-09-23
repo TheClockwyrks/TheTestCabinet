@@ -132,10 +132,11 @@ pub use memories::{
     UPDATE_MEMORY_TOOL, UpdateMemoryTool, WRITE_MEMORY_TOOL, WriteMemoryTool, is_memory_tool,
     read_only_refusal,
 };
-pub use shell::{OffloadPolicy, SHELL_TOOL};
 pub(crate) use shell::{
-    ShellExecution, ShellRequest, ShellRunner, ShellStatus, real_shell, run_command,
+    DEFAULT_TIMEOUT_SECS as SHELL_DEFAULT_TIMEOUT_SECS, ShellExecution, ShellRequest, ShellRunner,
+    ShellStatus, real_shell, run_command,
 };
+pub use shell::{OffloadPolicy, SHELL_TOOL};
 pub use skills::{READ_SKILL_TOOL, ReadSkillTool};
 pub(crate) use subagents::handled_by_loop;
 pub use subagents::{
