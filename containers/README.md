@@ -179,11 +179,6 @@ containers/
 │                               #   Swift + its wasm SDK, wasi-sdk, a pruned .NET). Not a run image —
 │                               #   the `-gg` variants `COPY --from` it — but it IS published, so the
 │                               #   tree inside them is pullable and pinned by digest on its own
-├── gg-ci/Dockerfile            # the gg CI TOOLCHAIN image: the same eleven toolchains under a
-│                               #   staged $HOME instead of /opt, so a CI job that must COMPILE gg
-│                               #   copies them in rather than fetching 1.9 GB from five upstreams.
-│                               #   Not a run image, not built by build.sh, not a `COPY --from`
-│                               #   source — its own workflow builds it (see Building)
 ├── gg/Dockerfile               # ONE parameterized `<parent>-gg` variant: any run image plus that tree
 ├── sprite/Dockerfile           # the base image plus the baked-in `draw` binary
 ├── sprite-sheet/Dockerfile     # the base image plus the baked-in `draw-sheet` binary
@@ -566,7 +561,8 @@ and one whose bytes disagree with it, each fail the run.
 That tree ships as the `audio-store` image. The driver image copies it in at
 `/opt/tcab-audio`, and a local checkout gets it with
 [`scripts/fetch-audio-store.sh`](../scripts/fetch-audio-store.sh), which pulls the
-published image and extracts the tree — or, with `--stage` (and automatically when
+published image from the Test Cabinet ACR (after `az acr login --name testcabinet`) and
+extracts the tree — or, with `--stage` (and automatically when
 the pull fails), materializes it straight out of the audio object store instead.
 `TCAB_AUDIO_STORE` points core at a store elsewhere on the host.
 
@@ -757,9 +753,10 @@ fails if any `-gg` variant's environment has no representative — which is what
 gated build whose selection contains no representative is refused rather than quietly
 passing.
 
-`.github/workflows/build-containers.yml` passes the flag on every push that publishes,
-and then greps `build.sh`'s `gg selfcheck ok:` lines to assert the gate ran at all — a
-refactor that drops the flag fails there instead of silently publishing. Locally,
+The Azure pipeline's `scripts/ci/run-images.sh` passes the flag on every build that
+publishes, and then requires `build.sh`'s `gg selfcheck ok:` line for each representative
+by name to assert the gate ran at all — a refactor that drops the flag fails there instead
+of silently publishing. Locally,
 `make -C deployments/local run-images-gg-selfcheck` builds the binary and runs the same
 command against the `:local` images.
 
@@ -817,9 +814,9 @@ so publishing it means the tree inside those variants is pullable and pinned by 
 its own terms rather than only inspectable by taking a run image apart, and
 `./build.sh <name>-gg` can be pointed at the published tag through `GG_TOOLCHAINS_IMAGE`
 instead of paying for the fetch again. The registry stores the layers once however many
-variants carry them. Because it is not in `image-names.sh`, the `manifest` job in
-`build-containers.yml` — which is driven by that list — fuses this one arch pair by name,
-immediately after its loop.
+variants carry them. Because it is not in `image-names.sh`, the pipeline's run-image
+manifest job, which is driven by that list, appends it to the images it hands
+`scripts/ci/manifest.sh`.
 
 Three constraints bind every toolchain added to it, and all three are written down
 in the Dockerfile's header. It must be **relocatable and distribution-portable** — the same
@@ -969,8 +966,12 @@ resolves (by test type, asset kind, and asset dimension) when its
 for offline development without pulling anything. Override `IMAGE_TAG` /
 `IMAGE_NAME_PREFIX` to change the tag or name prefix.
 
-With `PUSH=1` and `IMAGE_REGISTRY` set (e.g. `ghcr.io/theclockwyrks`), each image
-is pushed and its pinned `repo@sha256:…` digest printed. Runners resolve the
+With `PUSH=1` and `IMAGE_REGISTRY` set (e.g. `testcabinet.azurecr.io`, which needs
+`az acr login --name testcabinet` and `AcrPush`), each image is pushed and its pinned
+`repo@sha256:…` digest printed. The Azure pipeline is what publishes the images: it
+builds each one natively per architecture, pushes `<image>:<sha>-<arch>` to
+`testcabinet.azurecr.io`, and fuses the pair into `<image>:<sha>`; `:latest` is never
+pushed there. Runners resolve the
 published image directly from their own registry configuration; the script does
 **not** register anything with the backend, which plays no part in container
 distribution (see `../apps/docs/src/content/docs/components/core/execution.md`).
@@ -982,7 +983,8 @@ carrying the staged [audio store](#the-audio-store) at `/opt/tcab-audio`. It is
 what puts every published pack on a machine that has no repository checkout and no
 R2 credential: the driver image resolves it through an `AUDIO_STORE_IMAGE` build
 arg and `COPY --from`s the tree out, and `scripts/fetch-audio-store.sh` pulls the
-same published image for a local `tcab run`.
+same published image for a local `tcab run`. Pulling it from `testcabinet.azurecr.io`
+needs `az acr login --name testcabinet` and `AcrPull`.
 
 It is the source for a machine that _cannot_ stage, not for one that can. A build
 in this repository that has the presign credentials should produce the store rather
@@ -993,63 +995,13 @@ path between changing audio and running with it.
 Like the gg toolchain builder it is **not** a run image and never appears in
 `image-names.sh` — that list is the set of images a _run resolves_, and `build.sh`'s
 `build_one` dispatches on it by name. It **is** pushed under `PUSH=1`, and the
-`manifest` job in `build-containers.yml` fuses its one arch pair by name beside the
-`gg-toolchains` block.
+pipeline builds it with `scripts/ci/audio-store-image.sh` and fuses its arch pair with
+its own `scripts/ci/manifest.sh` call, ahead of every other image.
 
 Staging it reads the audio object store, so it is built only when named explicitly
 (`./containers/build.sh audio-store`) or under `PUSH=1`. A plain local
 `./containers/build.sh` skips it with a note, so a contributor without the presign
 credentials still builds every run image.
-
-### The gg CI toolchain image
-
-[`gg-ci/Dockerfile`](gg-ci/Dockerfile) is the odd one out in this directory: it is neither
-a run image nor a builder anything here copies from. It exists for the machines that
-**compile** gg rather than the containers that run it.
-
-Since the eleven signature catalogues stopped being committed, `crates/gg/build.rs`
-reflects each of them out of its arm's own SDK with its arm's own documentation tool on
-every build — and since every arm's _artifacts_ followed them, that same build also **runs**
-those toolchains rather than only reading with them: it bakes four language runtimes and
-links six compile targets. So a machine that cannot run `swiftc`, `javac`, `purs`, Roslyn and
-the rest cannot run `cargo build --workspace` at all.
-`scripts/ci/install-gg-toolchains.sh` is the one pinned list that makes a machine such a
-machine, and it works; what it costs a cold CI agent is ten-ish minutes across five separate
-upstreams, each of which is a way for a run to go red for a reason unrelated to the change
-under test. This image is those ten minutes, done once, published, and pulled.
-
-**Two tags, and a gg build wants the bigger one.** `:latest` is that eleven-arm run set;
-`:build-latest` adds the unpruned .NET SDK and wasi-sdk that relinking the C# arm's guest
-needs (`scripts/ci/install-gg-build-toolchains.sh`, ~1.5 GB more). The split was made when
-that guest was committed and re-cut by hand, so only one job wanted the bigger tag; now that
-`cargo build` re-cuts it, both `ci.yml` jobs pull `:build-latest`. `:latest` remains for
-consumers that run gg or read its pins rather than compiling it — which is what the pruning
-in the run installers exists for.
-
-Three things about it are decisions rather than details:
-
-- **It installs into a staged `$HOME` (`/gg-home`), not `/opt`.** That is what makes it a
-  second image rather than a `--target` of `gg-toolchains`. The run tree lives at
-  `/opt/gg/toolchains` because gg resolves it there inside a run container; the _build_
-  path resolves through `$HOME`, and three of the eleven arms cannot be redirected away
-  from it at all — `install-uv.sh` overwrites any inherited `UV_INSTALL_DIR`, YARD is a
-  `--user-install` gem in `Gem.user_dir`, and the `wasm32-unknown-unknown` standard library
-  is a rustup component. So this image runs the shared installer with **no overrides**: the
-  defaults are the point.
-- **It is not in `image-names.sh` and `build.sh` never builds it.** `make run-images` must
-  not start a 1.9 GB build of something no run container will pull, and that list is the set
-  of images a _run resolves_ (asserted both ways by the Rust suite). It has its own
-  workflow, [`build-gg-ci-image.yml`](../.github/workflows/build-gg-ci-image.yml), whose
-  `paths:` are the closure of the pinned list expressed as globs, so a new arm is covered
-  without an edit.
-- **Hydrating from it never replaces the pinned installer.**
-  [`scripts/ci/hydrate-gg-toolchains.sh`](../scripts/ci/hydrate-gg-toolchains.sh) copies the
-  tree in _before_ `rust-test.sh` / `contract-drift.sh` run `install-gg-toolchains.sh` as
-  they always have. The image supplies the bytes; the pinned list verifies them, and repairs
-  the one arm an image built before a pin moved has wrong. Every failure path in that
-  script — no image yet, a fork, a registry hiccup — falls back to the full install and
-  exits 0, because the commit that introduces all of this is by definition the commit
-  before the image exists.
 
 ## Runtime contract
 

@@ -59,7 +59,7 @@ FROM ${BASE_IMAGE}
 # `--link` asks for.
 #
 # It needs Dockerfile frontend 1.4+, which every BuildKit this repo builds with has BUILT IN
-# (docker buildx locally, docker/setup-buildx-action in build-containers.yml). Deliberately
+# (docker buildx locally and on the Azure pipeline's agents). Deliberately
 # no `# syntax=` directive: that would make an image build fetch a frontend image, and the
 # `containers/` images are the offline-buildable path (see `containers/build.sh`).
 COPY --link --from=ggtools /opt/gg /opt/gg

@@ -66,7 +66,7 @@ if [ -z "$ARCHIVER" ]; then
 	echo "error: no \`ar\` (or \`llvm-ar\`) on PATH." >&2
 	echo "       cc-rs archives quickjs's object files into a static library with one, and the" >&2
 	echo "       wasi-sdk tree this repository installs is pruned of its own. It is in binutils," >&2
-	echo "       which containers/gg-ci/Dockerfile and .devcontainer/system/apt.sh both install." >&2
+	echo "       which .devcontainer/system/apt.sh installs." >&2
 	exit 1
 fi
 

@@ -17,9 +17,8 @@
 # builds gg without them and no artifact committed to spare one the install. **This is the single
 # script that makes a machine such a machine** — the devcontainer IMAGE runs it as its last build
 # layer (`.devcontainer/languages/gg/install.sh`) and its `postCreateCommand` runs it again to
-# reconcile an image built before a pin moved, the CI scripts run it, `containers/gg-ci/Dockerfile`
-# runs it to bake the image those CI jobs hydrate from, the release workflow runs it, and the driver
-# image's gg build stage runs it. One pinned list, run everywhere, rather than a per-surface
+# reconcile an image built before a pin moved, the CI scripts and the pipeline's gg jobs run it,
+# and the driver image's gg build stage runs it. One pinned list, run everywhere, rather than a per-surface
 # sequence that drifts arm by arm.
 #
 # It composes the per-arm installers rather than reimplementing any of them. Each of those owns one
@@ -67,7 +66,7 @@
 # that runs this for real a missing wasm32 std is a defect and not a choice. That obligation is
 # invisible on an interactive shell, where rustup's own `~/.bashrc` edit has already met it, and
 # very visible inside a Dockerfile `RUN`, which sources no profile: it is what
-# `.devcontainer/ubuntu.dockerfile` and `containers/gg-ci/Dockerfile` both set an `ENV PATH` for.
+# `.devcontainer/ubuntu.dockerfile` sets an `ENV PATH` for.
 # Everything else installs under a prefix `crates/gg` and the reflectors look for by name, so
 # nothing else has to be exported.
 #

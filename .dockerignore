@@ -8,16 +8,7 @@
 # build` over the Rust workspace — nothing else — so this is an ALLOWLIST: ignore
 # everything, then re-include only the paths cargo actually reads.
 #
-# ONE BUILD FROM THIS CONTEXT IS NOT A CARGO BUILD: containers/gg-ci/Dockerfile, which
-# bakes gg's eleven program-language toolchains into an image CI hydrates from. It
-# compiles nothing of this repository; what it reads is a slice of it (scripts/ci,
-# packages, rust-toolchain.toml) so that the pinned installers can find the pins they
-# install from. Those three are re-included below anyway, for the driver image's gg
-# stage, which is why this image needed no widening — but it is a second consumer of
-# them, and the notes below say so, because a reader pruning an entry whose consumer
-# they cannot find is the mistake this file's own history records twice.
-#
-# And one build from this context answers to a different allowlist ON SOME HOSTS AND
+# One build from this context answers to a different allowlist ON SOME HOSTS AND
 # TO THIS ONE ON OTHERS: .devcontainer/ubuntu.dockerfile, which carries its own
 # ubuntu.dockerfile.dockerignore beside it. BuildKit prefers a per-dockerfile ignore
 # file over the context root's, so on a Docker host that file is what narrows the
@@ -266,13 +257,6 @@
 # The price of both is paid right here: the ten guest packages and the scripts that
 # reflect and build them are build inputs of the driver image now, exactly as crates/ is.
 #
-# THE SECOND CONSUMER of everything in the next three blocks is containers/gg-ci, the
-# image CI hydrates those toolchains from. It COPYs `packages` and `scripts/ci` as
-# directories and needs each arm's `*-version.sh` for the pin and nothing else — so it
-# would survive a narrowing that the driver stage above would not, and any narrowing has
-# to be argued against the driver stage, which genuinely compiles the reflections. It is
-# named here so that both consumers are findable from the entries rather than only one.
-#
 # So the whole of every guest package rides along. Each is a few hundred kB of sources,
 # tools and pins (the big directories inside them — .build/, .spago/, output/ — are
 # re-excluded at the end of this file), and each is named as a directory rather than as
@@ -303,9 +287,7 @@
 # gg-build stage runs scripts/build-gg-static.sh, whose cargo build runs
 # scripts/gg-signatures.sh, which runs the ten per-arm reflectors; the stage separately
 # runs scripts/ci/install-gg-toolchains.sh, which runs eight per-arm installers and
-# sources scripts/ci/lib.sh beside them. containers/gg-ci/Dockerfile runs that same
-# installer from that same directory, so `!/scripts/ci` has two consumers, not one.
-# The two entry points are named. The installer
+# sources scripts/ci/lib.sh beside them. The two entry points are named. The installer
 # family is admitted as a DIRECTORY, because enumerating that half is precisely the trap
 # this file's own history records twice — the Blender helpers and the Java arm's
 # installer — and because it is the half that grows every time an arm is added. (The
@@ -396,9 +378,9 @@
 # ~24 small files, which is a real widening of the principle at the top of this file.
 # In practice it is close to free. Those keys already carry the whole of crates/ (904
 # commits in the last six months) and the whole of scripts/ci (68); .devcontainer's
-# install scripts moved 24 times in the same window, and the image workflows carry no
-# `paths:` filter (build-containers.yml says why), so a push touching only a
-# devcontainer script triggers no image build to bust the cache of.
+# install scripts moved 24 times in the same window, and the pipeline builds the images
+# only on `master` and `staging`, so a devcontainer-only change busts a cache at most
+# once per merge.
 #
 # What is deliberately NOT admitted is the rest of the directory — README.md,
 # devcontainer.json, the four compose files, the Dockerfile and its ignore file. No
@@ -450,7 +432,7 @@
 # used to weigh — two thirds of it, for a crate no image in this repository compiles.
 # `crates/desktop/binaries/` holds the `k3d` and `kubectl` builds the Tauri app
 # bundles; they are fetched at build time by scripts/fetch-desktop-sidecars.mjs (the
-# release workflow runs it), never committed, and platform-specific — the pair on the
+# desktop build runs it), never committed, and platform-specific — the pair on the
 # machine this entry was written on are `*-aarch64-apple-darwin`, which no Linux image
 # could execute even if one wanted to. The directory's own .gitignore is `*` plus
 # `!.gitignore`, so git has never seen them and neither had this file: they arrived

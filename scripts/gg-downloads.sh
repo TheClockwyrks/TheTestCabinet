@@ -23,12 +23,10 @@
 # THE TWO LATE ARRIVALS ARE HERE FOR A SECOND REASON AS WELL, and it is the one that decided where
 # they went. The Swift sources and the Spago store were already cached — but inside the repository,
 # under `packages/gg-sandbox-swift/.build/vendor` and `~/.cache/spago-nodejs`. Neither is anywhere an
-# installer writes, neither survives `git clean -xdf`, neither is in any image's build context, and
-# `scripts/ci/hydrate-gg-toolchains.sh` copies `$HOME/.local` and nothing else — so every fresh CI
-# checkout re-downloaded three GitHub tarballs and re-cloned two PureScript registries from inside
+# installer writes, neither survives `git clean -xdf`, and neither is in any image's build context —
+# so every fresh CI checkout re-downloaded three GitHub tarballs and re-cloned two PureScript registries from inside
 # `cargo build`. Under `$HOME/.local/share/tcab`, version-stamped, they are warmed by
-# `scripts/ci/install-gg-build-tools.sh`, baked into the CI image and carried by hydration, exactly
-# like every other pinned download here.
+# `scripts/ci/install-gg-build-tools.sh`, exactly like every other pinned download here.
 #
 # THE RESOLUTION ORDER, identical for both, and the first three touch no network:
 #
@@ -180,11 +178,10 @@ gg_swift_library() {
 # The cache root Spago keeps its package store, registry index and package sets in.
 #
 # Spago reads `$XDG_CACHE_HOME` and falls back to `~/.cache`, which is where it landed before this
-# existed: 48 MB under a directory no installer writes, no image context includes and
-# `hydrate-gg-toolchains.sh` does not copy — so the PureScript arm cloned two registries from inside
-# `cargo build` on every fresh checkout. Pointing `XDG_CACHE_HOME` at a directory under
-# `$HOME/.local/share/tcab` puts it where the other eleven toolchains live and makes it travel by the
-# same three mechanisms they do.
+# existed: 48 MB under a directory no installer writes and no image context includes — so the
+# PureScript arm cloned two registries from inside `cargo build` on every fresh checkout. Pointing
+# `XDG_CACHE_HOME` at a directory under `$HOME/.local/share/tcab` puts it where the other eleven
+# toolchains live and makes it travel the way they do.
 #
 # STAMPED BY THE REGISTRY PACKAGE SET, which is the one pin that decides what is IN the store — and
 # is itself read out of `spago.yaml`, where Spago reads it, by `purescript-version.sh`. A bumped set
