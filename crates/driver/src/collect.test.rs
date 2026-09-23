@@ -396,8 +396,10 @@ fn the_encoded_length_charges_three_bytes_for_every_reserved_byte() {
     );
 }
 
-#[tokio::test]
-async fn an_uploader_that_never_connects_fails_the_attempt_within_the_idle_bound() {
+/// Nobody connects, so the idle bound on the accept is the only way `receive` can return. On
+/// tokio's paused clock the bound elapses as soon as the runtime has nothing else to do.
+#[tokio::test(start_paused = true)]
+async fn an_uploader_that_never_connects_fails_the_attempt_on_the_idle_bound() {
     let scratch = tempfile::tempdir().expect("scratch");
     let archive = scratch.path().join("collected.tar");
     let listener = CollectListener::bind()
@@ -405,18 +407,22 @@ async fn an_uploader_that_never_connects_fails_the_attempt_within_the_idle_bound
         .expect("bind")
         .with_idle(Duration::from_millis(200));
 
-    let started = std::time::Instant::now();
     let err = listener
         .receive(&archive)
         .await
         .expect_err("nobody connected");
     assert!(err.to_string().contains("no uploader connected"), "{err}");
-    assert!(started.elapsed() < Duration::from_secs(5));
     assert!(!archive.exists());
 }
 
-#[tokio::test]
-async fn a_stream_that_stalls_fails_the_attempt_within_the_idle_bound() {
+/// A peer that sends its header and some data and then hangs with the connection open fails the
+/// attempt on the idle bound, naming how far it got.
+///
+/// The peer's bytes are all written before `receive` starts, so every read up to the stall is
+/// satisfied from what is already buffered and the only read that waits is the one after the data.
+/// On tokio's paused clock that wait is the one the idle bound cuts.
+#[tokio::test(start_paused = true)]
+async fn a_stream_that_stalls_fails_the_attempt_on_the_idle_bound() {
     let scratch = tempfile::tempdir().expect("scratch");
     let archive = scratch.path().join("collected.tar");
     let listener = CollectListener::bind()
@@ -424,25 +430,18 @@ async fn a_stream_that_stalls_fails_the_attempt_within_the_idle_bound() {
         .expect("bind")
         .with_idle(Duration::from_millis(200));
 
-    let client = async {
-        let mut stream = connect(&listener).await;
-        send_header(&mut stream, listener.token()).await;
-        stream
-            .write_all(&frame(KIND_DATA, &[1u8; 1024]))
-            .await
-            .expect("data");
-        // Then nothing, with the connection held open: a peer that has hung.
-        tokio::time::sleep(Duration::from_secs(3)).await;
-        drop(stream);
-    };
-    let receive = async {
-        let started = std::time::Instant::now();
-        let err = listener.receive(&archive).await.expect_err("stalled");
-        (err, started.elapsed())
-    };
-    let ((err, elapsed), ()) = tokio::join!(receive, client);
+    let mut stream = connect(&listener).await;
+    send_header(&mut stream, listener.token()).await;
+    stream
+        .write_all(&frame(KIND_DATA, &[1u8; 1024]))
+        .await
+        .expect("data");
+
+    // Then nothing, with the connection held open until the attempt has failed: a peer that has
+    // hung.
+    let err = listener.receive(&archive).await.expect_err("stalled");
+    drop(stream);
     let message = err.to_string();
     assert!(message.contains("upload stalled for"), "{message}");
     assert!(message.contains("after 1024 bytes"), "{message}");
-    assert!(elapsed < Duration::from_secs(2), "{elapsed:?}");
 }
