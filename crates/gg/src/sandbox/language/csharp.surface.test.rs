@@ -10,11 +10,12 @@
 //! silent: an SDK and a catalogue that agree with each other and with nothing else are two green
 //! test suites and an invalidated experiment.
 //!
-//! # Why they are consolidated all the same
+//! # How they are grouped
 //!
-//! Each `#[test]` is its own process under `cargo nextest`, and the first thing any of these does is
-//! compile a 34.9 MB component. So each function drives *many* statements rather than being one
-//! behaviour per function. Add a statement to an existing function rather than adding a function.
+//! Each `#[test]` is its own process under `cargo nextest`, so each obtains the embedded guest
+//! once — the largest component any arm embeds — and every program in it costs a real `csc`. A
+//! function groups the programs that exercise one behaviour, so they share that cost; one that
+//! grows into the slow end of the suite is split rather than extended.
 //!
 //! # What holds the surface, and what is here instead
 //!
@@ -28,15 +29,13 @@
 use serde_json::{Value, json};
 use test_cabinet_core::gg::GgProgramLanguage;
 
-use super::GUEST_COMPONENT;
 use super::substrate::{
     evaluate, evaluate_closing_docviews, evaluate_with_program, logs, prepare, program_error,
 };
 use crate::ending::{Ending, EndingRole};
-use crate::sandbox::fake::{CallLog, FakeOperationApi, all_operations, canned_outcome};
-use crate::sandbox::membrane::{MembraneState, RunEnding, Sandbox};
+use crate::sandbox::fake::{CallLog, all_operations, canned_outcome};
+use crate::sandbox::membrane::RunEnding;
 use crate::sandbox::outcome::{ProgramErrorKind, SandboxOutcome};
-use crate::sandbox::{ProgramScope, SandboxLimits, bounded_store, engine, linker};
 use crate::tools::{ToolFailure, ToolOutcome};
 
 /// The catalogue this arm's build reflects, read as a **document** rather than through
@@ -1074,51 +1073,6 @@ lock (gate) { Console.WriteLine($"{Monitor.IsEntered(gate)} {typeof(Task).Name}"
             "Threading types",
         ],
         "the library groups have changed and the program above has not"
-    );
-}
-
-#[test]
-fn the_artifact_binds_exactly_the_operations_gg_offers() {
-    // The one drift no source-level test can catch, asked of the **embedded artifact** rather than
-    // of a source file: `Sources/bridge.c` answers `bound-operations` off its own registration table, so
-    // a gg function bound with no tool name beside it — or a tool gg gained since the guest was last
-    // built — fails here and nowhere else.
-    //
-    // It is asked directly rather than through `component_bound_operations`, which takes a registered
-    // language and this arm is not one yet.
-    let limits = SandboxLimits::AMPLE;
-    let linker = linker::<FakeOperationApi>().expect("the production linker builds");
-    let component =
-        engine::compile_bytes(GUEST_COMPONENT).expect("the embedded C# guest is a component");
-    let mut store = bounded_store(
-        MembraneState::new(
-            FakeOperationApi::with(&CallLog::default(), canned_outcome),
-            crate::sandbox::language(GgProgramLanguage::TypeScript),
-            ProgramScope {
-                capabilities: &[],
-                operations: &[],
-                modules: &[],
-                ending: RunEnding::None,
-            },
-            limits,
-            None,
-        ),
-        limits,
-    );
-    let bound = Sandbox::instantiate(&mut store, &component, &linker)
-        .expect("the embedded C# guest instantiates");
-    let mut answered = bound
-        .call_bound_operations(&mut store)
-        .expect("the guest answers which tools its bridge binds");
-    answered.sort();
-    let mut expected: Vec<String> = crate::sandbox::signatures::sandbox_operation_names()
-        .into_iter()
-        .map(str::to_string)
-        .collect();
-    expected.sort();
-    assert_eq!(
-        answered, expected,
-        "the bridge's own binding table and gg's tool vocabulary have drifted apart"
     );
 }
 

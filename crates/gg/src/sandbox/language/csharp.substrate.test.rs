@@ -39,14 +39,12 @@
 //! crossing happens but that the surface a model is shown is the surface that runs. The SDK's own
 //! spelling, function by function, is driven in `csharp.surface.test.rs`.
 //!
-//! # Why these tests are consolidated
+//! # How these tests are grouped
 //!
-//! Each `#[test]` is its own process under `cargo nextest`, and the first thing any of these does is
-//! compile a 34.9 MB component. So each function drives *many* programs against many stores rather
-//! than being one behaviour per function, exactly as `sandbox.test.rs` does. Add a program to an
-//! existing function rather than adding a function.
-
-use std::sync::OnceLock;
+//! Each `#[test]` is its own process under `cargo nextest`, so each obtains the embedded guest
+//! once — the largest component any arm embeds — and every program in it costs a real `csc`. A
+//! function groups the programs that exercise one behaviour, so they share that cost; one that
+//! grows into the slow end of the suite is split rather than extended.
 
 use test_cabinet_core::gg::{CAPABILITY_DOCVIEW_CLOSE, GgProgramLanguage};
 
@@ -54,7 +52,6 @@ use super::super::g8::{self, Answered, Case, Located, Shape};
 use crate::limits::TurnErrorType;
 use wasmtime::component::Component;
 
-use super::GUEST_COMPONENT;
 use super::compile::{self, compile_program};
 use crate::sandbox::fake::{
     CallLog, FakeOperationApi, all_capabilities, all_operations, canned_outcome, granted_operations,
@@ -85,51 +82,32 @@ pub(super) fn prepare(source: &str) -> String {
     }
 }
 
-/// The embedded guest, compiled **once per test process**.
-///
-/// A local `OnceLock` rather than the production [component cache](crate::sandbox::engine::component)
-/// for one reason: that cache is indexed by a registered language's wire id, and this arm has none
-/// yet. Everything else is the production path, and the bargain is the same one a run strikes —
-/// compiling 34.9 MB costs seconds and instantiating the result costs milliseconds, so a function
-/// that drives ten programs must not pay ten compiles.
+/// This arm, resolved from the registry — the same `&'static dyn ProgramLanguage` a run resolves.
+fn csharp() -> &'static dyn crate::sandbox::ProgramLanguage {
+    crate::sandbox::language(GgProgramLanguage::CSharp)
+}
+
+/// The embedded guest, obtained once per test process through the **production** per-language
+/// cache, so every case here evaluates in the slot a run's programs really come out of.
 fn component() -> &'static Component {
-    static COMPONENT: OnceLock<Component> = OnceLock::new();
-    COMPONENT.get_or_init(|| {
-        engine::compile_bytes(GUEST_COMPONENT).expect("the embedded C# guest is a component")
-    })
+    engine::component(csharp())
+        .expect("the embedded C# guest compiles")
+        .0
 }
 
 /// Evaluate an already-prepared program through the real membrane, with `operations`
 /// offered.
 ///
-/// A near-copy of [`run_program`](crate::sandbox::run_program) with one thing left out, because it
-/// belongs to a *registered* language rather than to an artifact: the resolution of the language
-/// itself. Everything else is the production path, including
-/// [`keep_reported_error`](crate::sandbox::keep_reported_error).
-///
-/// The [membrane state](MembraneState) is built with TypeScript's arm, because this one has no wire
-/// id yet. Nothing these tests assert depends on it: the language decides how a *refused* call's
-/// name is spelled back at the model, and no program here is refused one.
+/// A near-copy of the evaluation [`run_program`](crate::sandbox::run_program) ends in, starting from
+/// a program [`prepare`] has already compiled. Everything past the preparation is the production
+/// path, including [`keep_reported_error`](crate::sandbox::keep_reported_error).
 ///
 /// # Why the component is resolved before the store is built
 ///
-/// Because the store's clock starts when the store is built, and it is a **wall** clock.
-/// [`bounded_store`] arms an epoch deadline against [`SandboxLimits::timeout`] — 30 s by default —
-/// and the callback behind it reads `guest_elapsed`, which is time since a `program_started` stamped
-/// inside [`MembraneState::new`] less whatever was charged back for time parked in bridged tool
-/// calls. Host work done after that stamp and before the guest runs is neither, so nothing gives it
-/// back: it is charged in full to a program that has not started.
-///
-/// [`component`] is exactly that work, and this arm has the **largest** exposure of any: its guest is
-/// 34.9 MB, the biggest artifact any arm here instantiates, compiled by `Component::new` or loaded
-/// from the test suite's compiled-component cache once per **process** — which under `cargo nextest`
-/// means once per `#[test]`. A compile takes seconds, and many more on a machine running the rest of
-/// the suite; charged to the store, it would count against the program's budget and could end a
-/// program that never ran as a `Timeout`.
-///
-/// Production never had it — [`run_program`](crate::sandbox::run_program) resolves its component and
-/// builds its linker and only then builds the store — so a run's 30 s is 30 s of the program. This
-/// is that order.
+/// Because that is production's order: [`run_program`](crate::sandbox::run_program) resolves its
+/// component and builds its linker, and only then builds the store. The program's own clock is
+/// started by [`MembraneState::start_program`] immediately before `run` in both, so the component
+/// this process obtains first is never charged to the program it evaluates.
 pub(super) fn evaluate(
     program: &str,
     operations: &[crate::sandbox::operations::OperationId],
@@ -210,13 +188,7 @@ fn evaluate_granting(
     };
     let granted: Vec<String> = operations.iter().map(ToString::to_string).collect();
     let mut store = bounded_store(
-        MembraneState::new(
-            api,
-            crate::sandbox::language(GgProgramLanguage::TypeScript),
-            scope,
-            limits,
-            None,
-        ),
+        MembraneState::new(api, csharp(), scope, limits, None),
         limits,
     );
     let bound = match Sandbox::instantiate(&mut store, component, &linker) {

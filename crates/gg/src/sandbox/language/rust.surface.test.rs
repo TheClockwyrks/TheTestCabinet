@@ -9,11 +9,12 @@
 //! silent: an SDK and a catalogue that agree with each other and with nothing else are two green
 //! test suites and an invalidated experiment.
 //!
-//! # Why they are consolidated all the same
+//! # How they are grouped
 //!
-//! Each `#[test]` is its own process under `cargo nextest`, and every program in here costs a real
-//! `rustc` and a `Component::new`. So each function drives *many* statements rather than being one
-//! behaviour per function. Add a statement to an existing function rather than adding a function.
+//! Each `#[test]` is its own process under `cargo nextest`, and every program in it costs a
+//! real `rustc` and the component it produced. A function groups the programs that exercise one
+//! behaviour, so they share that cost; one that grows into the slow end of the suite is split
+//! rather than extended.
 
 use serde_json::{Value, json};
 
@@ -988,31 +989,6 @@ fn a_code_module_puts_no_name_in_a_programs_scope() {
             "gg's surface is reaching a program through the code module in its scope: {other:?}"
         ),
     }
-}
-
-#[test]
-fn the_component_binds_exactly_the_operations_gg_offers() {
-    // The one drift no source-level test can catch, asked of the artifact rather than of a source
-    // file. On this arm the artifact cannot be STALE — it was compiled from this checkout's SDK
-    // moments ago — so what it catches instead is the SDK's own binding table falling out of step
-    // with the functions beside it, which is the second, independent statement of the same fact that
-    // makes asking the artifact worth anything.
-    let component = prepare("fn main() {}\n");
-    let mut bound = crate::sandbox::component_bound_operations(
-        crate::sandbox::language(test_cabinet_core::gg::GgProgramLanguage::Rust),
-        Some(component),
-    )
-    .expect("a freshly compiled Rust program instantiates and reports its tools");
-    bound.sort();
-    let mut expected: Vec<String> = crate::sandbox::signatures::sandbox_operation_names()
-        .into_iter()
-        .map(str::to_string)
-        .collect();
-    expected.sort();
-    assert_eq!(
-        bound, expected,
-        "the SDK's own binding table and gg's tool vocabulary have drifted apart"
-    );
 }
 
 #[test]

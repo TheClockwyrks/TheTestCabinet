@@ -38,12 +38,11 @@
 //! may — is [`surface`](super::surface), including the check that this component binds exactly gg's
 //! tool vocabulary.
 //!
-//! # Why these tests are consolidated
+//! # How these tests are grouped
 //!
-//! Each `#[test]` is its own process under `cargo nextest`, and every program in them costs a
-//! `rustc`. So each function drives *many* programs rather than being one behaviour per function,
-//! exactly as `sandbox.test.rs` does. Add a program to an existing function rather than adding a
-//! function.
+//! Each `#[test]` is its own process under `cargo nextest`, and every program in it costs a
+//! real `rustc`. A function groups the programs that exercise one behaviour, so they share that
+//! cost; one that grows into the slow end of the suite is split rather than extended.
 
 use std::time::Instant;
 
@@ -687,7 +686,8 @@ fn what_a_program_costs_and_what_it_weighs() {
     );
 
     // And that the weighed artifact really runs. What it BINDS is
-    // `surface::the_component_binds_exactly_the_operations_gg_offers`, which asks the artifact itself.
+    // `agreement`'s `every_registered_language_binds_exactly_the_operations_gg_offers`, which asks
+    // a compiled artifact itself.
     let (outcome, _log) = evaluate(&component, &[], &[], RunEnding::None, false, canned_outcome);
     assert_eq!(logs(&outcome), ["weighed"]);
 }

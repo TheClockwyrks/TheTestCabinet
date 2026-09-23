@@ -10,12 +10,13 @@
 //! silent: an SDK and a catalogue that agree with each other and with nothing else are two green
 //! test suites and an invalidated experiment.
 //!
-//! # Why they are consolidated all the same
+//! # How they are grouped
 //!
-//! Each `#[test]` is its own process under `cargo nextest`, and every program in here costs a real
-//! `swiftc` and a `Component::new` — which on this arm is ~1.6 s between them, the dearest of any.
-//! So each function drives *many* statements rather than being one behaviour per function. Add a
-//! statement to an existing function rather than adding a function.
+//! Each `#[test]` is its own process under `cargo nextest`, and every program in it costs a
+//! real `swiftc` and a Cranelift compile of the component it produced — a Swift artifact is not
+//! byte-for-byte reproducible, so the test-only component cache cannot serve it. A function
+//! groups the programs that exercise one behaviour, so they share that cost; one that grows
+//! into the slow end of the suite is split rather than extended.
 
 use serde_json::{Value, json};
 
@@ -874,32 +875,6 @@ const SHIPPED_WITH_THE_SDK: [&str; 9] = [
     "WASILibc",
     "Swift",
 ];
-
-#[test]
-fn the_artifact_binds_exactly_the_operations_gg_offers() {
-    // The one drift no source-level test can catch, asked of the artifact rather than of a source
-    // file. On this arm the artifact cannot be STALE — it was compiled from this checkout's SDK
-    // moments ago — so what it catches instead is the SDK's own binding table falling out of step
-    // with the functions beside it, which is the second, independent statement of the same fact that
-    // makes asking the artifact worth anything.
-    //
-    let component = prepare("");
-    let mut bound = crate::sandbox::component_bound_operations(
-        crate::sandbox::language(test_cabinet_core::gg::GgProgramLanguage::Swift),
-        Some(component),
-    )
-    .expect("a freshly compiled Swift program reports the operations its SDK binds");
-    bound.sort();
-    let mut expected: Vec<String> = crate::sandbox::signatures::sandbox_operation_names()
-        .into_iter()
-        .map(str::to_string)
-        .collect();
-    expected.sort();
-    assert_eq!(
-        bound, expected,
-        "the SDK's own binding table and gg's tool vocabulary have drifted apart"
-    );
-}
 
 #[test]
 fn the_generated_catalogue_describes_the_surface_the_sdk_offers() {

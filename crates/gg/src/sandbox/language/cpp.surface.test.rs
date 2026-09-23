@@ -10,25 +10,19 @@
 //! silent: an SDK and a catalogue that agree with each other and with nothing else are two green
 //! test suites and an invalidated experiment.
 //!
-//! # Why they are consolidated all the same
+//! # How they are grouped
 //!
-//! Each `#[test]` is its own process under `cargo nextest`, and every program in here costs a real
-//! `clang++` and a `Component::new`. So each function drives *many* statements rather than being one
-//! behaviour per function. Add a statement to an existing function rather than adding a function.
+//! Each `#[test]` is its own process under `cargo nextest`, and every program in it costs a
+//! real `clang++` and the component it produced. A function groups the programs that exercise
+//! one behaviour, so they share that cost; one that grows into the slow end of the suite is
+//! split rather than extended.
 //!
-//! # What used to be here, and what covers it now
+//! # What holds this arm's coverage against the others
 //!
-//! A hand-wired comparison of this arm's catalogue against the **Rust** arm's, entry by entry,
-//! written when neither was registered and kept afterwards as a second opinion. It is gone: it read
-//! a five-part identity tuple — section, object, key, gate, ending — that no catalogue carries, and
-//! a comparison of two catalogues neither of which has it reports every section missing rather than
-//! finding a disagreement.
-//!
-//! What covers it is stronger than what it did:
-//! `operations.test.rs::every_operation_is_offered_by_every_arm_that_is_not_excused` asserts the
-//! same coverage against **gg's own operations table** rather than against whichever arm this file
-//! happened to point at, and the [agreement gate](super::agreement) runs over this arm for real now
-//! that it is registered.
+//! Not this file.
+//! `operations.test.rs::every_operation_is_offered_by_every_arm_that_is_not_excused` asserts it
+//! against **gg's own operations table** rather than against any one other arm, and the
+//! [agreement gate](super::agreement) runs over this arm as over every registered one.
 
 use serde_json::{Value, json};
 
@@ -865,35 +859,6 @@ fn cpp_tells_the_truth_about_what_is_off_the_library_set() {
             panic!("a third-party header must be the model's compile error, not gg's: {other:?}")
         }
     }
-}
-
-#[test]
-fn the_artifact_binds_exactly_the_operations_gg_offers() {
-    // The one drift no source-level test can catch, asked of the artifact rather than of a source
-    // file. On this arm the artifact cannot be STALE — it was compiled from this checkout's SDK
-    // moments ago — so what it catches instead is the SDK's own per-object binding table falling out
-    // of step with the functions beside it, which is the second, independent statement of the same
-    // fact that makes asking the artifact worth anything.
-    //
-    // The language handed to the store is TypeScript's, and it changes nothing: an artifact is
-    // supplied, so nothing reaches for a prebuilt guest, and this arm has no
-    // `GgProgramLanguage` of its own until it is registered.
-    let component = prepare(&program("  return 0;"));
-    let mut bound = crate::sandbox::component_bound_operations(
-        crate::sandbox::language(test_cabinet_core::gg::GgProgramLanguage::TypeScript),
-        Some(component),
-    )
-    .expect("a freshly compiled C++ program reports the operations its SDK binds");
-    bound.sort();
-    let mut expected: Vec<String> = crate::sandbox::signatures::sandbox_operation_names()
-        .into_iter()
-        .map(str::to_string)
-        .collect();
-    expected.sort();
-    assert_eq!(
-        bound, expected,
-        "the SDK's own binding table and gg's tool vocabulary have drifted apart"
-    );
 }
 
 #[test]

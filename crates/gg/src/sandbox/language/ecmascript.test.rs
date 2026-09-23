@@ -711,47 +711,6 @@ readFile("a.ts", undefined, undefined);
     );
 }
 
-// -------------------------------------------------------------------------------------------------
-// The drift gate, on the artifact rather than on a source file
-// -------------------------------------------------------------------------------------------------
-
-/// **The component binds exactly the operations gg offers.**
-///
-/// The same assertion `every_registered_language_binds_exactly_the_operations_gg_offers` makes of the ten
-/// registered arms, made here of an artifact no arm is registered against yet — because the point of
-/// that gate is to catch a stale `.wasm`, and this one is as capable of being stale as any other. The
-/// list the guest answers with is generated from `crates/gg/wit` by
-/// `packages/gg-sandbox/guest/build.rs`, so a tool gg adds is bound the moment the WIT declares it.
-#[test]
-fn the_ecmascript_guest_binds_exactly_the_operations_gg_offers() {
-    let log = CallLog::default();
-    let state = fake::membrane_from(FakeOperationApi::new(&log));
-    let limits = SandboxLimits::AMPLE;
-    let mut store: Store<MembraneState<FakeOperationApi>> = bounded_store(state, limits);
-    let component = super::component().expect("the guest encodes and compiles");
-    let mut linker = wasmtime::component::Linker::new(crate::sandbox::engine::shared_engine());
-    Sandbox::add_to_linker::<_, HasSelf<_>>(&mut linker, |state| state)
-        .expect("the membrane links");
-    wasmtime_wasi::p2::add_to_linker_sync(&mut linker).expect("WASI links");
-    let bound =
-        Sandbox::instantiate(&mut store, component, &linker).expect("the guest instantiates");
-
-    let mut bound_operations = bound
-        .call_bound_operations(&mut store)
-        .expect("the guest reports its operations");
-    bound_operations.sort();
-    let mut expected: Vec<String> = crate::sandbox::signatures::sandbox_operation_names()
-        .into_iter()
-        .map(str::to_string)
-        .collect();
-    expected.sort();
-    assert_eq!(
-        bound_operations, expected,
-        "the ECMAScript guest and gg's tool vocabulary have drifted apart — rebuild it with \
-         `packages/gg-sandbox/build.sh`"
-    );
-}
-
 /// **The whole membrane is reachable from the SDK, not the handful a spike tested.**
 ///
 /// One program, calling into every family the SDK offers, so a lowering that is missing or wrong for
