@@ -72,8 +72,8 @@ The telemetry must let a console display:
 ordered candidate list each bound model may run on. A console therefore shapes
 itself to the run from the moment it starts watching, rather than once the run
 record lands, and a reader can see which providers the run may spend against
-before the first request. A stream that omits the capability set falls
-back to the set recorded on the run record, which records the lists as well.
+before the first request. A stream that omits the capability set falls back to
+the set recorded on the run record, which records the lists as well.
 
 `session_started` also carries `routingKey`, the key gg minted at launch and
 sends on every request of the run as both `session_id` and `prompt_cache_key`

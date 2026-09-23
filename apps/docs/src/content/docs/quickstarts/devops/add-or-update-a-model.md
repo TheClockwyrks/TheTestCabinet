@@ -9,10 +9,14 @@ run already appears in the Models section; curating one gives it a Test Cabinet
 display name, aliases, a provider logo, and a description. Curation is an in-app
 edit that takes effect immediately, with nothing to commit, build, or release.
 
-Every run runs on one provider at a time, chosen from the ordered candidate list
-the backend builds for the model at enqueue. OpenRouter is the gateway and the
-bill. A model with no candidate is not testable, and enqueue refuses it with the
-reason rather than launching it.
+A gg run of a model runs on the providers of its candidate list, one at a time,
+with OpenRouter as the gateway and the bill. The list keeps the providers that
+serve the model at its native quantization, at or below its developer's prices,
+with a cache-read price and the parameters the run sends, and not banned on the
+model's entry. The developer's own endpoint comes first when it passes, so a
+model whose developer endpoint is excluded, by the filters or by the account's
+privacy settings, runs on the next candidate. A model with no candidate is not
+testable, and enqueue refuses it with the reason.
 
 The full walkthrough is
 [Adding or Updating a Model](/guides/devops/adding-or-updating-a-model/).
@@ -43,8 +47,8 @@ The full walkthrough is
 ## Update a model
 
 Open the model in the Models section, click Edit, change the display name,
-aliases and their harness families, provider, logo, description, or OpenRouter
-slug, then Save.
+aliases and their harness families, provider, logo, description, OpenRouter
+slug, or provider fields, then Save.
 
 Fill from OpenRouter replaces the name, provider, and description rather than
 filling only the empty fields, so reach for it when you want OpenRouter's wording
@@ -54,26 +58,20 @@ Prices are recorded by the backend rather than edited here: when the model is
 saved, when a run using it is enqueued, when a run completes, and on a 24-hour
 refresh. The model's Stats tab shows the latest per-Mtok rates.
 
-The catalog records, beside each model's prices, the facts the candidate list is
-built from. Native quantization is the highest level any endpoint of the model
-declares, and a level entered in the form's Native quantization field wins over
-the observed one. The price ceiling is the developer endpoint's input and output
-rates when that endpoint is listed, and a ceiling entered in the form's Price
-ceiling field when it is not. The ban list names the providers a run of the
-model never tries, one slug per line. Allowed unknown names the providers whose
-`unknown` quantization is accepted by name. The model's Stats tab shows the
-native level, the ceiling, the ban list and the allow list.
+The form's provider fields decide the candidate list:
 
-At enqueue the backend reads the model's endpoints listing and keeps an endpoint
-whose quantization is the native level (an endpoint declaring `unknown` only
-when the catalog entry allows that provider by name), whose input and output
-prices are at or below the ceiling, which publishes a cache-read price, which
-supports every parameter the run sends, and which is absent from the ban list.
-The developer's own endpoint comes first when it passes. The rest follow by the
-provider's fault rate across the backend's recorded runs of the model, then by
-price. The resulting list is stamped onto the launch with the context window. A
-model with no candidate refuses the enqueue, naming the model and the reason. A
-model whose developer endpoint is excluded runs on the next candidate.
+- Developer provider, set where OpenRouter's name for the developer's endpoint
+  does not match the model id's author segment (`qwen/…` served by `Alibaba`).
+- Native quantization, set where the highest level any endpoint declares is
+  wrong for the model.
+- Price ceiling, per Mtok, used when OpenRouter lists no developer endpoint.
+- Banned providers, removed from every gg run of the model.
+- Unknown-quantization providers, kept despite declaring `unknown`.
+
+At enqueue the backend reads the model's endpoints listing, builds the list and
+stamps it onto the launch with the context window. The model's Stats tab shows
+the list the next enqueue would build, or the reason it would refuse. See
+[choosing the providers a gg run uses](/guides/devops/adding-or-updating-a-model/#choosing-the-providers-a-gg-run-uses).
 
 ## Verify
 

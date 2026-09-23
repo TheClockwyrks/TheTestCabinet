@@ -23,14 +23,15 @@ breaches any of them, in any agent of its tree, stops early and gg exits `3`. Th
 host records such a run as
 [`limit_exceeded`](/components/core/run-records/#status) and never retries it.
 
-Four further bounds are declared, resolved and recorded with those five.
+Five further bounds are declared, resolved and recorded with those five.
 [`maxParallel`](#parallelism) queues agents rather than stopping them,
 `replayMaxBytes` bounds the [session capture journal](/gg/session-record/)
 rather than the run, and [`modelCallTimeoutSecs`](#modelcalltimeoutsecs),
 [`modelStreamIdleSecs`](#modelstreamidlesecs) and
 [`providerCacheMissLimit`](#providercachemisslimit) bound one model request, or
-the provider serving it, rather than the run that made it. [Cancellation](#cancellation)
-stops a run on an operator's instruction, with no threshold declared anywhere.
+the provider serving it, rather than the run that made it.
+[Cancellation](#cancellation) stops a run on an operator's instruction, with no
+threshold declared anywhere.
 
 [Loop detection](/gg/loop-detection/) bounds a single reply rather than a run. A
 discarded attempt is not a turn, so no ceiling on this page observes one.
@@ -124,15 +125,15 @@ neither has an off it could take instead.
 - `replayMaxBytes` bounds the [session capture journal](/gg/session-record/),
   which gg writes on every run.
 
-`modelCallTimeoutSecs`, `modelStreamIdleSecs` and `providerCacheMissLimit` are
-three of the keys an absence answers with a figure rather than with "off". A
-configuration that leaves the first two out is conducted under 900 and 60
-seconds, and one that writes `0` for either is refused. `providerCacheMissLimit`
-defaults to 2, and `0` is honoured as a run that leaves a provider on its first
-unexpected miss. `maxModelRetries` and `modelRetryMaxDelaySecs` are the other
-two: every failed model request is retried on a schedule, so a configuration
-that leaves them out retries ten times against a 60-second delay ceiling. See
-[model API errors](#model-api-errors).
+`modelCallTimeoutSecs`, `modelStreamIdleSecs`, `providerCacheMissLimit`,
+`maxModelRetries` and `modelRetryMaxDelaySecs` are the keys an absence answers
+with a figure rather than with "off". Every model call is made under the first
+two, so a configuration that leaves them out is conducted under 900 and 60
+seconds. Every provider is held to the miss limit, so leaving it out leaves a
+provider after 2 unexpected cache misses. Every failed model request is retried
+on a schedule, so a configuration that leaves the last two out retries ten times
+against a 60-second delay ceiling. A `0` for any of them but `maxModelRetries` is
+refused. See [model API errors](#model-api-errors).
 
 The other five are ceilings, and a ceiling is armed by writing it. `maxTurns`,
 `maxRuntimeSecs`, `maxCost`, `maxConsecutiveErrors`, and `maxErrorRate` with its
@@ -264,22 +265,24 @@ A cancelled attempt is a transport failure. It is retried on the client's
 [schedule](#maxmodelretries-and-modelretrymaxdelaysecs) and logged like any
 other retry, with a cause that names the stall and the provider the stream had
 named, if any, such as `the stream stalled: no delta from the model for 60s
-(provider: Z.AI)`.
+(provider: Z.AI)`. Each stall is also recorded as a `provider_fault` naming the
+provider the request was sent to, which is how the run record counts a
+provider's stalls.
 
 ### `providerCacheMissLimit`
 
-How many unexpected cache misses a provider may accumulate before the run
-leaves it. An unexpected miss is a reply whose `cached_tokens` is below the
-shared prefix of the previous request on the same provider, sent within that
-request's [cache lifetime](/gg/configurations/#prompt-cache-lifetime) and above
-the provider's minimum cacheable size. The reply stands, and the miss is
-counted against the provider in force.
+How many unexpected cache misses a provider may produce in one run before the
+run leaves it. The miss is defined under
+[moving to the next candidate](/gg/overview/#moving-to-the-next-candidate). The
+reply that missed stands, and the miss is counted against the provider that
+served it across every agent of the run.
 
 A configuration that leaves the key out is conducted under 2, and `0` is
-honoured as a run that leaves a provider on its first unexpected miss. A
-provider that reaches the limit is left at the next request: the run moves to
-the next candidate on its list and emits `provider_switch`. A provider that
-never reaches it serves the run to the end.
+refused, since a provider allowed no misses would be left before it served a
+turn. A provider that reaches the limit is left at the next request: the run
+moves to the next candidate on the model's list and emits `provider_switch`. A
+provider on the model's last candidate is kept whatever it misses, because
+leaving it would leave the run nowhere to go.
 
 ### `maxModelRetries` and `modelRetryMaxDelaySecs`
 
@@ -289,8 +292,8 @@ The schedule the model client retries a failed request on. A request answered
 [fatal](#model-api-errors) on its first response.
 
 - `maxModelRetries` is the number of retries after the first attempt. It
-  defaults to 10, and `0` is honoured as a run that gives up on the first
-  failure.
+  defaults to 10, and `0` is honoured as a run that leaves a provider on its
+  first failure.
 - `modelRetryMaxDelaySecs` is the ceiling on one backoff delay. It defaults to
   60 seconds, and `0` refuses the launch, since a schedule of no waits hammers a
   provider that has just said it is down.
@@ -299,9 +302,9 @@ The first retry waits 1 second and each later one waits twice the last, capped
 at the ceiling. The defaults wait about five minutes in all, and 30 retries at
 the same ceiling wait about half an hour. A `429` or `503` carrying a
 `Retry-After` in seconds waits that long instead when it is longer than the
-schedule's delay. An operator sets the retries by what the run is worth against
-what an outage costs, since a run of a long test case may be hours in when the
-provider it is pinned to goes down.
+schedule's delay. An operator sets the retries by what a provider's recovery is
+worth against what a move costs, since a move rebuilds the prompt cache on the
+next candidate.
 
 Each retry is logged at `warn` on the stream of the agent that made the request,
 naming the attempt, the status or transport error, and the delay before the
@@ -652,12 +655,13 @@ in the [configuration](/gg/configurations/) editor, one field per key. A fresh
 configuration is seeded with the parallelism and journal figures, a model-call
 timeout of 900 seconds, a stream idle bound of 60 seconds, a cache-miss limit of
 2, the retry schedule's 10 retries against a 60-second delay ceiling, a
-consecutive-error ceiling of 5,
-and an error rate of 0.2 over a window of 50 turns; the turn, runtime and cost
-fields start empty. Each seeded error figure is a guardrail the operator keeps,
-changes, or clears. An empty ceiling field is an unarmed ceiling, except the
-field conducts under their defaults; a stored configuration that omitted a
-ceiling opens with that field empty.
+consecutive-error ceiling of 5, and an error rate of 0.2 over a window of 50
+turns; the turn, runtime and cost fields start empty. Each seeded error figure
+is a guardrail the operator keeps, changes, or clears. An empty ceiling field is
+an unarmed ceiling, except the model-call timeout, the stream idle bound, the
+cache-miss limit and the retry schedule, which an empty field conducts under
+their defaults; a stored configuration that omitted a ceiling opens with that
+field empty.
 
 A key that is present is armed exactly as written, and one gg cannot arm that way
 refuses the launch. So does an absent `maxParallel` or `replayMaxBytes`. The
@@ -672,13 +676,12 @@ that integer, so `60` and `60.0` are one declaration.
 | `modelCallTimeoutSecs` absent                                             | every model call bounded at 900 seconds                            |
 | `modelStreamIdleSecs` absent                                              | every model call cancelled after 60 seconds without a delta        |
 | `providerCacheMissLimit` absent                                           | a provider is left after 2 unexpected cache misses                 |
-| `providerCacheMissLimit: 0`                                               | honoured: the first unexpected miss leaves the provider            |
 | `maxModelRetries` or `modelRetryMaxDelaySecs` absent                      | failed requests retried 10 times against a 60-second delay ceiling |
 | `maxModelRetries: 0`                                                      | honoured: the first failure moves the run to the next candidate    |
 | one error-rate half declared, the other not                               | refused                                                            |
 | `maxErrorRate: 0.0`                                                       | armed: any error at all, once the window is full                   |
 | `errorRateWindow` ≥ a set `maxTurns`                                      | armed as declared, warned that it can fire only on the last turn   |
-| any key but `maxErrorRate`, `maxModelRetries` and `providerCacheMissLimit` declared `0` or negative | refused                                                            |
+| any key but `maxErrorRate` and `maxModelRetries` declared `0` or negative | refused                                                            |
 | `maxErrorRate` outside `0.0..=1.0`, or a float that is not finite         | refused                                                            |
 | a key gg cannot read as the number it is                                  | refused                                                            |
 
@@ -690,9 +693,11 @@ per-capability bound gg reads.
 
 A failed model call ends the agent on its first occurrence. The client has
 already retried `429`, `5xx` and transport failures on the run's
-[schedule](#maxmodelretries-and-modelretrymaxdelaysecs), so one reaching the
-loop means the provider failed every attempt within a single turn. Counting it
-against a ceiling would be a second retry layer with a worse backoff.
+[schedule](#maxmodelretries-and-modelretrymaxdelaysecs) and moved the run through
+the model's remaining [candidates](/gg/overview/#the-candidate-list), so one
+reaching the loop means the model's last candidate failed every attempt.
+Counting it against a ceiling would be a second retry layer with a worse
+backoff.
 
 The agent ends under `model_error`. When it is the root, a spent schedule or a
 fatal status on the first attempt exits the process `1`, so the host records a

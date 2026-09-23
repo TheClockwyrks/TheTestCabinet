@@ -518,15 +518,26 @@ Each capability page states which of its params are required and what an optiona
 one's absence turns off.
 
 The invocation also carries `modelProviders`, keyed by model id on the same terms
-as `modelWindows`. Each entry is the ordered candidate list that model's
-requests may be served by. A candidate names a provider slug, spelled as
-OpenRouter's endpoints listing spells its `provider_name` (`OpenAI`, `Z.AI`),
-and the quantization that endpoint serves (`fp8`). The list is tried in order,
-and a one-entry list pins the run to that provider. A bound model missing from
-the map, or present with an empty list, refuses the launch, and the refusal
-names every missing list together. A `mock/…` model sends no request and needs
-no list. The backend builds the list at enqueue from the endpoints listing, and
-a model with no candidate is refused there.
+as `modelWindows`. Each entry is the model's ordered
+[candidate list](/gg/overview/#the-candidate-list): the providers its requests
+may be served by, in the order the run tries them.
+
+```json
+"modelProviders": {
+  "z-ai/glm-5.3": [
+    { "provider": "Z.AI", "quantization": "fp8" },
+    { "provider": "Baidu", "quantization": "fp8" }
+  ]
+}
+```
+
+A candidate's `provider` is spelled as OpenRouter's endpoints listing spells its
+`provider_name`, and its `quantization` is the level that provider's endpoint
+declares. A one-entry list pins the run to that provider. A bound model missing
+from the map, present with an empty list, or listing a candidate with a blank
+provider or quantization refuses the launch, and the refusal names every such
+model together. A `mock/…` model sends no request and needs no list. The backend
+builds the lists at enqueue, and a model with no candidate is refused there.
 
 The check runs at the top of gg's own session frame, inside the run container and
 before the first turn, so a refusal costs no model spend. It lives there and
