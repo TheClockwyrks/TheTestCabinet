@@ -241,6 +241,10 @@ async fn an_abandoned_replies_price_lands_in_the_run_s_total_cost() {
         summary.loop_abort_unpriced, 2,
         "the lookup that never answered and the reply with no generation id both stayed unpriced"
     );
+    assert_eq!(
+        summary.terminal_status, "completed",
+        "a lookup that never answered leaves the run's ending as the root left it"
+    );
 }
 
 /// **The pricing lookups run at session end, never on the turn.**
