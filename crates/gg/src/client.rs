@@ -4532,3 +4532,7 @@ mod routing_tests;
 #[cfg(test)]
 #[path = "client.tool-choice.test.rs"]
 mod tool_choice_tests;
+
+#[cfg(test)]
+#[path = "client.reasoning.test.rs"]
+mod reasoning_tests;

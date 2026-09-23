@@ -15,7 +15,7 @@ use super::*;
 use crate::model::{Message, ModelClient, ToolDefinition};
 
 /// A usable streamed completion: one text chunk, a stop, and the terminator.
-const ANSWER: &str = concat!(
+pub(super) const ANSWER: &str = concat!(
     r#"data: {"choices":[{"index":0,"delta":{"content":"done"}}]}"#,
     "\n\n",
     r#"data: {"choices":[{"delta":{},"finish_reason":"stop"}]}"#,
@@ -27,7 +27,7 @@ const ANSWER: &str = concat!(
 type Sent = (Option<String>, Value);
 
 /// `client` answered with `answer`, and the requests it sends as they went out.
-fn recorded(
+pub(super) fn recorded(
     client: OpenRouterClient,
     answer: &'static str,
 ) -> (OpenRouterClient, Arc<Mutex<Vec<Sent>>>) {
