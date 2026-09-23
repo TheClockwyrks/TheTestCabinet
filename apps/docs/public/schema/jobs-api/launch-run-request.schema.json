@@ -42,6 +42,21 @@
       },
       "type": "object"
     },
+    "GgProviderCandidate": {
+      "description": "One provider a model may run on, and the quantization that endpoint serves.\n\nA [`GgInvocation::model_providers`] entry is an ordered list of these: the order a run tries\nthem in, and a one-entry list is a pin. Every request names one of them as OpenRouter's\n`provider.only` and `provider.quantizations`, with fallbacks refused.",
+      "properties": {
+        "provider": {
+          "description": "The provider, spelled as OpenRouter's endpoints listing spells its `provider_name`\n(`Z.AI`, `DeepInfra`).",
+          "type": "string"
+        },
+        "quantization": {
+          "description": "The quantization the provider's endpoint declares (`fp8`, `bf16`, or `unknown` for a\nprovider the catalog entry accepts despite it).",
+          "type": "string"
+        }
+      },
+      "required": ["provider", "quantization"],
+      "type": "object"
+    },
     "TokenPrices": {
       "description": "Per-token prices (USD) used to compute the comparable cost.\n\nThese are the model developer's published list prices, curated on the\nmodel's catalog entry — not the billed rate of whichever endpoint served the\nrun. Reasoning tokens are priced at the output rate, so no separate field is\nneeded.\n\nEach price is optional: `None` means the price is **unknown** (OpenRouter\ndoes not list one, or lists a nonsensical value such as a negative sentinel),\nwhich is distinct from `Some(0.0)` (a genuinely free class). A class priced\n`None` poisons any cost it contributes to rather than being silently treated\nas free — see [`Cost::comparable_from`].",
       "properties": {
@@ -110,9 +125,12 @@
     },
     "ggModelProviders": {
       "additionalProperties": {
-        "type": "string"
+        "items": {
+          "$ref": "#/$defs/GgProviderCandidate"
+        },
+        "type": "array"
       },
-      "description": "The OpenRouter provider each model this **gg** run is pinned to.\n\n**Filled in by the backend at enqueue, not sent by a client**, on the same terms as\n[`gg_model_windows`](Self::gg_model_windows) and from the same lookup. A model the catalog\nhas no official endpoint for refuses the enqueue rather than launching unpinned.",
+      "description": "The ordered candidate list each model this **gg** run may be served by.\n\n**Filled in by the backend at enqueue, not sent by a client**, on the same terms as\n[`gg_model_windows`](Self::gg_model_windows) and from the same lookup. A model the catalog\nhas no candidate for refuses the enqueue rather than launching with an empty list.",
       "type": "object"
     },
     "ggModelWindows": {

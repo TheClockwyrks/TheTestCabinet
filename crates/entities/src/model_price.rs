@@ -44,9 +44,9 @@ pub struct Model {
     /// model as "try it and find out" rather than refusing up front.
     #[sea_orm(nullable)]
     pub input_modalities: Option<String>,
-    /// The OpenRouter provider the model's requests are pinned to — its developer's
-    /// own endpoint — or `NULL` when none has been observed. A curated override lives on
-    /// the model row and wins over this when both are set.
+    /// The developer provider observed on the model's endpoints listing — the provider name
+    /// of its developer's own endpoint — or `NULL` when none has been observed. A curated
+    /// override lives on the model row and wins over this when both are set.
     #[sea_orm(nullable)]
     pub provider_pin: Option<String>,
 }

@@ -2144,6 +2144,16 @@ pub(super) fn cells_in_order<'a>(
 /// The facts are kept on the member so the enqueue does not resolve them again per cell: one
 /// member launched across eight cases is one resolution, not eight.
 pub(super) async fn resolve_launch_facts(state: &AppState, members: &mut [PlanMember]) {
+    // The stored gg runs every member's candidate lists are ordered by, loaded once per plan and
+    // only when a member launches gg.
+    let record = if members
+        .iter()
+        .any(|member| member.unlaunchable.is_none() && member.gg.is_some())
+    {
+        super::stats::recorded_run_facts(state).await
+    } else {
+        std::sync::Arc::new(Vec::new())
+    };
     for member in members {
         if member.unlaunchable.is_some() {
             continue;
@@ -2183,6 +2193,7 @@ pub(super) async fn resolve_launch_facts(state: &AppState, members: &mut [PlanMe
         match super::jobs::gg_model_facts(
             &state.db,
             &state.prices,
+            &record,
             &gg.capability_set,
             &launch_model,
             HarnessSlug::Gg,
@@ -2753,8 +2764,14 @@ pub(super) async fn enqueue_top_up(
                     &super::jobs::launch_models(&body),
                 )
                 .await;
-                if let Err(reason) =
-                    super::jobs::resolve_gg_model_facts(&state.db, &state.prices, &mut body).await
+                let record = super::jobs::candidate_record(state, [&body]).await;
+                if let Err(reason) = super::jobs::resolve_gg_model_facts(
+                    &state.db,
+                    &state.prices,
+                    &record,
+                    &mut body,
+                )
+                .await
                 {
                     blocked.push(cell.blocked(reason));
                     continue;

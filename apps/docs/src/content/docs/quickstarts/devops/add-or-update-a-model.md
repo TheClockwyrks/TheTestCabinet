@@ -9,10 +9,14 @@ run already appears in the Models section; curating one gives it a Test Cabinet
 display name, aliases, a provider logo, and a description. Curation is an in-app
 edit that takes effect immediately, with nothing to commit, build, or release.
 
-Every run is pinned to the model developer's own OpenRouter provider, and nowhere
-else. A model whose official endpoint OpenRouter does not list, or which the
-account's privacy settings exclude, is not testable. Enqueue refuses it with the
-reason rather than launching it on another provider.
+A gg run of a model runs on the providers of its candidate list, one at a time,
+with OpenRouter as the gateway and the bill. The list keeps the providers that
+serve the model at its native quantization, at or below its developer's prices,
+with a cache-read price and the parameters the run sends, and not banned on the
+model's entry. The developer's own endpoint comes first when it passes, so a
+model whose developer endpoint is excluded, by the filters or by the account's
+privacy settings, runs on the next candidate. A model with no candidate is not
+testable, and enqueue refuses it with the reason.
 
 The full walkthrough is
 [Adding or Updating a Model](/guides/devops/adding-or-updating-a-model/).
@@ -49,7 +53,7 @@ The full walkthrough is
 
 Open the model in the Models section, click Edit, change the display name,
 aliases and their harness families, provider, logo, description, OpenRouter
-slug, or list price, then Save.
+slug, list price, or provider fields, then Save.
 
 Fill from OpenRouter replaces the name, provider, and description rather than
 filling only the empty fields, and seeds the three list-price rates from the
@@ -65,16 +69,21 @@ model is saved, when a run using it is enqueued, when a run completes, and on a
 side by side with the difference, so a discount, a price change, or a listing
 error is visible on the model.
 
-The catalog records each model's provider pin with its billed-rate observations,
-from OpenRouter's endpoints listing: the endpoint whose `provider_name` matches
-the author segment of the model id, ignoring case and punctuation. The model's
-Stats tab shows the pin, or "no official endpoint" when the listing has none.
-Where the developer's listing name does not match the id (`qwen/…` served by
-`Alibaba`), enter it in the form's Provider pin field; a pin set there wins over
-the observed one.
+The form's provider fields decide the candidate list:
 
-At enqueue the backend resolves the pin with the context window and stamps both
-onto the launch. A model with no pin refuses the enqueue, naming the model.
+- Developer provider, set where OpenRouter's name for the developer's endpoint
+  does not match the model id's author segment (`qwen/…` served by `Alibaba`).
+  Its endpoint's rates are the billed rate the catalog records.
+- Native quantization, set where the highest level any endpoint declares is
+  wrong for the model.
+- Price ceiling, per Mtok, used when OpenRouter lists no developer endpoint.
+- Banned providers, removed from every gg run of the model.
+- Unknown-quantization providers, kept despite declaring `unknown`.
+
+At enqueue the backend reads the model's endpoints listing, builds the list and
+stamps it onto the launch with the context window. The model's Stats tab shows
+the list the next enqueue would build, or the reason it would refuse. See
+[choosing the providers a gg run uses](/guides/devops/adding-or-updating-a-model/#choosing-the-providers-a-gg-run-uses).
 
 ## Verify
 

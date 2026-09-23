@@ -104,12 +104,25 @@ export interface Model {
   priceHistory: PriceObservation[];
   /** The latest observed context window in tokens, or null. */
   contextLength: number | null;
-  /** The OpenRouter provider this model's requests are pinned to, or null
-   * when no official endpoint is known. A null pin means the model is not testable. */
+  /** The developer provider: the OpenRouter provider name of the model
+   * developer's own endpoint — the hand-set one, else the one last observed on
+   * the endpoints listing — or null when none is known. */
   providerPin: string | null;
-  /** Whether `providerPin` is the hand-set override rather than the observed
-   * official endpoint. */
+  /** Whether `providerPin` is set by hand on the catalog entry rather than
+   * observed on the listing. */
   providerPinSetByHand: boolean;
+  /** The native quantization set by hand (`fp8`, `bf16`, …), or null to take the
+   * highest level any endpoint declares. Always null for a derived model. */
+  nativeQuantization: string | null;
+  /** The input half of the price ceiling, USD per million tokens, used when
+   * OpenRouter lists no developer endpoint. Null when no ceiling is set. */
+  maxInputPrice: number | null;
+  /** The output half of the price ceiling, USD per million tokens. */
+  maxOutputPrice: number | null;
+  /** The providers a gg run of the model never uses. */
+  bannedProviders: string[];
+  /** The providers accepted despite declaring `unknown` quantization. */
+  unknownQuantizationProviders: string[];
   /** The latest observed release date (RFC 3339), or null. */
   releasedAt: string | null;
   /** The input modalities the model accepts (`text`, `image`, `file`, …),
@@ -127,8 +140,20 @@ export interface ModelInput {
   provider: string;
   aliases: ModelAlias[];
   openrouterSlug: string | null;
-  /** The hand-set provider pin, or null to take the observed listing name. */
+  /** The developer provider set by hand, or null to take the provider the
+   * endpoints listing names for the model id's author segment. */
   providerPin: string | null;
+  /** The native quantization set by hand, or null for the listing's highest. */
+  nativeQuantization?: string | null;
+  /** The price ceiling's input half, USD per million tokens. Set with
+   * `maxOutputPrice` or not at all. */
+  maxInputPrice?: number | null;
+  /** The price ceiling's output half, USD per million tokens. */
+  maxOutputPrice?: number | null;
+  /** The providers a gg run of the model never uses. */
+  bannedProviders?: string[];
+  /** The providers accepted despite declaring `unknown` quantization. */
+  unknownQuantizationProviders?: string[];
   /** The developer's published uncached-input price per Mtok, or null. Per
    * Mtok because that is the unit a developer pricing page publishes; the
    * backend divides down to per-token. All three list-price fields are present
@@ -319,6 +344,39 @@ export interface ModelProbeProvider {
   name: string;
   /** The route's context window in tokens, or null when unreported. */
   contextLength: number | null;
+}
+
+/** One provider of a model's candidate list. Mirrors the backend `CandidateOut`. */
+export interface ModelCandidate {
+  /** The provider, spelled as OpenRouter's endpoints listing spells it. */
+  provider: string;
+  /** The quantization its endpoint declares. */
+  quantization: string;
+  /** Whether this is the model developer's own endpoint. */
+  developer: boolean;
+  /** The input price, USD per million tokens. */
+  inputPrice: number;
+  /** The output price, USD per million tokens. */
+  outputPrice: number;
+  /** The cache-read price, USD per million tokens. */
+  cacheReadPrice: number;
+  /** The recorded fault rate for the model, or null when no recorded run used
+   * the provider (which orders as zero). */
+  faultRate: number | null;
+}
+
+/** The `GET /models/{slug}/candidates` response: the candidate list the next gg
+ * enqueue of the model would build, for an agent that sets no reasoning.
+ * Mirrors the backend `ModelCandidatesOut`. */
+export interface ModelCandidates {
+  /** The OpenRouter id the endpoints listing was read under. */
+  modelId: string;
+  /** The native quantization the filter used, or null when none is known. */
+  nativeQuantization: string | null;
+  /** The candidates, in the order a run tries them. */
+  candidates: ModelCandidate[];
+  /** Why the list is empty, or null when it is not. */
+  refusal: string | null;
 }
 
 /** The `GET /models/{slug}/probe-providers` response. */

@@ -478,7 +478,8 @@ pub async fn launch_gg(
     // against. gg keeps no model table of its own and assumes no default, so a model
     // whose window cannot be resolved (not in the catalog, and not listed by
     // OpenRouter either) is rejected here rather than run against a guess.
-    resolve_gg_model_facts(&state.db, &state.prices, &mut launch)
+    let record = super::stats::recorded_run_facts(&state).await;
+    resolve_gg_model_facts(&state.db, &state.prices, &record, &mut launch)
         .await
         .map_err(ApiError::bad_request)?;
     let now = now_rfc3339()?;

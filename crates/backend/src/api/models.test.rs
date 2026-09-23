@@ -63,6 +63,11 @@ fn input(slug: &str) -> ModelConfigInput {
         list_price_cached_input_per_mtok: None,
         list_price_output_per_mtok: None,
         list_price_as_of: None,
+        native_quantization: None,
+        max_input_price: None,
+        max_output_price: None,
+        banned_providers: None,
+        unknown_quantization_providers: None,
         description: None,
         logo_svg: None,
         provider_logo_url: None,
@@ -92,6 +97,11 @@ fn config(slug: &str, name: &str, provider: &str, aliases: &[&str]) -> StoredMod
             description_md: None,
             openrouter_slug: aliases.first().map(|a| a.to_string()),
             provider_pin: None,
+            native_quantization: None,
+            max_input_price: None,
+            max_output_price: None,
+            banned_providers: None,
+            unknown_quantization_providers: None,
             list_price_input: None,
             list_price_cached_input: None,
             list_price_output: None,
@@ -396,6 +406,7 @@ async fn context_window_follows_a_curated_model_alias() {
             family: HarnessFamily::Claude,
         }],
         now: "2026-01-01T00:00:00Z".to_string(),
+        ..Default::default()
     })
     .await
     .unwrap();

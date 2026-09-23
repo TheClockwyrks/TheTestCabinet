@@ -6,7 +6,7 @@ import {
   BackendProvider,
   type BackendContextValue,
 } from "../../../../client/context";
-import type { ModelAccuracy } from "../../../../client/types";
+import type { ModelAccuracy, ModelCandidates } from "../../../../client/types";
 import {
   GalleryDataProvider,
   type GalleryDataInput,
@@ -54,6 +54,11 @@ const MODEL = {
   contextLength: null,
   providerPin: null,
   providerPinSetByHand: false,
+  nativeQuantization: null,
+  maxInputPrice: null,
+  maxOutputPrice: null,
+  bannedProviders: [],
+  unknownQuantizationProviders: [],
   releasedAt: null,
   inputModalities: [],
 } as unknown as ModelSummary;
@@ -198,6 +203,86 @@ describe("the Stats tab's Accuracy section", () => {
     expect(await screen.findByText("List price")).toBeTruthy();
     // …but no Accuracy section, and no fabricated empty rings.
     expect(screen.queryByText("Accuracy")).toBeNull();
+  });
+});
+
+const CANDIDATES: ModelCandidates = {
+  modelId: "anthropic/claude-x",
+  nativeQuantization: "fp8",
+  candidates: [
+    {
+      provider: "Anthropic",
+      quantization: "fp8",
+      developer: true,
+      inputPrice: 3,
+      outputPrice: 15,
+      cacheReadPrice: 0.3,
+      faultRate: 0.012,
+    },
+    {
+      provider: "Bedrock",
+      quantization: "fp8",
+      developer: false,
+      inputPrice: 2.5,
+      outputPrice: 12,
+      cacheReadPrice: 0.25,
+      faultRate: null,
+    },
+  ],
+  refusal: null,
+};
+
+describe("the Stats tab's Provider candidates section", () => {
+  it("lists the candidates in order, marking the developer's endpoint", async () => {
+    authState.token = "t";
+    const getModelCandidates = vi.fn().mockResolvedValue(CANDIDATES);
+    renderStats({ getModelCandidates });
+
+    expect(await screen.findByText("Bedrock")).toBeTruthy();
+    expect(getModelCandidates).toHaveBeenCalledWith("claude-x", "t");
+    const rows = screen.getAllByRole("row");
+    // The header, then the developer first.
+    expect(rows[1]!.textContent).toContain("Anthropic");
+    expect(rows[1]!.textContent).toContain("developer");
+    expect(rows[1]!.textContent).toContain("$3.00");
+    expect(rows[1]!.textContent).toContain("1.2%");
+    expect(rows[2]!.textContent).not.toContain("developer");
+    expect(rows[2]!.textContent).toContain("—");
+    // The list assumes an agent that sets no reasoning, and says so.
+    expect(screen.getByText(/sets no reasoning/)).toBeTruthy();
+    expect(screen.getByText(/Native quantization fp8/)).toBeTruthy();
+  });
+
+  it("names the filter that emptied the list", async () => {
+    authState.token = "t";
+    renderStats({
+      getModelCandidates: vi.fn().mockResolvedValue({
+        ...CANDIDATES,
+        candidates: [],
+        refusal: "every endpoint left is on its catalog entry's ban list",
+      }),
+    });
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain(
+      "every endpoint left is on its catalog entry's ban list",
+    );
+    expect(screen.queryByRole("table")).toBeNull();
+  });
+
+  it("asks a signed-out viewer to sign in rather than reading", async () => {
+    const getModelCandidates = vi.fn();
+    renderStats({ getModelCandidates });
+
+    expect(await screen.findByText("Provider candidates")).toBeTruthy();
+    expect(screen.getByText(/Sign in to see the providers/)).toBeTruthy();
+    expect(getModelCandidates).not.toHaveBeenCalled();
+  });
+
+  it("is absent where the read isn't served", async () => {
+    renderStats(null);
+    expect(await screen.findByText("List price")).toBeTruthy();
+    expect(screen.queryByText("Provider candidates")).toBeNull();
   });
 });
 

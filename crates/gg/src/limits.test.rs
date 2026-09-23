@@ -86,6 +86,7 @@ fn bare_limits() -> RunLimits {
         max_cost: None,
         replay_max_bytes: None,
         retry_policy: RetryPolicy::default(),
+        provider_cache_miss_limit: crate::client::DEFAULT_PROVIDER_CACHE_MISS_LIMIT,
     }
 }
 
@@ -643,6 +644,7 @@ fn every_unusable_ceiling_is_named_in_one_refusal() {
             model_stream_idle_secs: Some(0),
             max_model_retries: None,
             model_retry_max_delay_secs: Some(0),
+            provider_cache_miss_limit: Some(0),
             max_consecutive_errors: Some(0),
             max_error_rate: Some(-3.0),
             error_rate_window: Some(0),
@@ -668,6 +670,7 @@ fn every_unusable_ceiling_is_named_in_one_refusal() {
             "limits.modelCallTimeoutSecs",
             "limits.modelStreamIdleSecs",
             "limits.modelRetryMaxDelaySecs",
+            "limits.providerCacheMissLimit",
             "limits.maxConsecutiveErrors",
             "limits.maxErrorRate",
             "limits.errorRateWindow",

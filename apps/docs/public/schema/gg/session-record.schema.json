@@ -82,6 +82,21 @@
       },
       "type": "object"
     },
+    "GgProviderCandidate": {
+      "description": "One provider a model may run on, and the quantization that endpoint serves.\n\nA [`GgInvocation::model_providers`] entry is an ordered list of these: the order a run tries\nthem in, and a one-entry list is a pin. Every request names one of them as OpenRouter's\n`provider.only` and `provider.quantizations`, with fallbacks refused.",
+      "properties": {
+        "provider": {
+          "description": "The provider, spelled as OpenRouter's endpoints listing spells its `provider_name`\n(`Z.AI`, `DeepInfra`).",
+          "type": "string"
+        },
+        "quantization": {
+          "description": "The quantization the provider's endpoint declares (`fp8`, `bf16`, or `unknown` for a\nprovider the catalog entry accepts despite it).",
+          "type": "string"
+        }
+      },
+      "required": ["provider", "quantization"],
+      "type": "object"
+    },
     "GgSessionAgent": {
       "description": "One agent the record captured, and how it came to exist — the table that tells a reader\nwhich agent every [entry](GgSessionEntry) belongs to, and where that agent came from.\n**One row per agent, not per turn**: repeating a provenance tuple on every entry would\ndefeat the pooling thesis outright.",
       "properties": {
@@ -757,9 +772,12 @@
         },
         "modelProviders": {
           "additionalProperties": {
-            "type": "string"
+            "items": {
+              "$ref": "#/$defs/GgProviderCandidate"
+            },
+            "type": "array"
           },
-          "description": "The OpenRouter provider each bound model was pinned to. Recorded because a\nrun's cost is on that provider's price basis, and a reader that guessed the pin\nwould price the run against a different one.",
+          "description": "The ordered candidate list each bound model may run on. Recorded because a\nrun's cost is on those providers' price bases, and a reader that guessed the\nlist would price the run against a different one.",
           "type": "object"
         },
         "modelWindows": {

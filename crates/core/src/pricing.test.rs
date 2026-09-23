@@ -152,6 +152,50 @@ fn the_official_provider_is_the_one_named_for_the_models_author() {
     assert_eq!(official_provider("qwen/qwen3-coder", ["Alibaba"]), None);
 }
 
+/// The candidate filter reads each endpoint's provider, level, three prices and parameters off
+/// the wire; a missing level reads as `unknown`, a missing cache-read price as none, and an
+/// unnamed endpoint is dropped.
+#[test]
+fn endpoint_offers_read_the_listing_as_the_candidate_filter_needs_it() {
+    let offers = offers_of(&endpoints(serde_json::json!({
+        "data": {
+            "name": "Z.AI: GLM 5.3",
+            "endpoints": [
+                {
+                    "provider_name": "Z.AI",
+                    "quantization": "FP8",
+                    "pricing": {
+                        "prompt": "0.0000006",
+                        "completion": "0.0000022",
+                        "input_cache_read": "0.00000011",
+                    },
+                    "supported_parameters": ["tools", "tool_choice", "reasoning"],
+                },
+                {
+                    "provider_name": "Baidu",
+                    "pricing": { "prompt": "0.0000005", "completion": "0.000002" },
+                },
+                { "quantization": "fp8" },
+            ],
+        },
+    })));
+
+    assert_eq!(offers.len(), 2);
+    assert_eq!(offers[0].provider, "Z.AI");
+    assert_eq!(offers[0].quantization, "fp8");
+    assert_eq!(offers[0].input, Some(0.0000006));
+    assert_eq!(offers[0].output, Some(0.0000022));
+    assert_eq!(offers[0].cache_read, Some(0.00000011));
+    assert_eq!(
+        offers[0].supported_parameters,
+        ["tools", "tool_choice", "reasoning"]
+    );
+    assert_eq!(offers[1].provider, "Baidu");
+    assert_eq!(offers[1].quantization, QUANTIZATION_UNKNOWN);
+    assert_eq!(offers[1].cache_read, None);
+    assert!(offers[1].supported_parameters.is_empty());
+}
+
 /// The launch facts of an endpoints payload listing `routes`, as `model_launch_facts`
 /// derives them. A bare `ModelEndpoints` can only be built through deserialization,
 /// which is also what makes the test exercise the wire shape.

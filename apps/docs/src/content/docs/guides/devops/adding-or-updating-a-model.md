@@ -64,10 +64,24 @@ A model record has these fields:
   from the official endpoint's listing, for confirmation or correction against
   the pricing page. The three rates are saved together with their date or not
   at all, and a blank set on an existing model keeps the stored one.
-- Provider pin, the OpenRouter provider every gg run of the model is pinned to.
-  Blank takes the official endpoint the catalog observes; set it where the
-  developer's `provider_name` on the endpoints listing does not match the author
-  segment of the model id.
+- Developer provider, the OpenRouter provider name of the model developer's own
+  endpoint. Blank takes the provider whose `provider_name` on the endpoints
+  listing matches the author segment of the model id, ignoring case and
+  punctuation. Set it where the two differ (`qwen/…` served by `Alibaba`). Its
+  endpoint's rates are the billed rate the catalog records.
+- Native quantization, the level every provider a gg run uses must serve the
+  model at. Blank takes the highest level any endpoint of the model declares.
+- Price ceiling, the input and output rates in USD per million tokens a provider
+  must be at or below when OpenRouter lists no developer endpoint. It is unused
+  while the developer endpoint is listed, since that endpoint's own rates are
+  the ceiling.
+- Banned providers, the providers a gg run of the model never uses.
+- Unknown-quantization providers, the providers accepted despite declaring
+  `unknown` quantization. Every other `unknown` endpoint is left out.
+
+The last five fields decide a gg run's
+[candidate list](/gg/overview/#the-candidate-list). See
+[Choosing the providers a gg run uses](#choosing-the-providers-a-gg-run-uses).
 
 ### Alias harness families
 
@@ -105,7 +119,7 @@ looks the slug up in OpenRouter's catalog and fills in the display fields:
   itself, so what lands in the field is what it serves.
 
 The fill also seeds the three list-price rates from the official provider's
-endpoint in the model's endpoints listing, the same endpoint the provider pin
+endpoint in the model's endpoints listing, the same endpoint the developer provider
 follows. The figures are a seed: confirm or correct them against the developer's
 pricing page, and enter the date they were taken.
 
@@ -153,9 +167,9 @@ endpoint's billed rate:
   retry), and at backend startup for every known model still missing one. The
   startup pass is what prices a freshly seeded deployment's curated catalog
   before its first run. All of this seeding is missing-only, so a model already
-  on record is left to the two paths above. A model on record with no provider
-  pin counts as missing.
-- Each observation carries the model's provider pin, read from the model's
+  on record is left to the two paths above. A model on record with no developer
+  provider counts as missing.
+- Each observation carries the model's developer provider, read from the model's
   endpoints listing beside the rate.
 - An observation is appended only when something changed: the billed rate, or one
   of the catalog facts riding along on it. The stored history collapses
@@ -199,6 +213,34 @@ An unknown modality list is recorded as unknown and the run proceeds. gg treats
 an unannotated model optimistically and recovers if the provider refuses the
 image, so an empty list in the console means the modalities have yet to be
 observed.
+
+## Choosing the providers a gg run uses
+
+OpenRouter is a gg run's gateway and bill, and gg chooses which of a model's
+providers serves each request. The backend builds each bound model's candidate
+list when the run is enqueued, from the model's endpoints listing read at that
+moment, filtered and ordered as
+[the candidate list](/gg/overview/#the-candidate-list) describes. The list rides
+on the launch, and gg moves down it when a provider fails a request past its
+retries or keeps missing its own cache.
+
+The model's Stats tab shows the list the next enqueue would build, with each
+candidate's quantization, prices and recorded fault rate, or the reason it would
+refuse. The list shown assumes an agent that sets no reasoning; an enqueue whose
+agents set one also drops the providers that do not support `reasoning`.
+
+A provider's fault rate is its stalls, its unexpected cache misses and the turns
+that ended on its failed model calls (`model_retry_exhausted`, `model_timeout`,
+`model_parse`), over its calls, across every recorded gg run of the model. A
+provider no recorded run used has a rate of zero. The rate orders the
+candidates; it removes none. Removing a provider for good is the ban list's job.
+
+A model with no candidate refuses the enqueue with the reason, which names the
+filter that emptied the list. The usual fixes are on the model's form: set the
+developer provider when the listing spells it differently, set the native level
+when the observed one is wrong, name a provider under unknown-quantization
+providers when its endpoint is known to serve the native level, or set a price
+ceiling when OpenRouter lists no developer endpoint.
 
 ## Updating an existing model
 

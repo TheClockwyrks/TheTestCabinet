@@ -124,6 +124,14 @@ impl ModelLaunchFacts {
     }
 }
 
+#[path = "pricing.candidates.rs"]
+mod candidates;
+pub use candidates::{
+    CandidateList, CandidatePolicy, CandidateRefusal, EndpointOffer, ProviderCandidate,
+    QUANTIZATION_UNKNOWN, native_quantization, provider_candidates, quantization_rank,
+    run_parameters,
+};
+
 /// Fetches model prices from OpenRouter.
 #[derive(Debug, Clone)]
 pub struct OpenRouterPrices {
@@ -252,6 +260,13 @@ impl OpenRouterPrices {
         Ok(routes_of(self.fetch_endpoints(model_id).await?))
     }
 
+    /// Every endpoint OpenRouter lists for one model, as the
+    /// [candidate filter](provider_candidates) reads it, in listing order. An unlisted model is an
+    /// `Err`; a listed model with no endpoints is an empty list.
+    pub async fn endpoint_offers(&self, model_id: &str) -> Result<Vec<EndpointOffer>> {
+        Ok(offers_of(&self.fetch_endpoints(model_id).await?))
+    }
+
     /// Fetch one model's `/models/{id}/endpoints` body — the cheap per-model read
     /// (a few KB) shared by the launch-facts, listing, and official-price lookups.
     async fn fetch_endpoints(&self, model_id: &str) -> Result<ModelEndpoints> {
@@ -306,7 +321,7 @@ impl OpenRouterPrices {
 /// reports it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProviderRoute {
-    /// The provider's display name — the value `provider.order` pins.
+    /// The provider's display name — the value `provider.only` names.
     pub name: String,
     /// The route's context window in tokens, when reported.
     pub context_length: Option<u64>,
@@ -324,7 +339,7 @@ pub fn same_provider(a: &str, b: &str) -> bool {
 }
 
 /// A provider spelling reduced to the characters [`same_provider`] compares.
-fn provider_key(name: &str) -> String {
+pub fn provider_key(name: &str) -> String {
     name.chars()
         .filter(|ch| ch.is_alphanumeric())
         .flat_map(char::to_lowercase)
@@ -370,6 +385,37 @@ fn routes_of(data: ModelEndpoints) -> Vec<ProviderRoute> {
         });
     }
     routes
+}
+
+/// Reduce one model's endpoints body to every named endpoint as the candidate filter reads it,
+/// in listing order. A provider listing several endpoints appears once per endpoint.
+fn offers_of(data: &ModelEndpoints) -> Vec<EndpointOffer> {
+    data.endpoints
+        .iter()
+        .filter_map(|endpoint| {
+            let provider = endpoint
+                .provider_name
+                .as_deref()
+                .map(str::trim)
+                .filter(|name| !name.is_empty())?;
+            let pricing = endpoint.pricing.as_ref();
+            Some(EndpointOffer {
+                provider: provider.to_string(),
+                quantization: endpoint
+                    .quantization
+                    .as_deref()
+                    .map(|level| level.trim().to_ascii_lowercase())
+                    .filter(|level| !level.is_empty())
+                    .unwrap_or_else(|| QUANTIZATION_UNKNOWN.to_string()),
+                input: pricing.and_then(|pricing| parse_price(&pricing.prompt)),
+                output: pricing.and_then(|pricing| parse_price(&pricing.completion)),
+                cache_read: pricing
+                    .and_then(|pricing| pricing.input_cache_read.as_deref())
+                    .and_then(parse_price),
+                supported_parameters: endpoint.supported_parameters.clone(),
+            })
+        })
+        .collect()
 }
 
 /// Map one model's endpoints response onto the [`ModelListing`] the config form
@@ -570,24 +616,31 @@ struct ModelEndpoints {
     endpoints: Vec<ModelEndpoint>,
 }
 
-/// One provider route for a model. A route may report no context length and no
-/// pricing block.
+/// One provider route for a model. A route may report no context length and no pricing block,
+/// and the fields beyond the name are what the [candidate filter](provider_candidates) reads.
 #[derive(Debug, Deserialize)]
 struct ModelEndpoint {
     #[serde(default)]
     provider_name: Option<String>,
     #[serde(default)]
     context_length: Option<u64>,
+    /// The quantization the route declares. Absent reads as `unknown`.
+    #[serde(default)]
+    quantization: Option<String>,
     /// The route's own per-token prices, the same shape as the listing's pricing
     /// block: what a request routed to this provider is billed at.
     #[serde(default)]
     pricing: Option<Pricing>,
+    #[serde(default)]
+    supported_parameters: Vec<String>,
 }
 
 /// OpenRouter prices, reported as per-token USD strings.
 #[derive(Debug, Deserialize)]
 struct Pricing {
+    #[serde(default)]
     prompt: String,
+    #[serde(default)]
     completion: String,
     #[serde(default)]
     input_cache_read: Option<String>,

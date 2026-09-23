@@ -1,6 +1,6 @@
-//! The **provider pin** on the live client: a reply from any provider other than the pinned one
-//! is refused as [`ModelError::ProviderMismatch`], whether or not loop detection watches the
-//! stream, and one from the pinned provider passes however OpenRouter spelled it.
+//! The **candidate in force** on the live client: a reply from any provider other than the one the
+//! request named is refused as [`ModelError::ProviderMismatch`], whether or not loop detection
+//! watches the stream, and one from the named provider passes however OpenRouter spelled it.
 
 use test_cabinet_core::gg::GgLoopDetection;
 
@@ -34,7 +34,10 @@ fn pinned_client(pin: &str, body: String) -> OpenRouterClient {
         RetryPolicy::default(),
         None,
     )
-    .with_provider(pin)
+    .with_roster(ProviderRoster::pinned(
+        "openai/gpt-5.6",
+        test_cabinet_core::gg::GgProviderCandidate::new(pin, "fp8"),
+    ))
     .answered_by(move |_| {
         http::Response::builder()
             .status(200)
@@ -103,15 +106,23 @@ async fn a_reply_from_the_pinned_provider_passes() {
     }
 }
 
-/// The factory stamps each client with its own model's pin, so a run binding several models pins
-/// each to its own developer, and a model the launch gave no pin gets none.
+/// The factory holds each model's candidate list, so a run binding several models names each
+/// its own first candidate, and a model the launch gave no list gets none.
 #[test]
 fn the_factory_pins_each_model_to_its_own_provider() {
     let providers = BTreeMap::from([
-        ("openai/gpt-5.6".to_string(), "OpenAI".to_string()),
+        (
+            "openai/gpt-5.6".to_string(),
+            vec![test_cabinet_core::gg::GgProviderCandidate::new(
+                "OpenAI", "fp8",
+            )],
+        ),
         (
             "anthropic/claude-opus-4.8".to_string(),
-            "Anthropic".to_string(),
+            vec![test_cabinet_core::gg::GgProviderCandidate::new(
+                "Anthropic",
+                "bf16",
+            )],
         ),
     ]);
     let factory = DefaultClientFactory::new(
@@ -120,11 +131,19 @@ fn the_factory_pins_each_model_to_its_own_provider() {
         DEFAULT_MODEL_STREAM_IDLE,
         RetryPolicy::default(),
         providers,
+        DEFAULT_PROVIDER_CACHE_MISS_LIMIT,
     );
-    assert_eq!(factory.pin_for("openai/gpt-5.6"), Some("OpenAI"));
     assert_eq!(
-        factory.pin_for("anthropic/claude-opus-4.8"),
-        Some("Anthropic")
+        factory
+            .candidate_for("openai/gpt-5.6")
+            .map(|candidate| candidate.provider),
+        Some("OpenAI".to_string())
     );
-    assert_eq!(factory.pin_for("x-ai/grok-4.7"), None);
+    assert_eq!(
+        factory
+            .candidate_for("anthropic/claude-opus-4.8")
+            .map(|candidate| candidate.provider),
+        Some("Anthropic".to_string())
+    );
+    assert_eq!(factory.candidate_for("x-ai/grok-4.7"), None);
 }

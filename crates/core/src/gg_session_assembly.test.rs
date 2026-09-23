@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use serde_json::{Value, json};
 
 use super::*;
-use crate::gg::{GgAgentStatus, GgCapabilitySet, ROOT_PROFILE_ID};
+use crate::gg::{GgAgentStatus, GgCapabilitySet, GgProviderCandidate, ROOT_PROFILE_ID};
 use crate::gg_session_journal::GgJournalInterner;
 use crate::gg_session_record::{
     GgClientRole, GgSessionAgentOrigin, GgSessionCommand, GgSessionImage, GgSessionInterner,
@@ -430,7 +430,10 @@ fn seed_line(prompt: &str) -> GgJournalLine {
             baseline_commit: Some("abc123".to_string()),
             prompt: prompt.to_string(),
             model_windows: BTreeMap::from([("some/model".to_string(), 128_000)]),
-            model_providers: BTreeMap::from([("some/model".to_string(), "some".to_string())]),
+            model_providers: BTreeMap::from([(
+                "some/model".to_string(),
+                vec![GgProviderCandidate::new("some", "fp8")],
+            )]),
             model_modalities: BTreeMap::from([(
                 "some/model".to_string(),
                 GgSessionModalities { vision: true },

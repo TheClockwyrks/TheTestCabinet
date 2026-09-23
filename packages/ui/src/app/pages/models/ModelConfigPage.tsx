@@ -139,6 +139,14 @@ export function ModelConfigPage() {
   const [description, setDescription] = useState("");
   const [openrouterSlug, setOpenrouterSlug] = useState("");
   const [providerPin, setProviderPin] = useState("");
+  // The provider policy a gg run's candidate list is filtered by. The prices are
+  // kept as typed and parsed on save; the provider lists are one name per line.
+  const [nativeQuantization, setNativeQuantization] = useState("");
+  const [maxInputPrice, setMaxInputPrice] = useState("");
+  const [maxOutputPrice, setMaxOutputPrice] = useState("");
+  const [bannedProviders, setBannedProviders] = useState("");
+  const [unknownQuantizationProviders, setUnknownQuantizationProviders] =
+    useState("");
   // The list-price block, edited as text: per-Mtok USD figures (the unit a
   // developer pricing page publishes) plus the date they were taken. An empty
   // field reads as "not entered"; the save parses them all-or-nothing.
@@ -177,9 +185,21 @@ export function ModelConfigPage() {
     );
     setListPriceOutput(priceField(existing.listPrice?.output ?? null));
     setListPriceAsOf(existing.listPriceAsOf?.slice(0, 10) ?? "");
-    // Only a hand-set pin is the form's to edit; an observed one follows the listing.
+    // Only a hand-set developer provider is the form's to edit; an observed one
+    // follows the listing.
     setProviderPin(
       existing.providerPinSetByHand ? (existing.providerPin ?? "") : "",
+    );
+    setNativeQuantization(existing.nativeQuantization ?? "");
+    setMaxInputPrice(
+      existing.maxInputPrice != null ? String(existing.maxInputPrice) : "",
+    );
+    setMaxOutputPrice(
+      existing.maxOutputPrice != null ? String(existing.maxOutputPrice) : "",
+    );
+    setBannedProviders(existing.bannedProviders.join("\n"));
+    setUnknownQuantizationProviders(
+      existing.unknownQuantizationProviders.join("\n"),
     );
     setSlug(existing.slug);
   }, [editing, existing]);
@@ -331,6 +351,11 @@ export function ModelConfigPage() {
   };
 
   const onSave = async () => {
+    const ceiling = parseCeiling(maxInputPrice, maxOutputPrice);
+    if (typeof ceiling === "string") {
+      setError(ceiling);
+      return;
+    }
     // The list price is all-or-nothing, matching the backend's validation: the
     // comparable cost needs every class, so a partial set is a mistake the save
     // refuses with the reason rather than a figure that prices some runs at 0.
@@ -375,6 +400,11 @@ export function ModelConfigPage() {
       aliases: cleanAliases,
       openrouterSlug: openrouterSlug.trim() || null,
       providerPin: providerPin.trim() || null,
+      nativeQuantization: nativeQuantization.trim().toLowerCase() || null,
+      maxInputPrice: ceiling.input,
+      maxOutputPrice: ceiling.output,
+      bannedProviders: providerLines(bannedProviders),
+      unknownQuantizationProviders: providerLines(unknownQuantizationProviders),
       listPriceInputPerMtok: listInput,
       listPriceCachedInputPerMtok: listCachedInput,
       listPriceOutputPerMtok: listOutput,
@@ -548,23 +578,6 @@ export function ModelConfigPage() {
           </div>
         </div>
 
-        <label className={styles.field}>
-          <span className={styles.fieldLabel}>Provider pin</span>
-          <input
-            className={styles.input}
-            value={providerPin}
-            onChange={(e) => setProviderPin(e.target.value)}
-            placeholder="the listing's provider name, e.g. OpenAI"
-            aria-label="Provider pin"
-          />
-          <span className={styles.fieldHint}>
-            The OpenRouter provider this model's requests are pinned to. Leave
-            blank to take the endpoint whose provider is the model's developer.
-            Set it where that listing's name does not match the model id. A
-            model with no official endpoint is not testable.
-          </span>
-        </label>
-
         <div className={styles.fields}>
           <label className={styles.field}>
             <span className={styles.fieldLabel}>Name</span>
@@ -663,6 +676,132 @@ export function ModelConfigPage() {
           />
         </label>
 
+        {/* The provider policy: what a gg run's candidate list is filtered by.
+          Every field is optional; blank takes the figure from OpenRouter's
+          endpoints listing. */}
+        <div className={styles.aliasBlock}>
+          <span className={styles.fieldLabel}>Providers for gg runs</span>
+          <span className={styles.fieldHint}>
+            A gg run of this model runs on the providers OpenRouter lists that
+            serve it at its native quantization, at or below its developer's
+            prices, with a cache-read price. The model's Stats tab shows the
+            list the next run would use.
+          </span>
+        </div>
+
+        <div className={styles.fields}>
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>Developer provider</span>
+            <input
+              className={styles.input}
+              value={providerPin}
+              onChange={(e) => setProviderPin(e.target.value)}
+              placeholder="e.g. Alibaba"
+              aria-label="Developer provider"
+            />
+            <span className={styles.fieldHint}>
+              OpenRouter's name for the developer's own endpoint. Leave blank to
+              take the provider matching the model id's author segment; set it
+              where they differ (<code>qwen/…</code> served by Alibaba).
+            </span>
+          </label>
+
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>Native quantization</span>
+            <input
+              className={styles.input}
+              value={nativeQuantization}
+              onChange={(e) => setNativeQuantization(e.target.value)}
+              placeholder="e.g. fp8"
+              aria-label="Native quantization"
+              list="model-quantization-levels"
+            />
+            <datalist id="model-quantization-levels">
+              {QUANTIZATION_LEVELS.map((level) => (
+                <option key={level} value={level} />
+              ))}
+            </datalist>
+            <span className={styles.fieldHint}>
+              The level every provider must serve the model at. Leave blank to
+              take the highest level any endpoint declares.
+            </span>
+          </label>
+        </div>
+
+        <div className={styles.fields}>
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>
+              Price ceiling, input / Mtok (USD)
+            </span>
+            <input
+              className={styles.input}
+              type="number"
+              min="0"
+              step="any"
+              inputMode="decimal"
+              value={maxInputPrice}
+              onChange={(e) => setMaxInputPrice(e.target.value)}
+              placeholder="e.g. 0.60"
+              aria-label="Price ceiling, input per Mtok"
+            />
+          </label>
+
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>
+              Price ceiling, output / Mtok (USD)
+            </span>
+            <input
+              className={styles.input}
+              type="number"
+              min="0"
+              step="any"
+              inputMode="decimal"
+              value={maxOutputPrice}
+              onChange={(e) => setMaxOutputPrice(e.target.value)}
+              placeholder="e.g. 2.20"
+              aria-label="Price ceiling, output per Mtok"
+            />
+          </label>
+        </div>
+        <span className={`${styles.fieldHint} ${styles.fieldBlockHint}`}>
+          Used only when OpenRouter lists no developer endpoint, since that
+          endpoint's own rates are the ceiling. Set both or neither.
+        </span>
+
+        <div className={styles.fields}>
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>Banned providers</span>
+            <textarea
+              className={`${styles.textarea} ${styles.textareaShort}`}
+              value={bannedProviders}
+              onChange={(e) => setBannedProviders(e.target.value)}
+              placeholder={"One provider per line"}
+              aria-label="Banned providers"
+            />
+            <span className={styles.fieldHint}>
+              Providers a gg run of this model never uses.
+            </span>
+          </label>
+
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>
+              Unknown-quantization providers
+            </span>
+            <textarea
+              className={`${styles.textarea} ${styles.textareaShort}`}
+              value={unknownQuantizationProviders}
+              onChange={(e) => setUnknownQuantizationProviders(e.target.value)}
+              placeholder={"One provider per line"}
+              aria-label="Unknown-quantization providers"
+            />
+            <span className={styles.fieldHint}>
+              Providers kept despite declaring <code>unknown</code>{" "}
+              quantization. Every other <code>unknown</code> endpoint is left
+              out.
+            </span>
+          </label>
+        </div>
+
         <SubmitNotice message={error} />
 
         <div className={styles.actions}>
@@ -689,4 +828,51 @@ export function ModelConfigPage() {
       </div>
     </PageLayout>
   );
+}
+
+// The quantization levels OpenRouter declares, best first — the native levels
+// the form offers (the backend refuses any other).
+const QUANTIZATION_LEVELS = [
+  "fp32",
+  "bf16",
+  "fp16",
+  "fp8",
+  "int8",
+  "fp6",
+  "fp4",
+  "int4",
+];
+
+// A provider list typed one name per line: trimmed, blank lines dropped.
+function providerLines(text: string): string[] {
+  return text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+}
+
+// The price ceiling as typed: both halves blank is no ceiling, both set to
+// positive numbers is the ceiling, and anything else is the reason it is
+// refused (the backend holds the same rule).
+function parseCeiling(
+  input: string,
+  output: string,
+): { input: number | null; output: number | null } | string {
+  const typedInput = input.trim();
+  const typedOutput = output.trim();
+  if (!typedInput && !typedOutput) return { input: null, output: null };
+  if (!typedInput || !typedOutput) {
+    return "Set both halves of the price ceiling, or neither.";
+  }
+  const parsedInput = Number(typedInput);
+  const parsedOutput = Number(typedOutput);
+  if (
+    !Number.isFinite(parsedInput) ||
+    !Number.isFinite(parsedOutput) ||
+    parsedInput <= 0 ||
+    parsedOutput <= 0
+  ) {
+    return "The price ceiling must be two prices above zero, in USD per million tokens.";
+  }
+  return { input: parsedInput, output: parsedOutput };
 }

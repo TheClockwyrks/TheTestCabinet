@@ -1007,9 +1007,10 @@ The model catalog is the list of subjects a run can be attributed to (see
 | `POST /models/logo`            | fetch and sanitize an svgl.app logo                   |
 
 Each `GET /models` entry carries its display fields, aliases with their harness
-families, OpenRouter slug, and provider pin. `listPrice` is the operator-entered
-list price, per token, with `listPriceAsOf` the date the figures were taken; it
-is null until all three rates are set. `price` is the latest billed rate, and
+families, OpenRouter slug, developer provider (`providerPin`), and provider
+policy. `listPrice` is the operator-entered list price, per token, with
+`listPriceAsOf` the date the figures were taken; it is null until all three
+rates are set. `price` is the latest billed rate, and
 `priceHistory` the billed-rate history.
 
 A write carries the list price per Mtok as `listPriceInputPerMtok`,
@@ -1120,6 +1121,46 @@ The providers OpenRouter lists for the model, as name and context length, for
 pinning a probe to one. Requires a bearer token, because it reaches a third
 party on the caller's behalf.
 
+### `GET /models/{slug}/candidates`
+
+The [candidate list](/gg/overview/#the-candidate-list) the next gg enqueue of the
+model would build, from OpenRouter's endpoints listing read now and the model's
+catalog entry, for an agent that sets no reasoning. Each candidate reports its
+provider, quantization, input, output and cache-read prices per Mtok, whether it
+is the developer's endpoint, and its recorded fault rate, `null` for a provider
+with no recorded calls, which orders as a rate of zero. The response also
+reports the native level the filter used, and a `refusal` naming why the list is
+empty when it is. Requires a bearer token, because it reaches a third party on
+the caller's behalf.
+
+```jsonc
+{
+  "modelId": "z-ai/glm-5.3",
+  "nativeQuantization": "fp8",
+  "candidates": [
+    {
+      "provider": "Z.AI",
+      "quantization": "fp8",
+      "developer": true,
+      "inputPrice": 0.6,
+      "outputPrice": 2.2,
+      "cacheReadPrice": 0.11,
+      "faultRate": 0.01,
+    },
+    {
+      "provider": "Baidu",
+      "quantization": "fp8",
+      "developer": false,
+      "inputPrice": 0.56,
+      "outputPrice": 1.76,
+      "cacheReadPrice": 0.1,
+      "faultRate": null,
+    },
+  ],
+  "refusal": null,
+}
+```
+
 ## Cabinet statistics
 
 ### `GET /stats/cabinet`
@@ -1174,11 +1215,16 @@ per-provider evidence, kept strictly separate. An open read.
 Run evidence: one entry per upstream provider observed in any run's
 `providerStats` slices, each carrying its per-model rows and a total. A row
 reports contributing runs, calls with their summed tokens and USD cost,
-length-capped rejections, and the attributed turns split into working turns and
-an error breakdown keyed by turn error type. The `provider: null` entry
-collects the calls that named no provider and sorts last; a `modelId: null` row
-is a slice recorded before the agent's first usage delta named its model, on a
-run more than one model served.
+length-capped rejections, stalls, unexpected cache misses, and the attributed
+turns split into working turns and an error breakdown keyed by turn error type.
+The `provider: null` entry collects the calls that named no provider and sorts
+last; a `modelId: null` row is a slice recorded before the agent's first usage
+delta named its model, on a run more than one model served.
+
+The same per-provider, per-model rollup gives the fault rate a gg launch orders
+a model's [candidate list](/gg/overview/#the-candidate-list) by: the stalls,
+unexpected cache misses and turns that ended on a failed model call, over the
+calls.
 
 Probe evidence: one entry per provider observed on
 [model-probe](#model-probes) items, per probed model: item count, case-check

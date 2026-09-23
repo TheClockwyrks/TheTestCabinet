@@ -116,6 +116,11 @@ const DUAL_FAMILY_MODEL = {
   contextLength: null,
   providerPin: null,
   providerPinSetByHand: false,
+  nativeQuantization: null,
+  maxInputPrice: null,
+  maxOutputPrice: null,
+  bannedProviders: [],
+  unknownQuantizationProviders: [],
   releasedAt: null,
 } as unknown as Model;
 

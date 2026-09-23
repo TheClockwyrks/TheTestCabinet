@@ -43,8 +43,8 @@ use std::sync::Mutex;
 
 use test_cabinet_core::gg::{
     GgCallFailure, GgErrorSummary, GgIssueReviewPhase, GgIssueStatus, GgLimitBreach,
-    GgProgramLanguage, GgProviderStat, GgRejectedResponses, GgRunLimits, GgSessionSummary,
-    GgSlotCost, GgTelemetryKind, GgTurnErrorKind, GgTurnErrorType, GgTurnOutcome,
+    GgProgramLanguage, GgProviderFault, GgProviderStat, GgRejectedResponses, GgRunLimits,
+    GgSessionSummary, GgSlotCost, GgTelemetryKind, GgTurnErrorKind, GgTurnErrorType, GgTurnOutcome,
     GgUndocumentedCalls, GgUsageFigure,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
@@ -222,6 +222,10 @@ struct ProviderAcc {
     /// The errored turns among them, keyed by [`GgTurnErrorType::wire_id`] exactly as
     /// [`GgErrorSummary::by_type`] is.
     errors: BTreeMap<String, u64>,
+    /// Streams that stalled on this provider.
+    stalls: u64,
+    /// Unexpected cache misses this provider's replies produced.
+    cache_misses: u64,
 }
 
 /// What the tracker knows about one agent between its events — the state provider attribution
@@ -704,7 +708,22 @@ impl SessionSummaryTracker {
                 // Joined from the usage deltas at finalize — see [`SummaryState::slot_deltas`].
                 work_cost: None,
             }),
-            // Every other event carries no aggregatable figure of its own: session/turn
+            // The faults gg holds against a provider, on the provider the request named and the
+            // model it was for.
+            GgTelemetryKind::ProviderFault {
+                model_id,
+                provider,
+                fault,
+            } => {
+                let slice = state.provider_slice(Some(provider.clone()), Some(model_id.clone()));
+                match fault {
+                    GgProviderFault::Stall => slice.stalls += 1,
+                    GgProviderFault::CacheMiss => slice.cache_misses += 1,
+                    // A move is recorded by `ProviderSwitch`, which names its cause; neither of
+                    // these is emitted as a fault of its own.
+                    GgProviderFault::FailedCall | GgProviderFault::Unavailable => {}
+                }
+            }
             // lifecycle, assistant text and tool calls (their results are counted above), the
             // knowledge-state snapshots (skills/memories/tasks), agent-status/worktree/
             // succession transitions, diagnostic logs, and the terminal summary/ended events
@@ -809,6 +828,8 @@ impl SessionSummaryTracker {
                     turns: acc.turns,
                     working: acc.working,
                     errors: acc.errors.clone(),
+                    stalls: acc.stalls,
+                    cache_misses: acc.cache_misses,
                 })
                 .collect(),
             effective_tools: state.effective_tools.clone(),

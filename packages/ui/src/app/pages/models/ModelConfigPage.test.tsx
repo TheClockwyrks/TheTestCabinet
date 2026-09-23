@@ -426,3 +426,56 @@ describe("ModelConfigPage when the edited model does not resolve", () => {
     expect(screen.getByText(/Unknown model: claude/)).toBeTruthy();
   });
 });
+
+describe("ModelConfigPage's provider policy", () => {
+  const saveButton = () => screen.getByRole("button", { name: "Create model" });
+
+  it("saves the developer provider, native level, ceiling and provider lists", async () => {
+    const createModel = vi.fn().mockResolvedValue({ slug: "glm" });
+    renderPage(vi.fn(), createModel);
+    fireEvent.change(nameInput(), { target: { value: "GLM 5.3" } });
+    fireEvent.change(screen.getByLabelText("Developer provider"), {
+      target: { value: " Z.AI " },
+    });
+    fireEvent.change(screen.getByLabelText("Native quantization"), {
+      target: { value: "FP8" },
+    });
+    fireEvent.change(screen.getByLabelText("Price ceiling, input per Mtok"), {
+      target: { value: "0.6" },
+    });
+    fireEvent.change(screen.getByLabelText("Price ceiling, output per Mtok"), {
+      target: { value: "2.2" },
+    });
+    fireEvent.change(screen.getByLabelText("Banned providers"), {
+      target: { value: "Cheapo\n\n  Flaky  \n" },
+    });
+    fireEvent.change(screen.getByLabelText("Unknown-quantization providers"), {
+      target: { value: "Vague" },
+    });
+    fireEvent.click(saveButton());
+
+    await waitFor(() => expect(createModel).toHaveBeenCalled());
+    expect(createModel.mock.calls[0]![0]).toMatchObject({
+      providerPin: "Z.AI",
+      nativeQuantization: "fp8",
+      maxInputPrice: 0.6,
+      maxOutputPrice: 2.2,
+      bannedProviders: ["Cheapo", "Flaky"],
+      unknownQuantizationProviders: ["Vague"],
+    });
+  });
+
+  it("refuses half a price ceiling before saving", async () => {
+    const createModel = vi.fn();
+    renderPage(vi.fn(), createModel);
+    fireEvent.change(nameInput(), { target: { value: "GLM 5.3" } });
+    fireEvent.change(screen.getByLabelText("Price ceiling, input per Mtok"), {
+      target: { value: "0.6" },
+    });
+    fireEvent.click(saveButton());
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("both halves of the price ceiling");
+    expect(createModel).not.toHaveBeenCalled();
+  });
+});

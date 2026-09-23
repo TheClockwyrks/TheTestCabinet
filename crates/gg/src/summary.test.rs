@@ -1441,3 +1441,43 @@ fn a_summary_with_no_provider_or_tool_activity_omits_the_new_fields() {
     assert!(json.get("providerStats").is_none());
     assert!(json.get("toolCalls").is_none());
 }
+
+/// Stalls and unexpected misses are folded from `provider_fault` onto the slice of the provider
+/// and model the fault names, and a move is not a fault of its own.
+#[test]
+fn provider_faults_are_counted_on_their_providers_slice() {
+    let fault = |provider: &str, fault| GgTelemetryKind::ProviderFault {
+        model_id: "z-ai/glm-5.3".to_string(),
+        provider: provider.to_string(),
+        fault,
+    };
+    let tracker = SessionSummaryTracker::new();
+    tracker.observe(Some("root"), &fault("Z.AI", GgProviderFault::Stall));
+    tracker.observe(Some("helper"), &fault("Z.AI", GgProviderFault::Stall));
+    tracker.observe(Some("root"), &fault("Z.AI", GgProviderFault::CacheMiss));
+    tracker.observe(
+        Some("root"),
+        &GgTelemetryKind::ProviderSwitch {
+            model_id: "z-ai/glm-5.3".to_string(),
+            from: "Z.AI".to_string(),
+            to: "Baidu".to_string(),
+            fault: GgProviderFault::FailedCall,
+            detail: "HTTP 502".to_string(),
+        },
+    );
+    tracker.observe(Some("root"), &fault("Baidu", GgProviderFault::CacheMiss));
+
+    let summary = tracker.finalize("completed");
+    let zai = slice(&summary, Some("Z.AI"), Some("z-ai/glm-5.3"));
+    assert_eq!((zai.stalls, zai.cache_misses), (2, 1));
+    let baidu = slice(&summary, Some("Baidu"), Some("z-ai/glm-5.3"));
+    assert_eq!((baidu.stalls, baidu.cache_misses), (0, 1));
+    assert_eq!(summary.provider_stats.len(), 2);
+    let json = serde_json::to_value(zai).expect("slice serializes");
+    assert_eq!(json["stalls"], 2);
+    assert_eq!(json["cacheMisses"], 1);
+    assert!(
+        serde_json::to_value(baidu).unwrap().get("stalls").is_none(),
+        "a zero count is omitted"
+    );
+}

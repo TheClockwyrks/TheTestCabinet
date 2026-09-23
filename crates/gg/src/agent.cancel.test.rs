@@ -24,6 +24,7 @@ fn cancelable(max_turns: usize, sentinel: PathBuf) -> LimitsSetup {
             max_cost: None,
             replay_max_bytes: None,
             retry_policy: crate::client::RetryPolicy::default(),
+            provider_cache_miss_limit: crate::client::DEFAULT_PROVIDER_CACHE_MISS_LIMIT,
         },
         deadline: None,
         spend: Arc::new(RunSpend::default()),

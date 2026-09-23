@@ -57,6 +57,13 @@ pub async fn seed_models_if_empty(db: &Db) -> Result<()> {
             openrouter_slug: seed.openrouter_slug.map(str::to_string),
             // The seed takes the listing's own name; a mismatch is set by hand afterwards.
             provider_pin: None,
+            // The seed sets no provider policy: every figure comes from the listing until an
+            // operator sets one on the model's form.
+            native_quantization: None,
+            max_input_price: None,
+            max_output_price: None,
+            banned_providers: Vec::new(),
+            unknown_quantization_providers: Vec::new(),
             // A seed carries no list price: a fresh deployment curates prices by
             // hand or by Fill from OpenRouter.
             list_price_input: None,
@@ -305,8 +312,8 @@ async fn try_observe_completion(
 /// actually ran) and the periodic refresh. That also makes the steady state free —
 /// nothing is fetched when every target is already priced, so this costs a network
 /// round trip exactly on the first sighting of a new model. A model on record with no
-/// [provider pin](ModelDetails::provider_pin) counts as missing, so a pin is observed
-/// as soon as the catalog meets a model rather than on the next refresh.
+/// [developer provider](ModelDetails::provider_pin) counts as missing, so the developer
+/// provider is observed as soon as the catalog meets a model rather than on the next refresh.
 ///
 /// `targets` maps the storage key an observation is filed under to the OpenRouter id
 /// to ask about. Returns how many models were seeded; a catalog fetch that fails

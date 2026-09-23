@@ -130,6 +130,7 @@ async fn a_launch_prices_a_curated_model_through_its_openrouter_slug() {
             family: HarnessFamily::Claude,
         }],
         now: "2026-01-01T00:00:00Z".to_string(),
+        ..Default::default()
     })
     .await
     .unwrap();
@@ -213,6 +214,7 @@ async fn startup_prices_a_freshly_seeded_curated_catalog() {
             family: HarnessFamily::Claude,
         }],
         now: "2026-01-01T00:00:00Z".to_string(),
+        ..Default::default()
     })
     .await
     .unwrap();
@@ -257,6 +259,7 @@ async fn startup_seeding_is_missing_only_and_fetches_nothing() {
             family: HarnessFamily::Claude,
         }],
         now: "2026-01-01T00:00:00Z".to_string(),
+        ..Default::default()
     })
     .await
     .unwrap();

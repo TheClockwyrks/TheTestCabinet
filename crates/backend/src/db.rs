@@ -6404,7 +6404,7 @@ pub struct StoredModel {
 }
 
 /// The write payload for [`Db::upsert_model_config`].
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ModelConfigWrite {
     pub slug: String,
     pub display_name: String,
@@ -6413,8 +6413,23 @@ pub struct ModelConfigWrite {
     pub provider_logo_svg: Option<String>,
     pub description_md: Option<String>,
     pub openrouter_slug: Option<String>,
-    /// The hand-set OpenRouter provider, or `None` to take the observed one.
+    /// The developer provider set by hand: the OpenRouter provider name of the model
+    /// developer's own endpoint, or `None` to take the one the endpoints listing names for the
+    /// model id's author segment.
     pub provider_pin: Option<String>,
+    /// The native quantization set by hand, lowercased, or `None` to take the highest level any
+    /// endpoint declares.
+    pub native_quantization: Option<String>,
+    /// The input half of the price ceiling, USD per million tokens. Set with
+    /// [`max_output_price`](Self::max_output_price) or not at all.
+    pub max_input_price: Option<f64>,
+    /// The output half of the price ceiling, USD per million tokens.
+    pub max_output_price: Option<f64>,
+    /// The providers a gg run of the model never uses. Empty is stored as `NULL`.
+    pub banned_providers: Vec<String>,
+    /// The providers accepted despite declaring `unknown` quantization. Empty is stored as
+    /// `NULL`.
+    pub unknown_quantization_providers: Vec<String>,
     /// The developer's published list price per **token** of input, in USD (the
     /// form enters per Mtok; the store carries per token). The write is
     /// **all-or-nothing**: a caller writes all three prices plus
@@ -6452,9 +6467,28 @@ pub struct PriceWrite {
     /// The accepted input modalities as a comma-separated lowercase list, or
     /// `None` when OpenRouter reported none (unknown, not "text only").
     pub input_modalities: Option<String>,
-    /// The OpenRouter provider observed for the model, or `None` when the listing
-    /// named no official endpoint.
+    /// The developer provider observed for the model, or `None` when the listing named no
+    /// endpoint from its developer.
     pub provider_pin: Option<String>,
+}
+
+/// The stored form of a catalog entry's provider list: a JSON array of names, or `NULL` for an
+/// empty list.
+fn provider_list_column(providers: &[String]) -> Option<String> {
+    (!providers.is_empty())
+        .then(|| serde_json::to_string(providers).expect("a list of strings always serializes"))
+}
+
+/// Read a catalog entry's provider list column back: `NULL`, and a value that does not parse as
+/// a JSON array of strings, are an empty list. Blank names are dropped.
+pub fn provider_list(column: Option<&str>) -> Vec<String> {
+    column
+        .and_then(|raw| serde_json::from_str::<Vec<String>>(raw).ok())
+        .unwrap_or_default()
+        .into_iter()
+        .map(|name| name.trim().to_string())
+        .filter(|name| !name.is_empty())
+        .collect()
 }
 
 /// Project a stored `model_alias` row into an [`AliasEntry`], parsing its
@@ -6550,6 +6584,13 @@ impl Db {
             description_md: Set(write.description_md),
             openrouter_slug: Set(write.openrouter_slug),
             provider_pin: Set(write.provider_pin),
+            native_quantization: Set(write.native_quantization),
+            max_input_price: Set(write.max_input_price),
+            max_output_price: Set(write.max_output_price),
+            banned_providers: Set(provider_list_column(&write.banned_providers)),
+            unknown_quantization_providers: Set(provider_list_column(
+                &write.unknown_quantization_providers,
+            )),
             list_price_input: Set(write.list_price_input),
             list_price_cached_input: Set(write.list_price_cached_input),
             list_price_output: Set(write.list_price_output),
@@ -6569,6 +6610,11 @@ impl Db {
                         model::Column::DescriptionMd,
                         model::Column::OpenrouterSlug,
                         model::Column::ProviderPin,
+                        model::Column::NativeQuantization,
+                        model::Column::MaxInputPrice,
+                        model::Column::MaxOutputPrice,
+                        model::Column::BannedProviders,
+                        model::Column::UnknownQuantizationProviders,
                         model::Column::ListPriceInput,
                         model::Column::ListPriceCachedInput,
                         model::Column::ListPriceOutput,
@@ -6736,9 +6782,9 @@ impl Db {
             .and_then(|m| m.openrouter_slug))
     }
 
-    /// The hand-set provider of the curated model that claims `alias`, if one is set.
-    /// Absent means the observed listing name is the pin.
-    pub async fn provider_pin_for_alias(&self, alias: &str) -> Result<Option<String>> {
+    /// The curated model that claims `alias`, with its aliases, or `None` for an alias no curated
+    /// model claims.
+    pub async fn model_config_for_alias(&self, alias: &str) -> Result<Option<StoredModel>> {
         let Some(row) = model_alias::Entity::find()
             .filter(model_alias::Column::Alias.eq(alias))
             .one(&self.conn())
@@ -6746,10 +6792,16 @@ impl Db {
         else {
             return Ok(None);
         };
-        Ok(model::Entity::find_by_id(row.model_slug)
-            .one(&self.conn())
+        self.get_model_config(&row.model_slug).await
+    }
+
+    /// The hand-set developer provider of the curated model that claims `alias`, if one is set.
+    /// Absent means the observed listing name is the developer provider.
+    pub async fn provider_pin_for_alias(&self, alias: &str) -> Result<Option<String>> {
+        Ok(self
+            .model_config_for_alias(alias)
             .await?
-            .and_then(|model| model.provider_pin)
+            .and_then(|stored| stored.config.provider_pin)
             .filter(|provider| !provider.trim().is_empty()))
     }
 

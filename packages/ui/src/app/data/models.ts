@@ -47,12 +47,21 @@ export interface ModelSummary {
   priceHistory: PriceObservation[];
   /** Maximum context window in tokens, or null. */
   contextLength: number | null;
-  /** The OpenRouter provider this model is pinned to, or null when no
-   * official endpoint is known. */
+  /** The developer provider: the OpenRouter provider name of the developer's
+   * own endpoint, hand-set or observed, or null when none is known. */
   providerPin: string | null;
-  /** Whether `providerPin` is the hand-set override rather than the observed
-   * official endpoint. */
+  /** Whether `providerPin` is set by hand rather than observed. */
   providerPinSetByHand: boolean;
+  /** The native quantization set by hand, or null for the listing's highest. */
+  nativeQuantization: string | null;
+  /** The price ceiling's input half, USD per million tokens, or null. */
+  maxInputPrice: number | null;
+  /** The price ceiling's output half, USD per million tokens, or null. */
+  maxOutputPrice: number | null;
+  /** The providers a gg run of the model never uses. */
+  bannedProviders: string[];
+  /** The providers accepted despite declaring `unknown` quantization. */
+  unknownQuantizationProviders: string[];
   /** Release date as an RFC 3339 UTC timestamp, or null. */
   releasedAt: string | null;
   /** The input modalities the model accepts (`text`, `image`, …), lowercased.
@@ -80,6 +89,12 @@ export function toModelSummary(model: Model): ModelSummary {
     contextLength: model.contextLength,
     providerPin: model.providerPin,
     providerPinSetByHand: model.providerPinSetByHand,
+    // A snapshot published before the provider policy existed carries none of it.
+    nativeQuantization: model.nativeQuantization ?? null,
+    maxInputPrice: model.maxInputPrice ?? null,
+    maxOutputPrice: model.maxOutputPrice ?? null,
+    bannedProviders: model.bannedProviders ?? [],
+    unknownQuantizationProviders: model.unknownQuantizationProviders ?? [],
     releasedAt: model.releasedAt,
     inputModalities: model.inputModalities ?? [],
   };

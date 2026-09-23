@@ -66,7 +66,8 @@ use futures_util::StreamExt;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use test_cabinet_core::gg::{
-    GgLoopDetection, GgPromptCacheTtl, GgReasoning, GgSlotBinding, GgTelemetryKind, ROOT_PROFILE_ID,
+    GgLoopDetection, GgPromptCacheTtl, GgProviderFault, GgReasoning, GgSlotBinding,
+    GgTelemetryKind, ROOT_PROFILE_ID,
 };
 use test_cabinet_core::gg_session_record::{GgClientRole, GgSessionAgentOrigin};
 use test_cabinet_core::metrics::{Cost, TokenCounts};
@@ -371,6 +372,13 @@ pub fn backoff_delay(attempt: u32, policy: &RetryPolicy) -> Duration {
         .min(policy.max_delay)
 }
 
+#[path = "client.providers.rs"]
+mod providers;
+use providers::CacheTrace;
+pub use providers::{
+    DEFAULT_PROVIDER_CACHE_MISS_LIMIT, InForce, Move, ProviderRoster, RequestShape, stamp_candidate,
+};
+
 /// How an HTTP status should be treated by the retry loop.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StatusClass {
@@ -475,13 +483,15 @@ pub struct OpenRouterClient {
     /// sending both means no intermediary that filters one of them can quietly cost the run its
     /// cache). `None` leaves the key off the wire entirely.
     routing_key: Option<RoutingKey>,
-    /// The OpenRouter provider this client's requests are pinned to — the model's own
-    /// developer, resolved at enqueue and pushed in as
-    /// [`GgInvocation::model_providers`](test_cabinet_core::gg::GgInvocation::model_providers).
-    /// Sent as `provider.only` with fallbacks refused, so a run cannot be moved onto another
-    /// provider's price basis. `None` sends no pin, which a launched run never does: the launch
-    /// refuses a bound model with none.
-    provider: Option<String>,
+    /// The run's [candidate roster](ProviderRoster), shared with every other client the run's
+    /// [factory](DefaultClientFactory) builds. Each request names the candidate this client's
+    /// model is on — `provider.only` its provider, `provider.quantizations` its level, fallbacks
+    /// refused — and a request that leaves a provider moves the roster, so every later request of
+    /// the run names the next one. `None` sends no provider object, which a launched run never
+    /// does: the launch refuses a bound model with no list.
+    roster: Option<ProviderRoster>,
+    /// This client's previous request, which the next reply's cache read is measured against.
+    cache_trace: CacheTrace,
     /// The [lifetime](CacheTtl) this client's requests ask for on their **stable** cache markers —
     /// the [choice](GgPromptCacheTtl) the agent profile this client was resolved for made. Per
     /// client rather than per run: a client serves one agent, and that is the granularity at which
@@ -554,7 +564,8 @@ impl OpenRouterClient {
             retry,
             tool_choice: ToolChoiceMemory::default(),
             routing_key,
-            provider: None,
+            roster: None,
+            cache_trace: CacheTrace::default(),
             stable_ttl: CacheTtl::Standard,
             reasoning: None,
             loop_guard: None,
@@ -652,11 +663,12 @@ impl OpenRouterClient {
         self
     }
 
-    /// This client pinning every request to `provider` — the OpenRouter slug the launch resolved
-    /// for its model, sent as `provider.only` with fallbacks refused. A blank slug is no pin.
-    pub fn with_provider(mut self, provider: impl Into<String>) -> Self {
-        let provider = provider.into();
-        self.provider = (!provider.trim().is_empty()).then_some(provider);
+    /// This client naming its candidates from `roster`, the run-wide record its
+    /// [factory](DefaultClientFactory) shares between every client it builds, and leaving a
+    /// provider after the roster's [miss limit](ProviderRoster::miss_limit) of unexpected misses.
+    /// A client built without it sends no `provider` object.
+    pub fn with_roster(mut self, roster: ProviderRoster) -> Self {
+        self.roster = Some(roster);
         self
     }
 
@@ -730,30 +742,38 @@ impl OpenRouterClient {
         format!("{}/chat/completions", self.base_url.trim_end_matches('/'))
     }
 
-    /// Reject a reply the pinned provider did not serve.
+    /// The candidate this client's model is on, which a request body is built naming.
+    fn candidate(&self) -> Option<test_cabinet_core::gg::GgProviderCandidate> {
+        self.roster
+            .as_ref()
+            .and_then(|roster| roster.in_force(&self.model_id))
+            .map(|in_force| in_force.candidate)
+    }
+
+    /// Reject a reply that `named`, the provider the request was sent to, did not serve.
     ///
     /// OpenRouter names the serving provider on every response, and [`usage`](crate::model)
     /// records it. A response from any other provider ends the call as
     /// [`ProviderMismatch`](ModelError::ProviderMismatch): the cost recorded from that point
-    /// would be on a different price basis than the pin. The two are compared as
-    /// [the same provider](test_cabinet_core::pricing::same_provider), since a response spells
-    /// the provider as the endpoints listing does and a hand-set pin may use the tag's spelling.
-    /// A reply that names no provider has nothing to disagree with and passes.
-    fn pinned(
+    /// would be on a price basis the candidate list does not name. The two are compared as
+    /// [the same provider](test_cabinet_core::pricing::same_provider), since a response and the
+    /// listing may spell one provider differently. A reply that names no provider has nothing to
+    /// disagree with and passes, as does any reply to a request that named none.
+    fn served_by(
         &self,
-        parsed: Result<ModelResponse, ModelError>,
+        named: Option<&str>,
+        response: ModelResponse,
     ) -> Result<ModelResponse, ModelError> {
-        let (Some(pinned), Ok(response)) = (self.provider.as_deref(), &parsed) else {
-            return parsed;
-        };
-        match response.provider.as_deref() {
-            Some(served) if !test_cabinet_core::pricing::same_provider(served, pinned) => {
+        match (named, response.provider.as_deref()) {
+            (Some(named), Some(served))
+                if !test_cabinet_core::pricing::same_provider(served, named) =>
+            {
                 Err(ModelError::ProviderMismatch {
-                    pinned: pinned.to_string(),
+                    pinned: named.to_string(),
                     served: served.to_string(),
                 })
             }
-            _ => parsed,
+            _ => Ok(response),
         }
     }
 
@@ -806,7 +826,7 @@ impl ModelClient for OpenRouterClient {
             messages,
             tools,
             self.routing_key.as_ref(),
-            self.provider.as_deref(),
+            self.candidate().as_ref(),
             self.stable_ttl,
             self.reasoning,
         );
@@ -833,7 +853,7 @@ impl ModelClient for OpenRouterClient {
             messages,
             tool,
             self.routing_key.as_ref(),
-            self.provider.as_deref(),
+            self.candidate().as_ref(),
             self.stable_ttl,
             self.reasoning,
         );
@@ -891,22 +911,49 @@ impl OpenRouterClient {
         // refusal is only recoverable-by-dropping-images if there were images to drop;
         // without that check a coincidentally-similar error body would be misread as one.
         let carries_images = messages.iter().any(|message| !message.images.is_empty());
+        let shape = RequestShape::of(&body, messages);
+        let mut body = body;
 
-        for attempt in 1..=self.retry.max_attempts {
-            // Two clocks start with the attempt. The run's [per-call
-            // ceiling](DEFAULT_MODEL_CALL_TIMEOUT) caps the attempt's whole duration, from the
-            // request to the last chunk; the backoff between attempts sits outside it. An attempt
-            // that runs past it surfaces immediately rather than spending the retry budget, since
-            // each internal retry would cost the full ceiling again and the turn-level retry is
-            // the bounded one. The [stream-idle bound](DEFAULT_MODEL_STREAM_IDLE) runs from the
-            // request too, so a provider that never sends a response head is a stall like one
-            // that stops sending deltas.
-            let started = tokio::time::Instant::now();
-            let deadline = started + self.model_call_timeout;
-            let idle_deadline = started + self.model_stream_idle;
-            let sent =
-                match tokio::time::timeout_at(deadline.min(idle_deadline), self.post(&url, &body))
-                    .await
+        // One pass per candidate the request is asked on. A pass is the whole retry schedule; a
+        // pass that spends it on the provider's failures, or that the gateway refuses outright,
+        // moves the run to the next candidate and starts the schedule again there.
+        loop {
+            // The candidate named on this pass, read afresh because another agent's request may
+            // have moved the run since the body was built.
+            let in_force = self
+                .roster
+                .as_ref()
+                .and_then(|roster| roster.in_force(&self.model_id));
+            if let Some(in_force) = &in_force {
+                stamp_candidate(&mut body, &in_force.candidate);
+            }
+            let named = in_force
+                .as_ref()
+                .map(|in_force| in_force.candidate.provider.clone());
+            // Whether the last attempt of the pass failed on the model's account (a looping
+            // reply) rather than the provider's: only the provider's failures move the run.
+            let mut last_looped = false;
+            // Whether the gateway refused the candidate outright and the run has moved on.
+            let mut refused_and_moved = false;
+
+            for attempt in 1..=self.retry.max_attempts {
+                // Two clocks start with the attempt. The run's [per-call
+                // ceiling](DEFAULT_MODEL_CALL_TIMEOUT) caps the attempt's whole duration, from the
+                // request to the last chunk; the backoff between attempts sits outside it. An
+                // attempt that runs past it surfaces immediately rather than spending the retry
+                // budget, since each internal retry would cost the full ceiling again and the
+                // turn-level retry is the bounded one. The [stream-idle
+                // bound](DEFAULT_MODEL_STREAM_IDLE) runs from the request too, so a provider that
+                // never sends a response head is a stall like one that stops sending deltas.
+                let started = tokio::time::Instant::now();
+                let deadline = started + self.model_call_timeout;
+                let idle_deadline = started + self.model_stream_idle;
+                last_looped = false;
+                let sent = match tokio::time::timeout_at(
+                    deadline.min(idle_deadline),
+                    self.post(&url, &body),
+                )
+                .await
                 {
                     Ok(sent) => Some(sent),
                     Err(_) if deadline <= idle_deadline => {
@@ -917,91 +964,139 @@ impl OpenRouterClient {
                     }
                     Err(_) => {
                         last_err = stall_cause(self.model_stream_idle, None);
+                        self.announce_fault(named.as_deref(), GgProviderFault::Stall);
                         None
                     }
                 };
 
-            // The `Retry-After` a retryable status carries asks for a wait of its own, honoured
-            // when it is longer than the schedule's delay.
-            let mut retry_after = None;
+                // The `Retry-After` a retryable status carries asks for a wait of its own,
+                // honoured when it is longer than the schedule's delay.
+                let mut retry_after = None;
 
-            match sent {
-                // The head never arrived within the idle bound: the stall is already recorded.
-                None => {}
-                // Transport-level failure (connect/reset/etc.): always retryable.
-                Some(Err(err)) => last_err = format!("transport error: {err}"),
-                Some(Ok(resp)) => {
-                    let status = resp.status().as_u16();
-                    match classify_status(status) {
-                        StatusClass::Success => {
-                            match read_stream(
-                                resp.bytes_stream(),
-                                self.loop_guard,
-                                deadline,
-                                started,
-                                self.model_stream_idle,
-                            )
-                            .await
-                            {
-                                StreamOutcome::Reply(response) => {
-                                    // The tally of thrown-away attempts rides out on the reply that
-                                    // worked; nothing else the turn loop is handed could carry it.
-                                    let response = ModelResponse {
-                                        loop_aborts,
-                                        ..response
-                                    };
-                                    // A reply from a provider other than the pin is not a reply this
-                                    // run can use: its cost would be on a different basis.
-                                    return self.pinned(Ok(response));
+                match sent {
+                    // The head never arrived within the idle bound: the stall is already recorded.
+                    None => {}
+                    // Transport-level failure (connect/reset/etc.): always retryable.
+                    Some(Err(err)) => last_err = format!("transport error: {err}"),
+                    Some(Ok(resp)) => {
+                        let status = resp.status().as_u16();
+                        match classify_status(status) {
+                            StatusClass::Success => {
+                                match read_stream(
+                                    resp.bytes_stream(),
+                                    self.loop_guard,
+                                    deadline,
+                                    started,
+                                    self.model_stream_idle,
+                                )
+                                .await
+                                {
+                                    StreamOutcome::Reply(response) => {
+                                        // The tally of thrown-away attempts rides out on the reply
+                                        // that worked; nothing else the turn loop is handed could
+                                        // carry it.
+                                        let response = ModelResponse {
+                                            loop_aborts,
+                                            ..response
+                                        };
+                                        // A reply from a provider other than the candidate this
+                                        // request named is not a reply this run can use: its cost
+                                        // would be on a price basis the list does not name.
+                                        let response =
+                                            self.served_by(named.as_deref(), response)?;
+                                        if let Some(in_force) = &in_force {
+                                            self.observe_cache(in_force, started, shape, &response);
+                                        }
+                                        return Ok(response);
+                                    }
+                                    StreamOutcome::Looping { detail, generated } => {
+                                        // The size is recorded here rather than only rendered into
+                                        // the message, because it is the one measure of an
+                                        // abandoned attempt gg can vouch for: the provider's usage
+                                        // payload arrives at the end of a stream that was never
+                                        // read to its end.
+                                        loop_aborts.record(generated.words, generated.chars);
+                                        last_err = format!("abandoned a looping reply: {detail}");
+                                        last_trip = Some(detail);
+                                        last_looped = true;
+                                    }
+                                    StreamOutcome::Interrupted(detail) => last_err = detail,
+                                    // A stall is a transport failure like any other: the attempt
+                                    // is cancelled, the cause names the idle bound that expired,
+                                    // and the loop below backs off and asks again exactly as it
+                                    // does for a reset connection. That is the whole point of
+                                    // bounding a stall by the seconds it actually costs rather
+                                    // than by the call ceiling — a provider that stops answering
+                                    // costs the run the idle bound per attempt, not the ceiling
+                                    // per turn.
+                                    StreamOutcome::Stalled { idle, provider } => {
+                                        last_err = stall_cause(idle, provider.as_deref());
+                                        self.announce_fault(
+                                            named.as_deref().or(provider.as_deref()),
+                                            GgProviderFault::Stall,
+                                        );
+                                    }
+                                    StreamOutcome::Ceiling { provider } => {
+                                        return Err(ModelError::Timeout {
+                                            after: self.model_call_timeout,
+                                            provider,
+                                        });
+                                    }
+                                    StreamOutcome::Malformed(err) => return Err(err),
                                 }
-                                StreamOutcome::Looping { detail, generated } => {
-                                    // The size is recorded here rather than only rendered into the
-                                    // message, because it is the one measure of an abandoned attempt
-                                    // gg can vouch for: the provider's usage payload arrives at the
-                                    // end of a stream that was never read to its end.
-                                    loop_aborts.record(generated.words, generated.chars);
-                                    last_err = format!("abandoned a looping reply: {detail}");
-                                    last_trip = Some(detail);
-                                }
-                                StreamOutcome::Interrupted(detail) => last_err = detail,
-                                // A stall is a transport failure like any other: the attempt is
-                                // cancelled, the cause names the idle bound that expired, and the
-                                // loop below backs off and asks again exactly as it does for a
-                                // reset connection. That is the whole point of bounding a stall by
-                                // the seconds it actually costs rather than by the call ceiling —
-                                // a provider that stops answering costs the run the idle bound per
-                                // attempt, not the ceiling per turn.
-                                StreamOutcome::Stalled { idle, provider } => {
-                                    last_err = stall_cause(idle, provider.as_deref());
-                                }
-                                StreamOutcome::Ceiling { provider } => {
-                                    return Err(ModelError::Timeout {
-                                        after: self.model_call_timeout,
-                                        provider,
+                            }
+                            StatusClass::Fatal => {
+                                let text = resp.text().await.unwrap_or_default();
+                                let refusal = self.refusal(status, &text, carries_images);
+                                // A `404` that is not an image refusal is OpenRouter saying no
+                                // endpoint of the named provider may take the request (the
+                                // account's privacy settings exclude it). Asking again cannot
+                                // succeed, so the run moves at once.
+                                let unavailable = status == 404
+                                    && matches!(refusal, ModelError::Fatal { .. })
+                                    && in_force.as_ref().is_some_and(|in_force| {
+                                        self.leave(
+                                            in_force,
+                                            GgProviderFault::Unavailable,
+                                            &format!("HTTP {status}: {}", truncate(&text)),
+                                        )
                                     });
+                                if unavailable {
+                                    refused_and_moved = true;
+                                    break;
                                 }
-                                StreamOutcome::Malformed(err) => return Err(err),
+                                return Err(refusal);
                             }
-                        }
-                        StatusClass::Fatal => {
-                            let body = resp.text().await.unwrap_or_default();
-                            return Err(self.refusal(status, &body, carries_images));
-                        }
-                        StatusClass::Retryable => {
-                            if status == 429 || status == 503 {
-                                retry_after = retry_after_delay(&resp);
+                            StatusClass::Retryable => {
+                                if status == 429 || status == 503 {
+                                    retry_after = retry_after_delay(&resp);
+                                }
+                                let text = resp.text().await.unwrap_or_default();
+                                last_err = format!("HTTP {status}: {}", truncate(&text));
                             }
-                            let body = resp.text().await.unwrap_or_default();
-                            last_err = format!("HTTP {status}: {}", truncate(&body));
                         }
                     }
                 }
+
+                if attempt < self.retry.max_attempts {
+                    let delay = retry_wait(attempt, &self.retry, retry_after);
+                    self.announce_retry(attempt, &last_err, delay);
+                    tokio::time::sleep(delay).await;
+                }
             }
 
-            if attempt < self.retry.max_attempts {
-                let delay = retry_wait(attempt, &self.retry, retry_after);
-                self.announce_retry(attempt, &last_err, delay);
-                tokio::time::sleep(delay).await;
+            // The pass ended without a reply. An unavailable candidate already moved the run; a
+            // schedule spent on the provider's failures moves it now; a schedule whose last
+            // attempt looped, or a model on its last candidate, ends the request.
+            if refused_and_moved {
+                continue;
+            }
+            let moved = !last_looped
+                && in_force.as_ref().is_some_and(|in_force| {
+                    self.leave(in_force, GgProviderFault::FailedCall, &last_err)
+                });
+            if !moved {
+                break;
             }
         }
 
@@ -1017,6 +1112,94 @@ impl OpenRouterClient {
                 attempts: self.retry.max_attempts,
                 last: last_err,
             }),
+        }
+    }
+
+    /// Leave the candidate `in_force` names for the next one, for `fault`, recording the move as
+    /// `provider_switch` when this request is the one that made it. `true` when the request should
+    /// be asked again on the candidate now in force: this request moved the run, or another
+    /// request already had. `false` when `in_force` is the model's last candidate.
+    fn leave(&self, in_force: &InForce, fault: GgProviderFault, detail: &str) -> bool {
+        let Some(roster) = &self.roster else {
+            return false;
+        };
+        match roster.leave(&self.model_id, in_force.index) {
+            Move::Moved { from, to } => {
+                self.emit(GgTelemetryKind::ProviderSwitch {
+                    model_id: self.model_id.clone(),
+                    from,
+                    to,
+                    fault,
+                    detail: detail.to_string(),
+                });
+                true
+            }
+            Move::AlreadyMoved => true,
+            Move::Last => false,
+        }
+    }
+
+    /// Measure one served reply's cache read against the agent's previous request, and hold an
+    /// unexpected miss against the candidate that served it. The reply stands either way; a
+    /// provider whose misses reach the [limit](Self::with_roster) is left at the next request.
+    fn observe_cache(
+        &self,
+        in_force: &InForce,
+        sent: tokio::time::Instant,
+        shape: RequestShape,
+        response: &ModelResponse,
+    ) {
+        let input_tokens = response.usage.total_input().unwrap_or(0);
+        let missed = self.cache_trace.observe(
+            &in_force.candidate.provider,
+            sent,
+            shape,
+            response.usage.cached_input,
+            input_tokens,
+        );
+        if !missed {
+            return;
+        }
+        self.announce_fault(
+            Some(&in_force.candidate.provider),
+            GgProviderFault::CacheMiss,
+        );
+        let Some(roster) = self.roster.as_ref() else {
+            return;
+        };
+        let limit = roster.miss_limit();
+        let Some(held) = roster.record_miss(&self.model_id, in_force.index) else {
+            return;
+        };
+        if held >= limit && in_force.has_next {
+            self.leave(
+                in_force,
+                GgProviderFault::CacheMiss,
+                &format!("{held} unexpected cache misses reached the limit of {limit}"),
+            );
+        }
+    }
+
+    /// One [`ProviderFault`](GgTelemetryKind::ProviderFault) against `provider`, when the request
+    /// named one or the stream did.
+    fn announce_fault(&self, provider: Option<&str>, fault: GgProviderFault) {
+        if let Some(provider) = provider {
+            self.emit(GgTelemetryKind::ProviderFault {
+                model_id: self.model_id.clone(),
+                provider: provider.to_string(),
+                fault,
+            });
+        }
+    }
+
+    /// Emit one event on the [stream](Self::retry_stream) the calling agent handed over.
+    fn emit(&self, event: GgTelemetryKind) {
+        let stream = self
+            .retry_stream
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(emitter) = stream.as_ref() {
+            emitter.emit(event);
         }
     }
 
@@ -1427,7 +1610,7 @@ pub fn build_request_body(
     messages: &[Message],
     tools: &[ToolDefinition],
     routing_key: Option<&RoutingKey>,
-    provider: Option<&str>,
+    candidate: Option<&test_cabinet_core::gg::GgProviderCandidate>,
     stable_ttl: CacheTtl,
     reasoning: Option<GgReasoning>,
 ) -> Value {
@@ -1472,13 +1655,18 @@ pub fn build_request_body(
         body["prompt_cache_key"] = json!(key);
     }
 
-    // The pin. `only` names the one provider this model's requests may be served by, and
-    // `allow_fallbacks: false` makes an outage of that provider the error it is rather than a
-    // silent move onto another provider's price basis. The sticky key stays: it still keeps a
-    // run on one endpoint *within* the pinned provider. Absent only for a caller that has no
-    // pin to send — a unit test of the body, never a launched run.
-    if let Some(provider) = provider.filter(|provider| !provider.is_empty()) {
-        body["provider"] = json!({ "only": [provider], "allow_fallbacks": false });
+    // The candidate in force. `only` names the one provider this request may be served by,
+    // `quantizations` the level that endpoint serves, and `allow_fallbacks: false` makes an
+    // outage of that provider the error it is rather than a silent move onto another provider.
+    // The sticky key stays: it still keeps a run on one endpoint *within* the candidate. Absent
+    // only for a caller that has no candidate to send — a unit test of the body, never a
+    // launched run.
+    if let Some(candidate) = candidate.filter(|candidate| !candidate.provider.is_empty()) {
+        let mut provider = json!({ "only": [candidate.provider], "allow_fallbacks": false });
+        if !candidate.quantization.is_empty() {
+            provider["quantizations"] = json!([candidate.quantization]);
+        }
+        body["provider"] = provider;
     }
 
     if let Some(reasoning) = reasoning {
@@ -1534,7 +1722,7 @@ pub fn build_required_tool_request_body(
     messages: &[Message],
     tool: &ToolDefinition,
     routing_key: Option<&RoutingKey>,
-    provider: Option<&str>,
+    candidate: Option<&test_cabinet_core::gg::GgProviderCandidate>,
     stable_ttl: CacheTtl,
     reasoning: Option<GgReasoning>,
 ) -> Value {
@@ -1543,7 +1731,7 @@ pub fn build_required_tool_request_body(
         messages,
         std::slice::from_ref(tool),
         routing_key,
-        provider,
+        candidate,
         stable_ttl,
         reasoning,
     );
@@ -4514,34 +4702,28 @@ pub fn provider_for(binding: &GgSlotBinding) -> ProviderKind {
 /// ceiling, cancels a stream on the one idle bound, and retries on the one schedule the launch
 /// recorded.
 ///
-/// `provider` is the OpenRouter provider the launch [pinned](OpenRouterClient::with_provider) the
-/// binding's model to; `None` sends no pin.
-///
-/// `tool_choice` is the run's [record of refused tool-choice pins](ToolChoiceMemory), shared by
-/// every client built for the run so a refusal is taken once per model rather than once per
-/// client.
+/// `roster` is the run's [candidate list](ProviderRoster), shared by every client built for the
+/// run, carrying how many unexpected misses leave a provider. A model the roster does not name
+/// sends no provider object.
 pub fn client_for_slot(
     binding: &GgSlotBinding,
     routing_key: &RoutingKey,
     model_call_timeout: Duration,
     model_stream_idle: Duration,
     retry_policy: RetryPolicy,
-    provider: Option<&str>,
+    roster: &ProviderRoster,
     tool_choice: &ToolChoiceMemory,
 ) -> Result<Box<dyn ModelClient>, ModelError> {
     match provider_for(binding) {
         ProviderKind::Mock => Ok(Box::new(mock_client_for(&binding.model_id))),
-        ProviderKind::OpenRouter => {
-            let mut client = OpenRouterClient::from_binding(binding, routing_key)?
+        ProviderKind::OpenRouter => Ok(Box::new(
+            OpenRouterClient::from_binding(binding, routing_key)?
                 .with_model_call_timeout(model_call_timeout)
                 .with_stream_idle(model_stream_idle)
                 .with_retry_policy(retry_policy)
-                .with_tool_choice_memory(tool_choice.clone());
-            if let Some(provider) = provider {
-                client = client.with_provider(provider);
-            }
-            Ok(Box::new(client))
-        }
+                .with_tool_choice_memory(tool_choice.clone())
+                .with_roster(roster.clone()),
+        )),
     }
 }
 
@@ -4707,9 +4889,9 @@ pub struct DefaultClientFactory {
     /// The run's resolved [retry schedule](crate::limits::RunLimits::retry_policy), stamped on
     /// every live client this factory builds beside the ceiling.
     retry_policy: RetryPolicy,
-    /// The pinned OpenRouter provider of each model this run binds, keyed by model id. A
-    /// live client is stamped with its model's entry, so every request carries `provider.only`.
-    model_providers: BTreeMap<String, String>,
+    /// The run's [candidate roster](ProviderRoster), shared by every live client this factory
+    /// builds, so a move one of them makes is the candidate every later request names.
+    roster: ProviderRoster,
     /// The run's [record of refused tool-choice pins](ToolChoiceMemory), shared by every live
     /// client this factory builds.
     tool_choice: ToolChoiceMemory,
@@ -4727,21 +4909,25 @@ impl DefaultClientFactory {
         model_call_timeout: Duration,
         model_stream_idle: Duration,
         retry_policy: RetryPolicy,
-        model_providers: BTreeMap<String, String>,
+        model_providers: BTreeMap<String, Vec<test_cabinet_core::gg::GgProviderCandidate>>,
+        cache_miss_limit: u64,
     ) -> Self {
         Self {
             routing_key,
             model_call_timeout,
             model_stream_idle,
             retry_policy,
-            model_providers,
+            roster: ProviderRoster::new(model_providers).with_miss_limit(cache_miss_limit),
             tool_choice: ToolChoiceMemory::default(),
         }
     }
 
-    /// The provider the launch pinned `model_id` to, stamped on every live client built for it.
-    fn pin_for(&self, model_id: &str) -> Option<&str> {
-        self.model_providers.get(model_id).map(String::as_str)
+    /// The candidate `model_id` is on now, which every live client built for it names.
+    #[cfg(test)]
+    fn candidate_for(&self, model_id: &str) -> Option<test_cabinet_core::gg::GgProviderCandidate> {
+        self.roster
+            .in_force(model_id)
+            .map(|in_force| in_force.candidate)
     }
 }
 
@@ -4753,7 +4939,7 @@ impl ClientFactory for DefaultClientFactory {
             self.model_call_timeout,
             self.model_stream_idle,
             self.retry_policy,
-            self.pin_for(&binding.model_id),
+            &self.roster,
             &self.tool_choice,
         )
     }
@@ -4790,3 +4976,7 @@ mod tool_choice_tests;
 #[cfg(test)]
 #[path = "client.reasoning.test.rs"]
 mod reasoning_tests;
+
+#[cfg(test)]
+#[path = "client.moves.test.rs"]
+mod moves_tests;

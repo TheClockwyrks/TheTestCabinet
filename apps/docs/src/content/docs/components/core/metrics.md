@@ -103,7 +103,7 @@ reached us is recorded as unknown rather than as `$0.00`.
 Beside the curated list price, the [backend](/components/backend/overview/)
 records the official provider endpoint's billed rate as a per-model history: the
 rates the model's OpenRouter endpoints listing shows at that moment for the
-endpoint its provider pin names, with the date, the provider pin, and the catalog
+endpoint its developer provider names, with the date, the developer provider, and the catalog
 facts observed alongside. A model with no priced official endpoint records the
 listing's headline rate. An
 observation is recorded when a run completes, missing-only when a model is saved

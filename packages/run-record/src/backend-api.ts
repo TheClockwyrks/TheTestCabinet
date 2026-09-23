@@ -240,16 +240,41 @@ export type ModelOut = {
    */
   contextLength: number | null;
   /**
-   * The OpenRouter provider this model's requests are pinned to: the hand-set
-   * override when one is set, otherwise the official endpoint observed on the listing.
-   * Null means no official endpoint is known, and a launch of the model is refused.
+   * The developer provider: the OpenRouter provider name of the model developer's own
+   * endpoint. The hand-set one when the catalog entry sets it, otherwise the one last observed
+   * on the endpoints listing. Null means none is known; a gg run's
+   * [candidate list](https://docs.testcabinet.ai/gg/overview/#the-candidate-list) then takes
+   * the catalog entry's price ceiling in place of the developer's rates.
    */
   providerPin: string | null;
   /**
-   * Whether [`provider_pin`](Self::provider_pin) is the curated override rather than
-   * the observed official endpoint.
+   * Whether [`provider_pin`](Self::provider_pin) is set by hand on the catalog entry rather
+   * than observed on the listing.
    */
   providerPinSetByHand: boolean;
+  /**
+   * The native quantization set by hand (`fp8`, `bf16`, …), or null to take the highest
+   * level any endpoint declares. Always null for a derived model.
+   */
+  nativeQuantization: string | null;
+  /**
+   * The input half of the price ceiling, USD per million tokens, used when OpenRouter lists no
+   * developer endpoint. Null when no ceiling is set, and always for a derived model.
+   */
+  maxInputPrice: number | null;
+  /**
+   * The output half of the price ceiling, USD per million tokens.
+   */
+  maxOutputPrice: number | null;
+  /**
+   * The providers a gg run of the model never uses. Empty for a derived model.
+   */
+  bannedProviders: Array<string>;
+  /**
+   * The providers accepted despite declaring `unknown` quantization. Empty for a derived
+   * model.
+   */
+  unknownQuantizationProviders: Array<string>;
   /**
    * The latest observed release date (RFC 3339), or null.
    */
@@ -315,11 +340,36 @@ export type ModelConfigInput = {
   aliases: Array<AliasInput>;
   openrouterSlug: string | null;
   /**
-   * The OpenRouter provider this model's requests are pinned to, set by hand where
-   * the endpoints listing's name does not match the model id's author segment. Absent
-   * means the observed listing name is the pin.
+   * The developer provider: the OpenRouter provider name of the model developer's own
+   * endpoint, set by hand where the endpoints listing's name does not match the model id's
+   * author segment. Absent or blank takes the provider the listing names for that segment.
    */
   providerPin?: string;
+  /**
+   * The native quantization every provider of a gg run's candidate list must serve the model
+   * at (`fp8`, `bf16`, …). Absent or blank takes the highest level any endpoint declares; any
+   * other value must be a level OpenRouter declares.
+   */
+  nativeQuantization?: string;
+  /**
+   * The input half of the price ceiling, USD per million tokens, used when OpenRouter lists no
+   * developer endpoint. Set together with [`max_output_price`](Self::max_output_price) or not
+   * at all, and positive.
+   */
+  maxInputPrice?: number;
+  /**
+   * The output half of the price ceiling, USD per million tokens.
+   */
+  maxOutputPrice?: number;
+  /**
+   * The providers a gg run of the model never uses. Names are trimmed and blanks dropped.
+   */
+  bannedProviders?: Array<string>;
+  /**
+   * The providers accepted despite declaring `unknown` quantization. Names are trimmed and
+   * blanks dropped.
+   */
+  unknownQuantizationProviders?: Array<string>;
   /**
    * The developer's published list price per **Mtok** of input, in USD — the
    * unit every developer pricing page publishes; the store carries per token.
@@ -661,6 +711,67 @@ export type ProbeProviderOut = {
 };
 
 /**
+ * The `GET /models/{slug}/candidates` response: the candidate list the next gg enqueue of the
+ * model would build, for an agent that sets no reasoning.
+ */
+export type ModelCandidatesOut = {
+  /**
+   * The OpenRouter id the endpoints listing was read under.
+   */
+  modelId: string;
+  /**
+   * The native quantization the filter kept: the catalog entry's, else the highest level any
+   * endpoint declares. Null when neither names one.
+   */
+  nativeQuantization: string | null;
+  /**
+   * The candidates, in the order a run tries them. Empty exactly when
+   * [`refusal`](Self::refusal) is set.
+   */
+  candidates: Array<CandidateOut>;
+  /**
+   * Why the list is empty, naming the filter that emptied it, or null when it is not.
+   */
+  refusal: string | null;
+};
+
+/**
+ * One candidate of a model's list.
+ */
+export type CandidateOut = {
+  /**
+   * The provider, spelled as OpenRouter's endpoints listing spells its `provider_name`.
+   */
+  provider: string;
+  /**
+   * The quantization its endpoint declares.
+   */
+  quantization: string;
+  /**
+   * Whether this is the model developer's own endpoint.
+   */
+  developer: boolean;
+  /**
+   * The input price, USD per million tokens.
+   */
+  inputPrice: number;
+  /**
+   * The output price, USD per million tokens.
+   */
+  outputPrice: number;
+  /**
+   * The cache-read price, USD per million tokens.
+   */
+  cacheReadPrice: number;
+  /**
+   * The provider's recorded fault rate for the model: stalls, unexpected cache misses and
+   * turns that ended on its failed model calls, over its calls. Null when no recorded run of
+   * the model used the provider, which the order reads as zero.
+   */
+  faultRate: number | null;
+};
+
+/**
  * The `GET /stats/providers` response.
  */
 export type ProviderStatsResponse = {
@@ -759,6 +870,14 @@ export type ProviderCallStatsOut = {
    * The errored turns, keyed by turn error type wire id.
    */
   errors: { [key in string]: number };
+  /**
+   * Streams that stalled on this provider.
+   */
+  stalls: number;
+  /**
+   * Unexpected cache misses this provider's replies produced.
+   */
+  cacheMisses: number;
 };
 
 /**
