@@ -1677,7 +1677,6 @@ fn metrics_engine() -> super::RunEngine<
         analyzer: None,
         toolchain: None,
         validator: crate::validator::DispatchValidator::new("/nonexistent"),
-        prices: super::OpenRouterPrices::new(),
         output_dir: PathBuf::from("/nonexistent"),
         creds: None,
         prior_game_jam_entries: Vec::new(),
@@ -1769,4 +1768,54 @@ fn a_run_without_a_harness_reported_cost_records_one_figure_both_ways() {
 
     assert_eq!(metrics.cost.comparable, Some(3.0));
     assert_eq!(metrics.cost.actual, Some(3.0));
+}
+
+// --- which list price a run is scored at -------------------------------------
+
+/// A third-party-harness run is scored at the list price the backend stamped onto
+/// it, and only that: a gg run's per-model map is not consulted.
+#[test]
+fn a_harness_run_is_scored_at_its_stamped_list_price() {
+    let mut request = request_with_override(None);
+    request.model_prices = Some(list_prices());
+    request.gg_model_prices.insert(
+        "some-model".to_string(),
+        crate::metrics::TokenPrices::default(),
+    );
+
+    assert_eq!(request.list_prices(), list_prices());
+}
+
+/// A run carrying no stamped list price is scored at unknown prices, so its
+/// comparable cost is unknown rather than priced from a provider's listing.
+#[test]
+fn a_run_without_a_stamped_list_price_is_scored_at_unknown_prices() {
+    let request = request_with_override(None);
+
+    assert_eq!(
+        request.list_prices(),
+        crate::metrics::TokenPrices::default()
+    );
+}
+
+/// A gg run is scored at its primary model's entry in the per-model map, the model
+/// the run is published under, not at another bound model's price.
+#[test]
+fn a_gg_run_is_scored_at_its_primary_models_list_price() {
+    let mut request = request_with_override(None);
+    request.harness = HarnessSlug::Gg;
+    request.model_id = "z-ai/glm-5.3".to_string();
+    request
+        .gg_model_prices
+        .insert("z-ai/glm-5.3".to_string(), list_prices());
+    request.gg_model_prices.insert(
+        "openai/gpt-5.6-sol".to_string(),
+        crate::metrics::TokenPrices {
+            uncached_input: Some(1.0),
+            cached_input: Some(1.0),
+            output: Some(1.0),
+        },
+    );
+
+    assert_eq!(request.list_prices(), list_prices());
 }

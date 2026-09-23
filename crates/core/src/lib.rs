@@ -324,19 +324,17 @@ pub struct RunRequest {
     /// as resolved from the model catalog alongside
     /// [`gg_model_windows`](Self::gg_model_windows).
     ///
-    /// A gg run prices its comparable cost per bound model from these figures — the
-    /// developer's published list price — so the cost is stable across providers and
-    /// discounts. A model with no entry was refused at enqueue; reaching a run without
-    /// one leaves that model's tokens unpriced (the run's comparable cost is `None`)
-    /// rather than priced off a provider's day rate.
+    /// Every bound model carries one, because a model with none is refused at
+    /// enqueue; the run's comparable cost is computed from its primary model's entry
+    /// (see [`list_prices`](Self::list_prices)).
     pub gg_model_prices: BTreeMap<String, TokenPrices>,
     /// The curated **list price** (USD per token) of a **non-gg** run's model, stamped
     /// by the backend at enqueue on the same terms as
     /// [`gg_model_prices`](Self::gg_model_prices).
     ///
-    /// `None` on a run enqueued before the catalog priced models, or driven by a host
-    /// with no catalog: the engine then fetches the model's current listed price
-    /// itself, and the run is priced at whatever the listing reports that day.
+    /// `None` only on a gg run, whose prices ride in `gg_model_prices`, or a run
+    /// enqueued before the catalog carried list prices; such a run records an unknown
+    /// comparable cost.
     pub model_prices: Option<TokenPrices>,
 }
 
@@ -347,6 +345,25 @@ impl RunRequest {
     /// orchestrated third-party-harness path.
     pub fn is_gg(&self) -> bool {
         self.harness == crate::run_record::HarnessSlug::Gg
+    }
+
+    /// The list price the run's comparable cost is computed from: the stamped
+    /// [`model_prices`](Self::model_prices) of a third-party-harness run, or a gg
+    /// run's [`gg_model_prices`](Self::gg_model_prices) entry for its primary model.
+    ///
+    /// A gg run's tokens are summed run-wide across every model its capability set
+    /// binds, so the run is priced at the model it is published under. A run with no
+    /// stamped price gets unknown prices, and so an unknown comparable cost, rather
+    /// than a price looked up from a provider on the day it ran.
+    pub fn list_prices(&self) -> TokenPrices {
+        if self.is_gg() {
+            self.gg_model_prices
+                .get(&self.model_id)
+                .copied()
+                .unwrap_or_default()
+        } else {
+            self.model_prices.unwrap_or_default()
+        }
     }
 
     /// Enforce the gg configuration invariants: a
@@ -609,8 +626,6 @@ where
     pub toolchain: Option<Box<dyn PostRunStage>>,
     /// Runs the validation pass.
     pub validator: V,
-    /// Looks up model prices for the comparable cost.
-    pub prices: OpenRouterPrices,
     /// Directory each run's record and collected implementation are written to.
     pub output_dir: PathBuf,
     /// An optional source of subscription credential bytes for the run.
@@ -1877,55 +1892,10 @@ where
         // whenever the cluster was busy. `scheduling_wait` is zero for runtimes (a
         // local Docker/Podman) that admit the container immediately.
         let measured = self.clock.now().saturating_sub(run_started);
-        // Resolve the list prices the comparable cost is computed from. The
-        // comparable cost is computed from the developer's published list price
-        // and nothing else — the figure the backend resolved out of the model
-        // catalog at enqueue and stamped onto the request — so two runs of one
-        // model compare on the same basis however each was billed, and the 24-hour
-        // refresh's observation of the billed rate (which lives on the catalog
-        // entry, not here) never rewrites it. A harness-reported cost is the billed
-        // figure and lands in the actual cost alone.
-        //
-        // A backend-driven run always arrives priced (a catalog model with no list
-        // price is refused at enqueue), so a catalog-driven run never touches the
-        // network for a price: an absent entry means the price is unknown, not that
-        // it should be fetched. Only a catalog-free host (a local in-process run)
-        // falls through to fetching the model's current listed price itself, and it
-        // is priced at whatever the listing reports that day. The model ID is
-        // mapped to the slug OpenRouter lists it under (for example Codex's
-        // `gpt-5.5` becomes `openai/gpt-5.5`), collapsing an `openrouter/` routing
-        // prefix and a `:free`-style variant tag so a free-tagged run is priced at
-        // the model's base rate, not $0.
-        //
-        // A gg run's outcome tokens are summed run-wide across every model the
-        // capability set bound (see `gg_exec::ingest_gg_stream`), while the catalog
-        // prices per model — so the run is priced at its primary model's entry, the
-        // model the run is published under.
-        let prices = if request.is_gg() {
-            request
-                .gg_model_prices
-                .get(&request.model_id)
-                .copied()
-                .unwrap_or_default()
-        } else {
-            match request.model_prices {
-                Some(prices) => prices,
-                None => {
-                    let lookup_id =
-                        crate::model_id::openrouter_price_id(&request.model_id, request.harness);
-                    match self.prices.token_prices(&lookup_id).await {
-                        Ok(prices) => prices,
-                        Err(err) => {
-                            eprintln!(
-                                "warning: could not fetch OpenRouter prices for `{lookup_id}` ({err}); \
-                                 recording unknown (null) comparable cost"
-                            );
-                            TokenPrices::default()
-                        }
-                    }
-                }
-            }
-        };
+        // The comparable cost is computed from the list price the backend stamped
+        // onto the request at enqueue, and nothing else. A harness-reported cost is
+        // the billed figure and lands in the actual cost alone.
+        let prices = request.list_prices();
 
         // The post-run stage seam: the single place any host-side analysis of a
         // finished run happens (see [`crate::post_run`]). Its position is the whole
