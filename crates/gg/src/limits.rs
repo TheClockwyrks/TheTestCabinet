@@ -66,7 +66,7 @@
 //! other pair. Every model call is made under a ceiling, so an absent `modelCallTimeoutSecs` takes
 //! [`DEFAULT_MODEL_CALL_TIMEOUT`]; every reply is read as a stream, so an absent
 //! `modelStreamIdleSecs` takes
-//! [`DEFAULT_MODEL_STREAM_IDLE`](crate::client::DEFAULT_MODEL_STREAM_IDLE). A zero for either is
+//! [`DEFAULT_MODEL_STREAM_IDLE`]. A zero for either is
 //! [refused](resolve_run_limits) like any other figure nothing can run under.
 //!
 //! # This module decides; the loop acts
@@ -624,7 +624,7 @@ pub struct RunLimits {
     /// attempt is cancelled and retried on the client's
     /// [schedule](Self::retry_policy). Present on every run and always in force: a set that writes
     /// no `modelStreamIdleSecs` takes
-    /// [`DEFAULT_MODEL_STREAM_IDLE`](crate::client::DEFAULT_MODEL_STREAM_IDLE), because a reply
+    /// [`DEFAULT_MODEL_STREAM_IDLE`], because a reply
     /// that stopped arriving is never a setting an operator can ask for and a stream with no idle
     /// bound is one a silent provider holds for the whole call ceiling.
     ///

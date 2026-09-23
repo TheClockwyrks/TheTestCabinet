@@ -2071,8 +2071,7 @@ pub struct StreamAccumulator {
     /// fragment belongs to, since a chunk carries a slice of one and providers interleave several.
     ///
     /// A `BTreeMap` so [`finish`](Self::finish) emits them in index order, which is the order the
-    /// model asked for them in and the order the [reference parser](parse_response) returns them
-    /// in. A `Vec` indexed positionally would break the moment a provider sent index 1 before
+    /// model asked for them in. A `Vec` indexed positionally would break the moment a provider sent index 1 before
     /// index 0.
     tool_calls: BTreeMap<u64, PartialToolCall>,
     /// The first non-null `finish_reason` any chunk carried. First rather than last because a
@@ -2292,15 +2291,14 @@ impl StreamAccumulator {
 
     /// The assembled response.
     ///
-    /// Applies exactly the normalisations [`parse_response`] applies: empty text becomes `None`,
-    /// each call's concatenated `arguments` string goes through [`parse_arguments`], a `Stop` with
-    /// tool calls becomes [`FinishReason::ToolCalls`], and usage goes through [`map_usage`].
+    /// Empty text becomes `None`, each call's concatenated `arguments` string goes through
+    /// [`parse_arguments`], a `Stop` with tool calls becomes [`FinishReason::ToolCalls`], and usage
+    /// goes through [`map_usage`].
     ///
     /// A stream that produced neither text nor tool calls is an error **only** if it also never
-    /// carried a finish reason. A model that legitimately answers with nothing at all is a shape
-    /// the [reference parser](parse_response) already accepts (it turns `""` into `None`), so
-    /// rejecting it here would make the two readers disagree; a stream that ended without saying
-    /// anything, on the other hand, was cut off, and reporting that as an empty reply would hand
+    /// carried a finish reason. A model that legitimately answers with nothing at all has given
+    /// a reply, whose text is `None`; a stream that ended without saying anything, on the other
+    /// hand, was cut off, and reporting that as an empty reply would hand
     /// the turn loop a silence the model never produced.
     pub fn finish(self) -> Result<ModelResponse, ModelError> {
         let has_calls = !self.tool_calls.is_empty();
@@ -2362,8 +2360,7 @@ struct WireStreamChunk {
     /// `stream_options.include_usage` — see [`build_request_body`].
     #[serde(default)]
     usage: Option<WireUsage>,
-    /// A provider error delivered as a chunk rather than as a status. Same shape, and treated the
-    /// same way, as the one [`parse_response`] finds in a `2xx` envelope.
+    /// A provider error delivered as a chunk rather than as a status.
     #[serde(default)]
     error: Option<WireError>,
     /// OpenRouter's name for the upstream provider, which it stamps on every chunk.
