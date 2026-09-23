@@ -268,14 +268,20 @@ fn an_uninitialized_submodule_directory_is_refused() {
     let root = checkout.path().join("cold-storage");
     let cold = ColdStorage::at(checkout.path(), &root);
 
+    let missing = ensure_cold_storage(&cold)
+        .expect_err("a missing root is refused")
+        .to_string();
     assert!(
-        ensure_cold_storage(&cold).is_err(),
-        "a missing root is refused"
+        missing.contains("git submodule update --init --depth 1 cold-storage"),
+        "the refusal names the command that fetches the submodule: {missing}"
     );
     std::fs::create_dir(&root).expect("create the empty submodule directory");
+    let uninitialized = ensure_cold_storage(&cold)
+        .expect_err("the empty directory git leaves for an uninitialized submodule is refused")
+        .to_string();
     assert!(
-        ensure_cold_storage(&cold).is_err(),
-        "the empty directory git leaves for an uninitialized submodule is refused"
+        uninitialized.contains("git submodule update --init --depth 1 cold-storage"),
+        "the refusal names the command that fetches the submodule: {uninitialized}"
     );
     std::fs::write(root.join(".git"), "gitdir: ../.git/modules/cold-storage\n")
         .expect("mark the submodule checked out");
