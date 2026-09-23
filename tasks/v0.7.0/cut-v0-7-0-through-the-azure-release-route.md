@@ -17,12 +17,12 @@ This issue depends on every other release-blocking issue in this folder:
 
 ## Current state
 
-The cut-a-release quickstart and the cutting-a-release guide describe a flow of
-`rel/vX.Y.Z` into `nightly`, `nightly` into `staging` as an rc, and `staging`
-into `master`. GitHub workflows build the service and run-container images on
-every push to those branches, `release.yml` cuts a GitHub prerelease with the
-binaries and the desktop app, `release-promote.yml` flips it to latest, and the
-image shas are re-pinned by hand in the Azure overlays before each roll.
+The cut-a-release quickstart, the cutting-a-release guide and
+`development/releasing.md` describe the Azure release route: `rel/vX.Y.Z` into
+`nightly`, `nightly` into `staging` as an rc, `staging` into `master`, then a
+`vX.Y.Z` tag on `master` whose pipeline run publishes `tcab` as the
+`tcab-linux` and `tcab-windows` artifacts, uploads gg, and mirrors the tag. No
+release has been cut through that route yet.
 
 The existing `rel/v0.7.0` branch is a merge from 2026-08-25 and sits 3817
 commits behind `feat/gg`. `crates/gg` and `crates/core` already carry version
@@ -58,11 +58,9 @@ tag's version.
 
 ### Document the route
 
-Rewrite the cut-a-release quickstart, the cutting-a-release guide, and
-`development/releasing.md` for the new route. There is no GitHub release and no
-desktop artifact. `tcab` is published as a pipeline artifact of the tagged run,
-the `gg` binaries and the `gg-reference` tarball are on Azure Blob Storage, and
-the docs site is deployed by the pipeline.
+Correct the cut-a-release quickstart, the cutting-a-release guide, and
+`development/releasing.md` wherever the release as followed differs from what
+they describe.
 
 ## Done when
 
