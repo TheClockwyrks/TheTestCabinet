@@ -203,8 +203,7 @@ brings that module into scope.
 
 The arm names `opal` as its [checker](/gg/languages/compilation/), so the shared
 body states that a program is compiled before it runs and one the compiler
-refuses is not executed. The declared library set is reached through a compile
-failure rather than through the prompt.
+refuses is not executed.
 
 ## Code mask
 

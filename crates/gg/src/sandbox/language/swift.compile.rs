@@ -1194,20 +1194,6 @@ fn materialise_libraries() -> Result<PathBuf, String> {
     Ok(tree)
 }
 
-/// **The modules `swiftc` said this program could not import**, read out of the text this arm
-/// [renders](rendered).
-///
-/// `swiftc` reports an unresolved `import` at the model's own line and column as
-/// `no such module 'Algorithms'`, quoting the module and nothing else.
-pub(super) fn unresolved_imports(diagnostic: &str) -> Vec<String> {
-    diagnostic
-        .lines()
-        .flat_map(|line| {
-            crate::sandbox::language::diagnostics::named(line, "no such module '", "'")
-        })
-        .collect()
-}
-
 #[cfg(test)]
 #[path = "swift.compile.test.rs"]
 mod tests;

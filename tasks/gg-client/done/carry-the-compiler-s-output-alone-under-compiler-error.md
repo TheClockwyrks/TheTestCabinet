@@ -48,10 +48,10 @@ says the set is reached through a compile failure (`cpp.md`, `java.md`,
 
 ## Done when
 
-- [ ] A `Compiler error` message body is the arm's rendered diagnostic alone,
+- [x] A `Compiler error` message body is the arm's rendered diagnostic alone,
       on every arm.
-- [ ] The supporting material, its matching, its bound and its gates are
+- [x] The supporting material, its matching, its bound and its gates are
       removed.
-- [ ] The compilation page states the policy and the pages above describe the
+- [x] The compilation page states the policy and the pages above describe the
       message as it is.
-- [ ] Gates green.
+- [x] Gates green.

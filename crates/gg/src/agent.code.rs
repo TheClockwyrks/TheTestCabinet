@@ -652,7 +652,7 @@ async fn run_one_program(
         .chain(module_error_notice(&outcome.module_errors).map(CodeFeedback::notice))
         .collect();
 
-    let decision = turn_decision(code.language, &outcome, &notices, emitter);
+    let decision = turn_decision(&outcome, &notices, emitter);
     (decision, state)
 }
 
@@ -664,13 +664,12 @@ async fn run_one_program(
 /// is `#[cfg(test)]` and so unreachable from a doc link — holds all eleven arms to it. A gate that mirrored this routing instead of calling it would be
 /// asserting against a copy, which is how a gate goes green while the thing it guards regresses.
 fn turn_decision(
-    language: GgProgramLanguage,
     outcome: &SandboxOutcome,
     notices: &[CodeFeedback],
     emitter: &Emitter,
 ) -> CodeTurnOutcome {
     match &outcome.result {
-        Err(error) => sandbox_failure_decision(language, error, notices, emitter),
+        Err(error) => sandbox_failure_decision(error, notices, emitter),
         Ok(result) => {
             let report = program_report(outcome, result);
             // The class the guest already typed the throw with, rather than the bare fact that
@@ -703,9 +702,9 @@ fn turn_decision(
 /// notice is a fact about the *session* and G8 asks only what the model is told about the
 /// **fault**.
 #[cfg(test)]
-pub(crate) fn model_facing(language: GgProgramLanguage, outcome: &SandboxOutcome) -> ModelFacing {
+pub(crate) fn model_facing(outcome: &SandboxOutcome) -> ModelFacing {
     let emitter = Emitter::with_sink(None, Box::new(crate::telemetry::CapturingSink::new()));
-    ModelFacing::of(turn_decision(language, outcome, &[], &emitter))
+    ModelFacing::of(turn_decision(outcome, &[], &emitter))
 }
 
 /// What a turn would put in front of the model, flattened out of [`CodeTurnOutcome`].
@@ -789,9 +788,8 @@ fn sandbox_error_type(error: &SandboxError) -> TurnErrorType {
 /// * the committed **artifact**, gg's own **plumbing**, gg's own **preparation** of a source it had
 ///   already accepted, or the language's **compiler** failing to finish: fatal, fed back to nobody,
 ///   charged to nothing;
-/// * the **model's program**: the language's diagnostic, verbatim, under `Compiler error`, with the
-///   [supporting material](compiler_error_body) drawn from the arm's library set after it where its
-///   catalogue declares one;
+/// * the **model's program**: the language's diagnostic, verbatim, under `Compiler error`, and
+///   nothing else;
 /// * a sandbox **ceiling**: the ceiling's own words under `Runtime error`.
 ///
 /// Lifted out of [`run_code_turn`] rather than left inline because the split between the compiler
@@ -800,7 +798,6 @@ fn sandbox_error_type(error: &SandboxError) -> TurnErrorType {
 /// nothing read it, produces no failure anywhere, and sends the model rewriting a program that was
 /// never wrong. A function is a thing a test can hold.
 fn sandbox_failure_decision(
-    language: GgProgramLanguage,
     error: &SandboxError,
     notices: &[CodeFeedback],
     emitter: &Emitter,
@@ -844,15 +841,11 @@ fn sandbox_failure_decision(
         // `Display` prefixes it ("the program did not compile: …"), which the `Compiler error`
         // heading already says, so the inner error is what goes out.
         //
-        // The one thing that goes out beside it is drawn from the arm's library set, which is what
-        // the compiler measured the program against and is the reason no prompt carries a package
-        // inventory. It is part of the diagnostic rather than advice about it: a program refused
-        // for naming a package this arm does not carry is answered here or nowhere.
+        // Everything after that heading is the compiler's output, as the arm rendered it. gg's
+        // processing of it removes (the arm's diagnostic bounds) and adds nothing, so nothing goes
+        // out beside it.
         error @ SandboxError::Prepare(prepare) => CodeTurnOutcome::Continue {
-            feedback: vec![CodeFeedback::compiler(compiler_error_body(
-                language,
-                &prepare.to_string(),
-            ))],
+            feedback: vec![CodeFeedback::compiler(prepare.to_string())],
             // Which of the four prepare failures it was, from the error itself rather than from a
             // blanket "did not compile": a syntax error is a typo, a semantic error is almost
             // always two programs in one reply, a compile error is a whole coherent program written
@@ -879,36 +872,6 @@ fn sandbox_failure_decision(
                 report: "its last program was stopped by a sandbox limit".to_string(),
             }
         }
-    }
-}
-
-/// The body of a `Compiler error` message: the arm's diagnostic, and the
-/// [supporting material](crate::sandbox::supporting) drawn from the library set its catalogue
-/// declares.
-///
-/// The set is delivered here rather than in the system prompt because the mistake it prevents — a
-/// program written against a package this arm does not carry — is one the compiler **detects**, and
-/// a detectable fact is delivered when it is detected. A model that never writes an import never
-/// reads it; the one that did reads it beside the diagnostic that made it relevant.
-///
-/// Which of the set is delivered is decided from the diagnostic. The arm reads the imports its own
-/// compiler could not resolve
-/// ([`unresolved_imports`](crate::sandbox::ProgramLanguage::unresolved_imports)) and the material is
-/// the modules that match them, so an ordinary misspelling is answered with the name it meant rather
-/// than with an inventory. A diagnostic naming no import, and one whose names match nothing, is
-/// answered with the whole set. Either way the material is held to
-/// [one bound](crate::sandbox::supporting) every arm shares, so what a rejection costs the next turn
-/// is comparable across arms.
-///
-/// It goes after the diagnostic, separated by a blank line, so the compiler's own first line is
-/// still the first line of the message. An arm whose catalogue declares no set — the two whose
-/// programs get their runtime's own standard library and nothing else — is answered with the
-/// diagnostic alone, with no trailing blank line to say a section was omitted.
-fn compiler_error_body(language: GgProgramLanguage, diagnostic: &str) -> String {
-    let arm = sandbox::language(language);
-    match sandbox::supporting(arm.catalogue(), &arm.unresolved_imports(diagnostic)) {
-        Some(libraries) => format!("{diagnostic}\n\n{libraries}"),
-        None => diagnostic.to_string(),
     }
 }
 

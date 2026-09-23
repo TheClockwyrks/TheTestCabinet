@@ -503,7 +503,7 @@ fn the_generated_catalogue_is_this_languages() {
     }
 }
 
-/// **This arm declares the libraries a program may reach**, which is what a compile failure quotes back.
+/// **This arm declares the libraries a program may reach**, in its catalogue.
 ///
 /// The C++ standard library, grouped exactly as `packages/gg-sandbox-cpp/Sources/prelude.hpp` heads
 /// it. That file is no longer a compile input — a program includes what it uses — and it is still
@@ -526,7 +526,7 @@ fn this_arm_declares_the_libraries_a_program_may_reach() {
         );
     }
     // The absences this arm decided on, so a header the catalogue does not offer cannot quietly
-    // appear in the set a compile failure quotes back.
+    // appear in the set it declares.
     for absent in [
         "<thread>",
         "<future>",

@@ -25,9 +25,9 @@
 #                                          direction)
 #   * packages/gg-sandbox-python/src/**   (the shim, the SDK, or the curated library set — and if
 #                                          what changed is `library.py`'s imports, that is also a
-#                                          change to the set gg quotes back to a model on a compile
-#                                          failure, which `signatures.sh` reflects off the same tree
-#                                          on the same build)
+#                                          change to the catalogue's `libraries` record, which
+#                                          `signatures.sh` reflects off the same tree on the same
+#                                          build)
 #   * packages/gg-sandbox-python/requirements.txt  (the pinned third-party wheels)
 #   * packages/gg-sandbox-python/build.sh (this file — the pinned COMPONENTIZE_VERSION below, and
 #                                          the `-p` paths that decide what is importable at all)

@@ -73,11 +73,11 @@ fn the_archive_is_placed_read_only() {
 // under `Sources/` moves, and `build.sh` stages those exact files into a wiped directory immediately
 // before packing it. The archive is held instead to what two generators agree on: the test above
 // holds the packed tree to the file list `build.sh` wrote from that same tree, and the one below
-// holds the library set a MODEL is told about to the prelude that actually ships it.
+// holds the library set the catalogue records to the prelude that actually ships it.
 
 #[test]
 fn every_header_the_manifest_claims_is_one_the_prelude_really_includes() {
-    // The library set a model will be told it has, held to the file that actually ships it. The
+    // The library set the catalogue records, held to the file that actually ships it. The
     // manifest is generated from the prelude by `build.sh`, so this catches a manifest hand-edited
     // into claiming something — which is the one failure that would put a header in a prompt and not
     // in the compile.
@@ -423,18 +423,6 @@ fn a_rendering_that_does_not_group_is_handed_over_whole() {
         capped("something clang said\nand a second line", &authored()),
         "something clang said\nand a second line"
     );
-}
-
-/// **An unresolved import is answered with the modules of this arm's set that match it.**
-///
-/// The one cell of the [cross-arm gate](crate::sandbox::language::imports) that needs `clang++`: it
-/// drives a program importing a near-miss of a module this arm really carries through this arm's
-/// real preparation, and holds what comes back to the name the program wrote. What it catches is a
-/// compiler that reworded its own sentence, which is silent otherwise — the arm recovers nothing,
-/// every rejection falls back to the whole inventory, and nothing reports it.
-#[test]
-fn an_unresolved_import_is_answered_with_the_candidates_that_match_it() {
-    crate::sandbox::language::imports::gate(test_cabinet_core::gg::GgProgramLanguage::Cpp);
 }
 
 /// **A code module gg rebuilt beside a program is gg's own failure and never the model's.**

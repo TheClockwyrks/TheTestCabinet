@@ -156,8 +156,7 @@ Two conventions the reflector enforces, both worth knowing before editing a head
 The **C++ standard library**, as libc++ 22 implements it for this target, declared header by header
 in `Sources/prelude.hpp` under `// == Heading ==` groups. That one declaration has **three** readers
 — the compile, `cpp.toolchain.json`'s `headers` list, and the catalogue's `libraries` section, which
-is what a model is told it may include — so what a model reads and what the compile allows cannot
-drift. All three are produced by the same `cargo build`, and a test holds the second to the prelude
+records what a program may include — so the record and what the compile allows cannot drift. All three are produced by the same `cargo build`, and a test holds the second to the prelude
 directly. Ranges, `std::format`, `std::expected`, the containers, `<regex>`, `<chrono>` and
 `<random>` are all there and all exercised by this arm's tests.
 
@@ -165,9 +164,8 @@ directly. Ranges, `std::format`, `std::expected`, the containers, `<regex>`, `<c
 the whole of libc++, so a reply that writes `#include <iostream>` or `#include <thread>` gets that
 header and compiles — measured, not assumed. Making the list a real allowlist would mean
 `-nostdinc++` and an explicit include tree, and what it would buy is a refusal in place of a
-run-time exception a model can read. gg tells the model the truth instead: the set is reflected into
-this arm's catalogue and quoted back on a compile failure, and `cpp.surface.test.rs` asserts both
-directions — that every header on the list is reachable, and that one off it is reachable too.
+run-time exception a model can read. The set is reflected into this arm's catalogue as the record of
+what the arm offers, and `cpp.surface.test.rs` asserts both directions — that every header on the list is reachable, and that one off it is reachable too.
 
 Four things are deliberately off the set, and each is a decision rather than an oversight.
 

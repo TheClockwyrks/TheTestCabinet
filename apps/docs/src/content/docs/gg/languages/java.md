@@ -164,13 +164,12 @@ author.
 
 The library set is TeaVM's classlib, a subset of `java.base` plus the ThreeTen
 backport that makes `java.time` real. `packages/gg-sandbox-java/libraries.txt`
-declares it in groups, the catalogue's `libraries` section is reflected from
-that file, and a compile failure quotes that section back group by group. The
-arm's surface tests hold the claim to the artifact: every declared package goes
-through the real javac and the real TeaVM, and a real class in each must compile
-and run. The subset is a subset by method as well as by class, and an absence of
-either kind is a located compile error at the model's own line, on the turn that
-reached for it.
+declares it in groups, and the catalogue's `libraries` section is reflected
+from that file. The arm's surface tests hold the claim to the artifact: every
+declared package goes through the real javac and the real TeaVM, and a real
+class in each must compile and run. The subset is a subset by method as well as
+by class, and an absence of either kind is a located compile error at the
+model's own line, on the turn that reached for it.
 
 The classlib is wider than the declared set, so a package the set omits may still
 compile. `java.nio.file` is the one that matters: `java.nio.file.Files.readString`
@@ -242,8 +241,7 @@ beside the segment carries that module's own `import` line.
 The arm names `javac` as its [checker](/gg/languages/compilation/), so the
 shared body states that a program is compiled before it runs, that one the
 compiler refuses is not executed, and that a call the run withheld compiles and
-fails when it runs. The library set TeaVM can translate is reached through a
-compile failure rather than through the prompt.
+fails when it runs.
 
 ## Code modules
 

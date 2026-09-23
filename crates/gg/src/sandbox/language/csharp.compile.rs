@@ -1388,34 +1388,6 @@ fn is_arrangement(line: &str) -> bool {
     error_code(line).is_some_and(|code| ARRANGEMENT_CODES.contains(&code))
 }
 
-/// **The namespaces Roslyn said this program could not reach**, read out of the diagnostics this
-/// arm's [verdict] rendered.
-///
-/// Two codes name one, and they carry the name differently. `CS0246` quotes the whole unresolved
-/// name (`The type or namespace name 'Newtonsoft' could not be found`). `CS0234` quotes the leaf and
-/// the namespace it looked in separately (`The type or namespace name 'Jsn' does not exist in the
-/// namespace 'System.Text'`), so the two are rejoined: a `using System.Text.Jsn;` is the name
-/// `System.Text.Jsn`, and the leaf alone would match nothing.
-pub(super) fn unresolved_imports(diagnostic: &str) -> Vec<String> {
-    diagnostic
-        .lines()
-        .filter_map(|line| {
-            let names = crate::sandbox::language::diagnostics::named(line, "'", "'");
-            if line.contains("CS0246") {
-                return names.into_iter().next();
-            }
-            if line.contains("CS0234") {
-                return match names.as_slice() {
-                    [name, owner, ..] => Some(format!("{owner}.{name}")),
-                    [name] => Some(name.clone()),
-                    [] => None,
-                };
-            }
-            None
-        })
-        .collect()
-}
-
 #[cfg(test)]
 #[path = "csharp.compile.test.rs"]
 mod tests;

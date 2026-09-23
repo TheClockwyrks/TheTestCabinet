@@ -934,35 +934,6 @@ fn jar(classpath: &str, prefix: &str) -> Result<String, String> {
         .ok_or_else(|| format!("gg found no {prefix}*.jar; run scripts/ci/install-kotlin.sh"))
 }
 
-/// **The names `kotlinc` said this program could not resolve**, read out of the rendering
-/// [`Diagnostic::render`](Diagnostic::render) produced.
-///
-/// One sentence covers an unresolved import and an unresolved identifier alike, and it names only
-/// the first segment that resolved to nothing: `import kotlin.mathh.abs` is reported as
-/// `Unresolved reference 'mathh'.` Four spellings of it are read, because the compiler capitalises
-/// the sentence and quotes the name in the pinned release and did neither in earlier ones, so an
-/// image on either is answered.
-///
-/// A misspelt local name reaches [matching](crate::sandbox::supporting) too, which is why that rule
-/// holds a name to a module's own path segments rather than to a substring.
-pub(super) fn unresolved_imports(diagnostic: &str) -> Vec<String> {
-    diagnostic
-        .lines()
-        .flat_map(|line| {
-            let quoted = ["Unresolved reference '", "unresolved reference '"]
-                .into_iter()
-                .flat_map(|opens| crate::sandbox::language::diagnostics::named(line, opens, "'"));
-            let bare = ["Unresolved reference: ", "unresolved reference: "]
-                .into_iter()
-                .flat_map(|opens| line.split(opens).skip(1))
-                .filter_map(|rest| rest.split_whitespace().next())
-                .map(|name| name.trim_end_matches('.').to_string())
-                .filter(|name| !name.is_empty());
-            quoted.chain(bare).collect::<Vec<String>>()
-        })
-        .collect()
-}
-
 #[cfg(test)]
 #[path = "kotlin.compile.test.rs"]
 mod tests;

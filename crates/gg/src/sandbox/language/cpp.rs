@@ -235,12 +235,6 @@ impl ProgramLanguage for Cpp {
         Some("clang++")
     }
 
-    /// [What `clang++` says a program could not import](compile::unresolved_imports), read out of the
-    /// `file not found` wording this arm's own diagnostics carry.
-    fn unresolved_imports(&self, diagnostic: &str) -> Vec<String> {
-        compile::unresolved_imports(diagnostic)
-    }
-
     /// Unpack the embedded guest archive now, so the first code turn does not.
     ///
     /// The whole of this arm's warm-up, and the whole of what it could be: 32 KB decompressed, once

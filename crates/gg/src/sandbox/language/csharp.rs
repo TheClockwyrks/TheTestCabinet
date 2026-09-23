@@ -261,12 +261,6 @@ impl ProgramLanguage for CSharp {
         Some("csc")
     }
 
-    /// [What Roslyn says a program could not import](compile::unresolved_imports), read out of the
-    /// `CS0246` and `CS0234` wording this arm's own diagnostics carry.
-    fn unresolved_imports(&self, diagnostic: &str) -> Vec<String> {
-        compile::unresolved_imports(diagnostic)
-    }
-
     /// The module's own `csc`, run over the class body gg wrapped it in — and the names that class
     /// offers, read from the author's own source.
     ///

@@ -269,8 +269,7 @@ scope.
 The arm names `csc` as its [checker](/gg/languages/compilation/), so the shared
 body states that a program is compiled before it runs, that one the compiler
 refuses is not executed, and that a call the run withheld compiles and fails
-when it runs. The referenced namespace set is reached through a compile failure
-rather than through the prompt.
+when it runs.
 
 Source gg synthesizes for this arm is written in the same idiom:
 `Gg.Views.OpenFile("src/Program.cs");`, with a window passed as the call's own

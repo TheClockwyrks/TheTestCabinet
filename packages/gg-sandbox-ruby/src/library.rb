@@ -7,14 +7,10 @@
 # the `ruby.component.wasm` it writes into `$GG_ARTIFACTS_OUT_DIR` — the `OUT_DIR` of
 # `crates/gg-sandbox-artifacts/ruby`, which is where gg `include_bytes!`s it from.
 # `tools/signatures.rb` reads the same lines,
-# under the same `# --- … ---` headings, and emits them as the catalogue's `libraries` section —
-# which gg quotes back to a model on a COMPILE FAILURE. No system prompt carries a package
-# inventory any more: the mistake this set prevents — a program written against something that is
-# not below — is one the compile DETECTS, so the set is delivered on the turn that made it, beside
-# the diagnostic that made it relevant, rather than read every turn by a program that requires
-# nothing.
+# under the same `# --- … ---` headings, and emits them as the catalogue's `libraries` section, the
+# record of this arm's set.
 #
-# So the sentence a model reads and the modules the artifact carries come from one file. That is
+# So the catalogue's record and the modules the artifact carries come from one file. That is
 # the rule the Python arm learned the hard way: it claimed a whole standard library where the build
 # had baked a curated subset of one, and nothing gated the claim.
 #

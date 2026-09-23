@@ -1170,21 +1170,6 @@ fn link_tree(from: &Path, to: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// **The modules `purs` said this program could not import**, read out of the rendering
-/// [`Diagnostic::render`](Diagnostic::render) produced.
-///
-/// `purs` reports one sentence for it, under the `ModuleNotFound` code this arm renders above it:
-/// `Module Data.Argonaut was not found.` The module name is unquoted and the sentence is what
-/// bounds it.
-pub(super) fn unresolved_imports(diagnostic: &str) -> Vec<String> {
-    diagnostic
-        .lines()
-        .flat_map(|line| {
-            crate::sandbox::language::diagnostics::named(line, "Module ", " was not found")
-        })
-        .collect()
-}
-
 #[cfg(test)]
 #[path = "purescript.compile.test.rs"]
 mod tests;

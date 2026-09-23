@@ -339,9 +339,8 @@ fn engine() -> &'static Handlebars<'static> {
 /// [`id`](Self::id), like every other sentence. There is **no per-call spelling map** either: the
 /// prompt names no function at all, so a template has nothing to quote one into, and carrying one
 /// would be carrying the loaded gun of a template that *could* name a call. And there is no library
-/// list, which nine arms' prompts used to inventory up front — what a program may reach for is
-/// [named by the compile failure](crate::sandbox) that reports the breach, where it is both
-/// actionable and impossible to date.
+/// list: a program that reaches outside its arm's set is answered by the compiler's own diagnostic,
+/// which names the breach in its own words.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LanguageView {

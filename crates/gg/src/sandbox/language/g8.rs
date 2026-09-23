@@ -408,7 +408,7 @@ fn drive(arm: GgProgramLanguage, program: &str) -> Read {
             .ok()
             .and_then(|result| result.error.as_ref())
             .and_then(|error| error.location.clone()),
-        model: crate::agent::code::model_facing(arm, &outcome),
+        model: crate::agent::code::model_facing(&outcome),
     }
 }
 

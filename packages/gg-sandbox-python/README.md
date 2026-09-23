@@ -124,13 +124,10 @@ to it, because CPython is inside the component and is the first thing to read it
   `ModuleNotFoundError`. That is why the file exists, and why a cross-language study
   can state exactly what this arm was given.
 
-  It is also what the **model** is told, without anyone writing the list twice:
+  It is also the catalogue's record of the set, without anyone writing the list twice:
   `signatures.sh` reflects those module-scope imports (and the `# --- … ---` headings
-  they are grouped under) into the catalogue's `libraries` section, which gg quotes back
-  on a **compile failure** — no system prompt carries a package inventory, because the one
-  mistake the set prevents is one the compile detects, and it is delivered where it was
-  detected. Adding or removing an import here changes what that failure quotes on the next
-  **build**, with nothing to regenerate — and a name in the catalogue that the committed
+  they are grouped under) into the catalogue's `libraries` section. Adding or removing an
+  import here changes that record on the next **build**, with nothing to regenerate — and a name in the catalogue that the committed
   component cannot import fails `the_embedded_guest_carries_every_library_its_catalogue_declares`,
   which is the direction that can still go wrong: the catalogue moves the moment the source
   does, and the component is the half that has to be rebuilt by hand to catch up.

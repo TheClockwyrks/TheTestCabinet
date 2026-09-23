@@ -764,8 +764,7 @@ fn cpp_tells_the_truth_about_what_is_off_the_library_set() {
     // does NOT list. The library set is a DECLARATION, not an allowlist — clang's
     // default include path is the whole of libc++ — so what the catalogue's library set means for a
     // header outside it is a fact about this toolchain, measured here rather than inferred from the
-    // list. It is what a compile failure naming that set is allowed to imply, and there are three
-    // different answers, so each is one statement here.
+    // list. There are three different answers, so each is one statement here.
 
     // 1. A standard header off the set **resolves, compiles, links and runs**. `<iostream>` is off
     //    the set because nothing reads a program's stdout, not because it is unavailable — so a

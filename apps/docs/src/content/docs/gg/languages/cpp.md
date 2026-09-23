@@ -68,9 +68,8 @@ surface. gg's engine is the one that opts in.
 `Sources/prelude.hpp` declares the library set this arm makes available, which is
 the C++ standard library, header by header under `// == Heading ==` groups.
 `build.sh`'s manifest, `cpp.toolchain.json`'s header list and the catalogue's
-`libraries` section are all read from that one file, and a compile failure quotes
-the set back to the model group by group. A program writes its own `#include` for
-every facility it names.
+`libraries` section are all read from that one file. A program writes its own
+`#include` for every facility it names.
 
 ## SDK and catalogue
 
@@ -209,8 +208,7 @@ list beside the segment carries that module's own `#include` line.
 The arm names `clang++` as its [checker](/gg/languages/compilation/), so the
 shared body states that a program is compiled before it runs, that one the
 compiler refuses is not executed, and that a call the run withheld compiles and
-fails when it runs. The header set is reached through a compile failure rather
-than through the prompt.
+fails when it runs.
 
 Source gg synthesizes for this arm is a whole program by the same rules. The
 file-view program, the documentation-view program and the bootstrap program each

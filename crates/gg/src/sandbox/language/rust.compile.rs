@@ -906,25 +906,6 @@ fn fingerprint() -> u64 {
     hasher.finish()
 }
 
-/// **The crates and modules `rustc` said this program could not import**, read out of the rendering
-/// [`Diagnostic::render`](Diagnostic::render) produced.
-///
-/// Two codes name one: `E0432` for an `use` that resolved to nothing (``unresolved import `serd` ``)
-/// and `E0433` for a path that named no crate or module (``failed to resolve: use of unresolved
-/// module or unlinked crate `serd` ``). Both quote the path in backticks and this arm renders the
-/// code in front of the message, so the code is what says the sentence is about an import and the
-/// backticks are what say which one.
-///
-/// A path deeper than the crate (``unresolved import `itertools::Nope` ``) is returned whole. The
-/// [match](crate::sandbox::supporting) is over path segments, so the crate is recovered from it.
-pub(super) fn unresolved_imports(diagnostic: &str) -> Vec<String> {
-    diagnostic
-        .lines()
-        .filter(|line| line.contains("error[E0432]") || line.contains("error[E0433]"))
-        .flat_map(|line| crate::sandbox::language::diagnostics::named(line, "`", "`"))
-        .collect()
-}
-
 #[cfg(test)]
 #[path = "rust.compile.test.rs"]
 mod tests;
