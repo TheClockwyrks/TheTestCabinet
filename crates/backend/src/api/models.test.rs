@@ -1,6 +1,74 @@
 use super::*;
 use test_cabinet_entities::model;
 
+/// An [`AppState`] with an in-memory store and no network reach, for driving
+/// [`write_config`] directly. The `TempDir` is returned so the store outlives the
+/// test.
+async fn test_state() -> (tempfile::TempDir, AppState) {
+    // nextest runs each test in its own process, so this environment is this
+    // test's alone (the same reasoning `api.test.rs`'s harness gives).
+    let dir = tempfile::tempdir().unwrap();
+    unsafe {
+        std::env::set_var("TCAB_BACKEND_CHECKOUT", dir.path());
+        std::env::set_var("TCAB_BACKEND_STORE", dir.path().join("store"));
+    }
+    let config = std::sync::Arc::new(crate::config::Config::from_env().unwrap());
+    let db = std::sync::Arc::new(crate::db::Db::connect_in_memory().await.unwrap());
+    let store = crate::store::DefinitionStore::open(&config.store).unwrap();
+    let publisher = crate::publisher::Publisher::new(
+        std::sync::Arc::clone(&db),
+        store.clone(),
+        None,
+        None,
+        None,
+        std::sync::Arc::new(test_cabinet_core::AccountsClient::new(
+            config.auth_url.clone(),
+        )),
+        crate::publisher::PublisherTiming {
+            coalesce: config.coalesce,
+            snapshot_retention: config.snapshot_retention,
+        },
+    );
+    let state = AppState {
+        db,
+        store,
+        ready: crate::readiness::Readiness::new(true),
+        publisher,
+        auth: std::sync::Arc::new(test_cabinet_core::AccountsClient::new(
+            config.auth_url.clone(),
+        )),
+        relay: crate::relay::Relay::new(),
+        publish_relay: crate::publish_relay::PublishRelay::new(),
+        config,
+        http: reqwest::Client::new(),
+        prices: test_cabinet_core::OpenRouterPrices::new(),
+        gg_docs: crate::gg_docs::GgDocIndex::new(),
+    };
+    (dir, state)
+}
+
+/// A minimal valid config input: one OpenRouter-family alias, no list price.
+fn input(slug: &str) -> ModelConfigInput {
+    ModelConfigInput {
+        slug: slug.to_string(),
+        name: slug.to_string(),
+        provider: "DeepSeek".to_string(),
+        aliases: vec![AliasInput {
+            slug: "deepseek/deepseek-v4".to_string(),
+            harness_family: HarnessFamily::Openrouter,
+        }],
+        openrouter_slug: None,
+        provider_pin: None,
+        list_price_input_per_mtok: None,
+        list_price_cached_input_per_mtok: None,
+        list_price_output_per_mtok: None,
+        list_price_as_of: None,
+        description: None,
+        logo_svg: None,
+        provider_logo_url: None,
+    }
+}
+
 /// A canonical id carries the OpenRouter family when it has a `provider/`
 /// segment, and its native family otherwise — enough for these composition tests.
 fn test_family(alias: &str) -> HarnessFamily {
@@ -24,6 +92,11 @@ fn config(slug: &str, name: &str, provider: &str, aliases: &[&str]) -> StoredMod
             description_md: None,
             openrouter_slug: aliases.first().map(|a| a.to_string()),
             provider_pin: None,
+            list_price_input: None,
+            list_price_cached_input: None,
+            list_price_output: None,
+            list_price_as_of: None,
+            list_price_source: None,
             created_at: "2026-01-01T00:00:00Z".to_string(),
             updated_at: "2026-01-01T00:00:00Z".to_string(),
         },
@@ -127,6 +200,51 @@ fn curated_model_absorbs_its_runs_and_derived_models_appear() {
     // OpenCode run here → the OpenRouter family).
     assert_eq!(derived.aliases.len(), 1);
     assert_eq!(derived.aliases[0].harness_family, HarnessFamily::Openrouter);
+}
+
+#[test]
+fn compose_carries_the_curated_list_price() {
+    let mut priced = config(
+        "claude-opus-4-8",
+        "Claude Opus 4.8",
+        "Anthropic",
+        &["anthropic/claude-opus-4.8"],
+    );
+    priced.config.list_price_input = Some(5e-6);
+    priced.config.list_price_cached_input = Some(5e-7);
+    priced.config.list_price_output = Some(25e-6);
+    priced.config.list_price_as_of = Some("2026-09-01".to_string());
+    priced.config.list_price_source = Some("hand".to_string());
+    let catalog = compose_catalog(&[priced], &[], &[]);
+    let entry = &catalog[0];
+    let list_price = entry.list_price.as_ref().expect("a fully priced model");
+    assert_eq!(list_price.uncached_input, Some(5e-6));
+    assert_eq!(list_price.cached_input, Some(5e-7));
+    assert_eq!(list_price.output, Some(25e-6));
+    assert_eq!(entry.list_price_as_of.as_deref(), Some("2026-09-01"));
+
+    // All-or-nothing: a partial price set composes as no list price at all, and a
+    // derived entry never carries one.
+    let mut partial = config(
+        "deepseek-v4",
+        "DeepSeek V4",
+        "DeepSeek",
+        &["deepseek/deepseek-v4"],
+    );
+    partial.config.list_price_input = Some(1e-6);
+    let run_models = vec![("x/y".to_string(), "goose".to_string())];
+    let catalog = compose_catalog(&[partial], &[], &run_models);
+    let partial = catalog
+        .iter()
+        .find(|m| m.slug == "deepseek-v4")
+        .expect("curated model present");
+    assert_eq!(partial.list_price, None);
+    assert_eq!(partial.list_price_as_of, None);
+    let derived = catalog
+        .iter()
+        .find(|m| m.slug == "x/y")
+        .expect("derived model present");
+    assert_eq!(derived.list_price, None);
 }
 
 #[test]
@@ -268,6 +386,11 @@ async fn context_window_follows_a_curated_model_alias() {
         description_md: None,
         openrouter_slug: Some("anthropic/claude-opus-4.8".to_string()),
         provider_pin: None,
+        list_price_input: None,
+        list_price_cached_input: None,
+        list_price_output: None,
+        list_price_as_of: None,
+        list_price_source: None,
         aliases: vec![AliasEntry {
             alias: "claude-opus-4-8".to_string(),
             family: HarnessFamily::Claude,
@@ -353,4 +476,200 @@ async fn a_pre_existing_observation_reads_as_unknown_modalities() {
         .unwrap();
     assert_eq!(facts.context_window, Some(128_000));
     assert!(facts.input_modalities.is_empty());
+}
+
+// --- The list-price write validation -----------------------------------------
+
+/// A full per-Mtok list-price set lands on the stored config as per-token
+/// figures, with the operator's date and a `hand` source.
+#[tokio::test]
+async fn write_config_stores_a_full_list_price_per_token() {
+    let (_dir, state) = test_state().await;
+    let mut input = input("deepseek-v4");
+    input.list_price_input_per_mtok = Some(2.0);
+    input.list_price_cached_input_per_mtok = Some(0.2);
+    input.list_price_output_per_mtok = Some(6.0);
+    input.list_price_as_of = Some("  2026-10-01  ".to_string());
+
+    let out = write_config(&state, "deepseek-v4".to_string(), input)
+        .await
+        .unwrap();
+    let list_price = out.list_price.as_ref().expect("a full set composes");
+    let per_token = 1e-6;
+    assert!((list_price.uncached_input.unwrap() - 2.0 * per_token).abs() < f64::EPSILON * 8.0);
+    assert!((list_price.cached_input.unwrap() - 0.2 * per_token).abs() < f64::EPSILON * 8.0);
+    assert!((list_price.output.unwrap() - 6.0 * per_token).abs() < f64::EPSILON * 8.0);
+    assert_eq!(out.list_price_as_of.as_deref(), Some("2026-10-01"));
+
+    let stored = state
+        .db
+        .get_model_config("deepseek-v4")
+        .await
+        .unwrap()
+        .unwrap();
+    assert!((stored.config.list_price_input.unwrap() - 2.0 * per_token).abs() < f64::EPSILON * 8.0);
+    assert_eq!(stored.config.list_price_source.as_deref(), Some("hand"));
+}
+
+/// A partial list-price set is a 422 naming the missing side of the
+/// all-or-nothing rule.
+#[tokio::test]
+async fn write_config_refuses_a_partial_list_price() {
+    let (_dir, state) = test_state().await;
+    let mut partial = input("deepseek-v4");
+    partial.list_price_input_per_mtok = Some(2.0);
+
+    let err = write_config(&state, "deepseek-v4".to_string(), partial)
+        .await
+        .expect_err("a partial set refuses");
+    assert_eq!(err.status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(err.message.contains("all-or-nothing"), "{}", err.message);
+    assert!(
+        state
+            .db
+            .get_model_config("deepseek-v4")
+            .await
+            .unwrap()
+            .is_none()
+    );
+}
+
+/// A negative (or non-finite) list price is a 422 naming the field.
+#[tokio::test]
+async fn write_config_refuses_a_negative_list_price() {
+    let (_dir, state) = test_state().await;
+    let mut negative = input("deepseek-v4");
+    negative.list_price_input_per_mtok = Some(-1.0);
+    negative.list_price_cached_input_per_mtok = Some(0.2);
+    negative.list_price_output_per_mtok = Some(6.0);
+
+    let err = write_config(&state, "deepseek-v4".to_string(), negative)
+        .await
+        .expect_err("a negative price refuses");
+    assert_eq!(err.status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(
+        err.message.contains("listPriceInputPerMtok"),
+        "{}",
+        err.message
+    );
+
+    let mut nan = input("deepseek-v4");
+    nan.list_price_input_per_mtok = Some(f64::NAN);
+    nan.list_price_cached_input_per_mtok = Some(0.2);
+    nan.list_price_output_per_mtok = Some(6.0);
+    let err = write_config(&state, "deepseek-v4".to_string(), nan)
+        .await
+        .expect_err("a NaN price refuses");
+    assert!(
+        err.message.contains("listPriceInputPerMtok"),
+        "{}",
+        err.message
+    );
+}
+
+/// A list price is dated: a full set with no date is a 422 naming the field.
+#[tokio::test]
+async fn write_config_refuses_an_undated_list_price() {
+    let (_dir, state) = test_state().await;
+    let mut undated = input("deepseek-v4");
+    undated.list_price_input_per_mtok = Some(2.0);
+    undated.list_price_cached_input_per_mtok = Some(0.2);
+    undated.list_price_output_per_mtok = Some(6.0);
+
+    let err = write_config(&state, "deepseek-v4".to_string(), undated)
+        .await
+        .expect_err("an undated list price refuses");
+    assert_eq!(err.status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(err.message.contains("listPriceAsOf"), "{}", err.message);
+}
+
+/// An update carrying no list-price fields at all preserves the stored set
+/// (source included); one carrying a new full set replaces it.
+#[tokio::test]
+async fn write_config_preserves_the_stored_list_price_when_absent() {
+    let (_dir, state) = test_state().await;
+    let mut create = input("deepseek-v4");
+    create.list_price_input_per_mtok = Some(2.0);
+    create.list_price_cached_input_per_mtok = Some(0.2);
+    create.list_price_output_per_mtok = Some(6.0);
+    create.list_price_as_of = Some("2026-10-01".to_string());
+    let _created = write_config(&state, "deepseek-v4".to_string(), create)
+        .await
+        .unwrap();
+
+    // Absent on update: the stored set survives untouched.
+    let update = input("deepseek-v4");
+    let out = write_config(&state, "deepseek-v4".to_string(), update)
+        .await
+        .unwrap();
+    let list_price = out.list_price.as_ref().expect("the stored set survives");
+    assert!((list_price.uncached_input.unwrap() - 2e-6).abs() < 1e-18);
+    let stored = state
+        .db
+        .get_model_config("deepseek-v4")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(stored.config.list_price_source.as_deref(), Some("hand"));
+    assert_eq!(
+        stored.config.list_price_as_of.as_deref(),
+        Some("2026-10-01")
+    );
+
+    // A create with no list-price fields stores none.
+    let mut unpriced = input("unpriced");
+    unpriced.aliases = vec![AliasInput {
+        slug: "unpriced/model".to_string(),
+        harness_family: HarnessFamily::Openrouter,
+    }];
+    let _created = write_config(&state, "unpriced".to_string(), unpriced)
+        .await
+        .unwrap();
+    let stored = state
+        .db
+        .get_model_config("unpriced")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(stored.config.list_price_input, None);
+    assert_eq!(stored.config.list_price_source, None);
+}
+
+/// A top-up refuses a harness member whose model carries no list price before the
+/// scheduler spends buffer on it, and names the reason; a priced member stays
+/// launchable.
+#[tokio::test]
+async fn a_harness_member_without_a_list_price_is_unlaunchable_before_the_top_up() {
+    let (_dir, state) = test_state().await;
+    state
+        .db
+        .upsert_model_config(crate::db::tests::priced_model_write(
+            "opus",
+            "Claude Opus 4.8",
+            &["claude-opus-4-8"],
+        ))
+        .await
+        .unwrap();
+    let combo = |model: &str| super::super::coverage::ReviewPlanCombo {
+        harness: HarnessSlug::Claude,
+        model: model.to_string(),
+        provider: None,
+        gg_config_id: None,
+        gg_slot_models: Default::default(),
+        gg_config_name: None,
+    };
+    let library = super::super::coverage::GgLibrary::default();
+    let mut members = vec![
+        super::super::coverage::resolve_member(&combo("claude-opus-4-8"), &library),
+        super::super::coverage::resolve_member(&combo("claude-unpriced-1"), &library),
+    ];
+
+    super::super::coverage::resolve_launch_facts(&state, &mut members).await;
+
+    assert_eq!(members[0].unlaunchable, None);
+    let reason = members[1]
+        .unlaunchable
+        .as_deref()
+        .expect("an unpriced member is unlaunchable");
+    assert!(reason.contains("`claude-unpriced-1`"), "{reason}");
 }

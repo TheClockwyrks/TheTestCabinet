@@ -17,6 +17,8 @@ function model(name: string, aliases: ModelAlias[], curated = true): Model {
     coveredModelIds: [],
     aliases,
     price: null,
+    listPrice: null,
+    listPriceAsOf: null,
     priceHistory: [],
     contextLength: null,
     providerPin: null,

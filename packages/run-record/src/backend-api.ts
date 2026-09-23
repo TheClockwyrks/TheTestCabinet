@@ -214,9 +214,23 @@ export type ModelOut = {
    */
   aliases: Array<AliasOut>;
   /**
-   * The latest observed comparable price, or null when none is recorded.
+   * The latest observed **billed rate** — what the official provider's
+   * endpoint charges right now — or null when none is recorded. A run's
+   * comparable cost is computed from [`list_price`](Self::list_price), not
+   * this.
    */
   price: ModelPricesOut | null;
+  /**
+   * The curated developer list price (per-token USD) a run's comparable cost
+   * is computed from — all-or-nothing: `Some` only when all three prices are
+   * set. Null for a derived or unpriced model.
+   */
+  listPrice: ModelPricesOut | null;
+  /**
+   * The date the list-price figures were taken, as the operator recorded it,
+   * or null.
+   */
+  listPriceAsOf: string | null;
   /**
    * The observed price history, ascending, consecutive-equal deduped.
    */
@@ -306,6 +320,26 @@ export type ModelConfigInput = {
    * means the observed listing name is the pin.
    */
   providerPin?: string;
+  /**
+   * The developer's published list price per **Mtok** of input, in USD — the
+   * unit every developer pricing page publishes; the store carries per token.
+   * The list-price write is all-or-nothing: all three prices (plus
+   * `list_price_as_of`) or none; absent on update preserves the stored set.
+   */
+  listPriceInputPerMtok?: number;
+  /**
+   * The developer's published list price per **Mtok** of cached input, in USD.
+   */
+  listPriceCachedInputPerMtok?: number;
+  /**
+   * The developer's published list price per **Mtok** of output, in USD.
+   */
+  listPriceOutputPerMtok?: number;
+  /**
+   * The date the operator took the list-price figures (trimmed; empty means
+   * none).
+   */
+  listPriceAsOf?: string;
   description: string | null;
   /**
    * The stored provider-logo SVG (already fetched via `POST /models/logo`).
@@ -346,12 +380,13 @@ export type ModelSeedOut = {
 
 /**
  * The `GET /models/openrouter` response: the descriptive facts OpenRouter
- * publishes about a model, for the config form to fill itself in with.
- *
- * Only the fields a curator would otherwise retype are here. Prices, the context
- * window, and the modalities are deliberately absent: the backend records those
- * itself from the same catalog (on save, on launch, and on the 24-hour refresh),
- * so they are never form state to begin with.
+ * publishes about a model, for the config form to fill itself in with, plus the
+ * official endpoint's current prices scaled to per Mtok — the seed figures for
+ * the form's curated list-price fields (the whole point of the fill). An absent
+ * price is not an error: the field is null and the form leaves it for the
+ * operator. The context window and the modalities remain deliberately absent:
+ * the backend records those itself from the same catalog (on save, on launch,
+ * and on the 24-hour refresh), so they are never form state to begin with.
  */
 export type ModelListingOut = {
   /**
@@ -366,6 +401,18 @@ export type ModelListingOut = {
    * OpenRouter's prose description, or null when it publishes none.
    */
   description: string | null;
+  /**
+   * The official endpoint's current input price per Mtok in USD, or null.
+   */
+  inputPerMtok: number | null;
+  /**
+   * The official endpoint's current cached-input price per Mtok in USD, or null.
+   */
+  cachedInputPerMtok: number | null;
+  /**
+   * The official endpoint's current output price per Mtok in USD, or null.
+   */
+  outputPerMtok: number | null;
 };
 
 /**

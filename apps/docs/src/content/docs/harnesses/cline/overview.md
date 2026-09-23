@@ -4,14 +4,14 @@ title: Overview
 
 Cline (slug `cline`) is a coding agent driven non-interactively through its
 `cline` CLI. It reaches its model through OpenRouter, so it reports OpenRouter
-model IDs and is priced from OpenRouter's listed rates. The harness itself is
-documented at [cline.bot](https://cline.bot/).
+model IDs and is priced from the model's curated list price. The harness itself
+is documented at [cline.bot](https://cline.bot/).
 
 ## Model IDs
 
 Cline runs with `--provider openrouter`, so its model IDs are OpenRouter
-provider-prefixed slugs, launched and priced unchanged. The following are
-illustrative, not exhaustive:
+provider-prefixed slugs, launched unchanged and priced from the model's list
+price. The following are illustrative, not exhaustive:
 
 - `z-ai/glm-5.2`
 - `moonshotai/kimi-k2.7-code`
@@ -44,8 +44,9 @@ same name. See [Authentication](/harnesses/cline/authentication/).
 
 ## Pricing
 
-Cline's model IDs are already OpenRouter slugs, so the comparable-cost lookup
-uses them as reported. A trailing variant tag such as `:free` selects a pricing
-route rather than a different model, so it is stripped and the model is priced
-at its base rate. Cline reports no run cost of its own, so the comparable cost
-is always OpenRouter-derived. See [Metrics](/harnesses/cline/metrics/).
+Cline's model IDs are already OpenRouter slugs, so they resolve to the catalog
+entry whose list price yields the comparable cost. A trailing variant tag such
+as `:free` selects a pricing route rather than a different model, so it is
+stripped and the model is priced at its list price. Cline reports no run cost of
+its own, so its actual cost equals the comparable cost. See
+[Metrics](/harnesses/cline/metrics/).

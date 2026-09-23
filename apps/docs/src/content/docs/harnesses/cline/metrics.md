@@ -32,6 +32,6 @@ surfaces reasoning content when Cline reports it as a distinct block.
 
 ## Cost
 
-Cline reports no run cost of its own, so the comparable cost is derived from
-OpenRouter's listed per-token prices for the model used, applied to the recorded
+Cline reports no run cost of its own, so the comparable cost is computed from
+the list price curated on the model's catalog entry, applied to the recorded
 token classes. See [Cost](/components/core/metrics/#cost).

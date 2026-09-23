@@ -232,6 +232,8 @@ function models(): ModelSummary[] {
       modelIds: [FIXTURE_IDS.modelId],
       aliases: [{ slug: FIXTURE_IDS.modelId, harnessFamily: "openrouter" }],
       prices: null,
+      listPrice: null,
+      listPriceAsOf: null,
       priceHistory: [],
       contextLength: null,
       providerPin: null,

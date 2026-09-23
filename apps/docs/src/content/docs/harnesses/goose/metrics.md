@@ -29,7 +29,8 @@ participates in token comparisons.
 
 ## Cost
 
-Goose reports no cost of its own, so the comparable cost is derived from the
-OpenRouter prices for the model used, applied to the normalized token classes.
-The model ID is an OpenRouter slug used unchanged for that lookup. See
-[Metrics](/components/core/metrics/) for the cost and token-class contract.
+Goose reports no cost of its own, so the comparable cost is computed from the
+list price curated on the model's catalog entry, applied to the normalized
+token classes. The model ID is an OpenRouter slug that resolves to the entry
+unchanged. See [Metrics](/components/core/metrics/) for the cost and token-class
+contract.

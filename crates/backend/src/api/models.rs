@@ -71,8 +71,18 @@ pub struct ModelOut {
     /// family it is usable with (so a run form can offer only the slugs the
     /// selected harness can launch).
     pub aliases: Vec<AliasOut>,
-    /// The latest observed comparable price, or null when none is recorded.
+    /// The latest observed **billed rate** — what the official provider's
+    /// endpoint charges right now — or null when none is recorded. A run's
+    /// comparable cost is computed from [`list_price`](Self::list_price), not
+    /// this.
     pub price: Option<ModelPricesOut>,
+    /// The curated developer list price (per-token USD) a run's comparable cost
+    /// is computed from — all-or-nothing: `Some` only when all three prices are
+    /// set. Null for a derived or unpriced model.
+    pub list_price: Option<ModelPricesOut>,
+    /// The date the list-price figures were taken, as the operator recorded it,
+    /// or null.
+    pub list_price_as_of: Option<String>,
     /// The observed price history, ascending, consecutive-equal deduped.
     pub price_history: Vec<PriceObservationOut>,
     /// The latest observed context window in tokens, or null.
@@ -160,6 +170,26 @@ pub struct ModelConfigInput {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub provider_pin: Option<String>,
+    /// The developer's published list price per **Mtok** of input, in USD — the
+    /// unit every developer pricing page publishes; the store carries per token.
+    /// The list-price write is all-or-nothing: all three prices (plus
+    /// `list_price_as_of`) or none; absent on update preserves the stored set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub list_price_input_per_mtok: Option<f64>,
+    /// The developer's published list price per **Mtok** of cached input, in USD.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub list_price_cached_input_per_mtok: Option<f64>,
+    /// The developer's published list price per **Mtok** of output, in USD.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub list_price_output_per_mtok: Option<f64>,
+    /// The date the operator took the list-price figures (trimmed; empty means
+    /// none).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub list_price_as_of: Option<String>,
     pub description: Option<String>,
     /// The stored provider-logo SVG (already fetched via `POST /models/logo`).
     pub logo_svg: Option<String>,
@@ -186,12 +216,13 @@ pub struct ModelSeedOut {
 }
 
 /// The `GET /models/openrouter` response: the descriptive facts OpenRouter
-/// publishes about a model, for the config form to fill itself in with.
-///
-/// Only the fields a curator would otherwise retype are here. Prices, the context
-/// window, and the modalities are deliberately absent: the backend records those
-/// itself from the same catalog (on save, on launch, and on the 24-hour refresh),
-/// so they are never form state to begin with.
+/// publishes about a model, for the config form to fill itself in with, plus the
+/// official endpoint's current prices scaled to per Mtok — the seed figures for
+/// the form's curated list-price fields (the whole point of the fill). An absent
+/// price is not an error: the field is null and the form leaves it for the
+/// operator. The context window and the modalities remain deliberately absent:
+/// the backend records those itself from the same catalog (on save, on launch,
+/// and on the 24-hour refresh), so they are never form state to begin with.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -202,6 +233,12 @@ pub struct ModelListingOut {
     pub provider: String,
     /// OpenRouter's prose description, or null when it publishes none.
     pub description: Option<String>,
+    /// The official endpoint's current input price per Mtok in USD, or null.
+    pub input_per_mtok: Option<f64>,
+    /// The official endpoint's current cached-input price per Mtok in USD, or null.
+    pub cached_input_per_mtok: Option<f64>,
+    /// The official endpoint's current output price per Mtok in USD, or null.
+    pub output_per_mtok: Option<f64>,
 }
 
 /// The `POST /models/logo` request/response.
@@ -311,6 +348,81 @@ async fn write_config(
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
 
+    // The list-price write is all-or-nothing: all three prices (finite, >= 0)
+    // plus the as-of date, or the model keeps whatever it had. The wire carries
+    // per-Mtok (the unit every developer pricing page publishes); the store
+    // carries per token.
+    let prices_in = [
+        input.list_price_input_per_mtok,
+        input.list_price_cached_input_per_mtok,
+        input.list_price_output_per_mtok,
+    ];
+    let as_of = input
+        .list_price_as_of
+        .map(|d| d.trim().to_string())
+        .filter(|d| !d.is_empty());
+    let (
+        list_price_input,
+        list_price_cached_input,
+        list_price_output,
+        list_price_as_of,
+        list_price_source,
+    ) = if prices_in.iter().all(Option::is_none) && as_of.is_none() {
+        // No list-price fields at all: preserve the stored set on update;
+        // store nothing on create.
+        let existing = state
+            .db
+            .get_model_config(&slug)
+            .await
+            .map_err(ApiError::from)?;
+        match existing {
+            Some(existing) => (
+                existing.config.list_price_input,
+                existing.config.list_price_cached_input,
+                existing.config.list_price_output,
+                existing.config.list_price_as_of,
+                existing.config.list_price_source,
+            ),
+            None => (None, None, None, None, None),
+        }
+    } else {
+        let [
+            Some(input_per_mtok),
+            Some(cached_per_mtok),
+            Some(output_per_mtok),
+        ] = prices_in
+        else {
+            return Err(ApiError::unprocessable(
+                "model list price is all-or-nothing: set listPriceInputPerMtok, listPriceCachedInputPerMtok, and listPriceOutputPerMtok together",
+            ));
+        };
+        for (field, value) in [
+            ("listPriceInputPerMtok", input_per_mtok),
+            ("listPriceCachedInputPerMtok", cached_per_mtok),
+            ("listPriceOutputPerMtok", output_per_mtok),
+        ] {
+            if !value.is_finite() || value < 0.0 {
+                return Err(ApiError::unprocessable(format!(
+                    "model.{field} must be a finite, non-negative price"
+                )));
+            }
+        }
+        let Some(as_of) = as_of else {
+            return Err(ApiError::unprocessable(
+                "model list price is dated: set listPriceAsOf to the date the prices were taken",
+            ));
+        };
+        (
+            Some(input_per_mtok / 1_000_000.0),
+            Some(cached_per_mtok / 1_000_000.0),
+            Some(output_per_mtok / 1_000_000.0),
+            Some(as_of),
+            // The operator typed/confirmed the set (the form's Fill merely
+            // seeds the same fields).
+            Some("hand".to_string()),
+        )
+    };
+
     state
         .db
         .upsert_model_config(ModelConfigWrite {
@@ -325,6 +437,11 @@ async fn write_config(
                 .provider_pin
                 .map(|slug| slug.trim().to_string())
                 .filter(|slug| !slug.is_empty()),
+            list_price_input,
+            list_price_cached_input,
+            list_price_output,
+            list_price_as_of,
+            list_price_source,
             aliases,
             now,
         })
@@ -465,10 +582,18 @@ pub async fn openrouter(
         state.prices.model_listing(slug).await.map_err(|err| {
             ApiError::not_found(format!("looking up `{slug}` on OpenRouter: {err}"))
         })?;
+    // The official endpoint's current prices seed the form's list-price fields.
+    // A failure or absent price is not an error — the field is null and the form
+    // leaves it for the operator.
+    let official = state.prices.official_prices(slug).await.ok();
+    let per_mtok = |price: Option<f64>| price.map(|p| p * 1_000_000.0);
     Ok(Json(ModelListingOut {
         name: listing.name,
         provider: listing.provider,
         description: listing.description,
+        input_per_mtok: per_mtok(official.as_ref().and_then(|p| p.uncached_input)),
+        cached_input_per_mtok: per_mtok(official.as_ref().and_then(|p| p.cached_input)),
+        output_per_mtok: per_mtok(official.and_then(|p| p.output)),
     }))
 }
 
@@ -548,6 +673,9 @@ async fn latest_launch_facts(
             provider_pin: row
                 .provider_pin
                 .filter(|provider| !provider.trim().is_empty()),
+            // The stored observation keeps the official endpoint's price, not every
+            // route's; a launch reads no route price.
+            route_prices: Vec::new(),
         }))
 }
 
@@ -623,6 +751,23 @@ pub fn compose_catalog(
             .provider_pin
             .clone()
             .filter(|provider| !provider.trim().is_empty());
+        // All-or-nothing: the list price is `Some` only when all three columns are.
+        let list_price = match (
+            config.list_price_input,
+            config.list_price_cached_input,
+            config.list_price_output,
+        ) {
+            (Some(uncached_input), Some(cached_input), Some(output)) => Some(ModelPricesOut {
+                uncached_input: Some(uncached_input),
+                cached_input: Some(cached_input),
+                output: Some(output),
+            }),
+            _ => None,
+        };
+        let list_price_as_of = list_price
+            .is_some()
+            .then(|| config.list_price_as_of.clone())
+            .flatten();
         out.push(ModelOut {
             slug: config.slug.clone(),
             name: config.display_name.clone(),
@@ -640,6 +785,8 @@ pub fn compose_catalog(
                 })
                 .collect(),
             price: facts.price,
+            list_price,
+            list_price_as_of,
             price_history: series,
             context_length: facts.context_length,
             released_at: facts.released_at,
@@ -676,6 +823,8 @@ pub fn compose_catalog(
                 harness_family: family,
             }],
             price: facts.price,
+            list_price: None,
+            list_price_as_of: None,
             price_history: series,
             context_length: facts.context_length,
             released_at: facts.released_at,

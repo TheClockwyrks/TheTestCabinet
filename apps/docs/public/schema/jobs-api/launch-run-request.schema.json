@@ -41,6 +41,30 @@
         }
       },
       "type": "object"
+    },
+    "TokenPrices": {
+      "description": "Per-token prices (USD) used to compute the comparable cost.\n\nThese are the model developer's published list prices, curated on the\nmodel's catalog entry — not the billed rate of whichever endpoint served the\nrun. Reasoning tokens are priced at the output rate, so no separate field is\nneeded.\n\nEach price is optional: `None` means the price is **unknown** (OpenRouter\ndoes not list one, or lists a nonsensical value such as a negative sentinel),\nwhich is distinct from `Some(0.0)` (a genuinely free class). A class priced\n`None` poisons any cost it contributes to rather than being silently treated\nas free — see [`Cost::comparable_from`].",
+      "properties": {
+        "cachedInput": {
+          "default": null,
+          "description": "Price per cached input token, or `None` when unknown.",
+          "format": "double",
+          "type": ["number", "null"]
+        },
+        "output": {
+          "default": null,
+          "description": "Price per output token (also applied to reasoning tokens), or `None` when\nunknown.",
+          "format": "double",
+          "type": ["number", "null"]
+        },
+        "uncachedInput": {
+          "default": null,
+          "description": "Price per uncached input token, or `None` when unknown.",
+          "format": "double",
+          "type": ["number", "null"]
+        }
+      },
+      "type": "object"
     }
   },
   "$id": "https://docs.testcabinet.ai/schema/jobs-api/launch-run-request.schema.json",
@@ -77,6 +101,13 @@
       "description": "The input modalities each model this **gg** run may bind accepts (`text`,\n`image`, `file`, …), as the model catalog observed them.\n\n**Filled in by the backend at enqueue, not sent by a client**, on the same terms\nas [`gg_model_windows`](Self::gg_model_windows) and from the same lookup. A model\nthe catalog has no modality list for is simply **absent** from the map, which gg\nreads as unknown rather than as \"text only\": it will try an image and recover if\nthe provider refuses it. Empty for every non-gg run.",
       "type": "object"
     },
+    "ggModelPrices": {
+      "additionalProperties": {
+        "$ref": "#/$defs/TokenPrices"
+      },
+      "description": "The curated **list price** (USD per token) each model this **gg** run may\nbind is scored at, resolved from the model catalog at enqueue and stamped\nhere on the same terms as [`gg_model_windows`](Self::gg_model_windows).\n\nA run's comparable cost is computed from the developer's published list\nprice — entered on the model's catalog entry — and nothing else, so the\nfigure is stable across providers and discounts. A gg run binding a model\nwith no list price is refused at enqueue rather than priced off whatever\na provider happened to charge that day. Empty for every non-gg run, whose\nsingle model's price rides in [`model_prices`](Self::model_prices).",
+      "type": "object"
+    },
     "ggModelProviders": {
       "additionalProperties": {
         "type": "string"
@@ -107,6 +138,17 @@
     "model": {
       "description": "Opaque model id passed to the harness.",
       "type": "string"
+    },
+    "modelPrices": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TokenPrices"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The curated list price (USD per token) of the launch's model, resolved from\nthe model catalog at enqueue and stamped here so the driver prices the run's\ncomparable cost from it without reaching the catalog. `None` for a gg run\n(whose per-model prices ride in `gg_model_prices`) and for a run enqueued\nbefore the catalog priced models."
     },
     "orchestrator": {
       "default": null,

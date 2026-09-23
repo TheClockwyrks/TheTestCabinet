@@ -990,6 +990,46 @@ plan's or ladder's [`halt`](#halting). Cancelling a single job by id remains
 `cancel-active` and `cancel-all` discard work in progress, so a client confirms
 first. `cancel-waiting` needs no confirmation.
 
+## Model catalog
+
+The model catalog is the list of subjects a run can be attributed to (see
+[Adding or Updating a Model](/guides/devops/adding-or-updating-a-model/)).
+`GET /models` and `GET /models/seed` are open; the rest require a bearer token.
+
+| endpoint                       | does                                                  |
+| ------------------------------ | ----------------------------------------------------- |
+| `GET /models`                  | the merged catalog of curated and run-derived entries |
+| `POST /models`                 | create a curated entry                                |
+| `PUT /models/{slug}`           | update a curated entry                                |
+| `DELETE /models/{slug}`        | remove a curated entry                                |
+| `GET /models/seed?runId=`      | a blank form seeded from a run's model id             |
+| `GET /models/openrouter?slug=` | OpenRouter's facts about a model, for Fill            |
+| `POST /models/logo`            | fetch and sanitize an svgl.app logo                   |
+
+Each `GET /models` entry carries its display fields, aliases with their harness
+families, OpenRouter slug, and provider pin. `listPrice` is the operator-entered
+list price, per token, with `listPriceAsOf` the date the figures were taken; it
+is null until all three rates are set. `price` is the latest billed rate, and
+`priceHistory` the billed-rate history.
+
+A write carries the list price per Mtok as `listPriceInputPerMtok`,
+`listPriceCachedInputPerMtok`, and `listPriceOutputPerMtok`, with
+`listPriceAsOf`. The three rates are written together and dated, or the write is
+refused with `422`. A write that omits all four keeps the stored list price.
+
+`GET /models/openrouter` answers the display name, provider, and description,
+plus `inputPerMtok`, `cachedInputPerMtok`, and `outputPerMtok` read from the
+official provider's endpoint in the model's `/models/{id}/endpoints` listing.
+Each rate is null when that endpoint lists none. The form seeds its list-price
+fields from them for the operator to confirm or correct against the developer's
+pricing page. A slug OpenRouter does not list is a `404`.
+
+A run's [comparable cost](/components/core/metrics/#cost) is priced from the
+list price, so every enqueue path refuses a launch naming a model with none, or a
+gg launch binding one, with the reason named. The billed rate is observed from
+the official endpoint on run completion, on a 24-hour refresh, and missing-only
+at enqueue and on save. It never changes the list price.
+
 ## Model probes
 
 A model probe is a responses-as-code readiness check of one catalog model,

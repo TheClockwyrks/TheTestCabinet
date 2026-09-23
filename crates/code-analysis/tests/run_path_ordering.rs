@@ -54,10 +54,10 @@ use test_cabinet_core::{
     CodeAnalysisDocument, CodeAuthoredBasis, CodeTreeBasis, ContainerHandle, ContainerRuntime,
     ContainerSpec, ContainerStart, EngineCatalog, EngineSelection, EventFormat, EventSink,
     ExecOutput, FsRepoSeeder, HarnessInvocation, HarnessOutcome, HarnessRegistry, HarnessSlug,
-    MediaKind, NoopEventSink, OpenRouterPrices, OrchestratorCatalog, OrchestratorSelection,
-    OutputSink, OutputStream, PrerenderedReferenceRenderer, ProofFile, RenderedReference,
-    Result as CoreResult, RunCancellation, RunEngine, RunRequest, TestCaseCatalog, TestCaseVersion,
-    TokenCounts, Usage, ValidationSummary, Validator, Variant,
+    MediaKind, NoopEventSink, OrchestratorCatalog, OrchestratorSelection, OutputSink, OutputStream,
+    PrerenderedReferenceRenderer, ProofFile, RenderedReference, Result as CoreResult,
+    RunCancellation, RunEngine, RunRequest, TestCaseCatalog, TestCaseVersion, TokenCounts, Usage,
+    ValidationSummary, Validator, Variant,
 };
 
 /// The repository's `test-cases/` directory — the real catalog, so the run is seeded from
@@ -392,7 +392,6 @@ async fn drive(cancel: &RunCancellation) -> Ran {
             steps: Arc::clone(&steps),
             collected: Arc::clone(&collected),
         },
-        prices: OpenRouterPrices::new(),
         output_dir: out_dir.path().to_path_buf(),
         creds: None,
         prior_game_jam_entries: Vec::new(),
@@ -413,6 +412,8 @@ async fn drive(cancel: &RunCancellation) -> Ran {
         gg_model_windows: Default::default(),
         gg_model_providers: Default::default(),
         gg_model_modalities: Default::default(),
+        gg_model_prices: Default::default(),
+        model_prices: None,
     };
 
     let record = engine

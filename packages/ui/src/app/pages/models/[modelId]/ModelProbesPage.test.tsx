@@ -46,6 +46,8 @@ const MODEL = {
   modelIds: ["anthropic/claude-x"],
   aliases: [],
   prices: null,
+  listPrice: null,
+  listPriceAsOf: null,
   priceHistory: [],
   contextLength: null,
   providerPin: null,

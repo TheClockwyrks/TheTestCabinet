@@ -30,6 +30,6 @@ the uncached input class.
 
 ## Cost
 
-The comparable cost is derived from OpenRouter's listed per-token prices for the
-model used, applied to the recorded token classes, rather than from the per-step
-cost Kilo Code reports. See [Cost](/components/core/metrics/#cost).
+The comparable cost is computed from the list price curated on the model's
+catalog entry, applied to the recorded token classes, rather than from the
+per-step cost Kilo Code reports. See [Cost](/components/core/metrics/#cost).

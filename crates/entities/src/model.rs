@@ -10,7 +10,7 @@
 
 use sea_orm::entity::prelude::*;
 
-#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
 #[sea_orm(table_name = "model")]
 pub struct Model {
     /// The stable curated slug (the catalog identity); the primary key.
@@ -39,6 +39,27 @@ pub struct Model {
     /// id. `NULL` means the observed listing name is the pin.
     #[sea_orm(nullable)]
     pub provider_pin: Option<String>,
+    /// The developer's published list price per **token** of input, in USD (the
+    /// form enters per Mtok; the store carries per token). `NULL` when the model
+    /// carries no curated list price.
+    #[sea_orm(nullable)]
+    pub list_price_input: Option<f64>,
+    /// The developer's published list price per **token** of cached input, in
+    /// USD. `NULL` when the model carries no curated list price.
+    #[sea_orm(nullable)]
+    pub list_price_cached_input: Option<f64>,
+    /// The developer's published list price per **token** of output, in USD.
+    /// `NULL` when the model carries no curated list price.
+    #[sea_orm(nullable)]
+    pub list_price_output: Option<f64>,
+    /// The date the list-price figures were taken, as the operator recorded it,
+    /// or `NULL` when the model carries no curated list price.
+    #[sea_orm(nullable)]
+    pub list_price_as_of: Option<String>,
+    /// Where the list-price figures came from (for example `hand` for an
+    /// operator-entered set), or `NULL` when the model carries none.
+    #[sea_orm(nullable)]
+    pub list_price_source: Option<String>,
     /// RFC 3339 of when this curated row was created.
     pub created_at: String,
     /// RFC 3339 of the last update to this curated row.

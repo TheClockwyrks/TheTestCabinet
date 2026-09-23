@@ -83,10 +83,12 @@ const MODEL_COLUMNS: readonly ModelColumn[] = [
     min: 64,
     numeric: true,
     optional: true,
-    sortKey: (model) => perMillion(model.prices?.uncachedInput ?? null),
+    // The catalog's headline price is the curated list price — the figure a
+    // run's comparable cost is computed from — not the observed billed rate.
+    sortKey: (model) => perMillion(model.listPrice?.uncachedInput ?? null),
     render: (model) => (
       <Price
-        value={perMillion(model.prices?.uncachedInput ?? null)}
+        value={perMillion(model.listPrice?.uncachedInput ?? null)}
         label="Input"
       />
     ),
@@ -98,9 +100,12 @@ const MODEL_COLUMNS: readonly ModelColumn[] = [
     min: 64,
     numeric: true,
     optional: true,
-    sortKey: (model) => perMillion(model.prices?.output ?? null),
+    sortKey: (model) => perMillion(model.listPrice?.output ?? null),
     render: (model) => (
-      <Price value={perMillion(model.prices?.output ?? null)} label="Output" />
+      <Price
+        value={perMillion(model.listPrice?.output ?? null)}
+        label="Output"
+      />
     ),
   },
   {
@@ -147,7 +152,7 @@ interface ModelsPageProps {
 }
 
 // Models: the curated catalog as a dense, column-aligned table — one row per
-// model showing its provider, name, comparable per-token input/output prices,
+// model showing its provider, name, list-price input/output rates per Mtok,
 // and context window, each row linking to the model's detail page. Rows default
 // to catalog order; the headers can be clicked to sort by any column, columns are
 // user-resizable, and the optional columns can be shown/hidden via the picker.
@@ -305,8 +310,8 @@ export function ModelsPage({ tab = "models" }: ModelsPageProps) {
   }
 }
 
-// A per-token price cell, right-aligned to align like printed figures, or a muted
-// dash when the catalog has no resolved price for this model.
+// A per-Mtok price cell, right-aligned to align like printed figures, or a
+// muted dash when the catalog has no list price for this model.
 function Price({ value, label }: { value: number | null; label: string }) {
   return (
     <span

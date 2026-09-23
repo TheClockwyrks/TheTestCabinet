@@ -132,6 +132,8 @@ fn launch_models_covers_the_run_model_and_every_bound_agent_model() {
         gg_model_windows: Default::default(),
         gg_model_providers: Default::default(),
         gg_model_modalities: Default::default(),
+        gg_model_prices: Default::default(),
+        model_prices: None,
     };
 
     assert_eq!(
@@ -161,11 +163,112 @@ fn launch_models_of_a_third_party_harness_run_is_its_one_model() {
         gg_model_windows: Default::default(),
         gg_model_providers: Default::default(),
         gg_model_modalities: Default::default(),
+        gg_model_prices: Default::default(),
+        model_prices: None,
     };
 
     assert_eq!(
         launch_models(&body),
         vec![("claude-opus-4-8".to_string(), HarnessSlug::Claude)]
+    );
+}
+
+// --- The list price a launch is scored at -------------------------------------
+
+/// A conventional launch body against `model`, for the price-resolution tests.
+fn launch_body_for(harness: HarnessSlug, model: &str) -> LaunchBody {
+    LaunchBody {
+        test_case: "pong".to_string(),
+        version: "v1.0.0".to_string(),
+        variant: "base".to_string(),
+        harness,
+        model: model.to_string(),
+        orchestrator: None,
+        engine: None,
+        max_runtime_seconds: None,
+        auth_mode: None,
+        retry_count: None,
+        gg_capability_set: None,
+        gg_model_windows: Default::default(),
+        gg_model_providers: Default::default(),
+        gg_model_modalities: Default::default(),
+        gg_model_prices: Default::default(),
+        model_prices: None,
+    }
+}
+
+#[tokio::test]
+async fn resolve_model_price_stamps_the_curated_list_price() {
+    let db = crate::db::Db::connect_in_memory().await.unwrap();
+    db.upsert_model_config(crate::db::tests::priced_model_write(
+        "deepseek-v4",
+        "DeepSeek V4",
+        &["deepseek/deepseek-v4"],
+    ))
+    .await
+    .unwrap();
+
+    let body = launch_body_for(HarnessSlug::Kilo, "deepseek/deepseek-v4");
+    let prices = resolve_model_price(&db, &body)
+        .await
+        .unwrap()
+        .expect("a priced OpenRouter-routed model resolves");
+    assert_eq!(prices.uncached_input, Some(3e-6));
+    assert_eq!(prices.output, Some(15e-6));
+}
+
+#[tokio::test]
+async fn resolve_model_price_refuses_an_unpriced_openrouter_routed_model() {
+    let db = crate::db::Db::connect_in_memory().await.unwrap();
+    db.upsert_model_config(crate::db::tests::model_write(
+        "deepseek-v4",
+        "DeepSeek V4",
+        &["deepseek/deepseek-v4"],
+    ))
+    .await
+    .unwrap();
+
+    let body = launch_body_for(HarnessSlug::Kilo, "deepseek/deepseek-v4");
+    let reason = resolve_model_price(&db, &body)
+        .await
+        .expect_err("an unpriced model refuses the launch");
+    assert!(reason.contains("`deepseek/deepseek-v4`"), "{reason}");
+    assert!(reason.contains("no list price"), "{reason}");
+
+    // And an id the catalog does not know at all refuses too.
+    let body = launch_body_for(HarnessSlug::Kilo, "unlisted/model");
+    let reason = resolve_model_price(&db, &body)
+        .await
+        .expect_err("an uncurated model refuses the launch");
+    assert!(reason.contains("not in the model catalog"), "{reason}");
+}
+
+/// A provider-native harness is priced from the list price like every other: a Claude
+/// Code run reports its own exact cost, but that is the billed figure, so its model is
+/// refused without a list price and stamped with one when it has it.
+#[tokio::test]
+async fn resolve_model_price_prices_a_provider_native_harness_from_the_list_price() {
+    let db = crate::db::Db::connect_in_memory().await.unwrap();
+    let body = launch_body_for(HarnessSlug::Claude, "claude-opus-4-8");
+    let reason = resolve_model_price(&db, &body)
+        .await
+        .expect_err("an uncurated native model refuses the launch");
+    assert!(reason.contains("`claude-opus-4-8`"), "{reason}");
+
+    db.upsert_model_config(crate::db::tests::priced_model_write(
+        "opus",
+        "Claude Opus 4.8",
+        &["claude-opus-4-8"],
+    ))
+    .await
+    .unwrap();
+    assert!(
+        resolve_model_price(&db, &body)
+            .await
+            .unwrap()
+            .expect("a priced native model is stamped")
+            .output
+            .is_some()
     );
 }
 

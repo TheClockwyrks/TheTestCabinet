@@ -213,6 +213,12 @@ impl Config {
             // The per-model input modalities resolved alongside the windows, which tell
             // gg which of its models may be shown a reference image.
             gg_model_modalities: launch.gg_model_modalities.clone(),
+            // The per-model curated list prices resolved alongside the windows, which
+            // are the only basis a run's comparable cost is computed from — the engine
+            // never re-fetches a price for a catalog-driven run.
+            gg_model_prices: launch.gg_model_prices.clone(),
+            // …and the single model's list price for a non-gg run, on the same terms.
+            model_prices: launch.model_prices,
         }
     }
 }

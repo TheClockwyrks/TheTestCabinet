@@ -241,6 +241,8 @@ fn build_new_job_leaves_gg_config_null_for_a_conventional_run() {
         gg_model_windows: Default::default(),
         gg_model_providers: Default::default(),
         gg_model_modalities: Default::default(),
+        gg_model_prices: Default::default(),
+        model_prices: None,
     };
     let new = build_new_job(
         &launch,
@@ -321,6 +323,35 @@ fn unreachable_prices() -> test_cabinet_core::OpenRouterPrices {
     test_cabinet_core::OpenRouterPrices::with_endpoint("http://127.0.0.1:0/models")
 }
 
+/// A gg launch's pricing rides per-bound-model in `gg_model_prices`, resolved from
+/// the model catalog at enqueue: a model without a curated list price refuses the
+/// launch. Curate `model_id` fully priced, so the tests below hinge on the fact they
+/// mean to exercise (the window, the pin, the modalities), never on pricing.
+async fn curate_priced(db: &Db, model_id: &str) {
+    db.upsert_model_config(crate::db::ModelConfigWrite {
+        slug: model_id.replace('/', "-"),
+        display_name: model_id.to_string(),
+        provider: model_id.split('/').next().unwrap_or(model_id).to_string(),
+        provider_logo_url: None,
+        provider_logo_svg: None,
+        description_md: None,
+        openrouter_slug: Some(model_id.to_string()),
+        provider_pin: None,
+        list_price_input: Some(1e-6),
+        list_price_cached_input: Some(1e-7),
+        list_price_output: Some(2e-6),
+        list_price_as_of: Some("2026-10-01".to_string()),
+        list_price_source: Some("hand".to_string()),
+        aliases: vec![crate::db::AliasEntry {
+            alias: model_id.to_string(),
+            family: test_cabinet_core::run_record::HarnessFamily::Openrouter,
+        }],
+        now: "2026-01-01T00:00:00Z".to_string(),
+    })
+    .await
+    .unwrap();
+}
+
 /// Enqueuing a gg run resolves the context window of **every model it binds** from the
 /// model catalog and stamps it onto the launch body, so the figure travels to the run
 /// rather than being looked up from inside the run container.
@@ -333,6 +364,8 @@ async fn launch_resolves_the_bound_models_context_windows() {
     db.insert_price_observation(window_observation("openai/gpt-5.4-mini", 400_000))
         .await
         .unwrap();
+    curate_priced(&db, "anthropic/claude-opus-4.8").await;
+    curate_priced(&db, "openai/gpt-5.4-mini").await;
 
     let mut set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
     set.agents.push(test_cabinet_core::gg::GgAgentConfig {
@@ -368,6 +401,9 @@ async fn launch_resolves_the_bound_models_context_windows() {
 #[tokio::test]
 async fn launch_resolves_the_bound_models_input_modalities() {
     let db = Db::connect_in_memory().await.unwrap();
+    curate_priced(&db, "anthropic/claude-opus-4.8").await;
+    curate_priced(&db, "z-ai/glm-5.2").await;
+    curate_priced(&db, "mystery/model").await;
     let mut seeing = window_observation("anthropic/claude-opus-4.8", 200_000);
     seeing.input_modalities = Some("text,image".to_string());
     db.insert_price_observation(seeing).await.unwrap();
@@ -422,6 +458,7 @@ async fn launch_resolves_the_bound_models_input_modalities() {
 #[tokio::test]
 async fn unknown_modalities_do_not_block_a_launch() {
     let db = Db::connect_in_memory().await.unwrap();
+    curate_priced(&db, "anthropic/claude-opus-4.8").await;
     // A window and nothing else — exactly what a row recorded before modalities existed
     // looks like.
     db.insert_price_observation(window_observation("anthropic/claude-opus-4.8", 200_000))
@@ -496,6 +533,7 @@ async fn endpoints_listing(endpoints: serde_json::Value) -> test_cabinet_core::O
 #[tokio::test]
 async fn launch_pins_an_unpinned_model_to_its_developers_endpoint() {
     let db = Db::connect_in_memory().await.unwrap();
+    curate_priced(&db, "z-ai/glm-5.2").await;
     let mut observation = window_observation("z-ai/glm-5.2", 1_048_576);
     observation.provider_pin = None;
     db.insert_price_observation(observation).await.unwrap();
@@ -565,6 +603,11 @@ async fn a_hand_set_pin_wins_over_the_observed_one() {
         description_md: None,
         openrouter_slug: Some("qwen/qwen3-coder".to_string()),
         provider_pin: Some("Alibaba".to_string()),
+        list_price_input: Some(1e-6),
+        list_price_cached_input: Some(1e-7),
+        list_price_output: Some(2e-6),
+        list_price_as_of: Some("2026-10-01".to_string()),
+        list_price_source: Some("hand".to_string()),
         aliases: vec![crate::db::AliasEntry {
             alias: "qwen/qwen3-coder".to_string(),
             family: test_cabinet_core::run_record::HarnessFamily::Openrouter,
@@ -668,6 +711,8 @@ async fn launch_resolves_nothing_for_a_conventional_run() {
         gg_model_windows: Default::default(),
         gg_model_providers: Default::default(),
         gg_model_modalities: Default::default(),
+        gg_model_prices: Default::default(),
+        model_prices: None,
     };
 
     resolve_gg_model_facts(&db, &unreachable_prices(), &mut launch)

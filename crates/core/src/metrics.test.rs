@@ -24,6 +24,25 @@ fn a_run_with_no_class_reported_costs_an_unknown_amount_not_zero() {
 }
 
 #[test]
+fn a_list_price_omitting_a_class_reads_that_class_as_unknown() {
+    // The catalog's curated list price names only the classes a model charges for;
+    // a class it does not mention (most often the cache-read rate) deserializes as
+    // unknown rather than failing the whole price, so the launch it is stamped on
+    // still parses.
+    let parsed: TokenPrices =
+        serde_json::from_str(r#"{"uncachedInput":0.000002,"output":0.00001}"#)
+            .expect("a list price with an omitted class parses");
+    assert_eq!(
+        parsed,
+        TokenPrices {
+            uncached_input: Some(0.000_002),
+            cached_input: None,
+            output: Some(0.000_01),
+        }
+    );
+}
+
+#[test]
 fn a_run_that_genuinely_used_nothing_costs_zero() {
     // Reported, and zero: a real (if odd) figure, and distinct from the case above.
     let counts = TokenCounts {
