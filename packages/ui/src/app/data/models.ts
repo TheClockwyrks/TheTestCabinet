@@ -35,8 +35,14 @@ export interface ModelSummary {
   /** The canonical model ids this model claims, each tagged with the harness
    * family it is usable with (seeds the config form and drives run→model matching). */
   aliases: ModelAlias[];
-  /** The latest observed comparable per-token prices, or null. */
+  /** The billed rate: the latest observed per-token price of the official
+   * OpenRouter endpoint, refreshed by the backend. Null until observed. */
   prices: ModelPrices | null;
+  /** The curated developer list price (per token) a run's comparable cost is
+   * computed from, or null while the model has none. */
+  listPrice: ModelPrices | null;
+  /** The RFC 3339 date the operator took the list-price figures, or null. */
+  listPriceAsOf: string | null;
   /** The observed price history, ascending, consecutive-equal deduped. */
   priceHistory: PriceObservation[];
   /** Maximum context window in tokens, or null. */
@@ -68,6 +74,8 @@ export function toModelSummary(model: Model): ModelSummary {
     modelIds: model.coveredModelIds,
     aliases: model.aliases,
     prices: model.price,
+    listPrice: model.listPrice,
+    listPriceAsOf: model.listPriceAsOf,
     priceHistory: model.priceHistory,
     contextLength: model.contextLength,
     providerPin: model.providerPin,
