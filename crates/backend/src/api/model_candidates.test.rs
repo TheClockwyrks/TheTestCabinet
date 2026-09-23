@@ -35,6 +35,11 @@ fn curated(alias: &str, configure: impl FnOnce(&mut model::Model)) -> StoredMode
         max_output_price: None,
         banned_providers: None,
         unknown_quantization_providers: None,
+        list_price_input: None,
+        list_price_cached_input: None,
+        list_price_output: None,
+        list_price_as_of: None,
+        list_price_source: None,
         created_at: "2026-01-01T00:00:00Z".to_string(),
         updated_at: "2026-01-01T00:00:00Z".to_string(),
     };

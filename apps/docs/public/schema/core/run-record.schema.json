@@ -539,15 +539,15 @@
       "type": "object"
     },
     "CostMetrics": {
-      "description": "Cost of a run, recorded two ways.\n\nEach figure is optional: `None` means the cost is **unknown** — typically\nbecause the model's per-token prices could not be resolved (the model is\nabsent from OpenRouter's catalog, or OpenRouter lists a nonsensical price).\nThis is distinct from `Some(0.0)`, a genuinely free run. Keeping the two\napart avoids presenting an unknown cost as `$0.00`.",
+      "description": "Cost of a run, recorded two ways.\n\nEach figure is optional: `None` means the cost is **unknown** — typically\nbecause the model's per-token list prices could not be resolved (the model's\ncatalog entry curates none). This is distinct from `Some(0.0)`, a genuinely\nfree run. Keeping the two apart avoids presenting an unknown cost as `$0.00`.",
       "properties": {
         "actual": {
-          "description": "The amount actually charged for the run, recorded for reference. Equal\nto the comparable figure unless the harness reports its own exact cost.\n`None` when the cost is unknown.",
+          "description": "The amount the run was actually billed, recorded for reference: the\nharness's own accounting where it reports one, otherwise the comparable\nfigure. `None` when the cost is unknown.",
           "format": "double",
           "type": ["number", "null"]
         },
         "comparable": {
-          "description": "The canonical figure shown on the site, stable across providers. It is\nderived from token classes and OpenRouter's listed prices, except for\nharnesses that drive a single provider directly and report their own\nexact cost (such as Claude Code), where that reported cost — itself\nprovider-stable — is used instead. `None` when the cost is unknown.",
+          "description": "The canonical figure shown on the site, stable across providers. It is\ncomputed from the run's token classes and the model's curated list\nprice, and from nothing else: a billed figure never feeds it, so two\nruns of one model at different billed rates still compare on the same\nbasis. `None` when the cost is unknown.",
           "format": "double",
           "type": ["number", "null"]
         }

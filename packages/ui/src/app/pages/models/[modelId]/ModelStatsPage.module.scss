@@ -53,6 +53,15 @@
   text-shadow: none;
 }
 
+// The billed-vs-list difference under a price figure: smaller than the figure
+// itself, in the same accent when the two genuinely differ.
+.statDelta {
+  font-size: t.$font-sm;
+  font-variant-numeric: tabular-nums;
+  color: t.$color-accent;
+  @include h.halo-glow;
+}
+
 // The line under an accuracy ring qualifying its figures (run counts, and how
 // many predate the exact counters). Muted — it qualifies a figure rather than
 // being one.

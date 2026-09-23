@@ -120,6 +120,11 @@ async fn a_launch_prices_a_curated_model_through_its_openrouter_slug() {
         description_md: None,
         openrouter_slug: Some("anthropic/claude-opus-4.8".to_string()),
         provider_pin: None,
+        list_price_input: None,
+        list_price_cached_input: None,
+        list_price_output: None,
+        list_price_as_of: None,
+        list_price_source: None,
         aliases: vec![AliasEntry {
             alias: "claude-opus-4-8".to_string(),
             family: HarnessFamily::Claude,
@@ -199,6 +204,11 @@ async fn startup_prices_a_freshly_seeded_curated_catalog() {
         description_md: None,
         openrouter_slug: Some("anthropic/claude-opus-4.8".to_string()),
         provider_pin: None,
+        list_price_input: None,
+        list_price_cached_input: None,
+        list_price_output: None,
+        list_price_as_of: None,
+        list_price_source: None,
         aliases: vec![AliasEntry {
             alias: "claude-opus-4-8".to_string(),
             family: HarnessFamily::Claude,
@@ -239,6 +249,11 @@ async fn startup_seeding_is_missing_only_and_fetches_nothing() {
         description_md: None,
         openrouter_slug: Some("anthropic/claude-opus-4.8".to_string()),
         provider_pin: None,
+        list_price_input: None,
+        list_price_cached_input: None,
+        list_price_output: None,
+        list_price_as_of: None,
+        list_price_source: None,
         aliases: vec![AliasEntry {
             alias: "claude-opus-4-8".to_string(),
             family: HarnessFamily::Claude,
@@ -274,4 +289,155 @@ async fn startup_seeding_is_missing_only_and_fetches_nothing() {
         .unwrap()
         .unwrap();
     assert_eq!(observed.observed_at, "2026-01-01T00:00:00Z");
+}
+
+/// Serve a fixed `/models` catalog plus a fixed `/models/{id}/endpoints` body for every
+/// model, so a path that reads the official endpoint can be exercised end to end.
+async fn fake_openrouter_with_endpoints(
+    catalog: serde_json::Value,
+    endpoints: serde_json::Value,
+) -> OpenRouterPrices {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let app = axum::Router::new()
+        .route(
+            "/models",
+            axum::routing::get(move || {
+                let body = catalog.clone();
+                async move { axum::Json(body) }
+            }),
+        )
+        .route(
+            "/models/{*rest}",
+            axum::routing::get(move || {
+                let body = endpoints.clone();
+                async move { axum::Json(body) }
+            }),
+        );
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    OpenRouterPrices::with_endpoint(format!("http://{addr}/models"))
+}
+
+/// An endpoints listing whose official route (Z.AI, for a `z-ai/…` id) charges the list
+/// rate while a third-party route undercuts it, the way the listing's headline price in
+/// `catalog_of` does.
+fn endpoints_with_official_route() -> serde_json::Value {
+    serde_json::json!({
+        "data": {
+            "name": "Z.AI: GLM 5.3",
+            "endpoints": [
+                {
+                    "provider_name": "Cheapo",
+                    "pricing": { "prompt": "0.000001", "completion": "0.000002" },
+                },
+                {
+                    "provider_name": "Z.AI",
+                    "pricing": {
+                        "prompt": "0.0000014",
+                        "completion": "0.0000044",
+                        "input_cache_read": "0.00000026",
+                    },
+                },
+            ],
+        },
+    })
+}
+
+/// The refresh records the official endpoint's price as the billed rate, not the
+/// listing's headline price, which is whichever provider OpenRouter routes to by default.
+#[tokio::test]
+async fn the_refresh_records_the_official_endpoints_price_as_the_billed_rate() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.upsert_model_config(ModelConfigWrite {
+        openrouter_slug: Some("z-ai/glm-5.3".to_string()),
+        ..crate::db::tests::model_write("glm-5-3", "GLM 5.3", &["z-ai/glm-5.3"])
+    })
+    .await
+    .unwrap();
+    let prices =
+        fake_openrouter_with_endpoints(catalog_of("z-ai/glm-5.3"), endpoints_with_official_route())
+            .await;
+
+    assert_eq!(refresh_all_prices(&db, &prices).await.unwrap(), 1);
+
+    let observed = db
+        .latest_price("z-ai/glm-5.3")
+        .await
+        .unwrap()
+        .expect("the refresh recorded an observation");
+    assert_eq!(observed.uncached_input, Some(0.0000014));
+    assert_eq!(observed.cached_input, Some(0.00000026));
+    assert_eq!(observed.output, Some(0.0000044));
+    assert_eq!(observed.provider_pin.as_deref(), Some("Z.AI"));
+    // The catalog facts still come from the listing.
+    assert_eq!(observed.context_length, Some(400_000));
+}
+
+/// A hand-set pin names the official route where the listing spells the developer
+/// differently from the model id, and the billed rate follows it.
+#[tokio::test]
+async fn the_billed_rate_follows_a_hand_set_pin() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.upsert_model_config(ModelConfigWrite {
+        openrouter_slug: Some("qwen/qwen3-coder".to_string()),
+        provider_pin: Some("Alibaba".to_string()),
+        ..crate::db::tests::model_write("qwen3-coder", "Qwen3 Coder", &["qwen/qwen3-coder"])
+    })
+    .await
+    .unwrap();
+    let endpoints = serde_json::json!({
+        "data": {
+            "name": "Qwen: Qwen3 Coder",
+            "endpoints": [
+                {
+                    "provider_name": "Cheapo",
+                    "pricing": { "prompt": "0.000001", "completion": "0.000002" },
+                },
+                {
+                    "provider_name": "Alibaba",
+                    "pricing": { "prompt": "0.000005", "completion": "0.00001" },
+                },
+            ],
+        },
+    });
+    let prices = fake_openrouter_with_endpoints(catalog_of("qwen/qwen3-coder"), endpoints).await;
+
+    refresh_all_prices(&db, &prices).await.unwrap();
+
+    let observed = db
+        .latest_price("qwen/qwen3-coder")
+        .await
+        .unwrap()
+        .expect("the refresh recorded an observation");
+    assert_eq!(observed.uncached_input, Some(0.000005));
+    assert_eq!(observed.output, Some(0.00001));
+}
+
+/// A model with no official route keeps the listing's headline price as its billed rate.
+#[tokio::test]
+async fn a_model_with_no_official_route_records_the_headline_price() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.upsert_model_config(ModelConfigWrite {
+        openrouter_slug: Some("newco/brand-new".to_string()),
+        ..crate::db::tests::model_write("brand-new", "Brand New", &["newco/brand-new"])
+    })
+    .await
+    .unwrap();
+    let prices = fake_openrouter_with_endpoints(
+        catalog_of("newco/brand-new"),
+        endpoints_with_official_route(),
+    )
+    .await;
+
+    refresh_all_prices(&db, &prices).await.unwrap();
+
+    let observed = db
+        .latest_price("newco/brand-new")
+        .await
+        .unwrap()
+        .expect("the refresh recorded an observation");
+    assert_eq!(observed.uncached_input, Some(0.000003));
+    assert_eq!(observed.output, Some(0.000015));
 }

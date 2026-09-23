@@ -104,6 +104,8 @@ fn request(version: &TestCaseVersion, variant: &Variant) -> crate::RunRequest {
         gg_model_windows: std::collections::BTreeMap::new(),
         gg_model_providers: std::collections::BTreeMap::new(),
         gg_model_modalities: std::collections::BTreeMap::new(),
+        gg_model_prices: std::collections::BTreeMap::new(),
+        model_prices: None,
     }
 }
 

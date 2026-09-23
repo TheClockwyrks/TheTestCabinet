@@ -6430,6 +6430,23 @@ pub struct ModelConfigWrite {
     /// The providers accepted despite declaring `unknown` quantization. Empty is stored as
     /// `NULL`.
     pub unknown_quantization_providers: Vec<String>,
+    /// The developer's published list price per **token** of input, in USD (the
+    /// form enters per Mtok; the store carries per token). The write is
+    /// **all-or-nothing**: a caller writes all three prices plus
+    /// `list_price_as_of`, or nothing — the store enforces nothing but the API
+    /// layer does.
+    pub list_price_input: Option<f64>,
+    /// The developer's published list price per **token** of cached input, in
+    /// USD. See [`list_price_input`](Self::list_price_input).
+    pub list_price_cached_input: Option<f64>,
+    /// The developer's published list price per **token** of output, in USD.
+    /// See [`list_price_input`](Self::list_price_input).
+    pub list_price_output: Option<f64>,
+    /// The date the operator took the list-price figures.
+    pub list_price_as_of: Option<String>,
+    /// Where the list-price figures came from (`hand` for an operator-entered
+    /// set).
+    pub list_price_source: Option<String>,
     /// The canonical model ids this config claims, each with its harness family
     /// (at least one).
     pub aliases: Vec<AliasEntry>,
@@ -6574,6 +6591,11 @@ impl Db {
             unknown_quantization_providers: Set(provider_list_column(
                 &write.unknown_quantization_providers,
             )),
+            list_price_input: Set(write.list_price_input),
+            list_price_cached_input: Set(write.list_price_cached_input),
+            list_price_output: Set(write.list_price_output),
+            list_price_as_of: Set(write.list_price_as_of),
+            list_price_source: Set(write.list_price_source),
             created_at: Set(created_at),
             updated_at: Set(write.now),
         };
@@ -6593,6 +6615,11 @@ impl Db {
                         model::Column::MaxOutputPrice,
                         model::Column::BannedProviders,
                         model::Column::UnknownQuantizationProviders,
+                        model::Column::ListPriceInput,
+                        model::Column::ListPriceCachedInput,
+                        model::Column::ListPriceOutput,
+                        model::Column::ListPriceAsOf,
+                        model::Column::ListPriceSource,
                         model::Column::UpdatedAt,
                     ])
                     .to_owned(),
@@ -6695,6 +6722,49 @@ impl Db {
             .await?)
     }
 
+    /// The catalog's curated list price for a run's model, or a human-readable
+    /// reason the model has none. `Ok(Ok(_))` when the model is curated and fully
+    /// priced; `Ok(Err(reason))` when it is unpriced.
+    pub async fn list_price_for_run_model(
+        &self,
+        model_id: &str,
+        harness: HarnessSlug,
+    ) -> Result<std::result::Result<TokenPrices, String>> {
+        let canonical = test_cabinet_core::model_id::canonical_model_id(model_id, harness);
+        let Some(alias) = model_alias::Entity::find()
+            .filter(model_alias::Column::Alias.eq(&canonical))
+            .one(&self.conn())
+            .await?
+        else {
+            return Ok(Err(format!(
+                "model `{canonical}` is not in the model catalog; add it (the Models section) with the developer's list price to run it"
+            )));
+        };
+        let config = model::Entity::find_by_id(alias.model_slug)
+            .one(&self.conn())
+            .await?;
+        let Some(config) = config else {
+            return Ok(Err(format!(
+                "model `{canonical}` is not in the model catalog; add it (the Models section) with the developer's list price to run it"
+            )));
+        };
+        match (
+            config.list_price_input,
+            config.list_price_cached_input,
+            config.list_price_output,
+        ) {
+            (Some(uncached_input), Some(cached_input), Some(output)) => Ok(Ok(TokenPrices {
+                uncached_input: Some(uncached_input),
+                cached_input: Some(cached_input),
+                output: Some(output),
+            })),
+            _ => Ok(Err(format!(
+                "model `{canonical}` ({}) has no list price; set it on the model's catalog entry (the Models section) to run it",
+                config.display_name
+            ))),
+        }
+    }
+
     /// The curated `openrouter_slug` of the model that claims `alias`, if any. Used
     /// to price a run's model against its configured OpenRouter slug rather than a
     /// slug guessed from the run's model id.
@@ -6723,6 +6793,16 @@ impl Db {
             return Ok(None);
         };
         self.get_model_config(&row.model_slug).await
+    }
+
+    /// The hand-set developer provider of the curated model that claims `alias`, if one is set.
+    /// Absent means the observed listing name is the developer provider.
+    pub async fn provider_pin_for_alias(&self, alias: &str) -> Result<Option<String>> {
+        Ok(self
+            .model_config_for_alias(alias)
+            .await?
+            .and_then(|stored| stored.config.provider_pin)
+            .filter(|provider| !provider.trim().is_empty()))
     }
 
     /// Every `(id, alias, harness_family)` triple across all curated models. Used
@@ -6777,10 +6857,11 @@ impl Db {
     /// an OpenRouter-accessed harness whose model id carries a trailing `:tag`,
     /// strip the tag from the lifted `model_id` column and the record's
     /// `subject.modelId`, and recompute the run's comparable cost at the base
-    /// model's price (from `base_prices`, keyed by OpenRouter id). A run whose base
-    /// price is unavailable has its cost set to unknown rather than left at the
-    /// misleading `$0.00` a free tag produces. Idempotent (an already-stripped run
-    /// is unchanged) and best-effort per row. Returns how many runs were rewritten.
+    /// model's **curated list price** (from `list_prices`, keyed by canonical
+    /// model id). A run whose base model has no list price has its cost set to
+    /// unknown rather than left at the misleading `$0.00` a free tag produces.
+    /// Idempotent (an already-stripped run is unchanged) and best-effort per row.
+    /// Returns how many runs were rewritten.
     ///
     /// Only rows whose `model_id` actually carries a `:` are loaded — the same
     /// predicate [`Self::has_free_tag_candidates`] gates on. A `:`-free model id can
@@ -6789,7 +6870,7 @@ impl Db {
     /// almost always zero work.
     pub async fn normalize_free_model_ids(
         &self,
-        base_prices: &std::collections::HashMap<String, TokenPrices>,
+        list_prices: &std::collections::HashMap<String, TokenPrices>,
     ) -> Result<usize> {
         let rows = run::Entity::find()
             .filter(run::Column::ModelId.contains(":"))
@@ -6811,9 +6892,8 @@ impl Db {
                 continue;
             };
             record.subject.model_id = base.clone();
-            let lookup = test_cabinet_core::model_id::openrouter_price_id(&base, harness);
-            let comparable = base_prices
-                .get(&lookup)
+            let comparable = list_prices
+                .get(&base)
                 .and_then(|prices| Cost::comparable_from(&record.metrics.tokens, prices));
             record.metrics.cost = Cost {
                 comparable,

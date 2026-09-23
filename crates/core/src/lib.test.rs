@@ -680,6 +680,8 @@ fn request_with_override(max_runtime_override: Option<u64>) -> RunRequest {
         gg_model_windows: Default::default(),
         gg_model_providers: Default::default(),
         gg_model_modalities: Default::default(),
+        gg_model_prices: Default::default(),
+        model_prices: None,
     }
 }
 
@@ -1658,4 +1660,174 @@ async fn init_whose_lockfile_check_hangs_is_accepted_unchecked() {
     assert!(result.is_ok(), "{result:?}");
     assert_eq!(runtime.commands().len(), 2);
     assert!(warnings.is_empty(), "{warnings:?}");
+}
+
+// --- the comparable-vs-actual cost rule -------------------------------------
+
+/// A `RunEngine` assembled for one purpose: calling its `collect_metrics`, a pure
+/// composition that never touches the parts it is wired with — a renderer,
+/// collector, and validator the metrics path never invokes.
+fn metrics_engine() -> super::RunEngine<
+    NoopSeeder,
+    ScriptedRuntime,
+    super::CliArtifactCollector,
+    crate::validator::DispatchValidator,
+> {
+    super::RunEngine {
+        catalog: crate::test_case::TestCaseCatalog::new("/nonexistent"),
+        seeder: NoopSeeder,
+        runtime: ScriptedRuntime::new(Vec::new()),
+        collector: super::CliArtifactCollector::new(
+            super::CliContainerRuntime::with_binary("podman"),
+            "/nonexistent",
+        ),
+        harnesses: Box::new(super::DefaultHarnessRegistry::new()),
+        orchestrators: super::OrchestratorCatalog::new(),
+        engines: EngineCatalog::new(),
+        renderer: Box::new(crate::reference::BrowserRenderer::new()),
+        session_assembler: None,
+        analyzer: None,
+        toolchain: None,
+        validator: crate::validator::DispatchValidator::new("/nonexistent"),
+        output_dir: PathBuf::from("/nonexistent"),
+        creds: None,
+        prior_game_jam_entries: Vec::new(),
+        clock: std::sync::Arc::new(crate::clock::SystemClock),
+    }
+}
+
+/// A seeder the metrics tests never drive: `collect_metrics` reads the outcome it
+/// is handed, and nothing else.
+struct NoopSeeder;
+
+impl super::RepoSeeder for NoopSeeder {
+    fn seed(&self, _request: &super::SeedRequest<'_>) -> Result<super::SeededRepo> {
+        unreachable!("collect_metrics never seeds")
+    }
+}
+
+/// An outcome with token usage known, so a `collect_metrics` test is about the cost
+/// rule and never about an unknown-usage `None`.
+fn outcome_with_usage(reported_cost: Option<f64>) -> HarnessOutcome {
+    let mut outcome = ready_outcome();
+    outcome.reported_cost = reported_cost;
+    outcome.usage.tokens = crate::metrics::TokenCounts {
+        uncached_input: Some(1_000_000),
+        cached_input: Some(0),
+        output: Some(100_000),
+        reasoning: None,
+    };
+    outcome
+}
+
+/// The list prices the cost tests compute against: two dollars per million input
+/// tokens, ten per million output, and no listed cache-read rate.
+fn list_prices() -> crate::metrics::TokenPrices {
+    crate::metrics::TokenPrices {
+        uncached_input: Some(0.000_002),
+        cached_input: None,
+        output: Some(0.000_01),
+    }
+}
+
+/// A run whose harness reports its own exact cost records that figure as the billed
+/// cost only: the comparable cost is still computed from the model's list prices, so
+/// a run billed at a promotional rate stays comparable with every other run of the
+/// model.
+#[test]
+fn a_harness_reported_cost_is_the_actual_cost_never_the_comparable() {
+    let metrics = metrics_engine()
+        .collect_metrics(
+            &outcome_with_usage(Some(0.0123)),
+            crate::metrics::RunDurations::default(),
+            &list_prices(),
+        )
+        .expect("metrics collect");
+
+    // 1M input tokens at $2/Mtok plus 100k output tokens at $10/Mtok.
+    assert_eq!(metrics.cost.comparable, Some(3.0));
+    assert_eq!(metrics.cost.actual, Some(0.0123));
+}
+
+/// A run whose harness reports a cost but whose list prices are unknown records an
+/// unknown comparable cost — not the billed figure — while the actual cost still
+/// carries what the run was charged.
+#[test]
+fn a_harness_reported_cost_does_not_rescue_an_unknown_comparable() {
+    let metrics = metrics_engine()
+        .collect_metrics(
+            &outcome_with_usage(Some(0.0123)),
+            crate::metrics::RunDurations::default(),
+            &crate::metrics::TokenPrices::default(),
+        )
+        .expect("metrics collect");
+
+    assert_eq!(metrics.cost.comparable, None);
+    assert_eq!(metrics.cost.actual, Some(0.0123));
+}
+
+/// A run whose harness reports no cost has one figure: the list-price computation is
+/// both the comparable cost and the actual one.
+#[test]
+fn a_run_without_a_harness_reported_cost_records_one_figure_both_ways() {
+    let metrics = metrics_engine()
+        .collect_metrics(
+            &outcome_with_usage(None),
+            crate::metrics::RunDurations::default(),
+            &list_prices(),
+        )
+        .expect("metrics collect");
+
+    assert_eq!(metrics.cost.comparable, Some(3.0));
+    assert_eq!(metrics.cost.actual, Some(3.0));
+}
+
+// --- which list price a run is scored at -------------------------------------
+
+/// A third-party-harness run is scored at the list price the backend stamped onto
+/// it, and only that: a gg run's per-model map is not consulted.
+#[test]
+fn a_harness_run_is_scored_at_its_stamped_list_price() {
+    let mut request = request_with_override(None);
+    request.model_prices = Some(list_prices());
+    request.gg_model_prices.insert(
+        "some-model".to_string(),
+        crate::metrics::TokenPrices::default(),
+    );
+
+    assert_eq!(request.list_prices(), list_prices());
+}
+
+/// A run carrying no stamped list price is scored at unknown prices, so its
+/// comparable cost is unknown rather than priced from a provider's listing.
+#[test]
+fn a_run_without_a_stamped_list_price_is_scored_at_unknown_prices() {
+    let request = request_with_override(None);
+
+    assert_eq!(
+        request.list_prices(),
+        crate::metrics::TokenPrices::default()
+    );
+}
+
+/// A gg run is scored at its primary model's entry in the per-model map, the model
+/// the run is published under, not at another bound model's price.
+#[test]
+fn a_gg_run_is_scored_at_its_primary_models_list_price() {
+    let mut request = request_with_override(None);
+    request.harness = HarnessSlug::Gg;
+    request.model_id = "z-ai/glm-5.3".to_string();
+    request
+        .gg_model_prices
+        .insert("z-ai/glm-5.3".to_string(), list_prices());
+    request.gg_model_prices.insert(
+        "openai/gpt-5.6-sol".to_string(),
+        crate::metrics::TokenPrices {
+            uncached_input: Some(1.0),
+            cached_input: Some(1.0),
+            output: Some(1.0),
+        },
+    );
+
+    assert_eq!(request.list_prices(), list_prices());
 }

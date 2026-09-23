@@ -19,7 +19,7 @@ rather than zero.
 ## Cost
 
 The usage shape declares no cost field, so a run carries no harness-reported
-cost. With no token counts there is nothing to price through OpenRouter either,
-so a run produces no cost figure at all.
+cost. With no token counts there is nothing to price from the model's list
+price either, so a run produces no cost figure at all.
 
 See [Metrics](/components/core/metrics/) for the cost and token-class contract.

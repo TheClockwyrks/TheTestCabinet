@@ -10,7 +10,8 @@
 
 use sea_orm::entity::prelude::*;
 
-// `Eq` is intentionally omitted: the price ceiling columns are `f64`, which is only `PartialEq`.
+// `Eq` is intentionally omitted: the price ceiling and list-price columns are `f64`, which is only
+// `PartialEq`.
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
 #[sea_orm(table_name = "model")]
 pub struct Model {
@@ -42,6 +43,27 @@ pub struct Model {
     /// the price ceiling.
     #[sea_orm(nullable)]
     pub provider_pin: Option<String>,
+    /// The developer's published list price per **token** of input, in USD (the
+    /// form enters per Mtok; the store carries per token). `NULL` when the model
+    /// carries no curated list price.
+    #[sea_orm(nullable)]
+    pub list_price_input: Option<f64>,
+    /// The developer's published list price per **token** of cached input, in
+    /// USD. `NULL` when the model carries no curated list price.
+    #[sea_orm(nullable)]
+    pub list_price_cached_input: Option<f64>,
+    /// The developer's published list price per **token** of output, in USD.
+    /// `NULL` when the model carries no curated list price.
+    #[sea_orm(nullable)]
+    pub list_price_output: Option<f64>,
+    /// The date the list-price figures were taken, as the operator recorded it,
+    /// or `NULL` when the model carries no curated list price.
+    #[sea_orm(nullable)]
+    pub list_price_as_of: Option<String>,
+    /// Where the list-price figures came from (for example `hand` for an
+    /// operator-entered set), or `NULL` when the model carries none.
+    #[sea_orm(nullable)]
+    pub list_price_source: Option<String>,
     /// The native quantization set by hand (`fp8`, `bf16`, …), lowercased: the level every
     /// provider of a gg run's candidate list must serve the model at. `NULL` takes the highest
     /// level any endpoint of the model declares.

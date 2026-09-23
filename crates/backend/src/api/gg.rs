@@ -385,6 +385,10 @@ pub(super) fn gg_launch_body(subject: GgLaunchSubject, identity: GgLaunchIdentit
         gg_model_windows: Default::default(),
         gg_model_providers: Default::default(),
         gg_model_modalities: Default::default(),
+        gg_model_prices: Default::default(),
+        // gg's pricing rides per-bound-model in `gg_model_prices`; a uniform
+        // `model_prices` would double-handle it.
+        model_prices: None,
     }
 }
 

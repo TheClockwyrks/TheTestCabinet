@@ -90,8 +90,16 @@ export interface Model {
   /** The canonical model ids this entry claims, each tagged with the harness
    * family it is usable with. */
   aliases: ModelAlias[];
-  /** The latest observed comparable price, or null. */
+  /** The billed rate: the latest observed per-token price of the model's
+   * official OpenRouter endpoint, refreshed by the backend. Null until the
+   * first observation. */
   price: ModelPrices | null;
+  /** The curated developer list price (per-token USD, all-or-nothing) a run's
+   * comparable cost is computed from, or null while the model has none —
+   * a launch naming such a model is refused at enqueue. */
+  listPrice: ModelPrices | null;
+  /** The date (`YYYY-MM-DD`) the operator took the list-price figures, or null. */
+  listPriceAsOf: string | null;
   /** The observed price history, ascending, consecutive-equal deduped. */
   priceHistory: PriceObservation[];
   /** The latest observed context window in tokens, or null. */
@@ -146,6 +154,17 @@ export interface ModelInput {
   bannedProviders?: string[];
   /** The providers accepted despite declaring `unknown` quantization. */
   unknownQuantizationProviders?: string[];
+  /** The developer's published uncached-input price per Mtok, or null. Per
+   * Mtok because that is the unit a developer pricing page publishes; the
+   * backend divides down to per-token. All three list-price fields are present
+   * and non-negative, or all three null. */
+  listPriceInputPerMtok: number | null;
+  /** The developer's published cached-input price per Mtok, or null. */
+  listPriceCachedInputPerMtok: number | null;
+  /** The developer's published output price per Mtok, or null. */
+  listPriceOutputPerMtok: number | null;
+  /** The date (`YYYY-MM-DD`) the operator took the list-price figures, or null. */
+  listPriceAsOf: string | null;
   description: string | null;
   logoSvg: string | null;
   providerLogoUrl: string | null;
@@ -167,13 +186,21 @@ export interface LogoFetchResult {
 }
 
 /** What OpenRouter publishes about a model (`GET /models/openrouter?slug=`), for
- * the config form to fill itself in with. Only the curated fields are here —
- * prices, the context window, and the modalities are recorded by the backend
+ * the config form to fill itself in with. The display fields are the curated
+ * ones the form edits; the prices seed its list-price fields for the operator
+ * to confirm. The context window and the modalities are recorded by the backend
  * itself and are never form state. */
 export interface ModelListing {
   name: string;
   provider: string;
   description: string | null;
+  /** The official endpoint's current uncached-input price per Mtok, for seeding
+   * the form's list-price field; null when OpenRouter does not list it. */
+  inputPerMtok: number | null;
+  /** The official endpoint's current cached-input price per Mtok, or null. */
+  cachedInputPerMtok: number | null;
+  /** The official endpoint's current output price per Mtok, or null. */
+  outputPerMtok: number | null;
 }
 
 // --- Model probes (responses-as-code readiness checks) ---

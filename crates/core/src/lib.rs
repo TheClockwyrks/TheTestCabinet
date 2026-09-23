@@ -319,6 +319,22 @@ pub struct RunRequest {
     /// refuses it). Unlike the windows, this is never required: it decides whether one
     /// tool result may carry a picture, not how the run is measured.
     pub gg_model_modalities: BTreeMap<String, Vec<String>>,
+    /// The curated **list price** (USD per token) of each model a **gg** run may bind,
+    /// as resolved from the model catalog alongside
+    /// [`gg_model_windows`](Self::gg_model_windows).
+    ///
+    /// Every bound model carries one, because a model with none is refused at
+    /// enqueue; the run's comparable cost is computed from its primary model's entry
+    /// (see [`list_prices`](Self::list_prices)).
+    pub gg_model_prices: BTreeMap<String, TokenPrices>,
+    /// The curated **list price** (USD per token) of a **non-gg** run's model, stamped
+    /// by the backend at enqueue on the same terms as
+    /// [`gg_model_prices`](Self::gg_model_prices).
+    ///
+    /// `None` only on a gg run, whose prices ride in `gg_model_prices`, or a run
+    /// enqueued before the catalog carried list prices; such a run records an unknown
+    /// comparable cost.
+    pub model_prices: Option<TokenPrices>,
 }
 
 impl RunRequest {
@@ -328,6 +344,25 @@ impl RunRequest {
     /// orchestrated third-party-harness path.
     pub fn is_gg(&self) -> bool {
         self.harness == crate::run_record::HarnessSlug::Gg
+    }
+
+    /// The list price the run's comparable cost is computed from: the stamped
+    /// [`model_prices`](Self::model_prices) of a third-party-harness run, or a gg
+    /// run's [`gg_model_prices`](Self::gg_model_prices) entry for its primary model.
+    ///
+    /// A gg run's tokens are summed run-wide across every model its capability set
+    /// binds, so the run is priced at the model it is published under. A run with no
+    /// stamped price gets unknown prices, and so an unknown comparable cost, rather
+    /// than a price looked up from a provider on the day it ran.
+    pub fn list_prices(&self) -> TokenPrices {
+        if self.is_gg() {
+            self.gg_model_prices
+                .get(&self.model_id)
+                .copied()
+                .unwrap_or_default()
+        } else {
+            self.model_prices.unwrap_or_default()
+        }
     }
 
     /// Enforce the gg configuration invariants: a
@@ -590,8 +625,6 @@ where
     pub toolchain: Option<Box<dyn PostRunStage>>,
     /// Runs the validation pass.
     pub validator: V,
-    /// Looks up model prices for the comparable cost.
-    pub prices: OpenRouterPrices,
     /// Directory each run's record and collected implementation are written to.
     pub output_dir: PathBuf,
     /// An optional source of subscription credential bytes for the run.
@@ -1529,12 +1562,12 @@ where
     /// Collect run metrics from the harness outcome and the run's measured
     /// [durations](RunDurations).
     ///
-    /// When the harness reported its own exact cost (see
-    /// [`HarnessOutcome::reported_cost`]) that figure is used for both the
-    /// comparable and actual cost and `prices` is ignored: such a harness drives
-    /// a single provider directly, so its reported charge is already
-    /// provider-stable. Otherwise the comparable cost is derived from the
-    /// supplied OpenRouter `prices`.
+    /// The comparable cost is always computed from the supplied `prices` — the
+    /// model's curated list prices — so two runs of one model compare on the
+    /// same basis however each was billed. A harness-reported exact cost (see
+    /// [`HarnessOutcome::reported_cost`]) is what the run was billed, so it
+    /// lands in the actual cost only; a harness that reports none leaves the
+    /// actual cost equal to the comparable one.
     pub fn collect_metrics(
         &self,
         outcome: &HarnessOutcome,
@@ -1542,22 +1575,14 @@ where
         prices: &TokenPrices,
     ) -> Result<RunMetrics> {
         let tokens = outcome.usage.tokens;
-        let cost = match outcome.reported_cost {
-            Some(reported) => Cost {
-                comparable: Some(reported),
-                actual: Some(reported),
-            },
-            None => {
-                // `comparable_from` yields `None` when the model's prices are
-                // unknown, leaving both figures null rather than a misleading $0.
-                let comparable = Cost::comparable_from(&tokens, prices);
-                // No harness-reported charge to record separately yet; the
-                // comparable figure is the canonical, provider-stable value.
-                Cost {
-                    comparable,
-                    actual: comparable,
-                }
-            }
+        // `comparable_from` yields `None` when the model's prices are unknown,
+        // leaving the figure null rather than a misleading $0. It never takes
+        // the harness's own accounting: that is the billed figure, and only
+        // the actual cost carries it.
+        let comparable = Cost::comparable_from(&tokens, prices);
+        let cost = Cost {
+            comparable,
+            actual: outcome.reported_cost.or(comparable),
         };
         Ok(RunMetrics {
             run_time_seconds: durations.run_time_seconds,
@@ -1866,28 +1891,10 @@ where
         // whenever the cluster was busy. `scheduling_wait` is zero for runtimes (a
         // local Docker/Podman) that admit the container immediately.
         let measured = self.clock.now().saturating_sub(run_started);
-        // A harness that reports its own exact cost needs no OpenRouter lookup;
-        // its native model ID may not even appear in OpenRouter's catalog.
-        let prices = if outcome.reported_cost.is_some() {
-            TokenPrices::default()
-        } else {
-            // Map the model ID to the slug OpenRouter lists it under (for
-            // example Codex's `gpt-5.5` becomes `openai/gpt-5.5`), collapsing an
-            // `openrouter/` routing prefix and a `:free`-style variant tag so a
-            // free-tagged run is priced at the model's base rate, not $0.
-            let lookup_id =
-                crate::model_id::openrouter_price_id(&request.model_id, request.harness);
-            match self.prices.token_prices(&lookup_id).await {
-                Ok(prices) => prices,
-                Err(err) => {
-                    eprintln!(
-                        "warning: could not fetch OpenRouter prices for `{lookup_id}` ({err}); \
-                         recording unknown (null) comparable cost"
-                    );
-                    TokenPrices::default()
-                }
-            }
-        };
+        // The comparable cost is computed from the list price the backend stamped
+        // onto the request at enqueue, and nothing else. A harness-reported cost is
+        // the billed figure and lands in the actual cost alone.
+        let prices = request.list_prices();
 
         // The post-run stage seam: the single place any host-side analysis of a
         // finished run happens (see [`crate::post_run`]). Its position is the whole

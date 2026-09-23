@@ -30,6 +30,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::gg::GgCapabilitySet;
+use crate::metrics::TokenPrices;
 use crate::run_record::{HarnessSlug, RunRecord};
 
 /// The body of `POST /jobs`: what to run, with what, against which model. The
@@ -138,6 +139,26 @@ pub struct LaunchBody {
     /// the provider refuses it. Empty for every non-gg run.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub gg_model_modalities: std::collections::BTreeMap<String, Vec<String>>,
+    /// The curated **list price** (USD per token) each model this **gg** run may
+    /// bind is scored at, resolved from the model catalog at enqueue and stamped
+    /// here on the same terms as [`gg_model_windows`](Self::gg_model_windows).
+    ///
+    /// A run's comparable cost is computed from the developer's published list
+    /// price — entered on the model's catalog entry — and nothing else, so the
+    /// figure is stable across providers and discounts. A gg run binding a model
+    /// with no list price is refused at enqueue rather than priced off whatever
+    /// a provider happened to charge that day. Empty for every non-gg run, whose
+    /// single model's price rides in [`model_prices`](Self::model_prices).
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub gg_model_prices: std::collections::BTreeMap<String, TokenPrices>,
+    /// The curated list price (USD per token) of the launch's model, resolved from
+    /// the model catalog at enqueue and stamped here so the driver prices the run's
+    /// comparable cost from it without reaching the catalog. `None` for a gg run
+    /// (whose per-model prices ride in `gg_model_prices`) and for a run enqueued
+    /// before the catalog priced models.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub model_prices: Option<TokenPrices>,
 }
 
 /// The claimed job the dispatcher receives from `POST /jobs/next`: the id, the

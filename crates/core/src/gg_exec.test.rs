@@ -635,6 +635,8 @@ fn gg_request(model: &str) -> RunRequest {
             model.to_string(),
             vec!["text".to_string(), "image".to_string()],
         )]),
+        gg_model_prices: std::collections::BTreeMap::new(),
+        model_prices: None,
     }
 }
 

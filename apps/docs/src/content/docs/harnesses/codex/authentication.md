@@ -39,8 +39,8 @@ refresh token is long-lived, so the host credentials stay valid for the next
 run.
 
 A subscription carries no per-run provider charge. Codex reports no cost figure
-in either mode, so a run's comparable cost is derived from OpenRouter pricing
-whichever mode authenticated it. See [Metrics](/harnesses/codex/metrics/).
+in either mode, so a run's comparable cost is computed from the model's list
+price whichever mode authenticated it. See [Metrics](/harnesses/codex/metrics/).
 
 ## Selecting a mode
 

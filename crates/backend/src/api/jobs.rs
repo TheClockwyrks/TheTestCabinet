@@ -102,6 +102,15 @@ pub async fn launch(
     resolve_gg_model_facts(&state.db, &state.prices, &record, &mut body)
         .await
         .map_err(ApiError::bad_request)?;
+    // Stamp the model's curated list price onto the launch, refusing a model
+    // that has none. A gg run's per-bound-model prices ride in
+    // `gg_model_prices`, resolved inside `resolve_gg_model_facts`.
+    if let Some(prices) = resolve_model_price(&state.db, &body)
+        .await
+        .map_err(ApiError::bad_request)?
+    {
+        body.model_prices = Some(prices);
+    }
     let new = build_new_job(&body, resolve_test_type(&state, &body), &now, &attribution)
         .map_err(ApiError::bad_request)?;
     let id = new.id.clone();
@@ -222,7 +231,16 @@ pub async fn launch_batch(
         let minted = match bound {
             Ok(()) => {
                 match resolve_gg_model_facts(&state.db, &state.prices, &record, &mut run).await {
-                    Ok(()) => build_new_job(&run, test_type, &now, &attribution),
+                    Ok(()) => match resolve_model_price(&state.db, &run).await {
+                        // A gg run's per-bound-model prices ride in `gg_model_prices`;
+                        // a flat run's model price is stamped here.
+                        Ok(Some(prices)) => {
+                            run.model_prices = Some(prices);
+                            build_new_job(&run, test_type, &now, &attribution)
+                        }
+                        Ok(None) => build_new_job(&run, test_type, &now, &attribution),
+                        Err(reason) => Err(reason),
+                    },
                     Err(reason) => Err(reason),
                 }
             }
@@ -342,6 +360,7 @@ pub(super) async fn resolve_gg_model_facts(
     body.gg_model_windows.clear();
     body.gg_model_providers.clear();
     body.gg_model_modalities.clear();
+    body.gg_model_prices.clear();
     let Some(set) = body.gg_capability_set.as_ref() else {
         return Ok(());
     };
@@ -386,6 +405,9 @@ pub(super) struct GgModelFacts {
     /// The input modalities of the bound models the catalog (or OpenRouter) lists them for.
     /// A model with none is simply absent: unknown modalities are not a launch failure.
     modalities: std::collections::BTreeMap<String, Vec<String>>,
+    /// The curated list price (USD per token) every bound model is scored at. A
+    /// model with none refuses the launch, so every bound model is present.
+    prices: std::collections::BTreeMap<String, test_cabinet_core::TokenPrices>,
 }
 
 impl GgModelFacts {
@@ -395,6 +417,7 @@ impl GgModelFacts {
         body.gg_model_windows = self.windows;
         body.gg_model_providers = self.providers;
         body.gg_model_modalities = self.modalities;
+        body.gg_model_prices = self.prices;
     }
 }
 
@@ -424,6 +447,7 @@ pub(super) async fn gg_model_facts(
         facts
             .providers
             .insert(model_id.to_string(), resolved.candidates);
+        facts.prices.insert(model_id.to_string(), resolved.prices);
         if !resolved.input_modalities.is_empty() {
             facts
                 .modalities
@@ -444,12 +468,39 @@ fn binds_reasoning(set: &test_cabinet_core::gg::GgCapabilitySet, model_id: &str)
         .any(|agent| agent.reasoning.is_some() && agent.resolved_model_id() == Some(model_id))
 }
 
-/// One model's resolved launch facts: the window and the candidate list (neither of which a
-/// launch can proceed without), and the input modalities (which may legitimately be unknown).
+/// The list price a third-party-harness launch's model is scored at, or the reason the
+/// launch is refused: the model is not in the catalog, or its entry carries no list price.
+/// Every harness is priced this way, whatever cost it reports of its own, because the
+/// comparable cost is a published statistic.
+///
+/// `Ok(None)` for a gg launch, whose per-bound-model prices ride in `gg_model_prices`
+/// (see [`gg_model_facts`]).
+pub(super) async fn resolve_model_price(
+    db: &crate::db::Db,
+    body: &LaunchBody,
+) -> Result<Option<test_cabinet_core::TokenPrices>, String> {
+    if body.harness == HarnessSlug::Gg {
+        return Ok(None);
+    }
+    match db.list_price_for_run_model(&body.model, body.harness).await {
+        Ok(Ok(prices)) => Ok(Some(prices)),
+        Ok(Err(reason)) => Err(reason),
+        Err(db_err) => Err(format!(
+            "could not read the model catalog's list price for `{}`: {db_err}",
+            body.model
+        )),
+    }
+}
+
+/// One model's resolved launch facts: the window, the candidate list and the curated list price
+/// (none of which a launch can proceed without), and the input modalities (which may
+/// legitimately be unknown).
 struct ResolvedModelFacts {
     window: u64,
     candidates: Vec<test_cabinet_core::gg::GgProviderCandidate>,
     input_modalities: Vec<String>,
+    /// The catalog's curated list price for the model — what the run is scored at.
+    prices: test_cabinet_core::TokenPrices,
 }
 
 /// One model's launch facts, or the reason this run cannot start.
@@ -476,6 +527,16 @@ async fn resolve_one_model_facts(
             ));
         }
     };
+    // The list price the run is scored at comes only from the catalog — never
+    // from a live fetch: a run must not be priced off whatever a provider
+    // happened to charge that day. A catalog read that fails is, exactly like a
+    // failed window read, an unknown rather than "no price".
+    let list_prices = db
+        .list_price_for_run_model(model_id, harness)
+        .await
+        .map_err(|err| {
+            format!("could not read the model catalog's list price for `{model_id}`: {err}")
+        })?;
     let canonical = test_cabinet_core::model_id::canonical_model_id(model_id, harness);
     let entry = db.model_config_for_alias(&canonical).await.map_err(|err| {
         format!("could not read the catalog entry's provider policy for `{model_id}`: {err}")
@@ -532,6 +593,7 @@ async fn resolve_one_model_facts(
             .map(test_cabinet_core::pricing::ProviderCandidate::to_invocation)
             .collect(),
         input_modalities,
+        prices: list_prices?,
     })
 }
 

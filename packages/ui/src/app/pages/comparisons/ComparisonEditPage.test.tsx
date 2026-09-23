@@ -68,6 +68,8 @@ const MODEL = {
     { slug: "openai/gpt-5.6-sol", harnessFamily: "openrouter" },
   ],
   price: null,
+  listPrice: null,
+  listPriceAsOf: null,
   priceHistory: [],
   contextLength: null,
   providerPin: null,
