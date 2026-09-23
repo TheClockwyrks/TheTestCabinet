@@ -255,6 +255,19 @@ curl -X POST http://127.0.0.1:8787/ingest
 Confirm it is serving with `curl http://127.0.0.1:8787/healthz` and
 `curl http://127.0.0.1:8787/test-cases`.
 
+The baseline validation media a reviewer compares a run's media against comes
+from the `cold-storage` submodule. Fetch it before ingesting to review runs with
+their baselines:
+
+```sh
+git submodule update --init --depth 1 cold-storage
+```
+
+Without it every version ingests with no baseline media, and a review shows only
+the build's half of each side-by-side. `TCAB_COLD_STORAGE_DIR` in `.env.backend`
+points the backend at a copy kept elsewhere. The same applies to the k3d stack,
+which ingests the checkout it mounts.
+
 Re-ingest after editing a test case, so the backend serves the change. A plain
 scan skips any version it already holds, because the store is immutable per
 `(slug, version)`, so the re-ingest forces the overwrite. `scripts/reingest.sh`

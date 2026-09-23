@@ -56,6 +56,16 @@ spec:
                   && git clone --depth 1 --branch "$BRANCH" "$REPO" "$CHECKOUT" \
                   || echo "ingest: clone failed"
               fi
+              # The cold-storage submodule holds every version's baseline validation
+              # media, which ingest copies into the store. Fetch the pinned commit
+              # shallowly on every refresh. `.gitmodules` names it relative to the
+              # superproject, so it resolves to the mirror's sibling repository; sync
+              # first so a moved URL reaches the persistent checkout. A failure still
+              # ingests, with no baseline media, rather than leaving the store empty.
+              echo "ingest: updating the cold-storage submodule"
+              git -C "$CHECKOUT" submodule sync \
+                && git -C "$CHECKOUT" submodule update --init --depth 1 \
+                || echo "ingest: submodule update failed; ingesting without baselines"
               # Wait on /healthz (LIVENESS), never /readyz: readiness is 503 until the
               # store is populated, which is what the POST below is about to do, so
               # gating on it would deadlock the sidecar against itself.

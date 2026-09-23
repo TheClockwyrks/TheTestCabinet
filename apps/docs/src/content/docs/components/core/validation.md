@@ -261,12 +261,33 @@ reviewer most wants.
 The baseline half is the same suites run against the variant's
 `reference_implementation` for the same engine by
 [`tcab capture-baselines`](/components/cli/overview/#commands), captured once
-into `validation-baseline/<engine>/<variant>/` and served case-scoped. The same
-suites, scenarios and form of output make any difference a reviewer sees a
-difference between the two builds. Both recordings of a scenario are indexed the
-same way, a 2D frame by its place in the recording and a 3D frame by its
-simulated-time timestamp, so a reviewer compares the build's recording and the
-reference's frame for frame.
+into the version's `validation-baseline/<engine>/<variant>/` in cold storage and
+served case-scoped. The same suites, scenarios and form of output make any
+difference a reviewer sees a difference between the two builds. Both recordings
+of a scenario are indexed the same way, a 2D frame by its place in the recording
+and a 3D frame by its simulated-time timestamp, so a reviewer compares the
+build's recording and the reference's frame for frame.
+
+### Where baselines live
+
+Baseline media is committed to the `cold-storage` submodule at the repository
+root, not beside the case. Its tree mirrors the repository's, so a version's
+baselines sit under the same path with `cold-storage/` in front:
+
+```text
+cold-storage/test-cases/<type>/<difficulty>/<slug>/<version>/validation-baseline/<engine>/<variant>/
+```
+
+Core's `ColdStorage::validation_baseline_dir` is the one resolver from a version
+folder to that directory. The cold-storage root defaults to
+`<checkout>/cold-storage`, and `TCAB_COLD_STORAGE_DIR` replaces it. The capture
+commands write through the resolver and backend ingest reads through it.
+
+Ingest copies each version's baselines into the stored version under
+`validation-baseline/`, and the backend serves and snapshots them from the store.
+A checkout without the submodule ingests every version with no baseline media.
+A baseline is evidence beside a verdict and backs no point, so recapturing one
+changes no score, including on a [frozen](/development/frozen-versions/) version.
 
 ### The shared image store
 

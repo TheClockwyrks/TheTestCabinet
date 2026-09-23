@@ -5,7 +5,7 @@ baseline media nor the sandbox wasm binaries, then force-push the result to both
 hosts and re-clone everywhere.
 
 This issue runs after
-[`move-validation-baselines-into-the-cold-storage-submodule.md`](move-validation-baselines-into-the-cold-storage-submodule.md)
+[`move-validation-baselines-into-the-cold-storage-submodule.md`](done/move-validation-baselines-into-the-cold-storage-submodule.md)
 and
 [`port-the-gg-and-tooling-changes-from-the-spec-cabinet-branch-onto-feat-gg.md`](port-the-gg-and-tooling-changes-from-the-spec-cabinet-branch-onto-feat-gg.md),
 and before the mirror job in
@@ -17,13 +17,13 @@ is enabled and before
 
 The pack is dominated by two kinds of blob that the tree no longer needs.
 
-| Reachable set                                          | Compressed size |
-| ------------------------------------------------------ | --------------- |
-| Whole pack                                             | 5.37 GiB        |
-| `validation-baseline/` blobs across all refs           | 4.61 GiB        |
-| `crates/gg/src/sandbox` wasm and gz blobs, all refs    | 0.19 GiB        |
-| `master` alone                                         | 0.89 GiB        |
-| Expected after the rewrite                             | about 0.3 GiB   |
+| Reachable set                                       | Compressed size |
+| --------------------------------------------------- | --------------- |
+| Whole pack                                          | 5.37 GiB        |
+| `validation-baseline/` blobs across all refs        | 4.61 GiB        |
+| `crates/gg/src/sandbox` wasm and gz blobs, all refs | 0.19 GiB        |
+| `master` alone                                      | 0.89 GiB        |
+| Expected after the rewrite                          | about 0.3 GiB   |
 
 The wasm and gz files are already deleted from the tree. The baselines leave the
 tree in the cold-storage issue, so by the time this runs both kinds exist only in

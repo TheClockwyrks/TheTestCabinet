@@ -19,6 +19,7 @@ pub mod browser;
 pub mod cancel;
 pub mod clock;
 pub mod code_analysis;
+pub mod cold_storage;
 pub mod comparison;
 pub mod comparison_aggregate;
 pub mod comparison_stats;
@@ -117,6 +118,7 @@ pub use code_analysis::{
     CodeMetricDef, CodeMetricUnit, CodeRustSummary, CodeSizeSummary, CodeSymbolEntry,
     CodeTestSummary, CodeTreeBasis, CodeTruncationCap, CodeTypeScriptSummary,
 };
+pub use cold_storage::{COLD_STORAGE_DIR, COLD_STORAGE_DIR_ENV, ColdStorage};
 pub use container::{CliArtifactCollector, CliContainerRuntime};
 pub use engine::{
     BUILT_IN_SLUGS as BUILT_IN_ENGINE_SLUGS, EngineCatalog, EngineManifest, EngineSelection,

@@ -123,11 +123,11 @@ process against the vendored engine and reach the surface through
 `engine.debug`. The three run the same scenarios and differ only in how they
 reach the build.
 
-`validation-baseline/<engine>/<variant>/` holds the media the same suites
-captured from that engine's reference build, so a reviewer sees the build's
-evidence and the reference's side by side. `tcab capture-baselines` writes that
-directory wholesale from the references, so it is regenerated rather than
-edited.
+This version's `validation-baseline/<engine>/<variant>/` in the `cold-storage`
+submodule holds the media the same suites captured from that engine's reference
+build, so a reviewer sees the build's evidence and the reference's side by side.
+`tcab capture-baselines` writes that directory wholesale from the references, so
+it is regenerated rather than edited.
 
 ## Versioning
 
