@@ -121,13 +121,11 @@ fn run_as(
 /// calls. Host work done after that stamp and before the guest runs is neither, so nothing gives it
 /// back: it is charged in full to a program that has not started.
 ///
-/// [`component`] is exactly that work: a `Component::new` of this arm's 21 MB embedded guest, paid
-/// once per **process** — which under `cargo nextest` means once per `#[test]`. The same compile of
-/// the 14 MB shared guest was measured on this repository's dev container at 1.35 s alone, a median
-/// of 10.6 s and a worst of 34.0 s across the processes that paid it during one `cargo nextest run
-/// --workspace`. Past thirty of those seconds the guest's first instruction traps and the arm
-/// reports `Timeout { limit: 30s }` for a program that ran for microseconds, which is what was
-/// observed happening on the JVM and PureScript arms, which had this same ordering.
+/// [`component`] is exactly that work: this arm's 21 MB embedded guest, compiled by `Component::new`
+/// or loaded from the test suite's compiled-component cache, once per **process** — which under
+/// `cargo nextest` means once per `#[test]`. A compile takes seconds, and many more on a machine
+/// running the rest of the suite; charged to the store, it would count against the program's budget
+/// and could end a program that never ran as a `Timeout`.
 ///
 /// Production never had it — [`run_program`](crate::sandbox::run_program) resolves its component and
 /// builds its linker and only then builds the store — so a run's 30 s is 30 s of the program. This

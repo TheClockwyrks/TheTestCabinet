@@ -121,13 +121,11 @@ fn component() -> &'static Component {
 /// back: it is charged in full to a program that has not started.
 ///
 /// [`component`] is exactly that work, and this arm has the **largest** exposure of any: its guest is
-/// 34.9 MB, the biggest artifact any arm here instantiates, and every `#[test]` is its own process
-/// so every one of them compiles it again. The same compile of the 14 MB *shared* guest — a third of
-/// the size — was measured on this repository's dev container at 1.35 s alone, a median of 10.6 s
-/// and a worst of 34.0 s across the processes that paid it during one `cargo nextest run
-/// --workspace`. Past thirty of those seconds the guest's first instruction traps, and the arm
-/// reports `Timeout { limit: 30s }` for a program that ran for microseconds; that is what was
-/// observed doing it on the JVM and PureScript arms, which had this same ordering.
+/// 34.9 MB, the biggest artifact any arm here instantiates, compiled by `Component::new` or loaded
+/// from the test suite's compiled-component cache once per **process** — which under `cargo nextest`
+/// means once per `#[test]`. A compile takes seconds, and many more on a machine running the rest of
+/// the suite; charged to the store, it would count against the program's budget and could end a
+/// program that never ran as a `Timeout`.
 ///
 /// Production never had it — [`run_program`](crate::sandbox::run_program) resolves its component and
 /// builds its linker and only then builds the store — so a run's 30 s is 30 s of the program. This
