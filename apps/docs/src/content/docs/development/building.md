@@ -290,6 +290,20 @@ the repository, and `build.rs` calls `gg-signatures.sh` rather than repeating it
 A catalogue is also where reflector bugs surface, such as a dropped `@return`
 paragraph or a truncated parameter description.
 
+#### Testing `gg`
+
+nextest runs each test in its own process, and most of gg's tests need a
+compiled guest component. The test build keeps compiled components on disk in
+`component-cache` under the crate's `OUT_DIR`, so a guest is compiled a handful
+of times per build rather than once per test. An entry is keyed on the
+component's bytes and wasmtime's compatibility hash, is stored only once its
+bytes have been compiled twice, and is evicted least recently used past 4 GiB.
+`cargo clean` removes it. Production builds have no such cache.
+
+Test builds compile components on one thread, since nextest already runs one
+test per core. The root manifest optimizes the Cranelift and wasmtime crates in
+the dev profile, which is where that compile time goes.
+
 ### Portable (static) builds
 
 The default build dynamically links against glibc and the generic FHS dynamic
