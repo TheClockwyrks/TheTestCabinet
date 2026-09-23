@@ -624,8 +624,10 @@ ignores a `pr:` block. A run for any other branch runs the gates only.
 
 The gates are `rust`, `binary` (Linux and Windows), `web`, `webtest`, `specs`,
 `format`, `validators`, `frozen`, `audiopacks`, `specvocabulary`,
-`buildcontext`, `contract`, and `manifests`, which renders every kustomization
-and checks the deploy set with `scripts/ci/k8s-manifests.sh`. On `master`,
+`buildcontext`, `contract`, `manifests`, which renders every kustomization and
+checks the deploy set with `scripts/ci/k8s-manifests.sh`, and `submodulepins`,
+which fails when a submodule pin is absent from that submodule's `master`
+(`scripts/ci/submodule-pins.sh`). On `master`,
 `staging`, and tags, `gg_amd64` and `gg_arm64` build the static gg binaries
 natively, and on a tag build the step "gg version matches the tag" fails when
 `gg --version` differs from the tag with its `v` stripped, naming `crates/gg` and

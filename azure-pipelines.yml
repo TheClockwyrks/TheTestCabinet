@@ -57,6 +57,15 @@ trigger:
     include:
       - v*
 
+# The submodule repositories a job may reach. The project protects YAML pipeline
+# repository access, so a job token reaches only the repositories its job names under
+# `uses:`, and each of them is listed here.
+resources:
+  repositories:
+    - repository: cold-storage
+      type: git
+      name: the-test-cabinet/cold-storage
+
 pool:
   vmImage: ubuntu-24.04
 
@@ -457,6 +466,24 @@ stages:
           - script: ./scripts/ci/k8s-manifests.sh
             displayName: Check the Kubernetes manifests
 
+      # Every submodule pin is on that submodule's `master`, which is all its own
+      # pipeline mirrors, so a commit this pipeline mirrors names only submodule
+      # commits the GitHub mirror holds. The check fetches `master`'s commits without
+      # trees or blobs through the job token.
+      - job: submodulepins
+        displayName: "Submodules: every pin is on the submodule's master"
+        uses:
+          repositories:
+            - cold-storage
+        steps:
+          - checkout: self
+            fetchDepth: 1
+            submodules: false
+          - script: ./scripts/ci/submodule-pins.sh
+            displayName: Check the submodule pins
+            env:
+              SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+
       # gg's static musl binaries, one per architecture, built natively. They are
       # built on master and staging for the run-image builds, and on master and tags
       # for the upload to the `gg-releases` blob container. On a tag the version gate
@@ -542,6 +569,7 @@ stages:
           - buildcontext
           - contract
           - manifests
+          - submodulepins
           - ${{ each arch in split(variables.architectures, ',') }}:
               - gg_${{ arch }}
         condition: >-
