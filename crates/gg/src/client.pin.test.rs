@@ -44,7 +44,7 @@ fn pinned_client(pin: &str, body: String) -> OpenRouterClient {
         None,
     )
     .with_provider(pin)
-    .answered_by(move || {
+    .answered_by(move |_| {
         http::Response::builder()
             .status(200)
             .body(reqwest::Body::from(body.clone()))
@@ -125,7 +125,7 @@ fn the_factory_pins_each_model_to_its_own_provider() {
         ),
     ]);
     let factory = DefaultClientFactory::new(
-        None,
+        RoutingKey::mint(),
         DEFAULT_MODEL_CALL_TIMEOUT,
         RetryPolicy::default(),
         providers,

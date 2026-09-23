@@ -10093,6 +10093,7 @@ fn every_launch_mints_its_own_routing_key() {
     let first = SessionSeams::live(
         crate::client::DEFAULT_MODEL_CALL_TIMEOUT,
         crate::client::RetryPolicy::default(),
+        BTreeMap::new(),
     );
     let second = SessionSeams::substituted(first.factory.clone(), real_shell());
     assert!(cuid2::is_cuid2(first.routing_key.as_str()));
