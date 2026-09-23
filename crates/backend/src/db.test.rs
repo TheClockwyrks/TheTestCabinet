@@ -2322,7 +2322,7 @@ fn test_alias(alias: &str) -> AliasEntry {
 }
 
 /// A model-config write with the common fields defaulted.
-fn model_write(slug: &str, name: &str, aliases: &[&str]) -> ModelConfigWrite {
+pub(crate) fn model_write(slug: &str, name: &str, aliases: &[&str]) -> ModelConfigWrite {
     ModelConfigWrite {
         slug: slug.to_string(),
         display_name: name.to_string(),
@@ -2332,9 +2332,162 @@ fn model_write(slug: &str, name: &str, aliases: &[&str]) -> ModelConfigWrite {
         description_md: None,
         openrouter_slug: aliases.first().map(|a| a.to_string()),
         provider_pin: None,
+        list_price_input: None,
+        list_price_cached_input: None,
+        list_price_output: None,
+        list_price_as_of: None,
+        list_price_source: None,
         aliases: aliases.iter().map(|a| test_alias(a)).collect(),
         now: "2026-07-09T00:00:00Z".to_string(),
     }
+}
+
+/// A model-config write carrying a full curated list price.
+pub(crate) fn priced_model_write(slug: &str, name: &str, aliases: &[&str]) -> ModelConfigWrite {
+    ModelConfigWrite {
+        list_price_input: Some(3e-6),
+        list_price_cached_input: Some(3e-7),
+        list_price_output: Some(15e-6),
+        list_price_as_of: Some("2026-09-01".to_string()),
+        list_price_source: Some("hand".to_string()),
+        ..model_write(slug, name, aliases)
+    }
+}
+
+/// A curated, fully priced alias resolves to per-token prices.
+#[tokio::test]
+async fn list_price_for_run_model_resolves_a_fully_priced_alias() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.upsert_model_config(priced_model_write(
+        "deepseek-v4",
+        "DeepSeek V4",
+        &["deepseek/deepseek-v4"],
+    ))
+    .await
+    .unwrap();
+
+    let resolved = db
+        .list_price_for_run_model("deepseek/deepseek-v4", HarnessSlug::Kilo)
+        .await
+        .unwrap()
+        .expect("a fully priced model resolves");
+    assert_eq!(resolved.uncached_input, Some(3e-6));
+    assert_eq!(resolved.cached_input, Some(3e-7));
+    assert_eq!(resolved.output, Some(15e-6));
+
+    // The `:free` tag canonicalizes away for an OpenRouter-routed harness, so a
+    // tagged launch id resolves the same price.
+    let tagged = db
+        .list_price_for_run_model("deepseek/deepseek-v4:free", HarnessSlug::Kilo)
+        .await
+        .unwrap()
+        .expect("a tagged alias resolves its base model's price");
+    assert_eq!(tagged, resolved);
+}
+
+/// A curated model missing any of the three prices refuses, naming the model.
+#[tokio::test]
+async fn list_price_for_run_model_refuses_an_unpriced_curated_model() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.upsert_model_config(model_write(
+        "deepseek-v4",
+        "DeepSeek V4",
+        &["deepseek/deepseek-v4"],
+    ))
+    .await
+    .unwrap();
+
+    let reason = db
+        .list_price_for_run_model("deepseek/deepseek-v4", HarnessSlug::Kilo)
+        .await
+        .unwrap()
+        .expect_err("an unpriced curated model refuses");
+    assert!(reason.contains("`deepseek/deepseek-v4`"), "{reason}");
+    assert!(reason.contains("DeepSeek V4"), "{reason}");
+    assert!(reason.contains("no list price"), "{reason}");
+}
+
+/// A model no curated config claims refuses, naming the canonical id.
+#[tokio::test]
+async fn list_price_for_run_model_refuses_an_uncurated_id() {
+    let db = Db::connect_in_memory().await.unwrap();
+
+    let reason = db
+        .list_price_for_run_model("deepseek/deepseek-v4", HarnessSlug::Kilo)
+        .await
+        .unwrap()
+        .expect_err("an uncurated model refuses");
+    assert!(reason.contains("`deepseek/deepseek-v4`"), "{reason}");
+    assert!(reason.contains("not in the model catalog"), "{reason}");
+}
+
+/// A queued job whose OpenRouter-routed model carries no list price is never
+/// claimed: it stays `queued` (not `pending` — that means harness-capacity) while
+/// a priced job behind it is claimed; pricing the model lets it run.
+#[tokio::test]
+async fn claim_skips_a_queued_job_whose_model_has_no_list_price() {
+    let db = Db::connect_in_memory().await.unwrap();
+    // Priced: the alias a claimable job resolves through.
+    db.upsert_model_config(priced_model_write(
+        "deepseek-v4",
+        "DeepSeek V4",
+        &["deepseek/deepseek-v4"],
+    ))
+    .await
+    .unwrap();
+    // The unpriced job sits at the head of the queue.
+    let mut unpriced = new_job_h("j-unpriced", "2026-06-23T00:00:00Z", "kilo");
+    unpriced.model_id = "unlisted/unpriced".to_string();
+    db.enqueue_job(unpriced).await.unwrap();
+    let mut priced = new_job_h("j-priced", "2026-06-23T00:01:00Z", "kilo");
+    priced.model_id = "deepseek/deepseek-v4".to_string();
+    db.enqueue_job(priced).await.unwrap();
+
+    let outcome = db.claim_next("2026-06-23T00:02:00Z").await.unwrap();
+    assert_eq!(
+        outcome.claimed.expect("the priced job is claimable").id,
+        "j-priced"
+    );
+    // The unpriced job is left `queued`, never reconciled to `pending` and never
+    // failed.
+    let held = db
+        .get_job("j-unpriced")
+        .await
+        .unwrap()
+        .expect("the unpriced job is still on record");
+    assert_eq!(held.state, "queued");
+
+    // Pricing the model lets the held job claim.
+    db.upsert_model_config(priced_model_write(
+        "unpriced",
+        "Unpriced",
+        &["unlisted/unpriced"],
+    ))
+    .await
+    .unwrap();
+    let claimed = db
+        .claim_next_job("2026-06-23T00:03:00Z")
+        .await
+        .unwrap()
+        .expect("pricing the model releases the job");
+    assert_eq!(claimed.id, "j-unpriced");
+}
+
+/// A provider-native harness's job is claimable without any list price: its
+/// `actual` is the harness's own figure and the comparable is unknown.
+#[tokio::test]
+async fn claim_does_not_gate_a_provider_native_job_on_a_list_price() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.enqueue_job(new_job("j1", "2026-06-23T00:00:00Z"))
+        .await
+        .unwrap();
+
+    let claimed = db
+        .claim_next_job("2026-06-23T00:00:05Z")
+        .await
+        .unwrap()
+        .expect("a provider-native job needs no list price");
+    assert_eq!(claimed.id, "j1");
 }
 
 /// A run record with an explicit model id + harness (and, optionally, token
@@ -2594,8 +2747,8 @@ async fn normalize_free_model_ids_reprices_openrouter_runs_only() {
     let codex = run_with_model("codex-run", "gpt-5.5:preview", HarnessSlug::Codex, tokens);
     db.push(&codex, &links(), None, None).await.unwrap();
 
-    let mut base_prices = HashMap::new();
-    base_prices.insert(
+    let mut list_prices = HashMap::new();
+    list_prices.insert(
         "deepseek/deepseek-v4".to_string(),
         TokenPrices {
             uncached_input: Some(0.000_002),
@@ -2606,7 +2759,7 @@ async fn normalize_free_model_ids_reprices_openrouter_runs_only() {
     let untouched = lifted(&db, "codex-run").await.updated_at;
     let before = stamp(&lifted(&db, "free-run").await.updated_at);
 
-    let rewritten = db.normalize_free_model_ids(&base_prices).await.unwrap();
+    let rewritten = db.normalize_free_model_ids(&list_prices).await.unwrap();
     assert_eq!(rewritten, 1);
 
     // Re-pricing rewrites the record blob, so the rewritten row's mutation stamp
@@ -2627,7 +2780,39 @@ async fn normalize_free_model_ids_reprices_openrouter_runs_only() {
     assert_eq!(codex_run.record.subject.model_id, "gpt-5.5:preview");
 
     // Idempotent: a second pass rewrites nothing.
-    assert_eq!(db.normalize_free_model_ids(&base_prices).await.unwrap(), 0);
+    assert_eq!(db.normalize_free_model_ids(&list_prices).await.unwrap(), 0);
+}
+
+/// The re-pricing reads the **curated list price** keyed by canonical id: a base
+/// model with none leaves the run's cost unknown rather than inventing one.
+#[tokio::test]
+async fn normalize_free_model_ids_without_a_list_price_marks_the_cost_unknown() {
+    let db = Db::connect_in_memory().await.unwrap();
+    let tokens = TokenCounts {
+        uncached_input: Some(1_000_000),
+        cached_input: None,
+        output: Some(1_000_000),
+        reasoning: None,
+    };
+    let mut free = run_with_model(
+        "free-run",
+        "deepseek/deepseek-v4:free",
+        HarnessSlug::Kilo,
+        tokens,
+    );
+    free.metrics.cost = Cost {
+        comparable: Some(0.0),
+        actual: Some(0.0),
+    };
+    db.push(&free, &links(), None, None).await.unwrap();
+
+    // No list price on record for the base model: the cost becomes unknown.
+    let rewritten = db.normalize_free_model_ids(&HashMap::new()).await.unwrap();
+    assert_eq!(rewritten, 1);
+    let run = db.get_run("free-run").await.unwrap().unwrap();
+    assert_eq!(run.record.subject.model_id, "deepseek/deepseek-v4");
+    assert_eq!(run.record.metrics.cost.comparable, None);
+    assert_eq!(run.record.metrics.cost.actual, None);
 }
 
 /// A run record carrying non-default metrics, for the lifted sort/filter columns.

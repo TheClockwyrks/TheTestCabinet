@@ -2667,6 +2667,9 @@ fn top_up_launch_body(cell: &TopUpCell<'_>) -> test_cabinet_core::LaunchBody {
             gg_model_windows: Default::default(),
             gg_model_providers: Default::default(),
             gg_model_modalities: Default::default(),
+            gg_model_prices: Default::default(),
+            // Stamped by `enqueue_top_up` once the body's model price resolves.
+            model_prices: None,
         },
     }
 }
@@ -2740,7 +2743,19 @@ pub(super) async fn enqueue_top_up(
                     continue;
                 }
             }
-            None => {}
+            None => {
+                // A non-gg cell: stamp the model's curated list price onto the
+                // launch, blocking the cell when the model has none (a gg cell's
+                // per-bound-model prices ride in the facts above).
+                match super::jobs::resolve_model_price(&state.db, &body).await {
+                    Ok(Some(prices)) => body.model_prices = Some(prices),
+                    Ok(None) => {}
+                    Err(reason) => {
+                        blocked.push(cell.blocked(reason));
+                        continue;
+                    }
+                }
+            }
         }
         // The case's type is lifted onto the job so the queue can serialize the run
         // types that must not overlap (a game jam per model). A version that is not

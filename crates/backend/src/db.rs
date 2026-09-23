@@ -5754,6 +5754,16 @@ impl Db {
     /// claimable again is released to `queued`. So an operator sees exactly which
     /// waiting runs are deliberately held versus merely next in line.
     ///
+    /// A run whose harness routes through OpenRouter and whose model carries **no
+    /// curated list price** is never claimed: it sits at the head of the queue
+    /// unclaimable until the model is priced or the job is canceled, skipped
+    /// exactly like a job held back by a parallelism cap but left at `queued`
+    /// (`pending` means harness-capacity). The enqueue refuses such a launch
+    /// first, so this state should be rare — a model un-priced after the job was
+    /// queued. The job is deliberately never failed: its record never existed,
+    /// and pricing the model later lets it run. (Gg runs are exempt: their
+    /// per-bound-model prices ride on the launch body.)
+    ///
     /// The select-then-updates run in one transaction; SQLite serializes writers
     /// (single-writer WAL), so two dispatchers cannot claim the same job.
     /// Both halves of the pass are reported, because both are state changes a
@@ -5808,6 +5818,33 @@ impl Db {
             .all(&txn)
             .await?;
 
+        // The list-price state of every curated alias, loaded in one read (aliases
+        // joined to their config's three price columns). A queued job whose model
+        // routes through OpenRouter but has no curated list price is not claimable:
+        // the enqueue already refused such a launch, so this state should be rare —
+        // a model un-priced after the job was queued. Like a job held back by a
+        // parallelism cap, it is skipped; unlike a cap it is **not** reconciled to
+        // `pending` (`pending` means harness-capacity), and it is never failed —
+        // pricing the model, or canceling the job, resolves it.
+        let aliases = model_alias::Entity::find().all(&txn).await?;
+        let configs: HashMap<String, model::Model> = model::Entity::find()
+            .all(&txn)
+            .await?
+            .into_iter()
+            .map(|config| (config.slug.clone(), config))
+            .collect();
+        let priced_aliases: HashMap<String, bool> = aliases
+            .into_iter()
+            .map(|alias| {
+                let priced = configs.get(&alias.model_slug).is_some_and(|config| {
+                    config.list_price_input.is_some()
+                        && config.list_price_cached_input.is_some()
+                        && config.list_price_output.is_some()
+                });
+                (alias.alias, priced)
+            })
+            .collect();
+
         let mut claimed: Option<job::Model> = None;
         let mut reconciled: Vec<job::Model> = Vec::new();
         for job in waiting {
@@ -5823,7 +5860,21 @@ impl Db {
                 job.test_type != TestType::GameJam.as_str() || !jams_in_flight.contains(&jam_key);
             let has_room = under_cap(&job.harness_slug, active) && jam_turn;
 
-            if claimed.is_none() && has_room {
+            let harness = parse_harness_slug(&job.harness_slug);
+            // A run priced off OpenRouter whose model carries no curated list price
+            // sits at the head of the queue unclaimable: keep it out of the
+            // claimable set, leave its state `queued`, and never fail it.
+            let unpriced = harness.routes_through_openrouter()
+                && harness != HarnessSlug::Gg
+                && !priced_aliases
+                    .get(&test_cabinet_core::model_id::canonical_model_id(
+                        &job.model_id,
+                        harness,
+                    ))
+                    .copied()
+                    .unwrap_or(false);
+
+            if claimed.is_none() && has_room && !unpriced {
                 // Claim this one: it now occupies a slot for its harness, so bump the
                 // count for the reconcile of any later same-harness jobs, and (for a
                 // jam) hold the jam+model pair against the entries behind it.
@@ -5844,7 +5895,14 @@ impl Db {
             // Only a job that actually moved is reported — the common case is a queue
             // whose display states are already correct, and re-announcing those every
             // claim pass would be pure noise on the console stream.
-            let target = if has_room { "queued" } else { "pending" };
+            let target = if unpriced || has_room {
+                // An unpriced job stays `queued` — `pending` means
+                // harness-capacity, and this run is held for want of a list
+                // price, not a slot.
+                "queued"
+            } else {
+                "pending"
+            };
             if job.state != target {
                 let mut active_model = job.into_active_model();
                 active_model.state = Set(target.to_string());
@@ -6415,6 +6473,23 @@ pub struct ModelConfigWrite {
     pub openrouter_slug: Option<String>,
     /// The hand-set OpenRouter provider, or `None` to take the observed one.
     pub provider_pin: Option<String>,
+    /// The developer's published list price per **token** of input, in USD (the
+    /// form enters per Mtok; the store carries per token). The write is
+    /// **all-or-nothing**: a caller writes all three prices plus
+    /// `list_price_as_of`, or nothing — the store enforces nothing but the API
+    /// layer does.
+    pub list_price_input: Option<f64>,
+    /// The developer's published list price per **token** of cached input, in
+    /// USD. See [`list_price_input`](Self::list_price_input).
+    pub list_price_cached_input: Option<f64>,
+    /// The developer's published list price per **token** of output, in USD.
+    /// See [`list_price_input`](Self::list_price_input).
+    pub list_price_output: Option<f64>,
+    /// The date the operator took the list-price figures.
+    pub list_price_as_of: Option<String>,
+    /// Where the list-price figures came from (`hand` for an operator-entered
+    /// set).
+    pub list_price_source: Option<String>,
     /// The canonical model ids this config claims, each with its harness family
     /// (at least one).
     pub aliases: Vec<AliasEntry>,
@@ -6533,6 +6608,11 @@ impl Db {
             description_md: Set(write.description_md),
             openrouter_slug: Set(write.openrouter_slug),
             provider_pin: Set(write.provider_pin),
+            list_price_input: Set(write.list_price_input),
+            list_price_cached_input: Set(write.list_price_cached_input),
+            list_price_output: Set(write.list_price_output),
+            list_price_as_of: Set(write.list_price_as_of),
+            list_price_source: Set(write.list_price_source),
             created_at: Set(created_at),
             updated_at: Set(write.now),
         };
@@ -6547,6 +6627,11 @@ impl Db {
                         model::Column::DescriptionMd,
                         model::Column::OpenrouterSlug,
                         model::Column::ProviderPin,
+                        model::Column::ListPriceInput,
+                        model::Column::ListPriceCachedInput,
+                        model::Column::ListPriceOutput,
+                        model::Column::ListPriceAsOf,
+                        model::Column::ListPriceSource,
                         model::Column::UpdatedAt,
                     ])
                     .to_owned(),
@@ -6649,6 +6734,49 @@ impl Db {
             .await?)
     }
 
+    /// The catalog's curated list price for a run's model, or a human-readable
+    /// reason the model has none. `Ok(Ok(_))` when the model is curated and fully
+    /// priced; `Ok(Err(reason))` when it is unpriced.
+    pub async fn list_price_for_run_model(
+        &self,
+        model_id: &str,
+        harness: HarnessSlug,
+    ) -> Result<std::result::Result<TokenPrices, String>> {
+        let canonical = test_cabinet_core::model_id::canonical_model_id(model_id, harness);
+        let Some(alias) = model_alias::Entity::find()
+            .filter(model_alias::Column::Alias.eq(&canonical))
+            .one(&self.conn())
+            .await?
+        else {
+            return Ok(Err(format!(
+                "model `{canonical}` is not in the model catalog; add it (the Models section) with the developer's list price to run it"
+            )));
+        };
+        let config = model::Entity::find_by_id(alias.model_slug)
+            .one(&self.conn())
+            .await?;
+        let Some(config) = config else {
+            return Ok(Err(format!(
+                "model `{canonical}` is not in the model catalog; add it (the Models section) with the developer's list price to run it"
+            )));
+        };
+        match (
+            config.list_price_input,
+            config.list_price_cached_input,
+            config.list_price_output,
+        ) {
+            (Some(uncached_input), Some(cached_input), Some(output)) => Ok(Ok(TokenPrices {
+                uncached_input: Some(uncached_input),
+                cached_input: Some(cached_input),
+                output: Some(output),
+            })),
+            _ => Ok(Err(format!(
+                "model `{canonical}` ({}) has no list price; set it on the model's catalog entry (the Models section) to run it",
+                config.display_name
+            ))),
+        }
+    }
+
     /// The curated `openrouter_slug` of the model that claims `alias`, if any. Used
     /// to price a run's model against its configured OpenRouter slug rather than a
     /// slug guessed from the run's model id.
@@ -6735,10 +6863,11 @@ impl Db {
     /// an OpenRouter-accessed harness whose model id carries a trailing `:tag`,
     /// strip the tag from the lifted `model_id` column and the record's
     /// `subject.modelId`, and recompute the run's comparable cost at the base
-    /// model's price (from `base_prices`, keyed by OpenRouter id). A run whose base
-    /// price is unavailable has its cost set to unknown rather than left at the
-    /// misleading `$0.00` a free tag produces. Idempotent (an already-stripped run
-    /// is unchanged) and best-effort per row. Returns how many runs were rewritten.
+    /// model's **curated list price** (from `list_prices`, keyed by canonical
+    /// model id). A run whose base model has no list price has its cost set to
+    /// unknown rather than left at the misleading `$0.00` a free tag produces.
+    /// Idempotent (an already-stripped run is unchanged) and best-effort per row.
+    /// Returns how many runs were rewritten.
     ///
     /// Only rows whose `model_id` actually carries a `:` are loaded — the same
     /// predicate [`Self::has_free_tag_candidates`] gates on. A `:`-free model id can
@@ -6747,7 +6876,7 @@ impl Db {
     /// almost always zero work.
     pub async fn normalize_free_model_ids(
         &self,
-        base_prices: &std::collections::HashMap<String, TokenPrices>,
+        list_prices: &std::collections::HashMap<String, TokenPrices>,
     ) -> Result<usize> {
         let rows = run::Entity::find()
             .filter(run::Column::ModelId.contains(":"))
@@ -6769,9 +6898,8 @@ impl Db {
                 continue;
             };
             record.subject.model_id = base.clone();
-            let lookup = test_cabinet_core::model_id::openrouter_price_id(&base, harness);
-            let comparable = base_prices
-                .get(&lookup)
+            let comparable = list_prices
+                .get(&base)
                 .and_then(|prices| Cost::comparable_from(&record.metrics.tokens, prices));
             record.metrics.cost = Cost {
                 comparable,
