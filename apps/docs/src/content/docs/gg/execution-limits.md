@@ -106,15 +106,13 @@ The rollup carries `turns`, `errors`, `maxConsecutive`, the per-kind split, and
 the replies loop detection discarded on the way with the size of the output they
 threw away, for every run rather than only for the runs a ceiling stopped. A
 discarded reply counts towards neither the errors nor the turns, because the
-request was retried and the turn was judged on whatever the retry produced, and
-no price exists for its output — a stream gg abandoned never delivered its
-usage — so it enters neither of the run's two cost figures. A
-[rejected length-capped reply](#model-api-errors) differs on exactly one of
-those terms: it does count as an error, so the ceilings bound a model that keeps
-capping out, and its usage is in the run's [total cost](#maxcost) — through a
-`usage` delta marked `total` — while staying out of its
-[work cost](#maxcost) and out of the turn count, with the rejection summed on
-the summary's `rejectedResponses` rollup as well.
+request was retried and the turn was judged on whatever the retry produced. Its
+output has no price, because an abandoned stream never delivers its usage, so it
+is in neither of the run's two [cost figures](#maxcost). A
+[rejected length-capped reply](#model-api-errors) does count as an error, so the
+ceilings bound a model that keeps capping out. Its usage is in the run's total
+cost and outside its work cost and its turn count, and the summary's
+`rejectedResponses` rollup sums the rejections.
 
 ## What is required and what is armed
 
@@ -215,17 +213,18 @@ costs. It is checked at each agent's turn boundary, before the next model call,
 exactly as the wall-clock deadline is.
 
 The session summary records the run's spend as two figures, per model slot on
-`slotCosts` and summed run-wide beside them. The **total** is the sum over every
-request the run made that reported a price — the turns answered as
-[model-api error turns](#model-api-errors), the rejected replies and every other
-non-work spend among them, beside the work turns — and it is this ceiling's
-figure. The **work cost** is the sum over the turns that produced a program or a
-tool call gg ran. What separates the two is what the run's faults cost apart
-from what its work cost: every `usage` delta names which figure its turn fed, so
-a consumer sums the marked deltas rather than guessing. This ceiling stays on
-the total — a run whose model burns money looping, capping out or sending
-unparseable arguments is spending real money whether or not any of it did work,
-and `maxCost` is the bound on spending.
+`slotCosts` and summed run-wide as `cost` and `workCost`:
+
+- The total cost (`cost`) is the sum over every request that reported a price.
+  It includes the [error turns](#model-api-errors) and the rejected replies.
+- The work cost (`workCost`) is the sum over the turns that produced a program
+  (responses as code) or a tool call gg ran (tool calling).
+
+The difference between the two is what the run's faults cost. Every `usage`
+event names the figure its turn fed in its `figure` field, so a consumer sums the
+deltas marked `work` for the work cost and every delta for the total. This
+ceiling reads the total, because a model that caps out or sends
+unparseable arguments spends real money whether or not any of it did work.
 
 1. The turn that crosses the line completes in full, because gg has already paid
    for that response.
@@ -693,16 +692,17 @@ retryable harness error rather than scoring a run the provider cut short. A
 refused credential ends under `auth_error` and exits `1` on the same terms, so
 it is never scored against a model that never ran.
 
-Four model-call failures are answerable rather than fatal — a timed-out call, a
-length-capped reply, an unparseable reply, and a reply that
-[looped](/gg/loop-detection/) on every one of the client's attempts. Each is
-recorded as an error turn — it spends the consecutive-error count and the
-error-rate window exactly as a failed call does — and the same request is then
-asked again on the same turn. Nothing enters the context between the attempts,
-so the retry is byte-identical, and only the error ceilings, the run's wall clock
-and an operator's kill (both re-checked between attempts) decide when to stop
-asking. So a model that loops once, or emits arguments gg cannot read, loses a
-turn rather than the run.
+Four model-call failures are answered as error turns instead: a timed-out call,
+a length-capped reply, an unparseable reply, and a reply that
+[looped](/gg/loop-detection/) on every one of the client's attempts. Each spends
+the consecutive-error count and the error-rate window exactly as a failed call
+does, and the same request is then asked again on the same turn. Nothing enters
+the context between the attempts, so the retry is byte-identical. Only the error
+ceilings, the run's wall clock and an operator's kill (both re-checked between
+attempts) decide when to stop asking, so a model that loops once or emits
+arguments gg cannot read loses a turn rather than the run. Whatever usage one of
+these attempts reported is charged to the run's [total cost](#maxcost) and kept
+out of its work cost.
 
 - A timed-out call. Every attempt runs under the run's
   [`modelCallTimeoutSecs`](#modelcalltimeoutsecs) ceiling over its whole
@@ -713,28 +713,21 @@ turn rather than the run.
   [`modelStreamIdleSecs`](#modelstreamidlesecs).
 - A length-capped reply. A reply whose finish reason is `length` hit the
   provider's own output cap, and gg presumes it is a degenerate generation
-  rather than work. It is rejected whole: it never enters the context, and its
-  usage is charged to the run's [total cost](#maxcost) only — a `usage` delta
-  marks it `total`, so it never taints the run's work — while the turn count
-  shows only the turn that eventually answered. The spend is not lost to the
-  rejection's own record either — a `response_rejected` event carries the
+  rather than work. It is rejected whole, and the turn count shows only the
+  turn that eventually answered. A `response_rejected` event carries the
   reply's size, usage, cost and serving provider, and the session summary's
   `rejectedResponses` rollup sums them. Recorded as `model_length_capped`.
-- An unparseable reply. A `2xx` response gg could not read into a reply — an
-  unparseable envelope, an error object in a success status, or tool call
-  arguments the provider cut off mid-JSON. There is nothing to put in the
-  context, so the retry starts from the identical window; any usage the provider
-  reported before the reply stopped making sense is charged to the run's total
-  cost on a delta marked `total`, never to its work cost. (A reply that was no
-  tool call at all parses fine and is answered as its `missing_completion`
-  error instead.) Recorded as `model_parse`.
+- An unparseable reply. A `2xx` stream gg could not read into a reply: an
+  unreadable event, a provider error object, or tool call arguments that are
+  not JSON, which is what a provider that cuts arguments off produces. A reply
+  that made no tool call at all is readable and is answered as a
+  `missing_completion` error. Recorded as `model_parse`.
 - A reply that looped on every one of the client's attempts. The failure is the
   model's rather than the provider's, and it is named separately in the log
   (_"model looped every attempt"_), because "retries exhausted" would send an
-  operator looking at the provider for an outage that never happened. None of
-  the discarded replies ever entered the context, their size rides the error
-  turn's `loopAborts` figures, and their spend reaches neither cost figure — a
-  stream gg dropped never delivered a usage payload to price it with. The
+  operator looking at the provider for an outage that never happened. The size
+  of the discarded replies rides the error turn's `loopAborts` figures. They
+  have no price, since an abandoned stream never delivers its usage. The
   recorded base error kind is `model_api` and the recorded type is
   `model_response_loop`.
 

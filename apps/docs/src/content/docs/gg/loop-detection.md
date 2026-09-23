@@ -189,16 +189,16 @@ characters read before it was abandoned); discarded 4 response(s) totalling 4904
 characters of generated output
 ```
 
-That is answered as an error turn, not an ending: none of the discarded replies
-ever entered the context, the [error ceilings](/gg/execution-limits/#model-api-errors)
-spend exactly as they do for any other failed turn, and the same request goes
-out again — so a model that loops once loses a turn rather than the run. An
-armed ceiling is what eventually stops it, under `limit_exceeded`. The turn is
-recorded with the base error kind `model_api` and the error type
-`model_response_loop`. What is worth acting on beyond that is how many replies
-were discarded and how much they generated — and what they cost cannot be
-recorded: a stream gg dropped never delivered its usage, so the generation
-figures in neither of the run's two cost figures.
+That is answered as an error turn. None of the discarded replies entered the
+context, the [error ceilings](/gg/execution-limits/#model-api-errors) spend as
+they do for any other failed turn, and the same request goes out again, so a
+model that loops once loses a turn rather than the run. An armed ceiling is what
+stops a model that keeps looping, under `limit_exceeded`. The turn is recorded
+with the base error kind `model_api` and the error type `model_response_loop`,
+together with how many replies were discarded and how much they generated.
+Their cost is in neither of the run's
+[cost figures](/gg/execution-limits/#maxcost), because an abandoned stream never
+delivers its usage.
 
 The [session record](/gg/analysis/session-records/) keeps the failure as a
 recorded model error of kind `response_loop` carrying how many replies were
