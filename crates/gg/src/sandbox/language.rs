@@ -1052,6 +1052,67 @@ pub fn all_languages() -> impl Iterator<Item = &'static dyn ProgramLanguage> {
     GgProgramLanguage::ALL.iter().copied().map(language)
 }
 
+/// **One `#[test]` per registered language**, each handing that language to `$check`, and the test
+/// that holds the list to [`GgProgramLanguage::ALL`].
+///
+/// A gate over every arm is written as a function of one language and generated per language rather
+/// than looped over [`all_languages`] in one test. The arms' toolchains are the most expensive thing
+/// the suite runs — a JVM running `kotlinc`, `swiftc` and the artifact it produces — and nextest runs
+/// one process per test, so a loop pays for every arm in series in one process and one test, while
+/// a test per arm lets each warm up in its own process and all of them run in parallel. What a
+/// loop gave for free — an arm registered tomorrow is gated without anybody remembering to — is what
+/// the generated `every_registered_language_has_a_test` keeps.
+///
+/// Invoke it inside a module named for the property, so each test reads as
+/// `<property>::<language>`:
+///
+/// ```ignore
+/// mod a_loaded_module_is_compiled_once_for_the_agent {
+///     crate::sandbox::language::test_each_language!(super::compiles_a_loaded_module_once);
+/// }
+/// ```
+#[cfg(test)]
+macro_rules! test_each_language {
+    ($check:path) => {
+        $crate::sandbox::language::test_each_language!(@each $check;
+            typescript => TypeScript,
+            javascript => JavaScript,
+            python => Python,
+            ruby => Ruby,
+            purescript => PureScript,
+            java => Java,
+            kotlin => Kotlin,
+            rust => Rust,
+            swift => Swift,
+            cpp => Cpp,
+            csharp => CSharp,
+        );
+    };
+    (@each $check:path; $($test:ident => $id:ident),* $(,)?) => {
+        $(
+            #[test]
+            fn $test() {
+                $check($crate::sandbox::language::language(
+                    ::test_cabinet_core::gg::GgProgramLanguage::$id,
+                ));
+            }
+        )*
+
+        /// **A language added to the registry is covered the moment it compiles**: the list the
+        /// tests above are generated from is the registry's own, or this fails.
+        #[test]
+        fn every_registered_language_has_a_test() {
+            let mut listed = vec![$(::test_cabinet_core::gg::GgProgramLanguage::$id),*];
+            let mut registered = ::test_cabinet_core::gg::GgProgramLanguage::ALL.to_vec();
+            listed.sort_by_key(|id| format!("{id:?}"));
+            registered.sort_by_key(|id| format!("{id:?}"));
+            assert_eq!(listed, registered, "a registered language has no test here");
+        }
+    };
+}
+#[cfg(test)]
+pub(crate) use test_each_language;
+
 /// A program that prepared cleanly: what the guest is handed, in whichever of the two shapes this
 /// arm produces.
 ///

@@ -7,19 +7,20 @@
 //! a language — "PureScript costs 1.4 s a turn, Python costs nothing" — is that field and nothing
 //! else.
 //!
-//! It was, until this module, asserted only indirectly. Each arm answers
-//! [`prepare_compiles`](ProgramLanguage::prepare_compiles) and each arm's own tests assert that
-//! answer; the one line that turns the answer into a reading lives in [`run_program`], and the arms'
-//! substrate harnesses are near-copies of that function which pass `None` straight through. So the
-//! most expensive arms in the study — the ones whose compile cost is the reason they exist — had
-//! nothing observing that their cost arrives anywhere.
+//! Each arm answers [`prepare_compiles`](ProgramLanguage::prepare_compiles) and each arm's own tests
+//! assert that answer; the one line that turns the answer into a reading lives in [`run_program`],
+//! and the arms' substrate harnesses are near-copies of that function which pass `None` straight
+//! through. So this drives the real [`run_program`] itself: without it the most expensive arms in the
+//! study — the ones whose compile cost is the reason they exist — would have nothing observing that
+//! their cost arrives anywhere.
 //!
-//! # Why it is one test over every language rather than one per arm
+//! # Why it is generated for every language rather than written per arm
 //!
 //! Because the property is the seam's, not an arm's: a language that compiles reports a reading and
 //! a language that does not reports absence, and the two claims are different — `None` says "this
-//! language has no compiler", `Some(0)` would say "it compiled, instantly". A per-arm test would let
-//! a new arm register with the question unasked, which is exactly how this gap opened.
+//! language has no compiler", `Some(0)` would say "it compiled, instantly". A test an arm had to
+//! write for itself would let a new arm register with the question unasked; one generated from the
+//! registry cannot.
 //!
 //! It costs one real compile per compiled arm, twice (a program that compiles and a program that
 //! does not), plus the interpreter components those programs are evaluated by. That is the price of
@@ -66,54 +67,56 @@ fn outcome_of(language: &'static dyn ProgramLanguage, program: &str) -> SandboxO
 /// takes the reading as a parameter rather than accumulating it. A compile that spent four seconds
 /// rejecting a program is exactly the cost that arm has to answer for, so absence there would be a
 /// systematic under-report of every failing turn.
-#[test]
-fn every_language_reports_what_compiling_its_program_cost() {
-    for language in all_languages() {
-        let compiles = language.prepare_compiles();
-        let name = language.display_name();
+mod every_language_reports_what_compiling_its_program_cost {
+    crate::sandbox::language::test_each_language!(super::reports_what_compiling_its_program_cost);
+}
 
-        let accepted = outcome_of(language, &language.open_docs_views_statement(&["readFile"]));
+/// The reading for one language.
+fn reports_what_compiling_its_program_cost(language: &'static dyn ProgramLanguage) {
+    let compiles = language.prepare_compiles();
+    let name = language.display_name();
+
+    let accepted = outcome_of(language, &language.open_docs_views_statement(&["readFile"]));
+    assert!(
+        accepted.result.is_ok(),
+        "{name}: the program the seam guarantees it can write did not run: {:?}",
+        accepted.result
+    );
+    assert_eq!(
+        accepted.compile.is_some(),
+        compiles,
+        "{name}: says prepare_compiles() = {compiles}, but the outcome's compile reading was \
+         {:?}",
+        accepted.compile
+    );
+    if compiles {
         assert!(
-            accepted.result.is_ok(),
-            "{name}: the program the seam guarantees it can write did not run: {:?}",
-            accepted.result
-        );
-        assert_eq!(
-            accepted.compile.is_some(),
-            compiles,
-            "{name}: says prepare_compiles() = {compiles}, but the outcome's compile reading was \
-             {:?}",
+            accepted.compile > Some(Duration::ZERO),
+            "{name}: a real compiler ran and the reading was {:?}; a zero here means the clock \
+             is not around the compile",
             accepted.compile
         );
-        if compiles {
-            assert!(
-                accepted.compile > Some(Duration::ZERO),
-                "{name}: a real compiler ran and the reading was {:?}; a zero here means the clock \
-                 is not around the compile",
-                accepted.compile
-            );
-        }
+    }
 
-        // Something no compiler accepts, in any of these languages: a bare delimiter.
-        let rejected = outcome_of(language, "((({");
-        assert_eq!(
-            rejected.compile.is_some(),
-            compiles,
-            "{name}: a rejected program reported compile = {:?}; the cost of a compile that said \
-             no is still the cost of a compile",
+    // Something no compiler accepts, in any of these languages: a bare delimiter.
+    let rejected = outcome_of(language, "((({");
+    assert_eq!(
+        rejected.compile.is_some(),
+        compiles,
+        "{name}: a rejected program reported compile = {:?}; the cost of a compile that said \
+         no is still the cost of a compile",
+        rejected.compile
+    );
+    if compiles {
+        assert!(
+            rejected.result.is_err(),
+            "{name}: a checked language accepted `((({{`, so this half proves nothing"
+        );
+        assert!(
+            rejected.compile > Some(Duration::ZERO),
+            "{name}: the compiler rejected the program in {:?}",
             rejected.compile
         );
-        if compiles {
-            assert!(
-                rejected.result.is_err(),
-                "{name}: a checked language accepted `((({{`, so this half proves nothing"
-            );
-            assert!(
-                rejected.compile > Some(Duration::ZERO),
-                "{name}: the compiler rejected the program in {:?}",
-                rejected.compile
-            );
-        }
     }
 }
 

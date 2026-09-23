@@ -12,7 +12,8 @@
 //!
 //! It is deliberately generic over the registry rather than written per arm: this is the one gate an
 //! arm cannot pass by being the arm it was when it was written, and a twelfth language registered
-//! tomorrow is held to it without anybody remembering to.
+//! tomorrow is held to it without anybody remembering to — the test per arm is generated from the
+//! registry's own list.
 //!
 //! # Separating the honest zero from the regression
 //!
@@ -36,8 +37,8 @@
 
 use std::path::{Path, PathBuf};
 
+use super::ProgramLanguage;
 use super::compile::{AgentWorkspace, PrepareContext};
-use super::{ProgramLanguage, all_languages};
 
 /// How many programs each agent prepares after its module has loaded.
 ///
@@ -165,45 +166,43 @@ fn read(path: &Path) -> Option<Built> {
     })
 }
 
-/// **A loaded module is compiled once per agent, on every registered arm.**
+/// **A loaded module is compiled once per agent, on every registered arm** — one test per arm.
 ///
 /// Two readings, because either alone has a way through. A rebuild that registers itself grows the
 /// count; a rebuild that registers nothing rewrites the file it produced, and the band's own
 /// lengths and write times say so.
-#[test]
-fn every_registered_language_compiles_a_loaded_module_once_for_the_agent() {
+mod a_loaded_module_is_compiled_once_for_the_agent {
+    crate::sandbox::language::test_each_language!(super::compiles_a_loaded_module_once);
+}
+
+/// The reuse gate for one arm.
+fn compiles_a_loaded_module_once(language: &'static dyn ProgramLanguage) {
+    let name = language.display_name();
+    let session = session(language).unwrap_or_else(|error| panic!("{name}: {error}"));
     let mut failures: Vec<String> = Vec::new();
-    for language in all_languages() {
-        let name = language.display_name();
-        match session(language) {
-            Err(error) => failures.push(format!("{name}: {error}")),
-            Ok(session) => {
-                let (after_load, after_turns) = session.counted;
-                if after_turns != after_load {
-                    failures.push(format!(
-                        "{name}: {TURNS} turns took the build count from {after_load} to \
-                         {after_turns} — a loaded module was compiled again"
-                    ));
-                }
-                if language.prepare_compiles() && after_load == 0 && session.verbatim {
-                    failures.push(format!(
-                        "{name}: the read that loaded the module recorded no build and handed back \
-                         the author's own bytes, so this arm's read left a turn nothing to reach \
-                         for and every turn compiles the module itself"
-                    ));
-                }
-                let (loaded, turned) = session.kept;
-                for file in &loaded {
-                    if !turned.contains(file) {
-                        failures.push(format!(
-                            "{name}: {} was written again by a turn's compile.\n  after the load: \
-                             {file:?}\n  after {TURNS} turns: {:?}",
-                            file.path.display(),
-                            turned.iter().find(|later| later.path == file.path)
-                        ));
-                    }
-                }
-            }
+    let (after_load, after_turns) = session.counted;
+    if after_turns != after_load {
+        failures.push(format!(
+            "{name}: {TURNS} turns took the build count from {after_load} to {after_turns} — a \
+             loaded module was compiled again"
+        ));
+    }
+    if language.prepare_compiles() && after_load == 0 && session.verbatim {
+        failures.push(format!(
+            "{name}: the read that loaded the module recorded no build and handed back the \
+             author's own bytes, so this arm's read left a turn nothing to reach for and every \
+             turn compiles the module itself"
+        ));
+    }
+    let (loaded, turned) = session.kept;
+    for file in &loaded {
+        if !turned.contains(file) {
+            failures.push(format!(
+                "{name}: {} was written again by a turn's compile.\n  after the load: {file:?}\n  \
+                 after {TURNS} turns: {:?}",
+                file.path.display(),
+                turned.iter().find(|later| later.path == file.path)
+            ));
         }
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));

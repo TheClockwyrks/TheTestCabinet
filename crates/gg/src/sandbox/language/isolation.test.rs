@@ -44,56 +44,15 @@ fn assert_isolated(language: &'static dyn ProgramLanguage) {
     }
 }
 
-/// One test per registered language, so each arm's toolchain warms up in its own process and the
-/// arms run in parallel rather than one after another.
+/// The gate, one test per registered language.
 ///
 /// A language wiring up a compiler with a shared working directory, a shared output path or a shared
 /// daemon fails here — before it has ever mis-attributed one agent's program to another in a run
-/// anybody paid for. [`every_registered_language_is_gated`] holds the list to the registry.
-macro_rules! gate_every_language {
-    ($($test:ident => $id:ident),* $(,)?) => {
-        /// Every language a test below is generated for.
-        const GATED: &[GgProgramLanguage] = &[$(GgProgramLanguage::$id),*];
-
-        $(
-            #[test]
-            fn $test() {
-                assert_isolated(crate::sandbox::language::language(GgProgramLanguage::$id));
-            }
-        )*
-    };
-}
-
-/// The per-language gate tests, under one name so a filter can select them together.
+/// anybody paid for.
 mod gate {
     use super::*;
-    use test_cabinet_core::gg::GgProgramLanguage;
 
-    gate_every_language! {
-        typescript => TypeScript,
-        javascript => JavaScript,
-        python => Python,
-        ruby => Ruby,
-        purescript => PureScript,
-        java => Java,
-        kotlin => Kotlin,
-        rust => Rust,
-        swift => Swift,
-        cpp => Cpp,
-        csharp => CSharp,
-    }
-
-    /// **A language added to the registry is gated the moment it compiles.** The tests above are
-    /// written out per language so they run in parallel, so this is what stops the list drifting
-    /// from [`GgProgramLanguage::ALL`].
-    #[test]
-    fn every_registered_language_is_gated() {
-        let mut gated = GATED.to_vec();
-        let mut registered = GgProgramLanguage::ALL.to_vec();
-        gated.sort_by_key(|id| format!("{id:?}"));
-        registered.sort_by_key(|id| format!("{id:?}"));
-        assert_eq!(gated, registered);
-    }
+    crate::sandbox::language::test_each_language!(super::assert_isolated);
 
     /// The [fixture](crate::sandbox::language::fixture) language, driven beside the registered set.
     ///

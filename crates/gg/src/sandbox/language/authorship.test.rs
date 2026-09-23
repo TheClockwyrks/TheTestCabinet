@@ -1,7 +1,7 @@
-//! **The authorship gate's own tests** — the eleven-arm run, and the proof that the classification
-//! behind it has teeth.
+//! **The authorship gate's own tests** — the gate run over every registered arm, and the proof that
+//! the classification behind it has teeth.
 //!
-//! The gate is one assertion over every registered arm. Everything else here is about the
+//! The gate is one test per registered arm. Everything else here is about the
 //! classification itself: a gate whose verdict nothing has ever exercised is a gate nobody knows
 //! reports the truth, and this one decides whether an arm is recorded as a defect.
 
@@ -14,14 +14,19 @@ use super::{Did, Half, Loaded, UNCONVERTED, audit, classify, maps_back};
 ///
 /// The gate. It drives each arm's module step and each arm's program step — the second one twice,
 /// once with a module in scope — through that arm's real preparation, its real compiler where it has
-/// one, and reports every arm whose verdict and row disagree, in either direction.
-#[test]
-fn every_registered_arm_compiles_the_bytes_it_was_handed_or_records_what_it_does_instead() {
-    let audit = audit();
+/// one, and reports every way the arm's verdict and row disagree, in either direction.
+mod every_registered_arm_compiles_the_bytes_it_was_handed_or_records_what_it_does_instead {
+    crate::sandbox::language::test_each_language!(super::compiles_the_bytes_it_was_handed);
+}
+
+/// The gate, for one arm.
+fn compiles_the_bytes_it_was_handed(language: &'static dyn crate::sandbox::ProgramLanguage) {
+    let audit = audit(language);
     assert!(
         audit.failures.is_empty(),
-        "{} of the {} preparation steps fail the authorship gate:\n\n{}",
+        "{} of {}'s {} preparation steps fail the authorship gate:\n\n{}",
         audit.failures.len(),
+        language.display_name(),
         audit.drives,
         audit
             .failures

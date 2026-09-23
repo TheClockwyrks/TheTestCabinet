@@ -101,7 +101,7 @@ use std::path::Path;
 use test_cabinet_core::gg::{DEFAULT_OPENING_FUNCTIONS, GgProgramLanguage};
 
 use super::compile::{AgentWorkspace, PrepareContext};
-use super::{CodeModule, ProgramLanguage, all_languages};
+use super::{CodeModule, ProgramLanguage};
 
 /// The name the [module](ProgramLanguage::gate_module) the gate drives an arm's module step with
 /// carries.
@@ -543,14 +543,12 @@ pub(super) struct Audit {
     pub(super) failures: Vec<Failure>,
 }
 
-/// **Drive every registered arm's preparation steps and report every way one failed the gate.**
-pub(super) fn audit() -> Audit {
+/// **Drive one arm's preparation steps and report every way one failed the gate.**
+pub(super) fn audit(language: &'static dyn ProgramLanguage) -> Audit {
     let mut audit = Audit::default();
-    for language in all_languages() {
-        for half in Half::ALL {
-            audit.drives += half.scopes().len();
-            audit.failures.extend(measure(language, half));
-        }
+    for half in Half::ALL {
+        audit.drives += half.scopes().len();
+        audit.failures.extend(measure(language, half));
     }
     audit
 }

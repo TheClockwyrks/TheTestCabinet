@@ -97,65 +97,65 @@ fn every_registered_language_describes_one_capability_surface() {
 /// eight tool families, `session`, `docs`, `views` and `feedback`. It never imports `types` or
 /// `turns`, so instantiation cannot notice a change to those — only the tool-name check below, and
 /// the Rust compiler, can.
-#[test]
-fn every_registered_language_binds_exactly_the_operations_gg_offers() {
-    /// **The arms whose component imports one interface rather than the fifteen**, and therefore
-    /// answer this export with nothing.
-    ///
-    /// There is no `wit-bindgen` for the JVM, so both JVM arms reach gg through
-    /// `test-cabinet:gg/wire` and the canonical ABI their SDKs compile is one string, two byte lists
-    /// and a scalar. A
-    /// component of that shape has one import to report and the question this gate asks has no
-    /// answer for it — what covers the same drift is
-    /// `every_operation_is_reachable_through_the_wire`, which walks gg's own operations table
-    /// against the host side of that door and fails by name.
-    ///
-    /// The table fails in both directions: an arm listed here that starts binding the fifteen fails,
-    /// and an arm not listed that stops fails.
-    const ONE_DOOR: [GgProgramLanguage; 2] = [GgProgramLanguage::Java, GgProgramLanguage::Kotlin];
+mod every_registered_language_binds_exactly_the_operations_gg_offers {
+    crate::sandbox::language::test_each_language!(super::binds_exactly_the_operations_gg_offers);
+}
 
+/// **The arms whose component imports one interface rather than the fifteen**, and therefore
+/// answer this export with nothing.
+///
+/// There is no `wit-bindgen` for the JVM, so both JVM arms reach gg through
+/// `test-cabinet:gg/wire` and the canonical ABI their SDKs compile is one string, two byte lists
+/// and a scalar. A component of that shape has one import to report and the question this gate asks
+/// has no answer for it — what covers the same drift is `every_operation_is_reachable_through_the_wire`,
+/// which walks gg's own operations table against the host side of that door and fails by name.
+///
+/// The table fails in both directions: an arm listed here that starts binding the fifteen fails,
+/// and an arm not listed that stops fails.
+const ONE_DOOR: [GgProgramLanguage; 2] = [GgProgramLanguage::Java, GgProgramLanguage::Kotlin];
+
+/// The component gate, for one language.
+fn binds_exactly_the_operations_gg_offers(language: &'static dyn ProgramLanguage) {
     let mut expected: Vec<String> = crate::sandbox::signatures::sandbox_operation_names()
         .into_iter()
         .map(str::to_string)
         .collect();
     expected.sort();
 
-    for language in registered() {
-        // An interpreted arm is asked about its prebuilt component; a compiled one has none to
-        // ask, so it is given a program to compile — `open_docs_views_statement` is the one whole
-        // program every language is required to be able to write, and a sibling gate already
-        // asserts each can prepare what it generated.
-        let artifact = language.compiles_component().then(|| {
-            crate::sandbox::prepare_program(
-                language,
-                &language.open_docs_views_statement(&[]),
-                &[],
-                &crate::sandbox::AgentWorkspace::new(),
-            )
-            .expect("a compiled arm compiles the program its own seam generated")
-            .component
-            .expect("a compiled arm hands back the component it compiled")
-        });
-        let mut bound = crate::sandbox::component_bound_operations(language, artifact)
-            .expect("the guest instantiates and reports its operations");
-        bound.sort();
-        if ONE_DOOR.contains(&language.id()) {
-            assert!(
-                bound.is_empty(),
-                "{}: `ONE_DOOR` records that its component imports `test-cabinet:gg/wire` alone, \
-                 and this one binds {bound:?}; delete its row",
-                language.display_name()
-            );
-            continue;
-        }
-        assert_eq!(
-            bound,
-            expected,
-            "{}: the component and gg's tool vocabulary have drifted apart — rebuild the guest \
-             with `packages/gg-sandbox/build.sh`",
+    // An interpreted arm is asked about its prebuilt component; a compiled one has none to
+    // ask, so it is given a program to compile — `open_docs_views_statement` is the one whole
+    // program every language is required to be able to write, and a sibling gate already
+    // asserts each can prepare what it generated.
+    let artifact = language.compiles_component().then(|| {
+        crate::sandbox::prepare_program(
+            language,
+            &language.open_docs_views_statement(&[]),
+            &[],
+            &crate::sandbox::AgentWorkspace::new(),
+        )
+        .expect("a compiled arm compiles the program its own seam generated")
+        .component
+        .expect("a compiled arm hands back the component it compiled")
+    });
+    let mut bound = crate::sandbox::component_bound_operations(language, artifact)
+        .expect("the guest instantiates and reports its operations");
+    bound.sort();
+    if ONE_DOOR.contains(&language.id()) {
+        assert!(
+            bound.is_empty(),
+            "{}: `ONE_DOOR` records that its component imports `test-cabinet:gg/wire` alone, \
+             and this one binds {bound:?}; delete its row",
             language.display_name()
         );
+        return;
     }
+    assert_eq!(
+        bound,
+        expected,
+        "{}: the component and gg's tool vocabulary have drifted apart — rebuild the guest \
+         with `packages/gg-sandbox/build.sh`",
+        language.display_name()
+    );
 }
 
 /// **Every registered language's catalogue says it is that language's.**

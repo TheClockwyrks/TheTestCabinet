@@ -186,41 +186,60 @@ fn every_language_names_the_files_a_code_skill_is_spelled_with() {
 /// The [fixture](super::fixture) is included and answers deliberately unlike TypeScript, which is
 /// what makes "the program is written in the agent's own language" an assertion rather than a
 /// promise: two languages here really do generate different programs.
-#[test]
-fn every_language_writes_the_program_that_opens_a_documentation_view() {
-    const NAMES: [&str; 2] = ["readFile", "writeFile"];
+mod every_language_writes_the_program_that_opens_a_documentation_view {
+    crate::sandbox::language::test_each_language!(
+        super::writes_the_program_that_opens_a_documentation_view
+    );
 
-    for language in all_languages().chain(crate::sandbox::fixture_languages()) {
-        let program = language.open_docs_views_statement(&NAMES);
-        let call = written(language, VIEWS_OPEN_DOCS_VIEW);
-        assert!(
-            program.contains(&call),
-            "{}: the generated program does not call `{call}`:\n{program}",
-            language.display_name()
-        );
-        for name in NAMES {
-            assert!(
-                program.contains(name),
-                "{}: the generated program never names `{name}`:\n{program}",
-                language.display_name()
-            );
+    /// The [fixture](crate::sandbox::language::fixture) languages, which answer deliberately unlike
+    /// every registered arm.
+    #[test]
+    fn fixtures() {
+        for language in crate::sandbox::fixture_languages() {
+            super::writes_the_program_that_opens_a_documentation_view(language);
         }
-        language
-            .prepare_program(&program, &[], &PrepareContext::detached())
-            .unwrap_or_else(|failure| {
-                panic!(
-                    "{}: cannot prepare the program it generated ({failure}):\n{program}",
-                    language.display_name()
-                )
-            });
     }
 
-    assert_ne!(
-        typescript().open_docs_views_statement(&NAMES),
-        fixture_language().open_docs_views_statement(&NAMES),
-        "two languages generating identical source would make this seam untested rather than \
-         satisfied"
+    /// Two languages generating identical source would make this seam untested rather than
+    /// satisfied.
+    #[test]
+    fn two_languages_write_it_differently() {
+        use super::ProgramLanguage;
+
+        assert_ne!(
+            super::typescript().open_docs_views_statement(&super::DOCS_VIEW_NAMES),
+            super::fixture_language().open_docs_views_statement(&super::DOCS_VIEW_NAMES),
+        );
+    }
+}
+
+/// The names the generated documentation program is asked to open.
+const DOCS_VIEW_NAMES: [&str; 2] = ["readFile", "writeFile"];
+
+/// The documentation program, for one language.
+fn writes_the_program_that_opens_a_documentation_view(language: &'static dyn ProgramLanguage) {
+    let program = language.open_docs_views_statement(&DOCS_VIEW_NAMES);
+    let call = written(language, VIEWS_OPEN_DOCS_VIEW);
+    assert!(
+        program.contains(&call),
+        "{}: the generated program does not call `{call}`:\n{program}",
+        language.display_name()
     );
+    for name in DOCS_VIEW_NAMES {
+        assert!(
+            program.contains(name),
+            "{}: the generated program never names `{name}`:\n{program}",
+            language.display_name()
+        );
+    }
+    language
+        .prepare_program(&program, &[], &PrepareContext::detached())
+        .unwrap_or_else(|failure| {
+            panic!(
+                "{}: cannot prepare the program it generated ({failure}):\n{program}",
+                language.display_name()
+            )
+        });
 }
 
 /// **Every language writes the program that opens a session in its own syntax, covering every
@@ -238,99 +257,116 @@ fn every_language_writes_the_program_that_opens_a_documentation_view() {
 /// The [fixture](super::fixture) is included and answers deliberately unlike every registered arm,
 /// which is what makes "the opening turn is written in the agent's own language" an assertion rather
 /// than a promise.
-#[test]
-fn every_language_writes_the_program_that_opens_the_session() {
-    const MODULES: [&str; 2] = ["gg.files", "gg.views"];
-    const DOCS: [&str; 1] = ["gg.docs.search"];
+mod every_language_writes_the_program_that_opens_the_session {
+    crate::sandbox::language::test_each_language!(super::writes_the_program_that_opens_the_session);
 
-    for language in all_languages().chain(crate::sandbox::fixture_languages()) {
-        let program = language.bootstrap_program(&MODULES, &DOCS, None);
-        let search = written(language, DOCS_SEARCH);
-        let open_docs_view = written(language, VIEWS_OPEN_DOCS_VIEW);
-        for call in [&search, &open_docs_view] {
-            assert!(
-                program.contains(call.as_str()),
-                "{}: the opening program does not call `{call}`:\n{program}",
-                language.display_name()
-            );
+    /// The [fixture](crate::sandbox::language::fixture) languages, which answer deliberately unlike
+    /// every registered arm.
+    #[test]
+    fn fixtures() {
+        for language in crate::sandbox::fixture_languages() {
+            super::writes_the_program_that_opens_the_session(language);
         }
-        for name in MODULES.iter().chain(DOCS.iter()) {
-            assert!(
-                program.contains(name),
-                "{}: the opening program never names `{name}`:\n{program}",
-                language.display_name()
-            );
-        }
-        // The whole-module lookup, which is the difference between an agent that is shown every
-        // function it holds and one that is shown the first page of some of them.
-        assert!(
-            program.contains(&MAX_SEARCH_LIMIT.to_string()),
-            "{}: the opening program does not ask for the whole of a module:\n{program}",
-            language.display_name()
-        );
-        // The order the model reads: what was searched, then what was opened.
-        assert!(
-            program.find(&search) < program.find(&open_docs_view),
-            "{}: the opening program opens a view before it searches:\n{program}",
-            language.display_name()
-        );
-        language
-            .prepare_program(&program, &[], &PrepareContext::detached())
-            .unwrap_or_else(|failure| {
-                panic!(
-                    "{}: cannot prepare the program it generated ({failure}):\n{program}",
-                    language.display_name()
-                )
-            });
     }
+}
+
+/// The modules the opening programs below are asked to search.
+const SESSION_MODULES: [&str; 2] = ["gg.files", "gg.views"];
+
+/// The documentation keys the opening programs below are asked to open.
+const SESSION_DOCS: [&str; 1] = ["gg.docs.search"];
+
+/// The opening program, for one language: the whole program prepared, and the two shapes an agent
+/// with nothing to search or nothing to open is handed, read.
+fn writes_the_program_that_opens_the_session(language: &'static dyn ProgramLanguage) {
+    let program = language.bootstrap_program(&SESSION_MODULES, &SESSION_DOCS, None);
+    let search = written(language, DOCS_SEARCH);
+    let open_docs_view = written(language, VIEWS_OPEN_DOCS_VIEW);
+    for call in [&search, &open_docs_view] {
+        assert!(
+            program.contains(call.as_str()),
+            "{}: the opening program does not call `{call}`:\n{program}",
+            language.display_name()
+        );
+    }
+    for name in SESSION_MODULES.iter().chain(SESSION_DOCS.iter()) {
+        assert!(
+            program.contains(name),
+            "{}: the opening program never names `{name}`:\n{program}",
+            language.display_name()
+        );
+    }
+    // The whole-module lookup, which is the difference between an agent that is shown every
+    // function it holds and one that is shown the first page of some of them.
+    assert!(
+        program.contains(&MAX_SEARCH_LIMIT.to_string()),
+        "{}: the opening program does not ask for the whole of a module:\n{program}",
+        language.display_name()
+    );
+    // The order the model reads: what was searched, then what was opened.
+    assert!(
+        program.find(&search) < program.find(&open_docs_view),
+        "{}: the opening program opens a view before it searches:\n{program}",
+        language.display_name()
+    );
+    language
+        .prepare_program(&program, &[], &PrepareContext::detached())
+        .unwrap_or_else(|failure| {
+            panic!(
+                "{}: cannot prepare the program it generated ({failure}):\n{program}",
+                language.display_name()
+            )
+        });
 
     // The agent that holds neither of the two modules: `modules` arrives empty, and a search
     // carrying neither a query nor a filter is `invalid-argument` rather than an empty page, so the
     // opening program has to leave the call out altogether. The documentation key here deliberately
     // does not spell the search call, so that the key printed in the view line cannot be read as
-    // the call this looks for the absence of. Read rather than prepared: the sweep above already
-    // drives every arm's real compiler once, and this program differs from that one by a call it
+    // the call this looks for the absence of. Read rather than prepared: the program above already
+    // drives this arm's real compiler once, and this program differs from that one by a call it
     // does not make.
     const UNSEARCHED: [&str; 1] = ["gg.views.openDocsView"];
-    for language in all_languages().chain(crate::sandbox::fixture_languages()) {
-        let program = language.bootstrap_program(&[], &UNSEARCHED, None);
-        let search = written(language, DOCS_SEARCH);
-        let open_docs_view = written(language, VIEWS_OPEN_DOCS_VIEW);
+    let program = language.bootstrap_program(&[], &UNSEARCHED, None);
+    assert!(
+        !program.contains(&search),
+        "{}: an agent holding no module at all is handed an opening turn that calls `{search}` \
+         with nothing to search for, which gg refuses rather than answers:\n{program}",
+        language.display_name()
+    );
+    for named in [open_docs_view.as_str(), UNSEARCHED[0]] {
         assert!(
-            !program.contains(&search),
-            "{}: an agent holding no module at all is handed an opening turn that calls `{search}` \
-             with nothing to search for, which gg refuses rather than answers:\n{program}",
+            program.contains(named),
+            "{}: the opening program lost `{named}` along with the search:\n{program}",
             language.display_name()
         );
-        for named in [open_docs_view.as_str(), UNSEARCHED[0]] {
-            assert!(
-                program.contains(named),
-                "{}: the opening program lost `{named}` along with the search:\n{program}",
-                language.display_name()
-            );
-        }
     }
 
     // The agent whose opening turn lists modules and opens no function: `docs` arrives empty and
-    // the program still searches. Read rather than prepared here; the sibling test below drives
-    // every arm's compiler over this shape, since an empty collection is where a typed arm has to
-    // spell an element type it could otherwise infer.
-    for language in all_languages().chain(crate::sandbox::fixture_languages()) {
-        let program = language.bootstrap_program(&MODULES, &[], None);
-        let search = written(language, DOCS_SEARCH);
+    // the program still searches. Read rather than prepared here;
+    // `every_language_prepares_an_opening_program_that_opens_nothing` drives this arm's compiler
+    // over this shape, since an empty collection is where a typed arm has to spell an element type
+    // it could otherwise infer.
+    let program = language.bootstrap_program(&SESSION_MODULES, &[], None);
+    assert!(
+        program.contains(&search),
+        "{}: an opening turn that lists modules and opens nothing lost its search:\n{program}",
+        language.display_name()
+    );
+    for name in SESSION_MODULES {
         assert!(
-            program.contains(&search),
-            "{}: an opening turn that lists modules and opens nothing lost its search:\n{program}",
+            program.contains(name),
+            "{}: the opening program never names `{name}`:\n{program}",
             language.display_name()
         );
-        for name in MODULES {
-            assert!(
-                program.contains(name),
-                "{}: the opening program never names `{name}`:\n{program}",
-                language.display_name()
-            );
-        }
     }
+}
+
+/// **The opening program is each language's own syntax around the calls**, written out for two
+/// implementations, because containment cannot show it.
+#[test]
+fn the_opening_program_is_written_in_each_languages_own_syntax() {
+    const MODULES: [&str; 2] = SESSION_MODULES;
+    const DOCS: [&str; 1] = SESSION_DOCS;
 
     // Two implementations, written out, because containment cannot show that the syntax *around*
     // the two calls is each language's own: a trailing options object and a `for…of` here, keyword
@@ -371,23 +407,35 @@ fn every_language_writes_the_program_that_opens_the_session() {
 /// (`[&str; 0]`, `listOf<String>()`, `std::array<std::string_view, 0>`), and a generator that got
 /// that wrong writes a program every agent with such an opening turn fails to start on.
 ///
-/// Its own test rather than a paragraph of the sweep above because it drives every arm's real
-/// compiler once more, and `cargo nextest` bounds each test rather than each assertion.
-#[test]
-fn every_language_prepares_an_opening_program_that_opens_nothing() {
-    const MODULES: [&str; 2] = ["gg.files", "gg.views"];
-    for language in all_languages().chain(crate::sandbox::fixture_languages()) {
-        let program = language.bootstrap_program(&MODULES, &[], None);
-        language
-            .prepare_program(&program, &[], &PrepareContext::detached())
-            .unwrap_or_else(|failure| {
-                panic!(
-                    "{}: cannot prepare the opening program that opens nothing ({failure}):\n\
-                     {program}",
-                    language.display_name()
-                )
-            });
+/// Its own test rather than a paragraph of the one above because it drives the arm's real compiler
+/// a second time, and a test that does one compile is the one that stays short.
+mod every_language_prepares_an_opening_program_that_opens_nothing {
+    crate::sandbox::language::test_each_language!(
+        super::prepares_an_opening_program_that_opens_nothing
+    );
+
+    /// The [fixture](crate::sandbox::language::fixture) languages, which answer deliberately unlike
+    /// every registered arm.
+    #[test]
+    fn fixtures() {
+        for language in crate::sandbox::fixture_languages() {
+            super::prepares_an_opening_program_that_opens_nothing(language);
+        }
     }
+}
+
+/// The opening program that opens nothing, for one language.
+fn prepares_an_opening_program_that_opens_nothing(language: &'static dyn ProgramLanguage) {
+    let program = language.bootstrap_program(&SESSION_MODULES, &[], None);
+    language
+        .prepare_program(&program, &[], &PrepareContext::detached())
+        .unwrap_or_else(|failure| {
+            panic!(
+                "{}: cannot prepare the opening program that opens nothing ({failure}):\n\
+                 {program}",
+                language.display_name()
+            )
+        });
 }
 
 /// **What an arm's catalogue says about reaching a module is what gg's own program does about
