@@ -234,8 +234,10 @@ How it is applied follows the transport the agent's
 [loop detection](/gg/loop-detection/) selects.
 
 - Buffering, which every agent without loop detection runs, receives its reply
-  all at once or not at all. The ceiling is a total-duration cap over the whole
-  call, the client's own retries included.
+  all at once or not at all. The ceiling is a total-duration cap on each
+  attempt, from sending the request to reading the last byte of the reply. The
+  backoff between the client's retries sits outside it, so a long retry
+  schedule runs to its end under any ceiling.
 - Streaming receives the reply incrementally, and a stream still producing bytes
   is not stalled however long it runs. The ceiling is an idle cap on the wait
   for the response head and on the gap between chunks, so a long reply is never
@@ -246,30 +248,38 @@ the run was conducted under rather than one a reader has to look up.
 
 ### `maxModelRetries` and `modelRetryMaxDelaySecs`
 
-The schedule a failed model request is retried on, inside the client, before
-the failure ends the session. `maxModelRetries` is the retries after the first
-attempt, defaulting to 10; `modelRetryMaxDelaySecs` is the ceiling on one
-backoff delay, defaulting to 60 seconds. The first retry waits 1 second, each
-next waits twice the last, and the ceiling caps the wait from the seventh retry
-on, so the defaults wait about five minutes in all and 30 retries at the same
-ceiling wait about half an hour. An operator sets the retries by what the run
-is worth against what an outage costs: a run of a long test case may be hours
-in when the provider it is pinned to goes down.
+The schedule the model client retries a failed request on. A request answered
+`429` or `5xx`, or one that failed in transport, is retried; any other status is
+[fatal](#model-api-errors) on its first response.
 
-Each retry is logged at `warn` naming the attempt, the status or transport
-error that provoked it, and the delay before the next. A `429` or `503`
-carrying a `Retry-After` header waits that long instead when it is longer than
-the schedule's delay.
+- `maxModelRetries` is the number of retries after the first attempt. It
+  defaults to 10, and `0` is honoured as a run that gives up on the first
+  failure.
+- `modelRetryMaxDelaySecs` is the ceiling on one backoff delay. It defaults to
+  60 seconds, and `0` refuses the launch, since a schedule of no waits hammers a
+  provider that has just said it is down.
 
-Like the model-call timeout these are bounds a breach of does not stop
-anything: they are the budget the client spends before a failed request ends
-the session, not ceilings the run is judged against. A `0` for the delay
-ceiling refuses the launch, since a run that retries on a schedule of no waits
-hammers a provider that just said it is down. A `0` for the retries is honoured
-as written: a run that gives up on the first failure.
+The first retry waits 1 second and each later one waits twice the last, capped
+at the ceiling. The defaults wait about five minutes in all, and 30 retries at
+the same ceiling wait about half an hour. A `429` or `503` carrying a
+`Retry-After` in seconds waits that long instead when it is longer than the
+schedule's delay. An operator sets the retries by what the run is worth against
+what an outage costs, since a run of a long test case may be hours in when the
+provider it is pinned to goes down.
 
-A timed-out call bypasses this budget entirely. Each retry of a stall would
-cost the [`modelCallTimeoutSecs`](#modelcalltimeoutsecs) ceiling again, and the
+Each retry is logged at `warn` on the stream of the agent that made the request,
+naming the attempt, the status or transport error, and the delay before the
+next attempt:
+
+```text
+model request attempt 3 of 11 failed (HTTP 502: bad gateway); retrying in 4.0s
+```
+
+Like the model-call timeout, the schedule never stops a run by being reached.
+Spending it is what turns a provider's failure into a
+[failed model call](#model-api-errors). A timed-out call bypasses the schedule,
+because each retry of a stall would cost the
+[`modelCallTimeoutSecs`](#modelcalltimeoutsecs) ceiling again, and the
 turn-level retry is the bounded one.
 
 ## Per agent, or run-wide
@@ -535,20 +545,20 @@ every measurement the capability set exists to make.
 A gg session leaves one of three exit codes, and the host classifies the run by
 it before it collects anything.
 
-| Exit | Meaning                                                                     | Recorded as                           |
-| ---- | --------------------------------------------------------------------------- | ------------------------------------- |
-| `0`  | The session ran to a natural end                                            | its own outcome, collected and scored |
-| `1`  | A launch failure, a refused credential, a failed model call, or a gg defect | `harness_error`, retryable            |
-| `3`  | Any agent breached one of the five ceilings                                 | `limit_exceeded`, never retried       |
+| Exit | Meaning                                                                                            | Recorded as                           |
+| ---- | -------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| `0`  | The session ran to a natural end                                                                   | its own outcome, collected and scored |
+| `1`  | A launch failure, a refused root credential, a root model call the provider failed, or a gg defect | `harness_error`, retryable            |
+| `3`  | Any agent breached one of the five ceilings                                                        | `limit_exceeded`, never retried       |
 
-The exit `1` rows are the failures a retry stands a chance of walking past. A
-failed model call — the run's [retry schedule](#maxmodelretries-and-modelretrymaxdelaysecs)
-spent against an outage, or a response fatal on the first attempt — is the
-provider's failure rather than the model's or the configuration's, so it is
-recorded with the launch failures and credential refusals rather than collected
-as a run one outage cut short. Like the refused root credential it is read off
-the root's ending: a subagent whose model failed is a failed node in a session
-that can still complete and be scored.
+A model call the provider failed is one whose
+[retry schedule](#maxmodelretries-and-modelretrymaxdelaysecs) was spent, or one
+answered with a fatal status on its first attempt. Both are the provider's
+failure rather than the model's or the configuration's, and a harness error is
+what the host retries, so a pinned provider's outage costs a run a retry rather
+than a scored failure. Like the refused credential it is read off the root's
+ending. A subagent whose model call failed is a failed node in a session that
+can still complete and be scored.
 
 Exit `3` is read off the whole tree rather than off the root's ending, the way a
 gg defect is. A subagent that spent its turn budget, or an issue implementer that
@@ -634,27 +644,25 @@ per-capability bound gg reads.
 
 ### Model API errors
 
-A failed model call ends the session on its first occurrence. The client has
-already retried on the run's [schedule](#maxmodelretries-and-modelretrymaxdelaysecs)
-over `429`, `5xx` and transport failures — ten retries by default, the first
-waiting a second, each next twice the last, capped at the delay ceiling, each
-retry logged at `warn` with its attempt, cause and delay — so one reaching the
-loop means the provider failed every attempt within a single turn, and counting
-it against a ceiling would be a second retry layer with a worse backoff and no
-jitter. A session that ends here — the retries spent, or a response fatal on
-the first attempt — ends under `model_error` and the process exits `1`: the
-failure is the provider's rather than the model's or the configuration's, and
-`1` is what the host records as a retryable harness error, so a pinned
-provider's outage costs a run minutes rather than the run. A refused credential
-exits `1` on the same terms, so it is never scored against a model that never
-ran.
+A failed model call ends the agent on its first occurrence. The client has
+already retried `429`, `5xx` and transport failures on the run's
+[schedule](#maxmodelretries-and-modelretrymaxdelaysecs), so one reaching the
+loop means the provider failed every attempt within a single turn. Counting it
+against a ceiling would be a second retry layer with a worse backoff.
+
+The agent ends under `model_error`. When it is the root, a spent schedule or a
+fatal status on the first attempt exits the process `1`, so the host records a
+retryable harness error rather than scoring a run the provider cut short. A
+refused credential ends under `auth_error` and exits `1` on the same terms, so
+it is never scored against a model that never ran.
 
 A reply that [looped](/gg/loop-detection/) on every one of the client's attempts
-arrives here too and ends the session on the same terms. It is named separately
-in the log (_"model looped every attempt"_), because "retries exhausted" would
-send an operator looking at the provider for an outage that never happened. The
-recorded base error kind is `model_api` and the recorded type is
-`model_response_loop`.
+arrives here too and ends the agent under `model_error`, but the failure is the
+model's, so the process exits `0` and the run is collected and scored. It is
+named separately in the log (_"model looped every attempt"_), because "retries
+exhausted" would send an operator looking at the provider for an outage that
+never happened. The recorded base error kind is `model_api` and the recorded
+type is `model_response_loop`.
 
 Two model-call failures are recoverable rather than fatal. Each is recorded as
 an error turn — it spends the consecutive-error count and the error-rate window
@@ -665,7 +673,8 @@ operator's kill (both re-checked between attempts) decide when to stop asking.
 
 - A timed-out call. Every model call runs under the run's
   [`modelCallTimeoutSecs`](#modelcalltimeoutsecs) ceiling: a total-duration cap
-  on the buffered transport, whose reply arrives all at once or not at all, and
+  on each attempt of the buffered transport, whose reply arrives all at once or
+  not at all, and
   an idle cap on the [streaming](/gg/loop-detection/) one, which measures the
   wait for the response head and the gap between chunks, so a stream that is
   still producing is never cut however long it runs. A timeout

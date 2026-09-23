@@ -54,18 +54,16 @@ configuration's identity rather than inside a capability group.
 Max parallel agents and the session journal's size are required: gg runs under
 both on every run, and neither has an off it could take instead. The model-call
 timeout is bounded on every run too, and an emptied field is conducted under 900
-seconds. So is the retry schedule: an emptied retries field is conducted under
-10 retries and an emptied delay ceiling under 60 seconds, so a pinned
-provider's outage costs a run minutes rather than the run. Turns per agent,
-wall-clock seconds, cost, consecutive errors, and the error rate with its
-window are each armed by writing a figure and unarmed by leaving the field
-empty.
+seconds. So is the retry schedule, whose emptied fields are conducted under 10
+retries and a 60-second delay ceiling. Turns per agent, wall-clock seconds,
+cost, consecutive errors, and the error rate with its window are each armed by
+writing a figure and unarmed by leaving the field empty.
 
 A fresh configuration seeds the model-call timeout at 900 seconds, the retry
 schedule at 10 retries against a 60-second delay ceiling, and the error
 ceilings at 5 consecutive errors and a 0.2 rate over 50 turns, for the operator
-to keep, change, or clear; gg itself arms no ceiling the saved configuration
-did not write. [Execution limits](/gg/execution-limits/) states what each one
+to keep, change, or clear; gg itself arms no ceiling the saved configuration did
+not write. [Execution limits](/gg/execution-limits/) states what each one
 bounds.
 
 One capability is worth knowing before running a compaction study. The [context
