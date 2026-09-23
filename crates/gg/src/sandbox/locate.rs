@@ -148,10 +148,7 @@ impl Locations {
             1 => "frame",
             _ => "frames",
         };
-        kept.push_str(&format!(
-            "… and {struck} more {frames}, in code this program was compiled into rather than in \
-             code it contains."
-        ));
+        kept.push_str(&format!("… and {struck} more {frames} (external code)"));
         kept
     }
 }

@@ -179,7 +179,8 @@ site what it removes and why it is untrue.
 A frame in code the model cannot open is struck and counted: a frame inside
 gg's own SDK, or in a line a compiler emitted that no source map resolves. What
 survives names a file the model wrote or a library its program compiled
-against, and the count under it says how many frames were in neither.
+against, and the count under it says how many frames were in neither. The count
+reads `… and N more frames (external code)`, with `frame` for a count of one.
 
 ## The system prompt
 

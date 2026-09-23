@@ -755,8 +755,7 @@ fn own_frames(stack: &str) -> String {
         _ => "frames",
     };
     kept.push_str(&format!(
-        "    … and {struck} more {frames}, inside gg's SDK rather than in code this program \
-         contains.\n"
+        "    … and {struck} more {frames} (external code)\n"
     ));
     kept
 }

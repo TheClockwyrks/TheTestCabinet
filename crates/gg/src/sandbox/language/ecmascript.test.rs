@@ -371,7 +371,7 @@ files.readFile("notes.md");
     );
     assert!(
         ran.said
-            .contains("\u{2026} and 4 more frames, inside gg's SDK"),
+            .contains("\u{2026} and 4 more frames (external code)"),
         "and the strike should be counted, at the four frames the documented budget spends \
          reaching a membrane call; it said {:?}",
         ran.said
