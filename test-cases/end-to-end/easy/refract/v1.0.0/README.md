@@ -76,20 +76,19 @@ seeded for every run. The `.hbs` templates branch on `engine.slug` alone.
 
 ## Contents
 
-| Path                   | Seeded to run? | Purpose                                                                 |
-| ---------------------- | -------------- | ----------------------------------------------------------------------- |
-| `specs/`               | Yes            | The spec handed to the model, by concern.                               |
-| `workspaces/`          | Yes            | The starter TypeScript project, `<engine>/`, seeded at the run root.    |
-| `references/`          | No             | The authored, correct build, one directory per engine. Never seeded.    |
-| `validation/`          | No             | The validator suites deciding every review point, `<engine>/`.          |
-| `validation-baseline/` | No             | The baseline media, captured from each reference build.                 |
-| `showcase/`            | No             | The variant's demo media and description for the catalog.               |
-| `prompt.hbs`           | No             | Rendered into the model's prompt; not seeded.                           |
-| `test-case.toml`       | No             | Manifest: workspaces, engines, toolchain, specs, domains, review items. |
-| `variants/`            | No             | One TOML file per variant (listed in `variants`).                       |
-| `description.md`       | No             | The site-facing introduction on the case's detail page.                 |
-| `changelog.md`         | No             | This version's entry in the case's changelog.                           |
-| `README.md`            | No             | This overview.                                                          |
+| Path             | Seeded to run? | Purpose                                                                 |
+| ---------------- | -------------- | ----------------------------------------------------------------------- |
+| `specs/`         | Yes            | The spec handed to the model, by concern.                               |
+| `workspaces/`    | Yes            | The starter TypeScript project, `<engine>/`, seeded at the run root.    |
+| `references/`    | No             | The authored, correct build, one directory per engine. Never seeded.    |
+| `validation/`    | No             | The validator suites deciding every review point, `<engine>/`.          |
+| `showcase/`      | No             | The variant's demo media and description for the catalog.               |
+| `prompt.hbs`     | No             | Rendered into the model's prompt; not seeded.                           |
+| `test-case.toml` | No             | Manifest: workspaces, engines, toolchain, specs, domains, review items. |
+| `variants/`      | No             | One TOML file per variant (listed in `variants`).                       |
+| `description.md` | No             | The site-facing introduction on the case's detail page.                 |
+| `changelog.md`   | No             | This version's entry in the case's changelog.                           |
+| `README.md`      | No             | This overview.                                                          |
 
 The specification is split across `specs/` by concern, and every file is seeded
 for every run:
@@ -157,9 +156,9 @@ specs fix, never from a reference build. All `24` campaign boards are solvable
 under the rules as the specs state them, which is the load-bearing fact the
 course rests on. No spec text claims a board is uniquely solvable.
 
-`validation-baseline/<engine>/<variant>/` holds the media the same suites
-captured from that engine's reference build, so a reviewer sees the build's
-evidence and the reference's side by side.
+This version's `validation-baseline/<engine>/<variant>/` in the `cold-storage`
+submodule holds the media the same suites captured from that engine's reference
+build, so a reviewer sees the build's evidence and the reference's side by side.
 
 ## Versioning
 

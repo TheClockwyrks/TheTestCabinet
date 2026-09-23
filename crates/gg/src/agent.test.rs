@@ -82,12 +82,14 @@ const TEST_CONTEXT_WINDOW: u64 = 200_000;
 /// a launch would have pushed in — one for every model the set binds.
 fn invocation(dir: &Path, set: GgCapabilitySet) -> GgInvocation {
     let model_windows = test_windows(&set);
+    let model_providers = test_providers(&set);
     GgInvocation {
         session_id: "run-test".to_string(),
         workspace_dir: dir.to_path_buf(),
         prompt: "Build a tiny game.".to_string(),
         capability_set: set,
         model_windows,
+        model_providers,
         // No declared modalities: the offline default, under which every model is
         // treated optimistically about image input (see `crate::vision`).
         model_modalities: BTreeMap::new(),
@@ -96,6 +98,17 @@ fn invocation(dir: &Path, set: GgCapabilitySet) -> GgInvocation {
         // Nothing cancels a test run: the loop is driven to its own ending.
         cancel_file: None,
     }
+}
+
+/// The pin map a launch would push for `set`: the author segment of every bound model id.
+fn test_providers(set: &GgCapabilitySet) -> BTreeMap<String, String> {
+    set.bound_model_ids()
+        .into_iter()
+        .map(|id| {
+            let provider = id.split(['/', ':']).next().unwrap_or(id).to_string();
+            (id.to_string(), provider)
+        })
+        .collect()
 }
 
 /// The window map a launch would push for `set`: [`TEST_CONTEXT_WINDOW`] for every model it
@@ -684,6 +697,8 @@ enum FailureMode {
     /// [`Retryable`](Self::Retryable), and deliberately reported under its own name: "retries
     /// exhausted" would send an operator looking for a provider outage that never happened.
     Looping,
+    /// The gateway answered from a provider other than the pin.
+    ProviderMismatch,
 }
 
 /// A [`ModelClient`] whose every turn fails, for asserting the loop surfaces model
@@ -720,6 +735,10 @@ impl ModelClient for FailingClient {
                 },
                 detail: "2 words repeated across 3000 consecutive words, 3065 words into the reply"
                     .to_string(),
+            }),
+            FailureMode::ProviderMismatch => Err(ModelError::ProviderMismatch {
+                pinned: "OpenAI".to_string(),
+                served: "Azure".to_string(),
             }),
         }
     }
@@ -2699,6 +2718,68 @@ fn validate_model_windows_requires_every_bound_model() {
     assert!(validate_model_windows(&set, &test_windows(&set)).is_ok());
     // A set that binds nothing has nothing to cover.
     assert!(validate_model_windows(&GgCapabilitySet::default(), &BTreeMap::new()).is_ok());
+}
+
+/// A bound model missing from `modelProviders` refuses the launch, and every missing pin is
+/// named together. A blank slug is a missing pin: it would send no `provider.only`.
+#[test]
+fn validate_model_providers_requires_every_bound_model() {
+    let mut set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
+    set.agents.push(GgAgentConfig {
+        name: "subagent".to_string(),
+        model_id: "openai/gpt-5.4-mini".to_string(),
+        ..GgAgentConfig::root()
+    });
+
+    let err = validate_model_providers(
+        &set,
+        &BTreeMap::from([(
+            "anthropic/claude-opus-4.8".to_string(),
+            "anthropic".to_string(),
+        )]),
+    )
+    .expect_err("a bound model with no provider pin is a launch failure");
+    assert!(
+        err.contains("openai/gpt-5.4-mini"),
+        "unexpected error: {err}"
+    );
+    assert!(
+        !err.contains("anthropic/claude-opus-4.8"),
+        "the pinned model should not be named: {err}"
+    );
+
+    let blank = BTreeMap::from([
+        ("anthropic/claude-opus-4.8".to_string(), "  ".to_string()),
+        ("openai/gpt-5.4-mini".to_string(), "openai".to_string()),
+    ]);
+    let err = validate_model_providers(&set, &blank).expect_err("a blank pin is no pin");
+    assert!(
+        err.contains("anthropic/claude-opus-4.8"),
+        "unexpected error: {err}"
+    );
+
+    assert!(validate_model_providers(&set, &test_providers(&set)).is_ok());
+    assert!(validate_model_providers(&GgCapabilitySet::default(), &BTreeMap::new()).is_ok());
+}
+
+/// A model the offline mock answers sends no request, so it needs no pin: the free
+/// validation launch against `mock/test` stays a launch with a window and nothing else.
+#[test]
+fn validate_model_providers_exempts_a_mock_model() {
+    let mut set = GgCapabilitySet::minimal("mock/test");
+    assert!(validate_model_providers(&set, &BTreeMap::new()).is_ok());
+
+    set.agents.push(GgAgentConfig {
+        name: "subagent".to_string(),
+        model_id: "openai/gpt-5.4-mini".to_string(),
+        ..GgAgentConfig::root()
+    });
+    let err = validate_model_providers(&set, &BTreeMap::new())
+        .expect_err("a live model beside the mock still needs its pin");
+    assert!(
+        err.contains("openai/gpt-5.4-mini") && !err.contains("mock/test"),
+        "{err}"
+    );
 }
 
 /// A `context-window-override` capability enabled with the given `windowLimit`, the lever the
@@ -5230,6 +5311,40 @@ async fn run_scores_a_root_that_looped_every_attempt() {
             GgTelemetryKind::SessionEnded { status } if status == "model_error"
         )),
         "the session still ends `model_error`"
+    );
+}
+
+/// A reply from a provider other than the pin ends the run as gg's failure, not the model's: the
+/// session ends `internal_error`, and the error names the pinned and the served provider.
+#[tokio::test]
+async fn run_ends_as_a_harness_failure_on_a_provider_mismatch() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-mismatch".to_string()), Box::new(sink.clone()));
+    let inv = invocation(dir.path(), GgCapabilitySet::minimal("mock/primary"));
+    let factory = ScriptedFactory::new().slot(ROOT_PROFILE_ID, |_| {
+        Box::new(FailingClient {
+            mode: FailureMode::ProviderMismatch,
+        })
+    });
+
+    run_with_factory(&inv, &emitter, Arc::new(factory)).await;
+
+    let events = sink.events();
+    assert!(
+        events.iter().any(|e| matches!(
+            &e.kind,
+            GgTelemetryKind::SessionEnded { status } if status == "internal_error"
+        )),
+        "the session ends `internal_error`"
+    );
+    assert!(
+        events.iter().any(|e| matches!(
+            &e.kind,
+            GgTelemetryKind::Log { level, message }
+                if level == "error" && message.contains("OpenAI") && message.contains("Azure")
+        )),
+        "an error line names the pinned and the served provider"
     );
 }
 
@@ -10028,6 +10143,7 @@ fn every_launch_mints_its_own_routing_key() {
     let first = SessionSeams::live(
         crate::client::DEFAULT_MODEL_CALL_TIMEOUT,
         crate::client::RetryPolicy::default(),
+        BTreeMap::new(),
     );
     let second = SessionSeams::substituted(first.factory.clone(), real_shell());
     assert!(cuid2::is_cuid2(first.routing_key.as_str()));

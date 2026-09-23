@@ -29,6 +29,7 @@ fn build_request_body_uses_openai_tools_shape() {
         &messages,
         &tools,
         None,
+        None,
         CacheTtl::Standard,
         None,
         false,
@@ -65,7 +66,16 @@ fn build_request_body_encodes_tool_call_arguments_as_string() {
         Message::tool_result("call_1", "wrote 13 bytes"),
     ];
 
-    let body = build_request_body("m", &messages, &[], None, CacheTtl::Standard, None, false);
+    let body = build_request_body(
+        "m",
+        &messages,
+        &[],
+        None,
+        None,
+        CacheTtl::Standard,
+        None,
+        false,
+    );
 
     let wire_call = &body["messages"][0]["tool_calls"][0];
     assert_eq!(wire_call["id"], json!("call_1"));
@@ -97,12 +107,46 @@ fn build_request_body_omits_tools_when_none() {
         &[Message::user("hi")],
         &[],
         None,
+        None,
         CacheTtl::Standard,
         None,
         false,
     );
     assert!(body.get("tools").is_none());
     assert!(body.get("tool_choice").is_none());
+}
+
+/// A pinned provider rides as OpenRouter's `provider` object: `only` names that one slug
+/// and fallbacks are refused, so a run cannot be moved onto another provider's price basis.
+/// The routing key stays beside it — it still keeps the run on one endpoint within the pin.
+#[test]
+fn build_request_body_pins_the_provider_and_refuses_fallbacks() {
+    let key = RoutingKey::mint();
+    let body = build_request_body(
+        "openai/gpt-5.6",
+        &[Message::user("hi")],
+        &[],
+        Some(&key),
+        Some("openai"),
+        CacheTtl::Standard,
+        None,
+        false,
+    );
+    assert_eq!(body["provider"]["only"], json!(["openai"]));
+    assert_eq!(body["provider"]["allow_fallbacks"], json!(false));
+    assert_eq!(body["session_id"], json!(key.as_str()));
+
+    let unpinned = build_request_body(
+        "m",
+        &[Message::user("hi")],
+        &[],
+        None,
+        None,
+        CacheTtl::Standard,
+        None,
+        false,
+    );
+    assert!(unpinned.get("provider").is_none());
 }
 
 // ---------------------------------------------------------------------------
@@ -121,6 +165,7 @@ fn build_request_body_sends_the_reasoning_object_and_only_what_it_names() {
             "deepseek/deepseek-v4.1-flash",
             &messages,
             &[],
+            None,
             None,
             CacheTtl::Standard,
             reasoning,
@@ -162,6 +207,7 @@ fn build_required_tool_request_body_sends_the_reasoning_object() {
         &[Message::user("summarize")],
         &tool,
         None,
+        None,
         CacheTtl::Standard,
         Some(GgReasoning {
             effort: Some(GgReasoningEffort::Minimal),
@@ -188,6 +234,7 @@ fn build_request_body_sends_an_attached_image_as_a_content_part() {
         "m",
         &[Message::user("look at ref.png"), read],
         &[],
+        None,
         None,
         CacheTtl::Standard,
         None,
@@ -232,6 +279,7 @@ fn a_marker_model_sends_every_content_message_as_parts() {
         &messages,
         &[],
         None,
+        None,
         CacheTtl::Standard,
         None,
         false,
@@ -274,6 +322,7 @@ fn build_request_body_sends_no_markers_to_an_implicitly_caching_model() {
             "deepseek/deepseek-chat",
             &messages,
             &[],
+            None,
             None,
             CacheTtl::Standard,
             None,
@@ -360,6 +409,7 @@ fn build_request_body_marks_the_opening_context_and_the_tail() {
         "anthropic/claude-haiku-4.5",
         &messages,
         &[],
+        None,
         None,
         CacheTtl::Standard,
         None,
@@ -516,6 +566,7 @@ fn build_request_body_marks_the_last_part_of_an_image_message() {
         &[Message::user("look at ref.png"), read],
         &[],
         None,
+        None,
         CacheTtl::Extended,
         None,
         false,
@@ -579,6 +630,7 @@ fn build_request_body_extends_the_ttl_of_the_stable_breakpoints() {
         &messages,
         &[],
         None,
+        None,
         CacheTtl::Extended,
         None,
         false,
@@ -619,6 +671,7 @@ fn build_request_body_qualifies_no_marker_at_the_standard_lifetime() {
         &messages,
         &[],
         None,
+        None,
         CacheTtl::Standard,
         None,
         false,
@@ -653,6 +706,7 @@ fn build_request_body_extends_a_lone_anchor() {
         &messages,
         &[],
         None,
+        None,
         CacheTtl::Extended,
         None,
         false,
@@ -678,6 +732,7 @@ fn build_request_body_orders_extended_markers_before_the_rolling_one() {
             "anthropic/claude-haiku-4.5",
             &messages,
             &[],
+            None,
             None,
             CacheTtl::Extended,
             None,
@@ -928,6 +983,8 @@ fn client_for_slot_builds_mock_for_mock_binding() {
         &RoutingKey::mint(),
         DEFAULT_MODEL_CALL_TIMEOUT,
         RetryPolicy::default(),
+        None,
+        &ToolChoiceMemory::default(),
     )
     .expect("mock client");
     assert_eq!(client.model_id(), "mock/echo");

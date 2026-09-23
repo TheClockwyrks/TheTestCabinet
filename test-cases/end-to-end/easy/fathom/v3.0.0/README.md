@@ -41,21 +41,24 @@ differs.
 
 ## Contents
 
-| Path                   | Seeded to run? | Purpose                                                                                              |
-| ---------------------- | -------------- | ---------------------------------------------------------------------------------------------------- |
-| `workspaces/`          | Yes            | The starter TypeScript project, `<variant>/<engine>/` plus a shared `none/`, seeded at the run root. |
-| `specs/`               | Yes            | The spec handed to the model, by concern.                                                            |
-| `assets/`              | Yes            | The art the game renders its creatures, tiles and flare from.                                        |
-| `prompt.hbs`           | No             | Rendered into the model's prompt; not seeded.                                                        |
-| `validation/`          | No             | The case's Vitest validators, one project per engine (`<engine>/`).                                  |
-| `references/`          | No             | The authored, correct build, `<engine>/<variant>/`. Never seeded.                                    |
-| `validation-baseline/` | No             | The validators' media captured against the reference, `<engine>/<variant>/`, shown beside a run's.   |
-| `showcase/`            | No             | Curated demo media per variant, captured from the reference build.                                   |
-| `test-case.toml`       | No             | Manifest: workspaces, engines, toolchain, specs, domains, review items.                              |
-| `variants/`            | No             | One TOML file per variant (listed in `variants`).                                                    |
-| `description.md`       | No             | The site-facing introduction on the case's detail page.                                              |
-| `changelog.md`         | No             | What changed from `v2.0.0`.                                                                          |
-| `README.md`            | No             | This overview.                                                                                       |
+| Path             | Seeded to run? | Purpose                                                                                              |
+| ---------------- | -------------- | ---------------------------------------------------------------------------------------------------- |
+| `workspaces/`    | Yes            | The starter TypeScript project, `<variant>/<engine>/` plus a shared `none/`, seeded at the run root. |
+| `specs/`         | Yes            | The spec handed to the model, by concern.                                                            |
+| `assets/`        | Yes            | The art the game renders its creatures, tiles and flare from.                                        |
+| `prompt.hbs`     | No             | Rendered into the model's prompt; not seeded.                                                        |
+| `validation/`    | No             | The case's Vitest validators, one project per engine (`<engine>/`).                                  |
+| `references/`    | No             | The authored, correct build, `<engine>/<variant>/`. Never seeded.                                    |
+| `showcase/`      | No             | Curated demo media per variant, captured from the reference build.                                   |
+| `test-case.toml` | No             | Manifest: workspaces, engines, toolchain, specs, domains, review items.                              |
+| `variants/`      | No             | One TOML file per variant (listed in `variants`).                                                    |
+| `description.md` | No             | The site-facing introduction on the case's detail page.                                              |
+| `changelog.md`   | No             | What changed from `v2.0.0`.                                                                          |
+| `README.md`      | No             | This overview.                                                                                       |
+
+The media the validators capture from each reference build, shown beside a
+run's, lives in the `cold-storage` submodule under this version's path, in
+`validation-baseline/<engine>/<variant>/`.
 
 The specification is split across `specs/` by concern, and every file is seeded
 for every variant and every engine:

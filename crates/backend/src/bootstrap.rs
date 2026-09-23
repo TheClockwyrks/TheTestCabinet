@@ -50,6 +50,8 @@ pub async fn seed_models_if_empty(db: &Db) -> Result<()> {
             description_md: (!seed.description_md.is_empty())
                 .then(|| seed.description_md.to_string()),
             openrouter_slug: seed.openrouter_slug.map(str::to_string),
+            // The seed takes the listing's own name; a mismatch is set by hand afterwards.
+            provider_pin: None,
             // The seed store is empty, so there is no run evidence yet; the
             // structural rule classifies every seed id unambiguously (a bare
             // `claude-*`/`gpt-*` to its native family, every `provider/model`
@@ -251,6 +253,7 @@ async fn try_observe_completion(
         // unlisted model) simply records no price.
         Err(_) => return Ok(()),
     };
+    let details = with_observed_pin(db, prices, &canonical, &lookup, &details).await?;
     let now = OffsetDateTime::now_utc().format(&Rfc3339)?;
     insert_if_changed(db, &canonical, &details, &now).await?;
     Ok(())
@@ -265,7 +268,9 @@ async fn try_observe_completion(
 /// completion-time observation (which captures the price as it was when the run
 /// actually ran) and the periodic refresh. That also makes the steady state free —
 /// nothing is fetched when every target is already priced, so this costs a network
-/// round trip exactly on the first sighting of a new model.
+/// round trip exactly on the first sighting of a new model. A model on record with no
+/// [provider pin](ModelDetails::provider_pin) counts as missing, so a pin is observed
+/// as soon as the catalog meets a model rather than on the next refresh.
 ///
 /// `targets` maps the storage key an observation is filed under to the OpenRouter id
 /// to ask about. Returns how many models were seeded; a catalog fetch that fails
@@ -277,7 +282,11 @@ async fn seed_missing_prices(
 ) -> Result<usize> {
     let mut missing: Vec<(String, String)> = Vec::new();
     for (storage_key, lookup) in targets {
-        if db.latest_price(&storage_key).await?.is_none() {
+        let pinned = db
+            .latest_price(&storage_key)
+            .await?
+            .is_some_and(|latest| latest.provider_pin.is_some());
+        if !pinned {
             missing.push((storage_key, lookup));
         }
     }
@@ -296,9 +305,11 @@ async fn seed_missing_prices(
     for (storage_key, lookup) in missing {
         // A model OpenRouter does not list (a provider-native id, an unlisted model)
         // simply stays unpriced, exactly as at completion time.
-        if let Some(details) = catalog.get(&lookup)
-            && insert_if_changed(db, &storage_key, details, &now).await?
-        {
+        let Some(details) = catalog.get(&lookup) else {
+            continue;
+        };
+        let details = with_observed_pin(db, prices, &storage_key, &lookup, details).await?;
+        if insert_if_changed(db, &storage_key, &details, &now).await? {
             seeded += 1;
         }
     }
@@ -427,13 +438,42 @@ pub async fn refresh_all_prices(db: &Db, prices: &OpenRouterPrices) -> Result<us
 
     let mut changed = 0usize;
     for (storage_key, lookup) in targets {
-        if let Some(details) = catalog.get(&lookup)
-            && insert_if_changed(db, &storage_key, details, &now).await?
-        {
+        let Some(details) = catalog.get(&lookup) else {
+            continue;
+        };
+        let details = with_observed_pin(db, prices, &storage_key, &lookup, details).await?;
+        if insert_if_changed(db, &storage_key, &details, &now).await? {
             changed += 1;
         }
     }
     Ok(changed)
+}
+
+/// `details` with its [provider pin](ModelDetails::provider_pin) observed from `lookup`'s
+/// endpoints listing, which the models listing `details` came from does not carry.
+///
+/// A listing that cannot be read keeps the pin last recorded under `storage_key`, so an
+/// unreachable endpoint never records a model as having lost its official provider.
+async fn with_observed_pin(
+    db: &Db,
+    prices: &OpenRouterPrices,
+    storage_key: &str,
+    lookup: &str,
+    details: &ModelDetails,
+) -> Result<ModelDetails> {
+    let provider_pin = match prices.model_launch_facts(lookup).await {
+        Ok(facts) => facts.provider_pin,
+        Err(err) => {
+            tracing::debug!(lookup, error = %err, "could not read a model's endpoints listing");
+            db.latest_price(storage_key)
+                .await?
+                .and_then(|latest| latest.provider_pin)
+        }
+    };
+    Ok(ModelDetails {
+        provider_pin,
+        ..details.clone()
+    })
 }
 
 /// Spawn the periodic price refresher, returning its task handle (kept alive for
@@ -472,6 +512,10 @@ async fn insert_if_changed(
     let prices = &details.prices;
     let context_length = details.context_length.and_then(|c| i64::try_from(c).ok());
     let input_modalities = encode_modalities(&details.input_modalities);
+    let provider_pin = details
+        .provider_pin
+        .clone()
+        .filter(|provider| !provider.trim().is_empty());
     let changed = match db.latest_price(model_id).await? {
         Some(latest) => {
             latest.uncached_input != prices.uncached_input
@@ -480,6 +524,7 @@ async fn insert_if_changed(
                 || latest.context_length != context_length
                 || latest.released_at != details.released_at
                 || latest.input_modalities != input_modalities
+                || latest.provider_pin != provider_pin
         }
         None => true,
     };
@@ -493,6 +538,7 @@ async fn insert_if_changed(
             context_length,
             released_at: details.released_at.clone(),
             input_modalities,
+            provider_pin,
         })
         .await?;
     }

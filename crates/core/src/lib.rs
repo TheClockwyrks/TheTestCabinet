@@ -19,6 +19,7 @@ pub mod browser;
 pub mod cancel;
 pub mod clock;
 pub mod code_analysis;
+pub mod cold_storage;
 pub mod comparison;
 pub mod comparison_aggregate;
 pub mod comparison_stats;
@@ -117,6 +118,7 @@ pub use code_analysis::{
     CodeMetricDef, CodeMetricUnit, CodeRustSummary, CodeSizeSummary, CodeSymbolEntry,
     CodeTestSummary, CodeTreeBasis, CodeTruncationCap, CodeTypeScriptSummary,
 };
+pub use cold_storage::{COLD_STORAGE_DIR, COLD_STORAGE_DIR_ENV, ColdStorage};
 pub use container::{CliArtifactCollector, CliContainerRuntime};
 pub use engine::{
     BUILT_IN_SLUGS as BUILT_IN_ENGINE_SLUGS, EngineCatalog, EngineManifest, EngineSelection,
@@ -299,6 +301,15 @@ pub struct RunRequest {
     /// falls back to a conservative default. Meaningless for a non-gg run, which leaves
     /// it empty.
     pub gg_model_windows: BTreeMap<String, u64>,
+    /// The OpenRouter provider each model a **gg** run is pinned to, resolved from the
+    /// model catalog alongside [`gg_model_windows`](Self::gg_model_windows). Passed straight
+    /// through to
+    /// [`GgInvocation::model_providers`](crate::gg::GgInvocation::model_providers).
+    ///
+    /// Empty is legal only for a run that binds no model. A gg run missing a pin for a bound
+    /// model is refused before the container is pulled: the model is not testable on another
+    /// provider.
+    pub gg_model_providers: BTreeMap<String, String>,
     /// The input modalities each model a **gg** run may bind accepts, as resolved from
     /// the model catalog alongside [`gg_model_windows`](Self::gg_model_windows). Passed
     /// straight through to
@@ -342,7 +353,8 @@ impl RunRequest {
             }
             _ => {}
         }
-        self.validate_model_windows()
+        self.validate_model_windows()?;
+        self.validate_model_providers()
     }
 
     /// Every model a gg run binds must carry the model catalog's
@@ -367,6 +379,38 @@ impl RunRequest {
         }
         Err(Error::GgConfiguration(format!(
             "no context window resolved for model(s) {}",
+            missing
+                .iter()
+                .map(|id| format!("`{id}`"))
+                .collect::<Vec<_>>()
+                .join(", "),
+        )))
+    }
+
+    /// Every model a gg run binds must name the one provider its requests are pinned to.
+    ///
+    /// The launch path resolves the pin with the window, so reaching here without one means the
+    /// catalog has no official endpoint for the model. Running it on another provider would put
+    /// the cost on a basis the record does not name, so the run is refused before the container
+    /// is pulled.
+    fn validate_model_providers(&self) -> Result<()> {
+        let Some(set) = self.gg_capability_set.as_ref() else {
+            return Ok(());
+        };
+        let missing: Vec<&str> = set
+            .bound_model_ids()
+            .into_iter()
+            .filter(|id| {
+                self.gg_model_providers
+                    .get(*id)
+                    .is_none_or(|provider| provider.trim().is_empty())
+            })
+            .collect();
+        if missing.is_empty() {
+            return Ok(());
+        }
+        Err(Error::GgConfiguration(format!(
+            "no provider pin resolved for model(s) {}",
             missing
                 .iter()
                 .map(|id| format!("`{id}`"))

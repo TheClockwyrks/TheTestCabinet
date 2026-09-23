@@ -52,12 +52,18 @@ function frozenVersions() {
 process.chdir(repoRoot);
 
 const frozen = frozenVersions().map((dir) => `${dir}/`);
-const tracked = execFileSync("git", ["ls-files", "-z"], {
+// `--stage` prints each entry as `<mode> <object> <stage>\t<path>`, which is what
+// tells a submodule apart: its entry is a gitlink (mode 160000), a directory that
+// is empty in a checkout that never initialized it, where prettier fails for want
+// of files, and the whole media tree of `cold-storage/` in one that did.
+const tracked = execFileSync("git", ["ls-files", "--stage", "-z"], {
   maxBuffer: 256 * 1024 * 1024,
 })
   .toString()
   .split("\0")
-  .filter((path) => path.length > 0)
+  .filter((entry) => entry.length > 0)
+  .filter((entry) => !entry.startsWith("160000 "))
+  .map((entry) => entry.slice(entry.indexOf("\t") + 1))
   // A frozen version cannot be modified, so it is not formatted either.
   .filter((path) => !frozen.some((dir) => path.startsWith(dir)))
   // A tracked symbolic link is not a file prettier can read.

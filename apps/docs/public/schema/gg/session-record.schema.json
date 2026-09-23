@@ -585,6 +585,11 @@
           "type": "string"
         },
         {
+          "const": "provider_mismatch",
+          "description": "The gateway served the call from a provider other than the one the launch pinned. The\nreply is unusable: the cost recorded from it on would be on a different price basis, so\nthe run ends as a harness failure.",
+          "type": "string"
+        },
+        {
           "const": "response_loop",
           "description": "Every attempt at the request was abandoned mid-stream by\n[loop detection](crate::gg::GgLoopDetection) — the model produced a repetition, not a reply,\non all of them. Retryable at the turn level and counted against the run's error ceiling,\nexactly like [`RetryExhausted`](Self::RetryExhausted), and kept apart from it because the\ntwo are diagnosed completely differently: one is the provider failing, the other is the\nmodel failing.\n\nThe record carries only the attempts that were *returned*, never the discarded ones: the\nrecorder journals the response a turn actually got, so a reply the guard abandoned never\nentered the context and correctly never enters the record either. The\n[`attempts`](GgSessionModelError::attempts) count is how many were discarded before the loop\ngave up.",
           "type": "string"
@@ -748,6 +753,13 @@
             "$ref": "#/$defs/GgSessionModalities"
           },
           "description": "The **final, resolved** modality state of each bound slot.\n\nResolved, not initial, and that distinction is load-bearing: vision recovery can\ncall the model twice for one turn and only the successful stripped call is\nrecorded, so a reader that started from an un-denied vision state would\nsend images on the first image turn and drift for a reason that has nothing to do\nwith any real change.",
+          "type": "object"
+        },
+        "modelProviders": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "The OpenRouter provider each bound model was pinned to. Recorded because a\nrun's cost is on that provider's price basis, and a reader that guessed the pin\nwould price the run against a different one.",
           "type": "object"
         },
         "modelWindows": {

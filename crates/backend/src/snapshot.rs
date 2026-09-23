@@ -1156,8 +1156,8 @@ impl SnapshotBuilder {
     ///
     /// The baseline is a fixed property of the case *version* — synthesized once at
     /// `tcab capture-baselines` time from the reference implementation and committed
-    /// under `validation-baseline/<engine>/<variant>/`, copied verbatim into the store
-    /// at ingest — so it is published case-scoped, the invariant counterpart to the
+    /// to the cold-storage submodule, then copied verbatim into the stored version's
+    /// `validation-baseline/<engine>/<variant>/` at ingest — so it is published case-scoped, the invariant counterpart to the
     /// run-scoped *actual* media. Every committed file is enumerated per engine and
     /// variant ([`crate::store::DefinitionStore::list_validation_baseline`]), the
     /// same pairing the reference implementations themselves come in; a **video**

@@ -6,7 +6,7 @@ Registry, and rolls it onto the staging or production cluster according to the
 branch it landed on.
 
 This issue depends on [`drop-the-desktop-app.md`](drop-the-desktop-app.md) and
-[`address-submodules-by-relative-url-and-mirror-them-to-github.md`](address-submodules-by-relative-url-and-mirror-them-to-github.md),
+[`address-submodules-by-relative-url-and-mirror-them-to-github.md`](done/address-submodules-by-relative-url-and-mirror-them-to-github.md),
 and runs after
 [`rewrite-the-repository-history-without-baselines-and-wasm-blobs.md`](rewrite-the-repository-history-without-baselines-and-wasm-blobs.md)
 so the first mirror push carries the rewritten history.

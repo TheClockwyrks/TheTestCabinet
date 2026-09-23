@@ -33,6 +33,13 @@ marker itself excluded. That listing covers every tracked path, blob hash, and
 file mode under the directory, so an edit, an addition, a deletion, a rename, or
 a permission flip all move the digest.
 
+A version's baseline validation media lives in the `cold-storage` submodule
+rather than in the version folder (see [where baselines
+live](/components/core/validation/#where-baselines-live)), so the digest never
+covers it. A baseline is evidence beside a verdict and backs no point, so
+recapturing a frozen version's baselines changes no recorded score and needs no
+new version.
+
 Two gates recompute and compare it:
 
 | Gate                            | Where             | Catches                                                    |
@@ -54,9 +61,10 @@ scripts/freeze.sh test-cases/end-to-end/easy/carom/v1.0.0
 Do this as soon as you trigger the first run against a version. That is the
 moment it stops being editable.
 
-The script refuses to freeze a directory with uncommitted changes, so the digest
-always records settled contents. It accepts several directories at once and takes
-an optional `--reason` for the marker.
+The script refuses to freeze a directory whose working tree differs from the
+index, so the digest always records exactly what the commit will hold. Stage a
+change first to re-baseline over it in the same commit. It accepts several
+directories at once and takes an optional `--reason` for the marker.
 
 ## Unfreezing and re-baselining
 

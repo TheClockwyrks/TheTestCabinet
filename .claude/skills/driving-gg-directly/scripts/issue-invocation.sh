@@ -22,6 +22,7 @@ inv = json.load(open(tpl))
 w = json.loads(windows)
 inv["modelWindows"] = w["modelWindows"]
 inv["modelModalities"] = w["modelModalities"]
+inv["modelProviders"] = w["modelProviders"]
 slug = lambda s: re.sub(r"[^a-z0-9]+", "-", s.lower()).strip("-")
 issue_slug = slug(re.sub(r"\.md$", "", issue.rsplit("/", 1)[-1]))
 inv["sessionId"] = f"gg-{issue_slug}-{slug(model)}-{mode}"

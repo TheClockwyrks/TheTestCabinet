@@ -217,6 +217,7 @@ function sessionStartedWith(
 ): HarnessEvent {
   return gg({
     type: "session_started",
+    modelProviders: { "mock/scripted-builder": "mock" },
     capabilitySet: {
       agents: profiles.map(({ slug, name, capabilities }) => ({
         slug,
@@ -297,6 +298,7 @@ function sessionStartedGranting(
 ): HarnessEvent {
   return gg({
     type: "session_started",
+    modelProviders: { "mock/scripted-builder": "mock" },
     capabilitySet: {
       agents: [
         {

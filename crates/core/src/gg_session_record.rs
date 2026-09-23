@@ -202,6 +202,11 @@ pub struct GgSessionSeed {
     /// different turn than the run did.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub model_windows: BTreeMap<String, u64>,
+    /// The OpenRouter provider each bound model was pinned to. Recorded because a
+    /// run's cost is on that provider's price basis, and a reader that guessed the pin
+    /// would price the run against a different one.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub model_providers: BTreeMap<String, String>,
     /// The **final, resolved** modality state of each bound slot.
     ///
     /// Resolved, not initial, and that distinction is load-bearing: vision recovery can
@@ -561,6 +566,10 @@ pub enum GgSessionModelErrorKind {
     VisionUnsupported,
     /// A `2xx` response could not be parsed into a model response. Fatal.
     Parse,
+    /// The gateway served the call from a provider other than the one the launch pinned. The
+    /// reply is unusable: the cost recorded from it on would be on a different price basis, so
+    /// the run ends as a harness failure.
+    ProviderMismatch,
     /// Every attempt at the request was abandoned mid-stream by
     /// [loop detection](crate::gg::GgLoopDetection) — the model produced a repetition, not a reply,
     /// on all of them. Retryable at the turn level and counted against the run's error ceiling,

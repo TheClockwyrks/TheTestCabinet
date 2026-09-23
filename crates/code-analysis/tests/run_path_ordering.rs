@@ -411,6 +411,7 @@ async fn drive(cancel: &RunCancellation) -> Ran {
         container_image: None,
         gg_capability_set: None,
         gg_model_windows: Default::default(),
+        gg_model_providers: Default::default(),
         gg_model_modalities: Default::default(),
     };
 

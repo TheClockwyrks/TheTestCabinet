@@ -2348,6 +2348,7 @@ export type GgTurnErrorType =
   | "model_response_loop"
   | "model_vision_unsupported"
   | "model_parse"
+  | "model_provider_mismatch"
   | "model_timeout"
   | "model_length_capped"
   | "transpile_syntax"
@@ -3071,6 +3072,12 @@ export type GgTelemetryKind =
        * offer every surface, including the ones this run's configuration disabled.
        */
       capabilitySet: GgCapabilitySet;
+      /**
+       * The OpenRouter provider each bound model is pinned to, beside the routing
+       * key. A run's cost is recorded against this pin; a response from any other
+       * provider ends the run.
+       */
+      modelProviders: { [key in string]: string };
       /**
        * The **routing key** gg minted at launch: a cuid2 sent on every request of the run
        * as both `session_id` and `prompt_cache_key`, so a provider dashboard row can be
@@ -4312,6 +4319,12 @@ export type GgTelemetryEvent = {
        * offer every surface, including the ones this run's configuration disabled.
        */
       capabilitySet: GgCapabilitySet;
+      /**
+       * The OpenRouter provider each bound model is pinned to, beside the routing
+       * key. A run's cost is recorded against this pin; a response from any other
+       * provider ends the run.
+       */
+      modelProviders: { [key in string]: string };
       /**
        * The **routing key** gg minted at launch: a cuid2 sent on every request of the run
        * as both `session_id` and `prompt_cache_key`, so a provider dashboard row can be
@@ -5667,6 +5680,7 @@ export const GG_TURN_ERROR_TYPE_LABELS: Readonly<
   model_response_loop: "model looped every attempt",
   model_vision_unsupported: "model cannot see images",
   model_parse: "unparseable model response",
+  model_provider_mismatch: "served by another provider",
   model_timeout: "model call timed out",
   model_length_capped: "length-capped reply rejected",
   transpile_syntax: "syntax error",
@@ -5696,6 +5710,7 @@ export const GG_TURN_ERROR_TYPE_BASE: Readonly<
   model_response_loop: "model_api",
   model_vision_unsupported: "model_api",
   model_parse: "model_api",
+  model_provider_mismatch: "model_api",
   model_timeout: "model_api",
   model_length_capped: "model_api",
   transpile_syntax: "transpile",
@@ -5724,6 +5739,7 @@ export const GG_TURN_ERROR_TYPES: readonly GgTurnErrorType[] = [
   "model_response_loop",
   "model_vision_unsupported",
   "model_parse",
+  "model_provider_mismatch",
   "model_timeout",
   "model_length_capped",
   "transpile_syntax",
