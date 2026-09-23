@@ -7,8 +7,8 @@
 //! [`COMPONENTS`](super::COMPONENTS) is the whole of what a run needs (see [`engine`](super::engine)).
 //! `cargo nextest` inverts that: it runs **one process per test**, thousands of them, and every one
 //! that touches an embedded guest Cranelift-compiles byte-identical input from scratch. The embedded
-//! guests are tens of megabytes, so that repeated compile — not anything a test is about — was
-//! the largest share of the suite's CPU: tens of CPU-seconds per test process against well under a
+//! guests are tens of megabytes, so that repeated compile — not anything a test is about — would be
+//! the largest share of the suite's CPU: seconds of compile per test process against well under a
 //! second to map a compiled copy back in.
 //!
 //! # What an entry is keyed on
@@ -35,8 +35,8 @@
 //! # Concurrency
 //!
 //! Many test processes read and write the directory at once. An entry is staged under a name unique
-//! to this process and call and [renamed](std::fs::rename) into place, so a reader sees either no
-//! file or a whole one; two writers of the same key write the same bytes and the last rename wins.
+//! to this process and call, flushed to disk and [renamed](std::fs::rename) into place, so a reader
+//! sees either no file or a whole one, even after a crash; two writers of the same key write the same bytes and the last rename wins.
 //! Nothing is ever written into an existing entry, which is what mapping one with
 //! [`Component::deserialize_file`] requires: replacing or deleting a file leaves every mapping of
 //! the old one intact.
@@ -142,7 +142,11 @@ fn key(engine: &Engine, bytes: &[u8]) -> String {
 }
 
 /// Write `contents` to `entry` atomically: staged under a name unique to this process and call,
-/// then renamed into place.
+/// flushed to disk, then renamed into place.
+///
+/// The flush comes before the rename so an entry's name never points at bytes the disk does not
+/// hold yet: after a crash or a power loss, the name is either absent or names the whole of what
+/// was compiled, never a zero-length or half-written file that would be mapped and executed.
 fn store(entry: &Path, contents: &[u8]) -> std::io::Result<()> {
     static STAGED: AtomicU64 = AtomicU64::new(0);
     let staged = entry.with_extension(format!(
@@ -150,7 +154,12 @@ fn store(entry: &Path, contents: &[u8]) -> std::io::Result<()> {
         std::process::id(),
         STAGED.fetch_add(1, Ordering::Relaxed)
     ));
-    fs::write(&staged, contents)
+    let write = || -> std::io::Result<()> {
+        let mut file = File::create(&staged)?;
+        std::io::Write::write_all(&mut file, contents)?;
+        file.sync_all()
+    };
+    write()
         .and_then(|()| fs::rename(&staged, entry))
         .inspect_err(|_| {
             let _ = fs::remove_file(&staged);
