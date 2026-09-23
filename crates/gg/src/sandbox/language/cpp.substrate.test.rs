@@ -963,17 +963,17 @@ fn what_a_compiled_cpp_program_weighs_is_a_per_turn_cost() {
     );
 
     // Printed rather than asserted, because it is the arm's cost rather than its correctness and a
-    // shared machine is the wrong place to fail over a stopwatch. `cargo nextest run --no-capture`
-    // is where the figures this arm's documentation quotes come from.
+    // timing is a reading of the machine as much as of the arm. `cargo nextest run --no-capture`
+    // shows it. The engine's compile is timed inside the one evaluation the test makes anyway, so
+    // the artifact is compiled once rather than once more just to be timed.
     let started = Instant::now();
-    engine::compile_bytes(&component).expect("a freshly compiled C++ program is a component");
+    let (outcome, _log) = evaluate(&component, &[], RunEnding::None, false, canned_outcome);
     println!(
-        "clang++ and the component encode {compiled:?}; wasmtime Component::new {:?}; {} bytes",
+        "clang++ and the component encode {compiled:?}; wasmtime compiling and running it {:?}; \
+         {} bytes",
         started.elapsed(),
         component.len()
     );
-
-    let (outcome, _log) = evaluate(&component, &[], RunEnding::None, false, canned_outcome);
     assert_eq!(logs(&outcome), ["weighed"]);
 }
 
