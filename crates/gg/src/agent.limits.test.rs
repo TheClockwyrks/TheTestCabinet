@@ -323,6 +323,8 @@ fn priced_turn(dollars: f64) -> ModelResponse {
         }),
         provider: None,
         loop_aborts: LoopAborts::none(),
+        usage_wire: None,
+        usage_reconciled: false,
     }
 }
 
@@ -979,6 +981,8 @@ async fn a_limit_stopped_run_keeps_everything_it_built() {
         }),
         provider: None,
         loop_aborts: LoopAborts::none(),
+        usage_wire: None,
+        usage_reconciled: false,
     };
     let client = MockClient::new(
         "mock/primary",

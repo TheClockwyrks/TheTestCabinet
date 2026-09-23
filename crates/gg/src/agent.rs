@@ -7483,18 +7483,17 @@ impl Agent {
                 // and a spent loop retry pass `None`: a stalled provider and a stream gg dropped
                 // never delivered a usage payload to count.
                 if let Some(billed) = billed {
+                    let (tokens, cost) = (billed.tokens, billed.cost);
                     record_usage_delta(
-                        billed.tokens,
-                        billed.cost,
-                        billed.provider,
+                        billed,
                         &self.profile_id,
                         client.model_id(),
                         GgUsageFigure::Total,
                         emitter,
                     );
-                    total_tokens = add_counts(total_tokens, billed.tokens);
-                    total_cost = add_cost(total_cost, billed.cost);
-                    limits.spend.add(billed.cost);
+                    total_tokens = add_counts(total_tokens, tokens);
+                    total_cost = add_cost(total_cost, cost);
+                    limits.spend.add(cost);
                 }
                 if let Some(breach) = self.record_turn(
                     &mut agent_limits,
@@ -7584,9 +7583,7 @@ impl Agent {
             // The delta names the figure this turn's spend fed; see [`usage_figure`].
             let figure = usage_figure(&response, code.enabled, pending_compaction);
             record_usage_delta(
-                response.usage,
-                response.cost,
-                response.provider.clone(),
+                ReplySpend::of(&response),
                 &self.profile_id,
                 client.model_id(),
                 figure,
@@ -12665,24 +12662,29 @@ fn usage_figure(
 /// the deltas of one key reproduces that key's rollup exactly — the figure mark included, since
 /// the [summary](crate::summary) folds the work figure from these same marks.
 fn record_usage_delta(
-    tokens: TokenCounts,
-    cost: Option<Cost>,
-    provider: Option<String>,
+    spend: ReplySpend,
     profile_id: &str,
     model_id: &str,
     figure: GgUsageFigure,
     emitter: &Emitter,
 ) {
-    if tokens == TokenCounts::default() && cost.is_none() {
+    if spend.tokens == TokenCounts::default() && spend.cost.is_none() {
         return;
     }
     emitter.emit(GgTelemetryKind::Usage {
         profile_id: profile_id.to_string(),
         model_id: model_id.to_string(),
-        tokens,
-        cost,
+        tokens: spend.tokens,
+        cost: spend.cost,
         figure: Some(figure),
-        provider,
+        provider: spend.provider,
+        // The provider's own object, verbatim, beside the counts mapped off it, and the mark
+        // saying when the output/reasoning split is the [bound](ModelResponse::usage_reconciled)
+        // rather than what the provider reported. Both ride through unchanged: what gg mapped and
+        // what gg corrected are exactly the two things a reader of this row checks against the
+        // original.
+        wire: spend.wire,
+        reconciled: spend.reconciled,
     });
 }
 

@@ -500,6 +500,8 @@ fn records_the_work_cost_and_the_total_cost_per_slot_and_in_the_rollup() {
             }),
             figure: None,
             provider: None,
+            wire: None,
+            reconciled: false,
         },
     );
 
@@ -1248,6 +1250,8 @@ fn usage_marked(
         }),
         figure: Some(figure),
         provider: provider.map(str::to_string),
+        wire: None,
+        reconciled: false,
     }
 }
 

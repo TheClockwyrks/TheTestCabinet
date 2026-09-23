@@ -356,10 +356,10 @@ const SCHEMA_BASE_URL: &str = "https://docs.testcabinet.ai/schema/";
 /// lacks both keys and no longer reads. Its digest last moved when gg's agent
 /// profile gained `reasoning`, gg's run limits gained `modelStreamIdleSecs`, the gg
 /// session summary gained its two cost figures, `cost` and `workCost`, on each slot
-/// and in the run-wide rollup, and the `usage` telemetry event gained the `figure`
-/// naming which one its turn fed: every one of them is an `Option` absent on the
-/// records stored before it, so stored records go on reading and the generation
-/// does not move.
+/// and in the run-wide rollup, and the `usage` telemetry event gained `wire`,
+/// `reconciled` and the `figure` naming which cost figure its turn fed: every one of
+/// them is optional and absent on the records stored before it, so stored records
+/// go on reading and the generation does not move.
 ///
 /// Generation 2 was the gg agent profile's `openingTurn` becoming required: every gg
 /// record stored before it lacks the key and no longer reads. Its digest last moved
@@ -380,7 +380,7 @@ const RECORD_SHAPES: &[(u32, &str)] = &[
     ),
     (
         3,
-        "0f9ead355237bba3ca52b7d1449db961da1db315471091128020e95c1319f54a",
+        "1b55f60df0a3233f810ea5647ae05abf913b582e8dde77e8bd7492e0edcc19aa",
     ),
 ];
 

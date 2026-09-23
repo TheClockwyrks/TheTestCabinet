@@ -1368,6 +1368,13 @@ fn usage_telemetry_reuses_the_shared_token_and_cost_types() {
             }),
             figure: Some(GgUsageFigure::Work),
             provider: Some("anthropic".to_string()),
+            wire: Some(json!({
+                "prompt_tokens": 1500,
+                "completion_tokens": 450,
+                "total_tokens": 1950,
+                "completion_tokens_details": { "reasoning_tokens": 0 },
+            })),
+            reconciled: false,
         },
     };
     let value = serde_json::to_value(&event).expect("serialize");
@@ -1379,8 +1386,48 @@ fn usage_telemetry_reuses_the_shared_token_and_cost_types() {
         json!("work"),
         "the delta names the cost figure its turn fed"
     );
+    // The provider's object rides verbatim — its own snake_case keys, untouched by the
+    // event's camelCase mapping.
+    assert_eq!(
+        value["wire"],
+        json!({
+            "prompt_tokens": 1500,
+            "completion_tokens": 450,
+            "total_tokens": 1950,
+            "completion_tokens_details": { "reasoning_tokens": 0 },
+        })
+    );
+    // A row recorded as the provider reported it is not marked reconciled, and `false`
+    // is omitted rather than spelled.
+    assert!(value.get("reconciled").is_none());
     let back: GgTelemetryEvent = serde_json::from_value(value).expect("deserialize");
     assert_eq!(event, back);
+}
+
+/// A usage row whose output/reasoning split is gg's bound carries the mark, and a row with no
+/// provider object omits `wire` rather than serializing a null.
+#[test]
+fn usage_telemetry_carries_the_reconciled_mark_and_omits_an_absent_wire() {
+    let kind = GgTelemetryKind::Usage {
+        profile_id: ROOT_PROFILE_ID.to_string(),
+        model_id: "moonshotai/kimi-k3".to_string(),
+        tokens: TokenCounts {
+            uncached_input: Some(900),
+            cached_input: None,
+            output: Some(230),
+            reasoning: Some(0),
+        },
+        cost: None,
+        figure: Some(GgUsageFigure::Work),
+        provider: Some("Sail Research".to_string()),
+        wire: None,
+        reconciled: true,
+    };
+    let value = serde_json::to_value(&kind).expect("serialize");
+    assert!(value.get("wire").is_none());
+    assert_eq!(value["reconciled"], json!(true));
+    let back: GgTelemetryKind = serde_json::from_value(value).expect("deserialize");
+    assert_eq!(kind, back);
 }
 
 #[test]

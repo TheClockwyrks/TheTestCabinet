@@ -88,6 +88,8 @@ fn length_capped_reply() -> ModelResponse {
         }),
         provider: Some("cap-provider".to_string()),
         loop_aborts: LoopAborts::none(),
+        usage_wire: None,
+        usage_reconciled: false,
     }
 }
 
@@ -571,7 +573,7 @@ fn usage_deltas(
         .collect()
 }
 
-/// The failure hy4's run ended on: a `submit_program` call whose arguments ran past the point the
+/// A `submit_program` call whose arguments ran past the point the
 /// provider cut them off, with the usage and cost that provider had already billed for the
 /// request. The reply is unreadable; the spend is not.
 fn unreadable_reply() -> ModelError {
@@ -589,6 +591,8 @@ fn unreadable_reply() -> ModelError {
                 actual: Some(0.5),
             }),
             provider: Some("cut-provider".to_string()),
+            wire: None,
+            reconciled: false,
         },
     )
 }
@@ -803,6 +807,8 @@ fn reply_calling(calls: Vec<ToolCall>) -> ModelResponse {
         cost: None,
         provider: None,
         loop_aborts: LoopAborts::none(),
+        usage_wire: None,
+        usage_reconciled: false,
     }
 }
 
