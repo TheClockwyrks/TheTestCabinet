@@ -347,6 +347,147 @@ fn a_slot_binding_carries_the_prompt_cache_lifetime_it_was_given() {
     assert!(value.get("promptCacheTtl").is_none(), "{value}");
 }
 
+/// A reasoning setting writes exactly the one value it names — `effort` or `maxTokens` — and an
+/// agent that named none writes no key at all, which is the declaration that runs the model at its
+/// provider's default. The effort levels are the unified vocabulary's own spellings, `xhigh`
+/// included, since that is what the request object carries whatever the model calls its parameter.
+#[test]
+fn a_reasoning_setting_names_one_value_and_an_absent_one_writes_no_key() {
+    let mut set = root_set(Vec::new());
+    set.agents.push(GgAgentConfig {
+        slug: "reviewer".to_string(),
+        name: "Reviewer".to_string(),
+        model_id: "anthropic/claude-haiku-4.5".to_string(),
+        reasoning: Some(GgReasoning {
+            effort: Some(GgReasoningEffort::XHigh),
+            max_tokens: None,
+        }),
+        ..GgAgentConfig::root()
+    });
+    set.agents.push(GgAgentConfig {
+        slug: "summarizer".to_string(),
+        name: "Summarizer".to_string(),
+        model_id: "deepseek/deepseek-v4.1-flash".to_string(),
+        reasoning: Some(GgReasoning {
+            effort: None,
+            max_tokens: Some(8_192),
+        }),
+        ..GgAgentConfig::root()
+    });
+
+    let value = serde_json::to_value(&set).expect("serialize");
+    assert!(value["agents"][0].get("reasoning").is_none(), "{value}");
+    assert_eq!(
+        value["agents"][1]["reasoning"],
+        json!({ "effort": "xhigh" })
+    );
+    assert_eq!(
+        value["agents"][2]["reasoning"],
+        json!({ "maxTokens": 8192 })
+    );
+
+    let back: GgCapabilitySet = serde_json::from_value(value).expect("deserialize");
+    assert_eq!(set, back);
+    assert_eq!(
+        back.agents[1].reasoning,
+        Some(GgReasoning {
+            effort: Some(GgReasoningEffort::XHigh),
+            max_tokens: None,
+        })
+    );
+    assert_eq!(back.agents[2].reasoning.unwrap().max_tokens, Some(8_192));
+}
+
+/// A budget is read under the count rule the run limits are — an integral number in any spelling
+/// is that count, so a document generated from JavaScript cannot refuse a launch over `8192.0` —
+/// and the six levels are the closed vocabulary they are written against.
+#[test]
+fn a_reasoning_budget_is_a_whole_count_in_any_spelling() {
+    let stored = json!({
+        "agents": [{
+            "slug": ROOT_PROFILE_ID,
+            "name": ROOT_AGENT,
+            "capabilities": [{ "id": CAPABILITY_SHELL, "enabled": true, "params": {} }],
+            "openingTurn": opening_turn_json(),
+            "modelId": "anthropic/claude-opus-4.8",
+            "reasoning": { "maxTokens": 8192.0 },
+        }],
+    });
+    let set: GgCapabilitySet = serde_json::from_value(stored).expect("deserialize");
+    assert_eq!(set.root().reasoning.unwrap().max_tokens, Some(8_192));
+
+    for effort in GgReasoningEffort::ALL {
+        let stored = json!({
+            "agents": [{
+                "slug": ROOT_PROFILE_ID,
+                "name": ROOT_AGENT,
+                "capabilities": [{ "id": CAPABILITY_SHELL, "enabled": true, "params": {} }],
+                "openingTurn": opening_turn_json(),
+                "modelId": "anthropic/claude-opus-4.8",
+                "reasoning": { "effort": effort.as_str() },
+            }],
+        });
+        let set: GgCapabilitySet = serde_json::from_value(stored).expect("deserialize");
+        assert_eq!(set.root().reasoning.unwrap().effort, Some(effort));
+    }
+}
+
+/// Exactly one of the two is a sendable setting. A declaration naming both, naming neither, or
+/// naming a budget of zero is refused at launch rather than read as either one — the refusal this
+/// predicate exists so gg and the console agree on.
+#[test]
+fn a_reasoning_setting_is_honourable_only_when_it_names_one_something() {
+    let one = GgReasoning {
+        effort: Some(GgReasoningEffort::Low),
+        max_tokens: None,
+    };
+    assert!(one.is_honourable());
+    let budget = GgReasoning {
+        effort: None,
+        max_tokens: Some(512),
+    };
+    assert!(budget.is_honourable());
+    assert!(!GgReasoning::default().is_honourable());
+    assert!(
+        !GgReasoning {
+            effort: Some(GgReasoningEffort::None),
+            max_tokens: Some(0),
+        }
+        .is_honourable()
+    );
+    assert!(
+        !GgReasoning {
+            effort: None,
+            max_tokens: Some(0),
+        }
+        .is_honourable(),
+        "a budget of zero names no tokens a reply could think in; the `none` effort is how a \
+         setting turns reasoning off"
+    );
+}
+
+/// The setting reaches the client through the [binding](GgSlotBinding) a profile is resolved into,
+/// because the binding is what a client is built from. A binding that was never told otherwise
+/// carries none, and writes no key.
+#[test]
+fn a_slot_binding_carries_the_reasoning_setting_it_was_given() {
+    let binding = GgSlotBinding::new(PRIMARY_SLOT, "anthropic/claude-opus-4.8").with_reasoning(
+        Some(GgReasoning {
+            effort: Some(GgReasoningEffort::Minimal),
+            max_tokens: None,
+        }),
+    );
+    assert_eq!(
+        binding.reasoning.and_then(|reasoning| reasoning.effort),
+        Some(GgReasoningEffort::Minimal)
+    );
+
+    let plain = GgSlotBinding::new(PRIMARY_SLOT, "anthropic/claude-opus-4.8");
+    assert_eq!(plain.reasoning, None);
+    let value = serde_json::to_value(&plain).expect("serialize");
+    assert!(value.get("reasoning").is_none(), "{value}");
+}
+
 /// Loop detection is **off** until an operator arms it, and every knob under it is optional — an
 /// absent one takes gg's own default rather than zero, which is why the default value of the whole
 /// object has to be "nothing declared" rather than "a detector configured with zeroes".

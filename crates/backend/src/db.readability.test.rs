@@ -353,9 +353,10 @@ const SCHEMA_BASE_URL: &str = "https://docs.testcabinet.ai/schema/";
 /// Generation 3 is the toolchain summary's `ToolchainTests` gaining `tests` and
 /// `testsTruncated` — the per-test entries beside the per-file rows. Neither is
 /// optional or defaulted, so a record stored with a test report before this change
-/// lacks both keys and no longer reads. Its digest last moved when gg's `usage`
-/// telemetry event gained `wire` and `reconciled`: optional keys absent from every
-/// stored record, so stored records go on reading and the generation does not move.
+/// lacks both keys and no longer reads. Its digest last moved when gg's agent
+/// profile gained `reasoning` and gg's `usage` telemetry event gained `wire` and
+/// `reconciled`: optional keys absent from every stored record, so stored records
+/// go on reading and the generation does not move.
 ///
 /// Generation 2 was the gg agent profile's `openingTurn` becoming required: every gg
 /// record stored before it lacks the key and no longer reads. Its digest last moved
@@ -376,7 +377,7 @@ const RECORD_SHAPES: &[(u32, &str)] = &[
     ),
     (
         3,
-        "e28f62db1b0c58090c35589b36680adf78e4e8bd703324faed810ef75eaba9db",
+        "6463be971609d9db25f409a87a0c67b773fb19c075830fc0fb921b243479f44d",
     ),
 ];
 

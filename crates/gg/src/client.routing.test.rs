@@ -15,7 +15,7 @@ use super::*;
 use crate::model::{Message, ModelClient, ToolDefinition};
 
 /// A usable streamed completion: one text chunk, a stop, and the terminator.
-const ANSWER: &str = concat!(
+pub(super) const ANSWER: &str = concat!(
     r#"data: {"choices":[{"index":0,"delta":{"content":"done"}}]}"#,
     "\n\n",
     r#"data: {"choices":[{"delta":{},"finish_reason":"stop"}]}"#,
@@ -27,7 +27,7 @@ const ANSWER: &str = concat!(
 type Sent = (Option<String>, Value);
 
 /// `client` answered with `answer`, and the requests it sends as they went out.
-fn recorded(
+pub(super) fn recorded(
     client: OpenRouterClient,
     answer: &'static str,
 ) -> (OpenRouterClient, Arc<Mutex<Vec<Sent>>>) {
@@ -137,7 +137,15 @@ fn the_body_carries_the_routing_key_as_both_fields() {
     let key = RoutingKey::mint();
     let messages = [Message::user("hi")];
     for body in [
-        build_request_body("m", &messages, &[], Some(&key), None, CacheTtl::Standard),
+        build_request_body(
+            "m",
+            &messages,
+            &[],
+            Some(&key),
+            None,
+            CacheTtl::Standard,
+            None,
+        ),
         build_required_tool_request_body(
             "m",
             &messages,
@@ -145,6 +153,7 @@ fn the_body_carries_the_routing_key_as_both_fields() {
             Some(&key),
             None,
             CacheTtl::Standard,
+            None,
         ),
     ] {
         assert_eq!(body["session_id"], json!(key.as_str()));
@@ -162,6 +171,7 @@ fn the_body_omits_both_fields_without_a_key() {
         None,
         None,
         CacheTtl::Standard,
+        None,
     );
     assert!(body.get("session_id").is_none());
     assert!(body.get("prompt_cache_key").is_none());

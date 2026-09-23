@@ -517,6 +517,84 @@ async fn a_handoff_model_that_will_not_resolve_ends_the_run() {
     assert!(boundaries(&events).is_empty());
 }
 
+/// A factory that records every binding it builds a client for, and builds each a mock that stops.
+struct BindingRecorder {
+    seen: std::sync::Mutex<Vec<GgSlotBinding>>,
+}
+
+impl ClientFactory for BindingRecorder {
+    fn client_for(&self, binding: &GgSlotBinding) -> Result<Box<dyn ModelClient>, ModelError> {
+        self.seen
+            .lock()
+            .expect("binding lock")
+            .push(binding.clone());
+        Ok(Box::new(MockClient::new(
+            &binding.model_id,
+            vec![stop_response()],
+        )))
+    }
+}
+
+/// The agent's reasoning setting is tuned to the agent's own model, so it reaches that model's
+/// client and not the client of a handoff summarizer bound to a second model, which runs at its
+/// provider's default.
+#[tokio::test]
+async fn a_handoff_model_runs_without_the_agents_reasoning_setting() {
+    use test_cabinet_core::gg::{GgReasoning, GgReasoningEffort};
+    let dir = TempDir::new().unwrap();
+    seed_default_skill(dir.path());
+    let emitter = Emitter::with_sink(
+        Some("run-handoff-reasoning".to_string()),
+        Box::new(CollectingSink::new()),
+    );
+
+    let mut set = GgCapabilitySet::minimal("mock/echo");
+    let reasoning = GgReasoning {
+        effort: Some(GgReasoningEffort::Low),
+        max_tokens: None,
+    };
+    set.agents[0].reasoning = Some(reasoning);
+    crate::tools::grant_configured(
+        &mut set.agents[0],
+        GgCapabilityConfig {
+            implementation: Some(
+                test_cabinet_core::gg::COMPACTION_STRATEGY_HANDOFF_SUMMARIZATION.to_string(),
+            ),
+            ..crate::tools::configured(
+                CAPABILITY_COMPACTION,
+                json!({ test_cabinet_core::gg::COMPACTION_PARAM_MODEL: "mock/compactor" }),
+            )
+        },
+    );
+    let inv = invocation(dir.path(), set);
+    let factory = Arc::new(BindingRecorder {
+        seen: std::sync::Mutex::new(Vec::new()),
+    });
+
+    assert_eq!(
+        run_with_factory(
+            &inv,
+            &emitter,
+            Arc::clone(&factory) as Arc<dyn ClientFactory>
+        )
+        .await,
+        SessionOutcome::Ran,
+    );
+
+    let seen = factory.seen.lock().expect("binding lock").clone();
+    let own = seen
+        .iter()
+        .find(|binding| binding.slot == ROOT_PROFILE_ID)
+        .expect("the agent's own client was built");
+    assert_eq!(own.reasoning, Some(reasoning));
+    let handoff = seen
+        .iter()
+        .find(|binding| binding.slot == COMPACTION_SLOT)
+        .expect("the handoff client was built");
+    assert_eq!(handoff.model_id, "mock/compactor");
+    assert_eq!(handoff.reasoning, None);
+}
+
 // ---------------------------------------------------------------------------
 // A compaction that cannot give the window back
 // ---------------------------------------------------------------------------

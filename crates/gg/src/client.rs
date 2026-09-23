@@ -66,7 +66,7 @@ use futures_util::StreamExt;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use test_cabinet_core::gg::{
-    GgLoopDetection, GgPromptCacheTtl, GgSlotBinding, GgTelemetryKind, ROOT_PROFILE_ID,
+    GgLoopDetection, GgPromptCacheTtl, GgReasoning, GgSlotBinding, GgTelemetryKind, ROOT_PROFILE_ID,
 };
 use test_cabinet_core::gg_session_record::{GgClientRole, GgSessionAgentOrigin};
 use test_cabinet_core::metrics::{Cost, TokenCounts};
@@ -487,6 +487,12 @@ pub struct OpenRouterClient {
     /// client rather than per run: a client serves one agent, and that is the granularity at which
     /// the extended lifetime is worth its premium.
     stable_ttl: CacheTtl,
+    /// The [reasoning setting](GgReasoning) every request this client sends carries, or `None`
+    /// when the agent this client serves named none — in which case no `reasoning` parameter is
+    /// sent and the model runs at its provider's default. Per client for the same reason
+    /// `stable_ttl` is: a client serves one agent, and how hard the model is asked to think is
+    /// that agent's choice about its own work.
+    reasoning: Option<GgReasoning>,
     /// The [detector](LoopGuardConfig) each of this client's replies is watched with, or `None`
     /// when the agent this client serves left [loop detection](GgLoopDetection) off.
     ///
@@ -526,7 +532,9 @@ impl OpenRouterClient {
     ///
     /// The prompt cache takes the [standard lifetime](CacheTtl::Standard); a client for an agent
     /// configured for the extended one is built through
-    /// [`with_prompt_cache_ttl`](Self::with_prompt_cache_ttl). [Loop detection](crate::loopguard)
+    /// [`with_prompt_cache_ttl`](Self::with_prompt_cache_ttl). No `reasoning` parameter is sent; a
+    /// client for an agent that [named one](GgReasoning) is built through
+    /// [`with_reasoning`](Self::with_reasoning). [Loop detection](crate::loopguard)
     /// is **off** — the detector is the only thing the switch changes, since every reply is read
     /// as a [stream](Self) whatever it says; a client for an agent that armed it is built through
     /// [`with_loop_detection`](Self::with_loop_detection).
@@ -548,6 +556,7 @@ impl OpenRouterClient {
             routing_key,
             provider: None,
             stable_ttl: CacheTtl::Standard,
+            reasoning: None,
             loop_guard: None,
             model_call_timeout: DEFAULT_MODEL_CALL_TIMEOUT,
             model_stream_idle: DEFAULT_MODEL_STREAM_IDLE,
@@ -634,6 +643,15 @@ impl OpenRouterClient {
         self
     }
 
+    /// This client sending `reasoning` on every request it makes — the agent profile's
+    /// [configured choice](GgReasoning), which [`client_for_slot`] carries in on the binding, and
+    /// which `None` turns off: a client built without this, or handed `None`, sends no `reasoning`
+    /// parameter and the model runs at its provider's default.
+    pub fn with_reasoning(mut self, reasoning: Option<GgReasoning>) -> Self {
+        self.reasoning = reasoning;
+        self
+    }
+
     /// This client pinning every request to `provider` — the OpenRouter slug the launch resolved
     /// for its model, sent as `provider.only` with fallbacks refused. A blank slug is no pin.
     pub fn with_provider(mut self, provider: impl Into<String>) -> Self {
@@ -703,6 +721,7 @@ impl OpenRouterClient {
             Some(routing_key.clone()),
         )
         .with_prompt_cache_ttl(binding.prompt_cache_ttl)
+        .with_reasoning(binding.reasoning)
         .with_loop_detection(binding.loop_detection))
     }
 
@@ -789,6 +808,7 @@ impl ModelClient for OpenRouterClient {
             self.routing_key.as_ref(),
             self.provider.as_deref(),
             self.stable_ttl,
+            self.reasoning,
         );
         self.send(body, messages).await
     }
@@ -815,6 +835,7 @@ impl ModelClient for OpenRouterClient {
             self.routing_key.as_ref(),
             self.provider.as_deref(),
             self.stable_ttl,
+            self.reasoning,
         );
         if self.tool_choice.refused(&self.model_id) {
             body["tool_choice"] = json!("auto");
@@ -1385,6 +1406,13 @@ fn truncate(body: &str) -> String {
 /// [`CacheTtl::Standard`], so `Standard` here produces exactly the unqualified markers gg sent
 /// before the lifetime was configurable.
 ///
+/// `reasoning` is the running agent's [reasoning setting](GgReasoning), sent as the unified
+/// `reasoning` request object — one key wide, `{"effort": "low"}` or `{"max_tokens": 8192}` — on
+/// **every** request of the agent's own client: the turns and the compaction summaries written on
+/// the agent's model alike. A [handoff](crate::compaction) model's client is built without one,
+/// since the setting is tuned to the agent's model. `None` sends no `reasoning` parameter at all,
+/// and the model runs at its provider's default.
+///
 /// Every request asks the provider to deliver the reply as
 /// [server-sent events](StreamAccumulator), so the request carries `stream: true` and
 /// `stream_options: { include_usage: true }`. The first is the transport; the second is what makes
@@ -1401,6 +1429,7 @@ pub fn build_request_body(
     routing_key: Option<&RoutingKey>,
     provider: Option<&str>,
     stable_ttl: CacheTtl,
+    reasoning: Option<GgReasoning>,
 ) -> Value {
     let marked_model = requires_cache_markers(model_id);
     let breakpoints = if marked_model {
@@ -1452,6 +1481,22 @@ pub fn build_request_body(
         body["provider"] = json!({ "only": [provider], "allow_fallbacks": false });
     }
 
+    if let Some(reasoning) = reasoning {
+        // The object as the agent's declaration names it. The keys are the unified request
+        // object's own (`effort`, `max_tokens`); what a provider calls its parameter is the
+        // provider's mapping. A declaration naming nothing names no object, so none is sent.
+        let mut object = serde_json::Map::new();
+        if let Some(effort) = reasoning.effort {
+            object.insert("effort".to_string(), json!(effort.as_str()));
+        }
+        if let Some(tokens) = reasoning.max_tokens {
+            object.insert("max_tokens".to_string(), json!(tokens));
+        }
+        if !object.is_empty() {
+            body["reasoning"] = Value::Object(object);
+        }
+    }
+
     if !tools.is_empty() {
         let tools: Vec<Value> = tools
             .iter()
@@ -1481,6 +1526,9 @@ pub fn build_request_body(
 /// [handoff compaction](crate::compaction::HandoffCompactor), which has a single shot at a
 /// structured answer and no next turn in which to ask again. Pure, like
 /// [`build_request_body`], so the wire shape is unit tested without network.
+///
+/// `reasoning` carries the same meaning it has on [`build_request_body`], so a client's reasoning
+/// setting applies to a required call as well as to a free turn.
 pub fn build_required_tool_request_body(
     model_id: &str,
     messages: &[Message],
@@ -1488,6 +1536,7 @@ pub fn build_required_tool_request_body(
     routing_key: Option<&RoutingKey>,
     provider: Option<&str>,
     stable_ttl: CacheTtl,
+    reasoning: Option<GgReasoning>,
 ) -> Value {
     let mut body = build_request_body(
         model_id,
@@ -1496,6 +1545,7 @@ pub fn build_required_tool_request_body(
         routing_key,
         provider,
         stable_ttl,
+        reasoning,
     );
     body["tool_choice"] = json!({
         "type": "function",
@@ -4416,8 +4466,9 @@ pub fn provider_for(binding: &GgSlotBinding) -> ProviderKind {
 /// `routing_key` is the run's [routing key](RoutingKey) a live client stamps on every request (the
 /// mock client ignores it). Every agent's client carries the same key — see
 /// [`OpenRouterClient::from_binding`]. The binding's
-/// [prompt-cache lifetime](GgSlotBinding::prompt_cache_ttl), by contrast, is the *agent's* own
-/// choice and differs from one profile to the next.
+/// [prompt-cache lifetime](GgSlotBinding::prompt_cache_ttl) and
+/// [reasoning setting](GgSlotBinding::reasoning), by contrast, are the *agent's* own
+/// choices and differ from one profile to the next.
 ///
 /// `model_call_timeout`, `model_stream_idle` and `retry_policy` are the run's resolved
 /// [limits](crate::limits::RunLimits), run-wide like the routing key: every agent's client, and
@@ -4697,3 +4748,7 @@ mod routing_tests;
 #[cfg(test)]
 #[path = "client.tool-choice.test.rs"]
 mod tool_choice_tests;
+
+#[cfg(test)]
+#[path = "client.reasoning.test.rs"]
+mod reasoning_tests;
