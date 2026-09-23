@@ -1,16 +1,11 @@
 #!/usr/bin/env bash
-# Builds and tests every headless Rust crate: the `tcab` CLI, the `tcab-backend`
+# Builds and tests every Rust crate: the `tcab` CLI, the `tcab-backend`
 # server, the `tcab-dispatcher`/`tcab-driver`/`tcab-artifacts` run-topology
 # services, and the `test-cabinet-core`/`test-cabinet-telemetry` libraries they
 # share.
 #
-# Scoped with `--workspace --exclude test-cabinet-desktop`: the only crate left
-# out is the Tauri desktop shell (`crates/desktop`), so the per-change CI runners
-# do not need the desktop app's heavy GUI system libraries (see rust-lint.sh).
-# That crate is not skipped, only moved — `desktop-build.sh` builds, lints, and
-# tests it on a runner that does install those libraries, so the workspace is
-# covered end to end. This is the critical Rust validation that both Azure DevOps
-# and GitHub run.
+# Scoped with `--workspace`, so the workspace is covered end to end. This is the
+# critical Rust validation that both Azure DevOps and GitHub run.
 #
 # Tests run with cargo-nextest (the repo's runner; see .config/nextest.toml —
 # no retries, flaky-result=fail, fail-fast=false, and a per-test hard timeout;
@@ -65,10 +60,10 @@ log "install the csharp arm's build toolchains (its guest is relinked by the bui
 ./scripts/ci/install-gg-build-toolchains.sh
 
 log "cargo build"
-cargo build --locked --workspace --exclude test-cabinet-desktop
+cargo build --locked --workspace
 
 log "cargo nextest run"
-cargo nextest run --locked --workspace --exclude test-cabinet-desktop
+cargo nextest run --locked --workspace
 
 log "cargo test --doc"
-cargo test --locked --workspace --exclude test-cabinet-desktop --doc
+cargo test --locked --workspace --doc

@@ -3,9 +3,8 @@
 A VS Code devcontainer for developing The Test Cabinet. It provides the Rust
 toolchain (with `rustfmt`, `clippy`, and the host architecture's
 `*-unknown-linux-musl` target for portable static builds), Node.js, Ruby, `uv`,
-the Tauri v2 system libraries for the desktop shell, `markdownlint-cli2` for the
-docs, the Cloudflare `wrangler` CLI that `tcab publish` uses to deploy run builds
-to Cloudflare Pages, and the `k3d`, `kubectl`, and `docker` (client-only) tooling
+`markdownlint-cli2` for the docs, the Cloudflare `wrangler` CLI that
+`tcab publish` uses to deploy run builds to Cloudflare Pages, and the `k3d`, `kubectl`, and `docker` (client-only) tooling
 the [local service stack](#host-docker-access-the-local-service-stack) runs on.
 
 On top of that, the image **bakes in the toolchains of gg's eleven
@@ -347,7 +346,7 @@ was interrupted, or you deleted `node_modules` at some point, run it again by
 hand. The build script says so by name if you forget.
 
 ```sh
-cargo build --workspace        # CLI, core, and the Tauri desktop shell
+cargo build --workspace        # CLI, core, and the services
 cargo nextest run --workspace  # the repo's test runner (see .config/nextest.toml)
 cargo test --workspace --doc   # doctests — nextest does not run these
 cargo build-portable           # static musl tcab            (see https://docs.testcabinet.ai/development/building/)
@@ -398,7 +397,7 @@ make -C deployments/local local-grafana   # forward Grafana + the OTLP collector
 `local-grafana` opens **Grafana at <http://localhost:3000>** (anonymous admin —
 no login) and forwards the OTLP collector to `localhost:4318` (HTTP/protobuf) and
 `:4317` (gRPC). A binary you run **outside** the cluster — a `cargo run` here in
-the devcontainer, a host-side `tcab` CLI or desktop app, or the browser web
+the devcontainer, a host-side `tcab` CLI, or the browser web
 console — exports to the in-cluster stack by pointing its
 `OTEL_EXPORTER_OTLP_ENDPOINT` (`VITE_OTEL_EXPORTER_OTLP_ENDPOINT` for the
 browser) at `http://localhost:4318` while `local-grafana` is running. The Rust

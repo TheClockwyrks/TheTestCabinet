@@ -34,15 +34,7 @@
 # items, so a link into a test-only gate module can never resolve and those read as
 # a backticked source path instead.
 #
-# The one thing still outside this gate is `crates/desktop`, excluded here for the
-# same reason clippy excludes it (below) and not because of anything in its docs.
-#
-# Formatting is checked across the whole workspace (it needs no compilation, so
-# the desktop crate costs nothing here). Clippy and rustdoc cover every headless
-# crate via `--workspace --exclude test-cabinet-desktop`; only the Tauri desktop shell
-# (`crates/desktop`) is left out so the per-change CI runners do not need the
-# desktop app's heavy GUI system libraries. It gets the same clippy and rustdoc
-# passes from `desktop-build.sh`, whose runner installs them.
+# Formatting, clippy and rustdoc each cover the whole workspace.
 set -euo pipefail
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
@@ -51,7 +43,7 @@ log "cargo fmt --check"
 cargo fmt --all --check
 
 log "cargo clippy (warnings denied)"
-cargo clippy --locked --workspace --exclude test-cabinet-desktop --all-targets -- -D warnings
+cargo clippy --locked --workspace --all-targets -- -D warnings
 
 log "cargo doc (warnings denied)"
-cargo doc --locked --workspace --exclude test-cabinet-desktop --no-deps --document-private-items
+cargo doc --locked --workspace --no-deps --document-private-items

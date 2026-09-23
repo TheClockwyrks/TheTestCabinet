@@ -686,13 +686,9 @@ done
 # must compile from scratch. A `.DS_Store` rewritten because a Finder window was resized
 # is therefore a ~19-crate rebuild, attributed to the Dockerfile by everyone who sees it.
 #
-# THAT IS NOT A HYPOTHETICAL AND THE SIZES WERE NOT SMALL. When this check was written the
-# context weighed 113 MB, and 78 MB of it was `crates/desktop/binaries/` — the `k3d` and
-# `kubectl` sidecars the Tauri app bundles, fetched by a script, ignored by a `.gitignore`
-# git therefore never reports, `aarch64-apple-darwin` builds no Linux image could run, and
-# admitted by `!/crates` along with the workspace. Six `.DS_Store` files, Tauri's generated
-# `gen/` tree and a `tsconfig.tsbuildinfo` rode in the same way. No gate could see any of
-# it, because every gate here was reading COPY sources.
+# Machine-local output under a re-included tree (fetched binaries, `.DS_Store` files,
+# generated schema trees, a `tsconfig.tsbuildinfo`) rides in exactly this way, and no gate
+# that reads COPY sources can see it.
 #
 # THE RULE THIS ASSERTS: a path git ignores is not a build input. Ignored means generated,
 # fetched, machine-local or scratch — every one of which is either reproduced inside the

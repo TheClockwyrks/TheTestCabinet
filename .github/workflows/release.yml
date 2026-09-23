@@ -2,11 +2,10 @@ name: Release
 
 # On-demand release pipeline for The Test Cabinet's distributable artifacts:
 # the headless binaries — the `tcab` CLI, the `tcab-backend` store/API, and the
-# `tcab-dispatcher`/`tcab-driver`/`tcab-artifacts` run-topology services — the `gg`
-# in-container coding harness, plus the
-# Tauri desktop app, each built for every platform. Public releases are cut on GitHub (the Azure DevOps repository is
-# private to the org), so this is where downloadable artifacts are built and
-# published.
+# `tcab-dispatcher`/`tcab-driver`/`tcab-artifacts` run-topology services — and the
+# `gg` in-container coding harness, each built for every platform. Public releases
+# are cut on GitHub (the Azure DevOps repository is private to the org), so this
+# is where downloadable artifacts are built and published.
 #
 # It is deliberately manual and two-phase, matching how releases are cut: run
 # this workflow to build, smoke-test, and publish the artifacts as a PRERELEASE;
@@ -19,10 +18,9 @@ name: Release
 # platform's actual shipped `tcab`: a green Azure run must never be the only
 # thing standing between a broken binary and users. The backend and the
 # dispatcher/driver/artifacts services need a runtime/store/cluster to do anything,
-# so a clean build is their gate; the desktop app is exercised by hand from the
-# published prerelease. `gg` gets a smoke check of its own — it is built natively on
-# each architecture's runner, so the shipped binary can be executed here, and what it
-# reports for `--version` is what a run record will claim produced its result.
+# so a clean build is their gate. `gg` gets a smoke check of its own — it is built
+# natively on each architecture's runner, so the shipped binary can be executed
+# here, and what it reports for `--version` is what a run record will claim produced its result.
 #
 # Dormant until the repository is mirrored to GitHub.
 on:
@@ -280,180 +278,9 @@ jobs:
           path: dist/gg-reference-*.tar.gz
           if-no-files-found: error
 
-  # Gate the desktop build on the service images actually existing at this commit.
-  #
-  # The desktop job below bakes TCAB_DESKTOP_IMAGE_TAG=<github.sha> into the app, and
-  # the bundled `overlays/app` pins all six services to that tag — so if no images
-  # were published at this sha, the build still succeeds and produces installers that
-  # cannot pull a single image, failing only in a user's hands at first launch.
-  # build-service-images.yml is unfiltered on master/staging precisely so this can
-  # never be a missing build, but it can still be an in-flight or failed one, and a
-  # release can be dispatched at any ref. Ten seconds of manifest lookups turn a
-  # ship-broken installer into a fast, legible CI failure.
-  images:
-    name: Verify service images exist at this commit
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-      packages: read
-    steps:
-      # Public GHCR packages resolve unauthenticated, but a private (or not-yet-made-
-      # public) package would 404 identically to a missing tag, so authenticate and
-      # keep the failure meaning exactly one thing.
-      - name: Log in to GHCR
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-      # The six images `overlays/app` pins — the exact set the app's k3d cluster
-      # pulls. Check them all before failing, so one dispatch reports every gap
-      # rather than only the first.
-      - name: Inspect ${{ github.sha }} manifests
-        env:
-          OWNER: ${{ github.repository_owner }}
-          SHA: ${{ github.sha }}
-        run: |
-          registry="ghcr.io/$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')"
-          missing=()
-          for image in tcab-backend tcab-auth-service tcab-dispatcher \
-                       tcab-driver tcab-artifacts tcab-arena; do
-            if docker buildx imagetools inspect "$registry/$image:$SHA" >/dev/null 2>&1; then
-              echo "ok      $image:$SHA"
-            else
-              echo "MISSING $image:$SHA"
-              missing+=("$image")
-            fi
-          done
-          if (( ${#missing[@]} )); then
-            echo
-            echo "::error::No service images at $SHA for: ${missing[*]}."
-            echo "::error::The desktop app would ship pinned to tags that do not exist."
-            echo "::error::Run build-service-images.yml at this ref, then re-dispatch."
-            exit 1
-          fi
-
-  desktop:
-    name: Desktop app (${{ matrix.name }})
-    needs: [images]
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # The desktop shell links the system web view, so it builds against the
-          # host's native toolchain (no musl) and ships the platform's installer:
-          # a .deb on Linux, a .dmg on macOS, and both an .msi and an NSIS .exe on
-          # Windows.
-          # `target` is the host Rust triple — used to name the k3d/kubectl sidecar
-          # binaries Tauri's externalBin expects (`<name>-<triple>`); it matches the
-          # triple Tauri resolves for the host, so the bundled sidecar is found.
-          # Built on ubuntu-22.04 ON PURPOSE, unlike the musl `build` job above:
-          # this app links the system glibc (x86_64-unknown-linux-gnu) plus the
-          # WebKitGTK/GTK stack, and glibc is backward- but not forward-compatible
-          # — a binary linked against a newer glibc pulls in symbol versions the
-          # older loader lacks and dies with `version 'GLIBC_2.xx' not found`. The
-          # build host sets the compatibility FLOOR, so building on 22.04 (glibc
-          # 2.35) keeps the .deb runnable on 22.04 AND everything newer; 24.04
-          # (glibc 2.39) would raise the floor and lock 22.04 users out.
-          # Ubuntu 22.04 is EOL 2027-04; once it is no longer supported, bump this
-          # back to ubuntu-24.04 (and drop this comment).
-          - name: linux-x86_64
-            os: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
-            bundles: deb
-          - name: windows-x86_64
-            os: windows-2022
-            target: x86_64-pc-windows-msvc
-            bundles: msi,nsis
-          - name: macos-aarch64
-            os: macos-14
-            target: aarch64-apple-darwin
-            bundles: dmg
-    steps:
-      - uses: actions/checkout@v6
-      # Tauri v2's Linux backend compiles against the system WebKitGTK/GTK/tray
-      # libraries. The devcontainer already curates exactly this package set, so
-      # reuse it rather than duplicating the list. macOS and Windows ship their
-      # web view with the OS.
-      - name: Install Linux GUI libraries
-        if: runner.os == 'Linux'
-        run: ./.devcontainer/languages/rust/tauri.sh
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 22.23.1
-          cache: npm
-      # The Tauri CLI drives the build (UI + Rust shell + installer); it is a
-      # Cargo subcommand, matching how the app is built locally.
-      - name: Install Tauri CLI
-        run: cargo install tauri-cli --version "^2" --locked
-      - name: Install npm workspace
-        run: npm ci
-      # The desktop UI (via @clockwyrks/ui) imports the compiled types of the
-      # workspace runtime packages, so they have to be built before the Tauri
-      # build runs the UI's own `tsc -b && vite build` (its beforeBuildCommand) —
-      # otherwise those imports resolve to nothing and the UI's typecheck fails.
-      #
-      # Which packages, and in what order, is the root `build:packages` script's
-      # to know — the same one `scripts/ci/web-build.sh` and `web-test.sh` defer
-      # to. This step used to inline the list, and that is precisely how it broke:
-      # `run-stats` was added to the root script and not to this copy, so the
-      # release built the desktop app against a package it had never built and all
-      # three platforms failed in `tsc -b` with ~100 unresolved-import errors.
-      # Never inline the list again.
-      - name: Build workspace type packages
-        run: npm run build:packages
-      # The shipped app stands up its own k3d cluster, so it bundles the k3d and
-      # kubectl CLIs as externalBin sidecars. Fetch the host-triple build of each
-      # into crates/desktop/binaries/ before the bundle runs (the committed config
-      # omits externalBin so a plain `cargo tauri build`/`dev` needs no binaries —
-      # they are added via --config below).
-      - name: Fetch cluster sidecars (k3d, kubectl)
-        run: node scripts/fetch-desktop-sidecars.mjs ${{ matrix.target }}
-      # Run from the crate that holds tauri.conf.json so the CLI resolves it.
-      # `--bundles` narrows the config's "all" targets to this platform's chosen
-      # installer(s) — notably skipping Linux AppImage, whose builder reaches out
-      # to the network and is the flaky one in CI. `--config` (bash on every
-      # platform, for consistent quoting) stamps the release version, adds the
-      # sidecar externalBin entries, and — via TCAB_DESKTOP_IMAGE_TAG, baked into
-      # the binary at compile time — pins the GHCR service images the app pulls to
-      # the set published for THIS commit (an immutable `:<git-sha>` tag), so an
-      # installer is coupled to a known-good image set rather than a moving `latest`.
-      - name: Build desktop app
-        working-directory: crates/desktop
-        shell: bash
-        env:
-          VERSION: ${{ inputs.version }}
-          TCAB_DESKTOP_IMAGE_TAG: ${{ github.sha }}
-        run: |
-          version_number="${VERSION#v}"
-          cargo tauri build --bundles ${{ matrix.bundles }} \
-            --config "{\"version\":\"${version_number}\",\"bundle\":{\"externalBin\":[\"binaries/k3d\",\"binaries/kubectl\"]}}"
-      # Tauri writes installers under target/release/bundle/<type>/ with a
-      # product-named, spaced filename; rename each to the same scheme as the
-      # binary archives so the release assets are uniform and shell-safe.
-      - name: Collect installers
-        shell: bash
-        env:
-          VERSION: ${{ inputs.version }}
-        run: |
-          mkdir -p dist
-          find target/release/bundle -type f \
-            \( -name '*.deb' -o -name '*.dmg' -o -name '*.msi' -o -name '*.exe' \) -print0 |
-            while IFS= read -r -d '' f; do
-              cp "$f" "dist/test-cabinet-desktop-${VERSION}-${{ matrix.name }}.${f##*.}"
-            done
-      - uses: actions/upload-artifact@v6
-        with:
-          name: dist-desktop-${{ matrix.name }}
-          path: dist/*
-          if-no-files-found: error
-
   publish:
     name: Publish prerelease
-    needs: [build, gg, desktop]
+    needs: [build, gg]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -466,8 +293,7 @@ jobs:
         shell: bash
         run: |
           cd dist
-          # Checksum every shipped asset (binary archives + desktop installers),
-          # null-delimited so product-named installers survive. Exclude the
+          # Checksum every shipped asset, null-delimited. Exclude the
           # SHA256SUMS file itself so it never hashes its own (empty) self.
           find . -maxdepth 1 -type f ! -name SHA256SUMS -print0 \
             | sort -z | xargs -0 sha256sum > SHA256SUMS
@@ -481,11 +307,7 @@ jobs:
         # Idempotent: re-running for the same candidate refreshes its assets rather
         # than failing because the prerelease already exists.
         run: |
-          # The macOS .dmg is not yet code-signed or notarized, so Gatekeeper
-          # reports the freshly downloaded app as "damaged". Tell downloaders how
-          # to clear the quarantine attribute until signing is in place.
-          macos_note=$'\n\n### macOS: "“The Test Cabinet” is damaged and can’t be opened"\n\nThe macOS app is not yet signed or notarized, so after downloading it macOS quarantines it and shows this (misleading) message — the app is fine, just unsigned. After dragging it to Applications, clear the quarantine attribute once:\n\n```sh\nxattr -dr com.apple.quarantine \"/Applications/The Test Cabinet.app\"\n```\n\nThen open it normally.'
-          notes="Candidate build of ${VERSION}: the tcab CLI, the backend server, the dispatcher/driver/artifacts services, the gg coding harness (static musl, x86_64 and aarch64), gg's reference documents (\`gg-reference-${VERSION}.tar.gz\`, arch-independent — unpack it and point the backend's TCAB_GG_REFERENCE at it so \`GET /gg/reference\` serves), and the desktop app, for every platform. Download and test these artifacts, then finalize with the \"Release (promote)\" workflow. Each platform's tcab was smoke-tested during build, and each gg binary was checked to report ${VERSION}.${macos_note}"
+          notes="Candidate build of ${VERSION}: the tcab CLI, the backend server, the dispatcher/driver/artifacts services, the gg coding harness (static musl, x86_64 and aarch64), gg's reference documents (\`gg-reference-${VERSION}.tar.gz\`, arch-independent — unpack it and point the backend's TCAB_GG_REFERENCE at it so \`GET /gg/reference\` serves), for every platform. Download and test these artifacts, then finalize with the \"Release (promote)\" workflow. Each platform's tcab was smoke-tested during build, and each gg binary was checked to report ${VERSION}."
           if gh release view "$VERSION" --repo "$REPO" >/dev/null 2>&1; then
             gh release upload "$VERSION" --repo "$REPO" --clobber dist/*
           else

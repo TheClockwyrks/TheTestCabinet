@@ -59,12 +59,7 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y \
 #     `FailFast` when neither resolves — so `csc` on a machine without ICU dies of
 #     SIGABRT having written nothing, and that arm's suite (nine files, several of
 #     which spawn a real Roslyn) cannot run at all. Declared here for the reason
-#     iproute2 is, and it is the starkest of the three: ICU has been arriving through
-#     `languages/rust/tauri.sh`, which installs `libwebkit2gtk-4.1-dev` for the
-#     DESKTOP app's build, which depends on `libwebkit2gtk-4.1-0`, which depends on
-#     `libicu78`. Whether gg's C# arm is testable on this machine has been a property
-#     of whether the Tauri shell still wants a browser engine — a chain nobody would
-#     walk backwards from a compiler that aborted.
+#     iproute2 is: nothing else in this image installs it.
 #     A RUN IMAGE OWES THE SAME LIBRARIES AND DOES NOT GET THEM FROM HERE: it has no
 #     package manager at run time, so `scripts/ci/install-dotnet.sh` vendors the same
 #     three under `/opt/gg` and gg names that directory on `LD_LIBRARY_PATH`. The two

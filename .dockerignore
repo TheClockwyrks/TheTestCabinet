@@ -38,9 +38,8 @@
 # all of it the Rust workspace's sources (crates/ is ~22 MB, the eleven guest packages
 # ~13 MB) — real build inputs, every one of them compiled or reflected by some image.
 # The figure is worth keeping honest because it is the unit of the `COPY . .` snapshot
-# each of the seven whole-context builds materialises on a cache miss. It was ~113 MB
-# until the re-exclusions at the foot of this file went in; 78 MB of the difference was
-# a directory git had never seen (see the `crates/desktop/binaries/` entry).
+# each of the seven whole-context builds materialises on a cache miss, which is why the
+# re-exclusions at the foot of this file keep ignored output out of it.
 #
 # Flipping to an allowlist (rather than enumerating things to exclude) means a
 # change to anything cargo does NOT compile — the frontend, the docs, test cases,
@@ -185,7 +184,6 @@
 !/package.json
 !/package-lock.json
 !/tsconfig.base.json
-!/apps/desktop/package.json
 !/apps/docs/package.json
 !/apps/site/package.json
 !/apps/web
@@ -321,7 +319,7 @@
 # here busts the layer cache of every one of them. The ten guest packages above are worth
 # that: the driver image genuinely compiles their reflections into the binary it bakes.
 # The ~30 unrelated top-level scripts (media backfills, cluster re-ingests, sample-pack
-# tooling, the desktop build helpers) are not, and admitting them would mean editing any
+# tooling) are not, and admitting them would mean editing any
 # one of them recompiled the asset tooling from scratch.
 !/scripts/build-gg-static.sh
 # The gg build's own shared shell, ENUMERATED, and the enumeration is load-bearing.
@@ -445,28 +443,6 @@
 # are left, which are enough on their own: a context that does not carry a file the
 # build is about to rewrite, and a layer cache that does not churn on it.
 /packages/gg-sandbox-rust/src/bindings.rs
-
-# The desktop app's SIDECAR BINARIES, which are 78 MB of the ~113 MB this context
-# used to weigh — two thirds of it, for a crate no image in this repository compiles.
-# `crates/desktop/binaries/` holds the `k3d` and `kubectl` builds the Tauri app
-# bundles; they are fetched at build time by scripts/fetch-desktop-sidecars.mjs (the
-# release workflow runs it), never committed, and platform-specific — the pair on the
-# machine this entry was written on are `*-aarch64-apple-darwin`, which no Linux image
-# could execute even if one wanted to. The directory's own .gitignore is `*` plus
-# `!.gitignore`, so git has never seen them and neither had this file: they arrived
-# under `!/crates` like every other path below it.
-#
-# WHAT THEY COST is not the transfer, which BuildKit does incrementally, but the
-# `COPY . .` snapshot every one of the seven whole-context builds materialises on a
-# cache miss — 78 MB of it, unpacked into a layer, for `-p test-cabinet-artifacts`.
-# A developer who has ever run the desktop app pays it on every service image build;
-# one who has not pays nothing, which is exactly why this went unnoticed for so long.
-/crates/desktop/binaries/
-# And Tauri's generated schema tree, `crates/desktop/gen/` — gitignored output of the
-# desktop crate's build script, regenerated whenever that crate is built. Small (~420 kB)
-# and here for the churn rather than the size: it is a build output living inside a
-# re-included source tree, which is the shape the block above exists to keep out.
-/crates/desktop/gen/
 
 # TypeScript's incremental build state. `packages/ui/tsconfig.tsbuildinfo` is gitignored
 # output that lands inside `!/packages/ui` — re-included for the web console image, which

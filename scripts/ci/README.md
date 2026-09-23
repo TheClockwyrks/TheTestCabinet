@@ -34,12 +34,11 @@ and can be run from anywhere, including locally:
 | `install-nextest.sh`             | Install cargo-nextest pinned to `NEXTEST_VERSION`                                                                                                                                                                                                                                                                                                                                                              | —        |
 | `install-gg-toolchains.sh`       | Install every toolchain a gg **run** and gg's reflectors execute                                                                                                                                                                                                                                                                                                                                               | —        |
 | `install-gg-build-toolchains.sh` | Install the full .NET + wasi-sdk only the C# guest's **link** needs                                                                                                                                                                                                                                                                                                                                            | —        |
-| `rust-test.sh`                   | `cargo build` + `cargo nextest run` + doctests (headless crates)                                                                                                                                                                                                                                                                                                                                               | yes      |
+| `rust-test.sh`                   | `cargo build` + `cargo nextest run` + doctests (whole workspace)                                                                                                                                                                                                                                                                                                                                               | yes      |
 | `binary-smoke.sh`                | release-build, `cargo nextest run --release` + doctests, run binary                                                                                                                                                                                                                                                                                                                                            | yes      |
 | `smoke-binary.sh`                | run a built binary (`--version`/`--help`/commands)                                                                                                                                                                                                                                                                                                                                                             | yes      |
 | `web-build.sh`                   | `npm ci`, type-check + `vite build` of the front ends                                                                                                                                                                                                                                                                                                                                                          | yes      |
 | `web-test.sh`                    | `npm ci`, build the workspace runtime packages, `vitest run` across every workspace, `node --test` over `scripts/lib`                                                                                                                                                                                                                                                                                          | yes      |
-| `desktop-build.sh`               | `npm ci`, build the workspace runtime packages, type-check + `vite build` of the desktop UI, then clippy/rustdoc/build/test `crates/desktop`                                                                                                                                                                                                                                                                   | yes      |
 | `specs-lint.sh`                  | markdownlint + cspell over `test-cases/**`                                                                                                                                                                                                                                                                                                                                                                     | no       |
 | `format-check.sh`                | `prettier --check` over the whole checkout, frozen versions and `.prettierignore` aside                                                                                                                                                                                                                                                                                                                        | no       |
 | `contract-drift.sh`              | regenerate TS bindings, JSON Schemas and gg's prompt templates, fail on diff                                                                                                                                                                                                                                                                                                                                   | yes      |
@@ -171,19 +170,6 @@ cannot reach it: a suite there would otherwise be executed by no gate. The suite
 hermetic — no network, no ffmpeg, no object store — so they cost this job under a
 second and need nothing the job does not already have.
 
-`desktop-build.sh` covers the Tauri desktop app —
-both its React UI (`apps/desktop`) and its Rust shell (`crates/desktop`). It exists
-because the app used to be validated nowhere but the Release workflow, which is
-the last possible place to find a break: a release fanned out to three platforms
-and all three failed in the UI's `tsc -b`, on code no earlier gate had ever
-compiled. It is also the only script that lints and tests `test-cabinet-desktop`,
-the one crate the Rust scripts exclude, so between them the Cargo workspace is
-covered with no holes. Its runner is the only one that needs the Linux GUI system
-libraries, which it installs from the devcontainer's curated list
-(`.devcontainer/languages/rust/tauri.sh`) rather than a second copy of it. It does
-**not** produce the platform installers or their k3d/kubectl sidecars: that is
-release-time packaging and stays in `release.yml`.
-
 `binary-smoke.sh` is the release gate that keeps a flat-out-broken binary from
 ever being published: it builds `tcab` in the shipped release profile, runs the
 suite in that profile, and then hands the produced binary to `smoke-binary.sh`,
@@ -219,24 +205,15 @@ These cover **every component the project ships**. On the Rust side that is the
 whole Cargo workspace — the `tcab` CLI (`crates/cli`), the `tcab-backend`
 (`crates/backend`) server, the run-topology services (`tcab-dispatcher`,
 `tcab-driver`, `tcab-artifacts`), the `crates/core`/`crates/telemetry` libraries
-they share, and the Tauri desktop shell (`crates/desktop`). On the TypeScript side
-it is the front ends built by `web-build.sh` — the gallery (`apps/site`), the
-operator web console (`apps/web`), and these docs (`apps/docs`) — plus the desktop
-UI (`apps/desktop`) built by `desktop-build.sh`, all on top of
+they share. On the TypeScript side it is the front ends built by `web-build.sh` —
+the gallery (`apps/site`), the operator web console (`apps/web`), and these docs
+(`apps/docs`) — all on top of
 `packages/run-record` and the source-consumed `packages/ui`; plus, through
 `web-test.sh`, every workspace's unit suite.
-
-The desktop app is split across two scripts rather than folded into the rest, for
-one reason: its Linux build needs GUI system libraries nothing else does. So the
-Rust scripts pass `--workspace --exclude test-cabinet-desktop` rather than a bare
-`--workspace` — the one excluded crate is the only one with that dependency — and
-`desktop-build.sh` picks it up on a runner that installs them. Excluded from the
-common runners, not from CI.
 
 ### The one gap: macOS
 
 Nothing a CI agent can build is left for a release to discover. The single
 exception is **macOS**, which Azure has no agents for: the macOS `tcab` binary is
-checked on demand by GitHub's `binary-macos.yml`, and the macOS desktop app is
-first built when `release.yml` bundles it. Every other platform and component is
+checked on demand by GitHub's `binary-macos.yml`. Every other platform and component is
 validated on every change.
