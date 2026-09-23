@@ -393,54 +393,55 @@ files.readFile("notes.md");
 /// reaches the guest through `GG_SANDBOX_DEADLINE_MS`, which `wasi_context` sets from the membrane
 /// state's limits.
 ///
-/// In production the guest's deadline sits a [head start](crate::sandbox::engine::GUEST_HEAD_START)
-/// ahead of gg's, so the two can race on a loaded machine. Here they are separated so they cannot:
-/// the state carries a short ceiling, which is the guest's deadline, and the store is bounded by the
-/// default one, which gg's epoch callback cannot reach before the guest has stopped itself. How gg
-/// classifies a guest that stopped itself at its deadline is
-/// `engine::tests::the_elapsed_clock_names_a_timeout_only_where_the_guest_stops_itself`, which
-/// asserts it on a zero budget rather than on a race.
+/// Two runs, because the two halves of that are different questions. The first separates the two
+/// deadlines so they cannot race: the state carries a short ceiling, which is the guest's deadline,
+/// and the store is bounded by the default one, which gg's epoch callback cannot reach before the
+/// guest has stopped itself — so what the model reads is the engine's own report. The second runs
+/// the store and the state under the same short ceiling, which is production's arrangement, and
+/// asserts only how gg classifies the stop: `Timeout`, whichever of the two deadlines answered,
+/// because a guest that stopped itself at the budget gg handed it is recognised from its elapsed
+/// time and one gg stopped carries gg's own flag. A deadline the guest is told that drifts short of
+/// the one gg recognises would make that second run an opaque trap.
 ///
 /// Caveat, stated here because the arm's documentation must not overstate it: the innermost frame's
 /// line is the looping function's DECLARATION, not the statement executing when the interrupt
 /// arrived. The function name and the whole call chain above it are exact.
 #[test]
 fn a_runaway_loop_is_stopped_by_the_engine_rather_than_by_an_epoch_trap() {
-    warm();
-    let log = CallLog::default();
-    // The guest's budget: `guest_deadline` floors it at half of this ceiling.
-    let guest_limits = SandboxLimits {
-        timeout: std::time::Duration::from_millis(200),
-        ..SandboxLimits::AMPLE
-    };
-    let capabilities = fake::all_capabilities();
-    let operations = fake::all_operations();
-    let state = MembraneState::new(
-        FakeOperationApi::new(&log),
-        fake::typescript(),
-        crate::sandbox::ProgramScope {
-            capabilities: &capabilities,
-            operations: &operations,
-            modules: &[],
-            ending: RunEnding::Role(crate::ending::EndingRole::Standard),
-        },
-        guest_limits,
-        None,
-    );
-    let ran = drive(
-        state,
-        SandboxLimits::AMPLE,
-        r#"function grind() {
+    const GRIND: &str = r#"function grind() {
   let n = 0;
   for (;;) {
     n += 1;
   }
 }
 grind();
-"#,
-        &[],
-        log,
-    );
+"#;
+    warm();
+    // The guest's budget: `guest_deadline` floors it at half of this ceiling.
+    let short = SandboxLimits {
+        timeout: std::time::Duration::from_millis(200),
+        ..SandboxLimits::AMPLE
+    };
+    let capabilities = fake::all_capabilities();
+    let operations = fake::all_operations();
+    let run = |state_limits: SandboxLimits, store_limits: SandboxLimits| {
+        let log = CallLog::default();
+        let state = MembraneState::new(
+            FakeOperationApi::new(&log),
+            fake::typescript(),
+            crate::sandbox::ProgramScope {
+                capabilities: &capabilities,
+                operations: &operations,
+                modules: &[],
+                ending: RunEnding::Role(crate::ending::EndingRole::Standard),
+            },
+            state_limits,
+            None,
+        );
+        drive(state, store_limits, GRIND, &[], log)
+    };
+
+    let ran = run(short, SandboxLimits::AMPLE);
     assert!(
         ran.result.is_err(),
         "a program that never ended did not end in a failure; it returned {:?} and reported {:?}",
@@ -456,6 +457,15 @@ grind();
     assert!(
         ran.said.contains("grind"),
         "and it should name the function that was looping; it said {:?}",
+        ran.said
+    );
+
+    let ran = run(short, short);
+    assert!(
+        matches!(ran.result, Err(SandboxError::Timeout { .. })),
+        "a guest stopped at the budget gg handed it must be reported as a timeout; it was {:?} and \
+         said {:?}",
+        ran.result,
         ran.said
     );
 }
