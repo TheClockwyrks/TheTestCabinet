@@ -237,10 +237,17 @@ it("hands the game back to its own clock, and takes it back", async () => {
   const after = await h.snapshot();
 
   expect(after.frames).toBeGreaterThan(before);
-  // And the game is back off the wall clock afterwards: a further wait moves
-  // nothing.
+  // And the game is back off the wall clock afterwards: further animation frames
+  // move nothing. The build's loop runs on the page's own animation frames, so
+  // three of them would each have ticked it had it kept its clock. Counted in
+  // frames rather than milliseconds, so a busy host delays the reading instead of
+  // shrinking it.
   expect(after.auto).toBe(false);
-  await h.page.waitForTimeout(120);
+  for (let i = 0; i < 3; i += 1) {
+    await h.page.evaluate(
+      () => new Promise<void>((done) => requestAnimationFrame(() => done())),
+    );
+  }
   expect((await h.snapshot()).frames).toBe(after.frames);
 });
 
