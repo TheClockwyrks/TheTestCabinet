@@ -38,23 +38,23 @@ against the core on `feat/gg`.
 
 Cherry-pick these commits onto `feat/gg` in this order:
 
-| Hash         | Subject                                                                              |
-| ------------ | ------------------------------------------------------------------------------------ |
+| Hash         | Subject                                                                                 |
+| ------------ | --------------------------------------------------------------------------------------- |
 | `cdef007dc2` | build(devcontainer): bake Playwright's Chromium and its system libraries into the image |
-| `a2c331824e` | fix(devcontainer): admit the Playwright Chromium installer to the build context      |
-| `54e2fcb410` | fix(build): admit the ECMAScript guests' lockfiles to both image contexts            |
-| `86c9f36c14` | chore: update repo tasks skill                                                       |
-| `fff7505fb0` | chore(claude): make completed issues immutable with a PreToolUse hook                |
-| `29030a3f6f` | chore: silence ts-rs serde attribute warnings                                        |
-| `2260749ebc` | fix(lattice-designer): resync the board-size draft during render                     |
-| `cb7828f895` | chore: redirect to the docs site instead of updating the README                      |
-| `33c78c3003` | fix: stop applying prettier to Markdown                                              |
-| `a77ffc8e30` | docs: add a skill for autonomously handling issues                                   |
-| `43a90be65d` | chore: autoformat                                                                    |
-| `0294d06b5a` | chore(hooks): move the heavy Rust gates to pre-push                                  |
-| `7636d9c097` | declank: throw out pointless slop                                                    |
-| `14c2b30a74` | perf(scripts): format only what prettier parses, across every core                   |
-| `02773dffcd` | fix(docs): register the query-language grammars the observability page uses          |
+| `a2c331824e` | fix(devcontainer): admit the Playwright Chromium installer to the build context         |
+| `54e2fcb410` | fix(build): admit the ECMAScript guests' lockfiles to both image contexts               |
+| `86c9f36c14` | chore: update repo tasks skill                                                          |
+| `fff7505fb0` | chore(claude): make completed issues immutable with a PreToolUse hook                   |
+| `29030a3f6f` | chore: silence ts-rs serde attribute warnings                                           |
+| `2260749ebc` | fix(lattice-designer): resync the board-size draft during render                        |
+| `cb7828f895` | chore: redirect to the docs site instead of updating the README                         |
+| `33c78c3003` | fix: stop applying prettier to Markdown                                                 |
+| `a77ffc8e30` | docs: add a skill for autonomously handling issues                                      |
+| `43a90be65d` | chore: autoformat                                                                       |
+| `0294d06b5a` | chore(hooks): move the heavy Rust gates to pre-push                                     |
+| `7636d9c097` | declank: throw out pointless slop                                                       |
+| `14c2b30a74` | perf(scripts): format only what prettier parses, across every core                      |
+| `02773dffcd` | fix(docs): register the query-language grammars the observability page uses             |
 
 Every pick except `54e2fcb410` was verified to apply cleanly with a merge-tree dry
 run; `54e2fcb410` touches only the devcontainer, the docker ignore files, the
