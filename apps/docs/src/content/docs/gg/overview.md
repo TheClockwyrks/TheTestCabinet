@@ -188,6 +188,12 @@ model, then by input price and output price. A model with no candidate refuses
 the enqueue with the reason. The model's page in the console shows the list the
 next enqueue would build, or the reason it would refuse.
 
+A launch, job, session record or `session_started` event written before
+candidate lists carries a bare provider name per model instead of a list. It
+reads as a one-candidate list with a blank quantization, so the record stays
+readable, and a launch rebuilt from it is refused rather than run at a level
+nobody chose.
+
 ### The request
 
 Every request names the one candidate in force for its model:
