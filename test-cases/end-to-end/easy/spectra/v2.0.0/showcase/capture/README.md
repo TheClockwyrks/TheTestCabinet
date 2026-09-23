@@ -13,17 +13,17 @@ auditioned, and the winner's files are the ones kept.
 ## Why `references/none`
 
 All three references play the same game, but only the engineless project runs in
-a real browser, where a sprite is a real `ImageBitmap` the recorder captures into
-the recording's image table. The two engine-backed projects render headless over
-`@napi-rs/canvas`, whose decoded images the recorder cannot carry, so their
+a real browser, where a sprite is a real `ImageBitmap` the recorder captures
+into the recording's image table. The two engine-backed projects render headless
+over `@napi-rs/canvas`, whose decoded images the recorder cannot carry, so their
 recordings name every `drawImage` source as an opaque handle and come back with
-an **empty** image table — the committed `validation-baseline/simple-2d/` and
-`validation-baseline/structured-2d/` replays all carry `images: []`, against ten
-bitmaps in the `none` ones. That is fine for a validator's evidence, which is
-read beside a baseline drawn exactly the same way, and wrong for a showcase.
-Spectra draws its ship and all three drone kinds from the seeded sprite art, so
-an engine-backed capture would show a visitor a starfield with the ship and the
-swarm missing.
+an **empty** image table — the baseline replays in cold storage under
+`validation-baseline/simple-2d/` and `validation-baseline/structured-2d/` all
+carry `images: []`, against ten bitmaps in the `none` ones. That is fine for a
+validator's evidence, which is read beside a baseline drawn exactly the same
+way, and wrong for a showcase. Spectra draws its ship and all three drone kinds
+from the seeded sprite art, so an engine-backed capture would show a visitor a
+starfield with the ship and the swarm missing.
 
 This is the one point at which the stage departs from the design plan
 (`/home/ttc/ttc-plans/spectra.md` §5), which named `references/simple-2d`.
@@ -117,8 +117,9 @@ drone with the seeded `drone-burst` particle system, and the particle runtime
 draws each particle through a radial gradient created for that particle on that
 frame. A recorded frame of live play therefore carries about fifteen hundred
 operations and sixty gradients, against wireworm's low hundreds — the case's own
-`validation-baseline/none/` replays run about 2.5 KB gzipped per frame, and a
-showcase clip of a wave being cleared runs about 3.7 KB.
+baseline replays in cold storage (`validation-baseline/none/`) run about 2.5 KB
+gzipped per frame, and a showcase clip of a wave being cleared runs about
+3.7 KB.
 
 Written whole, a half-minute clip at 60 fps is therefore around 6.5 MB, which is
 a slow preview stage. `thinReplay` keeps every *n*th frame, so the choices are
