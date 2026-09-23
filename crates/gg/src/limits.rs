@@ -342,6 +342,9 @@ pub enum TurnErrorType {
     /// the context and the loop asks again, so a reply gg could not read costs the model a turn
     /// rather than the run.
     ModelParse,
+    /// The gateway served the call from a provider other than the one the launch pinned. A harness
+    /// failure: the cost recorded from this reply on would be on a different price basis.
+    ModelProviderMismatch,
     /// The call ran into the run's [per-call ceiling](RunLimits::model_call_timeout) without
     /// producing a reply — a stalled provider. Answered as an error turn on the same terms as
     /// [`ModelParse`](Self::ModelParse) and [`ModelResponseLoop`](Self::ModelResponseLoop).
@@ -397,6 +400,7 @@ impl TurnErrorType {
             | Self::ModelResponseLoop
             | Self::ModelVisionUnsupported
             | Self::ModelParse
+            | Self::ModelProviderMismatch
             | Self::ModelTimeout
             | Self::ModelLengthCapped => TurnErrorKind::ModelApi,
             Self::TranspileSyntax | Self::TranspileCompile | Self::TranspileUnsupported => {
@@ -424,6 +428,7 @@ impl TurnErrorType {
             Self::ModelResponseLoop => GgTurnErrorType::ModelResponseLoop,
             Self::ModelVisionUnsupported => GgTurnErrorType::ModelVisionUnsupported,
             Self::ModelParse => GgTurnErrorType::ModelParse,
+            Self::ModelProviderMismatch => GgTurnErrorType::ModelProviderMismatch,
             Self::ModelTimeout => GgTurnErrorType::ModelTimeout,
             Self::ModelLengthCapped => GgTurnErrorType::ModelLengthCapped,
             Self::TranspileSyntax => GgTurnErrorType::TranspileSyntax,

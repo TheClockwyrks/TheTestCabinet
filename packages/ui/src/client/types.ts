@@ -96,6 +96,12 @@ export interface Model {
   priceHistory: PriceObservation[];
   /** The latest observed context window in tokens, or null. */
   contextLength: number | null;
+  /** The OpenRouter provider this model's requests are pinned to, or null
+   * when no official endpoint is known. A null pin means the model is not testable. */
+  providerPin: string | null;
+  /** Whether `providerPin` is the hand-set override rather than the observed
+   * official endpoint. */
+  providerPinSetByHand: boolean;
   /** The latest observed release date (RFC 3339), or null. */
   releasedAt: string | null;
   /** The input modalities the model accepts (`text`, `image`, `file`, …),
@@ -113,6 +119,8 @@ export interface ModelInput {
   provider: string;
   aliases: ModelAlias[];
   openrouterSlug: string | null;
+  /** The hand-set provider pin, or null to take the observed listing name. */
+  providerPin: string | null;
   description: string | null;
   logoSvg: string | null;
   providerLogoUrl: string | null;

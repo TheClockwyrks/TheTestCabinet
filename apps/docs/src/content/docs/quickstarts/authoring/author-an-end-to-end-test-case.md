@@ -29,7 +29,6 @@ test-cases/end-to-end/<difficulty>/<slug>/<version>/
   specs/               # the specification, decomposed by concern; seeded
   references/          # reference implementations, one per engine; not seeded
   validation/          # the validator suites, one directory per engine; not seeded
-  validation-baseline/ # committed baseline media, per engine and variant
   assets/              # art the model must use; seeded (omit if none)
 ```
 
@@ -75,7 +74,8 @@ test-cases/end-to-end/<difficulty>/<slug>/<version>/
    review point per engine that point covers. A point covers every supported
    engine unless its `validation.engines` list names fewer. Run the suites
    against each engine's reference implementation with `tcab validate`, then
-   capture the committed baselines with `tcab capture-baselines`.
+   capture the committed baselines into the `cold-storage` submodule with
+   `tcab capture-baselines`.
 
 `test-cases/end-to-end/easy/carom/v3.0.0/` is the worked example a new case
 should resemble.

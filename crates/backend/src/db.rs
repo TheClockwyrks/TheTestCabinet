@@ -6413,6 +6413,8 @@ pub struct ModelConfigWrite {
     pub provider_logo_svg: Option<String>,
     pub description_md: Option<String>,
     pub openrouter_slug: Option<String>,
+    /// The hand-set OpenRouter provider, or `None` to take the observed one.
+    pub provider_pin: Option<String>,
     /// The canonical model ids this config claims, each with its harness family
     /// (at least one).
     pub aliases: Vec<AliasEntry>,
@@ -6433,6 +6435,9 @@ pub struct PriceWrite {
     /// The accepted input modalities as a comma-separated lowercase list, or
     /// `None` when OpenRouter reported none (unknown, not "text only").
     pub input_modalities: Option<String>,
+    /// The OpenRouter provider observed for the model, or `None` when the listing
+    /// named no official endpoint.
+    pub provider_pin: Option<String>,
 }
 
 /// Project a stored `model_alias` row into an [`AliasEntry`], parsing its
@@ -6527,6 +6532,7 @@ impl Db {
             provider_logo_svg: Set(write.provider_logo_svg),
             description_md: Set(write.description_md),
             openrouter_slug: Set(write.openrouter_slug),
+            provider_pin: Set(write.provider_pin),
             created_at: Set(created_at),
             updated_at: Set(write.now),
         };
@@ -6540,6 +6546,7 @@ impl Db {
                         model::Column::ProviderLogoSvg,
                         model::Column::DescriptionMd,
                         model::Column::OpenrouterSlug,
+                        model::Column::ProviderPin,
                         model::Column::UpdatedAt,
                     ])
                     .to_owned(),
@@ -6624,6 +6631,7 @@ impl Db {
             context_length: Set(write.context_length),
             released_at: Set(write.released_at),
             input_modalities: Set(write.input_modalities),
+            provider_pin: Set(write.provider_pin),
         })
         .exec(&self.conn())
         .await?;
@@ -6656,6 +6664,23 @@ impl Db {
             .one(&self.conn())
             .await?
             .and_then(|m| m.openrouter_slug))
+    }
+
+    /// The hand-set provider of the curated model that claims `alias`, if one is set.
+    /// Absent means the observed listing name is the pin.
+    pub async fn provider_pin_for_alias(&self, alias: &str) -> Result<Option<String>> {
+        let Some(row) = model_alias::Entity::find()
+            .filter(model_alias::Column::Alias.eq(alias))
+            .one(&self.conn())
+            .await?
+        else {
+            return Ok(None);
+        };
+        Ok(model::Entity::find_by_id(row.model_slug)
+            .one(&self.conn())
+            .await?
+            .and_then(|model| model.provider_pin)
+            .filter(|provider| !provider.trim().is_empty()))
     }
 
     /// Every `(id, alias, harness_family)` triple across all curated models. Used

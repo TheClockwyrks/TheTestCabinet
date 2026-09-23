@@ -69,21 +69,20 @@ every run, and the `.hbs` templates branch on `engine.slug` alone.
 
 ## Contents
 
-| Path                   | Seeded to run? | Purpose                                                                   |
-| ---------------------- | -------------- | ------------------------------------------------------------------------- |
-| `specs/`               | Yes            | The spec handed to the model, by concern.                                 |
-| `assets/`              | Yes            | The sprite art the game draws its critter, bear, vehicles and floes from. |
-| `workspaces/`          | Yes            | The starter TypeScript project, `<engine>/`, seeded at the run root.      |
-| `prompt.hbs`           | No             | Rendered into the model's prompt; not seeded.                             |
-| `references/`          | No             | The authored, correct build, one directory per engine. Never seeded.      |
-| `validation/`          | No             | The validator suites deciding every review point, `<engine>/`.            |
-| `validation-baseline/` | No             | The baseline media, captured from each reference build.                   |
-| `showcase/`            | No             | The variant's demo media and description for the catalog.                 |
-| `test-case.toml`       | No             | Manifest: workspaces, engines, toolchain, specs, domains, review items.   |
-| `variants/`            | No             | One TOML file per variant (listed in `variants`).                         |
-| `description.md`       | No             | The site-facing introduction on the case's detail page.                   |
-| `changelog.md`         | No             | This version's entry in the case's changelog.                             |
-| `README.md`            | No             | This overview.                                                            |
+| Path             | Seeded to run? | Purpose                                                                   |
+| ---------------- | -------------- | ------------------------------------------------------------------------- |
+| `specs/`         | Yes            | The spec handed to the model, by concern.                                 |
+| `assets/`        | Yes            | The sprite art the game draws its critter, bear, vehicles and floes from. |
+| `workspaces/`    | Yes            | The starter TypeScript project, `<engine>/`, seeded at the run root.      |
+| `prompt.hbs`     | No             | Rendered into the model's prompt; not seeded.                             |
+| `references/`    | No             | The authored, correct build, one directory per engine. Never seeded.      |
+| `validation/`    | No             | The validator suites deciding every review point, `<engine>/`.            |
+| `showcase/`      | No             | The variant's demo media and description for the catalog.                 |
+| `test-case.toml` | No             | Manifest: workspaces, engines, toolchain, specs, domains, review items.   |
+| `variants/`      | No             | One TOML file per variant (listed in `variants`).                         |
+| `description.md` | No             | The site-facing introduction on the case's detail page.                   |
+| `changelog.md`   | No             | This version's entry in the case's changelog.                             |
+| `README.md`      | No             | This overview.                                                            |
 
 The specification is split across `specs/` by concern, and every file is seeded
 for every run. Each rule lives in exactly one file.
@@ -198,9 +197,9 @@ the model wrote before the validator project is staged into it, while
 to `references/<engine>/validation/`, which is where the suites are linted,
 typechecked and run.
 
-`validation-baseline/<engine>/base/` holds the media the same suites captured
-from that engine's reference build, so a reviewer sees the run's evidence and the
-reference's side by side.
+This version's `validation-baseline/<engine>/base/` in the `cold-storage`
+submodule holds the media the same suites captured from that engine's reference
+build, so a reviewer sees the run's evidence and the reference's side by side.
 
 ## Scoring
 

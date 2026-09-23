@@ -2033,7 +2033,7 @@ fn regrouping_the_per_type_breakdown_by_base_reproduces_the_per_kind_counters() 
         turns: 40,
         errors: GgTurnErrorType::ALL.len() as u64,
         max_consecutive: 3,
-        model_api: 8,
+        model_api: 9,
         transpile: 3,
         program_fault: 3,
         sandbox_limit: 3,

@@ -54,10 +54,18 @@ for dir in "$@"; do
 		exit 1
 	}
 	# The digest is computed from the index, so anything not yet staged would be
-	# invisible to it and the marker would record the wrong contents.
-	if [ -n "$(git status --porcelain -- "$dir" | grep -v "$FROZEN_MARKER\$" || true)" ]; then
-		echo >&2 "refusing to freeze $dir: it has uncommitted changes."
-		echo >&2 "Commit or stash them first so the digest records settled contents."
+	# invisible to it and the marker would record the wrong contents. Staged changes
+	# are what the digest records, which is what lets a change that is not a content
+	# change (a path restructure, media moving out of the folder) re-baseline the
+	# marker in the same commit that makes it.
+	if [ -n "$(
+		{
+			git diff --name-only -- "$dir"
+			git ls-files --others --exclude-standard -- "$dir"
+		} | grep -v "$FROZEN_MARKER\$" || true
+	)" ]; then
+		echo >&2 "refusing to freeze $dir: it has unstaged or untracked changes."
+		echo >&2 "Stage, commit, or stash them first so the digest records settled contents."
 		exit 1
 	fi
 

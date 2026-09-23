@@ -174,7 +174,9 @@ use crate::archive::ArchiveStore;
 use crate::board::{BoardCaps, BoardRuntime, IssuePolicy, IssueStatus};
 use crate::cancel::CancelWatch;
 use crate::capture::{GgRecorder, RecordedSeed, RecordingClient};
-use crate::client::{AgentIdentity, ClientFactory, DefaultClientFactory, RoutingKey, provider_for};
+use crate::client::{
+    AgentIdentity, ClientFactory, DefaultClientFactory, ProviderKind, RoutingKey, provider_for,
+};
 use crate::compaction::{
     self, CompactionRequest, CompactionSetup, CompactionVerdict, PendingCompaction, RestoredFile,
 };
@@ -846,6 +848,7 @@ pub async fn run(invocation: &GgInvocation, emitter: &Emitter) -> SessionOutcome
         SessionSeams::live(
             declared_model_call_timeout(&invocation.capability_set.limits),
             declared_retry_policy(&invocation.capability_set.limits),
+            invocation.model_providers.clone(),
         ),
     )
     .await
@@ -893,13 +896,18 @@ impl SessionSeams {
     /// built before there is an agent to resolve them for. Resolution is pure, so the two
     /// readings cannot disagree. `retry_policy` is the same reading of the retry schedule
     /// ([`declared_retry_policy`]).
-    pub fn live(model_call_timeout: Duration, retry_policy: crate::client::RetryPolicy) -> Self {
+    pub fn live(
+        model_call_timeout: Duration,
+        retry_policy: crate::client::RetryPolicy,
+        model_providers: BTreeMap<String, String>,
+    ) -> Self {
         let routing_key = RoutingKey::mint();
         Self {
             factory: Arc::new(DefaultClientFactory::new(
                 routing_key.clone(),
                 model_call_timeout,
                 retry_policy,
+                model_providers,
             )),
             shell: real_shell(),
             routing_key,
@@ -966,6 +974,7 @@ pub(crate) async fn run_with_seams(
     // this run rather than offering every surface gg has.
     root_emitter.emit(GgTelemetryKind::SessionStarted {
         capability_set: Box::new(set.clone()),
+        model_providers: invocation.model_providers.clone(),
         routing_key: Some(seams.routing_key.to_string()),
     });
 
@@ -1018,6 +1027,13 @@ pub(crate) async fn run_with_seams(
     // has no fallback to guess one with, by design, so this is a hard launch failure rather
     // than a run with silently mis-scaled context accounting.
     if let Err(err) = validate_model_windows(set, &invocation.model_windows) {
+        root_emitter.emit(log("error", err));
+        root_emitter.emit(session_ended("error"));
+        return SessionOutcome::HarnessError;
+    }
+    // Launch check 3b: every bound model must name the one provider its requests are pinned to,
+    // reported together like the windows.
+    if let Err(err) = validate_model_providers(set, &invocation.model_providers) {
         root_emitter.emit(log("error", err));
         root_emitter.emit(session_ended("error"));
         return SessionOutcome::HarnessError;
@@ -1492,6 +1508,7 @@ fn record_session_seed(orch: &Orchestrator, invocation: &GgInvocation) {
         // which is the honest answer rather than one committed for the record's sake.
         baseline_commit: orch.baseline_commit.as_deref(),
         model_windows: captured_model_windows(orch, invocation),
+        model_providers: invocation.model_providers.clone(),
         model_modalities: captured_model_modalities(orch, invocation),
     });
 }
@@ -7071,7 +7088,20 @@ impl Agent {
                             return hook_failed(self, emitter, &limits, failure, turn);
                         }
                         let (request, fallback) =
-                            compaction::condense_out_of_band(context, client, &compaction).await;
+                            match compaction::condense_out_of_band(context, client, &compaction)
+                                .await
+                            {
+                                Ok(condensed) => condensed,
+                                // A reply from another provider on the summarizer's call is the same
+                                // harness failure it is on a turn. Raised on the run's latch, which
+                                // stops the tree at the next turn boundary; the thread is compacted
+                                // from the fixed note so it is whole until then.
+                                Err(err) => {
+                                    emitter.emit(log("error", format!("compaction failed: {err}")));
+                                    limits.fault.in_agent(&self.id, &self.profile_id, &err);
+                                    (compaction::fallback_request(), true)
+                                }
+                            };
                         let files = restore_compact_files(&request.files, tool_ctx, emitter).await;
                         // Read *before* the rewrite too, for the reason the files are: the keys are
                         // in the window `clear_ephemeral` is about to empty.
@@ -7333,6 +7363,14 @@ impl Agent {
                                 // failing at its work, so it ends the session under its own status —
                                 // which the session runner turns into a launch failure.
                                 STATUS_AUTH_ERROR
+                            } else if matches!(err, ModelError::ProviderMismatch { .. }) {
+                                // A reply from a provider other than the pin is gg's to refuse: the
+                                // cost recorded from it on would be on a different basis, so the run
+                                // ends as a harness failure rather than a score against the model.
+                                // Raised on the run's latch too, so a mismatch in any agent — not
+                                // only the root — stops the whole tree.
+                                limits.fault.in_agent(&self.id, &self.profile_id, &err);
+                                STATUS_INTERNAL_ERROR
                             } else {
                                 STATUS_MODEL_ERROR
                             },
@@ -10852,6 +10890,39 @@ fn validate_model_windows(
     Err(format!(
         "the invocation carries no context window for the model(s) {}: re-launch once the model \
          catalog knows them",
+        missing
+            .iter()
+            .map(|id| format!("`{id}`"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    ))
+}
+
+/// Check that every model `set` binds names the one OpenRouter provider its requests are pinned
+/// to, reporting every missing pin together.
+///
+/// A model the [mock client](crate::client::ProviderKind::Mock) answers is exempt: it sends no
+/// request, so there is no provider to pin.
+fn validate_model_providers(
+    set: &GgCapabilitySet,
+    providers: &BTreeMap<String, String>,
+) -> Result<(), String> {
+    let missing: Vec<&str> = set
+        .bound_model_ids()
+        .into_iter()
+        .filter(|id| provider_for(&GgSlotBinding::new("", *id)) != ProviderKind::Mock)
+        .filter(|id| {
+            providers
+                .get(*id)
+                .is_none_or(|provider| provider.trim().is_empty())
+        })
+        .collect();
+    if missing.is_empty() {
+        return Ok(());
+    }
+    Err(format!(
+        "the invocation carries no provider pin for the model(s) {}: every bound model needs a \
+         `modelProviders` entry naming its developer's own OpenRouter provider",
         missing
             .iter()
             .map(|id| format!("`{id}`"))

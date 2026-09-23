@@ -6,9 +6,9 @@ GitHub afterwards.
 
 This issue depends on every other release-blocking issue in this folder:
 [the port](port-the-gg-and-tooling-changes-from-the-spec-cabinet-branch-onto-feat-gg.md),
-[the baselines move](move-validation-baselines-into-the-cold-storage-submodule.md),
+[the baselines move](done/move-validation-baselines-into-the-cold-storage-submodule.md),
 [the history rewrite](rewrite-the-repository-history-without-baselines-and-wasm-blobs.md),
-[the submodule addressing](address-submodules-by-relative-url-and-mirror-them-to-github.md),
+[the submodule addressing](done/address-submodules-by-relative-url-and-mirror-them-to-github.md),
 [the desktop drop](drop-the-desktop-app.md),
 [the gallery design pages](move-the-gallery-origin-design-pages-onto-the-share-links-branch.md),
 [the Azure CI/CD](build-ci-cd-on-azure-pipelines-with-deploys-to-staging-and-prod.md),

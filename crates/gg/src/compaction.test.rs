@@ -97,7 +97,9 @@ async fn compact_if_needed(
     if CompactionTrigger::default().judge(context, setup) != CompactionVerdict::Compact {
         return None;
     }
-    let (request, fallback) = condense_out_of_band(context, client, setup).await;
+    let (request, fallback) = condense_out_of_band(context, client, setup)
+        .await
+        .expect("the mock serves no other provider");
     Some(apply_compaction(
         context,
         setup,
@@ -463,7 +465,8 @@ async fn handoff_summarizer_answers_offline_without_consuming_the_script() {
             history: &history,
             client: &client,
         })
-        .await;
+        .await
+        .expect("the mock serves no other provider");
     assert_eq!(summary.summary, MOCK_COMPACTION_SUMMARY);
     assert!(summary.files.is_empty());
 
@@ -517,7 +520,8 @@ async fn handoff_compactor_reads_the_mocks_compact_call() {
             history: &[Message::user("build a game")],
             client: &client,
         })
-        .await;
+        .await
+        .expect("the mock serves no other provider");
     assert_eq!(request.summary, MOCK_COMPACTION_SUMMARY);
     assert!(request.files.is_empty());
 
@@ -1193,3 +1197,44 @@ fn a_fallback_summary_is_flagged_on_the_event() {
 #[cfg(test)]
 #[path = "compaction.strategies.test.rs"]
 mod strategies;
+
+/// A client every call of which the gateway answered from a provider other than the pin.
+struct MismatchedClient;
+
+#[async_trait::async_trait]
+impl ModelClient for MismatchedClient {
+    async fn complete(
+        &self,
+        _messages: &[Message],
+        _tools: &[crate::model::ToolDefinition],
+    ) -> Result<crate::model::ModelResponse, ModelError> {
+        Err(ModelError::ProviderMismatch {
+            pinned: "OpenAI".to_string(),
+            served: "Azure".to_string(),
+        })
+    }
+
+    fn model_id(&self) -> &str {
+        "openai/gpt-5.4-mini"
+    }
+}
+
+/// A provider mismatch on the summarizer's call is not degraded to the fixed note like any other
+/// failure: both handoff summarizers return it, so the run ends on it.
+#[tokio::test]
+async fn a_summarizer_returns_a_provider_mismatch_rather_than_degrading() {
+    let history = [Message::user("build a game")];
+    for summarizer in [
+        &HandoffSummarizer as &dyn Summarizer,
+        &HandoffCompactor as &dyn Summarizer,
+    ] {
+        let err = summarizer
+            .summarize(SummaryRequest {
+                history: &history,
+                client: &MismatchedClient,
+            })
+            .await
+            .expect_err("a mismatch ends the run");
+        assert!(matches!(err, ModelError::ProviderMismatch { .. }), "{err}");
+    }
+}

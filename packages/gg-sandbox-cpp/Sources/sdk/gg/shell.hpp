@@ -50,7 +50,7 @@ struct shell_output {
 ///
 /// \param command The command line, run by `sh -c` with the workspace as its working directory.
 /// \param timeout_secs How long to let it run before it is killed; empty takes gg's default of
-///   600, clamped to whatever is left of the run's wall-clock budget.
+///   3600, clamped to whatever is left of the run's wall-clock budget.
 /// \returns what the process reported when it finished.
 /// \throws gg::core::api_error `limit_exceeded` when the timeout killed the process, and `io_error`
 ///   when it could not be launched.

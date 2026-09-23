@@ -69,20 +69,19 @@ alone.
 
 ## Contents
 
-| Path                   | Seeded to run? | Purpose                                                                                                                           |
-| ---------------------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `specs/`               | Yes            | The spec handed to the model, by concern.                                                                                         |
-| `workspaces/`          | Yes            | The starter TypeScript project, `<engine>/`, seeded at the run root.                                                              |
-| `references/`          | No             | The authored, correct build: the shared game core, the scripts that produce the assets, and one project per engine. Never seeded. |
-| `validation/`          | No             | The validator suites deciding every review point, `<engine>/<category>/`.                                                         |
-| `validation-baseline/` | No             | The media those suites captured from each reference build, `<engine>/<variant>/`.                                                 |
-| `showcase/`            | No             | The variant's demo media and description for the catalog.                                                                         |
-| `prompt.hbs`           | No             | Rendered into the model's prompt; not seeded.                                                                                     |
-| `test-case.toml`       | No             | Manifest: workspaces, engines, toolchain, specs, domains, review items.                                                           |
-| `variants/`            | No             | One TOML file per variant (listed in `variants`).                                                                                 |
-| `description.md`       | No             | The site-facing introduction on the case's detail page.                                                                           |
-| `changelog.md`         | No             | This version's entry in the case's changelog.                                                                                     |
-| `README.md`            | No             | This overview.                                                                                                                    |
+| Path             | Seeded to run? | Purpose                                                                                                                           |
+| ---------------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `specs/`         | Yes            | The spec handed to the model, by concern.                                                                                         |
+| `workspaces/`    | Yes            | The starter TypeScript project, `<engine>/`, seeded at the run root.                                                              |
+| `references/`    | No             | The authored, correct build: the shared game core, the scripts that produce the assets, and one project per engine. Never seeded. |
+| `validation/`    | No             | The validator suites deciding every review point, `<engine>/<category>/`.                                                         |
+| `showcase/`      | No             | The variant's demo media and description for the catalog.                                                                         |
+| `prompt.hbs`     | No             | Rendered into the model's prompt; not seeded.                                                                                     |
+| `test-case.toml` | No             | Manifest: workspaces, engines, toolchain, specs, domains, review items.                                                           |
+| `variants/`      | No             | One TOML file per variant (listed in `variants`).                                                                                 |
+| `description.md` | No             | The site-facing introduction on the case's detail page.                                                                           |
+| `changelog.md`   | No             | This version's entry in the case's changelog.                                                                                     |
+| `README.md`      | No             | This overview.                                                                                                                    |
 
 `references/` is one authored build written three times, and mostly written
 once: `references/core/` holds the whole game — the board, `R1`–`R9`, the chain
@@ -204,10 +203,10 @@ A point declares its own media, captured by the suite that decides it: an image
 where the claim is one frame, and a replay — the build's own draw commands,
 recorded while the check drove it and played back against a canvas — where the
 claim is a stretch of motion. Capture decides nothing; a point passes or fails
-on its assertions, and the media is what a reviewer looks at afterwards.
-`validation-baseline/<engine>/<variant>/` holds the same media captured from
-that engine's reference build, so a reviewer sees the run's evidence and the
-reference's side by side.
+on its assertions, and the media is what a reviewer looks at afterwards. This
+version's `validation-baseline/<engine>/<variant>/` in the `cold-storage`
+submodule holds the same media captured from that engine's reference build, so a
+reviewer sees the run's evidence and the reference's side by side.
 
 ## Versioning
 

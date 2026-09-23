@@ -143,9 +143,9 @@ evidence beside the verdict.
 The same suites are run against the variant's reference implementation for the
 same engine by [`tcab capture-baselines`](/components/cli/overview/#commands),
 which runs them the same way, in browser mode on the same Chromium, and
-produces the baseline recording under the same name in the case's version
-folder, at `validation-baseline/<engine>/<variant>/<item>__<output>.webm`. The
-reviewer sees the two beside each other.
+produces the baseline recording under the same name in the version's
+`validation-baseline/<engine>/<variant>/<item>__<output>.webm` in cold storage.
+The reviewer sees the two beside each other.
 
 The engine is in that path because a variant has one reference implementation
 per engine, and the two are different builds, so a run is compared against the

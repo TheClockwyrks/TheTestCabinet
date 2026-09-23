@@ -57,6 +57,10 @@ A model record has these fields:
 - OpenRouter slug, the id OpenRouter lists the model under, used for the
   comparable-cost lookup. It is separate from the aliases, so a model can carry
   it without ever being run through an OpenRouter harness.
+- Provider pin, the OpenRouter provider every gg run of the model is pinned to.
+  Blank takes the official endpoint the catalog observes; set it where the
+  developer's `provider_name` on the endpoints listing does not match the author
+  segment of the model id.
 
 ### Alias harness families
 
@@ -132,7 +136,10 @@ them as a per-model history:
   retry), and at backend startup for every known model still missing one. The
   startup pass is what prices a freshly seeded deployment's curated catalog
   before its first run. All of this seeding is missing-only, so a model already
-  on record is left to the two paths above.
+  on record is left to the two paths above. A model on record with no provider
+  pin counts as missing.
+- Each observation carries the model's provider pin, read from the model's
+  endpoints listing beside the price.
 - An observation is appended only when something changed: the price, or one of
   the catalog facts riding along on it. The stored history collapses
   consecutive-equal prices, so an observation recorded for a fact change adds no

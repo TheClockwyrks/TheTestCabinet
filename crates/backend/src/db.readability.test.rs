@@ -353,17 +353,12 @@ const SCHEMA_BASE_URL: &str = "https://docs.testcabinet.ai/schema/";
 /// Generation 3 is the toolchain summary's `ToolchainTests` gaining `tests` and
 /// `testsTruncated` — the per-test entries beside the per-file rows. Neither is
 /// optional or defaulted, so a record stored with a test report before this change
-/// lacks both keys and no longer reads. Its digest last moved when the gg run
-/// limits gained `maxModelRetries` and `modelRetryMaxDelaySecs`, the model-request
-/// retry schedule: both are `Option`s that are absent on every record stored before
-/// it and resolve to the defaults there, exactly as `modelCallTimeoutSecs` did, so
-/// stored records go on reading and the generation does not move. It moved again
-/// when the gg session summary gained its two cost figures — `cost`, the total over
-/// every request, and `workCost`, the work over the turns that produced a program or
-/// a tool call gg ran — on each slot and in the run-wide rollup, and every
-/// `Usage` delta gained the `figure` naming which one its turn fed: all of them are
-/// `Option`s absent on every record stored before them, so stored records go on
-/// reading and the generation does not move.
+/// lacks both keys and no longer reads. Its digest last moved when the gg session
+/// summary gained its two cost figures, `cost` and `workCost`, on each slot and in
+/// the run-wide rollup, and the `usage` telemetry event gained the `figure` naming
+/// which one its turn fed: every one of them is an `Option` absent on the records
+/// stored before it, so stored records go on reading and the generation does not
+/// move.
 ///
 /// Generation 2 was the gg agent profile's `openingTurn` becoming required: every gg
 /// record stored before it lacks the key and no longer reads. Its digest last moved

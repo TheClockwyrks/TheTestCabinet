@@ -108,27 +108,41 @@ together. It needs no credentials and uploads nothing.
 
 ## Baseline validation media
 
-A case's committed baseline
-[validation](/testing/end-to-end/instrumentation/) media lives in
-`validation-baseline/<engine>/<variant>/` — one directory per reference build —
-and is the expected-behavior half of a reviewer's side-by-side. Regenerating it
-is its own command, needing none of the credentials above:
+A case's baseline [validation](/testing/end-to-end/instrumentation/) media is the
+expected-behavior half of a reviewer's side-by-side, with one
+`validation-baseline/<engine>/<variant>/` directory per reference build. It is
+committed to the `cold-storage` submodule under the version's mirrored path (see
+[where baselines live](/components/core/validation/#where-baselines-live)), so
+check the submodule out first. Regenerating it is its own command, needing none
+of the credentials above:
 
 ```sh
+git submodule update --init --depth 1 cold-storage
 tcab capture-baselines <slug> [<version>] [--variant base] [--engine none] [--dry-run]
 ```
 
 Run it whenever a validator or the reference implementation it runs against
-changes, then commit the result. It exits non-zero, naming the targets, when a
-reference build failed or left a unit that did not run clean against it, so commit
-only what a clean sweep wrote. `publish-reference` re-captures the same media as
-part of its build and refuses to deploy a target whose capture failed;
-`--skip-baselines` deploys without re-capturing when the committed media is
-already current.
+changes. It exits non-zero, naming the targets, when a reference build failed or
+left a unit that did not run clean against it, so commit only what a clean sweep
+wrote. Commit the media in `cold-storage`, push it to that repository's `master`,
+then commit the moved submodule pointer here:
+
+```sh
+git -C cold-storage switch -C master
+git -C cold-storage add test-cases
+git -C cold-storage commit -m "feat: recapture <slug> <version> baselines"
+git -C cold-storage push origin master
+git add cold-storage
+```
+
+`publish-reference` re-captures the same media as part of its build and refuses
+to deploy a target whose capture failed; `--skip-baselines` deploys without
+re-capturing when the committed media is already current.
 
 ## From CI
 
 The `publish-reference.yml` workflow (`workflow_dispatch`) builds, deploys, and
-commits the lockfile. The environment is derived from the branch it is dispatched
-on: `master` publishes prod and `staging` publishes staging. Run
+commits the lockfile. It deploys with `--skip-baselines`, so capture and commit
+the baselines locally first. The environment is derived from the branch it is
+dispatched on: `master` publishes prod and `staging` publishes staging. Run
 `scripts/reingest-cluster.sh` afterwards.
