@@ -148,19 +148,34 @@ build prompt, any [autoloaded specifications](/gg/autoload-specifications/), and
 the thread so far. gg asks for a provider prompt cache on every request. Two
 things have to hold for a cached read to happen, and gg does both.
 
-The request has to reach the endpoint that holds the cache. gg mints one
-routing key per run at launch, a cuid2, and every client in the run stamps it on
-every request as `session_id`. That covers the root agent, every
-[subagent](/gg/subagents/) and the client a compaction resolves, on both the
-buffered and the streaming transport. A run's turns therefore stay on one
-provider endpoint, and agents that open on the same prefix reuse each other's
-warmed cache.
+The request has to reach the endpoint that holds the cache, and it has to stay
+on the provider the run's cost is recorded against. Every request carries
+OpenRouter's `provider` object with `only` naming the one provider the launch
+pinned the model to, and `allow_fallbacks` false. The pin is the model
+developer's own endpoint. Every request of the run carries it, including a
+subagent's and a handoff compaction's.
+
+A response from any other provider ends the run as a harness failure, because
+the cost recorded from that point would be on a different price basis. The turn
+is recorded as a `model_provider_mismatch` error, the session record's model
+error as `provider_mismatch`, and both name the pinned provider and the one that
+served the call. The two are compared ignoring case and punctuation, so `z-ai`
+and `Z.AI` are one provider.
+
+Within that provider, the request has to reach the endpoint that holds the
+cache. gg mints one routing key per run at launch, a cuid2, and every client in
+the run stamps it on every request as `session_id`. That covers the root agent,
+every [subagent](/gg/subagents/) and the client a compaction resolves. A run's
+turns therefore stay on one endpoint of the pinned provider, and agents that
+open on the same prefix reuse each other's warmed cache.
 
 `session_id` is OpenRouter's sticky-routing key, and gg sends the same key as
 `prompt_cache_key` for the providers that read the OpenAI-style field.
 `prompt_cache_key` alone leaves routing on OpenRouter's fallback, which is free
 to balance byte-identical requests across endpoints and reads as a 0% cache rate
-turn after turn.
+turn after turn. The key is a preference within the pin. With fallbacks refused,
+a provider's outage reaches gg as the error it is and is retried on the run's
+[retry schedule](/gg/execution-limits/).
 
 The key is minted rather than taken from the run's session id, which is
 caller-supplied text of any length. A cuid2 is 24 characters, inside both

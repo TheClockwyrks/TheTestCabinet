@@ -80,6 +80,7 @@ fn bare_limits() -> RunLimits {
         max_turns: None,
         max_runtime: None,
         model_call_timeout: DEFAULT_MODEL_CALL_TIMEOUT,
+        model_stream_idle: crate::client::DEFAULT_MODEL_STREAM_IDLE,
         max_consecutive_errors: None,
         error_rate: None,
         max_cost: None,
@@ -265,6 +266,48 @@ fn a_zero_model_call_ceiling_is_refused() {
         })
         .starts_with(
             "limits.modelCallTimeoutSecs = `0` — a model call allowed no seconds cannot start"
+        )
+    );
+}
+
+/// **The stream-idle bound has no unarmed reading either.** A set that writes none is not refused,
+/// and does not get a stream a silent provider can hold for the whole call ceiling either: it gets
+/// gg's default, because a reply that stopped arriving is never a setting an operator can ask for.
+#[test]
+fn an_absent_stream_idle_bound_takes_the_default() {
+    let limits = resolve_cleanly(required_only());
+
+    assert_eq!(
+        limits.model_stream_idle,
+        crate::client::DEFAULT_MODEL_STREAM_IDLE
+    );
+}
+
+/// A written figure is the bound every one of the run's streamed replies is cancelled on, exactly
+/// as written.
+#[test]
+fn a_declared_stream_idle_bound_resolves_to_what_was_written() {
+    let limits = resolve_cleanly(GgRunLimits {
+        model_stream_idle_secs: Some(120),
+        ..required_only()
+    });
+
+    assert_eq!(limits.model_stream_idle, Duration::from_secs(120));
+}
+
+/// **Zero is refused rather than read as the default**, on the same terms as a zero call ceiling:
+/// a stream allowed no seconds without a delta cancels before any reply can arrive, and gg
+/// conducting the run under sixty seconds instead would be running it under a bound nobody wrote.
+#[test]
+fn a_zero_stream_idle_bound_is_refused() {
+    assert!(
+        sole_refusal(GgRunLimits {
+            model_stream_idle_secs: Some(0),
+            ..required_only()
+        })
+        .starts_with(
+            "limits.modelStreamIdleSecs = `0` — a stream allowed no seconds without a delta \
+             cancels before any reply can arrive"
         )
     );
 }
@@ -597,6 +640,7 @@ fn every_unusable_ceiling_is_named_in_one_refusal() {
             max_turns: Some(0),
             max_runtime_secs: Some(0),
             model_call_timeout_secs: Some(0),
+            model_stream_idle_secs: Some(0),
             max_model_retries: None,
             model_retry_max_delay_secs: Some(0),
             max_consecutive_errors: Some(0),
@@ -622,6 +666,7 @@ fn every_unusable_ceiling_is_named_in_one_refusal() {
             "limits.maxTurns",
             "limits.maxRuntimeSecs",
             "limits.modelCallTimeoutSecs",
+            "limits.modelStreamIdleSecs",
             "limits.modelRetryMaxDelaySecs",
             "limits.maxConsecutiveErrors",
             "limits.maxErrorRate",
@@ -699,6 +744,7 @@ fn only_error_outcomes_count_as_errors() {
                 | TurnErrorType::ModelResponseLoop
                 | TurnErrorType::ModelVisionUnsupported
                 | TurnErrorType::ModelParse
+                | TurnErrorType::ModelProviderMismatch
                 | TurnErrorType::ModelTimeout
                 | TurnErrorType::ModelLengthCapped
                 | TurnErrorType::TranspileSyntax
@@ -897,6 +943,7 @@ fn every_turn_error_type() -> impl Iterator<Item = TurnErrorType> {
         TurnErrorType::ModelResponseLoop,
         TurnErrorType::ModelVisionUnsupported,
         TurnErrorType::ModelParse,
+        TurnErrorType::ModelProviderMismatch,
         TurnErrorType::ModelTimeout,
         TurnErrorType::ModelLengthCapped,
         TurnErrorType::TranspileSyntax,
@@ -921,6 +968,7 @@ fn every_turn_error_type() -> impl Iterator<Item = TurnErrorType> {
             | TurnErrorType::ModelResponseLoop
             | TurnErrorType::ModelVisionUnsupported
             | TurnErrorType::ModelParse
+            | TurnErrorType::ModelProviderMismatch
             | TurnErrorType::ModelTimeout
             | TurnErrorType::ModelLengthCapped
             | TurnErrorType::TranspileSyntax

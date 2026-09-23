@@ -353,11 +353,9 @@ const SCHEMA_BASE_URL: &str = "https://docs.testcabinet.ai/schema/";
 /// Generation 3 is the toolchain summary's `ToolchainTests` gaining `tests` and
 /// `testsTruncated` — the per-test entries beside the per-file rows. Neither is
 /// optional or defaulted, so a record stored with a test report before this change
-/// lacks both keys and no longer reads. Its digest last moved when the gg run
-/// limits gained `maxModelRetries` and `modelRetryMaxDelaySecs`, the model-request
-/// retry schedule: both are `Option`s that are absent on every record stored before
-/// it and resolve to the defaults there, exactly as `modelCallTimeoutSecs` did, so
-/// stored records go on reading and the generation does not move.
+/// lacks both keys and no longer reads. Its digest last moved when gg's run
+/// limits gained `modelStreamIdleSecs`: an optional key absent from every stored
+/// record, so stored records go on reading and the generation does not move.
 ///
 /// Generation 2 was the gg agent profile's `openingTurn` becoming required: every gg
 /// record stored before it lacks the key and no longer reads. Its digest last moved
@@ -378,7 +376,7 @@ const RECORD_SHAPES: &[(u32, &str)] = &[
     ),
     (
         3,
-        "e16abf8a7f85c84be497a921ede27447af6e2c00413e6c1400ac471d872901b0",
+        "4e3b62395e35939f8bf10dc7b897519e3824b247192f58f514a73e5f0d3c9621",
     ),
 ];
 

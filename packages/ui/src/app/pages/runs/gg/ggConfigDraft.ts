@@ -49,6 +49,7 @@ import {
   AUTHORED_HOOK_TIMEOUT_SECS,
   AUTHORED_MODEL_CALL_TIMEOUT_SECS,
   AUTHORED_MODEL_RETRY_MAX_DELAY_SECS,
+  AUTHORED_MODEL_STREAM_IDLE_SECS,
   BYTES_PER_MIB,
   CAPABILITIES,
   DEFAULT_OPENING_TURN,
@@ -481,6 +482,7 @@ export function blankRunLimits(): GgRunLimitsDraft {
     maxTurns: "",
     maxRuntimeSecs: "",
     modelCallTimeoutSecs: "",
+    modelStreamIdleSecs: "",
     maxModelRetries: "",
     modelRetryMaxDelaySecs: "",
     maxConsecutiveErrors: "",
@@ -2272,6 +2274,10 @@ export function runLimitsError(limits: GgRunLimitsDraft): string | null {
     // under rather than a way to switch it off — which is what an empty field does.
     if (spec.key === "modelCallTimeoutSecs" && value === 0) {
       return `${spec.label} must be greater than zero. Clear the field to take gg's default of ${AUTHORED_MODEL_CALL_TIMEOUT_SECS} seconds.`;
+    }
+    // Zero would cancel every attempt before a reply could arrive.
+    if (spec.key === "modelStreamIdleSecs" && value === 0) {
+      return `${spec.label} must be greater than zero. Clear the field to take gg's default of ${AUTHORED_MODEL_STREAM_IDLE_SECS} seconds.`;
     }
     // The retry delay ceiling is the backoff's whole point: zero is a run hammering a
     // provider that just said it is down, not a way to retry faster.

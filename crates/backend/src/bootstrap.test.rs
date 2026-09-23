@@ -87,6 +87,7 @@ async fn a_launch_does_not_re_price_a_model_already_on_record() {
         context_length: Some(128_000),
         released_at: None,
         input_modalities: None,
+        provider_pin: Some("NewCo".to_string()),
     })
     .await
     .unwrap();
@@ -118,6 +119,7 @@ async fn a_launch_prices_a_curated_model_through_its_openrouter_slug() {
         provider_logo_svg: None,
         description_md: None,
         openrouter_slug: Some("anthropic/claude-opus-4.8".to_string()),
+        provider_pin: None,
         aliases: vec![AliasEntry {
             alias: "claude-opus-4-8".to_string(),
             family: HarnessFamily::Claude,
@@ -195,6 +197,7 @@ async fn startup_prices_a_freshly_seeded_curated_catalog() {
         provider_logo_svg: None,
         description_md: None,
         openrouter_slug: Some("anthropic/claude-opus-4.8".to_string()),
+        provider_pin: None,
         aliases: vec![AliasEntry {
             alias: "claude-opus-4-8".to_string(),
             family: HarnessFamily::Claude,
@@ -233,6 +236,7 @@ async fn startup_seeding_is_missing_only_and_fetches_nothing() {
         provider_logo_svg: None,
         description_md: None,
         openrouter_slug: Some("anthropic/claude-opus-4.8".to_string()),
+        provider_pin: None,
         aliases: vec![AliasEntry {
             alias: "claude-opus-4-8".to_string(),
             family: HarnessFamily::Claude,
@@ -250,6 +254,7 @@ async fn startup_seeding_is_missing_only_and_fetches_nothing() {
         context_length: Some(200_000),
         released_at: None,
         input_modalities: None,
+        provider_pin: Some("Anthropic".to_string()),
     })
     .await
     .unwrap();

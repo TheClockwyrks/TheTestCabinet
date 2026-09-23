@@ -383,6 +383,7 @@ pub(super) fn gg_launch_body(subject: GgLaunchSubject, identity: GgLaunchIdentit
         // Resolved from the model catalog by the handler, which has the database
         // this lowering does not; never taken from the request.
         gg_model_windows: Default::default(),
+        gg_model_providers: Default::default(),
         gg_model_modalities: Default::default(),
     }
 }

@@ -473,15 +473,30 @@ pub enum ModelError {
         /// line for each discarded attempt describe the same event identically.
         detail: String,
     },
+    /// The gateway served the call from a provider other than the one this run pinned.
+    ///
+    /// A harness failure, not a model failure: the cost recorded from this reply on would be on
+    /// a different price basis than the rest of the run, and scoring that against the model would
+    /// blame it for a route gg asked not to be taken. The turn loop ends the session on it.
+    #[error("provider mismatch: pinned to `{pinned}`, served by `{served}`")]
+    ProviderMismatch {
+        /// The OpenRouter provider the launch pinned this model to.
+        pinned: String,
+        /// The provider the response named as having served it.
+        served: String,
+    },
     /// The call ran into the run's
-    /// [**per-call ceiling**](crate::limits::RunLimits::model_call_timeout) without producing a
-    /// reply — a stalled provider, not a refusal.
+    /// [**per-attempt ceiling**](crate::limits::RunLimits::model_call_timeout) without producing a
+    /// reply — a provider whose silence ran past the whole attempt's bound, not a refusal.
     ///
     /// The one `ModelError` the turn loop does **not** end the session on. The client surfaces a
     /// timeout immediately rather than spending its own retry budget on it — every internal retry
-    /// of a stall costs the full ceiling again — and the loop records the turn as a
-    /// [`ModelTimeout`](TurnErrorType::ModelTimeout) error and asks again, so the retry that
-    /// bounds a stalled endpoint is the turn-level one the error ceilings govern.
+    /// of a ceiling-long silence costs the full ceiling again — and the loop records the turn as a
+    /// [`ModelTimeout`](TurnErrorType::ModelTimeout) error and asks again, so the retry that bounds
+    /// a silent endpoint is the turn-level one the error ceilings govern. A reply that merely goes
+    /// quiet mid-stream never reaches this error: it is bounded sooner by the
+    /// [stream-idle bound](crate::limits::RunLimits::model_stream_idle), cancelled and retried on
+    /// the client's own schedule as a transport failure.
     #[error(
         "model call timed out after {}s{}",
         .after.as_secs(),
@@ -491,8 +506,8 @@ pub enum ModelError {
         /// The ceiling that was hit.
         after: std::time::Duration,
         /// The upstream provider that was serving the stalled call, when the stream got far
-        /// enough to name one — what makes a provider-shaped stall blacklistable. `None` on the
-        /// buffering transport, whose reply arrives all at once or not at all.
+        /// enough to name one — what makes a provider-shaped stall blacklistable. `None` when no
+        /// chunk arrived that could have named one, which is most silences.
         provider: Option<String>,
     },
 }
@@ -536,6 +551,7 @@ impl ModelError {
             ModelError::ResponseLoop { .. } => TurnErrorType::ModelResponseLoop,
             ModelError::VisionUnsupported { .. } => TurnErrorType::ModelVisionUnsupported,
             ModelError::Parse(_) => TurnErrorType::ModelParse,
+            ModelError::ProviderMismatch { .. } => TurnErrorType::ModelProviderMismatch,
             ModelError::Timeout { .. } => TurnErrorType::ModelTimeout,
         }
     }

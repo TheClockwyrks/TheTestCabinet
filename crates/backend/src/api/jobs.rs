@@ -303,13 +303,13 @@ pub(super) fn launch_models(body: &LaunchBody) -> Vec<(String, HarnessSlug)> {
 /// Resolution is two steps per model:
 ///
 /// 1. the [catalog](super::models::launch_facts_for) — the observations the backend
-///    already holds; then
+///    already holds, and the provider pin set by hand on a curated model; then
 /// 2. a live [per-model fetch](test_cabinet_core::OpenRouterPrices::model_launch_facts)
 ///    from OpenRouter, for a model the catalog has not observed yet (the first run against a
 ///    just-released model). Only the models this run needs are fetched, not the catalog, and
 ///    both facts come out of one request.
 ///
-/// The two facts fail differently, on purpose:
+/// The facts fail differently, on purpose:
 ///
 /// - **No context window fails the launch.** An assumed window is not a smaller version of
 ///   the right answer: it silently mis-scales every fullness figure, moves the compaction
@@ -320,6 +320,8 @@ pub(super) fn launch_models(body: &LaunchBody) -> Vec<(String, HarnessSlug)> {
 ///   (see [`crate::api::gg`] and gg's own vision handling). Refusing to launch because
 ///   OpenRouter did not annotate a model would block runs over a fact that only affects
 ///   whether one tool result may carry a picture.
+/// - **No provider pin fails the launch.** Every run runs on the model developer's own
+///   provider; a model OpenRouter lists no official endpoint for is not testable.
 ///
 /// Whatever the client sent is discarded first — these are backend-resolved facts, not
 /// client input.
@@ -329,6 +331,7 @@ pub(super) async fn resolve_gg_model_facts(
     body: &mut LaunchBody,
 ) -> Result<(), String> {
     body.gg_model_windows.clear();
+    body.gg_model_providers.clear();
     body.gg_model_modalities.clear();
     let Some(set) = body.gg_capability_set.as_ref() else {
         return Ok(());
@@ -351,6 +354,8 @@ pub(super) async fn resolve_gg_model_facts(
 pub(super) struct GgModelFacts {
     /// The context window every bound model is measured against.
     windows: std::collections::BTreeMap<String, u64>,
+    /// The OpenRouter provider every bound model is pinned to.
+    providers: std::collections::BTreeMap<String, String>,
     /// The input modalities of the bound models the catalog (or OpenRouter) lists them for.
     /// A model with none is simply absent: unknown modalities are not a launch failure.
     modalities: std::collections::BTreeMap<String, Vec<String>>,
@@ -361,6 +366,7 @@ impl GgModelFacts {
     /// arrived carrying — they are backend-resolved facts, not client input.
     pub(super) fn apply(self, body: &mut LaunchBody) {
         body.gg_model_windows = self.windows;
+        body.gg_model_providers = self.providers;
         body.gg_model_modalities = self.modalities;
     }
 }
@@ -385,6 +391,9 @@ pub(super) async fn gg_model_facts(
     for model_id in models {
         let resolved = resolve_one_model_facts(db, prices, model_id, harness).await?;
         facts.windows.insert(model_id.to_string(), resolved.window);
+        facts
+            .providers
+            .insert(model_id.to_string(), resolved.provider);
         if !resolved.input_modalities.is_empty() {
             facts
                 .modalities
@@ -394,15 +403,21 @@ pub(super) async fn gg_model_facts(
     Ok(facts)
 }
 
-/// One model's resolved launch facts: the window (which a launch cannot proceed without)
-/// and the input modalities (which may legitimately be unknown).
+/// One model's resolved launch facts: the window (which a launch cannot proceed without),
+/// the provider pin (which a launch cannot proceed without either), and the input
+/// modalities (which may legitimately be unknown).
 struct ResolvedModelFacts {
     window: u64,
+    provider: String,
     input_modalities: Vec<String>,
 }
 
 /// One model's launch facts: the catalog's observation, else a live per-model fetch from
 /// OpenRouter, else the reason this run cannot start.
+///
+/// The pin is the catalog entry's hand-set one when it has one, else the official provider
+/// the catalog observed, else the one the live fetch finds. A model with none is refused:
+/// it is not testable on any other provider.
 async fn resolve_one_model_facts(
     db: &crate::db::Db,
     prices: &test_cabinet_core::OpenRouterPrices,
@@ -419,41 +434,59 @@ async fn resolve_one_model_facts(
             ));
         }
     };
-    // The window is what the launch hinges on. When the catalog has it, the run can start —
-    // even if it has no modality list, which gg is allowed not to know.
-    if let Some(window) = stored.context_window {
+    let curated_pin = super::models::curated_provider_pin(db, model_id, harness)
+        .await
+        .map_err(|err| format!("could not read the provider pin set for `{model_id}`: {err}"))?;
+    let known_pin = curated_pin.or(stored.provider_pin);
+    // When the catalog has the window and the pin, the run can start — even with no modality
+    // list, which gg is allowed not to know.
+    if let (Some(window), Some(provider)) = (stored.context_window, known_pin.clone()) {
         return Ok(ResolvedModelFacts {
             window,
+            provider,
             input_modalities: stored.input_modalities,
         });
     }
-    // Not observed yet: ask OpenRouter for this one model. The id to ask under is the same
-    // one prices are looked up by, so a curated model resolves through its configured slug.
+    // Something the launch needs is unobserved: ask OpenRouter for this one model. The id to
+    // ask under is the same one prices are looked up by, so a curated model resolves through
+    // its configured slug.
     let lookup = crate::bootstrap::openrouter_lookup_id(db, model_id, harness)
         .await
         .unwrap_or_else(|_| test_cabinet_core::model_id::openrouter_price_id(model_id, harness));
-    match prices.model_launch_facts(&lookup).await {
-        Ok(facts) => match facts.context_window {
-            Some(window) => Ok(ResolvedModelFacts {
-                window,
-                // Prefer the live list; fall back to whatever the catalog held, so a
-                // fetch that answered the window but not the modalities does not
-                // discard an older observation of them.
-                input_modalities: if facts.input_modalities.is_empty() {
-                    stored.input_modalities
-                } else {
-                    facts.input_modalities
-                },
-            }),
-            None => Err(format!(
-                "OpenRouter lists `{lookup}` but reports no context window for it"
-            )),
-        },
-        Err(err) => Err(format!(
-            "no context window is known for `{model_id}` (not in the model catalog, and \
+    let facts = prices.model_launch_facts(&lookup).await.map_err(|err| {
+        let missing = if stored.context_window.is_none() {
+            "no context window"
+        } else {
+            "no official provider"
+        };
+        format!(
+            "{missing} is known for `{model_id}` (the model catalog has observed none, and \
              looking it up as `{lookup}` failed: {err})"
-        )),
-    }
+        )
+    })?;
+    let window = stored
+        .context_window
+        .or(facts.context_window)
+        .ok_or_else(|| {
+            format!("OpenRouter lists `{lookup}` but reports no context window for it")
+        })?;
+    let provider = known_pin.or(facts.provider_pin).ok_or_else(|| {
+        format!(
+            "`{model_id}` is not testable: OpenRouter lists no endpoint for `{lookup}` from its \
+             developer, and its catalog entry sets no provider pin"
+        )
+    })?;
+    Ok(ResolvedModelFacts {
+        window,
+        provider,
+        // Prefer the live list; fall back to whatever the catalog held, so a fetch that
+        // answered the window but not the modalities does not discard an older observation.
+        input_modalities: if facts.input_modalities.is_empty() {
+            stored.input_modalities
+        } else {
+            facts.input_modalities
+        },
+    })
 }
 
 /// The test type of the case version a launch request targets, read from the

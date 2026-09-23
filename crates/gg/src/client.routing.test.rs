@@ -1,6 +1,6 @@
 //! The run's **routing key** on the wire: one minted cuid2, sent as both `session_id` and
-//! `prompt_cache_key` (and as the `x-session-id` header) on every request of the run, on both
-//! transports, whatever the run's session id is.
+//! `prompt_cache_key` (and as the `x-session-id` header) on every request of the run, on the one
+//! transport, whatever the run's session id is.
 //!
 //! The client tests drive real requests through a gateway the client is
 //! [answered by](OpenRouterClient::answered_by), which is handed the request exactly as it would
@@ -14,12 +14,8 @@ use test_cabinet_core::gg::{GgLoopDetection, GgSlotBinding, PRIMARY_SLOT};
 use super::*;
 use crate::model::{Message, ModelClient, ToolDefinition};
 
-/// A usable buffered completion body.
-const BUFFERED_ANSWER: &str =
-    r#"{"choices":[{"message":{"role":"assistant","content":"done"},"finish_reason":"stop"}]}"#;
-
 /// A usable streamed completion: one text chunk, a stop, and the terminator.
-const STREAMED_ANSWER: &str = concat!(
+const ANSWER: &str = concat!(
     r#"data: {"choices":[{"index":0,"delta":{"content":"done"}}]}"#,
     "\n\n",
     r#"data: {"choices":[{"delta":{},"finish_reason":"stop"}]}"#,
@@ -46,10 +42,11 @@ fn recorded(
             .body()
             .and_then(reqwest::Body::as_bytes)
             .map(|bytes| serde_json::from_slice(bytes).expect("a JSON body"))
-            .expect("a buffered body");
+            .expect("a request body");
         log.lock().expect("the log").push((header, body));
         http::Response::builder()
             .status(200)
+            .header("content-type", "text/event-stream")
             .body(reqwest::Body::from(answer))
             .expect("a well-formed response")
             .into()
@@ -57,8 +54,8 @@ fn recorded(
     (client, sent)
 }
 
-/// A loop-detection declaration that arms the detector, which is what puts a client on the
-/// streaming transport.
+/// A loop-detection declaration that arms the detector — which decides only whether anything
+/// watches the stream, since every reply is streamed either way.
 fn armed() -> GgLoopDetection {
     GgLoopDetection {
         enabled: true,
@@ -71,7 +68,8 @@ fn armed() -> GgLoopDetection {
 }
 
 /// Build both of an agent's possible clients from the production constructor for one run's `key`:
-/// a buffering one and, for an agent that armed loop detection, a streaming one.
+/// one with the detector off and one for an agent that armed it — both of them streaming, which is
+/// what the request bodies below are read from.
 ///
 /// Each nextest test runs in its own process, so setting the credential here is isolated.
 fn clients_for(key: &RoutingKey) -> (OpenRouterClient, OpenRouterClient) {
@@ -80,11 +78,11 @@ fn clients_for(key: &RoutingKey) -> (OpenRouterClient, OpenRouterClient) {
     unsafe {
         std::env::set_var(API_KEY_ENV, "sk-test");
     }
-    let buffered = OpenRouterClient::from_binding(
+    let unwatched = OpenRouterClient::from_binding(
         &GgSlotBinding::new(PRIMARY_SLOT, "openai/gpt-5.6-sol"),
         key,
     );
-    let streaming = OpenRouterClient::from_binding(
+    let watched = OpenRouterClient::from_binding(
         &GgSlotBinding::new(PRIMARY_SLOT, "openai/gpt-5.6-sol").with_loop_detection(armed()),
         key,
     );
@@ -95,10 +93,13 @@ fn clients_for(key: &RoutingKey) -> (OpenRouterClient, OpenRouterClient) {
             None => std::env::remove_var(API_KEY_ENV),
         }
     }
-    let buffered = buffered.expect("a buffering client");
-    let streaming = streaming.expect("a streaming client");
-    assert!(!buffered.streams() && streaming.streams());
-    (buffered, streaming)
+    let unwatched = unwatched.expect("a client with the detector off");
+    let watched = watched.expect("a client with the detector armed");
+    assert!(
+        unwatched.loop_guard.is_none() && watched.loop_guard.is_some(),
+        "arming the detector decides only whether anything watches the stream"
+    );
+    (unwatched, watched)
 }
 
 fn submit_tool() -> ToolDefinition {
@@ -130,26 +131,24 @@ fn a_minted_key_is_a_cuid2_inside_every_providers_cap() {
 
 /// The key rides the body as **`session_id`**, OpenRouter's sticky-routing field, and as
 /// `prompt_cache_key` for the providers that read the OpenAI-style field instead — the same value in
-/// both, on either transport's body and on a turn that requires a tool call.
+/// both, on an ordinary turn's body and on a turn that requires a tool call.
 #[test]
 fn the_body_carries_the_routing_key_as_both_fields() {
     let key = RoutingKey::mint();
     let messages = [Message::user("hi")];
-    for stream in [false, true] {
-        for body in [
-            build_request_body("m", &messages, &[], Some(&key), CacheTtl::Standard, stream),
-            build_required_tool_request_body(
-                "m",
-                &messages,
-                &submit_tool(),
-                Some(&key),
-                CacheTtl::Standard,
-                stream,
-            ),
-        ] {
-            assert_eq!(body["session_id"], json!(key.as_str()));
-            assert_eq!(body["prompt_cache_key"], json!(key.as_str()));
-        }
+    for body in [
+        build_request_body("m", &messages, &[], Some(&key), None, CacheTtl::Standard),
+        build_required_tool_request_body(
+            "m",
+            &messages,
+            &submit_tool(),
+            Some(&key),
+            None,
+            CacheTtl::Standard,
+        ),
+    ] {
+        assert_eq!(body["session_id"], json!(key.as_str()));
+        assert_eq!(body["prompt_cache_key"], json!(key.as_str()));
     }
 }
 
@@ -161,8 +160,8 @@ fn the_body_omits_both_fields_without_a_key() {
         &[Message::user("hi")],
         &[],
         None,
+        None,
         CacheTtl::Standard,
-        false,
     );
     assert!(body.get("session_id").is_none());
     assert!(body.get("prompt_cache_key").is_none());
@@ -174,16 +173,16 @@ fn the_body_omits_both_fields_without_a_key() {
 
 /// Every request of one run carries the one minted key — in `session_id`, in `prompt_cache_key` and
 /// in the `x-session-id` header — across successive requests, across an ordinary turn and one that
-/// requires a tool call, and across the buffering and the streaming transport.
+/// requires a tool call, and whether or not the agent armed the detector.
 #[tokio::test]
 async fn every_request_of_a_run_carries_the_one_minted_key() {
     let key = RoutingKey::mint();
-    let (buffered, streaming) = clients_for(&key);
-    let (buffered, buffered_sent) = recorded(buffered, BUFFERED_ANSWER);
-    let (streaming, streaming_sent) = recorded(streaming, STREAMED_ANSWER);
+    let (unwatched, watched) = clients_for(&key);
+    let (unwatched, unwatched_sent) = recorded(unwatched, ANSWER);
+    let (watched, watched_sent) = recorded(watched, ANSWER);
     let messages = [Message::user("hi")];
 
-    for client in [&buffered, &streaming] {
+    for client in [&unwatched, &watched] {
         client.complete(&messages, &[]).await.expect("a first turn");
         client
             .complete(&messages, &[])
@@ -195,19 +194,19 @@ async fn every_request_of_a_run_carries_the_one_minted_key() {
             .expect("a required-tool turn");
     }
 
-    let sent: Vec<Sent> = [buffered_sent, streaming_sent]
+    let sent: Vec<Sent> = [unwatched_sent, watched_sent]
         .iter()
         .flat_map(|log| log.lock().expect("the log").clone())
         .collect();
-    assert_eq!(sent.len(), 6, "three requests on each transport");
-    assert_eq!(
-        sent[3].1["stream"],
-        json!(true),
-        "the second client streamed"
-    );
+    assert_eq!(sent.len(), 6, "three requests on each client");
     for (header, body) in &sent {
         assert_eq!(header.as_deref(), Some(key.as_str()));
         assert_eq!(body["session_id"], json!(key.as_str()));
         assert_eq!(body["prompt_cache_key"], json!(key.as_str()));
+        assert_eq!(
+            body["stream"],
+            json!(true),
+            "every reply is read as a stream, detector or none"
+        );
     }
 }

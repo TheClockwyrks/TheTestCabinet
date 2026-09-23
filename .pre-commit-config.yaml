@@ -13,12 +13,9 @@ repos:
     hooks:
       - id: check-added-large-files
         # Committed case media are an intentional binary category that routinely
-        # exceeds the 500KB default; exempt those dirs. `validation-baseline/` holds
-        # the per-engine, per-variant baseline media synthesized by `tcab
-        # capture-baselines` (draw-command recordings, clips, and stills);
-        # `reference/screenshots/` holds the per-variant reference
-        # renders of a case's authored mockups (a full-detail gameplay frame is a
-        # large PNG). `reference-impl/<variant>/assets/` and the per-engine layouts that
+        # exceeds the 500KB default; exempt those dirs. `reference/screenshots/`
+        # holds the per-variant reference renders of a case's authored mockups (a
+        # full-detail gameplay frame is a large PNG). `reference-impl/<variant>/assets/` and the per-engine layouts that
         # replaced it — `references/<engine>/assets/` and
         # `references/<engine>/<variant>/assets/` — hold the sprites, models, particle
         # systems, and audio the reference build produced with the asset-generation tools
@@ -51,7 +48,7 @@ repos:
         # there and ignores everything else, plus a whole-directory ignore for
         # `guests/`. That one is about WHETHER a generated artifact may be committed at
         # all; this one is about how big anything may be, anywhere.
-        exclude: "(^|/)(validation-baseline|reference/screenshots)/|(^|/)reference-impl/[^/]+/assets/|(^|/)references/[^/]+(/[^/]+)?/assets/|^test-cases/.*/showcase/"
+        exclude: "(^|/)reference/screenshots/|(^|/)reference-impl/[^/]+/assets/|(^|/)references/[^/]+(/[^/]+)?/assets/|^test-cases/.*/showcase/"
       - id: check-case-conflict
       - id: check-executables-have-shebangs
       - id: check-illegal-windows-names

@@ -134,7 +134,9 @@ working agent's own model.
   given no tools and answers with prose.
 - Handoff compaction (`handoff-compaction`). The compaction model is given
   only the `compact` tool and is required to call it, so it chooses the files to
-  re-read as well as the summary.
+  re-read as well as the summary. The call is pinned the way a responses-as-code
+  turn's is, and asked for on `auto` for a model whose provider
+  [refused the pin](/gg/responses-as-code/programs/#the-submission-gg-accepts).
 
 The thread is rebuilt before the handoff model reads it. The working agent's
 system prompt, skills and memories are dropped, since they are retained anyway

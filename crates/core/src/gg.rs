@@ -4479,12 +4479,15 @@ mod count {
 /// produced it — where limits on the invocation would let a run record *which* ceiling was hit
 /// while making *what the ceiling was* unrecoverable.
 ///
-/// **Two are required, one defaults, and five are armed by being written.**
+/// **Two are required, three default, and five are armed by being written.**
 /// [`max_parallel`](Self::max_parallel) and [`replay_max_bytes`](Self::replay_max_bytes) bound
 /// every run gg conducts — the pool it runs agents in and the journal it writes as it goes — and
 /// neither has a figure that means "no cap", so an absent one refuses the launch.
 /// [`model_call_timeout_secs`](Self::model_call_timeout_secs) bounds every model request and
-/// defaults to fifteen minutes when absent. [`max_turns`](Self::max_turns),
+/// defaults to fifteen minutes when absent;
+/// [`model_stream_idle_secs`](Self::model_stream_idle_secs) bounds how long a streamed reply may
+/// go without a delta and defaults to sixty; the [retry schedule](Self::max_model_retries) is
+/// conducted on its defaults when neither of its keys is written. [`max_turns`](Self::max_turns),
 /// [`max_runtime_secs`](Self::max_runtime_secs),
 /// [`max_cost`](Self::max_cost), [`max_consecutive_errors`](Self::max_consecutive_errors) and
 /// [`max_error_rate`](Self::max_error_rate) with its [window](Self::error_rate_window) are each
@@ -4560,22 +4563,24 @@ pub struct GgRunLimits {
     )]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub max_runtime_secs: Option<u64>,
-    /// The ceiling, in seconds, on **one model request** — the bound that turns a provider which
-    /// has stopped answering into an error turn the agent asks again from.
+    /// The ceiling, in seconds, on **one attempt at a model request**, from sending it to the last
+    /// chunk of its reply.
     ///
-    /// One of the three keys on this type an absence answers with a **figure** rather than with
-    /// "off", beside the [retry schedule](Self::max_model_retries): **absent is fifteen minutes**
+    /// One of the four keys on this type an absence answers with a **figure** rather than with
+    /// "off", beside the [stream-idle bound](Self::model_stream_idle_secs) and the
+    /// [retry schedule](Self::max_model_retries): **absent is fifteen minutes**
     /// (900 seconds), because there is no run whose calls may hang forever, and `0` is refused on
-    /// the same terms as every other unhonourable figure. How it is applied follows the transport
-    /// the agent's [loop detection](GgLoopDetection) selects: the buffering one bounds each
-    /// attempt, with the backoff between attempts outside it, and the streaming one bounds the
-    /// wait for the response head and the gap between chunks, so a reply still arriving is never
-    /// cut.
+    /// the same terms as every other unhonourable figure.
+    ///
+    /// A reply that goes without a delta is cut sooner by
+    /// [`model_stream_idle_secs`](Self::model_stream_idle_secs), so this is the bound on a reply
+    /// whose deltas keep arriving for longer than it, and on every attempt when the idle bound is
+    /// set above it. The backoff between attempts sits outside it.
     ///
     /// Unlike the ceilings above it, breaching this one does not stop the run. The turn is
     /// recorded as a [`ModelTimeout`](GgTurnErrorType::ModelTimeout) error and the agent asks
-    /// again, so a stalled endpoint costs one bounded error turn per stall and the run ends only
-    /// when an error ceiling says it should.
+    /// again, so an attempt that ran the whole ceiling costs one bounded error turn and the run
+    /// ends only when an error ceiling says it should.
     #[serde(
         deserialize_with = "count::option_u64",
         default,
@@ -4583,14 +4588,40 @@ pub struct GgRunLimits {
     )]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub model_call_timeout_secs: Option<u64>,
+    /// The bound, in seconds, on **how long a streamed reply may go without a delta** — the idle
+    /// clock that turns a provider which has stopped mid-reply into a transport failure the
+    /// client retries on its own [schedule](Self::max_model_retries), rather than a stall the run
+    /// waits the whole [call ceiling](Self::model_call_timeout_secs) out on.
+    ///
+    /// One of the four keys an absence answers with a **figure**: **absent is sixty seconds**, on
+    /// the terms the call ceiling is, because a reply that stops arriving is never a setting an
+    /// operator can ask for — a run that had no idle bound would be one a silent provider could
+    /// hold for the whole of every call ceiling. `0` is refused on the same terms as every other
+    /// unhonourable figure.
+    ///
+    /// The clock measures time since the last chunk carrying a `delta` with content, reasoning or
+    /// tool-call arguments, or since the request was sent when none has arrived. A model that
+    /// reasons for minutes produces reasoning deltas for the whole of that time when the provider
+    /// streams them, so a provider's silence and a model's thinking are distinguishable within
+    /// seconds. Keep-alive comments (OpenRouter sends `: OPENROUTER PROCESSING`) and blank lines
+    /// carry no delta and leave the clock running. A request whose clock expires is cancelled and
+    /// retried as a transport error is, and the retry's `log` line names the stall.
+    #[serde(
+        deserialize_with = "count::option_u64",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub model_stream_idle_secs: Option<u64>,
     /// How many times the model client **retries** a failed request after its first attempt: one
     /// answered `429` or `5xx`, or one that failed in transport.
     ///
     /// Absent is **ten**, on the terms the [model-call ceiling](Self::model_call_timeout_secs)
     /// takes a figure: every failed request is retried on some schedule. `0` is honoured as
     /// written, a run that gives up on the first failure. The retries are the client's own, and a
-    /// timed-out call bypasses them, since each retry of a stall would cost the per-call ceiling
-    /// again.
+    /// stalled stream is one of the transient failures they cover — a cancelled stall costs the
+    /// idle bound rather than the call ceiling, so retrying one inside the client is worth the
+    /// wait.
     #[serde(
         deserialize_with = "count::option_u64",
         default,
@@ -5009,6 +5040,11 @@ pub enum GgTurnErrorType {
     /// A `2xx` response could not be parsed into a reply. Retrying an already-successful-but-
     /// malformed response would not help, so the turn ends on it.
     ModelParse,
+    /// The gateway served the call from a provider other than the one the launch pinned. The
+    /// request was well-formed and the provider answered it; the answer is unusable because the
+    /// cost recorded from it on would be on a different price basis. gg ends the run as a harness
+    /// failure rather than scoring it against the model.
+    ModelProviderMismatch,
     /// The model call ran into the run's
     /// [**per-call ceiling**](GgRunLimits::model_call_timeout_secs) without producing a reply — a
     /// stalled provider, not a refusal. Unlike every other `model_` type this one does **not**
@@ -5099,13 +5135,14 @@ impl GgTurnErrorType {
     ///
     /// The grouping is the reading order a console ranks and labels from, and it is what makes
     /// "every type has a base, and every base has at least one type" checkable rather than asserted.
-    pub const ALL: [Self; 20] = [
+    pub const ALL: [Self; 21] = [
         Self::ModelAuth,
         Self::ModelRejected,
         Self::ModelRetryExhausted,
         Self::ModelResponseLoop,
         Self::ModelVisionUnsupported,
         Self::ModelParse,
+        Self::ModelProviderMismatch,
         Self::ModelTimeout,
         Self::ModelLengthCapped,
         Self::TranspileSyntax,
@@ -5136,6 +5173,7 @@ impl GgTurnErrorType {
             | Self::ModelResponseLoop
             | Self::ModelVisionUnsupported
             | Self::ModelParse
+            | Self::ModelProviderMismatch
             | Self::ModelTimeout
             | Self::ModelLengthCapped => GgTurnErrorKind::ModelApi,
             Self::TranspileSyntax | Self::TranspileCompile | Self::TranspileUnsupported => {
@@ -5167,6 +5205,7 @@ impl GgTurnErrorType {
             Self::ModelResponseLoop => "model_response_loop",
             Self::ModelVisionUnsupported => "model_vision_unsupported",
             Self::ModelParse => "model_parse",
+            Self::ModelProviderMismatch => "model_provider_mismatch",
             Self::ModelTimeout => "model_timeout",
             Self::ModelLengthCapped => "model_length_capped",
             Self::TranspileSyntax => "transpile_syntax",
@@ -5197,6 +5236,7 @@ impl GgTurnErrorType {
             Self::ModelResponseLoop => "model looped every attempt",
             Self::ModelVisionUnsupported => "model cannot see images",
             Self::ModelParse => "unparseable model response",
+            Self::ModelProviderMismatch => "served by another provider",
             Self::ModelTimeout => "model call timed out",
             Self::ModelLengthCapped => "length-capped reply rejected",
             Self::TranspileSyntax => "syntax error",
@@ -5374,6 +5414,18 @@ pub struct GgInvocation {
     /// and has nothing to invent one from.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub model_windows: BTreeMap<String, u64>,
+    /// The OpenRouter **provider** each model this run may bind is pinned to — the model's
+    /// own developer, resolved from the catalog when the run was triggered and pushed in here on
+    /// the same terms as [`model_windows`](Self::model_windows). Keyed by the model id the
+    /// [binding](GgSlotBinding::model_id) names.
+    ///
+    /// Every request for a model carries this slug as `provider.only` with fallbacks refused, so
+    /// a run stays on one provider and one price basis. A bound model with no entry refuses the
+    /// launch, together with every other missing one: a model whose official endpoint is not
+    /// listed is not testable, and running it on another provider would put the run's cost on a
+    /// basis the record does not name.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub model_providers: BTreeMap<String, String>,
     /// The **input modalities** each model this run may bind accepts (`text`, `image`,
     /// `file`, …), from the same model catalog and pushed in on the same terms as
     /// [`model_windows`](Self::model_windows). Keyed by the model id the
@@ -7210,6 +7262,11 @@ pub enum GgTelemetryKind {
         /// Without it a live view can only guess what a run is capable of and must
         /// offer every surface, including the ones this run's configuration disabled.
         capability_set: Box<GgCapabilitySet>,
+        /// The OpenRouter provider each bound model is pinned to, beside the routing
+        /// key. A run's cost is recorded against this pin; a response from any other
+        /// provider ends the run.
+        #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+        model_providers: BTreeMap<String, String>,
         /// The **routing key** gg minted at launch: a cuid2 sent on every request of the run
         /// as both `session_id` and `prompt_cache_key`, so a provider dashboard row can be
         /// matched to the run it belongs to. Minted rather than derived from the session id,

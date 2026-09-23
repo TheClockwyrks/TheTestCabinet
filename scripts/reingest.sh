@@ -15,7 +15,8 @@
 # since the last successful run. We keep a marker file (its mtime is the last-ingest
 # baseline) and, for each candidate case, ask `find` whether any file under a given
 # version folder test-cases/<type>/<difficulty>/<slug>/<version>/ (or, for a game
-# jam, game-jams/<slug>/<version>/) is newer than that
+# jam, game-jams/<slug>/<version>/) or under its counterpart in the cold-storage
+# submodule (where its baseline validation media lives) is newer than that
 # baseline. Only the
 # changed versions are re-ingested — sent as `<slug>@<version>` targets — so editing
 # one version no longer re-renders every version the case declares; a case with no
@@ -70,6 +71,11 @@ cases_dir="${repo_root}/test-cases"
 # is silently skipped on an incremental run (the jam is never a candidate, so it
 # never appears in the ingest output).
 jams_dir="${repo_root}/game-jams"
+# A version's baseline validation media lives in the cold-storage submodule under the
+# version folder's own repo-relative path, and ingest copies it into the stored
+# version, so a recapture there is a change to the version. Honour the same
+# TCAB_COLD_STORAGE_DIR override the backend does (set it for both, or neither).
+cold_root="${TCAB_COLD_STORAGE_DIR:-${repo_root}/cold-storage}"
 
 # The change-detection baseline. Gitignored (see .gitignore) — it is per-checkout
 # local state, not source. `rm` it to force a full re-ingest without --force.
@@ -208,7 +214,8 @@ else
     for vdir in "${dir}"/*/; do
       [[ -d "$vdir" ]] || continue
       version="$(basename "$vdir")"
-      if [[ -n "$(find "$vdir" -newer "$timestamp" -print -quit 2>/dev/null)" ]]; then
+      cold_vdir="${cold_root}/${vdir#"${repo_root}"/}"
+      if [[ -n "$(find "$vdir" "$cold_vdir" -newer "$timestamp" -print -quit 2>/dev/null)" ]]; then
         to_ingest+=("${slug}@${version}")
       fi
     done

@@ -7,6 +7,12 @@
 //! renders the reference mockups to screenshots at this point, so every runner
 //! shares the same baseline.
 //!
+//! A version's baseline validation media is not in its folder: it lives in the
+//! checkout's cold-storage submodule (see [`ColdStorage`]). Ingest copies it into the
+//! stored version under `validation-baseline/`, so the store serves and snapshots it
+//! as part of the version. A checkout without the submodule ingests every version
+//! with no baseline media.
+//!
 //! Container images are **not** ingested from the checkout: they are distributed
 //! via a registry and pulled by digest by each runner from its own
 //! configuration. The backend is out of the container path entirely.
@@ -16,6 +22,7 @@
 
 use std::path::Path;
 
+use test_cabinet_core::ColdStorage;
 use test_cabinet_core::test_case::{TestCaseCatalog, TestCaseVersion, is_seeded_dotfile};
 use test_cabinet_core::test_case_group::TestCaseGroupCatalog;
 
@@ -101,6 +108,8 @@ pub enum IngestEvent<'a> {
 pub struct Ingestor<'a> {
     checkout: &'a Path,
     store: &'a DefinitionStore,
+    /// Where each version's baseline validation media is read from.
+    cold: ColdStorage,
     /// `(slug, version)` pairs a whole-catalog scan must never prune even when the
     /// checkout no longer declares them — the definitions still-referencing runs
     /// depend on. Empty by default (prune everything absent); set via
@@ -109,13 +118,21 @@ pub struct Ingestor<'a> {
 }
 
 impl<'a> Ingestor<'a> {
-    /// Create an ingestor over a checkout path and a target store.
+    /// Create an ingestor over a checkout path and a target store. Baseline media is
+    /// read from the checkout's cold storage ([`ColdStorage::for_checkout`]).
     pub fn new(checkout: &'a Path, store: &'a DefinitionStore) -> Self {
         Self {
             checkout,
             store,
+            cold: ColdStorage::for_checkout(checkout),
             protected: std::collections::HashSet::new(),
         }
+    }
+
+    /// Read baseline media from `cold` instead of the checkout's own cold storage.
+    pub fn with_cold_storage(mut self, cold: ColdStorage) -> Self {
+        self.cold = cold;
+        self
     }
 
     /// Protect these `(slug, version)` pairs from the whole-catalog prune — the set a
@@ -419,10 +436,25 @@ impl<'a> Ingestor<'a> {
     /// caller discards it, so a partial build is never served.
     fn build_version(&self, dest: &Path, resolved: &TestCaseVersion) -> Result<usize> {
         copy_tree(&resolved.root, dest)?;
+        self.copy_baselines(dest, resolved)?;
         let rendered = self.render_references(dest, resolved)?;
         let manifest = build_stored_manifest(resolved)?;
         write_manifest_in(dest, &manifest)?;
         Ok(rendered)
+    }
+
+    /// Copy a version's baseline validation media from cold storage into `dest`'s
+    /// `validation-baseline/`, where the store serves it from. A version with no
+    /// counterpart in cold storage, including every version of a checkout without
+    /// the submodule, copies nothing.
+    fn copy_baselines(&self, dest: &Path, resolved: &TestCaseVersion) -> Result<()> {
+        let Some(src) = self.cold.validation_baseline_dir(&resolved.root) else {
+            return Ok(());
+        };
+        if src.is_dir() {
+            copy_tree(&src, &dest.join(test_cabinet_core::VALIDATION_BASELINE_DIR))?;
+        }
+        Ok(())
     }
 
     /// Store every reference view (common + per-variant) of a resolved version into

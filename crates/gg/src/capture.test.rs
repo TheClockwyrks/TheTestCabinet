@@ -338,6 +338,7 @@ fn recorded_seed<'a>(prompt: &'a str, vision: bool) -> RecordedSeed<'a> {
         prompt,
         baseline_commit: Some("abc123"),
         model_windows: BTreeMap::from([("mock/echo".to_string(), 128_000)]),
+        model_providers: BTreeMap::from([("mock/echo".to_string(), "mock".to_string())]),
         model_modalities: BTreeMap::from([(
             "mock/echo".to_string(),
             GgSessionModalities { vision },

@@ -2665,6 +2665,7 @@ fn top_up_launch_body(cell: &TopUpCell<'_>) -> test_cabinet_core::LaunchBody {
             // catalog facts a set's bindings would need resolving.
             gg_capability_set: None,
             gg_model_windows: Default::default(),
+            gg_model_providers: Default::default(),
             gg_model_modalities: Default::default(),
         },
     }

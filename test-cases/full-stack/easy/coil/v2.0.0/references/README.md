@@ -11,7 +11,8 @@ One directory per engine, and under it one per variant, matching the
 
 None of it is seeded into a run. A reference build is the authored, correct
 implementation the case's own validators are proven against, and the source
-`tcab capture-baselines` builds to capture `validation-baseline/<engine>/<variant>/`.
+`tcab capture-baselines` builds to capture this version's
+`validation-baseline/<engine>/<variant>/` in the `cold-storage` submodule.
 
 All six are written.
 

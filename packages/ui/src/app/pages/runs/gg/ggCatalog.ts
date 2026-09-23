@@ -2247,6 +2247,12 @@ export const AUTHORED_MODEL_CALL_TIMEOUT_SECS = 900;
 export const AUTHORED_MAX_MODEL_RETRIES = 10;
 export const AUTHORED_MODEL_RETRY_MAX_DELAY_SECS = 60;
 
+// The stream-idle bound: the seconds a reply may go without a delta from the model before
+// the attempt is cancelled and retried on the schedule above. Like the call ceiling it has
+// no unarmed setting, so a fresh configuration states it, a cleared field is conducted
+// under this figure, and 0 is refused.
+export const AUTHORED_MODEL_STREAM_IDLE_SECS = 60;
+
 // The guardrails, in the order they read as a sentence: how much of the run happens
 // at once, then how long it may go on for, then how badly it may go, then how much it
 // may cost — and last, the one that bounds not the run but the record kept of it.
@@ -2287,7 +2293,16 @@ export const RUN_LIMIT_SPECS: ReadonlyArray<RunLimitSpec> = [
     unit: "seconds",
     placeholder: String(AUTHORED_MODEL_CALL_TIMEOUT_SECS),
     defaultValue: String(AUTHORED_MODEL_CALL_TIMEOUT_SECS),
-    hint: "Ceiling on one model request, and the one field here an empty value does not unarm: a call gg would wait on forever is no setting, so a cleared field is conducted under 900 seconds and 0 is refused. A request that hits it is an error turn the agent asks again from, rather than a stop. The buffering transport measures the whole call; the streaming one measures the wait for the response head and the gap between chunks, so a long reply is never cut for being long.",
+    hint: "Ceiling on one attempt at a model request, from sending it to the last chunk of its reply. An empty value does not unarm it: a cleared field is conducted under 900 seconds and 0 is refused. An attempt that hits it is an error turn the agent asks again from, rather than a stop. A reply that stops arriving is cut sooner by the stream idle bound below.",
+  },
+  {
+    key: "modelStreamIdleSecs",
+    label: "Model stream idle (seconds)",
+    kind: "count",
+    unit: "seconds",
+    placeholder: String(AUTHORED_MODEL_STREAM_IDLE_SECS),
+    defaultValue: String(AUTHORED_MODEL_STREAM_IDLE_SECS),
+    hint: "How long a model request may go without a delta from the model (content, reasoning or tool-call arguments) before the attempt is cancelled and retried on the retry schedule below, logged as a stall. Keep-alive comments do not count, so a provider that has stopped answering costs this long rather than the whole call timeout. A cleared field is conducted under 60 seconds and 0 is refused.",
   },
   {
     key: "maxModelRetries",
@@ -2296,7 +2311,7 @@ export const RUN_LIMIT_SPECS: ReadonlyArray<RunLimitSpec> = [
     unit: "retries",
     placeholder: String(AUTHORED_MAX_MODEL_RETRIES),
     defaultValue: String(AUTHORED_MAX_MODEL_RETRIES),
-    hint: "How many times a model request that failed with a 429, a 5xx or a transport error is retried after its first attempt. Each retry waits on the backoff schedule below and is logged with its attempt, cause and delay. When the retries are spent the agent ends, and a root that ends this way exits as a retryable harness error. An emptied field is conducted under 10, and 0 gives up on the first failure. A timed-out call is not retried here: the agent asks again on its next turn.",
+    hint: "How many times a model request that failed with a 429, a 5xx or a transport error is retried after its first attempt. Each retry waits on the backoff schedule below and is logged with its attempt, cause and delay. When the retries are spent the agent ends, and a root that ends this way exits as a retryable harness error. An emptied field is conducted under 10, and 0 gives up on the first failure. A stalled stream is retried here like a transport error. A call that hits the model call timeout is not: the agent asks again on its next turn.",
   },
   {
     key: "modelRetryMaxDelaySecs",

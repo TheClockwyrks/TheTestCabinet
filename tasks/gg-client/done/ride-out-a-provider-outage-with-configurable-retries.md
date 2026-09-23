@@ -16,7 +16,7 @@ session the same way on the first response.
 Today an outage is hidden by OpenRouter: on 2026-09-22 OpenAI answered one
 request of a `openai/gpt-5.6-sol` run with a `502`, OpenRouter moved the run to
 Azure, and gg saw a successful response. Once
-[`pin-every-run-to-the-model-s-official-provider.md`](../pin-every-run-to-the-model-s-official-provider.md)
+[`pin-every-run-to-the-model-s-official-provider.md`](pin-every-run-to-the-model-s-official-provider.md)
 refuses fallbacks, that `502` comes back to gg, and a 3.5 s schedule gives up
 inside the outage that produced it.
 
