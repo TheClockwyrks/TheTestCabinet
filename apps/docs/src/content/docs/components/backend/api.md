@@ -990,6 +990,26 @@ plan's or ladder's [`halt`](#halting). Cancelling a single job by id remains
 `cancel-active` and `cancel-all` discard work in progress, so a client confirms
 first. `cancel-waiting` needs no confirmation.
 
+## Model catalog
+
+The model catalog is the list of subjects a run can be attributed to (see
+[Adding or Updating a Model](/guides/devops/adding-or-updating-a-model/)).
+`GET /models` serves the catalog. Each entry carries its display fields,
+aliases with their harness families, OpenRouter slug, and provider pin, plus
+the operator-entered list price: the developer's published uncached input,
+cached input, and output rates per Mtok and the date the figures were taken.
+The form's Fill from OpenRouter action seeds the display fields from
+OpenRouter's catalog and the three list-price rates from the official
+provider's endpoint in the model's `/models/{id}/endpoints` listing, for the
+operator to confirm or correct against the developer's pricing page.
+
+A run's [comparable cost](/components/core/metrics/#cost) is priced from the
+list price, so a launch naming a model with none is refused at enqueue, with
+the reason named. The billed-rate history the backend observes from the
+official endpoint — on run completion, on a 24-hour refresh, and missing-only
+at enqueue and on save — rides along on each entry. It never rewrites the list
+price.
+
 ## Model probes
 
 A model probe is a responses-as-code readiness check of one catalog model,

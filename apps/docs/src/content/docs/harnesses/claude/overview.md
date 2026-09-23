@@ -55,7 +55,7 @@ credential files each mode uses and how to lock the mode.
 
 ## Pricing
 
-Claude Code drives one provider at one price and reports the exact charge for
-the run on its terminal result. That figure is recorded as both the comparable
-and the actual cost, in place of an OpenRouter price lookup. See
-[Metrics](/harnesses/claude/metrics/).
+Claude Code drives one provider directly and reports the exact charge for the
+run on its terminal result. That figure is recorded as the run's actual cost.
+The comparable cost is computed from the model's curated list price, as for
+every harness. See [Metrics](/harnesses/claude/metrics/).

@@ -49,6 +49,6 @@ on the host and injected into the run container under the same name. See
 
 ## Pricing
 
-Goose reports OpenRouter model IDs, so the ID is used unchanged for the
-OpenRouter price lookup that yields the comparable cost. See
+Goose reports OpenRouter model IDs, so the ID resolves unchanged to the catalog
+entry whose list price yields the comparable cost. See
 [Metrics](/harnesses/goose/metrics/).

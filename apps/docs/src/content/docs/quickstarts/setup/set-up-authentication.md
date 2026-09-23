@@ -50,8 +50,9 @@ performs no login and mints no tokens.
 
 [Antigravity](/harnesses/antigravity/overview/) authenticates by subscription
 only. A subscription carries no per-run provider charge. A harness that reports
-an exact charge has it recorded as-is, and one that reports none is costed from
-OpenRouter pricing.
+an exact charge has it recorded as the run's actual cost, and one that reports
+none leaves it unset. Either way the comparable cost is computed from the
+model's list price.
 
 The local k3d stack builds the `tcab-driver-subscription` Secret from whichever
 of those files exist on the host, as part of the same `make local-up`.

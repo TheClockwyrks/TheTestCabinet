@@ -74,49 +74,44 @@ these normalized values from each harness's raw reporting.
 
 Every run records cost two ways:
 
-- The comparable cost, the canonical figure. It is computed from the per-token
-  prices OpenRouter lists for the model used rather than the amount actually
-  charged, because OpenRouter may route one model to providers that price calls
-  differently.
+- The comparable cost, the canonical figure. It is computed from the model's
+  list price, curated on its catalog entry as the uncached input, cached input,
+  and output rates per Mtok entered from the developer's own pricing page, so
+  the figure is stable across providers and discounts rather than tracking what
+  one provider happened to bill.
 - The actual cost charged for the run, recorded alongside the comparable cost
-  for reference.
+  for reference, from the harness's own accounting where it reports one.
 
-Comparable cost is derived from the recorded token classes and the listed prices
-for uncached input, cached input, and output tokens, with reasoning tokens
-priced at the output rate. A class that carries tokens but whose per-token price
-is unknown makes the whole cost unknown rather than under-counted, while a class
-with zero tokens needs no price. A cost of `null` means unknown, distinct from
-`0.0`, a genuinely free run. Both figures are `null` whenever the cost cannot be
-determined, including when no token class was reported at all, so a run whose
-usage never reached us is recorded as unknown rather than as `$0.00`.
+Comparable cost is derived from the recorded token classes and the list price's
+rates for uncached input, cached input, and output, with reasoning tokens priced
+at the output rate. A class that carries tokens but whose rate is unknown makes
+the whole cost unknown rather than under-counted, while a class with zero tokens
+needs no rate. A cost of `null` means unknown, distinct from `0.0`, a genuinely
+free run. Both figures are `null` whenever the cost cannot be determined,
+including when no token class was reported at all, so a run whose usage never
+reached us is recorded as unknown rather than as `$0.00`.
 
 ### Price history
 
-The OpenRouter per-token prices are fetched by the
-[backend](/components/backend/overview/), not the CLI. The backend records a
-model's price when a run completes, capturing the rate in effect at that moment
-so a promotional price is reflected in the runs that ran under it, and again on
-a 24-hour periodic refresh. A refresh appends a new observation to the model's
-history only when the observed facts changed, covering the price triple along
-with the context window, release date, and accepted input modalities.
+Beside the curated list price, the [backend](/components/backend/overview/)
+records the official provider endpoint's billed rate as a per-model history: the
+rates per Mtok the model's OpenRouter endpoints listing shows at that moment,
+with the date, the provider pin, and the catalog facts observed alongside. An
+observation is recorded when a run completes, missing-only when a model is saved
+or first enqueued, and on a 24-hour periodic refresh, and is appended only when
+the observed facts changed.
 
-A model with no price on record is seeded the first time it is seen at all, both
-when it is curated in the app and when a run binding it is enqueued, so a cost
-split is available while the run is still going. The history is retained per
-model.
-
-A model id carrying a `:free`-style OpenRouter variant tag is priced at the
-model's base rate. The tag selects a pricing route rather than a different
-model.
+The recorded history is what the model's Stats tab shows beside the list price,
+with the difference, so a discount, a price change, or a listing error is
+visible on the model. It never rewrites what a run is scored at: the comparable
+cost is computed from the list price and nothing else.
 
 ### Harness-reported cost
 
 Some harnesses drive a single provider directly through an API key and report
 the exact cost of a run themselves. Claude Code reports a `total_cost_usd`
-figure on its terminal result. When a harness reports its own cost, that figure
-is used for both the comparable and the actual cost and the OpenRouter price
-lookup is skipped. These harnesses pass provider-native model ids, which
-OpenRouter's catalog need not list.
+figure on its terminal result. A harness-reported cost is recorded as the run's
+actual cost; the comparable cost stays computed from the list price.
 
 The [agent harness layer](/components/core/harnesses/#usage-reporting) extracts
 any reported cost from each harness's output.
