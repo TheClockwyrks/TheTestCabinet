@@ -375,40 +375,55 @@ pub fn fold_provider_stats(facts: &[Arc<GgRunFacts>]) -> (u64, u64, Vec<Provider
     (facts.len() as u64, runs_with, out)
 }
 
-/// The fault rate of each provider across the recorded runs of `model_id`, keyed by the
-/// [provider key](test_cabinet_core::pricing::provider_key) the candidate order sorts on.
+/// The turn errors that count as a provider's fault: the turns that ended on its failed model
+/// calls. A spent retry schedule, a call that timed out and a reply that did not parse are the
+/// provider's; an auth failure, a rejection, a loop or a length cap are not.
+const PROVIDER_FAULT_ERRORS: [GgTurnErrorType; 3] = [
+    GgTurnErrorType::ModelRetryExhausted,
+    GgTurnErrorType::ModelTimeout,
+    GgTurnErrorType::ModelParse,
+];
+
+/// Each provider's recorded fault rate for one model, across every recorded gg run of it, keyed by
+/// the [provider key](test_cabinet_core::pricing::provider_key) the candidate order reads.
 ///
-/// A fault is an errored turn, a stall, or an unexpected cache miss. The rate is those over the
-/// provider's calls, so a provider the record has never seen sorts as zero and a provider that
-/// served nothing sorts last.
-pub fn provider_fault_rates(facts: &[Arc<GgRunFacts>], model_id: &str) -> BTreeMap<String, f64> {
+/// `model_ids` is every id the model is recorded under (its OpenRouter id and, for a curated
+/// model, its aliases). A slice counts toward the model when its own model id is one of them, or
+/// when it names no model and the run's sole model is one of them — the attribution
+/// [`fold_provider_stats`] makes.
+///
+/// A fault is a stall, an unexpected cache miss, or a turn that ended on a
+/// [provider fault error](PROVIDER_FAULT_ERRORS); the rate is the faults over the calls. A
+/// provider no counted slice gave a call is absent, which the candidate order reads as zero.
+pub fn provider_fault_rates(
+    facts: &[Arc<GgRunFacts>],
+    model_ids: &[&str],
+) -> BTreeMap<String, f64> {
     let mut cells: BTreeMap<String, (u64, u64)> = BTreeMap::new();
     for run in facts {
-        if run.model_id != model_id && run.sole_model() != Some(model_id) {
-            continue;
-        }
         for slice in &run.provider_stats {
             let Some(provider) = slice.provider.as_deref() else {
                 continue;
             };
+            let model = slice.model_id.as_deref().or_else(|| run.sole_model());
+            if !model.is_some_and(|model| model_ids.contains(&model)) {
+                continue;
+            }
             let (faults, calls) = cells
                 .entry(test_cabinet_core::pricing::provider_key(provider))
                 .or_default();
-            let errors = slice.errors.values().sum::<u64>();
+            let errors: u64 = PROVIDER_FAULT_ERRORS
+                .iter()
+                .filter_map(|kind| slice.errors.get(kind.wire_id()))
+                .sum();
             *faults += errors + slice.stalls + slice.cache_misses;
-            *calls += slice.calls.max(slice.turns);
+            *calls += slice.calls;
         }
     }
     cells
         .into_iter()
-        .map(|(provider, (faults, calls))| {
-            let rate = if calls == 0 {
-                f64::MAX
-            } else {
-                faults as f64 / calls as f64
-            };
-            (provider, rate)
-        })
+        .filter(|(_, (_, calls))| *calls > 0)
+        .map(|(provider, (faults, calls))| (provider, faults as f64 / calls as f64))
         .collect()
 }
 

@@ -355,7 +355,10 @@ pub async fn providers(
 /// OpenRouter slug, and otherwise the catalog slug itself when it already reads
 /// as an OpenRouter id (a derived model's canonical `provider/model`). A model
 /// with neither cannot be probed — the probe speaks OpenRouter only.
-async fn resolve_openrouter_slug(state: &AppState, slug: &str) -> Result<String, ApiError> {
+pub(super) async fn resolve_openrouter_slug(
+    state: &AppState,
+    slug: &str,
+) -> Result<String, ApiError> {
     let config = state
         .db
         .get_model_config(slug)

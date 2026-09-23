@@ -1086,7 +1086,8 @@ The [candidate list](/gg/overview/#the-candidate-list) the next gg enqueue of th
 model would build, from OpenRouter's endpoints listing read now and the model's
 catalog entry, for an agent that sets no reasoning. Each candidate reports its
 provider, quantization, input, output and cache-read prices per Mtok, whether it
-is the developer's endpoint, and its recorded fault rate. The response also
+is the developer's endpoint, and its recorded fault rate, `null` for a provider
+with no recorded calls, which orders as a rate of zero. The response also
 reports the native level the filter used, and a `refusal` naming why the list is
 empty when it is. Requires a bearer token, because it reaches a third party on
 the caller's behalf.
@@ -1112,7 +1113,7 @@ the caller's behalf.
       "inputPrice": 0.56,
       "outputPrice": 1.76,
       "cacheReadPrice": 0.1,
-      "faultRate": 0.0,
+      "faultRate": null,
     },
   ],
   "refusal": null,

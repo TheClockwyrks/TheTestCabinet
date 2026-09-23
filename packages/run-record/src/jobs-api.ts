@@ -7,7 +7,7 @@
 // JSON Schemas under `apps/docs/public/schema/` are generated from the same types
 // in the same pass.
 
-import type { GgCapabilitySet } from "./gg";
+import type { GgCapabilitySet, GgProviderCandidate } from "./gg";
 import type { HarnessSlug, RunRecord } from "./index";
 
 /**
@@ -120,13 +120,13 @@ export type LaunchBody = {
    */
   ggModelWindows?: { [key in string]: number };
   /**
-   * The OpenRouter provider each model this **gg** run is pinned to.
+   * The ordered candidate list each model this **gg** run may be served by.
    *
    * **Filled in by the backend at enqueue, not sent by a client**, on the same terms as
    * [`gg_model_windows`](Self::gg_model_windows) and from the same lookup. A model the catalog
-   * has no official endpoint for refuses the enqueue rather than launching unpinned.
+   * has no candidate for refuses the enqueue rather than launching with an empty list.
    */
-  ggModelProviders?: { [key in string]: string };
+  ggModelProviders?: { [key in string]: Array<GgProviderCandidate> };
   /**
    * The input modalities each model this **gg** run may bind accepts (`text`,
    * `image`, `file`, …), as the model catalog observed them.

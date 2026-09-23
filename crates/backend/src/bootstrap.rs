@@ -52,6 +52,13 @@ pub async fn seed_models_if_empty(db: &Db) -> Result<()> {
             openrouter_slug: seed.openrouter_slug.map(str::to_string),
             // The seed takes the listing's own name; a mismatch is set by hand afterwards.
             provider_pin: None,
+            // The seed sets no provider policy: every figure comes from the listing until an
+            // operator sets one on the model's form.
+            native_quantization: None,
+            max_input_price: None,
+            max_output_price: None,
+            banned_providers: Vec::new(),
+            unknown_quantization_providers: Vec::new(),
             // The seed store is empty, so there is no run evidence yet; the
             // structural rule classifies every seed id unambiguously (a bare
             // `claude-*`/`gpt-*` to its native family, every `provider/model`
@@ -269,8 +276,8 @@ async fn try_observe_completion(
 /// actually ran) and the periodic refresh. That also makes the steady state free —
 /// nothing is fetched when every target is already priced, so this costs a network
 /// round trip exactly on the first sighting of a new model. A model on record with no
-/// [provider pin](ModelDetails::provider_pin) counts as missing, so a pin is observed
-/// as soon as the catalog meets a model rather than on the next refresh.
+/// [developer provider](ModelDetails::provider_pin) counts as missing, so the developer
+/// provider is observed as soon as the catalog meets a model rather than on the next refresh.
 ///
 /// `targets` maps the storage key an observation is filed under to the OpenRouter id
 /// to ask about. Returns how many models were seeded; a catalog fetch that fails
@@ -449,11 +456,11 @@ pub async fn refresh_all_prices(db: &Db, prices: &OpenRouterPrices) -> Result<us
     Ok(changed)
 }
 
-/// `details` with its [provider pin](ModelDetails::provider_pin) observed from `lookup`'s
-/// endpoints listing, which the models listing `details` came from does not carry.
+/// `details` with its [developer provider](ModelDetails::provider_pin) observed from
+/// `lookup`'s endpoints listing, which the models listing `details` came from does not carry.
 ///
-/// A listing that cannot be read keeps the pin last recorded under `storage_key`, so an
-/// unreachable endpoint never records a model as having lost its official provider.
+/// A listing that cannot be read keeps the developer provider last recorded under
+/// `storage_key`, so an unreachable endpoint never records a model as having lost it.
 async fn with_observed_pin(
     db: &Db,
     prices: &OpenRouterPrices,

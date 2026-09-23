@@ -12,6 +12,7 @@ import type {
   GgCapabilitySet,
   GgContextSource,
   GgLimitBreach,
+  GgProviderCandidate,
 } from "./gg";
 
 /**
@@ -80,11 +81,11 @@ export type GgSessionSeed = {
    */
   modelWindows?: { [key in string]: number };
   /**
-   * The OpenRouter provider each bound model was pinned to. Recorded because a
-   * run's cost is on that provider's price basis, and a reader that guessed the pin
-   * would price the run against a different one.
+   * The ordered candidate list each bound model may run on. Recorded because a
+   * run's cost is on those providers' price bases, and a reader that guessed the
+   * list would price the run against a different one.
    */
-  modelProviders?: { [key in string]: string };
+  modelProviders?: { [key in string]: Array<GgProviderCandidate> };
   /**
    * The **final, resolved** modality state of each bound slot.
    *

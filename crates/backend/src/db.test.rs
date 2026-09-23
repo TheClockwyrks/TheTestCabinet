@@ -2346,6 +2346,7 @@ fn model_write(slug: &str, name: &str, aliases: &[&str]) -> ModelConfigWrite {
         provider_pin: None,
         aliases: aliases.iter().map(|a| test_alias(a)).collect(),
         now: "2026-07-09T00:00:00Z".to_string(),
+        ..Default::default()
     }
 }
 

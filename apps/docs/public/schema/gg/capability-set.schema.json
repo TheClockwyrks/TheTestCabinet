@@ -541,6 +541,12 @@
           "minimum": 0,
           "type": ["integer", "null"]
         },
+        "providerCacheMissLimit": {
+          "description": "How many **unexpected cache misses** a provider may produce in one run before the run\nleaves it for the next [candidate](GgProviderCandidate) on its model's list.\n\nOne of the keys an absence answers with a **figure**: **absent is two**, because every\nprovider is held to it. `0` is refused rather than read as \"off\": a provider allowed no\nmisses would be left before it served a turn.\n\nAn unexpected miss is a reply that read under half of the prefix the agent's previous\nrequest on the same provider left in the cache, within the five-minute cache lifetime and\nabove the minimum cacheable size. The reply stands and the miss is counted; a provider that\nreaches this limit is left at the next request, unless it is the model's last candidate.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
         "replayMaxBytes": {
           "description": "The per-run ceiling, in bytes, on the\n[session capture journal](crate::gg_session_journal) gg writes as it runs.\n\n**Required.** gg writes the journal on every run whatever the set says, so there is no run\nthis ceiling does not apply to and no spelling of \"no ceiling\" here, because there is no run\nthat wants one. An absent one refuses the launch.\n\nThe odd one out here, and deliberately so: every other ceiling **stops the run**, and\nthis one stops only the *observation* of it. Crossing it stops capture and marks the\nrecord [truncated](crate::gg_session_record::GgSessionTruncationReason::ByteCeiling) — capture\ndegrades, it never fails the run it observes, because a debugging artifact that can end\na paid run is worse than no artifact. It lives on this type rather than on a capability's\nparams because capture is on for every run whatever the set says, so a ceiling parked on a\ncapability would be unreadable by exactly the runs that need it.\n\n`0` cannot bound anything — it would stop capture before its first line — and is\n**refused**, on the same terms as\n[`max_consecutive_errors`](Self::max_consecutive_errors)`: 0`.",
           "format": "uint64",

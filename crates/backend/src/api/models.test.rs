@@ -24,6 +24,11 @@ fn config(slug: &str, name: &str, provider: &str, aliases: &[&str]) -> StoredMod
             description_md: None,
             openrouter_slug: aliases.first().map(|a| a.to_string()),
             provider_pin: None,
+            native_quantization: None,
+            max_input_price: None,
+            max_output_price: None,
+            banned_providers: None,
+            unknown_quantization_providers: None,
             created_at: "2026-01-01T00:00:00Z".to_string(),
             updated_at: "2026-01-01T00:00:00Z".to_string(),
         },
@@ -273,6 +278,7 @@ async fn context_window_follows_a_curated_model_alias() {
             family: HarnessFamily::Claude,
         }],
         now: "2026-01-01T00:00:00Z".to_string(),
+        ..Default::default()
     })
     .await
     .unwrap();

@@ -122,6 +122,11 @@ struct Harness {
 /// Build the harness: two stub artifact services, a stub auth service, the
 /// environment a deployment sets, and the router `build` would assemble from it.
 async fn harness() -> Harness {
+    harness_with_prices(test_cabinet_core::OpenRouterPrices::new()).await
+}
+
+/// [`harness`], with the OpenRouter price source pointed at `prices`.
+async fn harness_with_prices(prices: test_cabinet_core::OpenRouterPrices) -> Harness {
     let (internal_url, internal) = spawn_artifacts().await;
     let (public_url, public) = spawn_artifacts().await;
     let auth_url = spawn_auth().await;
@@ -176,7 +181,7 @@ async fn harness() -> Harness {
         publish_relay: PublishRelay::new(),
         config,
         http: reqwest::Client::new(),
-        prices: test_cabinet_core::OpenRouterPrices::new(),
+        prices,
         gg_docs: crate::gg_docs::GgDocIndex::new(),
     };
     Harness {
@@ -435,5 +440,201 @@ async fn an_unbounded_account_buffer_is_stored_as_itself_and_inherited_by_a_plan
     assert_eq!(
         body["bufferTarget"],
         serde_json::json!({ "kind": "bounded", "runs": 0 })
+    );
+}
+
+// ---------------------------------------------------------------------------
+// A model's provider policy and candidate list
+// ---------------------------------------------------------------------------
+
+/// Serve `endpoints` as every OpenRouter read's body on a loopback port, and return a price
+/// source pointed at it. Only the per-model endpoints read parses it; the catalog reads a save
+/// makes fail to parse, which they treat as best-effort.
+async fn endpoints_listing(endpoints: serde_json::Value) -> test_cabinet_core::OpenRouterPrices {
+    let body = serde_json::json!({ "data": { "name": "Z.AI: GLM 5.3", "endpoints": endpoints } });
+    let app = Router::new().fallback(move || {
+        let body = body.clone();
+        async move { axum::Json(body) }
+    });
+    test_cabinet_core::OpenRouterPrices::with_endpoint(format!("{}/models", serve(app).await))
+}
+
+/// One fp8 endpoint priced per million tokens, with a cache-read price and tool support.
+fn listed(provider: &str, input: f64, output: f64) -> serde_json::Value {
+    serde_json::json!({
+        "provider_name": provider,
+        "context_length": 1_048_576,
+        "quantization": "fp8",
+        "pricing": {
+            "prompt": format!("{}", input / 1_000_000.0),
+            "completion": format!("{}", output / 1_000_000.0),
+            "input_cache_read": format!("{}", input / 10.0 / 1_000_000.0),
+        },
+        "supported_parameters": ["tools", "tool_choice"],
+    })
+}
+
+/// A curated model config body carrying `policy`'s fields.
+fn model_body(policy: serde_json::Value) -> serde_json::Value {
+    let mut body = serde_json::json!({
+        "slug": "glm",
+        "name": "GLM 5.3",
+        "provider": "Z.AI",
+        "aliases": [{ "slug": "z-ai/glm-5.3", "harnessFamily": "openrouter" }],
+        "openrouterSlug": "z-ai/glm-5.3",
+        "description": null,
+        "logoSvg": null,
+        "providerLogoUrl": null,
+    });
+    for (key, value) in policy.as_object().unwrap() {
+        body[key] = value.clone();
+    }
+    body
+}
+
+#[tokio::test]
+async fn a_models_provider_policy_round_trips_through_the_api() {
+    let harness = harness_with_prices(endpoints_listing(serde_json::json!([])).await).await;
+    let request = user_request(
+        "POST",
+        "/models",
+        model_body(serde_json::json!({
+            "providerPin": " Z.AI ",
+            "nativeQuantization": " FP8 ",
+            "maxInputPrice": 0.6,
+            "maxOutputPrice": 2.2,
+            "bannedProviders": [" Cheapo ", "", "cheapo"],
+            "unknownQuantizationProviders": ["Vague", "  "],
+        })),
+    );
+    let (status, body) = call(&harness.router, request).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["providerPin"], "Z.AI");
+    assert_eq!(body["providerPinSetByHand"], true);
+    assert_eq!(body["nativeQuantization"], "fp8");
+    assert_eq!(body["maxInputPrice"], 0.6);
+    assert_eq!(body["maxOutputPrice"], 2.2);
+    assert_eq!(body["bannedProviders"], serde_json::json!(["Cheapo"]));
+    assert_eq!(
+        body["unknownQuantizationProviders"],
+        serde_json::json!(["Vague"])
+    );
+
+    // The catalog read carries the same fields, and an update clearing them clears them.
+    let request = Request::builder()
+        .uri("/models")
+        .body(Body::empty())
+        .unwrap();
+    let (status, catalog) = call(&harness.router, request).await;
+    assert_eq!(status, StatusCode::OK, "{catalog}");
+    assert_eq!(
+        catalog["models"][0]["bannedProviders"],
+        body["bannedProviders"]
+    );
+
+    let request = user_request("PUT", "/models/glm", model_body(serde_json::json!({})));
+    let (status, body) = call(&harness.router, request).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["nativeQuantization"], serde_json::Value::Null);
+    assert_eq!(body["maxInputPrice"], serde_json::Value::Null);
+    assert_eq!(body["bannedProviders"], serde_json::json!([]));
+    assert_eq!(body["unknownQuantizationProviders"], serde_json::json!([]));
+}
+
+#[tokio::test]
+async fn a_models_provider_policy_is_checked_on_write() {
+    let harness = harness_with_prices(endpoints_listing(serde_json::json!([])).await).await;
+    for (policy, reason) in [
+        (
+            serde_json::json!({ "maxInputPrice": 0.6 }),
+            "half a ceiling",
+        ),
+        (
+            serde_json::json!({ "maxOutputPrice": 2.2 }),
+            "the other half",
+        ),
+        (
+            serde_json::json!({ "maxInputPrice": 0.0, "maxOutputPrice": 2.2 }),
+            "a zero price",
+        ),
+        (
+            serde_json::json!({ "maxInputPrice": -1.0, "maxOutputPrice": 2.2 }),
+            "a negative price",
+        ),
+        (
+            serde_json::json!({ "nativeQuantization": "fp9" }),
+            "an unknown level",
+        ),
+        (
+            serde_json::json!({ "nativeQuantization": "unknown" }),
+            "`unknown` as the native level",
+        ),
+    ] {
+        let request = user_request("POST", "/models", model_body(policy));
+        let (status, body) = call(&harness.router, request).await;
+        assert_eq!(
+            status,
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "{reason} was accepted: {body}"
+        );
+    }
+    // Nothing was written.
+    assert!(harness.db.get_model_config("glm").await.unwrap().is_none());
+}
+
+#[tokio::test]
+async fn the_candidates_read_reports_the_list_the_next_enqueue_would_build() {
+    let prices = endpoints_listing(serde_json::json!([
+        listed("Baidu", 0.56, 1.76),
+        listed("Z.AI", 0.6, 2.2),
+        listed("Pricey", 0.9, 3.0),
+    ]))
+    .await;
+    let harness = harness_with_prices(prices).await;
+    let request = user_request("POST", "/models", model_body(serde_json::json!({})));
+    let (status, body) = call(&harness.router, request).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+
+    // A third-party reach, so it is signed-in only.
+    let request = Request::builder()
+        .uri("/models/glm/candidates")
+        .body(Body::empty())
+        .unwrap();
+    let (status, _) = call(&harness.router, request).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+    let request = user_request("GET", "/models/glm/candidates", serde_json::Value::Null);
+    let (status, body) = call(&harness.router, request).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["modelId"], "z-ai/glm-5.3");
+    assert_eq!(body["nativeQuantization"], "fp8");
+    assert_eq!(body["refusal"], serde_json::Value::Null);
+    let candidates = body["candidates"].as_array().unwrap();
+    assert_eq!(candidates.len(), 2, "{body}");
+    assert_eq!(candidates[0]["provider"], "Z.AI");
+    assert_eq!(candidates[0]["developer"], true);
+    assert_eq!(candidates[0]["quantization"], "fp8");
+    assert!((candidates[0]["inputPrice"].as_f64().unwrap() - 0.6).abs() < 1e-9);
+    assert!((candidates[0]["outputPrice"].as_f64().unwrap() - 2.2).abs() < 1e-9);
+    assert!((candidates[0]["cacheReadPrice"].as_f64().unwrap() - 0.06).abs() < 1e-9);
+    assert_eq!(candidates[0]["faultRate"], serde_json::Value::Null);
+    assert_eq!(candidates[1]["provider"], "Baidu");
+    assert_eq!(candidates[1]["developer"], false);
+
+    // Banning both leaves no candidate, and the read says why.
+    let request = user_request(
+        "PUT",
+        "/models/glm",
+        model_body(serde_json::json!({ "bannedProviders": ["z-ai", "Baidu"] })),
+    );
+    let (status, body) = call(&harness.router, request).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let request = user_request("GET", "/models/glm/candidates", serde_json::Value::Null);
+    let (status, body) = call(&harness.router, request).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["candidates"], serde_json::json!([]));
+    assert_eq!(
+        body["refusal"],
+        test_cabinet_core::pricing::CandidateRefusal::AllBanned.to_string()
     );
 }
