@@ -239,6 +239,7 @@ fn build_new_job_leaves_gg_config_null_for_a_conventional_run() {
         retry_count: None,
         gg_capability_set: None,
         gg_model_windows: Default::default(),
+        gg_model_providers: Default::default(),
         gg_model_modalities: Default::default(),
     };
     let new = build_new_job(
@@ -309,6 +310,7 @@ fn window_observation(model_id: &str, context_length: i64) -> crate::db::PriceWr
         context_length: Some(context_length),
         released_at: None,
         input_modalities: None,
+        provider_slug: Some(model_id.split('/').next().unwrap_or(model_id).to_string()),
     }
 }
 
@@ -438,6 +440,39 @@ async fn unknown_modalities_do_not_block_a_launch() {
         .expect("a missing modality list is not a launch failure");
     assert!(launch.gg_model_modalities.is_empty());
     assert!(!launch.gg_model_windows.is_empty());
+    assert_eq!(
+        launch
+            .gg_model_providers
+            .get("anthropic/claude-opus-4.8")
+            .map(String::as_str),
+        Some("anthropic"),
+        "the observed provider slug is the pin"
+    );
+}
+
+/// A model the catalog knows a window for but no official endpoint for is refused, naming
+/// the model. It is not testable on another provider, and the reason is the enqueue's.
+#[tokio::test]
+async fn launch_is_refused_when_a_model_has_no_official_endpoint() {
+    let db = Db::connect_in_memory().await.unwrap();
+    let mut observation = window_observation("mystery/model", 128_000);
+    observation.provider_slug = None;
+    db.insert_price_observation(observation).await.unwrap();
+
+    let mut launch = GgRunRequest {
+        capability_set: authored(GgCapabilitySet::minimal("mystery/model")),
+        ..sample_request()
+    }
+    .into_launch_body()
+    .unwrap();
+
+    let err = resolve_gg_model_facts(&db, &unreachable_prices(), &mut launch)
+        .await
+        .expect_err("a model with no official endpoint is not testable");
+    assert!(
+        err.contains("mystery/model") && err.contains("no official endpoint"),
+        "unexpected reason: {err}"
+    );
 }
 
 /// A bound model whose window resolves nowhere — not in the catalog, and not from a live
@@ -514,6 +549,7 @@ async fn launch_resolves_nothing_for_a_conventional_run() {
         retry_count: None,
         gg_capability_set: None,
         gg_model_windows: Default::default(),
+        gg_model_providers: Default::default(),
         gg_model_modalities: Default::default(),
     };
 

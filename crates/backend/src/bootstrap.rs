@@ -50,6 +50,8 @@ pub async fn seed_models_if_empty(db: &Db) -> Result<()> {
             description_md: (!seed.description_md.is_empty())
                 .then(|| seed.description_md.to_string()),
             openrouter_slug: seed.openrouter_slug.map(str::to_string),
+            // The seed takes the listing's own name; a mismatch is set by hand afterwards.
+            provider_slug: None,
             // The seed store is empty, so there is no run evidence yet; the
             // structural rule classifies every seed id unambiguously (a bare
             // `claude-*`/`gpt-*` to its native family, every `provider/model`
@@ -472,6 +474,10 @@ async fn insert_if_changed(
     let prices = &details.prices;
     let context_length = details.context_length.and_then(|c| i64::try_from(c).ok());
     let input_modalities = encode_modalities(&details.input_modalities);
+    let provider_slug = details
+        .provider_slug
+        .clone()
+        .filter(|provider| !provider.trim().is_empty());
     let changed = match db.latest_price(model_id).await? {
         Some(latest) => {
             latest.uncached_input != prices.uncached_input
@@ -480,6 +486,7 @@ async fn insert_if_changed(
                 || latest.context_length != context_length
                 || latest.released_at != details.released_at
                 || latest.input_modalities != input_modalities
+                || latest.provider_slug != provider_slug
         }
         None => true,
     };
@@ -493,6 +500,7 @@ async fn insert_if_changed(
             context_length,
             released_at: details.released_at.clone(),
             input_modalities,
+            provider_slug,
         })
         .await?;
     }

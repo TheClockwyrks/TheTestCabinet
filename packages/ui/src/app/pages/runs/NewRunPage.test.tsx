@@ -112,6 +112,7 @@ const DUAL_FAMILY_MODEL = {
   price: null,
   priceHistory: [],
   contextLength: null,
+  providerSlug: null,
   releasedAt: null,
 } as unknown as Model;
 

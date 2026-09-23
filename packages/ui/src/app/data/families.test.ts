@@ -17,6 +17,7 @@ function model(name: string, aliases: ModelAlias[]): Model {
     price: null,
     priceHistory: [],
     contextLength: null,
+    providerSlug: null,
     releasedAt: null,
     inputModalities: [],
   };

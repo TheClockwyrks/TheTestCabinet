@@ -41,6 +41,9 @@ export interface ModelSummary {
   priceHistory: PriceObservation[];
   /** Maximum context window in tokens, or null. */
   contextLength: number | null;
+  /** The OpenRouter provider slug this model is pinned to, or null when no
+   * official endpoint is known. */
+  providerSlug: string | null;
   /** Release date as an RFC 3339 UTC timestamp, or null. */
   releasedAt: string | null;
   /** The input modalities the model accepts (`text`, `image`, …), lowercased.
@@ -64,6 +67,7 @@ export function toModelSummary(model: Model): ModelSummary {
     prices: model.price,
     priceHistory: model.priceHistory,
     contextLength: model.contextLength,
+    providerSlug: model.providerSlug,
     releasedAt: model.releasedAt,
     inputModalities: model.inputModalities ?? [],
   };

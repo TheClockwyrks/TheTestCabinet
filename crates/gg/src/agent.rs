@@ -847,6 +847,7 @@ pub async fn run(invocation: &GgInvocation, emitter: &Emitter) -> SessionOutcome
             Some(invocation.session_id.clone()),
             declared_model_call_timeout(&invocation.capability_set.limits),
             declared_retry_policy(&invocation.capability_set.limits),
+            invocation.model_providers.clone(),
         ),
     )
     .await
@@ -889,12 +890,14 @@ impl SessionSeams {
         session_key: Option<String>,
         model_call_timeout: Duration,
         retry_policy: crate::client::RetryPolicy,
+        model_providers: BTreeMap<String, String>,
     ) -> Self {
         Self::substituted(
             Arc::new(DefaultClientFactory::new(
                 session_key,
                 model_call_timeout,
                 retry_policy,
+                model_providers,
             )),
             real_shell(),
         )
@@ -952,6 +955,7 @@ pub(crate) async fn run_with_seams(
     // this run rather than offering every surface gg has.
     root_emitter.emit(GgTelemetryKind::SessionStarted {
         capability_set: Box::new(set.clone()),
+        model_providers: invocation.model_providers.clone(),
     });
 
     // Launch check 1: **the refusal** — every configured value this run declares must be one gg can
@@ -1003,6 +1007,14 @@ pub(crate) async fn run_with_seams(
     // has no fallback to guess one with, by design, so this is a hard launch failure rather
     // than a run with silently mis-scaled context accounting.
     if let Err(err) = validate_model_windows(set, &invocation.model_windows) {
+        root_emitter.emit(log("error", err));
+        root_emitter.emit(session_ended("error"));
+        return SessionOutcome::HarnessError;
+    }
+    // Launch check 3b: every bound model must name the one provider its requests are pinned to.
+    // Same refusal as a missing window, and reported together: a launch missing several is fixed
+    // in one pass.
+    if let Err(err) = validate_model_providers(set, &invocation.model_providers) {
         root_emitter.emit(log("error", err));
         root_emitter.emit(session_ended("error"));
         return SessionOutcome::HarnessError;
@@ -1475,6 +1487,7 @@ fn record_session_seed(orch: &Orchestrator, invocation: &GgInvocation) {
         // which is the honest answer rather than one committed for the record's sake.
         baseline_commit: orch.baseline_commit.as_deref(),
         model_windows: captured_model_windows(orch, invocation),
+        model_providers: invocation.model_providers.clone(),
         model_modalities: captured_model_modalities(orch, invocation),
     });
 }
@@ -7273,6 +7286,14 @@ impl Agent {
                                 // failing at its work, so it ends the session under its own status —
                                 // which the session runner turns into a launch failure.
                                 STATUS_AUTH_ERROR
+                            } else if matches!(err, ModelError::ProviderMismatch { .. }) {
+                                // A reply from a provider other than the pin is gg's to refuse: the
+                                // cost recorded from it on would be on a different basis, so the run
+                                // ends as a harness failure rather than a score against the model.
+                                // Raised on the run's latch too, so a mismatch in any agent — not
+                                // only the root — stops the whole tree.
+                                limits.fault.in_agent(&self.id, &self.profile_id, &err);
+                                STATUS_INTERNAL_ERROR
                             } else {
                                 STATUS_MODEL_ERROR
                             },
@@ -10751,6 +10772,39 @@ fn validate_model_windows(
     Err(format!(
         "the invocation carries no context window for the model(s) {}: re-launch once the model \
          catalog knows them",
+        missing
+            .iter()
+            .map(|id| format!("`{id}`"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    ))
+}
+
+/// Check that every model `set` binds names the one OpenRouter provider its requests are pinned
+/// to — the launch check that makes a run unable to start on an unpinned model.
+///
+/// A missing pin is the same class of refusal as a missing window: the backend stamps both, and
+/// an invocation written by hand has to carry both. Reported together, so one launch names every
+/// model it cannot pin.
+fn validate_model_providers(
+    set: &GgCapabilitySet,
+    providers: &BTreeMap<String, String>,
+) -> Result<(), String> {
+    let missing: Vec<&str> = set
+        .bound_model_ids()
+        .into_iter()
+        .filter(|id| {
+            providers
+                .get(*id)
+                .is_none_or(|provider| provider.trim().is_empty())
+        })
+        .collect();
+    if missing.is_empty() {
+        return Ok(());
+    }
+    Err(format!(
+        "the invocation carries no provider pin for the model(s) {}: a model whose official \
+         endpoint is not listed is not testable",
         missing
             .iter()
             .map(|id| format!("`{id}`"))

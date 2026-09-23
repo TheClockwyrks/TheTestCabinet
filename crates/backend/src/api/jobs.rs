@@ -329,6 +329,7 @@ pub(super) async fn resolve_gg_model_facts(
     body: &mut LaunchBody,
 ) -> Result<(), String> {
     body.gg_model_windows.clear();
+    body.gg_model_providers.clear();
     body.gg_model_modalities.clear();
     let Some(set) = body.gg_capability_set.as_ref() else {
         return Ok(());
@@ -351,6 +352,8 @@ pub(super) async fn resolve_gg_model_facts(
 pub(super) struct GgModelFacts {
     /// The context window every bound model is measured against.
     windows: std::collections::BTreeMap<String, u64>,
+    /// The OpenRouter provider slug every bound model is pinned to.
+    providers: std::collections::BTreeMap<String, String>,
     /// The input modalities of the bound models the catalog (or OpenRouter) lists them for.
     /// A model with none is simply absent: unknown modalities are not a launch failure.
     modalities: std::collections::BTreeMap<String, Vec<String>>,
@@ -361,6 +364,7 @@ impl GgModelFacts {
     /// arrived carrying — they are backend-resolved facts, not client input.
     pub(super) fn apply(self, body: &mut LaunchBody) {
         body.gg_model_windows = self.windows;
+        body.gg_model_providers = self.providers;
         body.gg_model_modalities = self.modalities;
     }
 }
@@ -385,6 +389,9 @@ pub(super) async fn gg_model_facts(
     for model_id in models {
         let resolved = resolve_one_model_facts(db, prices, model_id, harness).await?;
         facts.windows.insert(model_id.to_string(), resolved.window);
+        facts
+            .providers
+            .insert(model_id.to_string(), resolved.provider);
         if !resolved.input_modalities.is_empty() {
             facts
                 .modalities
@@ -394,11 +401,67 @@ pub(super) async fn gg_model_facts(
     Ok(facts)
 }
 
-/// One model's resolved launch facts: the window (which a launch cannot proceed without)
-/// and the input modalities (which may legitimately be unknown).
+/// One model's resolved launch facts: the window (which a launch cannot proceed without),
+/// the provider pin (which a launch cannot proceed without either), and the input
+/// modalities (which may legitimately be unknown).
 struct ResolvedModelFacts {
     window: u64,
+    provider: String,
     input_modalities: Vec<String>,
+}
+
+/// The pin a launch stamps for `model_id`: the catalog's hand-set slug when one is set,
+/// otherwise the official endpoint on the live listing. A model with neither is refused.
+async fn resolve_provider_pin(
+    db: &crate::db::Db,
+    prices: &test_cabinet_core::OpenRouterPrices,
+    model_id: &str,
+    harness: HarnessSlug,
+    lookup: &str,
+    stored: Option<String>,
+) -> Result<String, String> {
+    if let Some(provider) = stored.filter(|provider| !provider.trim().is_empty()) {
+        return Ok(provider);
+    }
+    if let Some(provider) = super::models::curated_provider_slug(db, model_id, harness)
+        .await
+        .map_err(|err| format!("could not read the curated provider pin for `{model_id}`: {err}"))?
+        .filter(|provider| !provider.trim().is_empty())
+    {
+        return Ok(provider);
+    }
+    match prices.provider_routes(lookup).await {
+        Ok(routes) => {
+            let author = lookup.split(['/', ':']).next().unwrap_or(lookup);
+            let want: String = author
+                .chars()
+                .filter(|ch| !ch.is_whitespace() && *ch != '-' && *ch != '_')
+                .flat_map(|ch| ch.to_lowercase())
+                .collect();
+            routes
+                .into_iter()
+                .find(|route| {
+                    route
+                        .name
+                        .chars()
+                        .filter(|ch| !ch.is_whitespace() && *ch != '-' && *ch != '_')
+                        .flat_map(|ch| ch.to_lowercase())
+                        .collect::<String>()
+                        == want
+                })
+                .map(|route| route.name)
+                .ok_or_else(|| {
+                    format!(
+                        "`{model_id}` has no official endpoint on OpenRouter (looked up as \
+                         `{lookup}`; no route belongs to its developer), so it is not testable"
+                    )
+                })
+        }
+        Err(err) => Err(format!(
+            "`{model_id}` has no official endpoint on OpenRouter (looked up as `{lookup}`, and \
+             the listing could not be read: {err}), so it is not testable"
+        )),
+    }
 }
 
 /// One model's launch facts: the catalog's observation, else a live per-model fetch from
@@ -421,21 +484,35 @@ async fn resolve_one_model_facts(
     };
     // The window is what the launch hinges on. When the catalog has it, the run can start —
     // even if it has no modality list, which gg is allowed not to know.
-    if let Some(window) = stored.context_window {
-        return Ok(ResolvedModelFacts {
-            window,
-            input_modalities: stored.input_modalities,
-        });
-    }
-    // Not observed yet: ask OpenRouter for this one model. The id to ask under is the same
-    // one prices are looked up by, so a curated model resolves through its configured slug.
+    // The id to ask under is the same one prices are looked up by, so a curated model
+    // resolves through its configured slug.
     let lookup = crate::bootstrap::openrouter_lookup_id(db, model_id, harness)
         .await
         .unwrap_or_else(|_| test_cabinet_core::model_id::openrouter_price_id(model_id, harness));
+    let provider = resolve_provider_pin(
+        db,
+        prices,
+        model_id,
+        harness,
+        &lookup,
+        stored.provider_slug.clone(),
+    )
+    .await?;
+    // The window is what the launch hinges on. When the catalog has it, the run can start —
+    // even if it has no modality list, which gg is allowed not to know. The pin is required
+    // either way: a model with no official endpoint is not testable.
+    if let Some(window) = stored.context_window {
+        return Ok(ResolvedModelFacts {
+            window,
+            provider,
+            input_modalities: stored.input_modalities,
+        });
+    }
     match prices.model_launch_facts(&lookup).await {
         Ok(facts) => match facts.context_window {
             Some(window) => Ok(ResolvedModelFacts {
                 window,
+                provider: facts.provider_slug.unwrap_or(provider),
                 // Prefer the live list; fall back to whatever the catalog held, so a
                 // fetch that answered the window but not the modalities does not
                 // discard an older observation of them.

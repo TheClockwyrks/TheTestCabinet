@@ -75,6 +75,13 @@
           "description": "The input modalities each model this **gg** run may bind accepts (`text`,\n`image`, `file`, …), as the model catalog observed them.\n\n**Filled in by the backend at enqueue, not sent by a client**, on the same terms\nas [`gg_model_windows`](Self::gg_model_windows) and from the same lookup. A model\nthe catalog has no modality list for is simply **absent** from the map, which gg\nreads as unknown rather than as \"text only\": it will try an image and recover if\nthe provider refuses it. Empty for every non-gg run.",
           "type": "object"
         },
+        "ggModelProviders": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "The OpenRouter provider slug each model this **gg** run is pinned to.\n\n**Filled in by the backend at enqueue, not sent by a client**, on the same terms as\n[`gg_model_windows`](Self::gg_model_windows) and from the same lookup. A model the catalog\nhas no official endpoint for refuses the enqueue rather than launching unpinned.",
+          "type": "object"
+        },
         "ggModelWindows": {
           "additionalProperties": {
             "format": "uint64",

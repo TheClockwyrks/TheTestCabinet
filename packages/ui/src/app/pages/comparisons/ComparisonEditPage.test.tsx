@@ -70,6 +70,7 @@ const MODEL = {
   price: null,
   priceHistory: [],
   contextLength: null,
+  providerSlug: null,
   releasedAt: null,
 } as unknown as Model;
 

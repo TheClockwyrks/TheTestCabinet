@@ -2331,6 +2331,7 @@ fn model_write(slug: &str, name: &str, aliases: &[&str]) -> ModelConfigWrite {
         provider_logo_svg: None,
         description_md: None,
         openrouter_slug: aliases.first().map(|a| a.to_string()),
+        provider_slug: None,
         aliases: aliases.iter().map(|a| test_alias(a)).collect(),
         now: "2026-07-09T00:00:00Z".to_string(),
     }
@@ -2510,6 +2511,7 @@ async fn price_observations_dedup_and_latest() {
         context_length: Some(200_000),
         released_at: None,
         input_modalities: Some("text,image".to_string()),
+        provider_slug: None,
     };
     db.insert_price_observation(obs(1.0, "2026-01-01T00:00:00Z"))
         .await

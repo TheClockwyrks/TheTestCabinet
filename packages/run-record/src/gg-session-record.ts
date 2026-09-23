@@ -80,6 +80,12 @@ export type GgSessionSeed = {
    */
   modelWindows?: { [key in string]: number };
   /**
+   * The OpenRouter provider slug each bound model was pinned to. Recorded because a
+   * run's cost is on that provider's price basis, and a reader that guessed the pin
+   * would price the run against a different one.
+   */
+  modelProviders?: { [key in string]: string };
+  /**
    * The **final, resolved** modality state of each bound slot.
    *
    * Resolved, not initial, and that distinction is load-bearing: vision recovery can
@@ -368,6 +374,7 @@ export type GgSessionModelErrorKind =
   | "retry_exhausted"
   | "vision_unsupported"
   | "parse"
+  | "provider_mismatch"
   | "response_loop"
   | "timeout";
 

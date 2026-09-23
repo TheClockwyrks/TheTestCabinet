@@ -442,6 +442,7 @@ async fn snapshot_emits_the_composed_model_catalog() {
         context_length: None,
         released_at: None,
         input_modalities: vec![],
+        provider_slug: Some("Anthropic".to_string()),
     };
     let snapshot = SnapshotBuilder::new(vec![], vec![], store)
         .with_models(vec![model])

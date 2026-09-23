@@ -234,6 +234,7 @@ function models(): ModelSummary[] {
       prices: null,
       priceHistory: [],
       contextLength: null,
+      providerSlug: null,
       releasedAt: null,
       inputModalities: ["text"],
     },

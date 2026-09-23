@@ -209,11 +209,17 @@ has.summary:true | stats sum(summary.errors.byType.program_api_error) as fights 
 
 ## Provider attribution
 
-A run's model calls may be served by different upstream providers — OpenRouter
-names the serving provider on each response — and provider-specific failures are
-only diagnosable from a record that says who served what. The summary therefore
-carries `providerStats`: one slice per `(provider, model)` pair observed, folded
-from the same stream as the rollups above.
+Every request of a run is pinned to one provider, the model developer's own
+endpoint, and `usage` records the provider that served the call. A response from
+any other provider ends the run as a harness failure, `provider_mismatch`, and
+the event names the pinned provider and the served one. The cost recorded from
+that point would be on a different price basis, so the run is not scored.
+
+OpenRouter names the serving provider on each response, and provider-specific
+failures are only diagnosable from a record that says who served what. The
+summary therefore carries `providerStats`: one slice per `(provider, model)` pair
+observed, folded from the same stream as the rollups above. A pinned run has one
+provider per model.
 
 ```jsonc
 "providerStats": [

@@ -9,6 +9,12 @@ run already appears in the Models section; curating one gives it a Test Cabinet
 display name, aliases, a provider logo, and a description. Curation is an in-app
 edit that takes effect immediately, with nothing to commit, build, or release.
 
+Every run is pinned to the model developer's own OpenRouter provider, and nowhere
+else. A model whose official endpoint OpenRouter does not list, or which the
+account's privacy settings exclude, is not testable. Enqueue refuses it, and the
+console shows the reason on the model, rather than launching it on another
+provider.
+
 The full walkthrough is
 [Adding or Updating a Model](/guides/devops/adding-or-updating-a-model/).
 
@@ -48,6 +54,12 @@ back.
 Prices are recorded by the backend rather than edited here: when the model is
 saved, when a run using it is enqueued, when a run completes, and on a 24-hour
 refresh. The model's Stats tab shows the latest per-Mtok rates.
+
+At enqueue the backend resolves the provider pin with the context window. The
+catalog entry carries the provider slug, seeded from OpenRouter's endpoints
+listing by taking the endpoint whose provider is the model's developer. Set the
+slug by hand where that listing's name does not match the author segment of the
+model id. A model with no official endpoint refuses the enqueue with the reason.
 
 ## Verify
 

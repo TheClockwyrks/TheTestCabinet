@@ -444,6 +444,18 @@ pub enum ModelError {
         /// line for each discarded attempt describe the same event identically.
         detail: String,
     },
+    /// The gateway served the call from a provider other than the one this run pinned.
+    ///
+    /// A harness failure, not a model failure: the cost recorded from this reply on would be on
+    /// a different price basis than the rest of the run, and scoring that against the model would
+    /// blame it for a route gg asked not to be taken. The turn loop ends the session on it.
+    #[error("provider mismatch: pinned to `{pinned}`, served by `{served}`")]
+    ProviderMismatch {
+        /// The OpenRouter provider slug the launch pinned this model to.
+        pinned: String,
+        /// The provider the response named as having served it.
+        served: String,
+    },
     /// The call ran into the run's
     /// [**per-call ceiling**](crate::limits::RunLimits::model_call_timeout) without producing a
     /// reply — a stalled provider, not a refusal.
@@ -507,6 +519,7 @@ impl ModelError {
             ModelError::ResponseLoop { .. } => TurnErrorType::ModelResponseLoop,
             ModelError::VisionUnsupported { .. } => TurnErrorType::ModelVisionUnsupported,
             ModelError::Parse(_) => TurnErrorType::ModelParse,
+            ModelError::ProviderMismatch { .. } => TurnErrorType::ProviderMismatch,
             ModelError::Timeout { .. } => TurnErrorType::ModelTimeout,
         }
     }

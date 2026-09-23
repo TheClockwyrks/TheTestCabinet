@@ -23,6 +23,7 @@ fn config(slug: &str, name: &str, provider: &str, aliases: &[&str]) -> StoredMod
             provider_logo_svg: None,
             description_md: None,
             openrouter_slug: aliases.first().map(|a| a.to_string()),
+            provider_slug: None,
             created_at: "2026-01-01T00:00:00Z".to_string(),
             updated_at: "2026-01-01T00:00:00Z".to_string(),
         },
@@ -53,6 +54,7 @@ fn price(
         context_length: Some(200_000),
         released_at: Some("2026-01-01T00:00:00Z".to_string()),
         input_modalities: Some("text,image".to_string()),
+        provider_slug: None,
     }
 }
 
@@ -218,6 +220,7 @@ fn window_observation(model_id: &str, context_length: i64) -> crate::db::PriceWr
         context_length: Some(context_length),
         released_at: None,
         input_modalities: None,
+        provider_slug: None,
     }
 }
 
@@ -264,6 +267,7 @@ async fn context_window_follows_a_curated_model_alias() {
         provider_logo_svg: None,
         description_md: None,
         openrouter_slug: Some("anthropic/claude-opus-4.8".to_string()),
+        provider_slug: None,
         aliases: vec![AliasEntry {
             alias: "claude-opus-4-8".to_string(),
             family: HarnessFamily::Claude,

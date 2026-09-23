@@ -82,12 +82,14 @@ const TEST_CONTEXT_WINDOW: u64 = 200_000;
 /// a launch would have pushed in — one for every model the set binds.
 fn invocation(dir: &Path, set: GgCapabilitySet) -> GgInvocation {
     let model_windows = test_windows(&set);
+    let model_providers = test_providers(&set);
     GgInvocation {
         session_id: "run-test".to_string(),
         workspace_dir: dir.to_path_buf(),
         prompt: "Build a tiny game.".to_string(),
         capability_set: set,
         model_windows,
+        model_providers,
         // No declared modalities: the offline default, under which every model is
         // treated optimistically about image input (see `crate::vision`).
         model_modalities: BTreeMap::new(),
@@ -100,6 +102,18 @@ fn invocation(dir: &Path, set: GgCapabilitySet) -> GgInvocation {
 
 /// The window map a launch would push for `set`: [`TEST_CONTEXT_WINDOW`] for every model it
 /// binds.
+/// The pin map a launch would push for `set`: the author segment of every bound model id.
+/// A mock id pins to `mock`, which the offline client never sends.
+fn test_providers(set: &GgCapabilitySet) -> BTreeMap<String, String> {
+    set.bound_model_ids()
+        .into_iter()
+        .map(|id| {
+            let provider = id.split(['/', ':']).next().unwrap_or(id).to_string();
+            (id.to_string(), provider)
+        })
+        .collect()
+}
+
 fn test_windows(set: &GgCapabilitySet) -> BTreeMap<String, u64> {
     set.bound_model_ids()
         .into_iter()
@@ -820,6 +834,7 @@ async fn run_drives_the_mock_end_to_end_and_writes_the_file() {
         &events.first().unwrap().kind,
         GgTelemetryKind::SessionStarted {
             capability_set: set,
+            ..
         } if **set == inv.capability_set
     ));
     assert!(matches!(
@@ -1053,6 +1068,7 @@ async fn run_reports_launch_failure_when_no_slot_is_bound() {
         &events.first().unwrap().kind,
         GgTelemetryKind::SessionStarted {
             capability_set: set,
+            ..
         } if **set == inv.capability_set
     ));
     assert!(
@@ -2697,6 +2713,48 @@ fn validate_model_windows_requires_every_bound_model() {
     assert!(validate_model_windows(&set, &test_windows(&set)).is_ok());
     // A set that binds nothing has nothing to cover.
     assert!(validate_model_windows(&GgCapabilitySet::default(), &BTreeMap::new()).is_ok());
+}
+
+/// A bound model missing from `modelProviders` refuses the launch, and every missing pin is
+/// named together. A blank slug is a missing pin: it would send no `provider.only`.
+#[test]
+fn validate_model_providers_requires_every_bound_model() {
+    let mut set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
+    set.agents.push(GgAgentConfig {
+        name: "subagent".to_string(),
+        model_id: "openai/gpt-5.4-mini".to_string(),
+        ..GgAgentConfig::root()
+    });
+
+    let err = validate_model_providers(
+        &set,
+        &BTreeMap::from([(
+            "anthropic/claude-opus-4.8".to_string(),
+            "anthropic".to_string(),
+        )]),
+    )
+    .expect_err("a bound model with no provider pin is a launch failure");
+    assert!(
+        err.contains("openai/gpt-5.4-mini"),
+        "unexpected error: {err}"
+    );
+    assert!(
+        !err.contains("anthropic/claude-opus-4.8"),
+        "the pinned model should not be named: {err}"
+    );
+
+    let blank = BTreeMap::from([
+        ("anthropic/claude-opus-4.8".to_string(), "  ".to_string()),
+        ("openai/gpt-5.4-mini".to_string(), "openai".to_string()),
+    ]);
+    let err = validate_model_providers(&set, &blank).expect_err("a blank pin is no pin");
+    assert!(
+        err.contains("anthropic/claude-opus-4.8"),
+        "unexpected error: {err}"
+    );
+
+    assert!(validate_model_providers(&set, &test_providers(&set)).is_ok());
+    assert!(validate_model_providers(&GgCapabilitySet::default(), &BTreeMap::new()).is_ok());
 }
 
 /// A `context-window-override` capability enabled with the given `windowLimit`, the lever the

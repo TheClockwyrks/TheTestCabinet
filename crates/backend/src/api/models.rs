@@ -77,6 +77,10 @@ pub struct ModelOut {
     pub price_history: Vec<PriceObservationOut>,
     /// The latest observed context window in tokens, or null.
     pub context_length: Option<u64>,
+    /// The OpenRouter provider slug this model's requests are pinned to: the hand-set
+    /// override when one is set, otherwise the official endpoint observed on the listing.
+    /// Null means no official endpoint is known, and a launch of the model is refused.
+    pub provider_slug: Option<String>,
     /// The latest observed release date (RFC 3339), or null.
     pub released_at: Option<String>,
     /// The input modalities OpenRouter reports the model accepts (`text`,
@@ -147,6 +151,12 @@ pub struct ModelConfigInput {
     /// family it is usable with (at least one).
     pub aliases: Vec<AliasInput>,
     pub openrouter_slug: Option<String>,
+    /// The OpenRouter provider slug this model's requests are pinned to, set by hand where
+    /// the endpoints listing's name does not match the model id's author segment. Absent
+    /// means the observed listing name is the pin.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub provider_slug: Option<String>,
     pub description: Option<String>,
     /// The stored provider-logo SVG (already fetched via `POST /models/logo`).
     pub logo_svg: Option<String>,
@@ -308,6 +318,10 @@ async fn write_config(
             provider_logo_svg: logo_svg,
             description_md: input.description.filter(|d| !d.trim().is_empty()),
             openrouter_slug: openrouter_slug.clone(),
+            provider_slug: input
+                .provider_slug
+                .map(|slug| slug.trim().to_string())
+                .filter(|slug| !slug.is_empty()),
             aliases,
             now,
         })
@@ -485,6 +499,19 @@ pub async fn logo(
 /// Best-effort by construction: a model with no price observation yet (the catalog
 /// learns one when the model is first priced) simply has no facts, which the caller
 /// treats as "unknown" rather than an error.
+/// The hand-set provider slug of the curated model that claims `model_id`, when one is set.
+///
+/// This is the override for a listing whose provider name does not match the author segment
+/// of the model id. Absent means the observed listing name is the pin.
+pub async fn curated_provider_slug(
+    db: &crate::db::Db,
+    model_id: &str,
+    harness: HarnessSlug,
+) -> crate::error::Result<Option<String>> {
+    let canonical = canonical_model_id(model_id, harness);
+    db.provider_slug_for_alias(&canonical).await
+}
+
 pub async fn launch_facts_for(
     db: &crate::db::Db,
     model_id: &str,
@@ -515,6 +542,9 @@ async fn latest_launch_facts(
                 .context_length
                 .and_then(|length| u64::try_from(length).ok()),
             input_modalities: crate::bootstrap::decode_modalities(row.input_modalities.as_deref()),
+            provider_slug: row
+                .provider_slug
+                .filter(|provider| !provider.trim().is_empty()),
         }))
 }
 
@@ -607,6 +637,11 @@ pub fn compose_catalog(
             context_length: facts.context_length,
             released_at: facts.released_at,
             input_modalities: facts.input_modalities,
+            provider_slug: config
+                .provider_slug
+                .clone()
+                .filter(|provider| !provider.trim().is_empty())
+                .or(facts.provider_slug),
         });
     }
 
@@ -641,6 +676,7 @@ pub fn compose_catalog(
             context_length: facts.context_length,
             released_at: facts.released_at,
             input_modalities: facts.input_modalities,
+            provider_slug: facts.provider_slug,
         });
     }
 
@@ -677,6 +713,7 @@ struct LatestFacts {
     context_length: Option<u64>,
     released_at: Option<String>,
     input_modalities: Vec<String>,
+    provider_slug: Option<String>,
 }
 
 /// The latest price and catalog facts from time-ordered rows.
@@ -691,6 +728,10 @@ fn latest_facts(rows: &[&model_price::Model]) -> LatestFacts {
             context_length: row.context_length.and_then(|c| u64::try_from(c).ok()),
             released_at: row.released_at.clone(),
             input_modalities: crate::bootstrap::decode_modalities(row.input_modalities.as_deref()),
+            provider_slug: row
+                .provider_slug
+                .clone()
+                .filter(|provider| !provider.trim().is_empty()),
         },
         None => LatestFacts::default(),
     }

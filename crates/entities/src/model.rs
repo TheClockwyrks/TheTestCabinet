@@ -34,6 +34,11 @@ pub struct Model {
     /// for the comparable cost, or `NULL` when the model is not on OpenRouter.
     #[sea_orm(nullable)]
     pub openrouter_slug: Option<String>,
+    /// The OpenRouter provider slug this model's requests are pinned to, set by hand where
+    /// the endpoints listing's provider name does not match the author segment of the model
+    /// id. `NULL` means the observed listing name is the pin.
+    #[sea_orm(nullable)]
+    pub provider_slug: Option<String>,
     /// RFC 3339 of when this curated row was created.
     pub created_at: String,
     /// RFC 3339 of the last update to this curated row.

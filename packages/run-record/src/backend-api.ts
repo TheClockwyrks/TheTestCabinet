@@ -226,6 +226,12 @@ export type ModelOut = {
    */
   contextLength: number | null;
   /**
+   * The OpenRouter provider slug this model's requests are pinned to: the hand-set
+   * override when one is set, otherwise the official endpoint observed on the listing.
+   * Null means no official endpoint is known, and a launch of the model is refused.
+   */
+  providerSlug: string | null;
+  /**
    * The latest observed release date (RFC 3339), or null.
    */
   releasedAt: string | null;
@@ -289,6 +295,12 @@ export type ModelConfigInput = {
    */
   aliases: Array<AliasInput>;
   openrouterSlug: string | null;
+  /**
+   * The OpenRouter provider slug this model's requests are pinned to, set by hand where
+   * the endpoints listing's name does not match the model id's author segment. Absent
+   * means the observed listing name is the pin.
+   */
+  providerSlug?: string;
   description: string | null;
   /**
    * The stored provider-logo SVG (already fetched via `POST /models/logo`).

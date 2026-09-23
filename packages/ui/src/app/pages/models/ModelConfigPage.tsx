@@ -87,6 +87,7 @@ export function ModelConfigPage() {
   const [logoUrl, setLogoUrl] = useState("");
   const [description, setDescription] = useState("");
   const [openrouterSlug, setOpenrouterSlug] = useState("");
+  const [providerSlug, setProviderSlug] = useState("");
   // The catalog slug, kept internal: preserved from the existing model (edit) or
   // the seed, else derived from the name at submit time.
   const [slug, setSlug] = useState("");
@@ -110,6 +111,7 @@ export function ModelConfigPage() {
     setLogoSvg(existing.logoSvg);
     setDescription(existing.description ?? "");
     setOpenrouterSlug(openrouterSlugFromUrl(existing.openrouterUrl));
+    setProviderSlug(existing.providerSlug ?? "");
     setSlug(existing.slug);
   }, [editing, existing]);
 
@@ -248,6 +250,7 @@ export function ModelConfigPage() {
       provider: provider.trim(),
       aliases: cleanAliases,
       openrouterSlug: openrouterSlug.trim() || null,
+      providerSlug: providerSlug.trim() || null,
       description: description.trim() || null,
       logoSvg,
       providerLogoUrl: logoUrl.trim() || null,
@@ -354,6 +357,23 @@ export function ModelConfigPage() {
             </span>
           )}
         </div>
+
+        <label className={styles.field}>
+          <span className={styles.fieldLabel}>Provider pin</span>
+          <input
+            className={styles.input}
+            value={providerSlug}
+            onChange={(e) => setProviderSlug(e.target.value)}
+            placeholder="the listing's provider name, e.g. OpenAI"
+            aria-label="Provider pin"
+          />
+          <span className={styles.fieldHint}>
+            The OpenRouter provider this model's requests are pinned to. Leave
+            blank to take the endpoint whose provider is the model's developer.
+            Set it where that listing's name does not match the model id. A
+            model with no official endpoint is not testable.
+          </span>
+        </label>
 
         <div className={styles.fields}>
           <label className={styles.field}>

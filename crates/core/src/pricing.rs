@@ -31,6 +31,9 @@ pub struct ModelDetails {
     /// `file`, `audio`, …), normalized to lowercase. Empty when OpenRouter
     /// reports none, which is "unknown" rather than "text only".
     pub input_modalities: Vec<String>,
+    /// The OpenRouter provider slug of the model's own developer, when the listing names
+    /// one. Recorded with the prices so a later launch can pin without a second fetch.
+    pub provider_slug: Option<String>,
 }
 
 /// The modality token OpenRouter uses for image input — the one gg checks before
@@ -52,6 +55,11 @@ pub struct ModelLaunchFacts {
     /// The input modalities the model accepts, normalized to lowercase. Empty means
     /// OpenRouter reported none — unknown, not "text only".
     pub input_modalities: Vec<String>,
+    /// The OpenRouter provider slug of the model's own developer — the endpoint whose
+    /// `provider_name` matches the author segment of the model id — or `None` when the
+    /// listing names no such endpoint. A launch with `None` is refused rather than run
+    /// on another provider.
+    pub provider_slug: Option<String>,
 }
 
 /// The descriptive facts OpenRouter publishes about one model — the display name,
@@ -186,6 +194,7 @@ impl OpenRouterPrices {
                 .filter_map(|endpoint| endpoint.context_length)
                 .max(),
             input_modalities: modalities_of(data.architecture.as_ref()),
+            provider_slug: official_provider(model_id, &data.endpoints),
         })
     }
 
@@ -286,6 +295,35 @@ pub struct ProviderRoute {
 }
 
 /// Reduce one model's endpoints body to its deduplicated provider routes.
+/// The provider slug of the endpoint that belongs to the model's own developer.
+///
+/// The developer is the author segment of the model id (`openai/gpt-5.6-sol` → `openai`),
+/// matched against each route's `provider_name` ignoring case and treating a hyphen and a
+/// space as the same character. The first match wins, in the listing's own order. A listing
+/// that names the developer differently is `None` here and set by hand on the catalog entry.
+fn official_provider(model_id: &str, endpoints: &[ModelEndpoint]) -> Option<String> {
+    let author = model_id.split(['/', ':']).next().unwrap_or(model_id);
+    let want = normalize_provider(author);
+    if want.is_empty() {
+        return None;
+    }
+    endpoints.iter().find_map(|endpoint| {
+        let name = endpoint.provider_name.as_deref()?.trim();
+        normalize_provider(name)
+            .eq_ignore_ascii_case(&want)
+            .then(|| name.to_string())
+    })
+}
+
+/// A provider name reduced to the characters a match is made on: lowercase, with hyphens and
+/// spaces dropped, so `OpenAI` and `openai` agree and `x-ai` agrees with `xai`.
+fn normalize_provider(name: &str) -> String {
+    name.chars()
+        .filter(|ch| !ch.is_whitespace() && *ch != '-' && *ch != '_')
+        .flat_map(|ch| ch.to_lowercase())
+        .collect()
+}
+
 fn routes_of(data: ModelEndpoints) -> Vec<ProviderRoute> {
     let mut routes: Vec<ProviderRoute> = Vec::new();
     for endpoint in data.endpoints {
@@ -335,6 +373,9 @@ fn details_of(model: Model) -> ModelDetails {
         context_length: model.context_length,
         released_at: model.created.and_then(release_date),
         input_modalities: modalities_of(model.architecture.as_ref()),
+        // The listing has no per-route provider name; the pin is resolved from the
+        // endpoints read at launch and recorded there.
+        provider_slug: None,
     }
 }
 

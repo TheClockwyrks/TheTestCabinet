@@ -212,6 +212,11 @@ function StatsContent({ model }: { model: ModelSummary }) {
             muted={model.contextLength == null}
           />
           <Stat
+            label="Provider pin"
+            value={model.providerSlug ?? "no official endpoint"}
+            muted={model.providerSlug == null}
+          />
+          <Stat
             label="Release date"
             value={model.releasedAt ? formatReleaseDate(model.releasedAt) : "—"}
             muted={!model.releasedAt}

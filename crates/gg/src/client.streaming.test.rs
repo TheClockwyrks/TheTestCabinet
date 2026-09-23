@@ -91,6 +91,7 @@ fn build_request_body_asks_for_the_stream_and_its_usage() {
         &[Message::user("build it")],
         &[],
         None,
+        None,
         CacheTtl::Standard,
         true,
     );
@@ -115,6 +116,7 @@ fn build_request_body_mentions_nothing_about_streaming_when_buffering() {
         &[Message::user("build it")],
         &[],
         None,
+        None,
         CacheTtl::Standard,
         false,
     );
@@ -134,6 +136,7 @@ fn a_required_tool_request_streams_with_the_agent_that_asked_for_it() {
         &[Message::user("summarize")],
         &tool,
         None,
+        None,
         CacheTtl::Standard,
         true,
     );
@@ -141,6 +144,7 @@ fn a_required_tool_request_streams_with_the_agent_that_asked_for_it() {
         "openai/gpt-5.6",
         &[Message::user("summarize")],
         &tool,
+        None,
         None,
         CacheTtl::Standard,
         false,

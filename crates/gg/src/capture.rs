@@ -210,6 +210,8 @@ pub struct RecordedSeed<'a> {
     /// figure narrowed by any override and reduced by the compaction headroom, which is the
     /// number the fullness signal and the compaction trigger actually use.
     pub model_windows: BTreeMap<String, u64>,
+    /// The OpenRouter provider slug each bound model was pinned to.
+    pub model_providers: BTreeMap<String, String>,
     /// The modality state of each bound model **as it stands now**. Recorded again at the end of
     /// the run if it has moved, so the record carries the resolved state rather than the
     /// declared one.
@@ -302,6 +304,13 @@ fn session_model_error(error: &ModelError) -> GgSessionModelError {
         },
         ModelError::Parse(_) => GgSessionModelError {
             kind: GgSessionModelErrorKind::Parse,
+            message,
+            status: None,
+            attempts: None,
+            model_id: None,
+        },
+        ModelError::ProviderMismatch { .. } => GgSessionModelError {
+            kind: GgSessionModelErrorKind::ProviderMismatch,
             message,
             status: None,
             attempts: None,
@@ -568,6 +577,7 @@ impl GgRecorder {
             baseline_commit: seed.baseline_commit.map(str::to_string),
             prompt: seed.prompt.to_string(),
             model_windows: seed.model_windows,
+            model_providers: seed.model_providers,
             model_modalities: seed.model_modalities,
         });
     }

@@ -148,15 +148,24 @@ build prompt, any [autoloaded specifications](/gg/autoload-specifications/), and
 the thread so far. gg asks for a provider prompt cache on every request. Two
 things have to hold for a cached read to happen, and gg does both.
 
-The request has to reach the endpoint that holds the cache. Every client in a
-run stamps the same `session_id`, the run's session id, shared by the root agent
-and every [subagent](/gg/subagents/), so a run's turns stay on one provider
-endpoint and agents that open on the same prefix reuse each other's warmed
-cache. `session_id` is OpenRouter's sticky-routing key, and gg sends the same
-value as `prompt_cache_key` for the providers that read the OpenAI-style field.
-`prompt_cache_key` alone leaves routing on OpenRouter's fallback, which is free
-to balance byte-identical requests across endpoints and reads as a 0% cache rate
-turn after turn.
+The request has to reach the endpoint that holds the cache, and it has to stay
+on the provider the run's cost is recorded against. Every request carries
+OpenRouter's `provider` object with `only` naming the one provider slug the
+launch pinned the model to, and `allow_fallbacks` false. The pin is the model
+developer's own endpoint. A response from any other provider ends the run as a
+harness failure, `provider_mismatch`, naming the pinned provider and the one
+that served the call, because the cost recorded from that point would be on a
+different price basis.
+
+Within that provider, every client in a run stamps the same `session_id`, the
+run's session id, shared by the root agent and every
+[subagent](/gg/subagents/), so a run's turns stay on one endpoint and agents
+that open on the same prefix reuse each other's warmed cache. `session_id` is
+OpenRouter's sticky-routing key, and gg sends the same value as
+`prompt_cache_key` for the providers that read the OpenAI-style field. The key
+is a preference within the pin. With fallbacks refused, a provider's outage
+reaches gg as the error it is and is retried on the run's
+[retry schedule](/gg/execution-limits/).
 
 The request has to say what to cache. OpenAI and Gemini cache long prefixes
 implicitly. Anthropic caches only what a request marks with `cache_control`, so
