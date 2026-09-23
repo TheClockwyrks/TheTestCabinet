@@ -14,10 +14,10 @@ Every test-case version folder holds `validation-baseline/<engine>/<variant>/`,
 the media `tcab capture-baselines` synthesizes from the variant's reference
 implementation. It is the bulk of the repository.
 
-| What                                          | Size                        |
-| --------------------------------------------- | --------------------------- |
-| Baselines tracked at HEAD                     | 1.85 GiB, about 31k files   |
-| The same, compressed                          | 1.53 GiB                    |
+| What                                          | Size                     |
+| --------------------------------------------- | ------------------------ |
+| Baselines tracked at HEAD                     | 1.85 GiB, about 31k files |
+| The same, compressed                          | 1.53 GiB                 |
 | Baseline blobs across all history, compressed | 4.61 GiB of a 5.37 GiB pack |
 
 Two commands write the directory. `crates/cli/src/commands/capture_baselines.rs`
