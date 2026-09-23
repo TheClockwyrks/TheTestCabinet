@@ -8,6 +8,7 @@ ARG DOCKER_GID
 
 ARG LAZYGIT_VERSION
 ARG NODE_VERSION
+ARG PLAYWRIGHT_VERSION
 ARG NEXTEST_VERSION
 ARG RUST_VERSION
 ARG TZ
@@ -47,8 +48,7 @@ USER $USERNAME
 #                exits 1 rather than skipping when it can find neither, so without this
 #                the whole 1.9 GB layer dies three arms in. (The wasm32 target is in fact
 #                already installed by `languages/rust/targets.sh`; the script cannot SEE
-#                that without a `rustc` to ask.) The sibling CI image sets the same path
-#                for the same reason — see `containers/gg-ci/Dockerfile`'s `ENV PATH`.
+#                that without a `rustc` to ask.)
 #
 # The `rust/` scripts above still call rustup by absolute path, and should: they run in the
 # layer that installs it, where this PATH entry points at a directory that does not exist
@@ -97,6 +97,28 @@ RUN mkdir -p "$HOME/.local/bin" "/tmp/$USERNAME" && \
 	# Markdown linting for the docs.
 	npm install -g markdownlint-cli2
 
+# Chromium, which the front-end commit gate (packages/case-harness's suite), the
+# validator's browser driver and the Rust suite's served validator-project tests all
+# launch through Playwright. `npm ci` installs Playwright but downloads no browser,
+# so without these two layers a freshly built container fails the commit gate.
+#
+# The system libraries are apt's, so they need root, and Playwright resolves which
+# ones they are by running `npx`, so this sits after the Node install above rather
+# than beside the rest of the apt work at the top of this file. The build takes root
+# back for the one step; see the header of system/browser-deps.sh. The browser
+# itself lands in the container user's own cache and is downloaded as that user.
+# Each layer drops the package caches it left behind.
+COPY --chown=${USER_UID}:${USER_GID} \
+	./.devcontainer/system/browser-deps.sh \
+	./.devcontainer/tools/browsers.sh \
+	/tmp/scripts/
+USER root
+RUN bash /tmp/scripts/browser-deps.sh && \
+	rm -rf /var/lib/apt/lists/* /root/.npm
+USER $USERNAME
+RUN bash /tmp/scripts/browsers.sh && \
+	rm -rf "$HOME/.npm" /tmp/scripts
+
 # gg's eleven program-language toolchains — ~1.9 GB, and by far the largest thing in
 # this image. They are here rather than in `postCreateCommand` because they are not
 # optional and not a per-crate extra: `crates/gg/build.rs` reflects each arm's
@@ -141,8 +163,7 @@ RUN mkdir -p "$HOME/.local/bin" "/tmp/$USERNAME" && \
 # The slice is deleted in the install RUN so that nothing SHIPS a stale half-repository
 # for someone to read a pin out of by mistake. That is hygiene and not a saving: each of
 # the four COPYs below is its own layer and already carries those bytes, and a later
-# `rm -rf` can only write a whiteout over them (`containers/gg-ci/Dockerfile` says the
-# same thing about its own `rm -rf /gg-repo`). What makes that acceptable is the size —
+# `rm -rf` can only write a whiteout over them. What makes that acceptable is the size —
 # the whole slice measures ~230 kB, which is why it is worth exactly this much effort
 # and no more.
 #

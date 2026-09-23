@@ -131,6 +131,22 @@ pub(super) fn evaluate_closing_docviews(
     )
 }
 
+/// [`evaluate`] against a double the case **already built** — a seeded program library, a seeded
+/// documentation hit, a catalogue, or a standing refusal for a family no tool backs.
+///
+/// Those knobs live on the [`FakeOperationApi`] rather than on a responder, because the calls they
+/// answer dispatch no gg tool; a case that needs one cannot go through [`evaluate`]. What the
+/// double's responder records is read back off the [`CallLog`] the case built it with.
+pub(super) fn evaluate_with_api(
+    component: &[u8],
+    operations: &[crate::sandbox::operations::OperationId],
+    ending: RunEnding,
+    library: bool,
+    api: FakeOperationApi,
+) -> SandboxOutcome {
+    evaluated(component, operations, ending, library, api)
+}
+
 /// What both of the above are: one evaluation, with everything the scope carries stated.
 fn evaluate_granting(
     component: &[u8],
@@ -139,9 +155,20 @@ fn evaluate_granting(
     library: bool,
     responder: impl FnMut(&str, &serde_json::Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
-    let limits = SandboxLimits::AMPLE;
     let log = CallLog::default();
     let api = FakeOperationApi::with(&log, responder);
+    (evaluated(component, operations, ending, library, api), log)
+}
+
+/// One evaluation against `api`, with everything the scope carries stated.
+fn evaluated(
+    component: &[u8],
+    operations: &[crate::sandbox::operations::OperationId],
+    ending: RunEnding,
+    library: bool,
+    api: FakeOperationApi,
+) -> SandboxOutcome {
+    let limits = SandboxLimits::AMPLE;
     let linker = linker::<FakeOperationApi>().expect("the production linker builds");
     let compiled =
         engine::compile_bytes(component).expect("a freshly compiled Swift program is a component");
@@ -182,11 +209,11 @@ fn evaluate_granting(
     }
     let returned = keep_reported_error(returned, &store);
     let (outcome, _api) = reclaim(store, returned, None, None);
-    (outcome, log)
+    outcome
 }
 
 /// Compile and run one Swift program with no gg tool offered — the shape most cases here want.
-fn run(source: &str) -> SandboxOutcome {
+pub(super) fn run(source: &str) -> SandboxOutcome {
     evaluate(
         &prepare(source),
         &[],

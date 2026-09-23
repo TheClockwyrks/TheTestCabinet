@@ -7,7 +7,7 @@ use serde_json::json;
 use tempfile::TempDir;
 
 use super::*;
-use crate::tasks::TaskStore;
+use crate::tasks::{TaskMode, TaskStore};
 use crate::tools::ToolFailure;
 
 /// A shared store plus a throwaway workspace context.
@@ -15,6 +15,21 @@ fn fixture(max_tasks: usize) -> (Arc<Mutex<TaskStore>>, ToolContext, TempDir) {
     let dir = TempDir::new().unwrap();
     let ctx = ToolContext::new(dir.path());
     (Arc::new(Mutex::new(TaskStore::new(max_tasks))), ctx, dir)
+}
+
+/// The same triple over an [issues](TaskMode::Issues)-mode store — the shape that requires every
+/// task to carry its three structured sections.
+fn issues_fixture(max_tasks: usize) -> (Arc<Mutex<TaskStore>>, ToolContext, TempDir) {
+    let dir = TempDir::new().unwrap();
+    let ctx = ToolContext::new(dir.path());
+    (
+        Arc::new(Mutex::new(TaskStore::with_mode(
+            max_tasks,
+            TaskMode::Issues,
+        ))),
+        ctx,
+        dir,
+    )
 }
 
 #[tokio::test]
@@ -277,4 +292,328 @@ fn is_task_tool_recognizes_the_mutators() {
     }
     assert!(!is_task_tool("write_file"));
     assert!(!is_task_tool("write_memory"));
+}
+
+// ---------------------------------------------------------------------------
+// Issues mode: the three structured sections
+// ---------------------------------------------------------------------------
+
+/// The arguments an issues-mode `add_task` must carry, as a whole, well-formed call.
+fn issues_add_args() -> Value {
+    json!({
+        "id": "a",
+        "title": "A",
+        "inScope": "the parser",
+        "outOfScope": "the renderer",
+        "completionCriteria": "the suite is green"
+    })
+}
+
+#[tokio::test]
+async fn an_issues_mode_task_carries_its_three_sections() {
+    let (store, ctx, _dir) = issues_fixture(10);
+    let outcome = AddTaskTool::new(Arc::clone(&store))
+        .invoke(issues_add_args(), &ctx)
+        .await;
+    assert!(outcome.ok, "{}", outcome.output);
+
+    let store = store.lock().unwrap();
+    let task = &store.tasks()[0];
+    assert_eq!(task.in_scope(), Some("the parser"));
+    assert_eq!(task.out_of_scope(), Some("the renderer"));
+    assert_eq!(task.completion_criteria(), Some("the suite is green"));
+}
+
+#[tokio::test]
+async fn an_issues_mode_task_missing_a_section_is_an_argument_error() {
+    for field in ["inScope", "outOfScope", "completionCriteria"] {
+        let (store, ctx, _dir) = issues_fixture(10);
+        let mut args = issues_add_args();
+        args.as_object_mut().unwrap().remove(field);
+        let outcome = AddTaskTool::new(Arc::clone(&store))
+            .invoke(args, &ctx)
+            .await;
+        assert_eq!(
+            outcome.failure,
+            Some(ToolFailure::InvalidArgument),
+            "{field}: {}",
+            outcome.output
+        );
+        assert!(
+            outcome.output.contains(field),
+            "the refusal names the absent section: {}",
+            outcome.output
+        );
+        assert_eq!(store.lock().unwrap().count(), 0, "nothing was added");
+    }
+}
+
+#[tokio::test]
+async fn an_issues_mode_section_that_is_not_a_string_is_an_argument_error() {
+    let (store, ctx, _dir) = issues_fixture(10);
+    let mut args = issues_add_args();
+    args.as_object_mut()
+        .unwrap()
+        .insert("inScope".to_string(), json!(7));
+    let outcome = AddTaskTool::new(Arc::clone(&store))
+        .invoke(args, &ctx)
+        .await;
+    assert_eq!(outcome.failure, Some(ToolFailure::InvalidArgument));
+    assert!(
+        outcome.output.contains("inScope") && outcome.output.contains("string"),
+        "{}",
+        outcome.output
+    );
+    // `read_structured` refused before the store was reached.
+    assert_eq!(store.lock().unwrap().count(), 0);
+}
+
+#[tokio::test]
+async fn the_add_task_schema_declares_its_sections_only_in_issues_mode() {
+    let sections = ["inScope", "outOfScope", "completionCriteria"];
+
+    let (simple, _ctx, _dir) = fixture(10);
+    let simple = AddTaskTool::new(simple).definition();
+    let properties = simple.parameters["properties"].as_object().unwrap();
+    let required = simple.parameters["required"].as_array().unwrap();
+    for section in sections {
+        assert!(
+            !properties.contains_key(section),
+            "simple mode declares no `{section}` property"
+        );
+        assert!(
+            !required.iter().any(|name| name == section),
+            "simple mode does not require `{section}`"
+        );
+    }
+
+    let (issues, _ctx, _dir) = issues_fixture(10);
+    let issues = AddTaskTool::new(issues).definition();
+    let properties = issues.parameters["properties"].as_object().unwrap();
+    let required = issues.parameters["required"].as_array().unwrap();
+    for section in sections {
+        assert_eq!(
+            properties[section]["type"], "string",
+            "issues mode declares `{section}` as a string"
+        );
+        assert!(
+            required.iter().any(|name| name == section),
+            "issues mode requires `{section}`"
+        );
+    }
+}
+
+#[tokio::test]
+async fn an_issues_mode_update_may_revise_one_section() {
+    let (store, ctx, _dir) = issues_fixture(10);
+    AddTaskTool::new(Arc::clone(&store))
+        .invoke(issues_add_args(), &ctx)
+        .await;
+
+    let outcome = UpdateTaskTool::new(Arc::clone(&store))
+        .invoke(
+            json!({ "id": "a", "completionCriteria": "the gates are green" }),
+            &ctx,
+        )
+        .await;
+    assert!(outcome.ok, "{}", outcome.output);
+
+    let store = store.lock().unwrap();
+    let task = &store.tasks()[0];
+    assert_eq!(task.completion_criteria(), Some("the gates are green"));
+    assert_eq!(task.in_scope(), Some("the parser"));
+    assert_eq!(task.out_of_scope(), Some("the renderer"));
+}
+
+#[tokio::test]
+async fn an_issues_mode_update_with_an_ill_typed_section_is_an_argument_error() {
+    let (store, ctx, _dir) = issues_fixture(10);
+    AddTaskTool::new(Arc::clone(&store))
+        .invoke(issues_add_args(), &ctx)
+        .await;
+
+    let outcome = UpdateTaskTool::new(Arc::clone(&store))
+        .invoke(json!({ "id": "a", "outOfScope": [] }), &ctx)
+        .await;
+    assert_eq!(outcome.failure, Some(ToolFailure::InvalidArgument));
+    assert!(outcome.output.contains("outOfScope"), "{}", outcome.output);
+    assert_eq!(
+        store.lock().unwrap().tasks()[0].out_of_scope(),
+        Some("the renderer"),
+        "the refused revision applied nothing"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Unknown ids and the per-tool argument diagnostics
+// ---------------------------------------------------------------------------
+
+/// A store holding one task `a`, for the calls that need a subject that does exist.
+async fn one_task(max_tasks: usize) -> (Arc<Mutex<TaskStore>>, ToolContext, TempDir) {
+    let (store, ctx, dir) = fixture(max_tasks);
+    AddTaskTool::new(Arc::clone(&store))
+        .invoke(json!({ "id": "a", "title": "A" }), &ctx)
+        .await;
+    (store, ctx, dir)
+}
+
+#[tokio::test]
+async fn an_update_of_an_unknown_task_is_not_found() {
+    let (store, ctx, _dir) = one_task(10).await;
+    let outcome = UpdateTaskTool::new(store)
+        .invoke(json!({ "id": "ghost", "title": "T" }), &ctx)
+        .await;
+    assert_eq!(outcome.failure, Some(ToolFailure::NotFound));
+    assert!(outcome.output.contains("ghost"), "{}", outcome.output);
+}
+
+#[tokio::test]
+async fn an_update_missing_its_id_is_an_argument_error() {
+    let (store, ctx, _dir) = one_task(10).await;
+    let outcome = UpdateTaskTool::new(store)
+        .invoke(json!({ "title": "T" }), &ctx)
+        .await;
+    assert_eq!(outcome.failure, Some(ToolFailure::InvalidArgument));
+    assert!(outcome.output.contains("id"), "{}", outcome.output);
+}
+
+#[tokio::test]
+async fn an_update_with_an_ill_typed_title_is_an_argument_error() {
+    let (store, ctx, _dir) = one_task(10).await;
+
+    let title = UpdateTaskTool::new(Arc::clone(&store))
+        .invoke(json!({ "id": "a", "title": 7 }), &ctx)
+        .await;
+    assert_eq!(title.failure, Some(ToolFailure::InvalidArgument));
+    assert!(
+        title.output.contains("title") && title.output.contains("string"),
+        "{}",
+        title.output
+    );
+
+    let description = UpdateTaskTool::new(Arc::clone(&store))
+        .invoke(json!({ "id": "a", "description": 7 }), &ctx)
+        .await;
+    assert_eq!(description.failure, Some(ToolFailure::InvalidArgument));
+    assert!(
+        description.output.contains("description") && description.output.contains("string"),
+        "{}",
+        description.output
+    );
+
+    assert_eq!(
+        store.lock().unwrap().tasks()[0].title(),
+        "A",
+        "neither refused revision applied"
+    );
+}
+
+#[tokio::test]
+async fn blocking_an_unknown_task_is_not_found() {
+    let (store, ctx, _dir) = one_task(10).await;
+    let outcome = SetBlockedByTool::new(store)
+        .invoke(json!({ "id": "ghost", "blockedBy": ["a"] }), &ctx)
+        .await;
+    assert_eq!(outcome.failure, Some(ToolFailure::NotFound));
+    assert!(outcome.output.contains("ghost"), "{}", outcome.output);
+}
+
+#[tokio::test]
+async fn a_set_blocked_by_missing_its_id_is_an_argument_error() {
+    let (store, ctx, _dir) = one_task(10).await;
+
+    let absent = SetBlockedByTool::new(Arc::clone(&store))
+        .invoke(json!({ "blockedBy": [] }), &ctx)
+        .await;
+    assert_eq!(absent.failure, Some(ToolFailure::InvalidArgument));
+    assert!(absent.output.contains("id"), "{}", absent.output);
+
+    let ill_typed = SetBlockedByTool::new(store)
+        .invoke(json!({ "id": 1, "blockedBy": [] }), &ctx)
+        .await;
+    assert_eq!(ill_typed.failure, Some(ToolFailure::InvalidArgument));
+    assert!(ill_typed.output.contains("string"), "{}", ill_typed.output);
+}
+
+#[tokio::test]
+async fn completing_an_unknown_task_is_not_found() {
+    let (store, ctx, _dir) = one_task(10).await;
+    let outcome = CompleteTaskTool::new(store)
+        .invoke(json!({ "id": "ghost" }), &ctx)
+        .await;
+    assert_eq!(outcome.failure, Some(ToolFailure::NotFound));
+    assert!(outcome.output.contains("ghost"), "{}", outcome.output);
+}
+
+#[tokio::test]
+async fn a_complete_missing_its_id_is_an_argument_error() {
+    let (store, ctx, _dir) = one_task(10).await;
+
+    let absent = CompleteTaskTool::new(Arc::clone(&store))
+        .invoke(json!({}), &ctx)
+        .await;
+    assert_eq!(absent.failure, Some(ToolFailure::InvalidArgument));
+    assert!(absent.output.contains("id"), "{}", absent.output);
+
+    let ill_typed = CompleteTaskTool::new(store)
+        .invoke(json!({ "id": 1 }), &ctx)
+        .await;
+    assert_eq!(ill_typed.failure, Some(ToolFailure::InvalidArgument));
+    assert!(ill_typed.output.contains("string"), "{}", ill_typed.output);
+}
+
+#[tokio::test]
+async fn removing_an_unknown_task_is_not_found() {
+    let (store, ctx, _dir) = one_task(10).await;
+    let outcome = RemoveTaskTool::new(Arc::clone(&store))
+        .invoke(json!({ "id": "ghost" }), &ctx)
+        .await;
+    assert_eq!(outcome.failure, Some(ToolFailure::NotFound));
+    assert_eq!(store.lock().unwrap().count(), 1, "nothing was removed");
+}
+
+#[tokio::test]
+async fn a_remove_missing_its_id_is_an_argument_error() {
+    let (store, ctx, _dir) = one_task(10).await;
+
+    let absent = RemoveTaskTool::new(Arc::clone(&store))
+        .invoke(json!({}), &ctx)
+        .await;
+    assert_eq!(absent.failure, Some(ToolFailure::InvalidArgument));
+    assert!(absent.output.contains("id"), "{}", absent.output);
+
+    let ill_typed = RemoveTaskTool::new(Arc::clone(&store))
+        .invoke(json!({ "id": null }), &ctx)
+        .await;
+    assert_eq!(ill_typed.failure, Some(ToolFailure::InvalidArgument));
+    assert!(ill_typed.output.contains("id"), "{}", ill_typed.output);
+
+    assert_eq!(store.lock().unwrap().count(), 1);
+}
+
+/// `remove_task` strips the removed id from every other task's blockers, so removing a blocker
+/// leaves the tasks it blocked unblocked rather than pointing at a task that is gone.
+#[tokio::test]
+async fn removing_a_blocker_unblocks_the_tasks_it_blocked() {
+    let (store, ctx, _dir) = fixture(10);
+    let add = AddTaskTool::new(Arc::clone(&store));
+    add.invoke(json!({ "id": "a", "title": "A" }), &ctx).await;
+    add.invoke(json!({ "id": "b", "title": "B", "blockedBy": ["a"] }), &ctx)
+        .await;
+    assert_eq!(
+        store.lock().unwrap().tasks()[1].blocked_by(),
+        &["a".to_string()]
+    );
+
+    let removed = RemoveTaskTool::new(Arc::clone(&store))
+        .invoke(json!({ "id": "a" }), &ctx)
+        .await;
+    assert!(removed.ok, "{}", removed.output);
+
+    let store = store.lock().unwrap();
+    assert_eq!(store.count(), 1);
+    assert!(
+        store.tasks()[0].blocked_by().is_empty(),
+        "the dependent is left unblocked"
+    );
 }

@@ -14,6 +14,7 @@
 //! second provider is an addition in [`crate::client`], not a change here.
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
 use crate::limits::TurnErrorType;
@@ -287,6 +288,33 @@ pub struct ModelResponse {
     /// a required field would be a silent trap for the first thing that does.
     #[serde(default)]
     pub loop_aborts: LoopAborts,
+    /// The provider's **usage object verbatim** — exactly the JSON the gateway returned in the
+    /// response's `usage` block — beside the [mapped counts](Self::usage).
+    ///
+    /// A usage figure gg publishes is a claim about what the provider said, and the claim is
+    /// checkable only while the record holds what the provider said. The reasoning/output split in
+    /// particular is [bounded](Self::usage_reconciled) by the reply's own measured size, so a row
+    /// can carry gg's figure rather than the provider's; without the original beside it, a
+    /// dashboard total and a published per-turn figure could disagree with nothing on the record
+    /// to say which was right.
+    ///
+    /// `None` when the call reported no usage at all. `#[serde(default)]` on the same terms as
+    /// [`loop_aborts`](Self::loop_aborts) — nothing stores a `ModelResponse` today.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage_wire: Option<Value>,
+    /// Whether the recorded output/reasoning split is **gg's bound** rather than the provider's.
+    ///
+    /// A reply is never recorded with fewer output tokens than its own estimated size: a provider
+    /// whose `reasoning_tokens` leaves the reply no room under its own `completion_tokens` is
+    /// recorded with the reply's size as output and the remainder as reasoning, and this flag set.
+    /// The billed total is the provider's either way — both halves are priced as output — but every
+    /// per-turn and per-run output figure a study publishes is read off this split, which is what
+    /// the flag marks as gg's rather than the provider's.
+    ///
+    /// `false` — the provider's own split — for every call whose details were consistent with the
+    /// reply.
+    #[serde(default)]
+    pub usage_reconciled: bool,
 }
 
 /// What one model call's abandoned attempts amounted to: the count, and the size of the generation
@@ -295,11 +323,11 @@ pub struct ModelResponse {
 /// Three figures rather than the bare count, because the count alone answers "how often" and never
 /// "how much". A discarded attempt is charged to the run's provider bill exactly like any other
 /// output — the tokens were generated, and abandoning the stream mid-flight does not refund them —
-/// yet it is deliberately absent from the run's [cost](test_cabinet_core::metrics::Cost) and token
-/// totals, because those are read off the provider's usage payload and a stream nobody finished
-/// carries none. So the size is reported in the units gg can actually vouch for, measured by the
-/// [guard](crate::loopguard::LoopGuard) as the reply streamed: **words and characters of generated
-/// output**, never a token count and never a price.
+/// while its price never reaches the stream at all, because a stream nobody finished carries no
+/// usage payload. The run reads each price back at session end off the gateway's generation
+/// ledger (see [`AbandonedReply`]); this tally stays in the units gg can actually vouch for,
+/// measured by the [guard](crate::loopguard::LoopGuard) as the reply streamed: **words and
+/// characters of generated output**, never a token count and never a price.
 ///
 /// The three move together, through [`record`](Self::record), which is the only place gg adds to
 /// one: a size that could be added without an attempt is a size no reader could say what it was a
@@ -346,11 +374,49 @@ impl LoopAborts {
     }
 }
 
+/// One reply [loop detection](crate::loopguard) abandoned mid-stream: the record that carries the
+/// discarded reply's **size**, and the **generation id** its price is read back under at session
+/// end.
+///
+/// The size is what the [guard](crate::loopguard::LoopGuard) counted itself as the reply streamed,
+/// in the only units an abandoned stream can be vouched for. The generation id is the `id` the
+/// stream's first chunk named — read by the time the reply is abandoned, and the handle the
+/// session's pricing pass looks the price up under on OpenRouter's generation ledger
+/// (`GET /api/v1/generation?id=…`), since a stream gg dropped never delivers its usage. Both ride
+/// on one record because they describe one discarded reply and the lookup answers for exactly this
+/// one.
+///
+/// The slot fields say which `(profile, model)` generated it, so a price read back lands on the
+/// [right slot](test_cabinet_core::gg::GgSlotCost) — a run spans several models and an abandoned
+/// reply's price belongs to the model that generated it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AbandonedReply {
+    /// The gateway's generation id for the reply, from the `id` on the stream's first chunk. `None`
+    /// when no chunk named one, which leaves the reply unpriceable: there is no ledger entry to
+    /// look up.
+    pub generation_id: Option<String>,
+    /// Completed words of generated output the reply had produced when its stream was dropped. A
+    /// reply's final partial word is never counted.
+    pub words: u64,
+    /// Characters of the same output, counted as characters rather than bytes.
+    pub chars: u64,
+    /// The [agent profile](test_cabinet_core::gg::GgAgentConfig::id) (slot) whose request generated
+    /// it — what a price read back is booked to.
+    pub profile_id: String,
+    /// The model that generated it, within that slot.
+    pub model_id: String,
+}
+
 /// A failure running a model turn.
 ///
 /// The retry loop itself lives inside [`OpenRouterClient`](crate::client::OpenRouterClient), so a
 /// `ModelError` reaching the [turn loop](crate::agent) means every attempt within one turn already
-/// failed and the session ends on it. Two decisions are then made from the variant, and they are the
+/// failed. Three shapes the loop **answers** rather than ends on: a [`Timeout`](Self::Timeout), a
+/// [`Parse`](Self::Parse) and a [`ResponseLoop`](Self::ResponseLoop) are recorded as error turns —
+/// they spend the run's [error ceilings](crate::limits::RunLimits), nothing enters the context
+/// between attempts, and the loop asks the same question again — so a stalled endpoint, a reply gg
+/// could not read and a model that looped every attempt each cost the model a turn rather than the
+/// run. The rest end the agent, and two decisions are then made from the variant, and they are the
 /// only two:
 ///
 /// * **how the run is scored** — [`is_auth_failure`](Self::is_auth_failure) says the run's
@@ -405,10 +471,26 @@ pub enum ModelError {
         /// A (truncated) copy of the provider's error body.
         message: String,
     },
-    /// A `2xx` response could not be parsed into a [`ModelResponse`]. Fatal — retrying
-    /// an already-successful-but-malformed response would not help.
-    #[error("could not parse model response: {0}")]
-    Parse(String),
+    /// A `2xx` response could not be read into a [`ModelResponse`] — an unparseable envelope, an
+    /// error object in a success status, or tool call arguments that are not JSON (the shape a
+    /// provider cuts off mid-arguments produces).
+    ///
+    /// Answered as a [`model_parse`](TurnErrorType::ModelParse) error turn: nothing entered the
+    /// context, the turn spends the run's error ceilings exactly as a failed call does, and the
+    /// loop asks the same question again — so a reply gg could not read costs the model a turn
+    /// rather than the run. What the reply *reported* before it stopped making sense rides the
+    /// `spend` field so the turn's price still reaches the run's total cost; it is never work's.
+    /// Boxed so this arm does not make the whole error expensive to move — the spend is the
+    /// exceptional part of the variant, not the rule.
+    #[error("could not parse model response: {message}")]
+    Parse {
+        /// What could not be read, and where.
+        message: String,
+        /// What the request billed for before the reply stopped making sense, as
+        /// [`parse_billed`](Self::parse_billed) recorded it; `None` when the stream had reported
+        /// nothing yet.
+        spend: Option<Box<ReplySpend>>,
+    },
     /// Every attempt the client made was abandoned mid-stream by
     /// [loop detection](crate::loopguard): the model answered with a repetition rather than a
     /// reply, and kept doing so until the retry policy ran out.
@@ -416,7 +498,13 @@ pub enum ModelError {
     /// The same shape of failure as [`RetryExhausted`](Self::RetryExhausted) — the client's own
     /// retry budget ran out — and, like it, neither a host fault nor a misconfiguration: the
     /// request was well-formed and the provider answered it, the answer was just worthless. A later
-    /// turn, on a shorter context, routinely succeeds.
+    /// turn, on a shorter context, routinely succeeds — which is why the loop answers this as a
+    /// [`model_response_loop`](TurnErrorType::ModelResponseLoop) error turn rather than an ending:
+    /// the discarded replies never entered the context, the turn spends the error ceilings, and
+    /// the same request goes out again, so a model that loops once loses a turn rather than the
+    /// run. The replies' spend cannot follow them here — a stream gg dropped never delivered its
+    /// usage — so the error carries their [size](LoopAborts) and nothing it cannot measure; their
+    /// price is read back at session end, like every abandoned reply's.
     ///
     /// It exists as its own variant rather than folding into `RetryExhausted` because the two say
     /// completely different things to an operator reading the run's log. `RetryExhausted` means
@@ -436,23 +524,39 @@ pub enum ModelError {
         /// [`attempts`](LoopAborts::attempts) is the [retry policy's](crate::client::RetryPolicy)
         /// full attempt count, since a loop that left any attempt unused would have returned that
         /// attempt's answer instead, and the sizes beside it are what those attempts generated —
-        /// the whole of what this turn spent, since no reply was ever read to the end and so the
-        /// provider reported no usage for any of them.
+        /// the whole of what this turn generated, since no reply was ever read to the end and so
+        /// no usage arrived with any of them. Their price is read back at session end, like every
+        /// abandoned reply's.
         discarded: LoopAborts,
         /// What tripped the detector on the final attempt, in the detector's own words (a
         /// [`LoopTrip`](crate::loopguard::LoopTrip)'s `Display`), so the failure and the `warn`
         /// line for each discarded attempt describe the same event identically.
         detail: String,
     },
+    /// The gateway served the call from a provider other than the one this run pinned.
+    ///
+    /// A harness failure, not a model failure: the cost recorded from this reply on would be on
+    /// a different price basis than the rest of the run, and scoring that against the model would
+    /// blame it for a route gg asked not to be taken. The turn loop ends the session on it.
+    #[error("provider mismatch: pinned to `{pinned}`, served by `{served}`")]
+    ProviderMismatch {
+        /// The OpenRouter provider the launch pinned this model to.
+        pinned: String,
+        /// The provider the response named as having served it.
+        served: String,
+    },
     /// The call ran into the run's
-    /// [**per-call ceiling**](crate::limits::RunLimits::model_call_timeout) without producing a
-    /// reply — a stalled provider, not a refusal.
+    /// [**per-attempt ceiling**](crate::limits::RunLimits::model_call_timeout) without producing a
+    /// reply — a provider whose silence ran past the whole attempt's bound, not a refusal.
     ///
     /// The one `ModelError` the turn loop does **not** end the session on. The client surfaces a
     /// timeout immediately rather than spending its own retry budget on it — every internal retry
-    /// of a stall costs the full ceiling again — and the loop records the turn as a
-    /// [`ModelTimeout`](TurnErrorType::ModelTimeout) error and asks again, so the retry that
-    /// bounds a stalled endpoint is the turn-level one the error ceilings govern.
+    /// of a ceiling-long silence costs the full ceiling again — and the loop records the turn as a
+    /// [`ModelTimeout`](TurnErrorType::ModelTimeout) error and asks again, so the retry that bounds
+    /// a silent endpoint is the turn-level one the error ceilings govern. A reply that merely goes
+    /// quiet mid-stream never reaches this error: it is bounded sooner by the
+    /// [stream-idle bound](crate::limits::RunLimits::model_stream_idle), cancelled and retried on
+    /// the client's own schedule as a transport failure.
     #[error(
         "model call timed out after {}s{}",
         .after.as_secs(),
@@ -462,13 +566,79 @@ pub enum ModelError {
         /// The ceiling that was hit.
         after: std::time::Duration,
         /// The upstream provider that was serving the stalled call, when the stream got far
-        /// enough to name one — what makes a provider-shaped stall blacklistable. `None` on the
-        /// buffering transport, whose reply arrives all at once or not at all.
+        /// enough to name one — what makes a provider-shaped stall blacklistable. `None` when no
+        /// chunk arrived that could have named one, which is most silences.
         provider: Option<String>,
     },
 }
 
+/// What one model request billed for, read even when the reply it carried was unusable: the
+/// provider's usage and cost as reported, and who served it. The price of a reply
+/// [gg could not read](ModelError::Parse) or [rejected whole](crate::limits::TurnErrorType::ModelLengthCapped)
+/// is still the run's spend, so it rides out on the request's
+/// [`Usage`](test_cabinet_core::gg::GgTelemetryKind::Usage) delta marked
+/// [`total`](test_cabinet_core::gg::GgUsageFigure::Total) — into the run's
+/// [total cost](test_cabinet_core::gg::GgSessionSummary::cost) and never its
+/// [work cost](test_cabinet_core::gg::GgSessionSummary::work_cost), since no program and no tool
+/// call came of it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReplySpend {
+    /// The provider's normalized token usage for the request.
+    pub tokens: TokenCounts,
+    /// The request's cost, when the provider reported one.
+    pub cost: Option<Cost>,
+    /// The upstream provider that named itself on the request.
+    pub provider: Option<String>,
+    /// The provider's usage object verbatim, as [`ModelResponse::usage_wire`] carries it.
+    pub wire: Option<serde_json::Value>,
+    /// Whether the output/reasoning split is gg's bound rather than the provider's, as
+    /// [`ModelResponse::usage_reconciled`] says it.
+    pub reconciled: bool,
+}
+
+impl ReplySpend {
+    /// The spend of a reply the loop holds in hand — a rejected length-capped one — where usage,
+    /// cost and provider all come straight off the response.
+    pub fn of(response: &ModelResponse) -> Self {
+        Self {
+            tokens: response.usage,
+            cost: response.cost,
+            provider: response.provider.clone(),
+            wire: response.usage_wire.clone(),
+            reconciled: response.usage_reconciled,
+        }
+    }
+
+    /// Whether anything was reported at all — the question [`ModelError::parse_billed`] asks
+    /// before it boxes, so a failure that struck before any usage did carries `None` rather than
+    /// an all-empty spend nothing can tell from absence.
+    pub fn reported(&self) -> bool {
+        self.tokens != TokenCounts::default() || self.cost.is_some() || self.provider.is_some()
+    }
+}
+
 impl ModelError {
+    /// A [`Parse`](Self::Parse) that carries no spend: the shape a test builds when the price of
+    /// the unreadable reply is beside its point. gg itself always builds the error through
+    /// [`parse_billed`](Self::parse_billed), which records whatever the stream had reported.
+    #[cfg(test)]
+    pub fn parse(message: impl Into<String>) -> Self {
+        ModelError::Parse {
+            message: message.into(),
+            spend: None,
+        }
+    }
+
+    /// A [`Parse`](Self::Parse) carrying what the request billed for before the reply stopped
+    /// making sense, or no spend at all when nothing was reported.
+    pub fn parse_billed(message: impl Into<String>, spend: ReplySpend) -> Self {
+        let spend = spend.reported().then(|| Box::new(spend));
+        ModelError::Parse {
+            message: message.into(),
+            spend,
+        }
+    }
+
     /// Whether this error means the run's **credential** was refused: a
     /// [`MissingApiKey`](Self::MissingApiKey), or a [`Fatal`](Self::Fatal) `401`/`403`
     /// from the provider.
@@ -506,7 +676,8 @@ impl ModelError {
             ModelError::RetryExhausted { .. } => TurnErrorType::ModelRetryExhausted,
             ModelError::ResponseLoop { .. } => TurnErrorType::ModelResponseLoop,
             ModelError::VisionUnsupported { .. } => TurnErrorType::ModelVisionUnsupported,
-            ModelError::Parse(_) => TurnErrorType::ModelParse,
+            ModelError::Parse { .. } => TurnErrorType::ModelParse,
+            ModelError::ProviderMismatch { .. } => TurnErrorType::ModelProviderMismatch,
             ModelError::Timeout { .. } => TurnErrorType::ModelTimeout,
         }
     }
@@ -572,6 +743,31 @@ pub trait ModelClient: Send + Sync {
     /// announce, which is the default; a decorator forwards it to the client it wraps.
     fn announce_retries_on(&self, emitter: &Emitter) {
         let _ = emitter;
+    }
+
+    /// The replies [loop detection](crate::loopguard) abandoned on this run's streams — one
+    /// [record](AbandonedReply) per abandoned reply, kept so the session can price them at its end.
+    ///
+    /// The run's model clients share one record (the
+    /// [factory](crate::client::DefaultClientFactory) hands every client it builds the same one),
+    /// so this answers for the whole run rather than for one agent. A client built with no shared
+    /// record keeps one of its own, and one that abandoned nothing — a scripted mock, a detector
+    /// left disarmed — answers empty.
+    fn abandoned_replies(&self) -> Vec<AbandonedReply> {
+        Vec::new()
+    }
+
+    /// Look one abandoned reply's generation up on the gateway's generation ledger and answer what
+    /// it was billed, or `None` when the ledger never answered.
+    ///
+    /// The session's pricing pass calls this once at session end — never on the turn, so a looping
+    /// model does not add the lookup's delay to its own retry. A gateway settles a cancelled
+    /// stream's ledger entry only after a delay, so an implementation retries the lookup's `404`
+    /// on a short schedule bounded by a few tens of seconds in total before giving up. A client
+    /// that can look nothing up (a scripted mock) answers `None`, which leaves the reply unpriced.
+    async fn price_generation(&self, generation_id: &str) -> Option<ReplySpend> {
+        let _ = generation_id;
+        None
     }
 }
 

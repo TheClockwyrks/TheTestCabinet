@@ -38,6 +38,13 @@ screenshots as it goes. The repository is the editing source and the store is
 the distribution source a runner resolves at run time. Ingest caches a version
 rather than transforming it.
 
+A version's baseline validation media lives in the checkout's `cold-storage`
+submodule rather than in its folder. Ingest copies it into the stored version's
+`validation-baseline/`, where the API serves it and the snapshot publishes it
+(see [where baselines live](/components/core/validation/#where-baselines-live)).
+The deployed ingest sidecar fetches the submodule shallowly on every refresh of
+its checkout.
+
 Ingest writes each version as a resolved record whose shape the backend build
 defines, so a store is readable only by a build that agrees on that shape. The
 store records a record-format version stamped by the ingest that wrote it, and

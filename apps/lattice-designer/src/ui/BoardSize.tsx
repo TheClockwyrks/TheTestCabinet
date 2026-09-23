@@ -22,7 +22,7 @@
 // route) resyncs the fields to the board, so they never go on claiming a pending
 // size that has already happened or been overtaken.
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { GRID_PRESETS, type Design } from "../model";
 import {
   boardDimBounds,
@@ -46,16 +46,15 @@ export function BoardSize({ grid, onApply }: BoardSizeProps) {
   const [draft, setDraft] = useState<BoardDraft>(() => boardDraftOf(grid));
 
   // Resync whenever the board actually changes, whatever changed it — an Apply, a
-  // preset, or a scenario being opened. Typing does not move the board, so this
-  // never interrupts an edit in progress.
-  useEffect(() => {
-    setDraft((held) => {
-      const fresh = boardDraftOf({ width, height });
-      return held.width === fresh.width && held.height === fresh.height
-        ? held
-        : fresh;
-    });
-  }, [width, height]);
+  // preset, or a scenario being opened. Done DURING render rather than in an effect:
+  // an effect lands a tick late, and anything typed in that gap is silently thrown
+  // away when it finally runs.
+  const [seen, setSeen] = useState<BoardDraft>(() => boardDraftOf(grid));
+  const fresh = boardDraftOf({ width, height });
+  if (seen.width !== fresh.width || seen.height !== fresh.height) {
+    setSeen(fresh);
+    setDraft(fresh);
+  }
 
   const state = readBoardDraft(draft, grid);
   const submit = () => {

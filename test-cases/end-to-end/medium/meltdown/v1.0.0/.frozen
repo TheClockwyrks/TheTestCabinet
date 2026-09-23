@@ -10,6 +10,6 @@
 # (scripts/ci/frozen-check.sh) both recompute it and fail on any difference.
 #
 # Deliberately unfreezing means deleting this file in its own reviewable commit.
-digest = "9a29f8f2028cb1b6de07502c71e80d0e85aa422679501d11d9029a303f2f3521"
-frozen_at = "2026-08-14"
-reason = "runs recorded against this version"
+digest = "7613699bb1b1415acfc38381420fd08ebe6387e54e02d76d0cd2cf282fa7d8fa"
+frozen_at = "2026-09-23"
+reason = "runs recorded against this version; digest re-baselined for the move of its baselines into cold-storage"

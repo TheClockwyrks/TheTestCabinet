@@ -166,6 +166,10 @@ pub struct ProviderCallStatsOut {
     pub working: u64,
     /// The errored turns, keyed by turn error type wire id.
     pub errors: BTreeMap<String, u64>,
+    /// Streams that stalled on this provider.
+    pub stalls: u64,
+    /// Unexpected cache misses this provider's replies produced.
+    pub cache_misses: u64,
 }
 
 /// One provider's probe evidence.
@@ -318,6 +322,8 @@ pub fn fold_provider_stats(facts: &[Arc<GgRunFacts>]) -> (u64, u64, Vec<Provider
             for (kind, count) in &slice.errors {
                 *stats.errors.entry(kind.clone()).or_default() += count;
             }
+            stats.stalls += slice.stalls;
+            stats.cache_misses += slice.cache_misses;
         }
     }
 
@@ -340,6 +346,8 @@ pub fn fold_provider_stats(facts: &[Arc<GgRunFacts>]) -> (u64, u64, Vec<Provider
         for (kind, count) in &acc.stats.errors {
             *t.errors.entry(kind.clone()).or_default() += count;
         }
+        t.stalls += acc.stats.stalls;
+        t.cache_misses += acc.stats.cache_misses;
         rows.push(ProviderModelStatsOut {
             model_id: model,
             stats: ProviderCallStatsOut {
@@ -365,6 +373,58 @@ pub fn fold_provider_stats(facts: &[Arc<GgRunFacts>]) -> (u64, u64, Vec<Provider
         .collect();
     out.sort_by_key(provider_order);
     (facts.len() as u64, runs_with, out)
+}
+
+/// The turn errors that count as a provider's fault: the turns that ended on its failed model
+/// calls. A spent retry schedule, a call that timed out and a reply that did not parse are the
+/// provider's; an auth failure, a rejection, a loop or a length cap are not.
+const PROVIDER_FAULT_ERRORS: [GgTurnErrorType; 3] = [
+    GgTurnErrorType::ModelRetryExhausted,
+    GgTurnErrorType::ModelTimeout,
+    GgTurnErrorType::ModelParse,
+];
+
+/// Each provider's recorded fault rate for one model, across every recorded gg run of it, keyed by
+/// the [provider key](test_cabinet_core::pricing::provider_key) the candidate order reads.
+///
+/// `model_ids` is every id the model is recorded under (its OpenRouter id and, for a curated
+/// model, its aliases). A slice counts toward the model when its own model id is one of them, or
+/// when it names no model and the run's sole model is one of them — the attribution
+/// [`fold_provider_stats`] makes.
+///
+/// A fault is a stall, an unexpected cache miss, or a turn that ended on a spent retry schedule, a
+/// timed-out call or an unparseable reply; the rate is the faults over the calls. A
+/// provider no counted slice gave a call is absent, which the candidate order reads as zero.
+pub fn provider_fault_rates(
+    facts: &[Arc<GgRunFacts>],
+    model_ids: &[&str],
+) -> BTreeMap<String, f64> {
+    let mut cells: BTreeMap<String, (u64, u64)> = BTreeMap::new();
+    for run in facts {
+        for slice in &run.provider_stats {
+            let Some(provider) = slice.provider.as_deref() else {
+                continue;
+            };
+            let model = slice.model_id.as_deref().or_else(|| run.sole_model());
+            if !model.is_some_and(|model| model_ids.contains(&model)) {
+                continue;
+            }
+            let (faults, calls) = cells
+                .entry(test_cabinet_core::pricing::provider_key(provider))
+                .or_default();
+            let errors: u64 = PROVIDER_FAULT_ERRORS
+                .iter()
+                .filter_map(|kind| slice.errors.get(kind.wire_id()))
+                .sum();
+            *faults += errors + slice.stalls + slice.cache_misses;
+            *calls += slice.calls;
+        }
+    }
+    cells
+        .into_iter()
+        .filter(|(_, (_, calls))| *calls > 0)
+        .map(|(provider, (faults, calls))| (provider, faults as f64 / calls as f64))
+        .collect()
 }
 
 /// A provider entry's sort key: named providers by calls (largest first) then

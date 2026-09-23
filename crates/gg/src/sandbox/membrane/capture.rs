@@ -36,15 +36,15 @@ use crate::tools::{ApiData, ToolOutcome};
 /// next turn, so the capture is bounded here rather than trusted to the program.
 ///
 /// What the cap keeps is the **tail**: see [`feedback::Host::log`] for why.
-pub(super) const MAX_LOG_LINES: usize = 200;
+pub(crate) const MAX_LOG_LINES: usize = 200;
 
 /// The most bytes of log output kept in total — the same 16 KiB ceiling `shell` truncates its own
 /// output at, so the two sources of program output cost the context window the same.
-pub(super) const MAX_LOG_BYTES: usize = 16_384;
+pub(crate) const MAX_LOG_BYTES: usize = 16_384;
 
 /// The most bytes one line is kept from, so a single `console.log(hugeString)` cannot spend the
 /// whole budget by itself.
-pub(super) const MAX_LOG_LINE_BYTES: usize = 2_048;
+pub(crate) const MAX_LOG_LINE_BYTES: usize = 2_048;
 
 /// The most calls one program's roster keeps.
 ///
@@ -250,6 +250,14 @@ impl<A: OperationApi> feedback::Host for MembraneState<A> {
     ///
     /// One line always fits: [`MAX_LOG_LINE_BYTES`] is well under [`MAX_LOG_BYTES`], so the
     /// eviction loop cannot spin on a line too large to keep.
+    ///
+    /// Driven from a real program in every arm's own spelling — `console.log`, `Console.log`,
+    /// `print`, `puts`, `Console.WriteLine`, `Gg.log`, `gg.log`, `gg::log` — by the
+    /// `<arm>.feedback.test.rs` file beside each arm: `typescript.feedback.test.rs`,
+    /// `javascript.feedback.test.rs`, `python.feedback.test.rs`, `ruby.feedback.test.rs`,
+    /// `purescript.feedback.test.rs`, `java.feedback.test.rs`, `kotlin.feedback.test.rs`,
+    /// `csharp.feedback.test.rs`, `rust.feedback.test.rs`, `cpp.feedback.test.rs` and
+    /// `swift.feedback.test.rs`, each in `crate::sandbox::language`.
     fn log(&mut self, line: String) {
         let line = truncate(line, MAX_LOG_LINE_BYTES);
         while !self.logs.is_empty()
@@ -270,12 +278,22 @@ impl<A: OperationApi> feedback::Host for MembraneState<A> {
     /// point of that rule is that there is nothing here to serialise, size or bound. What is
     /// recorded is the *fact*, so the turn's feedback can tell the model where its value went —
     /// which is the one thing a silent discard could not do.
+    ///
+    /// What a program's end actually carries is driven from a real program on every arm by
+    /// `<arm>.feedback.test.rs`'s `a_program_that_ends_with_a_value_hands_gg_nothing`, in
+    /// `crate::sandbox::language` — on most arms the language refuses the statement before anything
+    /// runs, which is the same fact stated one stage earlier.
     fn note_return(&mut self) {
         self.returned_value = true;
     }
 
     /// The shim's note that a tool call happened after the program ended. First one wins: the shim
     /// sends it at most once per run, and a second would say nothing new.
+    ///
+    /// Each arm's own idiom for later work is driven from a real program by
+    /// `<arm>.feedback.test.rs`'s `work_a_program_defers_runs_inside_the_turn`, in
+    /// `crate::sandbox::language`: the work runs inside the turn on every arm, so what those cases
+    /// assert is that this note stays `None`.
     fn report_deferred(&mut self, note: String) {
         self.deferred_note.get_or_insert(note);
     }
@@ -287,6 +305,16 @@ impl<A: OperationApi> feedback::Host for MembraneState<A> {
     /// fix that one and meet the next next turn. The list is bounded by how many modules the host
     /// handed over in the first place, which is how many the agent has read — so there is no cap to
     /// apply here that the read path has not already applied.
+    ///
+    /// Driven from a real program by `<arm>.feedback.test.rs`'s
+    /// `a_module_that_fails_while_loading_is_named_and_the_program_runs_on` on the arms whose guest
+    /// evaluates a module (`python`, `ruby`), and by
+    /// `a_module_that_cannot_be_built_is_refused_at_its_own_line` on the arms that link one into the
+    /// program instead (`purescript`, `java`, `kotlin`, `csharp`, `rust`, `cpp`, `swift`), all in
+    /// `crate::sandbox::language`. The ECMAScript arms (`typescript`, `javascript`) carry the first
+    /// name too, and assert the one exception the API surface states: an arm whose language
+    /// evaluates an imported module as part of the importing program's own evaluation reports the
+    /// module's located failure as the program's instead.
     fn report_module_error(&mut self, name: String, message: String) {
         self.module_errors
             .push((name, truncate(message, MAX_LOG_LINE_BYTES)));

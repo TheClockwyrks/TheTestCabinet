@@ -1,0 +1,12 @@
+# One namespace per environment. It is named `tcab-prod` here, and the including
+# kustomization's `namespace:` directive renames it to the environment's namespace.
+#
+# Tearing an environment down is `kubectl delete namespace tcab-<env>`.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tcab-prod
+  labels:
+    app.kubernetes.io/part-of: test-cabinet
+    # Tag the environment; mirror this into TCAB_ENV on each workload.
+    tcab.dev/env: prod

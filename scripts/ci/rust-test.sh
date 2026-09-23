@@ -5,13 +5,13 @@
 # share.
 #
 # Scoped with `--workspace`, so the workspace is covered end to end. This is the
-# critical Rust validation that both Azure DevOps and GitHub run.
+# critical Rust validation the Azure pipeline runs.
 #
 # Tests run with cargo-nextest (the repo's runner; see .config/nextest.toml —
 # no retries, flaky-result=fail, fail-fast=false, and a per-test hard timeout;
 # a test that fails and then passes fails the run). nextest does not
-# execute doctests, so those run separately with `cargo test --doc`. Both CI
-# systems install nextest first (scripts/ci/install-nextest.sh).
+# execute doctests, so those run separately with `cargo test --doc`. The pipeline
+# installs nextest first (scripts/ci/install-nextest.sh).
 set -euo pipefail
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
@@ -30,7 +30,7 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 # (containers/gg-toolchains/Dockerfile).
 #
 # One script rather than the eight calls that used to be here, so this agent, a developer's
-# devcontainer, the release workflow and the driver image's gg build stage all provision from one
+# devcontainer, the pipeline's gg jobs and the driver image's gg build stage all provision from one
 # pinned list: each arm's pin lives in its own packages/gg-sandbox-*/<lang>-version.sh, and the
 # installers are idempotent, so an agent that already has them pays nothing.
 #

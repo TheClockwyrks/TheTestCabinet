@@ -21,9 +21,9 @@ offers — is reflected out of that arm's own SDK by that arm's own documentatio
 tool (`tsc`, griffe, YARD, `purs`, javadoc, the Kotlin front end, rustdoc,
 `swiftc -emit-symbol-graph`, `clang++ -ast-dump=json`, Roslyn), and
 `crates/gg/build.rs` does that reflection **as a step of building the crate**
-rather than reading a committed copy. So a container missing them cannot build
-the workspace, cannot lint it, and fails the pre-commit hooks that run both. A
-prerequisite for working in the repository at all belongs in the image.
+rather than reading a committed copy. So a container missing them can neither
+build the workspace nor lint it. A prerequisite for working in the repository at
+all belongs in the image.
 
 The mechanism is the same one Node and Rust use — a thin
 [`languages/gg/install.sh`](languages/gg/install.sh) copied in and run by
@@ -333,6 +333,33 @@ This works out of the box on a standard setup. Three notes cover the rest:
   hand. If `make local-up` still reports it cannot reach the daemon, confirm the
   host daemon is running and that `docker ps` works **from a fresh terminal**
   inside the container.
+
+## Browsers
+
+Chromium is baked into the image, because the front-end commit gate
+(`packages/case-harness`'s suite), the validator's browser driver and the Rust
+suite's served validator-project tests all launch it through Playwright, and
+`npm ci` installs Playwright without downloading any browser. Two scripts
+install it, at the `PLAYWRIGHT_VERSION` `docker-compose.yml` pins:
+
+- `system/browser-deps.sh` installs the system libraries Chromium links
+  against, as root. The package list is Playwright's own, resolved for the
+  distribution the image is built on, which is why these packages are absent
+  from `system/apt.sh`.
+- `tools/browsers.sh` downloads Chromium itself, as the container user, into
+  `~/.cache/ms-playwright`, then starts it headless and renders a page, so a
+  browser that cannot run in this image fails the build rather than the commit
+  gate.
+
+Keep that pin equal to the `playwright` in `packages/case-harness` and
+`packages/browser-driver`: Playwright resolves a browser build per client
+version. In a container built before the pin moved, running both by hand
+installs the new build without waiting for a rebuild:
+
+```sh
+sudo bash .devcontainer/system/browser-deps.sh
+bash .devcontainer/tools/browsers.sh
+```
 
 ## Building inside the container
 

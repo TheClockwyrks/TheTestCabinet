@@ -101,6 +101,10 @@ pub use context::{
     EvictFileViewTool, SEARCH_ARCHIVE_TOOL, SearchArchiveTool, parse_archive_ranges,
     parse_compact_request, parse_evict_path,
 };
+// The archive-range ceiling, reached only by the tests that drive a program past it: the tool
+// itself is the only production reader, so a plain re-export would be an unused import in the lib.
+#[cfg(test)]
+pub use context::MAX_ARCHIVE_RANGES;
 // Every payload shape, including the ones the LOOP produces rather than a tool (a context reclaim
 // and the four delegation results). They are declared beside the outcome they ride on, because that
 // is where their shape has to stay in step with everything else a caller reads, and they are read

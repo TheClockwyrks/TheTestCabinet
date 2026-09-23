@@ -34,7 +34,7 @@ spec:
       serviceAccountName: tcab-dispatcher # RBAC to create+watch driver Jobs
       containers:
         - name: dispatcher
-          image: REPLACE_REGISTRY/tcab-dispatcher:latest # CI publishes ghcr.io/<owner>/tcab-dispatcher; pin a :<git-sha> tag
+          image: REPLACE_REGISTRY/tcab-dispatcher:latest # the Azure pipeline publishes testcabinet.azurecr.io/tcab-dispatcher:<git-sha>
           resources:
             # MEMORY REQUEST == LIMIT, as on every ALWAYS-ON service. The scheduler
             # packs a node by requests and ignores limits, so a gap between them is
@@ -199,16 +199,12 @@ spec:
             # (test-cabinet-base/-base-wasm/-sprite/-sprite-sheet/-adversarial/-performance).
             # Forwarded into every driver Job, where core's resolve_run_image reads
             # them; unset there falls back to the compiled defaults
-            # (ghcr.io/theclockwyrks / latest). PIN the run images the same way the
-            # overlays pin the service image: tags — set TCAB_CONTAINER_TAG to the
-            # :<git-sha> build-containers.yml published (an immutable multi-arch
-            # manifest list) and roll it in lockstep with the service images, testing
-            # on staging before prod. Left at latest here so a fresh deployment works
-            # out of the box; an overlay patches it to a sha.
+            # (testcabinet.azurecr.io / latest). The Azure pipeline pushes each run
+            # image as testcabinet.azurecr.io/<image>:<git-sha> and never :latest, so
+            # every deployment pins TCAB_CONTAINER_TAG to the commit its service
+            # images come from: scripts/ci/deploy.sh sets it for the azure-* overlays.
             - name: TCAB_CONTAINER_TAG
               value: "latest"
-            # - name: TCAB_CONTAINER_REGISTRY
-            #   value: "ghcr.io/theclockwyrks"
             # The artifact service each driver uploads its produced run tree to before
             # reporting terminal status. Forwarded into every driver Job. Unset skips
             # the upload (a single-box cluster with no artifact service).

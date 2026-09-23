@@ -34,7 +34,10 @@ fn claim() -> ClaimedJob {
             retry_count: None,
             gg_capability_set: None,
             gg_model_windows: Default::default(),
+            gg_model_providers: Default::default(),
             gg_model_modalities: Default::default(),
+            gg_model_prices: Default::default(),
+            model_prices: None,
         },
     }
 }
@@ -44,7 +47,7 @@ fn config() -> Config {
     Config {
         backend_url: "http://backend:8787".to_string(),
         service_token: "service-tok".to_string(),
-        driver_image: "ghcr.io/example/tcab-driver:latest".to_string(),
+        driver_image: "registry.example.com/example/tcab-driver:latest".to_string(),
         namespace: "tcab".to_string(),
         sandbox_namespace: "tcab".to_string(),
         driver_service_account: Some("tcab-driver".to_string()),
@@ -72,10 +75,10 @@ fn config() -> Config {
             ("TCAB_K8S_RUN_MEMORY_LIMIT".to_string(), "4Gi".to_string()),
             (
                 "TCAB_K8S_IMAGE_PULL_SECRETS".to_string(),
-                "ghcr-pull".to_string(),
+                "registry-pull".to_string(),
             ),
         ],
-        publisher_image: Some("ghcr.io/example/tcab-publisher:latest".to_string()),
+        publisher_image: Some("registry.example.com/example/tcab-publisher:latest".to_string()),
         publisher_secrets: vec!["tcab-publisher-secrets".to_string()],
         passthrough_publisher_env: vec![
             (
@@ -119,7 +122,7 @@ fn sets_the_driver_image() {
     let job = build_driver_job(&claim(), &config()).unwrap();
     assert_eq!(
         container(&job).image.as_deref(),
-        Some("ghcr.io/example/tcab-driver:latest"),
+        Some("registry.example.com/example/tcab-driver:latest"),
     );
 }
 
@@ -183,7 +186,7 @@ fn passes_the_k8s_resource_requests_through() {
     );
     assert_eq!(
         map["TCAB_K8S_IMAGE_PULL_SECRETS"].value.as_deref(),
-        Some("ghcr-pull"),
+        Some("registry-pull"),
     );
 }
 
@@ -456,7 +459,7 @@ fn publish_job_sets_the_publisher_image_and_container_name() {
     assert_eq!(c.name, "publisher");
     assert_eq!(
         c.image.as_deref(),
-        Some("ghcr.io/example/tcab-publisher:latest"),
+        Some("registry.example.com/example/tcab-publisher:latest"),
     );
 }
 
@@ -642,7 +645,7 @@ fn publish_container_carries_its_own_resources() {
     // independently of the driver, so this asserts the publisher's own values reach
     // the Job rather than the driver's leaking into it.
     let mut config = config();
-    config.publisher_image = Some("ghcr.io/example/tcab-publisher:latest".to_string());
+    config.publisher_image = Some("registry.example.com/example/tcab-publisher:latest".to_string());
     config.publisher_resources = DriverResources {
         cpu_request: Some("100m".to_string()),
         memory_request: Some("1Gi".to_string()),

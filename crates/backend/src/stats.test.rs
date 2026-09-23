@@ -60,6 +60,8 @@ fn slice(
             .iter()
             .map(|(kind, count)| (kind.to_string(), *count))
             .collect(),
+        stalls: 0,
+        cache_misses: 0,
     }
 }
 
@@ -513,4 +515,154 @@ fn week_monday_is_identity_on_mondays_and_floors_the_rest_of_the_week() {
         time::macros::date!(2025 - 12 - 29)
     );
     assert_eq!(format_week_start(monday), "2026-08-24");
+}
+
+// ---------------------------------------------------------------------------
+// Provider fault rates
+// ---------------------------------------------------------------------------
+
+/// A slice carrying stalls and unexpected cache misses beside its errors.
+fn faulty_slice(
+    provider: &str,
+    model: Option<&str>,
+    calls: u64,
+    errors: &[(&str, u64)],
+    stalls: u64,
+    cache_misses: u64,
+) -> GgProviderStat {
+    GgProviderStat {
+        stalls,
+        cache_misses,
+        ..slice(Some(provider), model, calls, calls, calls, errors)
+    }
+}
+
+#[test]
+fn stalls_and_cache_misses_fold_into_the_provider_rows() {
+    let facts = vec![sliced_run(
+        "r1",
+        "alpha/one",
+        vec![faulty_slice("acme", Some("alpha/one"), 10, &[], 2, 3)],
+    )];
+    let (_, _, providers) = fold_provider_stats(&facts);
+    assert_eq!(providers[0].totals.stalls, 2);
+    assert_eq!(providers[0].totals.cache_misses, 3);
+    assert_eq!(providers[0].models[0].stats.stalls, 2);
+    assert_eq!(providers[0].models[0].stats.cache_misses, 3);
+}
+
+/// The rate is stalls, misses and the turns that ended on a failed model call, over the calls,
+/// summed across every run of the model and keyed by the provider key.
+#[test]
+fn the_fault_rate_counts_stalls_misses_and_failed_model_calls_over_calls() {
+    let facts = vec![
+        sliced_run(
+            "r1",
+            "alpha/one",
+            vec![faulty_slice(
+                "Z.AI",
+                Some("alpha/one"),
+                10,
+                &[("model_retry_exhausted", 1), ("model_timeout", 1)],
+                1,
+                1,
+            )],
+        ),
+        sliced_run(
+            "r2",
+            "alpha/one",
+            vec![faulty_slice(
+                "z-ai",
+                Some("alpha/one"),
+                10,
+                &[("model_parse", 1)],
+                0,
+                0,
+            )],
+        ),
+    ];
+    let rates = provider_fault_rates(&facts, &["alpha/one"]);
+    assert_eq!(rates.len(), 1, "both spellings are one provider: {rates:?}");
+    assert!((rates["zai"] - 0.25).abs() < 1e-9, "{rates:?}");
+}
+
+/// Only the provider's own failures count: a program fault, a rejection or a loop is the model's
+/// or the run's, not the provider's.
+#[test]
+fn errors_that_are_not_the_providers_do_not_count() {
+    let facts = vec![sliced_run(
+        "r1",
+        "alpha/one",
+        vec![faulty_slice(
+            "acme",
+            Some("alpha/one"),
+            4,
+            &[
+                ("transpile_compile", 3),
+                ("model_rejected", 1),
+                ("model_response_loop", 1),
+                ("model_auth", 1),
+            ],
+            0,
+            0,
+        )],
+    )];
+    assert_eq!(
+        provider_fault_rates(&facts, &["alpha/one"]).get("acme"),
+        Some(&0.0)
+    );
+}
+
+/// A slice of another model does not count; a slice that names no model counts toward the run's
+/// sole model, and only there.
+#[test]
+fn the_fault_rate_is_the_models_own() {
+    let multi = Arc::new(GgRunFacts {
+        models: ["alpha/one".to_string(), "beta/two".to_string()]
+            .into_iter()
+            .collect(),
+        ..(*sliced_run(
+            "r3",
+            "alpha/one",
+            vec![faulty_slice("gamma", None, 2, &[], 2, 0)],
+        ))
+        .clone()
+    });
+    let facts = vec![
+        sliced_run(
+            "r1",
+            "alpha/one",
+            vec![
+                faulty_slice("acme", None, 4, &[], 1, 0),
+                faulty_slice("acme", Some("beta/two"), 4, &[], 4, 0),
+            ],
+        ),
+        multi,
+    ];
+    let rates = provider_fault_rates(&facts, &["alpha/one"]);
+    assert_eq!(rates.get("acme"), Some(&0.25));
+    assert!(
+        !rates.contains_key("gamma"),
+        "a modelless slice of a multi-model run is not attributed: {rates:?}"
+    );
+    // Any id the model is recorded under counts.
+    assert_eq!(
+        provider_fault_rates(&facts, &["other/id", "alpha/one"]).get("acme"),
+        Some(&0.25)
+    );
+}
+
+/// A provider with no calls has no rate, which the candidate order reads as zero, and a slice
+/// with no provider is never keyed.
+#[test]
+fn a_provider_without_calls_is_absent() {
+    let facts = vec![sliced_run(
+        "r1",
+        "alpha/one",
+        vec![
+            faulty_slice("idle", Some("alpha/one"), 0, &[("model_timeout", 1)], 0, 0),
+            slice(None, Some("alpha/one"), 3, 3, 0, &[("model_timeout", 3)]),
+        ],
+    )];
+    assert!(provider_fault_rates(&facts, &["alpha/one"]).is_empty());
 }

@@ -69,6 +69,13 @@ mod compile;
 #[path = "typescript.substrate.test.rs"]
 mod substrate;
 
+/// **The [`feedback`](crate::sandbox::membrane::capture) channel, driven from TypeScript programs** —
+/// what the capture keeps of what a program logs, what a program's end hands gg, and what a code
+/// module that fails tells the model.
+#[cfg(test)]
+#[path = "typescript.feedback.test.rs"]
+mod feedback;
+
 /// This arm's catalogue, reflected out of the same SDK declarations the guest is built from by the
 /// guest package's `signatures.sh`.
 ///

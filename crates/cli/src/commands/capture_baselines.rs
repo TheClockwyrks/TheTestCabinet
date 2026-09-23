@@ -6,9 +6,10 @@
 //! build to capture the **actual** media; the **baseline** half of the reviewer's
 //! side-by-side is the same script driven against the case's authored
 //! **reference implementation**. Because the reference implementation is a fixed
-//! property of the case version, its media is captured once, committed under
-//! `<version>/validation-baseline/<variant>/`, and served case-scoped — a run
-//! never re-drives it.
+//! property of the case version, its media is captured once, committed to the
+//! cold-storage submodule under the version's mirrored
+//! `validation-baseline/<engine>/<variant>/`, and served case-scoped — a run never
+//! re-drives it.
 //!
 //! This command is that capture step, and nothing else:
 //!
@@ -17,7 +18,8 @@
 //! 2. For each targeted variant that declares a `reference_impl`, run the case's
 //!    `[build]` *install* then *build* commands from the reference-impl directory,
 //!    then drive every scripted review item against that build and write each
-//!    declared output under `<version>/validation-baseline/<engine>/<variant>/`.
+//!    declared output under the version's baseline directory in cold storage
+//!    ([`ColdStorage::validation_baseline_dir`]), in `<engine>/<variant>/`.
 //!
 //! How each output is produced follows the case: a case shipping a validator
 //! project for the engine has its baseline recorded by running THOSE suites against
@@ -38,8 +40,8 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use test_cabinet_core::{
-    SystemCommandRunner, TestCaseCatalog, TestCaseVersion, VALIDATION_BASELINE_DIR, Variant,
-    capture_baseline_media, find_build_output,
+    COLD_STORAGE_DIR_ENV, ColdStorage, SystemCommandRunner, TestCaseCatalog, TestCaseVersion,
+    Variant, capture_baseline_media, find_build_output,
 };
 
 use crate::cli::CaptureBaselinesArgs;
@@ -48,6 +50,7 @@ use crate::cli::CaptureBaselinesArgs;
 /// implementations and (re)write their committed baseline validation media.
 pub async fn execute(args: CaptureBaselinesArgs) -> Result<()> {
     let catalog = TestCaseCatalog::new(catalog_root());
+    let cold = ColdStorage::for_catalog(catalog.root());
     let version = resolve_version(&catalog, &args.slug, args.version.as_deref())?;
     let test_case = catalog
         .resolve(&args.slug, &version)
@@ -74,12 +77,13 @@ pub async fn execute(args: CaptureBaselinesArgs) -> Result<()> {
             println!("    reference: {}", target.dir.display());
             println!(
                 "    baseline:  {}",
-                baseline_dir(&test_case, target.engine, &target.variant.slug).display()
+                baseline_dir(&cold, &test_case, target.engine, &target.variant.slug)?.display()
             );
         }
         return Ok(());
     }
 
+    ensure_cold_storage(&cold)?;
     let build = test_case
         .build
         .as_ref()
@@ -95,7 +99,7 @@ pub async fn execute(args: CaptureBaselinesArgs) -> Result<()> {
     for target in &targets {
         let result = async {
             let out = build_reference(&runner, *target, &build.install, &build.build).await?;
-            capture_variant_baseline(&test_case, *target, &out)
+            capture_variant_baseline(&cold, &test_case, *target, &out)
         }
         .await;
         if let Err(err) = result {
@@ -140,17 +144,18 @@ fn sweep_summary(failed: &[String], total: usize) -> Option<String> {
 /// deploying a build whose baseline media it could not produce, rather than serving a
 /// reviewer a side-by-side with half of it missing.
 pub(super) fn capture_variant_baseline(
+    cold: &ColdStorage,
     test_case: &TestCaseVersion,
     target: Target<'_>,
     out: &Path,
 ) -> Result<()> {
-    let capture = generate_baseline(test_case, target, out)?;
+    let capture = generate_baseline(cold, test_case, target, out)?;
     if capture.written > 0 {
         println!(
             "  {} — wrote {} baseline media file(s) to {}",
             target.label(),
             capture.written,
-            baseline_dir(test_case, target.engine, &target.variant.slug).display()
+            baseline_dir(cold, test_case, target.engine, &target.variant.slug)?.display()
         );
     } else {
         println!("  {} — nothing to capture", target.label());
@@ -259,21 +264,60 @@ pub(super) async fn build_reference(
     })
 }
 
-/// The version-folder path one reference build's committed baseline validation media
-/// lives under: `<version>/validation-baseline/<engine>/<variant>/`. Case-scoped and
-/// committed (the same static-media precedent a `[[reference]] media = …` follows),
-/// served case-scoped by the backend.
+/// The cold-storage path one reference build's committed baseline validation media
+/// lives under: the version's [`ColdStorage::validation_baseline_dir`] joined with
+/// `<engine>/<variant>/`. Ingest copies it into the stored version, and the backend
+/// serves it case-scoped from there.
 ///
 /// Keyed by engine as well as variant because a variant has one reference
 /// implementation per engine and the two are different builds: their captures are
 /// not interchangeable, and a single directory would have each sweep overwrite the
 /// last.
-pub(super) fn baseline_dir(test_case: &TestCaseVersion, engine: &str, variant: &str) -> PathBuf {
-    test_case
-        .root
-        .join(VALIDATION_BASELINE_DIR)
-        .join(engine)
-        .join(variant)
+pub(super) fn baseline_dir(
+    cold: &ColdStorage,
+    test_case: &TestCaseVersion,
+    engine: &str,
+    variant: &str,
+) -> Result<PathBuf> {
+    let dir = cold
+        .validation_baseline_dir(&test_case.root)
+        .with_context(|| {
+            format!(
+                "{} is not inside the checkout that holds cold storage at {}",
+                test_case.root.display(),
+                cold.root().display()
+            )
+        })?;
+    Ok(dir.join(engine).join(variant))
+}
+
+/// Refuse to capture into a cold-storage root that is not there to receive it.
+///
+/// The default root is the `cold-storage` submodule, and a checkout that never
+/// initialized it still has the empty directory git leaves for it. Media written
+/// there lands in no repository and is lost on the next submodule update, so the
+/// default root must be a checked-out repository. A root named by
+/// `TCAB_COLD_STORAGE_DIR` needs only to exist.
+pub(super) fn ensure_cold_storage(cold: &ColdStorage) -> Result<()> {
+    let root = cold.root();
+    let overridden = std::env::var_os(COLD_STORAGE_DIR_ENV).is_some_and(|v| !v.is_empty());
+    if !root.is_dir() {
+        bail!(
+            "cold storage {} does not exist; check out the submodule with \
+             `git submodule update --init --depth 1 cold-storage`, or point \
+             {COLD_STORAGE_DIR_ENV} at a directory",
+            root.display()
+        );
+    }
+    if !overridden && !root.join(".git").exists() {
+        bail!(
+            "the cold-storage submodule at {} is not checked out; run \
+             `git submodule update --init --depth 1 cold-storage`, or point \
+             {COLD_STORAGE_DIR_ENV} at a directory",
+            root.display()
+        );
+    }
+    Ok(())
 }
 
 /// Synthesize this target's committed baseline validation media from its built
@@ -292,12 +336,13 @@ pub(super) fn baseline_dir(test_case: &TestCaseVersion, engine: &str, variant: &
 /// the ones behind it: the whole capture is attempted, each fault is printed as it
 /// happens, and the caller fails the target once with all of them named.
 fn generate_baseline(
+    cold: &ColdStorage,
     test_case: &TestCaseVersion,
     target: Target<'_>,
     out: &Path,
 ) -> Result<BaselineCapture> {
     let variant = target.variant;
-    let baseline_dir = baseline_dir(test_case, target.engine, &variant.slug);
+    let baseline_dir = baseline_dir(cold, test_case, target.engine, &variant.slug)?;
     // Start clean so a renamed or removed output never lingers as a stale committed
     // file (the directory is regenerated wholesale, matching the reference build).
     if baseline_dir.exists() {

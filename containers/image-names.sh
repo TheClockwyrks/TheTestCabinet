@@ -7,9 +7,9 @@
 # Consumed by:
 #   - containers/build.sh — the set it builds (ALL_NAMES) + the `containers/<name>/…`
 #     it builds each from;
-#   - .github/workflows/build-containers.yml (the `manifest` job) — the set it fuses
-#     from the per-arch `:latest-<arch>` tags into the multi-arch `:latest`/`:<sha>`
-#     manifest lists.
+#   - azure-pipelines.yml (the run-image manifest job) — the set it hands
+#     scripts/ci/manifest.sh to fuse from the per-arch `:<sha>-<arch>` tags into the
+#     multi-arch `:<sha>` manifest lists.
 #
 # Keeping both consumers driven by this one list prevents the drift where an image
 # is built + pushed per-arch but never fused, so its `:<sha>` tag 404s at pull time.

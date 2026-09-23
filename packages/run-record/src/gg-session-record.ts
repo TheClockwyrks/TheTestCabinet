@@ -12,6 +12,7 @@ import type {
   GgCapabilitySet,
   GgContextSource,
   GgLimitBreach,
+  GgProviderCandidate,
 } from "./gg";
 
 /**
@@ -79,6 +80,12 @@ export type GgSessionSeed = {
    * different turn than the run did.
    */
   modelWindows?: { [key in string]: number };
+  /**
+   * The ordered candidate list each bound model may run on. Recorded because a
+   * run's cost is on those providers' price bases, and a reader that guessed the
+   * list would price the run against a different one.
+   */
+  modelProviders?: { [key in string]: Array<GgProviderCandidate> };
   /**
    * The **final, resolved** modality state of each bound slot.
    *
@@ -368,6 +375,7 @@ export type GgSessionModelErrorKind =
   | "retry_exhausted"
   | "vision_unsupported"
   | "parse"
+  | "provider_mismatch"
   | "response_loop"
   | "timeout";
 

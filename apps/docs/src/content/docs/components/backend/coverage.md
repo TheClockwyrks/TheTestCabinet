@@ -103,6 +103,10 @@ catalog can resolve no context window for. The matrix reports the reason on the
 cell, and a top-up skips that cell and says so, leaving the rest of the plan
 being fed.
 
+A top-up likewise skips a harness member whose model carries no
+[list price](/components/core/metrics/#cost), and a gg member binding such a
+model, reporting the reason.
+
 ## The matrix
 
 `GET /coverage-plans/{id}/coverage` resolves the plan's group pointers, crosses

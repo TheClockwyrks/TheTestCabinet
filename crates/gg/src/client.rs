@@ -8,9 +8,9 @@
 //!   endpoint. It reads `OPENROUTER_API_KEY` from the environment, sends the
 //!   recommended identity headers, and maps the run's [`Message`]s and
 //!   [`ToolDefinition`]s to the OpenAI wire shape and the response back to a
-//!   [`ModelResponse`]. Request building, response parsing, status classification,
+//!   [`ModelResponse`]. Request building, streamed-reply assembly, status classification,
 //!   and backoff timing are factored into **pure functions** ([`build_request_body`],
-//!   [`parse_response`], [`classify_status`], [`backoff_delay`]) so they are unit
+//!   [`StreamAccumulator`], [`classify_status`], [`backoff_delay`]) so they are unit
 //!   tested against recorded JSON with **no network**.
 //! - [`MockClient`] — a scripted, offline client that replays a fixed list of
 //!   [`ModelResponse`]s one per [`complete`](ModelClient::complete) call, ignoring its
@@ -57,24 +57,26 @@
 //! test that constructs the invocation itself (supplying the windows a launch would
 //! have), which is exactly the intended blast radius.
 
-use std::collections::BTreeMap;
-use std::sync::Mutex;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use futures_util::StreamExt;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use test_cabinet_core::gg::{
-    GgLoopDetection, GgPromptCacheTtl, GgSlotBinding, GgTelemetryKind, ROOT_PROFILE_ID,
+    GgLoopDetection, GgPromptCacheTtl, GgProviderFault, GgReasoning, GgSlotBinding,
+    GgTelemetryKind, ROOT_PROFILE_ID,
 };
 use test_cabinet_core::gg_session_record::{GgClientRole, GgSessionAgentOrigin};
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
+use crate::context::{BpeTokenEstimator, TokenEstimator};
 use crate::loopguard::{LoopGuard, LoopGuardConfig, LoopVerdict, resolve_loop_guard};
 use crate::model::{
-    FinishReason, LoopAborts, Message, ModelClient, ModelError, ModelResponse, Role, ToolCall,
-    ToolDefinition,
+    AbandonedReply, FinishReason, LoopAborts, Message, ModelClient, ModelError, ModelResponse,
+    ReplySpend, Role, ToolCall, ToolDefinition,
 };
 use crate::telemetry::Emitter;
 
@@ -103,25 +105,43 @@ const ERROR_BODY_CAP: usize = 2000;
 /// The **per-model-call ceiling** a run takes when its
 /// [limits](test_cabinet_core::gg::GgRunLimits) write no `modelCallTimeoutSecs`: fifteen minutes.
 ///
-/// Without a ceiling, a stalled provider stream blocks the turn forever — a run was observed hung
-/// twenty minutes inside a single call, and nothing in gg could ever have interrupted it. How the
-/// ceiling is applied differs by [transport](OpenRouterClient), because the two fail differently:
+/// The ceiling caps one **attempt's whole duration**, from sending the request to the last chunk
+/// of its reply. The backoff between attempts sits outside it, so the run's retry schedule is
+/// waited out in full whatever the ceiling.
 ///
-/// - The **buffering** transport gets its reply all at once or not at all, so the ceiling is a
-///   **total-duration** cap on each attempt: the configured duration without a complete reply is
-///   a stall. The backoff between attempts sits outside it, so the run's retry schedule is
-///   waited out in full whatever the ceiling.
-/// - The **streaming** transport delivers the reply incrementally, and a stream that is still
-///   producing bytes is not stalled however long it runs — a legitimately long program can stream
-///   for longer than any total cap worth having. Its ceiling is therefore an **idle** cap: the
-///   configured duration waiting for the response head, or between chunks, is a stall; steady
-///   progress never is.
+/// It is the outer bound. A stream that goes without a delta from the model is cut sooner by the
+/// run's [stream-idle bound](DEFAULT_MODEL_STREAM_IDLE) and retried on the client's own schedule;
+/// the ceiling is what cuts a reply whose deltas keep arriving for longer than it, and every
+/// attempt when an operator sets the idle bound above it (for a provider that sends nothing until
+/// its reply is complete).
 ///
-/// A timed-out call surfaces as [`ModelError::Timeout`] **immediately**, without spending the
-/// client's own retry budget — each internal retry of a stall would cost the full ceiling again —
-/// and the turn loop records it as an error turn and asks again, so the bounded retry is the
-/// turn-level one the error ceilings govern. It must therefore never end the session by itself.
+/// A call that hits the ceiling surfaces as [`ModelError::Timeout`] **immediately**, without
+/// spending the client's own retry budget — each internal retry of a ceiling-long stall would
+/// cost the full ceiling again — and the turn loop records it as an error turn and asks again, so
+/// the bounded retry is the turn-level one the error ceilings govern. It must therefore never end
+/// the session by itself.
 pub const DEFAULT_MODEL_CALL_TIMEOUT: Duration = Duration::from_secs(900);
+
+/// The **stream-idle bound** a run takes when its
+/// [limits](test_cabinet_core::gg::GgRunLimits) write no `modelStreamIdleSecs`: **sixty
+/// seconds**.
+///
+/// This is the bound that answers a provider which stops answering mid-reply. Every reply is read
+/// as a [stream](OpenRouterClient), so a model's silence and its thinking are distinguishable
+/// within seconds: a model that reasons at length produces reasoning deltas for the whole of that
+/// time when the provider streams them, while a provider that has stopped sends nothing, or sends
+/// only the keep-alive comments OpenRouter uses to hold a connection open. The bound is therefore
+/// measured **since the last chunk carrying a delta** — content, reasoning or tool-call arguments —
+/// or since the request was sent when none has arrived yet, and keep-alive comments and blank lines
+/// leave the clock running.
+///
+/// A stream whose clock expires is **cancelled and retried on the client's own
+/// [schedule](RetryPolicy)**, exactly as a transport error is, so a stall costs the run the idle
+/// bound and one backoff wait rather than the whole
+/// [call ceiling](DEFAULT_MODEL_CALL_TIMEOUT) and an error turn. Sixty seconds is comfortably
+/// above the longest gap between deltas any streaming provider inserts in a healthy reply, and
+/// comfortably below the fifteen-minute ceiling a silent provider would otherwise consume.
+pub const DEFAULT_MODEL_STREAM_IDLE: Duration = Duration::from_secs(60);
 
 /// The most [`cache_control` breakpoints](cache_breakpoints) one request may carry.
 ///
@@ -352,6 +372,13 @@ pub fn backoff_delay(attempt: u32, policy: &RetryPolicy) -> Duration {
         .min(policy.max_delay)
 }
 
+#[path = "client.providers.rs"]
+mod providers;
+use providers::CacheTrace;
+pub use providers::{
+    DEFAULT_PROVIDER_CACHE_MISS_LIMIT, InForce, Move, ProviderRoster, RequestShape, stamp_candidate,
+};
+
 /// How an HTTP status should be treated by the retry loop.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StatusClass {
@@ -410,33 +437,54 @@ pub fn retry_wait(attempt: u32, policy: &RetryPolicy, retry_after: Option<Durati
 /// A [`ModelClient`] over OpenRouter's OpenAI-compatible chat-completions endpoint.
 ///
 /// The [`reqwest::Client`] and `base_url` are injected via [`new`](Self::new) so tests
-/// can construct one without touching the network; the request/response mapping is in
-/// the pure [`build_request_body`]/[`parse_response`] functions.
+/// can construct one without touching the network; the request building and the streamed-reply
+/// assembly are in the pure [`build_request_body`]/[`StreamAccumulator`] functions.
 ///
-/// # Two transports
+/// # One transport, and it streams
 ///
-/// A client either **buffers** a reply or **streams** it, and which one it uses is decided once,
-/// at construction, by whether the agent it serves armed [loop detection](crate::loopguard):
+/// Every reply this client reads is a [server-sent event](StreamAccumulator) stream. That is not a
+/// preference for one wire shape over another; it is what makes two bounds possible that a
+/// buffering read cannot express:
 ///
-/// - [`loop_guard`](Self::loop_guard) is `None` — the default, and what every stored configuration
-///   asks for — and the client posts the request and reads the whole body with `resp.text()`, then
-///   [parses](parse_response) it. This is gg's original transport, unchanged: same request bytes,
-///   same parse, same errors.
-/// - [`loop_guard`](Self::loop_guard) is `Some` and the client asks for
-///   [server-sent events](StreamAccumulator), assembling the reply chunk by chunk and showing each
-///   text delta to a [`LoopGuard`] as it arrives, so a reply that has degenerated into a repetition
-///   can be abandoned while the model is still writing it rather than paid for in full.
+/// - the run's [stream-idle bound](DEFAULT_MODEL_STREAM_IDLE) — how long the stream may go without
+///   a **delta from the model**. A buffering read has no notion of "the model is still thinking",
+///   so a provider that stops answering is indistinguishable from one that is generating a long
+///   reply, and the only bound available is the whole-call ceiling. On a stream the two are
+///   separable within seconds: a model that reasons at length emits reasoning deltas for the whole
+///   of that time, while a provider that has stopped emits nothing — or only the keep-alive
+///   comments OpenRouter sends, which carry no delta and leave the clock running. A stream whose
+///   clock expires is cancelled and retried on the client's own [schedule](RetryPolicy) exactly as
+///   a transport error is, so a provider that stops answering costs the run the idle bound and one
+///   backoff rather than the whole ceiling and an error turn.
+/// - [loop detection](crate::loopguard), which can only abandon a reply it is shown *while it is
+///   arriving*. A detector handed a completed reply has nothing left to save: the money, the wall
+///   clock and the turn are spent by then.
 ///
-/// The split is deliberate rather than "stream everything". Streaming is the strictly more
-/// complicated wire format — partial lines, per-index tool-call fragments, usage on a trailing
-/// chunk — and it buys nothing at all for an agent that is going to read whatever comes back. Only
-/// an agent that might *stop* reading has a use for it.
+/// Whether the detector runs over the stream is the agent's
+/// [configured choice](crate::loopguard), and it changes nothing else: an agent with the detector
+/// disarmed gets the same request bytes and the same assembly, watched by no one.
 pub struct OpenRouterClient {
     http: reqwest::Client,
     base_url: String,
     model_id: String,
     api_key: String,
     retry: RetryPolicy,
+    /// The run's record of which models' providers refused a pinned `tool_choice`, read by every
+    /// [required-tool request](ModelClient::complete_requiring) this client sends. Shared with
+    /// every other client the run's [factory](DefaultClientFactory) builds, so the pin is tried
+    /// once per model per run: an agent's successor, its subagents and its handoff compaction all
+    /// ask on `auto` once any of them has been refused. See [`ToolChoiceMemory`].
+    tool_choice: ToolChoiceMemory,
+    /// The run's [record of the replies](AbandonedReplies) loop detection abandoned on this
+    /// client's streams, kept so the session can price them at its end. Shared with every other
+    /// client the run's [factory](DefaultClientFactory) builds, so one read at session end sees
+    /// the whole run's abandons; a client built without one keeps a record of its own.
+    abandoned: AbandonedReplies,
+    /// The [agent profile](GgSlotBinding::slot) (slot) this client was resolved for — what an
+    /// [abandoned reply](AbandonedReply)'s price is booked to at session end, since a run spans
+    /// several models and the price belongs to the model that generated it. Empty for a client
+    /// built directly rather than [from a binding](Self::from_binding).
+    profile_id: String,
     /// The run's [routing key](RoutingKey), the same value on every agent's client. It pins the
     /// whole run's requests to one provider endpoint, so an agent's successive turns reuse the
     /// prefix the last turn cached and sibling agents that open on the same prefix reuse each
@@ -445,25 +493,44 @@ pub struct OpenRouterClient {
     /// sending both means no intermediary that filters one of them can quietly cost the run its
     /// cache). `None` leaves the key off the wire entirely.
     routing_key: Option<RoutingKey>,
+    /// The run's [candidate roster](ProviderRoster), shared with every other client the run's
+    /// [factory](DefaultClientFactory) builds. Each request names the candidate this client's
+    /// model is on — `provider.only` its provider, `provider.quantizations` its level, fallbacks
+    /// refused — and a request that leaves a provider moves the roster, so every later request of
+    /// the run names the next one. `None` sends no provider object, which a launched run never
+    /// does: the launch refuses a bound model with no list.
+    roster: Option<ProviderRoster>,
+    /// This client's previous request, which the next reply's cache read is measured against.
+    cache_trace: CacheTrace,
     /// The [lifetime](CacheTtl) this client's requests ask for on their **stable** cache markers —
     /// the [choice](GgPromptCacheTtl) the agent profile this client was resolved for made. Per
     /// client rather than per run: a client serves one agent, and that is the granularity at which
     /// the extended lifetime is worth its premium.
     stable_ttl: CacheTtl,
+    /// The [reasoning setting](GgReasoning) every request this client sends carries, or `None`
+    /// when the agent this client serves named none — in which case no `reasoning` parameter is
+    /// sent and the model runs at its provider's default. Per client for the same reason
+    /// `stable_ttl` is: a client serves one agent, and how hard the model is asked to think is
+    /// that agent's choice about its own work.
+    reasoning: Option<GgReasoning>,
     /// The [detector](LoopGuardConfig) each of this client's replies is watched with, or `None`
     /// when the agent this client serves left [loop detection](GgLoopDetection) off.
     ///
-    /// It is the switch between the client's [two transports](Self) as well as the detector's
-    /// knobs, because the two are the same decision: a detector that is only shown a reply once it
-    /// is complete has nothing left to save, so arming one *is* asking to stream. Carried as the
+    /// It decides only **whether the detector runs** — every reply is a
+    /// [stream](Self) whatever the declaration says, so arming the detector changes nothing about
+    /// the transport and unarmed changes nothing about the stream. Carried as the
     /// already-[resolved](resolve_loop_guard) configuration rather than as the declaration, so the
     /// per-attempt path constructs a [`LoopGuard`] and does no interpretation at all.
     loop_guard: Option<LoopGuardConfig>,
     /// The ceiling each of this client's calls runs under, resolved from the run's
-    /// [limits](crate::limits::RunLimits::model_call_timeout) and applied by whichever
-    /// [transport](Self) the client is on. [`DEFAULT_MODEL_CALL_TIMEOUT`] describes what the
-    /// ceiling means on each of the two.
+    /// [limits](crate::limits::RunLimits::model_call_timeout) and applied over one attempt's whole
+    /// duration. [`DEFAULT_MODEL_CALL_TIMEOUT`] states what absence resolves to.
     model_call_timeout: Duration,
+    /// How long this client waits, between chunks carrying a [delta](WireDelta) from the model,
+    /// before cancelling the attempt — resolved from the run's
+    /// [limits](crate::limits::RunLimits::model_stream_idle), and always in force.
+    /// [`DEFAULT_MODEL_STREAM_IDLE`] states what absence resolves to.
+    model_stream_idle: Duration,
     /// The stream each retry is announced on, as a `warn` naming the attempt, the status or
     /// transport error that provoked it, and the delay before the next attempt. Set by
     /// [`announce_retries_on`](ModelClient::announce_retries_on) when the agent that will call
@@ -485,9 +552,11 @@ impl OpenRouterClient {
     ///
     /// The prompt cache takes the [standard lifetime](CacheTtl::Standard); a client for an agent
     /// configured for the extended one is built through
-    /// [`with_prompt_cache_ttl`](Self::with_prompt_cache_ttl). [Loop detection](crate::loopguard)
-    /// is **off**, so the client buffers its replies — the transport gg has always used; a client
-    /// for an agent that armed it is built through
+    /// [`with_prompt_cache_ttl`](Self::with_prompt_cache_ttl). No `reasoning` parameter is sent; a
+    /// client for an agent that [named one](GgReasoning) is built through
+    /// [`with_reasoning`](Self::with_reasoning). [Loop detection](crate::loopguard)
+    /// is **off** — the detector is the only thing the switch changes, since every reply is read
+    /// as a [stream](Self) whatever it says; a client for an agent that armed it is built through
     /// [`with_loop_detection`](Self::with_loop_detection).
     pub fn new(
         base_url: impl Into<String>,
@@ -503,10 +572,17 @@ impl OpenRouterClient {
             model_id: model_id.into(),
             api_key: api_key.into(),
             retry,
+            tool_choice: ToolChoiceMemory::default(),
+            abandoned: AbandonedReplies::default(),
+            profile_id: String::new(),
             routing_key,
+            roster: None,
+            cache_trace: CacheTrace::default(),
             stable_ttl: CacheTtl::Standard,
+            reasoning: None,
             loop_guard: None,
             model_call_timeout: DEFAULT_MODEL_CALL_TIMEOUT,
+            model_stream_idle: DEFAULT_MODEL_STREAM_IDLE,
             retry_stream: Mutex::new(None),
             #[cfg(test)]
             gateway: None,
@@ -525,13 +601,68 @@ impl OpenRouterClient {
         self
     }
 
+    /// This client reading and recording [tool-choice refusals](ToolChoiceMemory) in `memory`,
+    /// the run-wide record its [factory](DefaultClientFactory) shares between every client it
+    /// builds. A client built without it keeps a record of its own.
+    pub fn with_tool_choice_memory(mut self, memory: ToolChoiceMemory) -> Self {
+        self.tool_choice = memory;
+        self
+    }
+
+    /// This client keeping the replies it abandons on `record`, the run-wide
+    /// [record](AbandonedReplies) its [factory](DefaultClientFactory) shares between every client
+    /// it builds. A client built without it keeps a record of its own.
+    pub fn with_abandoned_replies(mut self, record: AbandonedReplies) -> Self {
+        self.abandoned = record;
+        self
+    }
+
+    /// This client accounting its abandoned replies to `profile` — the
+    /// [agent profile](GgSlotBinding::slot) (slot) it was [resolved](Self::from_binding) for,
+    /// which is what a price read back at session end is booked to.
+    ///
+    /// A client built without one records its abandons with no profile, which prices them onto no
+    /// slot — every client a run drives is built [from a binding](Self::from_binding), so that is
+    /// a shape only a direct test construction produces.
+    pub fn with_profile(mut self, profile: impl Into<String>) -> Self {
+        self.profile_id = profile.into();
+        self
+    }
+
     /// Post `body` to `url` — one attempt's request, on whichever transport the caller is.
     async fn post(&self, url: &str, body: &Value) -> reqwest::Result<reqwest::Response> {
         #[cfg(test)]
         if let Some(gateway) = &self.gateway {
-            return Ok(gateway(&self.attempt(url).json(body).build()?));
+            return Ok(gateway(
+                &self
+                    .attempt(reqwest::Method::POST, url)
+                    .json(body)
+                    .build()?,
+            ));
         }
-        self.attempt(url).json(body).send().await
+        self.attempt(reqwest::Method::POST, url)
+            .json(body)
+            .send()
+            .await
+    }
+
+    /// `GET` `url` with `query` — the generation ledger's lookup, on whichever transport the
+    /// caller is. Shares [`post`](Self::post)'s headers and test seam, so a lookup and a turn are
+    /// one gateway to a test.
+    async fn get(&self, url: &str, query: &[(&str, &str)]) -> reqwest::Result<reqwest::Response> {
+        #[cfg(test)]
+        if let Some(gateway) = &self.gateway {
+            return Ok(gateway(
+                &self
+                    .attempt(reqwest::Method::GET, url)
+                    .query(query)
+                    .build()?,
+            ));
+        }
+        self.attempt(reqwest::Method::GET, url)
+            .query(query)
+            .send()
+            .await
     }
 
     /// This client bounding each of its calls by `timeout` — the run's resolved
@@ -542,6 +673,19 @@ impl OpenRouterClient {
     /// A client built without it takes [`DEFAULT_MODEL_CALL_TIMEOUT`].
     pub fn with_model_call_timeout(mut self, timeout: Duration) -> Self {
         self.model_call_timeout = timeout;
+        self
+    }
+
+    /// This client cancelling a stream that goes `idle` without a delta from the model — the
+    /// run's resolved [`modelStreamIdleSecs`](crate::limits::RunLimits::model_stream_idle),
+    /// carried in beside the [call ceiling](Self::with_model_call_timeout) for the same reason:
+    /// the factory builds the clients before an agent exists to resolve limits for.
+    ///
+    /// A client built without it takes [`DEFAULT_MODEL_STREAM_IDLE`]. There is no armed reading
+    /// of the bound to be missing: a stream with no idle bound is one a silent provider holds for
+    /// the whole call ceiling, so it is always in force.
+    pub fn with_stream_idle(mut self, idle: Duration) -> Self {
+        self.model_stream_idle = idle;
         self
     }
 
@@ -569,6 +713,24 @@ impl OpenRouterClient {
         self
     }
 
+    /// This client sending `reasoning` on every request it makes — the agent profile's
+    /// [configured choice](GgReasoning), which [`client_for_slot`] carries in on the binding, and
+    /// which `None` turns off: a client built without this, or handed `None`, sends no `reasoning`
+    /// parameter and the model runs at its provider's default.
+    pub fn with_reasoning(mut self, reasoning: Option<GgReasoning>) -> Self {
+        self.reasoning = reasoning;
+        self
+    }
+
+    /// This client naming its candidates from `roster`, the run-wide record its
+    /// [factory](DefaultClientFactory) shares between every client it builds, and leaving a
+    /// provider after the roster's [miss limit](ProviderRoster::miss_limit) of unexpected misses.
+    /// A client built without it sends no `provider` object.
+    pub fn with_roster(mut self, roster: ProviderRoster) -> Self {
+        self.roster = Some(roster);
+        self
+    }
+
     /// This client retrying on `policy` — the run's resolved
     /// [retry schedule](crate::limits::RunLimits::retry_policy), which [`client_for_slot`]
     /// carries in from the launch beside the [per-call ceiling](Self::with_model_call_timeout).
@@ -585,9 +747,9 @@ impl OpenRouterClient {
     /// [`client_for_slot`] carries in on the binding, exactly as it carries the
     /// [prompt-cache lifetime](Self::with_prompt_cache_ttl).
     ///
-    /// A declaration that is off (the default) leaves the client on its buffering
-    /// [transport](Self), so passing an unarmed declaration is a no-op and every agent that says
-    /// nothing about loop detection behaves precisely as it did before the detector existed.
+    /// A declaration that is off (the default) is a no-op, and an unarmed declaration is one too:
+    /// every reply is read as a [stream](Self) whatever the detector says, so the switch decides
+    /// only whether anything watches that stream.
     ///
     /// The [warnings](ResolvedLoopGuard::warnings) resolution produces are deliberately dropped
     /// here. They are one-per-run operator advice about a detector armed exactly as declared and
@@ -630,7 +792,9 @@ impl OpenRouterClient {
             Some(routing_key.clone()),
         )
         .with_prompt_cache_ttl(binding.prompt_cache_ttl)
-        .with_loop_detection(binding.loop_detection))
+        .with_reasoning(binding.reasoning)
+        .with_loop_detection(binding.loop_detection)
+        .with_profile(binding.slot.clone()))
     }
 
     /// The chat-completions URL for this client's base.
@@ -638,24 +802,70 @@ impl OpenRouterClient {
         format!("{}/chat/completions", self.base_url.trim_end_matches('/'))
     }
 
-    /// Whether this client asks the provider to stream — true exactly when
-    /// [loop detection](Self::loop_guard) is armed. One predicate rather than two `is_some()`
-    /// checks, so the request body and the transport can never disagree about which shape of reply
-    /// is coming back.
-    fn streams(&self) -> bool {
-        self.loop_guard.is_some()
+    /// The generation-ledger URL for this client's base — where a reply abandoned mid-stream is
+    /// priced at session end, since its stream never delivered a usage payload.
+    fn generation_endpoint(&self) -> String {
+        format!("{}/generation", self.base_url.trim_end_matches('/'))
+    }
+
+    /// The candidate this client's model is on, which a request body is built naming.
+    fn candidate(&self) -> Option<test_cabinet_core::gg::GgProviderCandidate> {
+        self.roster
+            .as_ref()
+            .and_then(|roster| roster.in_force(&self.model_id))
+            .map(|in_force| in_force.candidate)
+    }
+
+    /// Reject a reply that `named`, the provider the request was sent to, did not serve.
+    ///
+    /// OpenRouter names the serving provider on every response, and [`usage`](crate::model)
+    /// records it. A response from any other provider ends the call as
+    /// [`ProviderMismatch`](ModelError::ProviderMismatch): the cost recorded from that point
+    /// would be on a price basis the candidate list does not name. The two are compared as
+    /// [the same provider](test_cabinet_core::pricing::same_provider), since a response and the
+    /// listing may spell one provider differently. A reply that names no provider has nothing to
+    /// disagree with and passes, as does any reply to a request that named none.
+    fn served_by(
+        &self,
+        named: Option<&str>,
+        response: ModelResponse,
+    ) -> Result<ModelResponse, ModelError> {
+        match (named, response.provider.as_deref()) {
+            (Some(named), Some(served))
+                if !test_cabinet_core::pricing::same_provider(served, named) =>
+            {
+                Err(ModelError::ProviderMismatch {
+                    pinned: named.to_string(),
+                    served: served.to_string(),
+                })
+            }
+            _ => Ok(response),
+        }
+    }
+
+    /// The one `warn` a [tool-choice downgrade](ToolChoiceMemory) is logged with, on the stream
+    /// [retries](Self::announce_retry) are announced on: the model and the provider's message.
+    fn announce_tool_choice_downgrade(&self, message: &str) {
+        let stream = self
+            .retry_stream
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(emitter) = stream.as_ref() {
+            emitter.emit(GgTelemetryKind::Log {
+                level: "warn".to_string(),
+                message: tool_choice_downgrade_message(&self.model_id, message),
+            });
+        }
     }
 
     /// One attempt's request, headers and all, before its body is attached.
     ///
-    /// Shared by [both transports](Self) rather than written out twice: the headers are the run's
-    /// identity and its [routing key](RoutingKey), and a streamed request that
-    /// quietly stopped sending one of them would cost the agent its prompt cache in a way no test
-    /// of either transport alone would catch.
-    fn attempt(&self, url: &str) -> reqwest::RequestBuilder {
+    /// The headers are the run's identity and its [routing key](RoutingKey); a request that
+    /// quietly stopped sending the key would cost the agent its prompt cache.
+    fn attempt(&self, method: reqwest::Method, url: &str) -> reqwest::RequestBuilder {
         let mut request = self
             .http
-            .post(url)
+            .request(method, url)
             .header(
                 reqwest::header::AUTHORIZATION,
                 format!("Bearer {}", self.api_key),
@@ -682,8 +892,9 @@ impl ModelClient for OpenRouterClient {
             messages,
             tools,
             self.routing_key.as_ref(),
+            self.candidate().as_ref(),
             self.stable_ttl,
-            self.streams(),
+            self.reasoning,
         );
         self.send(body, messages).await
     }
@@ -691,20 +902,43 @@ impl ModelClient for OpenRouterClient {
     /// Offer `tool` and pin `tool_choice` to it, so the reply is the call rather than the model's
     /// judgement about whether to make one — the wire form of the default's intent, which cannot
     /// express the requirement.
+    ///
+    /// The pin is sent where the provider takes it. A [`400` naming
+    /// `tool_choice`](is_tool_choice_refusal) is answered by re-sending the same request with
+    /// `tool_choice` set to `auto`, at once and outside the retry schedule, and the refusal is
+    /// recorded in the run's [`ToolChoiceMemory`] so every later required-tool request for this
+    /// model, a turn's and a handoff compaction's alike, is sent on `auto` from the start. The
+    /// run that recorded it logs it once.
     async fn complete_requiring(
         &self,
         messages: &[Message],
         tool: &ToolDefinition,
     ) -> Result<ModelResponse, ModelError> {
-        let body = build_required_tool_request_body(
+        let mut body = build_required_tool_request_body(
             &self.model_id,
             messages,
             tool,
             self.routing_key.as_ref(),
+            self.candidate().as_ref(),
             self.stable_ttl,
-            self.streams(),
+            self.reasoning,
         );
-        self.send(body, messages).await
+        if self.tool_choice.refused(&self.model_id) {
+            body["tool_choice"] = json!("auto");
+            return self.send(body, messages).await;
+        }
+        match self.send(body.clone(), messages).await {
+            Err(ModelError::Fatal { status, message })
+                if is_tool_choice_refusal(status, &message) =>
+            {
+                if self.tool_choice.record_refusal(&self.model_id) {
+                    self.announce_tool_choice_downgrade(&message);
+                }
+                body["tool_choice"] = json!("auto");
+                self.send(body, messages).await
+            }
+            outcome => outcome,
+        }
     }
 
     fn model_id(&self) -> &str {
@@ -717,9 +951,50 @@ impl ModelClient for OpenRouterClient {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(emitter.clone());
     }
+
+    fn abandoned_replies(&self) -> Vec<AbandonedReply> {
+        self.abandoned.list()
+    }
+
+    async fn price_generation(&self, generation_id: &str) -> Option<ReplySpend> {
+        self.lookup_generation(generation_id).await
+    }
 }
 
 impl OpenRouterClient {
+    /// Look one generation up on the gateway's generation ledger — `GET /api/v1/generation?id=…` —
+    /// and answer what it was billed, or `None` when the ledger never answered.
+    ///
+    /// A stream abandoned mid-reply never delivered its usage, so the price lives only on the
+    /// ledger — and the ledger settles a cancelled stream's entry only after a delay, answering
+    /// `404` until it does. That `404` is "not yet" rather than "never", so it is retried every
+    /// [`GENERATION_LOOKUP_RETRY`] for as long as [`GENERATION_LOOKUP_BUDGET`] allows, which is
+    /// what bounds the whole lookup at a few tens of seconds. Any other status, and a transport
+    /// failure, is the ledger answering as best it ever will and gives up at once.
+    async fn lookup_generation(&self, generation_id: &str) -> Option<ReplySpend> {
+        let deadline = tokio::time::Instant::now() + GENERATION_LOOKUP_BUDGET;
+        loop {
+            let response = match tokio::time::timeout_at(
+                deadline,
+                self.get(&self.generation_endpoint(), &[("id", generation_id)]),
+            )
+            .await
+            {
+                Ok(Ok(response)) => response,
+                // The budget expired mid-request, or the request failed outright: either way
+                // the ledger never answered.
+                Ok(Err(_)) | Err(_) => return None,
+            };
+            match response.status().as_u16() {
+                200 => return generation_spend(&response.text().await.ok()?),
+                404 if tokio::time::Instant::now() + GENERATION_LOOKUP_RETRY <= deadline => {
+                    tokio::time::sleep(GENERATION_LOOKUP_RETRY).await;
+                }
+                _ => return None,
+            }
+        }
+    }
+
     /// POST one already-built request body, with this client's retry/backoff policy and its
     /// classification of what came back — the shared transport behind both
     /// [`complete`](ModelClient::complete) and
@@ -728,148 +1003,10 @@ impl OpenRouterClient {
     /// request carried pictures, which decides whether a fatal refusal is the recoverable
     /// [vision](ModelError::VisionUnsupported) one.
     ///
-    /// Which of the [two transports](Self) runs is decided here and nowhere else, off the one
-    /// field that decides it. An agent with no [detector](Self::loop_guard) takes
-    /// [`send_buffered`](Self::send_buffered) — the code gg has always run, byte for byte.
+    /// There is one transport, and it [streams](Self): the reply is read as server-sent events
+    /// whether or not the agent armed [loop detection](crate::loopguard), which decides only
+    /// whether a [`LoopGuard`] watches those events.
     async fn send(&self, body: Value, messages: &[Message]) -> Result<ModelResponse, ModelError> {
-        match self.loop_guard {
-            None => self.send_buffered(body, messages).await,
-            Some(guard) => self.send_streamed(body, messages, guard).await,
-        }
-    }
-
-    /// The **buffering** transport: post the request, read the whole body, [parse](parse_response)
-    /// it. gg's original and still its default — see [`send`](Self::send).
-    ///
-    /// Each attempt, from the request to the last byte of its reply, runs under the run's
-    /// [per-call ceiling](DEFAULT_MODEL_CALL_TIMEOUT) as a **total-duration** cap: a buffered
-    /// reply arrives all at once or not at all, so there is no progress to watch, and the ceiling
-    /// elapsing without a complete reply is a stall. The backoff between attempts sits outside
-    /// the cap, so the run's retry schedule is waited out in full however short the ceiling. The
-    /// elapse is a [`ModelError::Timeout`] with no provider (nothing was read that could name
-    /// one), returned at once rather than retried.
-    async fn send_buffered(
-        &self,
-        body: Value,
-        messages: &[Message],
-    ) -> Result<ModelResponse, ModelError> {
-        let url = self.endpoint();
-        let mut last_err = String::new();
-        // Whether this request carries a picture at all. A provider's "no image route"
-        // refusal is only recoverable-by-dropping-images if there were images to drop;
-        // without that check a coincidentally-similar error body would be misread as one.
-        let carries_images = messages.iter().any(|message| !message.images.is_empty());
-
-        for attempt in 1..=self.retry.max_attempts {
-            let attempted = tokio::time::timeout(
-                self.model_call_timeout,
-                self.buffered_attempt(&url, &body, carries_images),
-            )
-            .await;
-            // What the retry after this attempt waits, when the attempt just made has a say in
-            // it: a `429` or `503` carrying `Retry-After` asks for a wait of its own, honoured
-            // when it is longer than the schedule's delay.
-            let retry_after = match attempted {
-                Err(_) => {
-                    return Err(ModelError::Timeout {
-                        after: self.model_call_timeout,
-                        provider: None,
-                    });
-                }
-                Ok(BufferedAttempt::Done(outcome)) => return outcome,
-                Ok(BufferedAttempt::Retry { cause, retry_after }) => {
-                    last_err = cause;
-                    retry_after
-                }
-            };
-
-            if attempt < self.retry.max_attempts {
-                let delay = retry_wait(attempt, &self.retry, retry_after);
-                self.announce_retry(attempt, &last_err, delay);
-                tokio::time::sleep(delay).await;
-            }
-        }
-
-        Err(ModelError::RetryExhausted {
-            attempts: self.retry.max_attempts,
-            last: last_err,
-        })
-    }
-
-    /// One buffered attempt: post the request and read the whole reply, then classify it.
-    /// Everything here runs under the attempt's [ceiling](Self::send_buffered); the backoff
-    /// after a retryable failure is the caller's, outside it.
-    async fn buffered_attempt(
-        &self,
-        url: &str,
-        body: &Value,
-        carries_images: bool,
-    ) -> BufferedAttempt {
-        let resp = match self.post(url, body).await {
-            Ok(resp) => resp,
-            // Transport-level failure (connect/reset/etc.): always retryable.
-            Err(err) => {
-                return BufferedAttempt::Retry {
-                    cause: format!("transport error: {err}"),
-                    retry_after: None,
-                };
-            }
-        };
-        let status = resp.status().as_u16();
-        match classify_status(status) {
-            StatusClass::Success => BufferedAttempt::Done(match resp.text().await {
-                Ok(text) => parse_response(&text),
-                Err(err) => Err(ModelError::Parse(format!("reading response body: {err}"))),
-            }),
-            StatusClass::Fatal => {
-                let body = resp.text().await.unwrap_or_default();
-                // A refusal of the *images* rather than of the request: the loop can recover from
-                // this one by dropping them and retrying, so it is reported as its own error
-                // rather than ending the run as an ordinary fatal 4xx. See `refusal`.
-                BufferedAttempt::Done(Err(self.refusal(status, &body, carries_images)))
-            }
-            StatusClass::Retryable => {
-                let retry_after = if status == 429 || status == 503 {
-                    retry_after_delay(&resp)
-                } else {
-                    None
-                };
-                let body = resp.text().await.unwrap_or_default();
-                BufferedAttempt::Retry {
-                    cause: format!("HTTP {status}: {}", truncate(&body)),
-                    retry_after,
-                }
-            }
-        }
-    }
-
-    /// The **streaming** transport: ask for server-sent events, assemble the reply with a
-    /// [`StreamAccumulator`], and show every text delta to a [`LoopGuard`] as it arrives.
-    ///
-    /// Used only by a client whose agent armed [loop detection](crate::loopguard) — see
-    /// [`send`](Self::send). Everything outside the success branch is deliberately identical to
-    /// [`send_buffered`](Self::send_buffered): the status is classified on the response *head*,
-    /// before a single chunk is read, so a `4xx` refusal (including the recoverable
-    /// [vision](ModelError::VisionUnsupported) one) and a `5xx` are handled by exactly the same
-    /// rules whichever transport happened to be in use.
-    ///
-    /// A reply the detector abandons is treated precisely as an HTTP `5xx` is: the response is
-    /// dropped unread, the failure is recorded, the loop backs off and asks again. That is the
-    /// whole point of doing this inside the client's existing retry loop rather than surfacing an
-    /// error — a looping reply is a *transient* provider failure, and the next attempt usually
-    /// answers properly.
-    ///
-    /// If every attempt is spent, the error says which thing went wrong. A run that saw at least
-    /// one loop ends as [`ResponseLoop`](ModelError::ResponseLoop) rather than
-    /// [`RetryExhausted`](ModelError::RetryExhausted), even if the final attempt failed some other
-    /// way, because "the model kept answering with a repetition" is the fact worth acting on and
-    /// "the last attempt got a 503" is not.
-    async fn send_streamed(
-        &self,
-        body: Value,
-        messages: &[Message],
-        guard: LoopGuardConfig,
-    ) -> Result<ModelResponse, ModelError> {
         let url = self.endpoint();
         let mut last_err = String::new();
         // The trip of the most recent abandoned attempt, and what every abandoned attempt so far
@@ -877,86 +1014,206 @@ impl OpenRouterClient {
         // tally on the response that finally works, the trip on the error if none ever does.
         let mut last_trip: Option<String> = None;
         let mut loop_aborts = LoopAborts::none();
-        // See `send_buffered` — the same recoverability question, asked the same way.
+        // Whether this request carries a picture at all. A provider's "no image route"
+        // refusal is only recoverable-by-dropping-images if there were images to drop;
+        // without that check a coincidentally-similar error body would be misread as one.
         let carries_images = messages.iter().any(|message| !message.images.is_empty());
+        let shape = RequestShape::of(&body, messages);
+        let mut body = body;
 
-        for attempt in 1..=self.retry.max_attempts {
-            // The run's per-call ceiling on the wait for the response *head*. The body's own
-            // progress is watched separately (see `read_stream`); a head that has not arrived
-            // within the ceiling is a stall, and it surfaces immediately rather than spending the
-            // retry budget — each internal retry of a stall would cost the full ceiling again, and
-            // the turn-level retry is the bounded one.
-            let sent =
-                match tokio::time::timeout(self.model_call_timeout, self.post(&url, &body)).await {
-                    Ok(sent) => sent,
-                    Err(_) => {
+        // One pass per candidate the request is asked on. A pass is the whole retry schedule; a
+        // pass that spends it on the provider's failures, or that the gateway refuses outright,
+        // moves the run to the next candidate and starts the schedule again there.
+        loop {
+            // The candidate named on this pass, read afresh because another agent's request may
+            // have moved the run since the body was built.
+            let in_force = self
+                .roster
+                .as_ref()
+                .and_then(|roster| roster.in_force(&self.model_id));
+            if let Some(in_force) = &in_force {
+                stamp_candidate(&mut body, &in_force.candidate);
+            }
+            let named = in_force
+                .as_ref()
+                .map(|in_force| in_force.candidate.provider.clone());
+            // Whether the last attempt of the pass failed on the model's account (a looping
+            // reply) rather than the provider's: only the provider's failures move the run.
+            let mut last_looped = false;
+            // Whether the gateway refused the candidate outright and the run has moved on.
+            let mut refused_and_moved = false;
+
+            for attempt in 1..=self.retry.max_attempts {
+                // Two clocks start with the attempt. The run's [per-call
+                // ceiling](DEFAULT_MODEL_CALL_TIMEOUT) caps the attempt's whole duration, from the
+                // request to the last chunk; the backoff between attempts sits outside it. An
+                // attempt that runs past it surfaces immediately rather than spending the retry
+                // budget, since each internal retry would cost the full ceiling again and the
+                // turn-level retry is the bounded one. The [stream-idle
+                // bound](DEFAULT_MODEL_STREAM_IDLE) runs from the request too, so a provider that
+                // never sends a response head is a stall like one that stops sending deltas.
+                let started = tokio::time::Instant::now();
+                let deadline = started + self.model_call_timeout;
+                let idle_deadline = started + self.model_stream_idle;
+                last_looped = false;
+                let sent = match tokio::time::timeout_at(
+                    deadline.min(idle_deadline),
+                    self.post(&url, &body),
+                )
+                .await
+                {
+                    Ok(sent) => Some(sent),
+                    Err(_) if deadline <= idle_deadline => {
                         return Err(ModelError::Timeout {
                             after: self.model_call_timeout,
                             provider: None,
                         });
                     }
+                    Err(_) => {
+                        last_err = stall_cause(self.model_stream_idle, None);
+                        self.announce_fault(named.as_deref(), GgProviderFault::Stall);
+                        None
+                    }
                 };
 
-            // See `send_buffered` — the `Retry-After` a retryable status carries asks for a
-            // wait of its own, honoured when it is longer than the schedule's delay.
-            let mut retry_after = None;
+                // The `Retry-After` a retryable status carries asks for a wait of its own,
+                // honoured when it is longer than the schedule's delay.
+                let mut retry_after = None;
 
-            match sent {
-                // Transport-level failure (connect/timeout/etc.): always retryable.
-                Err(err) => last_err = format!("transport error: {err}"),
-                Ok(resp) => {
-                    let status = resp.status().as_u16();
-                    match classify_status(status) {
-                        StatusClass::Success => {
-                            match read_stream(resp.bytes_stream(), guard, self.model_call_timeout)
+                match sent {
+                    // The head never arrived within the idle bound: the stall is already recorded.
+                    None => {}
+                    // Transport-level failure (connect/reset/etc.): always retryable.
+                    Some(Err(err)) => last_err = format!("transport error: {err}"),
+                    Some(Ok(resp)) => {
+                        let status = resp.status().as_u16();
+                        match classify_status(status) {
+                            StatusClass::Success => {
+                                match read_stream(
+                                    resp.bytes_stream(),
+                                    self.loop_guard,
+                                    deadline,
+                                    started,
+                                    self.model_stream_idle,
+                                )
                                 .await
-                            {
-                                StreamOutcome::Reply(response) => {
-                                    // The tally of thrown-away attempts rides out on the reply that
-                                    // worked; nothing else the turn loop is handed could carry it.
-                                    return Ok(ModelResponse {
-                                        loop_aborts,
-                                        ..response
-                                    });
+                                {
+                                    StreamOutcome::Reply(response) => {
+                                        // The tally of thrown-away attempts rides out on the reply
+                                        // that worked; nothing else the turn loop is handed could
+                                        // carry it.
+                                        let response = ModelResponse {
+                                            loop_aborts,
+                                            ..response
+                                        };
+                                        // A reply from a provider other than the candidate this
+                                        // request named is not a reply this run can use: its cost
+                                        // would be on a price basis the list does not name.
+                                        let response =
+                                            self.served_by(named.as_deref(), response)?;
+                                        if let Some(in_force) = &in_force {
+                                            self.observe_cache(in_force, started, shape, &response);
+                                        }
+                                        return Ok(response);
+                                    }
+                                    StreamOutcome::Looping { detail, generated } => {
+                                        // The size is recorded here rather than only rendered into
+                                        // the message, because it is the one measure of an
+                                        // abandoned attempt gg can vouch for: the provider's usage
+                                        // payload arrives at the end of a stream that was never
+                                        // read to its end.
+                                        // The record keeps the generation id beside it, which
+                                        // is the handle the price of that size is read back
+                                        // under at session end.
+                                        loop_aborts.record(generated.words, generated.chars);
+                                        self.abandoned.record(AbandonedReply {
+                                            generation_id: generated.generation_id.clone(),
+                                            words: generated.words,
+                                            chars: generated.chars,
+                                            profile_id: self.profile_id.clone(),
+                                            model_id: self.model_id.clone(),
+                                        });
+                                        last_err = format!("abandoned a looping reply: {detail}");
+                                        last_trip = Some(detail);
+                                        last_looped = true;
+                                    }
+                                    StreamOutcome::Interrupted(detail) => last_err = detail,
+                                    // A stall is a transport failure like any other: the attempt
+                                    // is cancelled, the cause names the idle bound that expired,
+                                    // and the loop below backs off and asks again exactly as it
+                                    // does for a reset connection. That is the whole point of
+                                    // bounding a stall by the seconds it actually costs rather
+                                    // than by the call ceiling — a provider that stops answering
+                                    // costs the run the idle bound per attempt, not the ceiling
+                                    // per turn.
+                                    StreamOutcome::Stalled { idle, provider } => {
+                                        last_err = stall_cause(idle, provider.as_deref());
+                                        self.announce_fault(
+                                            named.as_deref().or(provider.as_deref()),
+                                            GgProviderFault::Stall,
+                                        );
+                                    }
+                                    StreamOutcome::Ceiling { provider } => {
+                                        return Err(ModelError::Timeout {
+                                            after: self.model_call_timeout,
+                                            provider,
+                                        });
+                                    }
+                                    StreamOutcome::Malformed(err) => return Err(err),
                                 }
-                                StreamOutcome::Looping { detail, generated } => {
-                                    // The size is recorded here rather than only rendered into the
-                                    // message, because it is the one measure of an abandoned attempt
-                                    // gg can vouch for: the provider's usage payload arrives at the
-                                    // end of a stream that was never read to its end.
-                                    loop_aborts.record(generated.words, generated.chars);
-                                    last_err = format!("abandoned a looping reply: {detail}");
-                                    last_trip = Some(detail);
-                                }
-                                StreamOutcome::Interrupted(detail) => last_err = detail,
-                                StreamOutcome::Stalled { provider } => {
-                                    return Err(ModelError::Timeout {
-                                        after: self.model_call_timeout,
-                                        provider,
-                                    });
-                                }
-                                StreamOutcome::Malformed(err) => return Err(err),
                             }
-                        }
-                        StatusClass::Fatal => {
-                            let body = resp.text().await.unwrap_or_default();
-                            return Err(self.refusal(status, &body, carries_images));
-                        }
-                        StatusClass::Retryable => {
-                            if status == 429 || status == 503 {
-                                retry_after = retry_after_delay(&resp);
+                            StatusClass::Fatal => {
+                                let text = resp.text().await.unwrap_or_default();
+                                let refusal = self.refusal(status, &text, carries_images);
+                                // A `404` that is not an image refusal is OpenRouter saying no
+                                // endpoint of the named provider may take the request (the
+                                // account's privacy settings exclude it). Asking again cannot
+                                // succeed, so the run moves at once.
+                                let unavailable = status == 404
+                                    && matches!(refusal, ModelError::Fatal { .. })
+                                    && in_force.as_ref().is_some_and(|in_force| {
+                                        self.leave(
+                                            in_force,
+                                            GgProviderFault::Unavailable,
+                                            &format!("HTTP {status}: {}", truncate(&text)),
+                                        )
+                                    });
+                                if unavailable {
+                                    refused_and_moved = true;
+                                    break;
+                                }
+                                return Err(refusal);
                             }
-                            let body = resp.text().await.unwrap_or_default();
-                            last_err = format!("HTTP {status}: {}", truncate(&body));
+                            StatusClass::Retryable => {
+                                if status == 429 || status == 503 {
+                                    retry_after = retry_after_delay(&resp);
+                                }
+                                let text = resp.text().await.unwrap_or_default();
+                                last_err = format!("HTTP {status}: {}", truncate(&text));
+                            }
                         }
                     }
                 }
+
+                if attempt < self.retry.max_attempts {
+                    let delay = retry_wait(attempt, &self.retry, retry_after);
+                    self.announce_retry(attempt, &last_err, delay);
+                    tokio::time::sleep(delay).await;
+                }
             }
 
-            if attempt < self.retry.max_attempts {
-                let delay = retry_wait(attempt, &self.retry, retry_after);
-                self.announce_retry(attempt, &last_err, delay);
-                tokio::time::sleep(delay).await;
+            // The pass ended without a reply. An unavailable candidate already moved the run; a
+            // schedule spent on the provider's failures moves it now; a schedule whose last
+            // attempt looped, or a model on its last candidate, ends the request.
+            if refused_and_moved {
+                continue;
+            }
+            let moved = !last_looped
+                && in_force.as_ref().is_some_and(|in_force| {
+                    self.leave(in_force, GgProviderFault::FailedCall, &last_err)
+                });
+            if !moved {
+                break;
             }
         }
 
@@ -975,13 +1232,99 @@ impl OpenRouterClient {
         }
     }
 
+    /// Leave the candidate `in_force` names for the next one, for `fault`, recording the move as
+    /// `provider_switch` when this request is the one that made it. `true` when the request should
+    /// be asked again on the candidate now in force: this request moved the run, or another
+    /// request already had. `false` when `in_force` is the model's last candidate.
+    fn leave(&self, in_force: &InForce, fault: GgProviderFault, detail: &str) -> bool {
+        let Some(roster) = &self.roster else {
+            return false;
+        };
+        match roster.leave(&self.model_id, in_force.index) {
+            Move::Moved { from, to } => {
+                self.emit(GgTelemetryKind::ProviderSwitch {
+                    model_id: self.model_id.clone(),
+                    from,
+                    to,
+                    fault,
+                    detail: detail.to_string(),
+                });
+                true
+            }
+            Move::AlreadyMoved => true,
+            Move::Last => false,
+        }
+    }
+
+    /// Measure one served reply's cache read against the agent's previous request, and hold an
+    /// unexpected miss against the candidate that served it. The reply stands either way; a
+    /// provider whose misses reach the [limit](Self::with_roster) is left at the next request.
+    fn observe_cache(
+        &self,
+        in_force: &InForce,
+        sent: tokio::time::Instant,
+        shape: RequestShape,
+        response: &ModelResponse,
+    ) {
+        let input_tokens = response.usage.total_input().unwrap_or(0);
+        let missed = self.cache_trace.observe(
+            &in_force.candidate.provider,
+            sent,
+            shape,
+            response.usage.cached_input,
+            input_tokens,
+        );
+        if !missed {
+            return;
+        }
+        self.announce_fault(
+            Some(&in_force.candidate.provider),
+            GgProviderFault::CacheMiss,
+        );
+        let Some(roster) = self.roster.as_ref() else {
+            return;
+        };
+        let limit = roster.miss_limit();
+        let Some(held) = roster.record_miss(&self.model_id, in_force.index) else {
+            return;
+        };
+        if held >= limit && in_force.has_next {
+            self.leave(
+                in_force,
+                GgProviderFault::CacheMiss,
+                &format!("{held} unexpected cache misses reached the limit of {limit}"),
+            );
+        }
+    }
+
+    /// One [`ProviderFault`](GgTelemetryKind::ProviderFault) against `provider`, when the request
+    /// named one or the stream did.
+    fn announce_fault(&self, provider: Option<&str>, fault: GgProviderFault) {
+        if let Some(provider) = provider {
+            self.emit(GgTelemetryKind::ProviderFault {
+                model_id: self.model_id.clone(),
+                provider: provider.to_string(),
+                fault,
+            });
+        }
+    }
+
+    /// Emit one event on the [stream](Self::retry_stream) the calling agent handed over.
+    fn emit(&self, event: GgTelemetryKind) {
+        let stream = self
+            .retry_stream
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(emitter) = stream.as_ref() {
+            emitter.emit(event);
+        }
+    }
+
     /// The [`ModelError`] a non-retryable status is: an image refusal when the request carried
     /// pictures and the body says so, and an ordinary [`Fatal`](ModelError::Fatal) otherwise.
     ///
-    /// Factored out of [`send_buffered`](Self::send_buffered)'s inline branch so the streaming
-    /// transport cannot classify a refusal differently. The distinction is load-bearing: a vision
-    /// refusal is the one fatal status the turn loop *recovers* from, by
-    /// [stripping](Message::strip_images) the pictures and re-running the turn.
+    /// The distinction is load-bearing: a vision refusal is the one fatal status the turn loop
+    /// *recovers* from, by [stripping](Message::strip_images) the pictures and re-running the turn.
     fn refusal(&self, status: u16, body: &str, carries_images: bool) -> ModelError {
         if carries_images && is_image_unsupported(status, body) {
             return ModelError::VisionUnsupported {
@@ -996,15 +1339,23 @@ impl OpenRouterClient {
     }
 }
 
-/// How one [buffered attempt](OpenRouterClient::buffered_attempt) ended.
-enum BufferedAttempt {
-    /// A reply or a failure no retry can help: the call's outcome.
-    Done(Result<ModelResponse, ModelError>),
-    /// A retryable failure: what went wrong, and the `Retry-After` it carried, if any.
-    Retry {
-        cause: String,
-        retry_after: Option<Duration>,
-    },
+/// The `cause` a stalled stream is retried under: the [idle bound](DEFAULT_MODEL_STREAM_IDLE) that
+/// expired and the provider the chunks that did arrive named, when any did.
+///
+/// This is the sentence the retry's `warn` line carries, so a stall and an outage reach the
+/// operator through the same channel — one says `transport error`, the other says the stream
+/// stalled — and a stalled provider is blacklistable by name exactly as a failing one is.
+fn stall_cause(idle: Duration, provider: Option<&str>) -> String {
+    match provider {
+        Some(provider) => format!(
+            "the stream stalled: no delta from the model for {}s (provider: {provider})",
+            idle.as_secs()
+        ),
+        None => format!(
+            "the stream stalled: no delta from the model for {}s",
+            idle.as_secs()
+        ),
+    }
 }
 
 /// The `warn` line a retry is announced with: the attempt that failed (1-based) out of
@@ -1018,10 +1369,12 @@ pub fn retry_message(attempt: u32, max_attempts: u32, cause: &str, delay: Durati
 
 /// How one streamed attempt ended.
 ///
-/// Four outcomes rather than a `Result`, because the caller's three-way decision — return, retry,
+/// Five outcomes rather than a `Result`, because the caller's three-way decision — return, retry,
 /// give up — is not the two-way one a `Result` expresses. In particular a reply the detector
-/// abandoned is neither a success nor a failure of the *request*: it is a retryable failure of the
-/// answer, and collapsing it into an error would put the retry decision in the wrong place.
+/// abandoned and a stream that went idle are neither a success nor a fatal failure of the
+/// *request*: both are retryable failures of the answer, and collapsing either into an error would
+/// put the retry decision in the wrong place.
+#[derive(Debug)]
 enum StreamOutcome {
     /// The stream completed and assembled into a reply.
     Reply(ModelResponse),
@@ -1041,67 +1394,132 @@ enum StreamOutcome {
     /// The connection failed part-way through the reply. **Retryable**, on the same terms as a
     /// transport error before the response head: nothing about the request was wrong.
     Interrupted(String),
-    /// The stream went idle past the run's [per-call ceiling](DEFAULT_MODEL_CALL_TIMEOUT): that
-    /// long without a chunk. Surfaced as [`ModelError::Timeout`] **without** consuming the retry
-    /// budget, carrying the provider the chunks had named, when any arrived at all.
+    /// The stream went [`modelStreamIdleSecs`](crate::limits::RunLimits::model_stream_idle)
+    /// without a delta from the model — the bound that answers a provider which stops answering
+    /// mid-reply. **Retryable on the client's own schedule**, exactly as an interrupted connection
+    /// is, because the attempt is cancelled the moment the bound expires rather than being waited
+    /// out to the call ceiling.
     Stalled {
+        /// The idle bound that expired, so the retry's `warn` line names the figure that fired
+        /// rather than one a reader has to look up.
+        idle: Duration,
         /// The upstream provider serving the stalled stream, when a chunk named one.
+        provider: Option<String>,
+    },
+    /// The run's [per-call ceiling](DEFAULT_MODEL_CALL_TIMEOUT) elapsed over the whole attempt —
+    /// the head wait and the body's reads together. Surfaced as [`ModelError::Timeout`] **without**
+    /// consuming the retry budget: an attempt that ran the whole ceiling is the one failure whose
+    /// internal retry would cost as much again, and the turn-level retry is the bounded one.
+    Ceiling {
+        /// The upstream provider serving the attempt, when a chunk named one.
         provider: Option<String>,
     },
     /// The stream was not a stream gg can read — an unparseable event, a provider error object, a
     /// tool call whose assembled arguments are not JSON, or an empty reply with no finish reason.
-    /// **Fatal**, exactly as the same conditions are on the buffering transport.
+    /// **Fatal**, exactly as the same conditions always were.
     Malformed(ModelError),
 }
 
-/// How much output an abandoned attempt had generated by the moment its stream was dropped.
+/// What an abandoned attempt had generated by the moment its stream was dropped: the size, and the
+/// generation id it is later priced under.
 ///
-/// Measured by the [guard](LoopGuard) rather than reported by the provider, for the reason the
-/// [tally](LoopAborts) it feeds gives: the usage payload arrives at the *end* of a stream that was
-/// deliberately never read to its end.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// The size is measured by the [guard](LoopGuard) rather than reported by the provider, for the
+/// reason the [tally](LoopAborts) it feeds gives: the usage payload arrives at the *end* of a
+/// stream that was deliberately never read to its end. The generation id travels on the same
+/// record because both describe the one discarded reply — see [`AbandonedReply`], the record this
+/// becomes once the client knows the slot that generated it.
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct Generated {
     /// Completed words the guard counted.
     words: u64,
     /// Characters the guard counted, as characters rather than bytes.
     chars: u64,
+    /// The generation id the stream named, if any.
+    generation_id: Option<String>,
+}
+
+/// How long a `deadline` has left, or zero when it has already passed.
+///
+/// tokio's [`Instant`](tokio::time::Instant) has no saturating subtraction (its `Sub` panics on
+/// overflow), and the transport's two clocks both need one: whichever has less time left bounds
+/// the next read, and a clock that has already run out must read as zero rather than panic.
+fn time_left(deadline: tokio::time::Instant) -> Duration {
+    let now = tokio::time::Instant::now();
+    if deadline > now {
+        deadline - now
+    } else {
+        Duration::ZERO
+    }
 }
 
 /// Read one streamed response to its end, its abandonment, or its failure.
 ///
 /// The [guard](LoopGuard) is constructed **per attempt**, not per turn: each attempt is a fresh
 /// reply, and carrying a window across attempts would let words from a discarded reply condemn its
-/// replacement.
+/// replacement. It is `Option`, because whether the detector runs is the agent's own
+/// [configured choice](crate::loopguard) and nothing about the read depends on it — every reply is
+/// a stream, armed or not.
+///
+/// Two clocks bound the read, and they answer different questions:
+///
+/// - `idle` is the run's [stream-idle bound](DEFAULT_MODEL_STREAM_IDLE), measured **since the last
+///   chunk carrying a delta from the model**, or since `idle_from` (the moment the request was
+///   sent) when none has arrived yet. Keep-alive comments and blank lines do not restart
+///   it, which is the whole point: they arrive repeatedly while a provider is thinking or has
+///   stopped, and a reader that treated them as progress would wait the idle bound out on each
+///   one. Expiring it is a [`Stalled`](StreamOutcome::Stalled) outcome, which the caller retries on
+///   the client's own schedule exactly as it retries a reset connection.
+/// - `deadline` is the attempt's share of the run's [per-call
+///   ceiling](DEFAULT_MODEL_CALL_TIMEOUT), already running when the read starts (it bounds the head
+///   wait too). Expiring it is a [`Ceiling`](StreamOutcome::Ceiling) outcome, which the caller
+///   surfaces immediately without spending the retry budget.
+///
+/// Each read is therefore bounded by whichever clock has the less time left, so a read is never cut
+/// by the bound that was not the reason it stalled — and which one fired is answered by comparing
+/// the two, not by an ordering the caller has to reconstruct.
 ///
 /// Abandoning is simply returning: the response's chunk stream is dropped on the way out, which
 /// closes the connection and stops the provider sending the rest. gg neither reads nor pays for the
-/// remainder.
+/// remainder — which is also how a stalled attempt is cancelled.
 ///
 /// Generic over the chunk stream rather than taking the [`reqwest::Response`], so a test can hand it
 /// chunks that are ready without any I/O and then a stream that never yields again — which is what
-/// lets the idle half of the ceiling be asserted under paused time instead of by waiting it out.
+/// lets both clocks be asserted under paused time instead of by waiting them out.
 async fn read_stream<S, B, E>(
     mut stream: S,
-    config: LoopGuardConfig,
-    model_call_timeout: Duration,
+    guard: Option<LoopGuardConfig>,
+    deadline: tokio::time::Instant,
+    idle_from: tokio::time::Instant,
+    idle: Duration,
 ) -> StreamOutcome
 where
     S: futures_util::Stream<Item = Result<B, E>> + Unpin,
     B: AsRef<[u8]>,
     E: std::fmt::Display,
 {
-    let mut guard = LoopGuard::new(config);
+    let mut guard = guard.map(LoopGuard::new);
     let mut accumulator = StreamAccumulator::new();
+    // When the last delta from the model arrived, or when the request was sent before any has.
+    // The idle budget is spent from here, and a chunk that carries no delta (a keep-alive
+    // comment, a blank line, the usage trailer) leaves it where it was.
+    let mut last_delta = idle_from;
 
     loop {
-        // The idle half of the run's per-call ceiling: a stream still producing bytes is not
-        // stalled however long it runs, so the clock is per read rather than total.
-        let chunk = match tokio::time::timeout(model_call_timeout, stream.next()).await {
+        let ceiling_left = time_left(deadline);
+        let idle_left = idle.saturating_sub(last_delta.elapsed());
+        let chunk = match tokio::time::timeout(ceiling_left.min(idle_left), stream.next()).await {
             Ok(Some(chunk)) => chunk,
             Ok(None) => break,
             Err(_) => {
-                return StreamOutcome::Stalled {
-                    provider: accumulator.provider().map(str::to_string),
+                return if ceiling_left <= idle_left {
+                    StreamOutcome::Ceiling {
+                        provider: accumulator.provider().map(str::to_string),
+                    }
+                } else {
+                    StreamOutcome::Stalled {
+                        idle,
+                        provider: accumulator.provider().map(str::to_string),
+                    }
                 };
             }
         };
@@ -1113,15 +1531,25 @@ where
             Ok(delta) => delta,
             Err(err) => return StreamOutcome::Malformed(err),
         };
-        if let LoopVerdict::Looping(trip) = guard.push(&delta) {
+        if delta.progressed {
+            last_delta = tokio::time::Instant::now();
+        }
+        if let Some(trip) = guard
+            .as_mut()
+            .and_then(|guard| match guard.push(&delta.text) {
+                LoopVerdict::Continue => None,
+                LoopVerdict::Looping(trip) => Some(trip),
+            })
+        {
             // The trip says which rule fired and in that rule's own units — words for a repetition,
             // characters for the backstop. The size of what is being thrown away is carried in
             // **both** units, because that is what the discarded reply cost: the operator reading
             // this line wants to know how much generation was paid for and abandoned, whichever
             // rule caught it, and the turn's telemetry publishes the same two figures.
             let generated = Generated {
-                words: guard.words_seen(),
-                chars: guard.chars_seen() as u64,
+                words: guard.as_ref().map_or(0, LoopGuard::words_seen),
+                chars: guard.as_ref().map_or(0, LoopGuard::chars_seen) as u64,
+                generation_id: accumulator.generation_id().map(str::to_string),
             };
             return StreamOutcome::Looping {
                 detail: format!(
@@ -1180,6 +1608,89 @@ pub fn is_image_unsupported(status: u16, body: &str) -> bool {
     PHRASES.iter().any(|phrase| body.contains(phrase))
 }
 
+/// Whether a fatal response refuses the request's pinned tool choice: a `400` whose body names
+/// `tool_choice`.
+///
+/// The match is on the parameter rather than on one provider's wording of why it was refused,
+/// because the reason varies (a model served in a thinking mode, a provider that never took the
+/// object form) while the parameter does not. A thinking-mode refusal reads *"The tool_choice
+/// parameter does not support being set to required or object in thinking mode"*.
+pub fn is_tool_choice_refusal(status: u16, body: &str) -> bool {
+    status == 400 && body.contains("tool_choice")
+}
+
+/// The `warn` line a [tool-choice downgrade](ToolChoiceMemory) is logged with: the model whose
+/// provider refused the pin, and the provider's own message.
+pub fn tool_choice_downgrade_message(model_id: &str, provider_message: &str) -> String {
+    format!(
+        "the provider refused a pinned tool choice for `{model_id}` ({provider_message}); \
+         required-tool requests for it are sent with `tool_choice` set to `auto` for the rest of \
+         the run",
+    )
+}
+
+/// The run's record of the models whose provider refused a pinned `tool_choice`.
+///
+/// A [required-tool request](ModelClient::complete_requiring) is pinned to its one tool until
+/// the model's provider [refuses the pin](is_tool_choice_refusal). The refusal is recorded here
+/// and every later required-tool request for that model is sent on `auto`, so the pin is tried
+/// once per model per run rather than once per request. A reply on `auto` that makes no call is
+/// the caller's ordinary missing-completion handling.
+///
+/// Cloning shares the record. The run's [factory](DefaultClientFactory) holds one and hands it to
+/// every client it builds, so an agent's successor, its subagents and its handoff compaction
+/// client all read the same record.
+#[derive(Debug, Clone, Default)]
+pub struct ToolChoiceMemory(Arc<Mutex<BTreeSet<String>>>);
+
+impl ToolChoiceMemory {
+    /// Whether `model_id`'s provider has refused a pinned tool choice this run.
+    pub fn refused(&self, model_id: &str) -> bool {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .contains(model_id)
+    }
+
+    /// Record that `model_id`'s provider refused a pinned tool choice. `true` when this call is
+    /// the one that recorded it, which is the call that logs the downgrade.
+    pub fn record_refusal(&self, model_id: &str) -> bool {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(model_id.to_string())
+    }
+}
+
+/// The run's record of the replies [loop detection](crate::loopguard) abandoned mid-stream — one
+/// [record](AbandonedReply) per abandoned reply, carrying its size and its generation id, kept so
+/// the session can price them at its end.
+///
+/// Cloning shares the record, exactly as [`ToolChoiceMemory`] is shared: the run's
+/// [factory](DefaultClientFactory) holds one and hands it to every client it builds, so one read
+/// at session end sees the whole run's abandons — the root's, every subagent's, and every
+/// succession's. A client built without one keeps a record of its own.
+#[derive(Debug, Clone, Default)]
+pub struct AbandonedReplies(Arc<Mutex<Vec<AbandonedReply>>>);
+
+impl AbandonedReplies {
+    /// Keep one abandoned reply's [record](AbandonedReply).
+    fn record(&self, reply: AbandonedReply) {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(reply);
+    }
+
+    /// Every abandoned reply kept so far, in the order they were abandoned.
+    pub fn list(&self) -> Vec<AbandonedReply> {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+}
+
 /// Truncate a provider error body to [`ERROR_BODY_CAP`] so a huge HTML error page
 /// never floods a [`ModelError`].
 fn truncate(body: &str) -> String {
@@ -1230,22 +1741,30 @@ fn truncate(body: &str) -> String {
 /// [`CacheTtl::Standard`], so `Standard` here produces exactly the unqualified markers gg sent
 /// before the lifetime was configurable.
 ///
-/// `stream` asks the provider to deliver the reply as
-/// [server-sent events](StreamAccumulator) rather than as one JSON document, and is `true` only
-/// for an agent with [loop detection](crate::loopguard) armed — a detector cannot abandon a reply
-/// it is only shown once it is complete. It adds `stream: true` and
-/// `stream_options: { include_usage: true }`; the latter is what makes OpenRouter attach the
-/// `usage` block (and therefore the turn's cost) to the final chunk, without which a streamed turn
-/// would silently account zero tokens. The flag is a *parameter* rather than a mutation applied to
-/// the returned `Value` so that there is exactly one description of what gg sends, and a test can
-/// assert both shapes come out of the same function.
+/// `reasoning` is the running agent's [reasoning setting](GgReasoning), sent as the unified
+/// `reasoning` request object — one key wide, `{"effort": "low"}` or `{"max_tokens": 8192}` — on
+/// **every** request of the agent's own client: the turns and the compaction summaries written on
+/// the agent's model alike. A [handoff](crate::compaction) model's client is built without one,
+/// since the setting is tuned to the agent's model. `None` sends no `reasoning` parameter at all,
+/// and the model runs at its provider's default.
+///
+/// Every request asks the provider to deliver the reply as
+/// [server-sent events](StreamAccumulator), so the request carries `stream: true` and
+/// `stream_options: { include_usage: true }`. The first is the transport; the second is what makes
+/// OpenRouter attach the `usage` block (and therefore the turn's cost) to the final chunk, without
+/// which a streamed turn would silently account zero tokens. Streaming is not a
+/// [loop-detection](crate::loopguard) concern: the detector is the *reason an agent might want* to
+/// see the reply as it arrives, but the [stream-idle bound](DEFAULT_MODEL_STREAM_IDLE) needs the
+/// same stream to tell a provider that has stopped from a model that is still thinking, so every
+/// agent gets it and the detector decides only whether anything watches.
 pub fn build_request_body(
     model_id: &str,
     messages: &[Message],
     tools: &[ToolDefinition],
     routing_key: Option<&RoutingKey>,
+    candidate: Option<&test_cabinet_core::gg::GgProviderCandidate>,
     stable_ttl: CacheTtl,
-    stream: bool,
+    reasoning: Option<GgReasoning>,
 ) -> Value {
     let marked_model = requires_cache_markers(model_id);
     let breakpoints = if marked_model {
@@ -1277,18 +1796,45 @@ pub fn build_request_body(
         "model": model_id,
         "messages": messages,
         "usage": { "include": true },
+        "stream": true,
+        "stream_options": { "include_usage": true },
     });
-
-    if stream {
-        body["stream"] = json!(true);
-        body["stream_options"] = json!({ "include_usage": true });
-    }
 
     if let Some(key) = routing_key.map(RoutingKey::as_str) {
         // The sticky-routing key, and the OpenAI-style fallback for the providers that read that
         // one instead. Same value: they name the same conversation.
         body["session_id"] = json!(key);
         body["prompt_cache_key"] = json!(key);
+    }
+
+    // The candidate in force. `only` names the one provider this request may be served by,
+    // `quantizations` the level that endpoint serves, and `allow_fallbacks: false` makes an
+    // outage of that provider the error it is rather than a silent move onto another provider.
+    // The sticky key stays: it still keeps a run on one endpoint *within* the candidate. Absent
+    // only for a caller that has no candidate to send — a unit test of the body, never a
+    // launched run.
+    if let Some(candidate) = candidate.filter(|candidate| !candidate.provider.is_empty()) {
+        let mut provider = json!({ "only": [candidate.provider], "allow_fallbacks": false });
+        if !candidate.quantization.is_empty() {
+            provider["quantizations"] = json!([candidate.quantization]);
+        }
+        body["provider"] = provider;
+    }
+
+    if let Some(reasoning) = reasoning {
+        // The object as the agent's declaration names it. The keys are the unified request
+        // object's own (`effort`, `max_tokens`); what a provider calls its parameter is the
+        // provider's mapping. A declaration naming nothing names no object, so none is sent.
+        let mut object = serde_json::Map::new();
+        if let Some(effort) = reasoning.effort {
+            object.insert("effort".to_string(), json!(effort.as_str()));
+        }
+        if let Some(tokens) = reasoning.max_tokens {
+            object.insert("max_tokens".to_string(), json!(tokens));
+        }
+        if !object.is_empty() {
+            body["reasoning"] = Value::Object(object);
+        }
     }
 
     if !tools.is_empty() {
@@ -1321,24 +1867,25 @@ pub fn build_request_body(
 /// structured answer and no next turn in which to ask again. Pure, like
 /// [`build_request_body`], so the wire shape is unit tested without network.
 ///
-/// `stream` carries the same meaning it has on [`build_request_body`], so the agent's transport
-/// choice applies to its compaction summary as well as to its turns — the summarizer runs on the
-/// same model, and a model that loops on a turn loops on a summary.
+/// `reasoning` carries the same meaning it has on [`build_request_body`], so a client's reasoning
+/// setting applies to a required call as well as to a free turn.
 pub fn build_required_tool_request_body(
     model_id: &str,
     messages: &[Message],
     tool: &ToolDefinition,
     routing_key: Option<&RoutingKey>,
+    candidate: Option<&test_cabinet_core::gg::GgProviderCandidate>,
     stable_ttl: CacheTtl,
-    stream: bool,
+    reasoning: Option<GgReasoning>,
 ) -> Value {
     let mut body = build_request_body(
         model_id,
         messages,
         std::slice::from_ref(tool),
         routing_key,
+        candidate,
         stable_ttl,
-        stream,
+        reasoning,
     );
     body["tool_choice"] = json!({
         "type": "function",
@@ -1631,43 +2178,62 @@ fn role_str(role: Role) -> &'static str {
 }
 
 // ---------------------------------------------------------------------------
-// Response parsing (pure)
+// The single-document reply shape (pure, test-only)
 // ---------------------------------------------------------------------------
 
-/// Parse an OpenRouter chat-completions response body into a [`ModelResponse`]. Pure,
-/// so it is unit tested against recorded JSON. Tool-call arguments (a JSON string on
-/// the wire) are parsed into structured [`Value`]s; usage is mapped onto
-/// [`TokenCounts`] (cached input subtracted from input, reasoning subtracted from
-/// output, per the metrics contract) and any reported cost onto [`Cost`].
+/// Parse an OpenRouter chat-completions **response body** — the one-document reply a non-streaming
+/// request receives — into a [`ModelResponse`].
+///
+/// gg no longer reads this shape off the wire: every reply arrives as a
+/// [stream](StreamAccumulator). The parser survives as the **reference** the streamed assembler is
+/// pinned against — the equivalence test feeds the accumulator an SSE transcript whose deltas
+/// concatenate to exactly this document and asserts the two [`ModelResponse`]s are equal, which is
+/// what guarantees that moving the whole transport onto the stream changed what gg reads by
+/// nothing at all. Pure and network-free, so it is unit tested against recorded JSON.
+///
+/// Tool-call arguments (a JSON string on the wire) are parsed into structured [`Value`]s; usage is
+/// mapped onto [`TokenCounts`] (cached input subtracted from input, reasoning subtracted from
+/// output, per the metrics contract) and any reported cost onto [`Cost`] — all through the same
+/// helpers the streamed assembler uses, so the two cannot drift.
+#[cfg(test)]
 pub fn parse_response(body: &str) -> Result<ModelResponse, ModelError> {
     let parsed: WireResponse = serde_json::from_str(body)
-        .map_err(|err| ModelError::Parse(format!("{err}; body: {}", truncate(body))))?;
+        .map_err(|err| ModelError::parse(format!("{err}; body: {}", truncate(body))))?;
+
+    // Read the bookkeeping before the parts that can fail take `parsed` apart: usage a provider
+    // reported ahead of the failure (an error object, tool call arguments that do not parse) is
+    // spend the run actually made, and belongs in the run's total cost rather than vanishing with
+    // the reply. See [`ModelError::Parse`].
+    let provider = parsed.provider.filter(|provider| !provider.is_empty());
 
     // OpenRouter surfaces provider errors in a `2xx` envelope too; treat that as fatal
     // rather than silently returning an empty turn.
     if let Some(err) = parsed.error {
-        return Err(ModelError::Parse(format!(
-            "provider returned an error object: {}",
-            err.message
-        )));
+        return Err(ModelError::parse_billed(
+            format!("provider returned an error object: {}", err.message),
+            billed_spend(parsed.usage.as_ref(), provider.clone()),
+        ));
     }
 
-    let provider = parsed.provider.filter(|provider| !provider.is_empty());
-    let choice = parsed
-        .choices
-        .into_iter()
-        .next()
-        .ok_or_else(|| ModelError::Parse("response had no choices".to_string()))?;
+    let choice = parsed.choices.into_iter().next().ok_or_else(|| {
+        ModelError::parse_billed(
+            "response had no choices",
+            billed_spend(parsed.usage.as_ref(), provider.clone()),
+        )
+    })?;
 
     let text = choice.message.content.filter(|content| !content.is_empty());
 
     let mut tool_calls = Vec::with_capacity(choice.message.tool_calls.len());
     for (index, call) in choice.message.tool_calls.into_iter().enumerate() {
         let arguments = parse_arguments(&call.function.arguments).map_err(|err| {
-            ModelError::Parse(format!(
-                "tool call #{index} ({}) had unparseable arguments: {err}",
-                call.function.name
-            ))
+            ModelError::parse_billed(
+                format!(
+                    "tool call #{index} ({}) had unparseable arguments: {err}",
+                    call.function.name
+                ),
+                billed_spend(parsed.usage.as_ref(), provider.clone()),
+            )
         })?;
         tool_calls.push(ToolCall {
             id: call.id,
@@ -1683,7 +2249,10 @@ pub fn parse_response(body: &str) -> Result<ModelResponse, ModelError> {
         finish_reason = FinishReason::ToolCalls;
     }
 
-    let (usage, cost) = map_usage(parsed.usage.as_ref());
+    let (usage, cost, wire, reconciled) = map_usage(
+        parsed.usage.as_ref(),
+        reply_size(text.as_deref(), &tool_calls),
+    );
 
     Ok(ModelResponse {
         text,
@@ -1693,6 +2262,8 @@ pub fn parse_response(body: &str) -> Result<ModelResponse, ModelError> {
         cost,
         provider,
         loop_aborts: LoopAborts::none(),
+        usage_wire: wire,
+        usage_reconciled: reconciled,
     })
 }
 
@@ -1722,9 +2293,23 @@ fn map_finish_reason(reason: Option<&str>) -> FinishReason {
 /// subtracted from the input total and reasoning from the output total (per the
 /// metrics contract), using saturating subtraction so a provider's slightly
 /// inconsistent details can never underflow.
-fn map_usage(usage: Option<&WireUsage>) -> (TokenCounts, Option<Cost>) {
+///
+/// `reply_tokens` is the [reply's own estimated size](reply_size), which bounds the
+/// output/reasoning split (see [`split_completion`]): a provider's `reasoning_tokens` is
+/// kept only while it leaves the reply that much room under `completion_tokens`, and a
+/// split gg bounded is reported as
+/// [`reconciled`](test_cabinet_core::gg::GgTelemetryKind::Usage).
+///
+/// The return also carries the provider's usage object verbatim (as JSON) so the
+/// [`Usage`](test_cabinet_core::gg::GgTelemetryKind::Usage) event can publish it beside
+/// the mapped counts: a published per-turn output figure is checkable against what the
+/// provider actually said only if the record holds what it said.
+fn map_usage(
+    usage: Option<&WireUsage>,
+    reply_tokens: Option<u64>,
+) -> (TokenCounts, Option<Cost>, Option<Value>, bool) {
     let Some(usage) = usage else {
-        return (TokenCounts::default(), None);
+        return (TokenCounts::default(), None, None, false);
     };
 
     let cached_input = usage
@@ -1739,9 +2324,8 @@ fn map_usage(usage: Option<&WireUsage>) -> (TokenCounts, Option<Cost>) {
     let uncached_input = usage
         .prompt_tokens
         .map(|prompt| prompt.saturating_sub(cached_input.unwrap_or(0)));
-    let output = usage
-        .completion_tokens
-        .map(|completion| completion.saturating_sub(reasoning.unwrap_or(0)));
+    let (output, reasoning, reconciled) =
+        split_completion(usage.completion_tokens, reasoning, reply_tokens);
 
     let counts = TokenCounts {
         uncached_input,
@@ -1755,13 +2339,196 @@ fn map_usage(usage: Option<&WireUsage>) -> (TokenCounts, Option<Cost>) {
         actual: Some(cost),
     });
 
-    (counts, cost)
+    (counts, cost, Some(usage.to_wire()), reconciled)
+}
+
+/// Split one call's completion total into the output and reasoning classes, bounded by
+/// the size of the reply gg measured itself.
+///
+/// The provider's `reasoning_tokens` is kept as given when it is consistent with the
+/// reply — when the reply fits under the completion total beside it. When it does not
+/// (reasoning equal to or beyond the whole completion, or past what the reply leaves),
+/// the reply's own size is the output figure and what remains of the total is the
+/// reasoning figure, and the split is reported as reconciled: gg's, not the provider's.
+///
+/// Every arm preserves the two properties the split must hold: output plus reasoning is
+/// the provider's completion total wherever it reported one, and a class unreported by
+/// the provider stays unreported rather than being invented as a zero. A call with no
+/// completion total is mapped as reported — there is no total to bound a split against,
+/// so the provider's reasoning figure stands and the reply's size is not imposed.
+fn split_completion(
+    completion: Option<u64>,
+    reasoning: Option<u64>,
+    reply_tokens: Option<u64>,
+) -> (Option<u64>, Option<u64>, bool) {
+    let Some(reply) = reply_tokens else {
+        return (
+            completion.map(|c| c.saturating_sub(reasoning.unwrap_or(0))),
+            reasoning,
+            false,
+        );
+    };
+    let Some(completion) = completion else {
+        return (None, reasoning, false);
+    };
+
+    let floor = reply.min(completion);
+    if reasoning.unwrap_or(0) <= completion.saturating_sub(floor) {
+        // The provider's split leaves the reply room under the total: record it as given.
+        (
+            Some(completion.saturating_sub(reasoning.unwrap_or(0))),
+            reasoning,
+            false,
+        )
+    } else {
+        // It does not: the reply is the output, and the reasoning is what is left.
+        (Some(floor), Some(completion - floor), true)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The generation ledger (pure)
+// ---------------------------------------------------------------------------
+
+/// How long one generation lookup keeps retrying the ledger's `404` before giving up: **30
+/// seconds** in total.
+///
+/// A gateway settles a cancelled stream's ledger entry only after a delay — about ten seconds —
+/// so the first lookup of a reply abandoned near session end is answered `404` for a while. The
+/// budget is comfortably past that delay without stalling a session's epilogue for long, and it is
+/// what bounds a lookup at "a few tens of seconds" however the ledger behaves. Lookups for a run's
+/// abandoned replies all start together, so the whole session-end pass is bounded by this figure
+/// rather than by it times the count.
+const GENERATION_LOOKUP_BUDGET: Duration = Duration::from_secs(30);
+
+/// The delay between a generation lookup's retries: **2 seconds** — short enough that an entry
+/// that settles ten seconds after the cancel is priced seconds later, long enough that the
+/// schedule is a handful of requests rather than a flood.
+const GENERATION_LOOKUP_RETRY: Duration = Duration::from_secs(2);
+
+/// `GET /api/v1/generation?id=…`'s envelope: the ledger's record under `data`.
+#[derive(Debug, Deserialize)]
+struct WireGenerationEnvelope {
+    #[serde(default)]
+    data: Option<WireGeneration>,
+}
+
+/// The generation ledger's record for one generation: what the request was billed
+/// (`total_cost`), its token counts, and who served it — beside the record **verbatim** as it
+/// arrived. A reply abandoned mid-stream has no usage payload (the stream never delivered one), so
+/// this is the only place its price exists; see [`WireGeneration::spend`].
+#[derive(Debug)]
+struct WireGeneration {
+    /// What the request was billed, in USD.
+    total_cost: Option<f64>,
+    /// The prompt tokens the ledger recorded, cached ones included — see [`Self::spend`] for how
+    /// the two prompt figures map.
+    native_tokens_prompt: Option<u64>,
+    /// Of the prompt tokens, how many were served from the provider's cache.
+    native_tokens_cached: Option<u64>,
+    /// The completion tokens the ledger recorded, reasoning included.
+    native_tokens_completion: Option<u64>,
+    /// Of the completion tokens, how many were the model's reasoning.
+    native_tokens_reasoning: Option<u64>,
+    /// The upstream provider that served the request, as the ledger names it.
+    provider_name: Option<String>,
+    /// The record verbatim, exactly as parsed off the wire — kept for the reason
+    /// [`WireUsage::to_wire`] keeps the usage object: a published figure is checkable only while
+    /// the record holds what the provider said.
+    raw: Value,
+}
+
+/// The mapped fields of a [`WireGeneration`], as the wire carries them.
+#[derive(Deserialize)]
+struct WireGenerationFields {
+    #[serde(default)]
+    total_cost: Option<f64>,
+    #[serde(default)]
+    native_tokens_prompt: Option<u64>,
+    #[serde(default)]
+    native_tokens_cached: Option<u64>,
+    #[serde(default)]
+    native_tokens_completion: Option<u64>,
+    #[serde(default)]
+    native_tokens_reasoning: Option<u64>,
+    #[serde(default)]
+    provider_name: Option<String>,
+}
+
+impl<'de> Deserialize<'de> for WireGeneration {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        // Read the whole record first — the verbatim half — and then map the fields off it. One
+        // read, so the two halves cannot describe different records.
+        let raw = Value::deserialize(deserializer)?;
+        let fields = WireGenerationFields::deserialize(&raw).map_err(serde::de::Error::custom)?;
+        Ok(Self {
+            total_cost: fields.total_cost,
+            native_tokens_prompt: fields.native_tokens_prompt,
+            native_tokens_cached: fields.native_tokens_cached,
+            native_tokens_completion: fields.native_tokens_completion,
+            native_tokens_reasoning: fields.native_tokens_reasoning,
+            provider_name: fields.provider_name,
+            raw,
+        })
+    }
+}
+
+impl WireGeneration {
+    /// The spend this record reports, mapped onto the shared metrics contract exactly as
+    /// [`map_usage`] maps a stream's usage block: cached input subtracted from the prompt total,
+    /// reasoning subtracted from the completion total (saturating, so a slightly inconsistent
+    /// record can never underflow), and the `total_cost` as both cost figures.
+    ///
+    /// There is no reply left to bound the output/reasoning split against (the reply was abandoned
+    /// mid-stream), so the ledger's own split stands and nothing is
+    /// [`reconciled`](ModelResponse::usage_reconciled).
+    fn spend(&self) -> ReplySpend {
+        let cached_input = self.native_tokens_cached;
+        let uncached_input = self
+            .native_tokens_prompt
+            .map(|prompt| prompt.saturating_sub(cached_input.unwrap_or(0)));
+        let reasoning = self.native_tokens_reasoning;
+        let output = self
+            .native_tokens_completion
+            .map(|completion| completion.saturating_sub(reasoning.unwrap_or(0)));
+        ReplySpend {
+            tokens: TokenCounts {
+                uncached_input,
+                cached_input,
+                output,
+                reasoning,
+            },
+            cost: self.total_cost.map(|cost| Cost {
+                comparable: Some(cost),
+                actual: Some(cost),
+            }),
+            provider: self.provider_name.clone(),
+            wire: Some(self.raw.clone()),
+            reconciled: false,
+        }
+    }
+}
+
+/// Parse `GET /api/v1/generation?id=…`'s body into the spend it reports, or `None` when the body
+/// is no generation record — which leaves the reply unpriced exactly as a lookup that never
+/// answered does.
+fn generation_spend(body: &str) -> Option<ReplySpend> {
+    let envelope: WireGenerationEnvelope = serde_json::from_str(body).ok()?;
+    Some(envelope.data?.spend())
 }
 
 // ---------------------------------------------------------------------------
 // Wire response types
 // ---------------------------------------------------------------------------
 
+// The `WireResponse` family belongs to the single-document reply shape, whose only remaining
+// reader is the test-only reference parser, so it compiles only there. `WireUsage` is shared with
+// the streamed chunks and stays in every build.
+
+#[cfg(test)]
 #[derive(Debug, Deserialize)]
 struct WireResponse {
     #[serde(default)]
@@ -1775,12 +2542,14 @@ struct WireResponse {
     provider: Option<String>,
 }
 
+/// A provider error object. Compiled unconditionally because a mid-stream chunk can carry one too.
 #[derive(Debug, Deserialize)]
 struct WireError {
     #[serde(default)]
     message: String,
 }
 
+#[cfg(test)]
 #[derive(Debug, Deserialize)]
 struct WireChoice {
     message: WireRespMessage,
@@ -1788,6 +2557,7 @@ struct WireChoice {
     finish_reason: Option<String>,
 }
 
+#[cfg(test)]
 #[derive(Debug, Deserialize)]
 struct WireRespMessage {
     #[serde(default)]
@@ -1796,6 +2566,7 @@ struct WireRespMessage {
     tool_calls: Vec<WireRespToolCall>,
 }
 
+#[cfg(test)]
 #[derive(Debug, Deserialize)]
 struct WireRespToolCall {
     #[serde(default)]
@@ -1803,6 +2574,7 @@ struct WireRespToolCall {
     function: WireRespFunction,
 }
 
+#[cfg(test)]
 #[derive(Debug, Deserialize)]
 struct WireRespFunction {
     name: String,
@@ -1810,8 +2582,33 @@ struct WireRespFunction {
     arguments: String,
 }
 
-#[derive(Debug, Deserialize)]
+/// The provider's usage object: the typed view gg maps onto, plus the object **verbatim**
+/// as it arrived.
+///
+/// The verbatim half is captured at parse time (see the `Deserialize` impl) rather than
+/// rebuilt from the mapped fields, so fields gg maps nothing onto — `total_tokens`, a
+/// vendor's own detail keys — survive into the record. An unmapped field in the record is
+/// a figure a reader can still check, where a dropped one is a silence that reads as
+/// agreement.
+#[derive(Debug)]
 struct WireUsage {
+    /// The mapped `prompt_tokens` total.
+    prompt_tokens: Option<u64>,
+    /// The mapped `completion_tokens` total.
+    completion_tokens: Option<u64>,
+    /// The mapped cost.
+    cost: Option<f64>,
+    /// The mapped prompt details.
+    prompt_tokens_details: Option<WirePromptDetails>,
+    /// The mapped completion details.
+    completion_tokens_details: Option<WireCompletionDetails>,
+    /// The object verbatim, exactly as parsed off the wire.
+    raw: Value,
+}
+
+/// The mapped fields of a [`WireUsage`], as the wire carries them.
+#[derive(Deserialize)]
+struct WireUsageFields {
     #[serde(default)]
     prompt_tokens: Option<u64>,
     #[serde(default)]
@@ -1822,6 +2619,34 @@ struct WireUsage {
     prompt_tokens_details: Option<WirePromptDetails>,
     #[serde(default)]
     completion_tokens_details: Option<WireCompletionDetails>,
+}
+
+impl<'de> Deserialize<'de> for WireUsage {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        // Read the whole object first — the verbatim record — and then map the fields off
+        // it. One read, so the two halves cannot describe different objects.
+        let raw = Value::deserialize(deserializer)?;
+        let fields = WireUsageFields::deserialize(&raw).map_err(serde::de::Error::custom)?;
+        Ok(Self {
+            prompt_tokens: fields.prompt_tokens,
+            completion_tokens: fields.completion_tokens,
+            cost: fields.cost,
+            prompt_tokens_details: fields.prompt_tokens_details,
+            completion_tokens_details: fields.completion_tokens_details,
+            raw,
+        })
+    }
+}
+
+impl WireUsage {
+    /// The provider's usage object, verbatim: exactly the JSON it arrived as, beside the
+    /// mapped counts on the [`Usage`](test_cabinet_core::gg::GgTelemetryKind::Usage) event.
+    fn to_wire(&self) -> Value {
+        self.raw.clone()
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -1857,25 +2682,29 @@ const SSE_DONE: &str = "[DONE]";
 
 /// Accumulates OpenAI-style `chat.completion.chunk` deltas into one [`ModelResponse`].
 ///
-/// **Pure and network-free**, on the same terms as [`build_request_body`] and [`parse_response`]:
-/// it is fed `&[u8]` and answers with values, so the whole streamed wire format — partial lines,
-/// keep-alive comments, tool-call fragments arriving out of one field at a time, usage on a
-/// trailing chunk — is unit tested against recorded transcripts with no server anywhere. The only
-/// thing [`read_stream`] adds is a socket to read the bytes off.
+/// **Pure and network-free**, on the same terms as [`build_request_body`]: it is fed `&[u8]` and
+/// answers with values, so the whole streamed wire format — partial lines, keep-alive comments,
+/// tool-call fragments arriving out of one field at a time, usage on a trailing chunk — is unit
+/// tested against recorded transcripts with no server anywhere. The only thing [`read_stream`] adds
+/// is a socket to read the bytes off.
 ///
-/// It shares every mapping with the buffering transport ([`parse_arguments`],
-/// [`map_finish_reason`], [`map_usage`], and the `Stop`-with-tool-calls normalisation), which is
-/// what makes the two transports' answers comparable rather than merely similar — see the
-/// equivalence test in `client.streaming.test.rs`, which feeds an SSE transcript whose deltas
-/// concatenate to a non-streaming fixture and asserts the two [`ModelResponse`]s are equal.
+/// It shares every mapping with the reply parsing ([`parse_arguments`], [`map_finish_reason`],
+/// [`map_usage`], and the `Stop`-with-tool-calls normalisation), which is what keeps the assembled
+/// stream byte-equivalent with the single-document reply it was split from — see the equivalence
+/// test in `client.streaming.test.rs`, which feeds an SSE transcript whose deltas concatenate to a
+/// buffered fixture and asserts the two [`ModelResponse`]s are equal.
 ///
 /// # What it tolerates
 ///
 /// Everything the format says is not a chunk: blank lines (the event separator), `:` comment lines
 /// (OpenRouter sends `: OPENROUTER PROCESSING` as a keep-alive while a slow provider thinks), and
-/// any other field line (`event:`, `id:`, `retry:`). A `data:` line that is not `[DONE]` and not
-/// parseable JSON is *not* tolerated: a chunk gg cannot read is a reply gg cannot assemble, and
-/// silently skipping it would produce a confidently wrong answer.
+/// any other field line (`event:`, `id:`, `retry:`). Tolerated is not the same as progress:
+/// [`push_bytes`](Self::push_bytes) reports whether the bytes carried a **delta** separately from
+/// the text they carried, so the run's
+/// [stream-idle bound](crate::limits::RunLimits::model_stream_idle) is spent by the model's own
+/// output and not by a keep-alive. A `data:` line that is not `[DONE]` and not parseable JSON is
+/// *not* tolerated: a chunk gg cannot read is a reply gg cannot assemble, and silently skipping it
+/// would produce a confidently wrong answer.
 pub struct StreamAccumulator {
     /// Bytes received but not yet forming a complete line.
     ///
@@ -1891,8 +2720,8 @@ pub struct StreamAccumulator {
     /// fragment belongs to, since a chunk carries a slice of one and providers interleave several.
     ///
     /// A `BTreeMap` so [`finish`](Self::finish) emits them in index order, which is the order the
-    /// model asked for them in and the order the buffering transport returns them in. A `Vec`
-    /// indexed positionally would break the moment a provider sent index 1 before index 0.
+    /// model asked for them in. A `Vec` indexed positionally would break the moment a provider sent index 1 before
+    /// index 0.
     tool_calls: BTreeMap<u64, PartialToolCall>,
     /// The first non-null `finish_reason` any chunk carried. First rather than last because a
     /// provider states it once, on the chunk that stops, and anything after it is bookkeeping (the
@@ -1904,8 +2733,37 @@ pub struct StreamAccumulator {
     usage: Option<WireUsage>,
     /// Whether the terminal `data: [DONE]` sentinel has been seen.
     done: bool,
+    /// The generation id, from the `id` on the first chunk that carried one — the handle a reply
+    /// [loop detection](crate::loopguard) abandons is priced under at session end, since a stream
+    /// dropped mid-reply never delivers its usage.
+    generation_id: Option<String>,
     /// The upstream provider the chunks named, from the first chunk that carried one.
     provider: Option<String>,
+    /// Whether the push currently being assembled carried a delta from the model — set by
+    /// [`push_line`](Self::push_line) for a chunk whose `delta` held content, reasoning or
+    /// tool-call arguments, and read by [`push_bytes`](Self::push_bytes) to answer its caller.
+    saw_delta: bool,
+}
+
+/// What one [push](StreamAccumulator::push_bytes) delivered from the model.
+///
+/// The two halves answer two different questions, and neither can stand in for the other:
+///
+/// - [`text`](Self::text) is the assistant **text** the bytes carried, and exists for exactly one
+///   caller — the [`LoopGuard`](crate::loopguard), which judges the reply the model is writing and
+///   must not be shown the SSE framing, the JSON escaping or the tool-call arguments around it.
+/// - [`progressed`](Self::progressed) is whether the bytes carried a **delta** at all: content,
+///   reasoning or tool-call arguments. It is what the run's
+///   [stream-idle bound](DEFAULT_MODEL_STREAM_IDLE) is measured against, so that a keep-alive
+///   comment — which arrives repeatedly while a provider is thinking, or has stopped — does not
+///   read as progress, while a model that is reasoning at length does however little *text* its
+///   reasoning deltas carry.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct Delta {
+    /// The assistant text in the pushed bytes, for the detector.
+    pub text: String,
+    /// Whether any chunk in them carried a delta from the model.
+    pub progressed: bool,
 }
 
 /// One tool call being assembled from the fragments of several chunks.
@@ -1937,30 +2795,36 @@ impl StreamAccumulator {
             finish_reason: None,
             usage: None,
             done: false,
+            generation_id: None,
             provider: None,
+            saw_delta: false,
         }
     }
 
     /// Feed raw bytes off the wire.
     ///
-    /// Returns the assistant **text** contained in them — the concatenated `delta.content` of every
-    /// complete chunk this call finished — and records everything else (tool-call fragments, the
-    /// finish reason, usage, the sentinel) internally. The return value exists for exactly one
-    /// caller: the [`LoopGuard`], which judges the reply the model is writing and must not be shown
-    /// the SSE framing, the JSON escaping or the tool-call arguments around it.
+    /// Returns what they [delivered](Delta) from the model: the assistant **text** they carried,
+    /// for the [`LoopGuard`](crate::loopguard) that judges the reply as it arrives, and whether any
+    /// chunk in them carried a **delta**, for the run's
+    /// [stream-idle bound](DEFAULT_MODEL_STREAM_IDLE). Everything else — tool-call fragments, the
+    /// finish reason, usage, the sentinel — is recorded internally.
     ///
     /// Bytes that do not complete a line are held for the next call, so an event straddling two
     /// reads is assembled rather than truncated.
     ///
-    /// **Tool-call arguments are deliberately excluded**, and that is a real limit worth stating: a
-    /// model that loops *inside* a tool call's `arguments` — a `write_file` whose contents repeat
-    /// forever — is not caught by the window rule and is bounded only by the provider's own output
-    /// cap. The exclusion is right anyway. Arguments arrive as a JSON string, so the detector would
-    /// be judging escaped, quoted fragments rather than the model's words, and the defect this
-    /// exists for is a responses-as-code program, which arrives as `content`.
-    pub fn push_bytes(&mut self, bytes: &[u8]) -> Result<String, ModelError> {
+    /// **Tool-call arguments are deliberately excluded from the text**, and that is a real limit
+    /// worth stating: a model that loops *inside* a tool call's `arguments` — a `write_file` whose
+    /// contents repeat forever — is not caught by the window rule and is bounded only by the
+    /// provider's own output cap. The exclusion is right anyway. Arguments arrive as a JSON string,
+    /// so the detector would be judging escaped, quoted fragments rather than the model's words,
+    /// and the defect this exists for is a responses-as-code program, which arrives as `content`.
+    /// They **do** restart the idle clock, though: a fragment of a tool call is the model working,
+    /// and it is the model's silence that [`DEFAULT_MODEL_STREAM_IDLE`] bounds, not the model's
+    /// choice of output channel.
+    pub fn push_bytes(&mut self, bytes: &[u8]) -> Result<Delta, ModelError> {
         self.buffer.extend_from_slice(bytes);
-        let mut delta = String::new();
+        let mut delta = Delta::default();
+        self.saw_delta = false;
 
         while let Some(newline) = self.buffer.iter().position(|byte| *byte == b'\n') {
             let raw: Vec<u8> = self.buffer.drain(..=newline).collect();
@@ -1973,18 +2837,19 @@ impl StreamAccumulator {
                 line = rest;
             }
             let line = std::str::from_utf8(line).map_err(|err| {
-                ModelError::Parse(format!("stream carried a line that is not UTF-8: {err}"))
+                self.parse_error(format!("stream carried a line that is not UTF-8: {err}"))
             })?;
             self.push_line(line, &mut delta)?;
         }
 
         if self.buffer.len() > MAX_SSE_LINE_BYTES {
-            return Err(ModelError::Parse(format!(
+            return Err(self.parse_error(format!(
                 "stream sent {} bytes with no line break; giving up at {MAX_SSE_LINE_BYTES}",
                 self.buffer.len()
             )));
         }
 
+        delta.progressed = self.saw_delta;
         Ok(delta)
     }
 
@@ -1993,16 +2858,40 @@ impl StreamAccumulator {
         self.done
     }
 
+    /// The generation id the stream has named so far, if any — the `id` of the first chunk that
+    /// carried one. Read when a reply is [abandoned](StreamOutcome::Looping), so the run can price
+    /// it at session end under the one id the ledger knows it by.
+    pub fn generation_id(&self) -> Option<&str> {
+        self.generation_id.as_deref()
+    }
+
     /// The upstream provider the chunks have named so far, if any — read when a stalled stream is
     /// abandoned, so the [timeout](ModelError::Timeout) can say who was serving it.
     pub fn provider(&self) -> Option<&str> {
         self.provider.as_deref()
     }
 
+    /// The [`ModelError::Parse`] for a stream that stopped making sense, carrying whatever usage
+    /// and cost the accumulator had received before it did — usually none mid-stream, but a
+    /// provider that sent its usage and then something unreadable still billed for the request,
+    /// and the run's total cost is over every request. See [`ModelError::Parse`].
+    fn parse_error(&self, message: String) -> ModelError {
+        ModelError::parse_billed(
+            message,
+            billed_spend(self.usage.as_ref(), self.provider.clone()),
+        )
+    }
+
     /// Take one complete SSE line, appending any assistant text it carried to `delta`.
-    fn push_line(&mut self, line: &str, delta: &mut String) -> Result<(), ModelError> {
+    ///
+    /// A line whose chunk carries a **delta** — content, reasoning or a tool-call fragment — sets
+    /// [`saw_delta`](Self::saw_delta), which is the model's own progress as distinct from the
+    /// framing around it.
+    fn push_line(&mut self, line: &str, delta: &mut Delta) -> Result<(), ModelError> {
         // The event separator, and the keep-alive comment OpenRouter sends while a slow provider
-        // is still thinking (`: OPENROUTER PROCESSING`). Both are framing, not content.
+        // is still thinking (`: OPENROUTER PROCESSING`). Both are framing, not content — and
+        // neither sets `saw_delta`, which is why a provider can send them forever without ever
+        // restarting the run's [stream-idle bound](DEFAULT_MODEL_STREAM_IDLE).
         if line.trim().is_empty() || line.starts_with(':') {
             return Ok(());
         }
@@ -2017,13 +2906,14 @@ impl StreamAccumulator {
         }
 
         let chunk: WireStreamChunk = serde_json::from_str(payload).map_err(|err| {
-            ModelError::Parse(format!("{err}; stream chunk: {}", truncate(payload)))
+            self.parse_error(format!("{err}; stream chunk: {}", truncate(payload)))
         })?;
 
-        // A provider error arriving mid-stream, worded exactly as `parse_response` words the same
-        // object in a `2xx` envelope: the two transports must not describe one failure two ways.
+        // A provider error arriving mid-stream, worded exactly as the buffered reply parser words
+        // the same object in a `2xx` envelope: one failure, one sentence, whichever shape it came
+        // in.
         if let Some(error) = chunk.error {
-            return Err(ModelError::Parse(format!(
+            return Err(self.parse_error(format!(
                 "provider returned an error object: {}",
                 error.message
             )));
@@ -2031,11 +2921,14 @@ impl StreamAccumulator {
         if let Some(usage) = chunk.usage {
             self.usage = Some(usage);
         }
+        if self.generation_id.is_none() {
+            self.generation_id = chunk.id.filter(|id| !id.is_empty());
+        }
         if self.provider.is_none() {
             self.provider = chunk.provider.filter(|provider| !provider.is_empty());
         }
 
-        // gg asks for one completion and reads one, exactly as `parse_response` takes the first
+        // gg asks for one completion and reads one, exactly as the reply parser takes the first
         // choice. A chunk carrying none is the usage-only trailer.
         let Some(choice) = chunk.choices.into_iter().next() else {
             return Ok(());
@@ -2043,9 +2936,16 @@ impl StreamAccumulator {
         if self.finish_reason.is_none() {
             self.finish_reason = choice.finish_reason;
         }
+        // Whether this chunk carries a **delta from the model** is decided before anything is
+        // moved out of it: the idle clock's restart is a property of the chunk as it arrived, not
+        // of what gg did with its pieces. See [`WireDelta::progressed`] for what counts.
+        let progressed = choice.delta.progressed();
         if let Some(content) = choice.delta.content {
             self.text.push_str(&content);
-            delta.push_str(&content);
+            delta.text.push_str(&content);
+        }
+        if progressed {
+            self.saw_delta = true;
         }
         for fragment in choice.delta.tool_calls {
             let call = self.tool_calls.entry(fragment.index).or_default();
@@ -2066,31 +2966,34 @@ impl StreamAccumulator {
 
     /// The assembled response.
     ///
-    /// Applies exactly the normalisations [`parse_response`] applies: empty text becomes `None`,
-    /// each call's concatenated `arguments` string goes through [`parse_arguments`], a `Stop` with
-    /// tool calls becomes [`FinishReason::ToolCalls`], and usage goes through [`map_usage`].
+    /// Empty text becomes `None`, each call's concatenated `arguments` string goes through
+    /// [`parse_arguments`], a `Stop` with tool calls becomes [`FinishReason::ToolCalls`], and usage
+    /// goes through [`map_usage`].
     ///
     /// A stream that produced neither text nor tool calls is an error **only** if it also never
-    /// carried a finish reason. A model that legitimately answers with nothing at all is a shape
-    /// the buffering transport already accepts (it turns `""` into `None`), so rejecting it here
-    /// would make the transports disagree; a stream that ended without saying anything, on the
-    /// other hand, was cut off, and reporting that as an empty reply would hand the turn loop a
-    /// silence the model never produced.
-    pub fn finish(self) -> Result<ModelResponse, ModelError> {
+    /// carried a finish reason. A model that legitimately answers with nothing at all has given
+    /// a reply, whose text is `None`; a stream that ended without saying anything, on the other
+    /// hand, was cut off, and reporting that as an empty reply would hand
+    /// the turn loop a silence the model never produced.
+    pub fn finish(mut self) -> Result<ModelResponse, ModelError> {
         let has_calls = !self.tool_calls.is_empty();
         if self.text.is_empty() && !has_calls && self.finish_reason.is_none() {
-            return Err(ModelError::Parse(
-                "the stream ended without a reply or a finish reason".to_string(),
+            return Err(ModelError::parse_billed(
+                "the stream ended without a reply or a finish reason",
+                billed_spend(self.usage.as_ref(), self.provider.clone()),
             ));
         }
 
         let mut tool_calls = Vec::with_capacity(self.tool_calls.len());
-        for (index, call) in self.tool_calls {
+        for (index, call) in std::mem::take(&mut self.tool_calls) {
             let arguments = parse_arguments(&call.arguments).map_err(|err| {
-                ModelError::Parse(format!(
-                    "tool call #{index} ({}) had unparseable arguments: {err}",
-                    call.name
-                ))
+                ModelError::parse_billed(
+                    format!(
+                        "tool call #{index} ({}) had unparseable arguments: {err}",
+                        call.name
+                    ),
+                    billed_spend(self.usage.as_ref(), self.provider.clone()),
+                )
             })?;
             tool_calls.push(ToolCall {
                 id: call.id,
@@ -2100,16 +3003,21 @@ impl StreamAccumulator {
         }
 
         let mut finish_reason = map_finish_reason(self.finish_reason.as_deref());
-        // The same normalization the buffering transport applies, for the same reason: a provider
-        // that omitted `finish_reason` but asked for tools still stopped to call them.
+        // The same normalization the [reference parser](parse_response) applies, for the same
+        // reason: a provider that omitted `finish_reason` but asked for tools still stopped to
+        // call them.
         if finish_reason == FinishReason::Stop && has_calls {
             finish_reason = FinishReason::ToolCalls;
         }
 
-        let (usage, cost) = map_usage(self.usage.as_ref());
+        let text = (!self.text.is_empty()).then(|| std::mem::take(&mut self.text));
+        let (usage, cost, wire, reconciled) = map_usage(
+            self.usage.as_ref(),
+            reply_size(text.as_deref(), &tool_calls),
+        );
 
         Ok(ModelResponse {
-            text: (!self.text.is_empty()).then_some(self.text),
+            text,
             tool_calls,
             finish_reason,
             usage,
@@ -2118,8 +3026,38 @@ impl StreamAccumulator {
             // The transport fills this in: the accumulator assembles one attempt and has no idea
             // how many earlier ones were thrown away.
             loop_aborts: LoopAborts::none(),
+            usage_wire: wire,
+            usage_reconciled: reconciled,
         })
     }
+}
+
+/// What a request billed for, read off the usage its stream had reported by the time the reply
+/// stopped making sense. The split is taken as the provider reported it, since there is no reply
+/// whose size could bound it.
+fn billed_spend(usage: Option<&WireUsage>, provider: Option<String>) -> ReplySpend {
+    let (tokens, cost, wire, reconciled) = map_usage(usage, None);
+    ReplySpend {
+        tokens,
+        cost,
+        provider,
+        wire,
+        reconciled,
+    }
+}
+
+/// The reply's own estimated size in tokens: the floor [`map_usage`] bounds the recorded output
+/// split by.
+///
+/// Measured with the default [`BpeTokenEstimator`] over the assistant message the reply becomes,
+/// which is the estimate gg's context accounting charges that message. `None` for a reply with
+/// neither text nor tool calls, which leaves the provider's split as reported.
+fn reply_size(text: Option<&str>, tool_calls: &[ToolCall]) -> Option<u64> {
+    if text.is_none() && tool_calls.is_empty() {
+        return None;
+    }
+    let reply = Message::assistant(text.map(str::to_string), tool_calls.to_vec());
+    Some(BpeTokenEstimator::new().estimate_message(&reply) as u64)
 }
 
 // ---------------------------------------------------------------------------
@@ -2129,14 +3067,17 @@ impl StreamAccumulator {
 /// One `chat.completion.chunk` object, as it arrives on a `data:` line.
 #[derive(Debug, Deserialize)]
 struct WireStreamChunk {
+    /// The gateway's id for this generation, stamped on every chunk. It is the handle the run
+    /// prices an abandoned reply's output under at session end — see [`AbandonedReply`].
+    #[serde(default)]
+    id: Option<String>,
     #[serde(default)]
     choices: Vec<WireStreamChoice>,
     /// Present only on the final chunk, and only because the request asked for
     /// `stream_options.include_usage` — see [`build_request_body`].
     #[serde(default)]
     usage: Option<WireUsage>,
-    /// A provider error delivered as a chunk rather than as a status. Same shape, and treated the
-    /// same way, as the one [`parse_response`] finds in a `2xx` envelope.
+    /// A provider error delivered as a chunk rather than as a status.
     #[serde(default)]
     error: Option<WireError>,
     /// OpenRouter's name for the upstream provider, which it stamps on every chunk.
@@ -2158,8 +3099,47 @@ struct WireStreamChoice {
 struct WireDelta {
     #[serde(default)]
     content: Option<String>,
+    /// The model's own reasoning, which providers that expose thinking stream as it is produced.
+    /// Read only as progress — it restarts the run's
+    /// [stream-idle bound](DEFAULT_MODEL_STREAM_IDLE) — and deliberately not assembled into the
+    /// reply, since it is the model's working rather than its answer.
+    ///
+    /// Two spellings, because the providers do not agree: OpenAI-compatible reasoning models
+    /// write `reasoning`, and DeepSeek's family writes `reasoning_content`. Either one is the
+    /// model thinking out loud; accepting both is what keeps a reasoning model from being read as
+    /// a stalled stream by the providers that expose its thinking.
+    #[serde(default)]
+    reasoning: Option<String>,
+    /// DeepSeek's spelling of [`reasoning`](Self::reasoning).
+    #[serde(default)]
+    reasoning_content: Option<String>,
     #[serde(default)]
     tool_calls: Vec<WireDeltaToolCall>,
+}
+
+impl WireDelta {
+    /// Whether this chunk carries a delta from the model — content, reasoning, or a fragment of a
+    /// tool call.
+    ///
+    /// This is what the run's [stream-idle bound](DEFAULT_MODEL_STREAM_IDLE) is measured against:
+    /// a model that reasons at length emits reasoning deltas for the whole of that time, and a
+    /// provider that has stopped emits nothing but the keep-alive comments OpenRouter uses, which
+    /// never reach this predicate at all. An **empty** `content: ""`, an empty `reasoning: ""`
+    /// and a fragment that names an `index` and nothing else are deliberately *not* progress:
+    /// some providers send those on bookkeeping chunks, and a reader that counted them would let
+    /// a stalled stream restart its clock forever.
+    fn progressed(&self) -> bool {
+        self.content.as_deref().is_some_and(|c| !c.is_empty())
+            || self.reasoning.as_deref().is_some_and(|c| !c.is_empty())
+            || self
+                .reasoning_content
+                .as_deref()
+                .is_some_and(|c| !c.is_empty())
+            || self
+                .tool_calls
+                .iter()
+                .any(WireDeltaToolCall::carries_a_delta)
+    }
 }
 
 /// A slice of one tool call. `index` is the only field guaranteed on every fragment — it is what
@@ -2172,6 +3152,24 @@ struct WireDeltaToolCall {
     id: Option<String>,
     #[serde(default)]
     function: Option<WireDeltaFunction>,
+}
+
+impl WireDeltaToolCall {
+    /// Whether this fragment carries a piece of the call — its id, its name, or a slice of its
+    /// arguments — rather than the `{"index": 0}` form some providers send on a bookkeeping chunk.
+    ///
+    /// The distinction is what the run's [stream-idle bound](DEFAULT_MODEL_STREAM_IDLE) turns on:
+    /// a fragment of a tool call is the model working, and a chunk that names an index and
+    /// nothing else is framing that must leave the clock running.
+    fn carries_a_delta(&self) -> bool {
+        let named =
+            |value: &Option<String>| value.as_deref().is_some_and(|value| !value.is_empty());
+        named(&self.id)
+            || self
+                .function
+                .as_ref()
+                .is_some_and(|function| named(&function.name) || named(&function.arguments))
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -2304,6 +3302,8 @@ impl MockClient {
             }),
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let write_memory_call = ModelResponse {
             text: Some("Noting the game plan as a memory before building.".to_string()),
@@ -2330,6 +3330,8 @@ impl MockClient {
             }),
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let add_scaffold_task = ModelResponse {
             text: Some("Planning the work: first, scaffold the page.".to_string()),
@@ -2354,6 +3356,8 @@ impl MockClient {
             }),
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let add_movement_task = ModelResponse {
             text: Some("Then player movement, which is blocked by the scaffold.".to_string()),
@@ -2379,6 +3383,8 @@ impl MockClient {
             }),
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         // An intentionally cyclic edge: the movement task is already blocked by the scaffold
         // task, so also blocking the scaffold task on the movement task closes a loop. gg
@@ -2406,6 +3412,8 @@ impl MockClient {
             }),
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let complete_scaffold_task = ModelResponse {
             text: Some("Scaffolding done — marking it complete to unblock movement.".to_string()),
@@ -2427,6 +3435,8 @@ impl MockClient {
             }),
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let create_epic = ModelResponse {
             text: Some("Decomposing the build: opening an epic for the core loop.".to_string()),
@@ -2452,6 +3462,8 @@ impl MockClient {
             }),
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let create_render_issue = ModelResponse {
             text: Some("First issue: the render loop, with an explicit scope.".to_string()),
@@ -2480,6 +3492,8 @@ impl MockClient {
             }),
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let create_input_issue = ModelResponse {
             text: Some("Second issue: input handling, blocked by the render loop.".to_string()),
@@ -2509,6 +3523,8 @@ impl MockClient {
             }),
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         // An intentionally cyclic edge: the input issue is already blocked by the render issue,
         // so also blocking the render issue on the input issue closes a loop. gg refuses it (the
@@ -2536,6 +3552,8 @@ impl MockClient {
             }),
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let write_call = ModelResponse {
             text: Some("Creating a minimal playable game in index.html.".to_string()),
@@ -2560,6 +3578,8 @@ impl MockClient {
             }),
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let finish = ModelResponse {
             usage: TokenCounts {
@@ -2633,6 +3653,8 @@ impl MockClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let read_level = ModelResponse {
             text: Some("Reading level.json to check the layout.".to_string()),
@@ -2646,6 +3668,8 @@ impl MockClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let evict_level = ModelResponse {
             text: Some(
@@ -2661,6 +3685,8 @@ impl MockClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let reread_level = ModelResponse {
             text: Some("Pulling level.json back up to finish the layout pass.".to_string()),
@@ -2674,6 +3700,8 @@ impl MockClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let archive = ModelResponse {
             text: Some("Archiving the earlier thread to keep my window lean.".to_string()),
@@ -2689,6 +3717,8 @@ impl MockClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let search = ModelResponse {
             text: Some("Recovering the archived level reference.".to_string()),
@@ -2702,6 +3732,8 @@ impl MockClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let finish = ModelResponse {
             usage: usage(500, 40),
@@ -2756,6 +3788,8 @@ impl MockClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let wait = ModelResponse {
             text: Some("Waiting for the subagent to finish.".to_string()),
@@ -2769,6 +3803,8 @@ impl MockClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let finish = ModelResponse {
             usage: usage(1000, 50),
@@ -2864,6 +3900,8 @@ impl MockClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let spawn = ModelResponse {
             text: Some("Delegating the investigation.".to_string()),
@@ -2880,6 +3918,8 @@ impl MockClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let wait = ModelResponse {
             text: Some("Waiting for the subagent to finish.".to_string()),
@@ -2893,6 +3933,8 @@ impl MockClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let finish = ModelResponse {
             usage: usage(1000, 50),
@@ -2932,6 +3974,8 @@ impl MockClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let finish = ModelResponse {
             usage: usage(550, 40),
@@ -2970,6 +4014,8 @@ impl MockClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let advance = ModelResponse {
             text: Some("The plan is ready; handing it to the builder.".to_string()),
@@ -2986,6 +4032,8 @@ impl MockClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         Self::new(
             model_id,
@@ -3023,6 +4071,8 @@ impl MockClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let advance = ModelResponse {
             text: Some("Handing it to the verifier instead.".to_string()),
@@ -3036,6 +4086,8 @@ impl MockClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         Self::new(model_id, vec![illegal, advance])
     }
@@ -3086,6 +4138,8 @@ impl MockClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let succeed = ModelResponse {
             text: Some("This needs the other agent's toolset.".to_string()),
@@ -3099,6 +4153,8 @@ impl MockClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         Self::new(model_id, vec![plan, succeed])
     }
@@ -3132,6 +4188,8 @@ impl MockClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let condense_and_succeed = ModelResponse {
             text: Some("Summarizing, then handing over.".to_string()),
@@ -3152,6 +4210,8 @@ impl MockClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         Self::new(model_id, vec![plan, condense_and_succeed])
     }
@@ -3205,6 +4265,8 @@ impl MockClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let split = ModelResponse {
             text: Some("Trying both fixes at once.".to_string()),
@@ -3218,6 +4280,8 @@ impl MockClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         Self::new(
             model_id,
@@ -3260,6 +4324,8 @@ impl MockClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let finish = ModelResponse {
             usage: usage(550, 40),
@@ -3311,6 +4377,8 @@ impl MockClient {
             cost,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         }
     }
 
@@ -3531,6 +4599,8 @@ impl ModelClient for MockClient {
                 cost: None,
                 provider: None,
                 loop_aborts: LoopAborts::none(),
+                usage_wire: None,
+                usage_reconciled: false,
             });
         }
 
@@ -3551,6 +4621,8 @@ impl ModelClient for MockClient {
                 cost: None,
                 provider: None,
                 loop_aborts: LoopAborts::none(),
+                usage_wire: None,
+                usage_reconciled: false,
             });
         }
 
@@ -3700,6 +4772,8 @@ impl ModelClient for MockClient {
                     cost: None,
                     provider: None,
                     loop_aborts: LoopAborts::none(),
+                    usage_wire: None,
+                    usage_reconciled: false,
                 });
             }
             return Ok(done_turn("Done with this pass."));
@@ -3737,6 +4811,8 @@ fn ending_turn(name: &str, text: &str, arguments: Value) -> ModelResponse {
         cost: None,
         provider: None,
         loop_aborts: LoopAborts::none(),
+        usage_wire: None,
+        usage_reconciled: false,
     }
 }
 
@@ -3794,6 +4870,8 @@ fn issue_review_tool_turn(
         cost: None,
         provider: None,
         loop_aborts: LoopAborts::none(),
+        usage_wire: None,
+        usage_reconciled: false,
     }
 }
 
@@ -3919,25 +4997,43 @@ pub fn provider_for(binding: &GgSlotBinding) -> ProviderKind {
 /// `routing_key` is the run's [routing key](RoutingKey) a live client stamps on every request (the
 /// mock client ignores it). Every agent's client carries the same key — see
 /// [`OpenRouterClient::from_binding`]. The binding's
-/// [prompt-cache lifetime](GgSlotBinding::prompt_cache_ttl), by contrast, is the *agent's* own
-/// choice and differs from one profile to the next.
+/// [prompt-cache lifetime](GgSlotBinding::prompt_cache_ttl) and
+/// [reasoning setting](GgSlotBinding::reasoning), by contrast, are the *agent's* own
+/// choices and differ from one profile to the next.
 ///
-/// `model_call_timeout` and `retry_policy` are the run's resolved
+/// `model_call_timeout`, `model_stream_idle` and `retry_policy` are the run's resolved
 /// [limits](crate::limits::RunLimits), run-wide like the routing key: every agent's client, and
 /// the second client a [handoff compaction](crate::compaction) resolves, calls under the one
-/// ceiling and retries on the one schedule the launch recorded.
+/// ceiling, cancels a stream on the one idle bound, and retries on the one schedule the launch
+/// recorded.
+///
+/// `roster` is the run's [candidate list](ProviderRoster), shared by every client built for the
+/// run, carrying how many unexpected misses leave a provider. A model the roster does not name
+/// sends no provider object.
+///
+/// `abandoned` is the run's [record of abandoned replies](AbandonedReplies), shared the same way,
+/// so the session's pricing pass sees the whole run's abandons through whichever client it reads.
+#[allow(clippy::too_many_arguments)]
 pub fn client_for_slot(
     binding: &GgSlotBinding,
     routing_key: &RoutingKey,
     model_call_timeout: Duration,
+    model_stream_idle: Duration,
     retry_policy: RetryPolicy,
+    roster: &ProviderRoster,
+    tool_choice: &ToolChoiceMemory,
+    abandoned: &AbandonedReplies,
 ) -> Result<Box<dyn ModelClient>, ModelError> {
     match provider_for(binding) {
         ProviderKind::Mock => Ok(Box::new(mock_client_for(&binding.model_id))),
         ProviderKind::OpenRouter => Ok(Box::new(
             OpenRouterClient::from_binding(binding, routing_key)?
                 .with_model_call_timeout(model_call_timeout)
-                .with_retry_policy(retry_policy),
+                .with_stream_idle(model_stream_idle)
+                .with_retry_policy(retry_policy)
+                .with_tool_choice_memory(tool_choice.clone())
+                .with_abandoned_replies(abandoned.clone())
+                .with_roster(roster.clone()),
         )),
     }
 }
@@ -4097,27 +5193,57 @@ pub struct DefaultClientFactory {
     routing_key: RoutingKey,
     /// The run's resolved per-call ceiling, stamped on every live client this factory builds.
     model_call_timeout: Duration,
+    /// The run's resolved [stream-idle bound](crate::limits::RunLimits::model_stream_idle),
+    /// stamped on every live client this factory builds beside the ceiling: how long a stream may
+    /// go without a delta from the model before the attempt is cancelled and retried.
+    model_stream_idle: Duration,
     /// The run's resolved [retry schedule](crate::limits::RunLimits::retry_policy), stamped on
     /// every live client this factory builds beside the ceiling.
     retry_policy: RetryPolicy,
+    /// The run's [candidate roster](ProviderRoster), shared by every live client this factory
+    /// builds, so a move one of them makes is the candidate every later request names.
+    roster: ProviderRoster,
+    /// The run's [record of refused tool-choice pins](ToolChoiceMemory), shared by every live
+    /// client this factory builds.
+    tool_choice: ToolChoiceMemory,
+    /// The run's [record of the replies](AbandonedReplies) loop detection abandoned, shared by
+    /// every live client this factory builds so the session's pricing pass sees the whole run's
+    /// abandons through one read.
+    abandoned: AbandonedReplies,
 }
 
 impl DefaultClientFactory {
     /// A factory that stamps `routing_key` on every live client it builds.
     ///
-    /// `model_call_timeout` and `retry_policy` are the run's resolved
+    /// `model_call_timeout`, `model_stream_idle` and `retry_policy` are the run's resolved
     /// [limits](crate::limits::RunLimits): the ceiling every call every client it builds makes
-    /// runs under, and the schedule each retries on before giving up.
+    /// runs under, the idle bound a stalled stream is cancelled on, and the schedule each retries
+    /// on before giving up.
     pub fn new(
         routing_key: RoutingKey,
         model_call_timeout: Duration,
+        model_stream_idle: Duration,
         retry_policy: RetryPolicy,
+        model_providers: BTreeMap<String, Vec<test_cabinet_core::gg::GgProviderCandidate>>,
+        cache_miss_limit: u64,
     ) -> Self {
         Self {
             routing_key,
             model_call_timeout,
+            model_stream_idle,
             retry_policy,
+            roster: ProviderRoster::new(model_providers).with_miss_limit(cache_miss_limit),
+            tool_choice: ToolChoiceMemory::default(),
+            abandoned: AbandonedReplies::default(),
         }
+    }
+
+    /// The candidate `model_id` is on now, which every live client built for it names.
+    #[cfg(test)]
+    fn candidate_for(&self, model_id: &str) -> Option<test_cabinet_core::gg::GgProviderCandidate> {
+        self.roster
+            .in_force(model_id)
+            .map(|in_force| in_force.candidate)
     }
 }
 
@@ -4127,7 +5253,11 @@ impl ClientFactory for DefaultClientFactory {
             binding,
             &self.routing_key,
             self.model_call_timeout,
+            self.model_stream_idle,
             self.retry_policy,
+            &self.roster,
+            &self.tool_choice,
+            &self.abandoned,
         )
     }
 }
@@ -4149,5 +5279,25 @@ mod timeout_tests;
 mod retry_tests;
 
 #[cfg(test)]
+#[path = "client.pin.test.rs"]
+mod pin_tests;
+
+#[cfg(test)]
 #[path = "client.routing.test.rs"]
 mod routing_tests;
+
+#[cfg(test)]
+#[path = "client.tool-choice.test.rs"]
+mod tool_choice_tests;
+
+#[cfg(test)]
+#[path = "client.reasoning.test.rs"]
+mod reasoning_tests;
+
+#[cfg(test)]
+#[path = "client.generation.test.rs"]
+mod generation_tests;
+
+#[cfg(test)]
+#[path = "client.moves.test.rs"]
+mod moves_tests;

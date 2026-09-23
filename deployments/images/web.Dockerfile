@@ -17,10 +17,10 @@
 # Both default to empty, so an unset env yields a valid (empty) config that leaves
 # the console unconfigured rather than broken.
 #
-# The canonical image is published to GHCR by the build-service-images.yml GitHub
-# Actions workflow (as ghcr.io/<owner>/tcab-web, tagged :latest and :<git-sha>) on
-# every push to master that touches the web sources or this Dockerfile. To build
-# and push it by hand instead (from the repo root):
+# The canonical image is built by the Azure pipeline (scripts/ci/service-image.sh)
+# on every push to master and staging, natively per architecture, and pushed to the
+# Test Cabinet ACR as testcabinet.azurecr.io/tcab-web:<sha>. To build and push it by
+# hand instead (from the repo root):
 #   docker build -t <registry>/tcab-web:<tag> -f deployments/images/web.Dockerfile .
 #   docker push <registry>/tcab-web:<tag>
 

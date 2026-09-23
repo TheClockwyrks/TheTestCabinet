@@ -10,27 +10,25 @@
 # This co-locates ingest INSIDE the backend pod as a sidecar instead: it shares the
 # `state` volume (writing the /state/checkout the backend ingests) and calls
 # POST /ingest over localhost — intra-pod traffic, so the NetworkPolicy never applies
-# and no service token / extra route is needed. It runs a ONE-SHOT ingest on backend
-# start, then idles.
+# and no service token / extra route is needed. It runs a ONE-SHOT forced ingest on
+# backend start, then idles.
 #
-# /state is a PVC (see components/postgres/deployment-backend.yaml), so the store
-# normally SURVIVES a reschedule and this one-shot is a cheap refresh: the sidecar
-# takes its `git fetch` path over an existing checkout and the scan skips versions
-# already present. It still matters on a genuinely cold volume — a first deploy or a
-# replaced disk — where it is what fills the store at all, and the backend stays out
-# of its Service (/readyz) until it lands.
-# It deliberately does NOT re-ingest on a schedule: a periodic force re-ingest
-# rewrites every version and briefly leaves each one manifest-less, 404-ing any run
-# that resolves its version mid-cycle. Catalog changes are published on demand with
-# `scripts/reingest-cluster.sh --env prod` (a force re-ingest, kept safe by the backend's atomic
-# version swap). The base CronJob is suspended in patch-suspend-ingest-cronjob.yaml.
+# Every pipeline deploy changes the backend's image tag, so every deploy starts a new
+# backend pod and this sidecar with it: the sidecar refreshes the checkout to the
+# branch tip on the GitHub mirror (which the pipeline pushed before it deployed) and
+# force-ingests it, so the catalog that shipped with a commit is what the backend
+# serves. A forced ingest overwrites edited versions and prunes removed ones, and the
+# backend swaps each version into place atomically, so it is safe while runs execute.
+# /state is a PVC (see components/postgres/deployment-backend.yaml), so on a cold
+# volume (a first deploy or a replaced disk) this is what fills the store, and the
+# backend stays out of its Service (/readyz) until it lands.
 #
-# BRANCH: ingest the `master` branch TIP, so a fresh pod and `scripts/reingest-cluster.sh`
-# pick up pushed test-case edits and reference-build lockfile updates on demand — that
-# on-demand catalog refresh (no roll) is the whole point of the ingest. The service CODE
-# version is pinned separately by this overlay's image `newTag`; reingest right after a
-# roll keeps the catalog and code aligned (master only advances on merges). Keep BRANCH
-# == TCAB_INGEST_BRANCH in scripts/lib/env.sh.
+# It does not re-ingest on a schedule. Catalog changes between deploys are published
+# on demand with `scripts/reingest-cluster.sh --env prod`. The base CronJob is
+# suspended in patch-suspend-ingest-cronjob.yaml.
+#
+# BRANCH: ingest the `master` branch TIP, the branch the pipeline deploys to prod.
+# Keep BRANCH == TCAB_INGEST_BRANCH in scripts/lib/env.sh.
 #
 # Targets kind: Deployment because the postgres component converts the backend
 # StatefulSet to a Deployment; the strategic-merge patch appends the `ingest`
@@ -59,7 +57,7 @@ spec:
               done
               REPO=https://github.com/TheClockwyrks/TheTestCabinet.git
               CHECKOUT=/state/checkout
-              # One-shot: check out the catalog branch tip, then trigger a single ingest.
+              # One-shot: check out the catalog branch tip, then trigger a single forced ingest.
               # No periodic loop — see the header. Refresh the live checkout when one is
               # already on the /state PVC (the normal case, including across a
               # reschedule), else clone the branch fresh onto a cold volume.
@@ -74,21 +72,28 @@ spec:
                   && git clone --depth 1 --branch "$BRANCH" "$REPO" "$CHECKOUT" \
                   || echo "ingest: clone failed"
               fi
+              # The cold-storage submodule holds every version's baseline validation
+              # media, which ingest copies into the store. Fetch the pinned commit
+              # shallowly on every refresh. `.gitmodules` names it relative to the
+              # superproject, so it resolves to the mirror's sibling repository; sync
+              # first so a moved URL reaches the persistent checkout. A failure still
+              # ingests, with no baseline media, rather than leaving the store empty.
+              echo "ingest: updating the cold-storage submodule"
+              git -C "$CHECKOUT" submodule sync \
+                && git -C "$CHECKOUT" submodule update --init --depth 1 \
+                || echo "ingest: submodule update failed; ingesting without baselines"
               # Wait on /healthz (LIVENESS), never /readyz: readiness is 503 until the
               # store is populated, which is what the POST below is about to do, so
               # gating on it would deadlock the sidecar against itself.
               echo "ingest: waiting for backend healthz"
               until curl -fsS -o /dev/null http://127.0.0.1:8787/healthz; do sleep 3; done
-              # A bare scan (no force): a cold volume ingests everything, while a store
-              # carried over on the PVC skips already-ingested versions instead of
-              # re-rendering them. A carried-over store this image reads differently
-              # from the one that wrote it is re-ingested whole regardless, which is
-              # what makes a record-shape change reach a PVC that survived the deploy.
-              # Retry a stuck POST a few times so a slow-to-ready backend does not
-              # leave the store empty.
+              # A forced scan, so every deploy serves exactly the catalog it shipped:
+              # edited versions are overwritten and removed ones pruned, each swapped
+              # into place atomically. Retry a stuck POST a few times so a
+              # slow-to-ready backend does not leave the store empty.
               n=0
               until curl -fsS -X POST http://127.0.0.1:8787/ingest \
-                     -H 'content-type: application/json' -d '{}' >/dev/null; do
+                     -H 'content-type: application/json' -d '{"force": true}' >/dev/null; do
                 n=$((n + 1))
                 if [ "$n" -ge 10 ]; then
                   echo "ingest: POST /ingest failed 10x; giving up (run scripts/reingest-cluster.sh --env prod)"

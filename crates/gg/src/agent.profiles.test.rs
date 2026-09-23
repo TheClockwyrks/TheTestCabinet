@@ -111,7 +111,7 @@ async fn drive_profile(
             ..Agent::root(ROOT_PROFILE_ID)
         },
         AgentRole::Root,
-        client,
+        client.into(),
         inbox_rx,
         GgSessionAgentOrigin::Root,
     )
@@ -446,7 +446,7 @@ async fn a_session_whose_succession_cannot_be_built_ends_as_gg_s_defect() {
         &inv,
         &emitter,
         Arc::new(RefusingFactory {
-            refusal: || ModelError::Parse("no provider could be built".to_string()),
+            refusal: || ModelError::parse("no provider could be built".to_string()),
         }),
     )
     .await;
@@ -542,7 +542,7 @@ struct BrokenFactory;
 
 impl ClientFactory for BrokenFactory {
     fn client_for(&self, _binding: &GgSlotBinding) -> Result<Box<dyn ModelClient>, ModelError> {
-        Err(ModelError::Parse("no provider could be built".to_string()))
+        Err(ModelError::parse("no provider could be built".to_string()))
     }
 }
 
@@ -1069,7 +1069,7 @@ impl ClientFactory for RefusingBelowRoot {
                 self.script.clone(),
             )));
         }
-        Err(ModelError::Parse("no provider could be built".to_string()))
+        Err(ModelError::parse("no provider could be built".to_string()))
     }
 }
 

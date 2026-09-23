@@ -118,8 +118,8 @@ fi
 #
 #    THE PACKAGE STORE IS NOT IN THIS CHECKOUT. Spago keeps the registry index, the package sets and
 #    every package tarball under `$XDG_CACHE_HOME`, which by default is `~/.cache` — 48 MB nothing
-#    warmed, no image carried and `hydrate-gg-toolchains.sh` did not copy, so a fresh CI checkout
-#    cloned two PureScript registries from inside `cargo build`. `gg_spago_cache` puts it in the same
+#    warmed and no image carried, so a fresh CI checkout cloned two PureScript registries from
+#    inside `cargo build`. `gg_spago_cache` puts it in the same
 #    version-stamped per-user prefix every other pinned download of gg's uses, stamped by the
 #    registry package set because that is the pin that decides what is in it; see
 #    `scripts/gg-downloads.sh`. `scripts/ci/install-gg-build-tools.sh` warms it.

@@ -105,6 +105,15 @@ against it on production have a `.frozen` marker file added to the folder.
 Modifications to test cases with the marker file are refused via a commit hook
 and CI. See [`development/frozen-versions.md`](apps/docs/src/content/docs/development/frozen-versions.md).
 
+### [Cold Storage](cold-storage/)
+
+A submodule holding every test-case version's captured baseline validation
+media, at the version's own path under `cold-storage/`. Nothing builds or tests
+against it, so it is optional; fetch it with
+`git submodule update --init --depth 1 cold-storage` to capture or review
+baselines. See
+[where baselines live](apps/docs/src/content/docs/components/core/validation.md#where-baselines-live).
+
 ### [Game Jams](game-jams/)
 
 An alternate form of test case. These are intentionally open-ended and provide

@@ -71,8 +71,7 @@ gg_wasi_sdk_libraries_vendored() {
 # What the stamp is allowed to stand for is every part of the tree this script writes, and the C#
 # arm's sibling installer (`scripts/ci/install-dotnet.sh`) carries the same paragraph for the same
 # reason. `libtinfo.so.6` was added to the vendored set long after the stamp existed, so every
-# machine that installed before it — a developer's, a CI cache, the `gg-ci` image `ci.yml` hydrates
-# a compile from — holds a stamp naming the right wasi-sdk over a tree that does not carry it. A
+# machine that installed before it — a developer's, a CI cache — holds a stamp naming the right wasi-sdk over a tree that does not carry it. A
 # check that asked only about the version would leave all of them resolving `libtinfo` off whatever
 # the surrounding image happens to ship, which is the accident constraint 3 of
 # `containers/gg-toolchains/Dockerfile` says does not count as satisfied — and, because

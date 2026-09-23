@@ -192,20 +192,27 @@ pairs some review items with automated validation. Per run, validation runs it
 against the model's build to capture the actual media. The baseline half of the
 reviewer's side-by-side is the same thing run against the reference
 implementation. The reference implementation is a fixed property of the case
-version, so that media is captured once and committed under
-`<version>/validation-baseline/<engine>/<variant>/` — keyed by engine because a
-variant has one reference implementation per engine, and a run is only
+version, so that media is captured once and committed to the `cold-storage`
+submodule under the version's mirrored
+`validation-baseline/<engine>/<variant>/` (see [where baselines
+live](/components/core/validation/#where-baselines-live)). It is keyed by engine
+because a variant has one reference implementation per engine, and a run is only
 comparable against the one it was itself built on.
 
 Capturing it is an authoring step rather than a publishing step. It needs no
-Cloudflare credentials and no deployment environment:
+Cloudflare credentials and no deployment environment, only the submodule checked
+out:
 
 ```sh
+git submodule update --init --depth 1 cold-storage
 tcab capture-baselines <slug> [<version>] [--variant base] [--engine none] [--dry-run]
 ```
 
 Run it whenever you add or change a validator, or change the reference
-implementation it runs against, and commit the result. Its case, version,
+implementation it runs against. Commit the result in `cold-storage` and push it
+to that repository's `master`, then commit the moved submodule pointer in this
+repository. A frozen version's baselines can be recaptured the same way, because
+the frozen digest does not cover them. Its case, version,
 variant, and engine selection is identical to `publish-reference`'s. The whole
 `validation-baseline/<engine>/<variant>/` directory is regenerated, so a renamed
 or removed output never lingers as a stale committed file.
@@ -309,21 +316,6 @@ version control.
 When the backend has no R2 configuration, the reconcile is skipped rather than
 reconciling to empty, mirroring how a missing lockfile leaves the build table
 untouched.
-
-## From CI
-
-The same flow is wired as an on-demand GitHub Actions job,
-`.github/workflows/publish-reference.yml` (`workflow_dispatch`), so the build,
-deploy, and lockfile commit happen off your machine. The target environment is
-derived from the branch: dispatch it on `master` to publish production, on
-`staging` to publish staging. Any other branch is refused.
-
-Its inputs are `slug` (required), `version` (blank = newest), and `variant`
-(blank = every variant that declares a reference). It needs only
-`CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`, builds and deploys, then
-commits and pushes the lockfile back to the branch. Re-ingest is left to the
-operator, so run `scripts/reingest-cluster.sh --env <env>` after the workflow
-pushes. A `publish-reference` concurrency group serializes runs.
 
 ## Reference implementation and reference mockup
 

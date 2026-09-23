@@ -56,8 +56,11 @@ public final class Delegation {
      * @ggop delegation.wait_for_subagents
      */
     public static List<SubagentResult> waitForSubagents(String... ids) {
-        return Read.subagentResults(
-                Coding.call("delegation.wait_for_subagents", Value.texts(ids)));
+        // Naming none is the ABSENT list rather than an empty one: gg reads an absent `ids` as
+        // "every child still outstanding" and a list as "exactly these", so lowering the empty
+        // varargs as a list would ask gg to wait for nothing at all.
+        Value named = ids.length == 0 ? Value.none() : Value.texts(ids);
+        return Read.subagentResults(Coding.call("delegation.wait_for_subagents", named));
     }
 
     /**

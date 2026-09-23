@@ -323,6 +323,8 @@ fn priced_turn(dollars: f64) -> ModelResponse {
         }),
         provider: None,
         loop_aborts: LoopAborts::none(),
+        usage_wire: None,
+        usage_reconciled: false,
     }
 }
 
@@ -979,6 +981,8 @@ async fn a_limit_stopped_run_keeps_everything_it_built() {
         }),
         provider: None,
         loop_aborts: LoopAborts::none(),
+        usage_wire: None,
+        usage_reconciled: false,
     };
     let client = MockClient::new(
         "mock/primary",
@@ -1619,14 +1623,16 @@ async fn a_turn_that_made_no_tool_call_publishes_a_missing_completion_error() {
 /// **A model call that failed is published like any other error turn**, and it is the one error
 /// path that can carry discarded attempts.
 ///
-/// A reply that looped on every attempt reaches the loop as an exhausted model call — the contract
-/// has no separate base *kind* for it, deliberately — so it lands under `model_api`, and says which
+/// A reply that looped on every attempt reaches the loop as an error turn — the contract has no
+/// separate base *kind* for it, deliberately — so it lands under `model_api`, and says which
 /// `model_api` failure it was: `model_response_loop`, not `model_retry_exhausted`. What is *not*
-/// lost is what it cost: the three replies the detector threw away ride on the same event, and the
-/// operator log names the loop rather than blaming a provider outage that never happened — in the
-/// recorded type's own words, so the two cannot describe one failure differently.
+/// lost is what it cost: the three replies the detector threw away ride on the same event. The
+/// loop asks again with nothing in the context, and an **armed ceiling** — not the first loop —
+/// is what ends the run, so a model that loops once loses a turn rather than the run. The
+/// operator log names the loop rather than blaming a provider outage that never happened — in
+/// the recorded type's own words, so the two cannot describe one failure differently.
 #[tokio::test]
-async fn a_reply_that_looped_on_every_attempt_ends_the_run_on_its_own_message() {
+async fn a_reply_that_looped_on_every_attempt_spends_the_ceilings_on_its_own_message() {
     let dir = TempDir::new().unwrap();
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
@@ -1641,35 +1647,48 @@ async fn a_reply_that_looped_on_every_attempt_ends_the_run_on_its_own_message() 
         &emitter,
         setup_from(GgRunLimits {
             max_turns: Some(5),
+            max_consecutive_errors: Some(2),
             ..GgRunLimits::authored()
         }),
         no_code(),
     )
     .await;
 
-    // Ends on the same terms retry exhaustion does — the model failed at its work, so the run is a
-    // `model_error` rather than a host fault or a refused credential.
-    assert_eq!(end.status, "model_error");
+    // The ceiling, not the loop, ends the run: the turn was retried on the same terms a
+    // length-capped reply is, and the consecutive count is what finally said stop.
+    assert_eq!(end.status, "limit_exceeded");
     assert_eq!(
-        end.turns, 1,
-        "the failed call is still a turn that happened"
+        end.limit.as_ref().map(|breach| breach.limit),
+        Some(GgLimitKind::ConsecutiveErrors)
     );
 
     let events = sink.events();
     assert_eq!(
         turn_outcomes(&events),
-        vec![(
-            GgTurnOutcome::Error,
-            Some(GgTurnErrorKind::ModelApi),
-            1,
-            1,
-            3
-        )],
-        "the discarded attempts are counted even though no reply survived"
+        vec![
+            (
+                GgTurnOutcome::Error,
+                Some(GgTurnErrorKind::ModelApi),
+                1,
+                1,
+                3
+            ),
+            (
+                GgTurnOutcome::Error,
+                Some(GgTurnErrorKind::ModelApi),
+                2,
+                2,
+                3
+            ),
+        ],
+        "every attempt is an error turn carrying the whole tally, and the second one breaches"
     );
     assert_eq!(
         turn_error_types(&events),
-        vec![GgTurnErrorType::ModelResponseLoop],
+        vec![
+            GgTurnErrorType::ModelResponseLoop,
+            GgTurnErrorType::ModelResponseLoop
+        ],
         "the distinction the log line names is recorded too"
     );
 
@@ -1697,9 +1716,9 @@ async fn a_reply_that_looped_on_every_attempt_ends_the_run_on_its_own_message() 
 /// Loop detection discarding two replies and the third one working is a *successful* turn — the
 /// outcome is `progressed`, no ceiling counts it, and nothing about the run's error rate changes.
 /// The generation is still gone and still billed, so the tally rides on the turn that eventually
-/// produced a reply, and the operator log says so out loud in the units gg measured: words and
-/// characters, never tokens and never dollars, because the provider reports usage at the end of a
-/// stream neither abandoned reply ever reached.
+/// produced a reply, and the operator log says so out loud in the units gg measured on the stream:
+/// words and characters. The prices of those replies are read back at session end and land in the
+/// run's [total cost](GgSessionSummary::cost) — see `agent.pricing.test.rs`.
 #[tokio::test]
 async fn a_turn_that_survived_a_loop_reports_the_replies_that_were_discarded() {
     let dir = TempDir::new().unwrap();
@@ -1756,19 +1775,20 @@ async fn a_turn_that_survived_a_loop_reports_the_replies_that_were_discarded() {
     );
 }
 
-/// **A discarded looping reply changes nothing about what the run cost.**
+/// **A discarded looping reply costs the turn nothing it can record.**
 ///
-/// The ruling this whole measure exists under: a looping reply is a model defect, so its generation
-/// must not be charged to the configuration under test. Two runs, identical in every respect except
-/// that one of them threw two replies away, must therefore record the same tokens, the same cost,
-/// and the same run-wide spend — the figure the cost ceiling is measured against.
+/// The turn's own totals and the run-wide spend the cost ceiling is measured against never see
+/// abandoned output: gg's cost and tokens per turn come from the provider's usage payload, which
+/// arrives at the *end* of a stream an abandoned reply never reached. Two runs, identical in every
+/// respect except that one of them threw two replies away, therefore record the same tokens, the
+/// same cost, and the same run-wide spend.
 ///
-/// That holds for a reason worth stating rather than merely observing: gg's cost and tokens come
-/// from the provider's usage payload, which arrives at the *end* of a stream an abandoned reply
-/// never reached. There is no figure to fold in even if gg wanted to, and inventing one would put an
-/// estimate where every neighbouring number is a measurement.
+/// The output is billed all the same, and its price is read back at session end on the generation
+/// ledger — into the run's [total cost](GgSessionSummary::cost) and out of its
+/// [work cost](GgSessionSummary::work_cost). That pass is pinned by `agent.pricing.test.rs`; what
+/// is pinned here is that nothing on the turn's own figures moves first.
 #[tokio::test]
-async fn a_discarded_looping_reply_costs_the_run_nothing_it_can_record() {
+async fn a_discarded_looping_reply_costs_the_turn_nothing_it_can_record() {
     async fn run(discarded: LoopAborts) -> (LoopEnd, Option<f64>) {
         let dir = TempDir::new().unwrap();
         let emitter = Emitter::with_sink(None, Box::new(CollectingSink::new()));

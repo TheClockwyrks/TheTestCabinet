@@ -286,6 +286,18 @@ impl Emitter {
         self.summary.record_limit_hit(breach);
     }
 
+    /// Record how many replies [loop detection](crate::loopguard) abandoned stayed **unpriced** on
+    /// the shared [summary tracker](SessionSummaryTracker) — the count of abandoned replies the
+    /// session's generation lookup never got an answer for.
+    ///
+    /// A session-end fact like [`record_limit_hit`](Self::record_limit_hit) and recorded the same
+    /// way: the lookup runs once, after every agent has finished, so no turn's event carries the
+    /// figure. The loop records it on the root's emitter immediately after the pricing pass, before
+    /// [finalizing](Self::finalize_summary).
+    pub fn record_loop_abort_unpriced(&self, unpriced: u64) {
+        self.summary.record_loop_abort_unpriced(unpriced);
+    }
+
     /// Log one turn's exact request and response to the
     /// [message log](https://docs.testcabinet.ai/gg/context-visibility/): stream the body of
     /// every message not yet seen on this agent's stream (as a

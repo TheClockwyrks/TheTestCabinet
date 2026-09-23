@@ -14,10 +14,10 @@ package gg.delegation
 import gg.core.ApiError
 import gg.internal.Read
 import gg.internal.ggCall
+import gg.internal.ggOptionalTexts
 import gg.internal.ggRecord
 import gg.internal.ggRun
 import gg.internal.ggText
-import gg.internal.ggTexts
 import gg.internal.lowered
 
 
@@ -55,7 +55,10 @@ public fun spawnSubagent(agent: String, brief: Brief): SubagentHandle {
  */
 public fun waitForSubagents(vararg ids: String): List<SubagentResult> =
     Read.subagentResults(
-        ggCall("delegation.wait_for_subagents", ggTexts(ids.asIterable())),
+        // Naming none is the ABSENT list rather than an empty one: gg reads an absent `ids` as
+        // "every child still outstanding" and a list as "exactly these", so lowering the empty
+        // vararg as a list would ask gg to wait for nothing at all.
+        ggCall("delegation.wait_for_subagents", ggOptionalTexts(ids.asIterable())),
     )
 
 /**

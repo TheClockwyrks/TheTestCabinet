@@ -10,7 +10,7 @@
 //! hold a reference to it and read it back afterwards, which is exactly the ownership property that
 //! removed the old host's lifetime-erased pointer.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -25,12 +25,15 @@ use super::invoker::{
 };
 use super::language::ProgramLanguage;
 use super::membrane::{MembraneState, RunEnding};
-use super::operations::{OperationId, capability_operations, gating_capabilities};
+use super::operations::{
+    DOCS_CLOSE, DOCS_CLOSE_ALL, DOCS_SEARCH, OperationId, VIEWS_CLOSE, VIEWS_OPEN_DOCS_VIEW,
+    VIEWS_OPEN_FILE, VIEWS_OPEN_TEXT, capability_operations, gating_capabilities,
+};
 use super::{OperationApi, ProgramScope, SandboxLimits};
 use crate::board::IssueStatus;
 use crate::context::{FileRegion, SEARCH_RESULTS_VIEW, ViewKind};
 use crate::discovery::CallDiscovery;
-use crate::docs::DocSearch;
+use crate::docs::{DocHit, DocKind, DocSearch};
 use crate::ending::EndingRole;
 use crate::memories::MemoryCode;
 use crate::model::ImageContent;
@@ -149,7 +152,9 @@ pub(crate) struct FakeOperationApi {
     /// the membrane's own tests have no reason to stand up. What they *do* need is that the four
     /// view calls behave like one another — that an open is visible to a `current`, that a close
     /// removes what it names and reports how many — so the double models exactly that and no more.
-    /// The caps are not modelled at all: they live in `LoopOperationApi`, which is where the window is.
+    /// Of the caps `LoopOperationApi` holds against the window, only the two byte caps on a view's
+    /// body and label are modelled, in [`open_text_view`](OperationApi::open_text_view) and
+    /// [`open_file_view`](OperationApi::open_file_view), because a program reads their refusal.
     views: Vec<FakeOpenView>,
     /// The [program library](crate::programs) this double answers `programs.history` / `programs.get`
     /// from — a real one, because it is a small self-contained value with the retention already in
@@ -175,6 +180,46 @@ pub(crate) struct FakeOperationApi {
     /// not about discovery reporting nothing. [`documenting`](FakeOperationApi::documenting) arms
     /// it: an operation in the set reads as `Documented`, one outside it as `Undocumented`.
     documented: Option<BTreeSet<String>>,
+    /// The refusal the **next** view or documentation-search call answers with, armed by
+    /// [`refusing_view`](FakeOperationApi::refusing_view) and taken by whichever of the five comes
+    /// first.
+    ///
+    /// The caps and the catalogue that raise these in production live in
+    /// [`LoopOperationApi`](crate::agent::LoopOperationApi), which needs a real window and a real
+    /// documentation runtime — so without this the only refusals a program could be driven into are
+    /// the two the double models by hand (an empty label, an empty selector), and every other
+    /// `ViewRefusal` an arm's SDK documents would be unreachable from a program.
+    view_refusal: Option<ViewRefusal>,
+    /// The refusal each named [operation](OperationId) answers with, armed by
+    /// [`refusing`](FakeOperationApi::refusing) and keyed on gg's own rendered id for the call.
+    ///
+    /// Standing rather than one-shot, and keyed on the operation rather than on whichever call
+    /// arrives first, because what it drives is a program that makes the same refused call twice
+    /// and a program whose refusal must not be taken by a neighbour's call.
+    refusals: BTreeMap<String, (ToolFailure, String)>,
+    /// The one documentation hit `search_docs` answers with, once
+    /// [`finding`](FakeOperationApi::finding) has seeded it; `None` — the default — is the empty
+    /// page.
+    ///
+    /// One hit rather than a page of them, and seeded rather than invented, for the reason the
+    /// empty answer is the default: the double models no catalogue and has nothing to *rank*, so
+    /// what a seeded hit buys is the one thing the ranking is not — that the five fields of a hit
+    /// reach the program, each carrying its own value, with the kind lowered to the word an arm's
+    /// SDK lifts back into its enum.
+    doc_hit: Option<DocHit>,
+    /// The documentation entries this double knows, and for each whether this agent binds it, once
+    /// [`cataloguing`](FakeOperationApi::cataloguing) has named them.
+    ///
+    /// `None` — the default — is a double that opens a view for every name, which is what the
+    /// cases that are about the *bridging* of the call want. Armed, it models the only two ways
+    /// production refuses a lookup: a name no catalogue holds, and a name this agent was not
+    /// granted. Both are `not-found`, because the second must not tell a model that a call exists
+    /// that it may not make.
+    docs_entries: Option<BTreeMap<String, bool>>,
+    /// The documentation names this double knows and the ones this agent binds, once
+    /// [`docs_index`](FakeOperationApi::docs_index) has named them — the arm of the lookup whose
+    /// refusals **name the bound set**, so a program can read what it may open instead of guessing.
+    docs_index: Option<(BTreeSet<String>, Vec<String>)>,
 }
 
 /// The API calls a [`FakeOperationApi`] was bracketed with, shared through an `Arc` for the reason
@@ -194,8 +239,20 @@ pub(crate) struct RecordedApiCall {
     pub(crate) ok: Option<bool>,
     /// The class the call threw with, on a call that threw — `None` on a success and on a call
     /// that never closed. Recorded because the class is the only thing that says *why* an API call
-    /// the model made failed, and for the calls no tool backs it is the only record at all.
+    /// the model made failed.
     pub(crate) failure: Option<GgCallFailure>,
+    /// The arguments the call carried, under the **WIT's own parameter names** — the record of the
+    /// calls no gg tool backs.
+    ///
+    /// [`Value::Null`] until the answering method fills it, which is every method that answers an
+    /// operation without going through [`call`](FakeOperationApi::call) — the docs family, the view
+    /// family and the program library — plus `archive_thread`, whose tool record carries its ranges
+    /// as positional pairs and so has no `from` or `to` in it to read.
+    ///
+    /// It exists for [the argument gate](crate::sandbox::membrane::wire): without it the order of
+    /// two same-shaped arguments is unattributable for every call that leaves no
+    /// [`RecordedCall`](RecordedCall) behind.
+    pub(crate) arguments: Value,
 }
 
 #[allow(dead_code)]
@@ -217,6 +274,41 @@ impl ApiLog {
             .collect()
     }
 
+    /// The arguments of the first call to `operation`, or `None` if it was never called — the api
+    /// log's answer to [`CallLog::args`], for the calls that never reach a tool.
+    pub(crate) fn args(&self, operation: &str) -> Option<Value> {
+        self.calls()
+            .into_iter()
+            .find(|call| call.operation == operation)
+            .map(|call| call.arguments)
+    }
+
+    /// Record the arguments of the call that is **open right now**: the innermost record still
+    /// waiting for its [`end`](Self::end).
+    ///
+    /// The answering method is not told which operation it is serving — `close_docviews` answers
+    /// both `docs.close` and `docs.close_all` — so the open bracket is the identity, which is the
+    /// same one [`end`](Self::end) will close. A call made outside a bracket records nothing; the
+    /// membrane opens one around every model-facing call, so there is no such call in practice.
+    fn record_arguments(&self, arguments: Value) {
+        let mut calls = self.0.lock().expect("the api log is never poisoned");
+        if let Some(call) = calls.iter_mut().rev().find(|call| call.ok.is_none()) {
+            call.arguments = arguments;
+        }
+    }
+
+    /// The operation whose bracket is **open right now**: the innermost record still waiting for
+    /// its [`end`](Self::end), which is the call an answering method is serving.
+    fn open_operation(&self) -> Option<String> {
+        self.0
+            .lock()
+            .expect("the api log is never poisoned")
+            .iter()
+            .rev()
+            .find(|call| call.ok.is_none())
+            .map(|call| call.operation.clone())
+    }
+
     /// Open one call's record.
     fn begin(&self, call: ApiIdentity<'_>) {
         self.0
@@ -226,6 +318,7 @@ impl ApiLog {
                 operation: call.operation.to_string(),
                 ok: None,
                 failure: None,
+                arguments: Value::Null,
             });
     }
 
@@ -264,6 +357,11 @@ impl FakeOperationApi {
             programs: ProgramLibrary::enabled(None, 4),
             api: ApiLog::default(),
             documented: None,
+            view_refusal: None,
+            refusals: BTreeMap::new(),
+            doc_hit: None,
+            docs_entries: None,
+            docs_index: None,
         }
     }
 
@@ -295,6 +393,194 @@ impl FakeOperationApi {
     pub(crate) fn with_program(mut self, id: &str, turn: u64, source: &str) -> Self {
         self.programs.record(id, turn, source, true, None);
         self
+    }
+
+    /// Arm the **next** `open_text_view`, `open_docs_view`, `open_file_view`, `close_view` or
+    /// `search_docs` to answer `refusal`.
+    ///
+    /// The calls whose refusals the api decides rather than a responder: a tool-backed failure is
+    /// injected by handing the double a responder that fails it, and these are refused before any
+    /// tool is reached, so this is the seam that fails them. One arming rather than one per call
+    /// because a program that is about a refusal makes exactly one of them; the first to arrive
+    /// takes it, and every call after it is answered as usual.
+    ///
+    /// It carries a whole [`ViewRefusal`] rather than a class, because what these tests read back is
+    /// the **sentence**: a cap that does not name the cap, or a miss that does not point at
+    /// `docs.search`, is the failure mode worth a test.
+    pub(crate) fn refusing_view(mut self, refusal: ViewRefusal) -> Self {
+        self.view_refusal = Some(refusal);
+        self
+    }
+
+    /// The armed refusal, if this is the call that takes it.
+    fn armed_refusal(&mut self) -> Option<ViewRefusal> {
+        self.view_refusal.take()
+    }
+
+    /// Answer **every** documentation call — `search_docs` and `close_docviews` — with `failure`
+    /// and `message`.
+    ///
+    /// Neither is a gg tool, so neither composes a call a [responder](Responder) could fail, and the
+    /// catalogue that refuses them in production is
+    /// [`LoopOperationApi`](crate::agent::LoopOperationApi)'s. Without this the refusals an arm's
+    /// SDK documents on `docs.search` and `docs.close` would be unreachable from a program.
+    pub(crate) fn refusing_docs(self, failure: ToolFailure, message: &str) -> Self {
+        [DOCS_SEARCH, DOCS_CLOSE, DOCS_CLOSE_ALL]
+            .into_iter()
+            .fold(self, |api, operation| {
+                api.refusing(operation, failure, message)
+            })
+    }
+
+    /// Answer the one operation `operation` names with `failure` and `message`, leaving every other
+    /// call answered as usual.
+    ///
+    /// **What it models:** a refusal the *production* api raises out of state this double does not
+    /// hold — the window behind a `views` cap, the catalogue behind a documentation lookup, the
+    /// library behind a `programs` read. Those three families dispatch no gg tool, so no
+    /// [responder](Responder) can fail them, and without this seam every refusal their SDKs
+    /// document would be unreachable from a program.
+    ///
+    /// **What it leaves to the production api:** the *deciding*. Nothing here measures a body
+    /// against a cap, ranks a catalogue or ages a program out of a library — the test states the
+    /// class and the sentence, and what is under test is that gg's own words reach the program
+    /// under the operation the model wrote. A refusal a run could not actually produce is therefore
+    /// this file's responsibility to keep honest, which is why the guards the double *can* model
+    /// (an empty label, an empty selector, a line cut that names nothing, the two view byte caps,
+    /// the three documentation-search argument mistakes) are modelled rather than armed.
+    ///
+    /// It is keyed on the operation being **recorded**, taken from the open
+    /// [api bracket](ApiLog::open_operation): one answering method may serve two operations —
+    /// `close_docviews` answers both `docs.close` and `docs.close_all` — and a knob scoped to the
+    /// method could not tell a test which of the two it had armed.
+    pub(crate) fn refusing(
+        mut self,
+        operation: OperationId,
+        failure: ToolFailure,
+        message: &str,
+    ) -> Self {
+        self.refusals
+            .insert(operation.to_string(), (failure, message.to_string()));
+        self
+    }
+
+    /// Answer every call that opens, searches or closes a view — `search_docs`, `open_docs_view`,
+    /// `open_text_view`, `open_file_view` and `close_view` — with `failure` and `message`, consulted
+    /// before anything else each of them does.
+    ///
+    /// The refusals it stands in for are the ones production decides against state this double does
+    /// not hold: the view byte caps measured against a real window, a documentation name a real
+    /// catalogue does not carry, a search argument a real index refuses. `open_file_view` is one of
+    /// them because its **byte cap** is decided after the read and so is not a `read_file` failure a
+    /// responder could inject; armed here it refuses before the read, so the call log stays empty
+    /// and no view is opened. A `read_file` that fails is still a responder's to inject.
+    pub(crate) fn refusing_views(self, failure: ToolFailure, message: &str) -> Self {
+        [
+            DOCS_SEARCH,
+            VIEWS_OPEN_FILE,
+            VIEWS_OPEN_TEXT,
+            VIEWS_OPEN_DOCS_VIEW,
+            VIEWS_CLOSE,
+        ]
+        .into_iter()
+        .fold(self, |api, operation| {
+            api.refusing(operation, failure, message)
+        })
+    }
+
+    /// Bound the program library's retention to `keep`, the way a run's capability params do.
+    ///
+    /// Called **before** [`with_program`](Self::with_program), because the drop happens as each
+    /// program is recorded: it is what lets a case seed past the retention and then ask for an id
+    /// the library really did issue and really has since let go.
+    ///
+    /// **What it models:** the one piece of a run's configuration the library's own behaviour turns
+    /// on. The [`ProgramLibrary`] behind it is the real one, so the ageing-out, the ids the miss
+    /// names and the summaries `history` reports are production's own and not a second model of
+    /// them.
+    ///
+    /// **What it leaves to the production api:** where the number comes from. A real run resolves
+    /// the retention out of the [library capability](test_cabinet_core::gg::CAPABILITY_PROGRAM_LIBRARY)'s
+    /// params and refuses the launch over a `keep` it cannot read; that resolution is
+    /// [`crate::programs`]'s, tested there, and this takes the resolved number as given.
+    pub(crate) fn keeping(mut self, keep: usize) -> Self {
+        self.programs = ProgramLibrary::enabled(Some(keep), 4);
+        self
+    }
+
+    /// Seed the one hit `search_docs` answers with, in the shape [`with_program`](Self::with_program)
+    /// seeds the program library: the values a program reads back out of a `DocHit`.
+    ///
+    /// Without it every search answers an empty page, so the only thing a program could assert
+    /// about a hit is that there was not one.
+    pub(crate) fn finding(
+        mut self,
+        key: &str,
+        kind: DocKind,
+        module: &str,
+        name: &str,
+        summary: &str,
+    ) -> Self {
+        self.doc_hit = Some(DocHit {
+            key: key.to_string(),
+            kind,
+            module: module.to_string(),
+            name: name.to_string(),
+            summary: summary.to_string(),
+        });
+        self
+    }
+
+    /// Name the documentation entries this double knows, each with whether this agent **binds** it.
+    ///
+    /// The catalogue and the bound set are one parameter because a lookup reads them as one
+    /// question — is there a page here for *this* agent — and the two answers it can give are the
+    /// two rows this takes. Unset, every name opens a view.
+    pub(crate) fn cataloguing(mut self, entries: &[(&str, bool)]) -> Self {
+        self.docs_entries = Some(
+            entries
+                .iter()
+                .map(|(name, bound)| ((*name).to_string(), *bound))
+                .collect(),
+        );
+        self
+    }
+
+    /// Resolve documentation names through an index: `known` is every name the catalogue holds and
+    /// `bound` the ones this agent binds.
+    ///
+    /// A bound name opens a view. A name outside `known` is `not-found` naming what is bound, and a
+    /// known name this agent does not bind is `not-found` naming this agent's own set — both
+    /// `not-found`, because the second must not tell a model that a call exists that it may not
+    /// make. Unset, the lookup answers as [`cataloguing`](Self::cataloguing) (or its absence) does.
+    pub(crate) fn docs_index(mut self, known: &[&str], bound: &[&str]) -> Self {
+        self.docs_index = Some((
+            known.iter().map(|name| (*name).to_string()).collect(),
+            bound.iter().map(|name| (*name).to_string()).collect(),
+        ));
+        self
+    }
+
+    /// The refusal [`refusing`](Self::refusing) armed for the operation whose bracket is open right
+    /// now, as the [`ViewRefusal`] the membrane takes.
+    ///
+    /// The answering method is not told which operation it is serving, so the open bracket is the
+    /// identity — the same one the [api log](ApiLog) is about to close.
+    fn armed_for_open(&self) -> Option<ViewRefusal> {
+        let operation = self.api.open_operation()?;
+        self.refusals
+            .get(&operation)
+            .map(|(failure, message)| ViewRefusal {
+                failure: *failure,
+                message: message.clone(),
+            })
+    }
+
+    /// Record `arguments` against the API call this method is answering, under the WIT's own
+    /// parameter names — what a method that dispatches no tool leaves behind instead of a
+    /// [`RecordedCall`](RecordedCall). See [`RecordedApiCall::arguments`].
+    fn answered(&self, arguments: Value) {
+        self.api.record_arguments(arguments);
     }
 
     /// Record `name`/`args` exactly as the membrane composed them, then answer.
@@ -577,6 +863,16 @@ impl OperationApi for FakeOperationApi {
             .iter()
             .map(|range| json!([range.from, range.to]))
             .collect();
+        // The ends a second time, under their names. The tool record keeps the positional pairs
+        // because that is the shape the production api composes and the roster assertions read; a
+        // pair says nothing about which end is which, so the api record carries the same two
+        // numbers named — which is the only place the order of a range can be checked.
+        self.answered(json!({
+            "ranges": ranges
+                .iter()
+                .map(|range| json!({ "from": range.from, "to": range.to }))
+                .collect::<Vec<_>>(),
+        }));
         self.call("archive_thread", json!({ "ranges": pairs }))
     }
     fn search_archive(&mut self, query: String) -> ToolOutcome {
@@ -616,13 +912,79 @@ impl OperationApi for FakeOperationApi {
     }
 
     /// Opens a docs view for every name, so a program that asks for documentation gets a view rather
-    /// than a `not-found`. Recorded as a view, not as a call: a documentation lookup is not a tool.
+    /// than a `not-found` — unless a case seeded the names this double knows with
+    /// [`docs_index`](FakeOperationApi::docs_index) or [`cataloguing`](FakeOperationApi::cataloguing),
+    /// in which case a name outside the set, and a name this agent does not bind, are both refused
+    /// `not-found` as production refuses them. Recorded as a view, not as a call: a documentation
+    /// lookup is not a tool. What it opens is held, so [`close_docviews`](OperationApi::close_docviews)
+    /// has a real count to report.
     ///
     /// One view per call, never the several the production api can place: the double does not model
     /// a catalogue, so it has no types to open beside a function and nothing to be right about if it
     /// invented some. What it does model is the *shape* — a list, so the membrane's recording of
     /// several views from one call is exercised by the tests that drive the real api.
     fn open_docs_view(&mut self, name: String) -> Result<Vec<SandboxViewOpened>, ViewRefusal> {
+        self.answered(json!({ "name": name }));
+        if let Some(refusal) = self.armed_refusal().or_else(|| self.armed_for_open()) {
+            return Err(refusal);
+        }
+        // What this double knows about, when a case has told it: an unknown name and a name this
+        // agent does not bind are both `not-found`, exactly as the production api answers them, and
+        // both place nothing.
+        if let Some((known, bound)) = &self.docs_index {
+            let binds = bound
+                .iter()
+                .map(|name| format!("`{name}`"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            if !known.contains(&name) {
+                return Err(ViewRefusal {
+                    failure: ToolFailure::NotFound,
+                    message: format!("no documentation for `{name}`; this session binds {binds}"),
+                });
+            }
+            if !bound.contains(&name) {
+                return Err(ViewRefusal {
+                    failure: ToolFailure::NotFound,
+                    message: format!(
+                        "no documentation for `{name}`: this session does not bind it; it binds \
+                         {binds}"
+                    ),
+                });
+            }
+        }
+        if let Some(entries) = &self.docs_entries {
+            match entries.get(&name) {
+                None => {
+                    return Err(ViewRefusal {
+                        failure: ToolFailure::NotFound,
+                        message: format!("no documentation for `{name}`"),
+                    });
+                }
+                Some(false) => {
+                    return Err(ViewRefusal {
+                        failure: ToolFailure::NotFound,
+                        message: format!(
+                            "no documentation for `{name}`: this session does not bind it"
+                        ),
+                    });
+                }
+                Some(true) => {}
+            }
+        }
+        // Held, so `close_docviews` has something to count — the one rule the double already models
+        // for the other view kinds. Re-opening one already open places nothing new, which is
+        // production's total no-op said in the only terms the double has.
+        if !self
+            .views
+            .iter()
+            .any(|view| view.kind == ViewKind::Docs && view.selector == name)
+        {
+            self.views.push(FakeOpenView {
+                kind: ViewKind::Docs,
+                selector: name.clone(),
+            });
+        }
         Ok(vec![SandboxViewOpened {
             kind: ViewKind::Docs,
             selector: name,
@@ -632,19 +994,40 @@ impl OperationApi for FakeOperationApi {
     }
 
     /// Answers every search with an empty page, and reports the one view a real search would have
-    /// opened.
+    /// opened — after holding the argument guards the real runtime holds (`docs.search.rs`): an
+    /// unrecognised `kind`, a search with no query and no filter, and a `limit` of zero are each
+    /// refused `invalid-argument` by [`search_argument_refusal`].
     ///
     /// The double models no catalogue, so it has nothing to find and nothing to be right about if it
     /// invented hits — and the ranking is `DocsRuntime`'s to be tested, over a real committed
     /// catalogue, which is where `docs.search.test.rs` tests it. What the double *does* model is the
     /// shape the membrane bridges: a page plus a view, so the recording of a search's view is
     /// exercised without a window to open one in.
-    fn search_docs(&mut self, _query: DocSearchQuery) -> Result<DocSearchResult, ViewRefusal> {
+    fn search_docs(&mut self, query: DocSearchQuery) -> Result<DocSearchResult, ViewRefusal> {
+        // `type` is the WIT's name for what the query struct calls `declared_type`, and the WIT's
+        // is the name this record is read under.
+        self.answered(json!({
+            "query": query.query,
+            "modules": query.modules,
+            "type": query.declared_type,
+            "kind": query.kind,
+            "offset": query.offset,
+            "limit": query.limit,
+        }));
+        if let Some(refusal) = self.armed_refusal().or_else(|| self.armed_for_open()) {
+            return Err(refusal);
+        }
+        if let Some(refusal) = search_argument_refusal(&query) {
+            return Err(refusal);
+        }
+        let hits: Vec<DocHit> = self.doc_hit.clone().into_iter().collect();
         Ok(DocSearchResult {
             page: DocSearch {
-                total: 0,
+                total: hits.len() as u32,
+                // Always the first page, whatever was asked for: the double answers at most one
+                // hit, so echoing an offset back would describe a page it does not have.
                 offset: 0,
-                hits: Vec::new(),
+                hits,
             },
             opened: SandboxViewOpened {
                 kind: ViewKind::Search,
@@ -655,11 +1038,23 @@ impl OperationApi for FakeOperationApi {
         })
     }
 
-    /// Closes nothing and says so: the double holds no window, so there is nothing to remove and the
-    /// honest answer is `0` — which is a successful call, exactly as it is in production. The
+    /// Closes the documentation views [`open_docs_view`](OperationApi::open_docs_view) opened — the one
+    /// named by `key`, or every one of them for no key — and reports how many went. With nothing
+    /// open the honest answer is `0`, which is a successful call, exactly as it is in production. The
     /// **capability** gate is the membrane's rather than the api's, so it is exercised without this.
-    fn close_docviews(&mut self, _key: Option<String>) -> Result<u32, ViewRefusal> {
-        Ok(0)
+    fn close_docviews(&mut self, key: Option<String>) -> Result<u32, ViewRefusal> {
+        // `close-doc-views` declares no parameters at all, so its record is the empty key it
+        // arrived with — the same method answering both halves of the family.
+        self.answered(json!({ "key": key }));
+        if let Some(refusal) = self.armed_for_open() {
+            return Err(refusal);
+        }
+        let before = self.views.len();
+        self.views.retain(|view| {
+            view.kind != ViewKind::Docs
+                || key.as_ref().is_some_and(|wanted| *wanted != view.selector)
+        });
+        Ok((before - self.views.len()) as u32)
     }
 
     /// The read, recorded as the `read_file` it really is, plus the view it opens.
@@ -684,7 +1079,45 @@ impl OperationApi for FakeOperationApi {
         if let Some(chars) = max_line_chars {
             args["maxLineChars"] = json!(chars);
         }
-        let mut outcome = self.call("read_file", args);
+        self.answered(json!({
+            "path": path,
+            "offset": offset,
+            "limit": limit,
+            "max-line-chars": max_line_chars,
+        }));
+        // An armed refusal is the api deciding before the read, so nothing is dispatched and no
+        // view is opened.
+        if let Some(refusal) = self.armed_refusal().or_else(|| self.armed_for_open()) {
+            return ViewOpenOutcome {
+                outcome: ToolOutcome::failed(refusal.failure, refusal.message),
+                opened: None,
+            };
+        }
+        // The line cut is refused *before* the read and the call is still recorded, which is the
+        // order the production api has: the refusal happens inside the serviced call, so the
+        // roster carries the call the model made rather than losing it.
+        let mut outcome = match line_cut_refusal(max_line_chars) {
+            Some(refusal) => {
+                self.log.push(RecordedCall {
+                    name: "read_file".to_string(),
+                    args,
+                });
+                ToolOutcome::failed(refusal.failure, refusal.message)
+            }
+            None => self.call("read_file", args),
+        };
+        // And the body the view would carry is held to the same byte cap a text view's is, after
+        // the read rather than before it, because the size is not knowable until the read answered.
+        if outcome.ok && outcome.output.len() > MAX_TEXT_VIEW_BYTES {
+            outcome = ToolOutcome::failed(
+                ToolFailure::LimitExceeded,
+                format!(
+                    "view body exceeds max size ({} bytes; max {MAX_TEXT_VIEW_BYTES}); open fewer \
+                     lines with `offset`/`limit`, or cut long lines with `maxLineChars`",
+                    outcome.output.len()
+                ),
+            );
+        }
         if !outcome.ok {
             return ViewOpenOutcome {
                 outcome,
@@ -712,17 +1145,43 @@ impl OperationApi for FakeOperationApi {
         }
     }
 
-    /// Opens the text view, modelling only the one rule the membrane can observe: an empty label is
-    /// refused. The size caps are the production api's, and are exercised where they live.
+    /// Opens the text view, modelling the three rules a program can observe: an empty label is
+    /// refused `invalid-argument`, and a label over [`MAX_VIEW_LABEL_BYTES`] or a body over
+    /// [`MAX_TEXT_VIEW_BYTES`] is refused `limit-exceeded` naming the cap it went over — two separate
+    /// caps, and two separate refusals.
     fn open_text_view(
         &mut self,
         label: String,
         body: String,
     ) -> Result<SandboxViewOpened, ViewRefusal> {
+        self.answered(json!({ "label": label, "body": body }));
+        if let Some(refusal) = self.armed_refusal().or_else(|| self.armed_for_open()) {
+            return Err(refusal);
+        }
         if label.trim().is_empty() {
             return Err(ViewRefusal {
                 failure: ToolFailure::InvalidArgument,
                 message: "a view needs a non-empty label".to_string(),
+            });
+        }
+        // The two size caps, in production's own words: the size that broke it and the bound,
+        // never a truncation. See `text_view_refusal` in `crate::agent`.
+        if label.len() > MAX_VIEW_LABEL_BYTES {
+            return Err(ViewRefusal {
+                failure: ToolFailure::LimitExceeded,
+                message: format!(
+                    "label exceeds max length ({} bytes; max {MAX_VIEW_LABEL_BYTES})",
+                    label.len()
+                ),
+            });
+        }
+        if body.len() > MAX_TEXT_VIEW_BYTES {
+            return Err(ViewRefusal {
+                failure: ToolFailure::LimitExceeded,
+                message: format!(
+                    "view body exceeds max size ({} bytes; max {MAX_TEXT_VIEW_BYTES})",
+                    body.len()
+                ),
             });
         }
         let tokens = body.len() as u64 / 4;
@@ -730,6 +1189,10 @@ impl OperationApi for FakeOperationApi {
     }
 
     fn close_view(&mut self, selector: String) -> Result<u32, ViewRefusal> {
+        self.answered(json!({ "selector": selector }));
+        if let Some(refusal) = self.armed_refusal().or_else(|| self.armed_for_open()) {
+            return Err(refusal);
+        }
         if selector.trim().is_empty() {
             return Err(ViewRefusal {
                 failure: ToolFailure::InvalidArgument,
@@ -737,17 +1200,107 @@ impl OperationApi for FakeOperationApi {
             });
         }
         let before = self.views.len();
-        self.views.retain(|view| view.selector != selector);
+        // A documentation view is never closed from here, which is the rule the model is told:
+        // `docs.close` is the call that takes one of those back out of the window.
+        self.views
+            .retain(|view| view.kind == ViewKind::Docs || view.selector != selector);
         Ok((before - self.views.len()) as u32)
     }
 
     fn program_history(&mut self) -> Vec<ProgramSummary> {
+        self.answered(json!({}));
         self.programs.summaries()
     }
 
     fn program_source(&mut self, id: &str) -> Result<String, ProgramRefusal> {
+        self.answered(json!({ "id": id }));
+        // The library really does model retention and misses, so an armed refusal here is for the
+        // causes it does not hold — a library the loop could not read at all.
+        if let Some(refusal) = self.armed_for_open() {
+            return Err(ProgramRefusal {
+                failure: refusal.failure,
+                message: refusal.message,
+            });
+        }
         self.programs.source(id).map(str::to_string)
     }
+}
+
+/// The byte cap one view's text body is held to, mirroring `MAX_TEXT_VIEW_BYTES` in
+/// [`crate::agent`] — where the real cap lives, because it is the api that holds the window.
+///
+/// Copied rather than imported because the production constant is private to the module that
+/// enforces it, and a double that guessed a *different* number would let a program read a refusal
+/// no run could produce. The two are pinned together by the cases that assert on the sentence,
+/// which quotes the bound.
+const MAX_TEXT_VIEW_BYTES: usize = 65_536;
+
+/// The byte cap a text view's **label** is held to, mirroring `MAX_VIEW_LABEL_BYTES` in
+/// [`crate::agent`] for the reason [`MAX_TEXT_VIEW_BYTES`] is copied.
+const MAX_VIEW_LABEL_BYTES: usize = 200;
+
+/// The refusal a file view's `max_line_chars` earns for a value that names no cut, or `None` to let
+/// it through — `line_cut_refusal` in [`crate::agent`], said here so a program can be driven into
+/// it.
+fn line_cut_refusal(max_line_chars: Option<usize>) -> Option<ViewRefusal> {
+    match max_line_chars {
+        Some(chars) if chars == 0 || chars > MAX_TEXT_VIEW_BYTES => Some(ViewRefusal {
+            failure: ToolFailure::InvalidArgument,
+            message: format!(
+                "`maxLineChars` must be between 1 and {MAX_TEXT_VIEW_BYTES} ({chars} given); \
+                 omit it to leave lines whole"
+            ),
+        }),
+        _ => None,
+    }
+}
+
+/// The refusal a documentation search earns for the three argument mistakes
+/// [`DocsRuntime::search`](crate::docs::DocsRuntime) refuses, or `None` to let it through.
+///
+/// The double holds no catalogue to search, so without these the three refusals every arm's SDK
+/// documents on `docs.search` would be unreachable from a program — and each of them is a refusal
+/// rather than an empty page precisely because the empty page would be read as an answer.
+fn search_argument_refusal(query: &DocSearchQuery) -> Option<ViewRefusal> {
+    let invalid = |message: String| ViewRefusal {
+        failure: ToolFailure::InvalidArgument,
+        message,
+    };
+    let kind = query
+        .kind
+        .as_deref()
+        .map(str::trim)
+        .filter(|kind| !kind.is_empty());
+    if let Some(kind) = kind {
+        let known = ["module", "function", "type"]
+            .iter()
+            .any(|known| kind.eq_ignore_ascii_case(known));
+        if !known {
+            return Some(invalid(format!(
+                "`{kind}` is not a kind of documentation entry; use `module`, `function` or \
+                 `type`, or leave it out for all three"
+            )));
+        }
+    }
+    let modules = query.modules.iter().any(|module| !module.trim().is_empty());
+    let declared_type = query
+        .declared_type
+        .as_deref()
+        .is_some_and(|it| !it.trim().is_empty());
+    if query.query.trim().is_empty() && !modules && !declared_type && kind.is_none() {
+        return Some(invalid(
+            "a search needs something to look for: a query, or a `modules`, `type` or `kind` \
+             filter"
+                .to_string(),
+        ));
+    }
+    if query.limit == Some(0) {
+        return Some(invalid(
+            "a page of zero hits would answer nothing; leave `limit` out for the default"
+                .to_string(),
+        ));
+    }
+    None
 }
 
 /// A `TaskStatus` in the spelling gg's schema declares, for the recorded telemetry `args` value.

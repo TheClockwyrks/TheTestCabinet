@@ -340,3 +340,188 @@ async fn the_adapter_reads_query_path_and_limit() {
     assert!(!bad.ok);
     assert_eq!(bad.failure, Some(ToolFailure::InvalidArgument));
 }
+
+// ---------------------------------------------------------------------------
+// Every refusal, through the tool-calling adapter
+// ---------------------------------------------------------------------------
+//
+// A tool-calling model reaches `search` through `invoke` and nothing else, so each failure mode is
+// driven here by the ill-typed or ill-formed JSON that enters it: the adapter's own branches and
+// the typed call's refusals alike, each asserting the argument at fault is named.
+
+/// A refusal from `invoke`, asserted to carry `failure` and to name `argument` in its prose.
+fn refusal(outcome: &ToolOutcome, failure: ToolFailure, argument: &str) {
+    assert!(!outcome.ok, "{}", outcome.output);
+    assert_eq!(outcome.failure, Some(failure), "{}", outcome.output);
+    assert!(
+        outcome.output.contains(argument),
+        "expected `{argument}` to be named: {}",
+        outcome.output
+    );
+}
+
+/// `path` is a string or it is absent; a boolean is neither.
+#[tokio::test]
+async fn a_search_path_that_is_not_a_string_is_an_argument_error() {
+    let (_dir, ctx) = workspace();
+
+    let outcome = SearchTool
+        .invoke(json!({ "query": "needle", "path": true }), &ctx)
+        .await;
+    refusal(&outcome, ToolFailure::InvalidArgument, "`path`");
+    assert!(
+        outcome.output.contains("must be a string"),
+        "{}",
+        outcome.output
+    );
+}
+
+/// A `limit` that is a string, and one that is negative, are both refused before the walk rather
+/// than read as some other number.
+#[tokio::test]
+async fn a_search_limit_that_is_not_a_whole_number_is_an_argument_error() {
+    let (_dir, ctx) = workspace();
+
+    let worded = SearchTool
+        .invoke(json!({ "query": "needle", "limit": "many" }), &ctx)
+        .await;
+    refusal(&worded, ToolFailure::InvalidArgument, "`limit`");
+    assert!(
+        worded.output.contains("must be a positive integer"),
+        "{}",
+        worded.output
+    );
+
+    let negative = SearchTool
+        .invoke(json!({ "query": "needle", "limit": -3 }), &ctx)
+        .await;
+    refusal(&negative, ToolFailure::InvalidArgument, "`limit`");
+    assert!(
+        negative.output.contains("must be a positive integer"),
+        "{}",
+        negative.output
+    );
+}
+
+/// Zero reads as a whole number, so it crosses the adapter and is refused by the typed call — and
+/// the model still sees the refusal.
+#[tokio::test]
+async fn a_search_limit_of_zero_is_an_argument_error_through_the_adapter() {
+    let (_dir, ctx) = workspace();
+
+    let outcome = SearchTool
+        .invoke(json!({ "query": "needle", "limit": 0 }), &ctx)
+        .await;
+    refusal(&outcome, ToolFailure::InvalidArgument, "`limit`");
+    assert!(
+        outcome
+            .output
+            .contains("must be a positive number of matches"),
+        "{}",
+        outcome.output
+    );
+}
+
+/// *You asked for nothing* is not *nothing matched*, so a query of whitespace is refused rather
+/// than answered empty.
+#[tokio::test]
+async fn a_blank_search_query_is_an_argument_error() {
+    let (dir, ctx) = workspace();
+    write(dir.path(), "a.ts", "needle\n");
+
+    let outcome = SearchTool.invoke(json!({ "query": "   " }), &ctx).await;
+    refusal(&outcome, ToolFailure::InvalidArgument, "`query`");
+    assert!(
+        outcome.output.contains("must not be blank"),
+        "{}",
+        outcome.output
+    );
+}
+
+/// A pattern the regex compiler rejects is refused in the compiler's own words, so the model can
+/// see what it got wrong rather than only that it did.
+#[tokio::test]
+async fn a_search_pattern_that_does_not_parse_is_an_argument_error() {
+    let (_dir, ctx) = workspace();
+
+    // Assembled rather than written as a literal, so the compiler's own error is what this test
+    // compares against instead of a copy of it — and so clippy's `invalid_regex` lint, which reads
+    // literals, does not refuse the file over a pattern that is meant to be broken.
+    let broken: String = std::iter::once('[').collect();
+
+    let outcome = SearchTool
+        .invoke(json!({ "query": broken.clone() }), &ctx)
+        .await;
+    refusal(&outcome, ToolFailure::InvalidArgument, "`query`");
+    assert!(
+        outcome
+            .output
+            .contains("is not a valid regular expression: "),
+        "{}",
+        outcome.output
+    );
+    let compiler = regex::Regex::new(&broken).unwrap_err().to_string();
+    assert!(outcome.output.contains(&compiler), "{}", outcome.output);
+    assert!(
+        outcome.output.contains("unclosed character class"),
+        "{}",
+        outcome.output
+    );
+}
+
+/// An empty path names the working directory by accident rather than on purpose, so it is a
+/// mistake in the call.
+#[tokio::test]
+async fn an_empty_search_path_is_an_argument_error() {
+    let (_dir, ctx) = workspace();
+
+    let outcome = SearchTool
+        .invoke(json!({ "query": "needle", "path": "" }), &ctx)
+        .await;
+    refusal(&outcome, ToolFailure::InvalidArgument, "path");
+    assert!(
+        outcome.output.contains("must not be empty"),
+        "{}",
+        outcome.output
+    );
+}
+
+/// A root nothing occupies is `not-found` rather than an empty answer, and the prose names the
+/// path that was asked for.
+#[tokio::test]
+async fn a_search_of_a_missing_path_is_not_found() {
+    let (dir, ctx) = workspace();
+    write(dir.path(), "src/a.ts", "needle\n");
+
+    let outcome = SearchTool
+        .invoke(json!({ "query": "needle", "path": "nowhere" }), &ctx)
+        .await;
+    refusal(&outcome, ToolFailure::NotFound, "nowhere");
+    assert!(
+        outcome.output.contains("does not exist"),
+        "{}",
+        outcome.output
+    );
+}
+
+/// A `path` naming a regular file is a root the walk yields one entry for: the answer comes from
+/// that file alone, though the same pattern sits in its neighbour.
+#[tokio::test]
+async fn a_search_rooted_at_a_file_searches_that_one_file() {
+    let (dir, ctx) = workspace();
+    write(dir.path(), "src/a.ts", "needle one\nneedle two\n");
+    write(dir.path(), "src/b.ts", "needle three\n");
+
+    let outcome = SearchTool
+        .invoke(json!({ "query": "needle", "path": "src/a.ts" }), &ctx)
+        .await;
+    assert_eq!(located(&outcome), ["src/a.ts:1", "src/a.ts:2"]);
+    assert!(
+        matches(&outcome)
+            .iter()
+            .all(|found| found.path == "src/a.ts"),
+        "{:?}",
+        matches(&outcome)
+    );
+    assert_eq!(outcome.summary.as_deref(), Some("2 matches"));
+}

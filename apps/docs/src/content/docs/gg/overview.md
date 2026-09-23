@@ -110,10 +110,11 @@ decides where it is declared: the run's two session events
 belong to the capability set, and the other eight fire because a particular
 agent wrote, ran, compacted, started, or stopped, so they belong to that agent.
 
-Each agent profile carries two more settings that are not capabilities either.
-Both are properties of the model a profile is bound to rather than of the work
-it does, and both come out differently for each model in the same run: its
-[prompt-cache lifetime](/gg/configurations/#prompt-cache-lifetime), and [loop
+Each agent profile carries three more settings that are not capabilities
+either. Each shapes how the profile's requests are made rather than what they
+say, and each comes out differently for each model in the same run: its
+[prompt-cache lifetime](/gg/configurations/#prompt-cache-lifetime), its
+[reasoning effort](/gg/configurations/#reasoning-effort), and [loop
 detection](/gg/loop-detection/), which reads that agent's replies as they stream
 and abandons one that has stopped answering and started repeating itself.
 
@@ -145,16 +146,75 @@ definitions and served to the console, so it cannot drift from what a run sends.
 An agent loop re-sends its whole conversation every turn, so most of what a run
 pays for is the same tokens repeatedly: the system prompt, the tool schemas, the
 build prompt, any [autoloaded specifications](/gg/autoload-specifications/), and
-the thread so far. gg asks for a provider prompt cache on every request. Two
-things have to hold for a cached read to happen, and gg does both.
+the thread so far. gg asks for a provider prompt cache on every request. Three
+things have to hold for a cached read to happen, and gg does all three: the
+request has to reach a provider that caches, it has to reach the endpoint of that
+provider that holds the cache, and it has to say what to cache.
 
-The request has to reach the endpoint that holds the cache. gg mints one
-routing key per run at launch, a cuid2, and every client in the run stamps it on
-every request as `session_id`. That covers the root agent, every
-[subagent](/gg/subagents/) and the client a compaction resolves, on both the
-buffered and the streaming transport. A run's turns therefore stay on one
-provider endpoint, and agents that open on the same prefix reuse each other's
-warmed cache.
+OpenRouter is the gateway and the bill, so a model needs no account with its
+provider. Which provider serves a request is gg's choice rather than OpenRouter's
+routing, because OpenRouter's health signals are narrower than gg's. A provider
+that stalls a stream or ignores its own cache returns nothing OpenRouter counts
+as a failure, and gg sees both.
+
+### The candidate list
+
+The launch carries, as `modelProviders`, an ordered candidate list for every
+model the run binds. A candidate names a provider, spelled as OpenRouter's
+endpoints listing spells its `provider_name`, and the quantization that
+provider's endpoint serves. The list is every provider a run of that model may
+use, in the order it tries them. A one-entry list pins the run to one provider.
+
+The backend builds the list at enqueue from the model's endpoints listing. An
+endpoint is a candidate when it passes every filter:
+
+- Its quantization is the model's native level. Native is the highest level any
+  endpoint of the model declares, and the model's catalog entry can set it by
+  hand. An endpoint declaring `unknown` is left out unless the catalog entry
+  allows that provider by name.
+- Its input and output prices are at or below the developer endpoint's. When the
+  listing has no developer endpoint, the ceiling is the one the catalog entry
+  sets, and a model with neither has no candidate.
+- It publishes a cache-read price, so a prefix is worth building there at all.
+- It supports every parameter the run sends: `tools` and `tool_choice`, which
+  every gg request carries, and `reasoning` when an agent bound to the model
+  sets a [reasoning setting](/gg/configurations/#reasoning-effort).
+- Its provider is absent from the catalog entry's ban list.
+
+A provider listing several endpoints that pass is one candidate, at its cheapest
+endpoint. The developer's own endpoint comes first when it passes. The rest
+follow by the provider's fault rate across the backend's recorded runs of the
+model, then by input price and output price. A model with no candidate refuses
+the enqueue with the reason. The model's page in the console shows the list the
+next enqueue would build, or the reason it would refuse.
+
+A launch, job, session record or `session_started` event written before
+candidate lists carries a bare provider name per model instead of a list. It
+reads as a one-candidate list with a blank quantization, so the record stays
+readable, and a launch rebuilt from it is refused rather than run at a level
+nobody chose.
+
+### The request
+
+Every request names the one candidate in force for its model:
+`provider.only` carries its provider, `provider.quantizations` its level, and
+`allow_fallbacks` is false. Every request of the run carries it, including a
+subagent's and a handoff compaction's, so a move is the whole run's rather than
+one agent's.
+
+A reply served by any other provider ends the run as a harness failure, because
+the cost recorded from that point would be on a price basis the list does not
+name. The turn is recorded as a `model_provider_mismatch` error, the session
+record's model error as `provider_mismatch`, and both name the candidate and the
+provider that served the call. The two are compared ignoring case and
+punctuation, so `z-ai` and `Z.AI` are one provider.
+
+Within the provider, the request has to reach the endpoint that holds the cache.
+gg mints one routing key per run at launch, a cuid2, and every client in the run
+stamps it on every request as `session_id`. That covers the root agent, every
+[subagent](/gg/subagents/) and the client a compaction resolves. A run's turns
+therefore stay on one endpoint of the candidate in force, and agents that open
+on the same prefix reuse each other's warmed cache.
 
 `session_id` is OpenRouter's sticky-routing key, and gg sends the same key as
 `prompt_cache_key` for the providers that read the OpenAI-style field.
@@ -169,6 +229,50 @@ OpenRouter's 256-character cap on `session_id` and OpenAI's 64-character cap on
 the run carries the same value. The key is announced on `session_started` and
 kept in the [session record](/gg/session-record/), so a provider dashboard row
 can be matched to its run.
+
+### Moving to the next candidate
+
+gg counts faults per provider within the run and tells three kinds apart.
+
+A failed call is an HTTP `429` or `5xx`, a transport error or a
+[stall](/gg/execution-limits/#modelstreamidlesecs). The client's
+[retry schedule](/gg/execution-limits/#maxmodelretries-and-modelretrymaxdelaysecs)
+retries it on the same provider. When the schedule is spent, the run moves to
+the next candidate for that request and every request after it, and the
+schedule starts again there. A reply that [looped](/gg/loop-detection/) on every
+attempt is the model's failure rather than the provider's and moves nothing.
+
+An unavailable candidate is one OpenRouter answers with `404`, which is how it
+refuses a provider the account's privacy settings exclude. Asking again cannot
+succeed, so the run moves at once. This is how a model whose developer endpoint
+the account cannot use runs on its next candidate.
+
+An unexpected cache miss is a reply that read far less from the cache than the
+agent's previous request left there. It is a miss when all of these hold:
+
+- the agent's previous request went to the same provider, less than five
+  minutes earlier, which is the shortest cache lifetime gg asks for;
+- the shared prefix, the tools and leading messages of that request this one
+  repeats unchanged, is at least 4,096 tokens, above every provider's minimum
+  cacheable size. gg estimates it from that request's input tokens in
+  proportion to the bytes repeated;
+- the reply's `cached_tokens` is below half the shared prefix, which leaves room
+  for a provider that caches in blocks.
+
+The reply stands, since it is a good turn, and the miss is counted against the
+provider. A provider that reaches
+[`providerCacheMissLimit`](/gg/execution-limits/#providercachemisslimit) is left
+at the next request. A miss is the cheapest moment to move, since the prefix has
+to be rebuilt either way.
+
+Each stall and each miss is recorded as a `provider_fault` event naming the
+provider. Each move is recorded as a `provider_switch` event naming the model,
+the provider left, the provider taken and the fault that decided it. The run's
+cost record already slices per provider, so a run that moved says so on its
+own. A failed call on the model's last candidate reaches the agent loop as the
+[failed model call](/gg/execution-limits/#model-api-errors) an outage is.
+
+### Cache markers
 
 The request has to say what to cache. OpenAI and Gemini cache long prefixes
 implicitly. Anthropic caches only what a request marks with `cache_control`, so
@@ -229,14 +333,15 @@ rest of the request in full.
 ## Installation & distribution
 
 gg is installed by context. Locally it runs with no external resources, so a
-developer can exercise it fully offline from a local build. In k8s it is
-published as a GitHub release and downloaded from there at run time, the same
-shape as the third-party harnesses' install step. The install runs in the run's
+developer can exercise it fully offline from a local build. In k8s the driver
+image bakes it, and a run with no local binary downloads a published release from
+gg's release container at run time, the same shape as the third-party harnesses'
+install step. The install runs in the run's
 setup stage, so it is recorded as
 [setup](/components/core/metrics/#durations) rather than as the model's session.
 
-The release asset is a bare static-musl executable named `gg-<target>`, hanging
-off the release tag `v<version>`, published for both `x86_64` and `aarch64`. The
+The release object is a bare static-musl executable named `gg-<target>` under
+the prefix `v<version>`, published for both `x86_64` and `aarch64`. The
 driver picks the architecture, not the run container. The version in that URL is
 `core`'s own, and `gg --version`, read out of the run container, is what a run
 records as its `subject.harnessVersion`, so the two crates are versioned in

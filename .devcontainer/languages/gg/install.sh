@@ -13,7 +13,7 @@
 # WHY IT IS A DELEGATOR AND NOT AN INSTALLER. `scripts/ci/install-gg-toolchains.sh`
 # is the ONE pinned list, and it is deliberately shared: the devcontainer image (via
 # this file), `scripts/ci/rust-test.sh`, `scripts/ci/contract-drift.sh`, the Azure
-# rust job, the GitHub release workflow and the driver service image's gg stage all
+# rust and gg jobs and the driver service image's gg stage all
 # provision from it. Writing a `.devcontainer/languages/<arm>/install.sh` per arm —
 # the shape the `rust` sibling uses, and the obvious thing to reach for — would
 # create the second source of truth this arrangement exists to abolish, and it would
@@ -43,9 +43,10 @@
 # context sender walk the entire working tree; scripts/ci/build-context.sh fails when a
 # tracked file in one of those families is missing from the list.
 #
-# The fourth part is also an enumeration, of seven files, and deliberately: the two arms whose
+# The fourth part is also an enumeration, of nine files, and deliberately: the two arms whose
 # `componentize-*` pin lives in a `build.sh`, the Python arm's `requirements.txt`, the Rust
-# arm's separate `Cargo.toml`/`Cargo.lock`, and the PureScript arm's `spago.yaml`/`spago.lock`
+# arm's separate `Cargo.toml`/`Cargo.lock`, the same pair for gg's ECMAScript guest, and the
+# PureScript arm's `spago.yaml`/`spago.lock`
 # — the inputs `install-gg-build-tools.sh` warms the package-manager-delivered half of the
 # build toolchain from. A glob wide enough to admit them (`!/packages/gg-sandbox*/build.sh`)
 # would put ten build scripts in this layer's cache key, and every one of those changes far

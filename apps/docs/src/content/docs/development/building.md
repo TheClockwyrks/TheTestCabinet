@@ -12,6 +12,63 @@ run-container image, credentials) is covered by
 [First Time Setup](/guides/setup/first-time-setup/). Running the services on your
 own machine is covered by [Running](/development/running/).
 
+## Cloning
+
+The repository lives on Azure Repos and is mirrored to GitHub, and a clone from
+either host works the same way. Each submodule is a separate repository, such as
+[`cold-storage`](#cold-storage).
+
+A plain clone downloads the superproject alone and leaves each submodule
+directory empty. It builds and passes every gate, because nothing in the build,
+the tests, or CI reads a submodule's contents. Fetch a submodule into it later
+when a task needs one:
+
+```sh
+git clone <superproject-url>
+git submodule update --init --depth 1 cold-storage
+```
+
+A recursive clone also downloads every submodule at the commit the superproject
+pins, which for `cold-storage` is about 2 GB of media. `--shallow-submodules`
+fetches only each pinned commit rather than the submodule's history:
+
+```sh
+git clone --recurse-submodules --shallow-submodules <superproject-url>
+```
+
+### Submodule URLs
+
+`.gitmodules` names every submodule by a URL relative to the superproject, such
+as `../cold-storage`. Git resolves it against the remote the superproject was
+cloned from. On Azure that is the sibling repository in the
+`genyume/the-test-cabinet` project, and on GitHub it is `TheClockwyrks/<name>`.
+A submodule repository therefore has the same name on both hosts, while the
+superproject's name may differ.
+
+### Mirrors and pins
+
+Each submodule repository carries its own Azure pipeline,
+`.azure-pipelines/mirror.yml`, whose one job force-pushes `master` to the GitHub
+repository of the same name. That job is the only writer of the mirror.
+
+A submodule commit may be pinned once it is on that submodule's `master`. Push
+the submodule commit to `master` first, then commit the moved pointer here.
+`scripts/ci/submodule-pins.sh` gates every superproject commit on this: it fails
+when a pinned commit is not an ancestor of the submodule's `master` on the host
+the superproject was cloned from. A superproject commit that reaches the GitHub
+mirror therefore names only submodule commits the mirror already holds. The gate
+fetches commits without trees or blobs, so it finishes in seconds, and
+`scripts/ci/submodule-pins.test.sh` is its offline table test.
+
+### Submodules in CI
+
+A pipeline job that sets `submodules: true` on its checkout fetches each
+submodule over HTTPS with the job's access token, because the URL is relative.
+The project scopes that token to the repositories a pipeline references, so the
+job names each submodule repository in a `uses:` statement. Jobs that read no
+submodule leave `submodules` off. The pin gate is one of them: it reads the
+token from `SYSTEM_ACCESSTOKEN` and still references the submodule repositories.
+
 ## Layout
 
 The repository is both a Cargo workspace (Rust) and an npm workspace
@@ -118,6 +175,16 @@ under `[workspace.dependencies]` and inherited with `{ workspace = true }`.
   [web console](/components/web/overview/) that enqueues runs at the backend.
 - `apps/docs`: `@clockwyrks/docs`. This Astro Starlight documentation site.
 
+### Cold storage
+
+`cold-storage/` at the root is a git submodule holding the captured baseline
+validation media, the bulk of the repository's bytes. Its tree mirrors this
+one's, so a test-case version's baselines live at
+`cold-storage/test-cases/<type>/<difficulty>/<slug>/<version>/validation-baseline/<engine>/<variant>/`
+(see [where baselines live](/components/core/validation/#where-baselines-live)).
+Fetch it only to capture or review baselines, or to ingest a catalog that serves
+them.
+
 ### Reference implementations
 
 A [reference implementation](/guides/devops/publishing-a-reference-implementation/)
@@ -172,11 +239,11 @@ scripts/ci/rust-test.sh       # build, nextest run, test --doc
 scripts/ci/specs-lint.sh      # markdownlint + cspell over the authored prose
 ```
 
-`scripts/setup-hooks.sh` installs the pre-commit hooks, which run the formatting,
-clippy, and doc gates, the front-end test suite, the
-[frozen-version](/development/frozen-versions/) check, the audio-pack lint, and the
-seeded-spec vocabulary check on each commit. The front-end suite is a commit gate
-because it completes in seconds; the Rust test suite runs in CI.
+`scripts/setup-hooks.sh` installs the pre-commit hooks, which run the formatting
+gates, the [frozen-version](/development/frozen-versions/) check, the audio-pack
+lint, and the seeded-spec vocabulary check on each commit. Clippy, rustdoc, and
+both test suites take too long for a commit or push hook; run them locally
+through the scripts above, and CI runs them on every change.
 
 ```sh
 node scripts/ci/audio-packs-check.mjs
@@ -229,7 +296,7 @@ exactly those five and ignores everything else in that directory.
 
 Anything that compiles `crates/gg` needs those toolchains present. That is
 `cargo build --workspace`, `cargo clippy --workspace`, `cargo doc --workspace`,
-the pre-commit clippy and doc hooks, `scripts/build-gg-static.sh`, and
+`scripts/build-gg-static.sh`, and
 `scripts/gg-reference.sh`. Nothing else in the workspace depends on
 `test-cabinet-gg`, so a package-scoped build such as `-p test-cabinet-cli` and the
 release binaries need none of it.
@@ -243,8 +310,8 @@ npm ci                                     # the pinned tsc two arms reflect wit
 ```
 
 The two lists stay separate. The first is every toolchain that a gg run and gg's
-reflectors execute; it is installed by the devcontainer image, both CI systems,
-the release workflow, and the run images. The second is a .NET SDK and an
+reflectors execute; it is installed by the devcontainer image, the Azure
+pipeline, and the run images. The second is a .NET SDK and an
 unpruned wasi-sdk that exactly one arm's artifact build needs, since C#'s guest
 is Mono's IL interpreter, relinked. It installs under its own prefix
 `~/.local/share/tcab/gg-build/` so the eleven-arm list keeps its meaning and the
@@ -375,11 +442,10 @@ The other root scripts delegate to each workspace that defines them:
 `npm run lint` also runs `lint:specs` and `lint:format` after the per-workspace
 linters.
 
-`npm run test` runs `vitest` in each workspace and is one of the pre-commit
-gates. Iterate on the gallery's own suite with `npm run test -w
-@clockwyrks/ui`. On a clean checkout, build the workspace runtime packages
-first with `npm run build:packages`, since the tests import them from a built
-`dist/`.
+`npm run test` runs `vitest` in each workspace. Iterate on the gallery's own
+suite with `npm run test -w @clockwyrks/ui`. On a clean checkout, build the
+workspace runtime packages first with `npm run build:packages`, since the tests
+import them from a built `dist/`.
 
 ### Every page loads
 
@@ -525,3 +591,64 @@ same `--gg-selfcheck` flag post-merge, before the images are published.
 `cargo run -p test-cabinet-gg -- selfcheck` asks the same question of this
 machine's own toolchains, which is the form to run while working on an arm. See
 [the self-check](/gg/languages/selfcheck/).
+
+## Continuous integration
+
+`azure-pipelines.yml` is the project's only CI. It gates a commit, mirrors it to
+GitHub, builds its images, releases it, and deploys it. Every job delegates to a script under
+`scripts/ci/`, so a failure reproduces locally by running the same script; the
+scripts are listed in `scripts/ci/README.md`. Pushes to `master`, `staging`,
+`nightly`, and `v*` tags trigger it. Pull requests into `master` and `staging`
+run it through build validation policies on those branches, because Azure Repos
+ignores a `pr:` block. A run for any other branch runs the gates only.
+
+| Stage    | Runs on                   | What it does                                                                                                                              |
+| -------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `gates`  | every run                 | Every check below, plus the static gg builds on `master`, `staging`, and tags, then the GitHub mirror                                     |
+| `images` | `master`, `staging`, tags | On `master` and `staging`, every service and run-container image into `testcabinet.azurecr.io`; on `master` and tags, gg's release upload |
+| `deploy` | `master`, `staging`       | Rolls the matching cluster to the commit's images and deploys the docs site                                                               |
+
+The gates are `rust`, `binary` (Linux and Windows), `web`, `webtest`, `specs`,
+`format`, `validators`, `frozen`, `audiopacks`, `specvocabulary`,
+`buildcontext`, `contract`, `manifests`, which renders every kustomization and
+checks the deploy set with `scripts/ci/k8s-manifests.sh`, and `submodulepins`,
+which fails when a submodule pin is absent from that submodule's `master`
+(`scripts/ci/submodule-pins.sh`). On `master`,
+`staging`, and tags, `gg_amd64` and `gg_arm64` build the static gg binaries
+natively, and on a tag build the step "gg version matches the tag" fails when
+`gg --version` differs from the tag with its `v` stripped, naming `crates/gg` and
+`crates/core` as the crates to bump. On a tag, `binary` also publishes the
+`tcab` it smoke-tested as the run's `tcab-linux` and `tcab-windows` artifacts;
+see [Releasing `tcab`](/development/releasing/#releasing-tcab).
+
+The `mirror` job runs after every gate on `master`, `staging`, `nightly`, and
+`v*` tags. It force-pushes the branch with its tags, or the tag, to
+`github.com/TheClockwyrks/TheTestCabinet` with the deploy key held in the secure
+file `github-mirror-key`. It is the only thing that pushes there, so the mirror
+holds gated commits only.
+
+The `images` stage builds every image natively per architecture: `amd64` on
+Microsoft-hosted `ubuntu-24.04` agents and `arm64` on the organisation's arm64
+pool `pool-dev-linux-arm64-wus3-4c-eph-01`. Each is pushed as
+`<image>:<sha>-<arch>` and fused into the multi-arch `<image>:<sha>`; `:latest`
+is never pushed. The audio store is built first, because the driver image bakes
+`test-cabinet-audio-store:<sha>`. The run images are pushed only after
+`gg selfcheck` passes inside each `-gg` environment. The `gg_publish` job is
+described in [Releasing `gg`](/development/releasing/#releasing-gg), and the
+deploy in [Kubernetes](/deployment/kubernetes/overview/#deploying).
+
+No job holds a stored credential. The pipeline authenticates through
+workload-identity-federated service connections and a few secret pipeline
+variables:
+
+| Name                                                                                                                                                | Kind                       | Used for                                                                                                                                                   |
+| --------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tcab-acr`                                                                                                                                          | Docker Registry connection | `AcrPush` on `testcabinet.azurecr.io`                                                                                                                      |
+| `tcab-deploy`                                                                                                                                       | Azure Resource Manager     | The cluster deploys: the custom "Test Cabinet AKS Command Invoke" role on each cluster, "Azure Kubernetes Service RBAC Admin" on its application namespace |
+| `tcab-gg-publish`                                                                                                                                   | Azure Resource Manager     | Storage Blob Data Contributor on `testcabinetartifacts`                                                                                                    |
+| `github-mirror-key`                                                                                                                                 | Secure file                | The GitHub mirror's write deploy key                                                                                                                       |
+| `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`                                                                                                     | Secret pipeline variables  | The docs deploy                                                                                                                                            |
+| `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_AUDIO_R2_BUCKET`, `CLOUDFLARE_AUDIO_R2_PRESIGN_ACCESS_KEY_ID`, `CLOUDFLARE_AUDIO_R2_PRESIGN_SECRET_ACCESS_KEY` | Secret pipeline variables  | Staging the audio store out of the audio object store (read-only)                                                                                          |
+
+The secret variables must be set on the pipeline before `master` or `staging`
+builds can complete their images and deploy stages.

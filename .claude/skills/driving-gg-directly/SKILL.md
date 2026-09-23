@@ -33,11 +33,20 @@ through them, not a replacement.
    worktree: `git worktree add ~/gg-worktrees/<model> -b gg/<model>`. One
    worktree per model also makes the comparison a `git diff` between branches.
 4. **Resolve model windows.** gg keeps no model table and refuses to launch
-   without a `modelWindows` entry for every bound model. Run
-   `scripts/model-windows.sh <id>...` to print the `modelWindows` and
-   `modelModalities` objects from OpenRouter's public models endpoint.
+   without a `modelWindows` entry and a `modelProviders` candidate list for
+   every bound model. Run `scripts/model-windows.sh <id>...` to print the
+   `modelWindows`, `modelModalities` and `modelProviders` objects (the
+   per-candidate prices go to stderr). Each list is
+   `[{ "provider": "Z.AI", "quantization": "fp8" }, ...]`, built with the
+   backend's filters (native quantization, at or under the developer's price,
+   cache-read priced, `tools`/`tool_choice` supported), developer first and
+   then cheapest; gg moves down it on faults, and a one-entry list pins the run.
+   Pass `--reasoning` when an agent sets `reasoning`; `--ban`, `--unknown-ok`,
+   `--developer`, `--max-price IN,OUT` (USD/Mtok) and `--native` stand in for
+   a catalog entry's policy (`--help`). A model with no candidate exits 1
+   naming the filter that emptied its list.
 5. **Write the invocation** from a template in `templates/`. Fill `sessionId`,
-   `workspaceDir`, `prompt`, `modelId`, and paste the two objects from step 4.
+   `workspaceDir`, `prompt`, `modelId`, and paste the three objects from step 4.
 6. **Launch.**
 
    ```sh
@@ -178,9 +187,13 @@ written. For an unfamiliar model keep `maxCost` (USD, run-wide), `maxTurns`,
 and `maxConsecutiveErrors`; the two minimal templates also set `maxRuntimeSecs`,
 and the study profile leaves it unarmed.
 
+A model that spends minutes reasoning over short programs can be held down
+per agent with `reasoning`, either `{"effort": "low"}` (one of `xhigh`, `high`,
+`medium`, `low`, `minimal`, `none`) or `{"maxTokens": 4096}`. Leave it out to
+run the model at its provider's default.
+
 ### Things gg does not do
 
-- No reasoning or effort parameter is sent. A model runs at its provider default.
 - The only provider is OpenRouter. A model not listed there cannot be run.
 - The shell runs as your user with no sandbox. The templates arm the built-in
   `guard-destructive-shell` hook on `pre-shell`; add an `agent-stop` command

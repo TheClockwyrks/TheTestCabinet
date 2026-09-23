@@ -40,6 +40,7 @@ mod harness_config;
 mod ingest_api;
 mod jobs;
 mod ladders;
+mod model_candidates;
 mod model_probes;
 mod models;
 mod publish_jobs;
@@ -82,6 +83,7 @@ pub use ladders::{
     LadderRungInput, LadderRungOrderInput, LadderRungOutcome, LadderSchedule, RungTally,
     StoredClimberOut,
 };
+pub use model_candidates::{CandidateOut, ModelCandidatesOut};
 pub use model_probes::{
     ModelProbeDetailResponse, ModelProbeItemOut, ModelProbeOut, ModelProbesResponse,
     ProbeProviderOut, ProbeProvidersResponse, ProbeTriggerInput, ProbeTriggerResponse,
@@ -200,6 +202,13 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/models/{slug}/probe-providers",
             get(model_probes::providers),
+        )
+        // The provider candidate list the next gg enqueue of the model would build, read from
+        // OpenRouter's endpoints listing now. Bearer-gated like the provider enumeration: it
+        // reaches OpenRouter on the caller's behalf.
+        .route(
+            "/models/{slug}/candidates",
+            get(model_candidates::candidates),
         )
         .route("/model-probes/{id}", get(model_probes::get))
         // The cross-run statistics reads: per-provider health and per-model

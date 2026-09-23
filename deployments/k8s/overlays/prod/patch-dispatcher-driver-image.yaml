@@ -15,4 +15,8 @@ spec:
         - name: dispatcher
           env:
             - name: TCAB_DRIVER_IMAGE
-              value: "ghcr.io/REPLACE_OWNER/tcab-driver:latest"
+              value: "testcabinet.azurecr.io/tcab-driver:REPLACE_SHA"
+            # The run-container images come from the same commit, pulled from the
+            # compiled default registry (testcabinet.azurecr.io).
+            - name: TCAB_CONTAINER_TAG
+              value: "REPLACE_SHA"

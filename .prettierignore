@@ -11,6 +11,9 @@
 apps/docs/.astro/
 packages/gg-sandbox-purescript/output/
 
+# Never lint Markdown using Prettier
+**/*.md
+
 # The lattice case's graded scenarios are written by the lattice designer, whose
 # writer is their canonical format: it re-writes a committed scenario byte for
 # byte, and that round trip is what its tests assert.

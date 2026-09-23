@@ -89,3 +89,25 @@ async fn facts_corpus(
         .await
         .map_err(ApiError::from)
 }
+
+/// The recorded gg runs the [fault rates](crate::stats::provider_fault_rates) a candidate list is
+/// ordered by are read from: the corpus `GET /stats/providers` folds.
+///
+/// A corpus that cannot be loaded is no record rather than a failure: the fault rate only orders
+/// the candidates, so an enqueue or a candidate read goes ahead with every provider at zero and
+/// says so in the log.
+pub(super) async fn recorded_run_facts(
+    state: &AppState,
+) -> std::sync::Arc<Vec<std::sync::Arc<crate::stats::GgRunFacts>>> {
+    match facts_corpus(state).await {
+        Ok(facts) => facts,
+        Err(err) => {
+            tracing::warn!(
+                error = ?err,
+                "could not load the recorded gg runs; ordering provider candidates with no fault \
+                 rates"
+            );
+            std::sync::Arc::new(Vec::new())
+        }
+    }
+}

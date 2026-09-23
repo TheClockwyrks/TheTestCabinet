@@ -123,8 +123,7 @@ BUILD_ARGS=(-Osize -wmo -parse-as-library)
 # The three source trees, resolved out of the shared pinned prefix rather than fetched into this
 # package. `gg_swift_library` is stamped by the release URL and downloads only on a machine no
 # installer has warmed, which on the surfaces that matter is none of them:
-# `scripts/ci/install-gg-build-tools.sh` fetches all three, the CI image bakes them and
-# `scripts/ci/hydrate-gg-toolchains.sh` carries them.
+# `scripts/ci/install-gg-build-tools.sh` fetches all three.
 COLLECTIONS_TREE="$(gg_swift_library swift-collections "$GG_SWIFT_COLLECTIONS_VERSION" "$(gg_swift_collections_url)")"
 ALGORITHMS_TREE="$(gg_swift_library swift-algorithms "$GG_SWIFT_ALGORITHMS_VERSION" "$(gg_swift_algorithms_url)")"
 NUMERICS_TREE="$(gg_swift_library swift-numerics "$GG_SWIFT_NUMERICS_VERSION" "$(gg_swift_numerics_url)")"

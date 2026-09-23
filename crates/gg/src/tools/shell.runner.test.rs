@@ -5,10 +5,12 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use serde_json::json;
 use test_cabinet_core::gg_session_record::GgShellOrigin;
 
 use super::{RealShellRunner, ShellRequest, ShellRunner, ShellStatus, StubShellRunner, real_shell};
-use crate::tools::{OffloadPolicy, ToolContext, run_command};
+use crate::tools::shell::ShellTool;
+use crate::tools::{OffloadPolicy, Tool, ToolContext, ToolFailure, ToolOutcome, run_command};
 
 /// A request for `command`, run in `cwd` on behalf of `agent`, with a generous ceiling.
 fn request(command: &str, cwd: &std::path::Path, agent: &str) -> ShellRequest {
@@ -215,4 +217,94 @@ fn re_rooting_a_context_carries_the_agent_and_the_shell_across() {
     // that agent's shell. Building a fresh context for it would silently restore the real one.
     assert_eq!(derived.agent_id, "agent-7");
     assert_eq!(format!("{:?}", derived.shell), format!("{:?}", stub));
+}
+
+// ---------------------------------------------------------------------------
+// What a substituted runner's failures become
+// ---------------------------------------------------------------------------
+
+/// Invoke the shell tool over a fresh temp workspace whose runner is `stub`, going through the JSON
+/// adapter so both it and `run_command` are on the path.
+async fn invoke_with(stub: StubShellRunner, args: serde_json::Value) -> ToolOutcome {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let ctx = ToolContext::new(dir.path()).with_shell(Arc::new(stub));
+    ShellTool::new(OffloadPolicy::Inline)
+        .invoke(args, &ctx)
+        .await
+}
+
+#[tokio::test]
+async fn a_launch_failure_is_a_failure_of_the_call_and_carries_no_sidecar() {
+    let outcome = invoke_with(
+        StubShellRunner::launch_failing(
+            ToolFailure::IoError,
+            "failed to launch shell command: eek",
+        ),
+        json!({ "command": "npm run build" }),
+    )
+    .await;
+
+    assert!(!outcome.ok);
+    assert_eq!(outcome.failure, Some(ToolFailure::IoError));
+    // Nothing ran, so the runner's message is the whole story: no exit code line, and no
+    // `ShellData` claiming a process reported something.
+    assert_eq!(outcome.output, "failed to launch shell command: eek");
+    assert!(
+        outcome.data.is_none(),
+        "a launch failure has no process facts to attach: {:?}",
+        outcome.data
+    );
+}
+
+#[tokio::test]
+async fn a_launch_failure_keeps_the_runners_classification() {
+    let outcome = invoke_with(
+        StubShellRunner::launch_failing(ToolFailure::NotFound, "no such directory"),
+        json!({ "command": "npm run build" }),
+    )
+    .await;
+
+    // The runner classified it; `run_command` passes that judgement through rather than
+    // re-deriving one from the message it was handed.
+    assert_eq!(outcome.failure, Some(ToolFailure::NotFound));
+}
+
+#[tokio::test]
+async fn a_wait_failure_is_a_failure_of_the_call_and_carries_no_sidecar() {
+    let outcome = invoke_with(
+        StubShellRunner::wait_failing(
+            ToolFailure::IoError,
+            "failed to wait for shell command: eek",
+        ),
+        json!({ "command": "npm run build" }),
+    )
+    .await;
+
+    assert!(!outcome.ok);
+    assert_eq!(outcome.failure, Some(ToolFailure::IoError));
+    assert_eq!(outcome.output, "failed to wait for shell command: eek");
+    assert!(
+        outcome.data.is_none(),
+        "a wait failure never learned what the process did: {:?}",
+        outcome.data
+    );
+}
+
+#[tokio::test]
+async fn a_signal_terminated_command_reports_no_exit_code() {
+    let outcome = invoke_with(
+        StubShellRunner::signalled(),
+        json!({ "command": "sleep 30" }),
+    )
+    .await;
+
+    assert!(!outcome.ok);
+    // The process *ran*, so nothing about the call went wrong: `failure` stays empty and the
+    // absent code is reported as the facts of a process that was killed.
+    assert_eq!(outcome.failure, None);
+    assert_eq!(outcome.summary.as_deref(), Some("terminated by signal"));
+    match outcome.data.as_ref() {
+        Some(crate::tools::ApiData::Shell(data)) => assert_eq!(data.exit_code, None),
+        other => panic!("expected shell data, got {other:?}"),
+    }
 }

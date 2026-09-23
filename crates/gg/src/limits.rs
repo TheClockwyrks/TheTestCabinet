@@ -27,13 +27,14 @@
 //! | [`error_rate`](RunLimits::error_rate) | per agent | ends **that agent** | `limit_exceeded` |
 //! | [`max_cost`](RunLimits::max_cost) | **run-wide** ([`RunSpend`]) | ends **every agent** at its next boundary | `limit_exceeded` |
 //!
-//! [`RunLimits`] carries two further bounds that are **not** in that table and never end a run.
+//! [`RunLimits`] carries three further bounds that are **not** in that table and never end a run.
 //! [`replay_max_bytes`](RunLimits::replay_max_bytes) bounds the
-//! [capture journal](crate::capture) that observes the run, and
-//! [`model_call_timeout`](RunLimits::model_call_timeout) bounds one model call, turning a stalled
-//! provider into an error turn the loop asks again from. Both are resolved here because there is
-//! one resolver for everything an operator can declare under `capabilitySet.limits`, not because
-//! either is an execution ceiling.
+//! [capture journal](crate::capture) that observes the run, while
+//! [`model_call_timeout`](RunLimits::model_call_timeout) and
+//! [`model_stream_idle`](RunLimits::model_stream_idle) bound one model call: the first its whole
+//! duration, the second how long its stream may go without a delta from the model. All three are
+//! resolved here because there is one resolver for everything an operator can declare under
+//! `capabilitySet.limits`, not because any of them is an execution ceiling.
 //!
 //! Every ceiling, the turn ceiling and the wall-clock budget included, has one home, one
 //! [resolver](resolve_run_limits), one [breach record](test_cabinet_core::gg::GgLimitBreach) and
@@ -60,10 +61,15 @@
 //! is [refused](resolve_run_limits) here. The other required run-level value, `maxParallel`, is
 //! resolved by [`SubagentConfig`](crate::subagents::SubagentConfig), which owns the pool it bounds.
 //!
-//! `modelCallTimeoutSecs` is the one key an absence answers with a figure rather than with "off":
-//! every model call is made under a ceiling, so an absent key takes
-//! [`DEFAULT_MODEL_CALL_TIMEOUT`] and a zero is [refused](resolve_run_limits) like any other
-//! figure nothing can run under.
+//! `modelCallTimeoutSecs` and `modelStreamIdleSecs` are two of the five keys an absence answers
+//! with a figure rather than with "off" — the [retry schedule](RunLimits::retry_policy) is another
+//! pair, and [`providerCacheMissLimit`](RunLimits::provider_cache_miss_limit) the fifth. Every
+//! model call is made under a ceiling, so an absent `modelCallTimeoutSecs` takes
+//! [`DEFAULT_MODEL_CALL_TIMEOUT`]; every reply is read as a stream, so an absent
+//! `modelStreamIdleSecs` takes [`DEFAULT_MODEL_STREAM_IDLE`]; and every provider is held to a
+//! cache-miss limit, so an absent `providerCacheMissLimit` takes
+//! [`DEFAULT_PROVIDER_CACHE_MISS_LIMIT`]. A zero for any of the three is
+//! [refused](resolve_run_limits) like any other figure nothing can run under.
 //!
 //! # This module decides; the loop acts
 //!
@@ -109,7 +115,10 @@ use std::fmt;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
-use crate::client::{DEFAULT_MODEL_CALL_TIMEOUT, DEFAULT_MODEL_RETRY_MAX_DELAY, RetryPolicy};
+use crate::client::{
+    DEFAULT_MODEL_CALL_TIMEOUT, DEFAULT_MODEL_RETRY_MAX_DELAY, DEFAULT_MODEL_STREAM_IDLE,
+    DEFAULT_PROVIDER_CACHE_MISS_LIMIT, RetryPolicy,
+};
 use test_cabinet_core::gg::{
     GgCapabilitySet, GgLimitBreach, GgLimitKind, GgRunLimits, GgTurnErrorKind, GgTurnErrorType,
     GgTurnOutcome,
@@ -244,15 +253,21 @@ impl TurnOutcome {
 /// mode-agnostic; the error *shapes* are not, because the protocols are not.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TurnErrorKind {
-    /// The model call itself failed, after the [client](crate::client) had already exhausted its
-    /// own retry/backoff budget. No turn happened at all.
+    /// The model call failed — the far side of a request, whichever of the
+    /// [types](TurnErrorType) it was.
     ///
-    /// Named here so the definition of a turn error stays whole, **not** because a ceiling ever
-    /// gets to observe two of them: a `ModelError` reaching the loop means the provider failed
-    /// every attempt within one turn, the fatal kinds recur identically, and a rejected credential
-    /// ends the agent that hit it — it is one of the two non-launch statuses (the other being a gg
-    /// defect) that leave no run to score, read off the root's ending. Making model-API errors
-    /// survivable is a change to gg's model-error policy and would be designed as one.
+    /// Which type decides whether a turn happened. A
+    /// [timeout](TurnErrorType::ModelTimeout), a reply gg could not
+    /// [parse](TurnErrorType::ModelParse) and a reply that
+    /// [looped](TurnErrorType::ModelResponseLoop) on every client attempt are answered as error
+    /// turns: they spend this kind's count in the
+    /// ceilings like any other failed turn, and the loop asks again with nothing in the context.
+    /// The rest recur identically on every attempt and end the agent — a refused credential
+    /// among them, which is one of the two non-launch statuses (the other being a gg defect) that
+    /// leave no run to score, read off the root's ending.
+    ///
+    /// Named here so the definition of a turn error stays whole: every failure of a model call is
+    /// this one kind, whether or not the run survived it, and the ceilings count them together.
     ModelApi,
     /// The program could not be prepared for its guest — a syntax error, a module feature the
     /// [sandbox](crate::sandbox) has no implementation of, or a program past the size/nesting
@@ -326,19 +341,28 @@ pub enum TurnErrorType {
     ModelRejected,
     /// The client retried a transient condition to its policy and every attempt failed.
     ModelRetryExhausted,
-    /// Every attempt was a [generation loop](crate::loopguard) and was discarded.
+    /// Every attempt was a [generation loop](crate::loopguard) and was discarded — answered as
+    /// an error turn, so the loop asks again with none of the discarded replies in the context.
     ModelResponseLoop,
     /// The model cannot accept an image the request carried, and there was nothing left to strip.
     ModelVisionUnsupported,
-    /// A successful response could not be parsed into a reply.
+    /// A `2xx` response could not be read into a reply — an unparseable envelope, or tool call
+    /// arguments that are not JSON. Answered as an error turn: the unreadable reply never enters
+    /// the context and the loop asks again, so a reply gg could not read costs the model a turn
+    /// rather than the run.
     ModelParse,
+    /// The gateway served the call from a provider other than the one the launch pinned. A harness
+    /// failure: the cost recorded from this reply on would be on a different price basis.
+    ModelProviderMismatch,
     /// The call ran into the run's [per-call ceiling](RunLimits::model_call_timeout) without
-    /// producing a reply — a stalled provider. The one model error the loop retries at the turn
-    /// level rather than ending the session on.
+    /// producing a reply — a stalled provider. Answered as an error turn on the same terms as
+    /// [`ModelParse`](Self::ModelParse) and [`ModelResponseLoop`](Self::ModelResponseLoop).
     ModelTimeout,
     /// The reply hit the provider's output cap (`finish_reason: length`) and was rejected whole —
-    /// presumed a degenerate generation, kept out of the context and the run's metrics, and
-    /// retried on the same terms as [`ModelTimeout`](Self::ModelTimeout).
+    /// presumed a degenerate generation, kept out of the context and out of the run's
+    /// [work cost](test_cabinet_core::gg::GgSessionSummary::work_cost) (its price rides its
+    /// `Usage` delta into the [total](test_cabinet_core::gg::GgSessionSummary::cost) and its
+    /// rejection event), and retried on the same terms as [`ModelTimeout`](Self::ModelTimeout).
     ModelLengthCapped,
     /// The program is not valid source in its language.
     TranspileSyntax,
@@ -385,6 +409,7 @@ impl TurnErrorType {
             | Self::ModelResponseLoop
             | Self::ModelVisionUnsupported
             | Self::ModelParse
+            | Self::ModelProviderMismatch
             | Self::ModelTimeout
             | Self::ModelLengthCapped => TurnErrorKind::ModelApi,
             Self::TranspileSyntax | Self::TranspileCompile | Self::TranspileUnsupported => {
@@ -412,6 +437,7 @@ impl TurnErrorType {
             Self::ModelResponseLoop => GgTurnErrorType::ModelResponseLoop,
             Self::ModelVisionUnsupported => GgTurnErrorType::ModelVisionUnsupported,
             Self::ModelParse => GgTurnErrorType::ModelParse,
+            Self::ModelProviderMismatch => GgTurnErrorType::ModelProviderMismatch,
             Self::ModelTimeout => GgTurnErrorType::ModelTimeout,
             Self::ModelLengthCapped => GgTurnErrorType::ModelLengthCapped,
             Self::TranspileSyntax => GgTurnErrorType::TranspileSyntax,
@@ -542,6 +568,23 @@ pub fn declared_model_call_timeout(declared: &GgRunLimits) -> Duration {
     }
 }
 
+/// The bound every one of the run's streamed replies is cancelled on, given the run's declared
+/// [limits](GgRunLimits): the figure written, or [`DEFAULT_MODEL_STREAM_IDLE`] when the key is
+/// absent. The `0` a launch [refuses](resolve_run_limits) takes the default too, so this function
+/// is [total](crate::validate#the-resolver-contract) on the same terms as the resolver around it.
+///
+/// Read on the same terms as [`declared_model_call_timeout`]: once by [`resolve_run_limits`], and
+/// once by the launch building the run's [client factory](crate::client::DefaultClientFactory),
+/// which needs the figure before an agent exists to resolve limits for. Always in force, because a
+/// stream with no idle bound is one a silent provider holds for the whole call ceiling — there is
+/// no run whose replies may stall indefinitely, so absence is a default rather than an off.
+pub fn declared_model_stream_idle(declared: &GgRunLimits) -> Duration {
+    match declared.model_stream_idle_secs {
+        Some(0) | None => DEFAULT_MODEL_STREAM_IDLE,
+        Some(secs) => Duration::from_secs(secs),
+    }
+}
+
 /// The schedule a run retries its failed model requests on, given the run's declared
 /// [limits](GgRunLimits): `maxModelRetries` retries after the first attempt, each retry's delay
 /// doubling from one second up to the `modelRetryMaxDelaySecs` ceiling, each figure defaulting
@@ -550,8 +593,8 @@ pub fn declared_model_call_timeout(declared: &GgRunLimits) -> Duration {
 /// limits for, and the `0` a launch [refuses](resolve_run_limits) takes the default so this
 /// function stays [total](crate::validate#the-resolver-contract) on the same terms.
 ///
-/// A `0` for the retries is honoured as written rather than defaulted: it is a run that gives up
-/// on the first failure, which a study comparing retry budgets legitimately wants.
+/// A `0` for the retries is honoured as written rather than defaulted: it is a run that leaves a
+/// provider on its first failure, which a study comparing retry budgets legitimately wants.
 pub fn declared_retry_policy(declared: &GgRunLimits) -> RetryPolicy {
     RetryPolicy {
         // The first attempt plus the retries after it. A count past what a `u32` holds is a
@@ -568,14 +611,29 @@ pub fn declared_retry_policy(declared: &GgRunLimits) -> RetryPolicy {
     }
 }
 
+/// How many unexpected cache misses leave a provider, given the run's declared
+/// [limits](GgRunLimits): the figure written, or [`DEFAULT_PROVIDER_CACHE_MISS_LIMIT`] when the
+/// key is absent. The `0` a launch [refuses](resolve_run_limits) takes the default too, so this
+/// function is [total](crate::validate#the-resolver-contract) on the same terms as the resolver
+/// around it. Read on the same terms as [`declared_model_call_timeout`], by the launch building
+/// the run's [client factory](crate::client::DefaultClientFactory).
+pub fn declared_provider_cache_miss_limit(declared: &GgRunLimits) -> u64 {
+    match declared.provider_cache_miss_limit {
+        Some(0) | None => DEFAULT_PROVIDER_CACHE_MISS_LIMIT,
+        Some(limit) => limit,
+    }
+}
+
 /// The resolved [execution ceilings](test_cabinet_core::gg::GgRunLimits) one run is bounded by.
 ///
 /// Every optional field is `None` for a ceiling the set left unarmed, and gg leaves unarmed every
 /// ceiling the set did not write: `None` here means the ceiling is **off**, never that gg chose a
-/// figure for it. [`model_call_timeout`](Self::model_call_timeout) is the exception, and carries a
-/// figure on every run: a model call has no unbounded reading, so absence is a default rather than
-/// an off. `Copy`, because a resolved ceiling set is a handful of scalars that every agent enforces
-/// identically and none of them mutates.
+/// figure for it. [`model_call_timeout`](Self::model_call_timeout) and
+/// [`model_stream_idle`](Self::model_stream_idle) are the exceptions, and carry a figure on every
+/// run: a model call has no unbounded reading, and a reply that stops arriving has no reading an
+/// operator can ask for, so each absence is a default rather than an off. `Copy`, because a
+/// resolved ceiling set is a handful of scalars that every agent enforces identically and none of
+/// them mutates.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RunLimits {
     /// The per-agent turn ceiling, or `None` for **unbounded**, which is what a set that writes no
@@ -584,11 +642,24 @@ pub struct RunLimits {
     /// The run's wall-clock budget, when configured. Run-wide: every agent measures it against the
     /// same session-start instant, so it ends the run rather than one agent.
     pub max_runtime: Option<Duration>,
-    /// The ceiling every one of the run's model calls is made under — the buffering transport's
-    /// total duration and the streaming one's idle gap alike. Present on every run: a set that
-    /// writes no `modelCallTimeoutSecs` takes [`DEFAULT_MODEL_CALL_TIMEOUT`], because a call gg
-    /// would wait on forever is not a ceiling an operator can have meant.
+    /// The ceiling every one of the run's model calls is made under — a cap on one attempt's whole
+    /// duration. Present on every run: a set that writes no `modelCallTimeoutSecs` takes
+    /// [`DEFAULT_MODEL_CALL_TIMEOUT`], because a call gg would wait on forever is not a ceiling an
+    /// operator can have meant.
     pub model_call_timeout: Duration,
+    /// How long any of the run's streamed replies may go without a delta from the model before the
+    /// attempt is cancelled and retried on the client's
+    /// [schedule](Self::retry_policy). Present on every run and always in force: a set that writes
+    /// no `modelStreamIdleSecs` takes
+    /// [`DEFAULT_MODEL_STREAM_IDLE`], because a reply
+    /// that stopped arriving is never a setting an operator can ask for and a stream with no idle
+    /// bound is one a silent provider holds for the whole call ceiling.
+    ///
+    /// Measured since the last chunk carrying a `delta` with content, reasoning or tool-call
+    /// arguments; keep-alive comments and blank lines leave the clock running. A stream that
+    /// expires it is a transport failure rather than an error turn — the figure a stalled provider
+    /// costs the run is this one, not [`model_call_timeout`](Self::model_call_timeout).
+    pub model_stream_idle: Duration,
     /// How many error turns in a row end an agent, when configured. `None` when the set wrote no
     /// `maxConsecutiveErrors` — gg arms no error ceiling nobody wrote.
     pub max_consecutive_errors: Option<u32>,
@@ -618,9 +689,13 @@ pub struct RunLimits {
     /// first attempt, each retry's delay doubling from one second up to the
     /// `modelRetryMaxDelaySecs` ceiling. Like [`model_call_timeout`](Self::model_call_timeout) it
     /// is not an execution ceiling and never ends a run: it is the budget the client spends before
-    /// a failed request ends one, present on every run, the defaults filled in for a set that
-    /// left the keys out.
+    /// a failed request moves the run to its next candidate, present on every run, the defaults
+    /// filled in for a set that left the keys out.
     pub retry_policy: RetryPolicy,
+    /// How many unexpected cache misses leave a provider. Present on every run: a set that writes
+    /// no `providerCacheMissLimit` takes [`DEFAULT_PROVIDER_CACHE_MISS_LIMIT`], and a `0` is
+    /// [refused](resolve_run_limits), since it would leave a provider before it served a turn.
+    pub provider_cache_miss_limit: u64,
 }
 
 /// A recent-error-rate ceiling and the lookback it is measured over.
@@ -731,8 +806,14 @@ pub(crate) const LIMIT_MAX_RUNTIME_SECS: &str = "maxRuntimeSecs";
 /// The `limits` key naming the [model-call ceiling](RunLimits::model_call_timeout).
 pub(crate) const LIMIT_MODEL_CALL_TIMEOUT_SECS: &str = "modelCallTimeoutSecs";
 
+/// The `limits` key naming the [stream-idle bound](RunLimits::model_stream_idle).
+pub(crate) const LIMIT_MODEL_STREAM_IDLE_SECS: &str = "modelStreamIdleSecs";
+
 /// The `limits` key naming the [retry budget](RunLimits::retry_policy)'s delay ceiling.
 pub(crate) const LIMIT_MODEL_RETRY_MAX_DELAY_SECS: &str = "modelRetryMaxDelaySecs";
+
+/// The `limits` key naming the [cache-miss limit](RunLimits::provider_cache_miss_limit).
+pub(crate) const LIMIT_PROVIDER_CACHE_MISS_LIMIT: &str = "providerCacheMissLimit";
 
 /// The `limits` key naming the [consecutive-error ceiling](RunLimits::max_consecutive_errors).
 pub(crate) const LIMIT_MAX_CONSECUTIVE_ERRORS: &str = "maxConsecutiveErrors";
@@ -788,6 +869,9 @@ fn remedy(key: &str) -> &'static str {
     } else if key == LIMIT_MODEL_CALL_TIMEOUT_SECS {
         "Every model call is made under this ceiling: omit the key to take gg's default of 900 \
          seconds, or give it a value a call can be made under."
+    } else if key == LIMIT_MODEL_STREAM_IDLE_SECS {
+        "Every streamed reply is cancelled on this bound: omit the key to take gg's default of 60 \
+         seconds, or give it a value a reply can stream under."
     } else {
         "Omit the key to leave the ceiling unarmed, or give it a value a run can be bounded by."
     }
@@ -909,6 +993,20 @@ pub fn resolve_run_limits(
     }
     let model_call_timeout = declared_model_call_timeout(&declared);
 
+    // Every streamed reply is cancelled on an idle bound, for the same reason: a stream with no
+    // idle bound is one a provider that stopped answering holds for the whole call ceiling, so
+    // absence is a default rather than an off. Zero would cancel each attempt the instant it
+    // started, before any reply could arrive, and is refused on the same terms as every other
+    // unhonourable figure.
+    if declared.model_stream_idle_secs == Some(0) {
+        report.report(unarmable(
+            LIMIT_MODEL_STREAM_IDLE_SECS,
+            0,
+            "a stream allowed no seconds without a delta cancels before any reply can arrive",
+        ));
+    }
+    let model_stream_idle = declared_model_stream_idle(&declared);
+
     // A delay ceiling of `0` is a schedule of no waits — a run hammering a provider that just
     // said it is down — so it is refused on the same terms as every other unhonourable figure.
     // A retry count of `0` is honoured as written: it is a run that gives up on the first
@@ -921,6 +1019,18 @@ pub fn resolve_run_limits(
         ));
     }
     let retry_policy = declared_retry_policy(&declared);
+
+    // Every provider is held to a miss limit, so absence is the default rather than an off. Zero
+    // would leave a provider before it served a turn, and is refused on the same terms as every
+    // other unhonourable figure.
+    if declared.provider_cache_miss_limit == Some(0) {
+        report.report(unarmable(
+            LIMIT_PROVIDER_CACHE_MISS_LIMIT,
+            0,
+            "a provider allowed no cache misses would be left before it served a turn",
+        ));
+    }
+    let provider_cache_miss_limit = declared_provider_cache_miss_limit(&declared);
 
     // Absent leaves it unarmed, on the same terms as the turn ceiling: an agent stopped after five
     // failed turns in a row was stopped by a threshold its operator chose, and there is no fifth
@@ -992,11 +1102,13 @@ pub fn resolve_run_limits(
         max_turns,
         max_runtime,
         model_call_timeout,
+        model_stream_idle,
         max_consecutive_errors,
         error_rate,
         max_cost,
         replay_max_bytes,
         retry_policy,
+        provider_cache_miss_limit,
     }
 }
 

@@ -438,10 +438,19 @@ async fn snapshot_emits_the_composed_model_catalog() {
             harness_family: HarnessFamily::Openrouter,
         }],
         price: None,
+        list_price: None,
+        list_price_as_of: None,
         price_history: vec![],
         context_length: None,
         released_at: None,
         input_modalities: vec![],
+        provider_pin: Some("Anthropic".to_string()),
+        provider_pin_set_by_hand: false,
+        native_quantization: None,
+        max_input_price: None,
+        max_output_price: None,
+        banned_providers: vec![],
+        unknown_quantization_providers: vec![],
     };
     let snapshot = SnapshotBuilder::new(vec![], vec![], store)
         .with_models(vec![model])

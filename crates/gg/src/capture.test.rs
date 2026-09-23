@@ -65,6 +65,8 @@ fn stop_response(text: &str) -> ModelResponse {
         cost: None,
         provider: None,
         loop_aborts: LoopAborts::none(),
+        usage_wire: None,
+        usage_reconciled: false,
     }
 }
 
@@ -336,6 +338,12 @@ fn recorded_seed<'a>(prompt: &'a str, vision: bool) -> RecordedSeed<'a> {
         prompt,
         baseline_commit: Some("abc123"),
         model_windows: BTreeMap::from([("mock/echo".to_string(), 128_000)]),
+        model_providers: BTreeMap::from([(
+            "mock/echo".to_string(),
+            vec![test_cabinet_core::gg::GgProviderCandidate::new(
+                "mock", "fp8",
+            )],
+        )]),
         model_modalities: BTreeMap::from([(
             "mock/echo".to_string(),
             GgSessionModalities { vision },
@@ -1044,7 +1052,7 @@ async fn recording_client_delegates_and_records_each_turn() {
     let (dir, recorder) = recorder_in(None);
     let recorder = Arc::new(recorder);
     let stub = StubClient::new("mock/echo", stop_response("hi"));
-    let client = RecordingClient::new(Box::new(stub), Arc::clone(&recorder), "root");
+    let client = RecordingClient::new(Arc::new(stub), Arc::clone(&recorder), "root");
 
     assert_eq!(client.model_id(), "mock/echo");
     let out = client
@@ -1088,7 +1096,7 @@ async fn a_recorded_call_carries_the_providers_latency() {
     let (dir, recorder) = recorder_in(None);
     let recorder = Arc::new(recorder);
     let client = RecordingClient::new(
-        Box::new(StubClient::new("mock/echo", stop_response("hi"))),
+        Arc::new(StubClient::new("mock/echo", stop_response("hi"))),
         Arc::clone(&recorder),
         "root",
     );
@@ -1113,7 +1121,7 @@ async fn a_required_tool_call_records_its_shape() {
     let (dir, recorder) = recorder_in(None);
     let recorder = Arc::new(recorder);
     let stub = StubClient::new("mock/echo", stop_response("hi"));
-    let client = RecordingClient::new(Box::new(stub), Arc::clone(&recorder), "root");
+    let client = RecordingClient::new(Arc::new(stub), Arc::clone(&recorder), "root");
     let tool = ToolDefinition::new("finish", "finish the run", json!({ "type": "object" }));
 
     client
@@ -1210,7 +1218,7 @@ async fn a_refused_turn_records_its_error_before_the_call_that_replaced_it() {
     let (dir, recorder) = recorder_in(None);
     let recorder = Arc::new(recorder);
     let client = RecordingClient::new(
-        Box::new(FailingOnceClient::new(
+        Arc::new(FailingOnceClient::new(
             ModelError::VisionUnsupported {
                 model_id: "mock/echo".to_string(),
                 message: "no image route".to_string(),
@@ -1278,7 +1286,7 @@ fn every_model_error_class_is_recorded_as_the_class_the_loop_branched_on() {
             GgSessionModelErrorKind::RetryExhausted,
         ),
         (
-            ModelError::Parse("not json".to_string()),
+            ModelError::parse("not json".to_string()),
             GgSessionModelErrorKind::Parse,
         ),
         (
@@ -1344,12 +1352,12 @@ async fn the_compaction_summarizers_calls_are_recorded_on_their_own_queue() {
     let (dir, recorder) = recorder_in(None);
     let recorder = Arc::new(recorder);
     let agent = RecordingClient::new(
-        Box::new(StubClient::new("mock/agent", stop_response("working"))),
+        Arc::new(StubClient::new("mock/agent", stop_response("working"))),
         Arc::clone(&recorder),
         "root",
     );
     let summarizer = RecordingClient::for_compaction(
-        Box::new(StubClient::new("mock/small", stop_response("a summary"))),
+        Arc::new(StubClient::new("mock/small", stop_response("a summary"))),
         Arc::clone(&recorder),
         "root",
     );

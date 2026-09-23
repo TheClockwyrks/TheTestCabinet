@@ -4,7 +4,7 @@ title: Overview
 
 Pi (slug `pi`) is a coding agent CLI driven non-interactively through its
 `--print` mode. It reaches its model through OpenRouter, so a Pi run reports
-OpenRouter-style model IDs and is priced from OpenRouter's listed rates. The
+OpenRouter-style model IDs and is priced from the model's list price. The
 harness itself is at [pi.dev](https://pi.dev/).
 
 ## Model IDs
@@ -44,7 +44,6 @@ Pi's API key is sourced from `OPENROUTER_API_KEY` on the host and injected into
 the run container under the same name. See
 [Authentication](/harnesses/pi/authentication/).
 
-The model ID is already an OpenRouter slug, so it is used as-is for the
-comparable-cost lookup. Pi reports no run cost of its own, so the comparable
-cost is always derived from OpenRouter's listed prices. See
-[Metrics](/harnesses/pi/metrics/).
+The model ID is already an OpenRouter slug, so it resolves as-is to the catalog
+entry the comparable cost is priced from. Pi reports no run cost of its own, so
+its actual cost equals the comparable cost. See [Metrics](/harnesses/pi/metrics/).

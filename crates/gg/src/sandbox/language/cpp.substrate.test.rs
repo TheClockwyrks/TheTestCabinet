@@ -120,6 +120,24 @@ pub(super) fn evaluate_closing_docviews(
     )
 }
 
+/// [`evaluate`] over a double the caller **already built** — the seam the cases that need a seeded
+/// library, a seeded catalogue or a standing refusal reach for.
+///
+/// Those knobs live on the [`FakeOperationApi`] rather than on a responder, because the calls they
+/// answer — the program library, the documentation family, the view caps — dispatch no gg tool for a
+/// responder to fail. A case hands in
+/// `FakeOperationApi::new(&log).with_program(…)` or `FakeOperationApi::new(&log).finding(…)` and
+/// reads the same turn back.
+pub(super) fn evaluate_with_api(
+    component: &[u8],
+    operations: &[crate::sandbox::operations::OperationId],
+    ending: RunEnding,
+    library: bool,
+    api: FakeOperationApi,
+) -> SandboxOutcome {
+    evaluated(component, operations, ending, library, api)
+}
+
 /// What both of the above are: one evaluation, with everything the scope carries stated.
 fn evaluate_granting(
     component: &[u8],
@@ -128,9 +146,21 @@ fn evaluate_granting(
     library: bool,
     responder: impl FnMut(&str, &serde_json::Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
-    let limits = SandboxLimits::AMPLE;
     let log = CallLog::default();
     let api = FakeOperationApi::with(&log, responder);
+    let outcome = evaluated(component, operations, ending, library, api);
+    (outcome, log)
+}
+
+/// The evaluation itself, over the double both entry points above have already built.
+fn evaluated(
+    component: &[u8],
+    operations: &[crate::sandbox::operations::OperationId],
+    ending: RunEnding,
+    library: bool,
+    api: FakeOperationApi,
+) -> SandboxOutcome {
+    let limits = SandboxLimits::AMPLE;
     let linker = linker::<FakeOperationApi>().expect("the production linker builds");
     let compiled =
         engine::compile_bytes(component).expect("a freshly compiled C++ program is a component");
@@ -171,11 +201,11 @@ fn evaluate_granting(
     }
     let returned = keep_reported_error(returned, &store);
     let (outcome, _api) = reclaim(store, returned, None, None);
-    (outcome, log)
+    outcome
 }
 
 /// Compile and run one C++ program with no gg tool offered — the shape most cases here want.
-fn run(source: &str) -> SandboxOutcome {
+pub(super) fn run(source: &str) -> SandboxOutcome {
     evaluate(
         &prepare(source),
         &[],

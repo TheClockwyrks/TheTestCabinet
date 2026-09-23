@@ -34,9 +34,10 @@ TypeScript/JSON contract; this crate consumes them.
 ## Where it runs
 
 gg runs **inside the run container**, alongside the seeded workspace. Locally it
-runs with no external resources; in k8s it is published as a GitHub release and
-downloaded into the container at run time (the same shape as a third-party
-harness's install step, pulling our own release). It is
+runs with no external resources; in k8s the driver image carries a static build
+that is copied into the container at run time, and a driver without one downloads
+the release the Azure pipeline uploads to the `gg-releases` blob container (the
+same shape as a third-party harness's install step, pulling our own release). It is
 [**headless**](../../apps/docs/src/content/docs/gg/overview.md) — no TUI and no
 interaction of its own; the Test Cabinet UI configures, launches, and monitors it,
 and the telemetry stream is the only live window into a run.

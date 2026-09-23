@@ -35,6 +35,7 @@ import type {
   Model,
   ModelAccuracy,
   ModelInput,
+  ModelCandidates,
   ModelListing,
   ModelProbe,
   ModelProbeDetail,
@@ -793,6 +794,17 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       return getJson<ModelProbeProviders>(
         baseUrl,
         `/models/${encodeURIComponent(slug)}/probe-providers`,
+        token,
+      );
+    },
+
+    async getModelCandidates(
+      slug: string,
+      token: string,
+    ): Promise<ModelCandidates> {
+      return getJson<ModelCandidates>(
+        baseUrl,
+        `/models/${encodeURIComponent(slug)}/candidates`,
         token,
       );
     },

@@ -310,7 +310,28 @@ schemars = "1"
 # generator that drives them), so normal/CLI/wasm builds never compile it.
 # Paired with `schemars` on the same types so the TS bindings and the JSON Schemas
 # are generated from one source of truth and can never drift apart.
-ts-rs = "12"
+#
+# `no-serde-warnings` silences a notice the derive prints for every `#[serde(..)]`
+# key it does not itself understand. Its `serde-compat` parser deliberately knows
+# only the keys that can change the emitted TypeScript (`rename`, `rename_all`,
+# `tag`, `content`, `untagged`, `skip`, `flatten`, `default`,
+# `skip_serializing_if`, ...); anything else it ignores, and then says so. Two
+# attribute shapes in `crates/core/src/gg.rs` trip it: field-level
+# `deserialize_with` (the `count::option_u64` leniency on `GgLoopDetection` and
+# `GgRunLimits`) and container-level `deny_unknown_fields` on an *enum*
+# (`GgHookAction`) — ts-rs has an arm for the latter on structs but not on enums.
+# Ignoring both is the correct outcome rather than a silent defect: a custom
+# deserializer still produces the field's declared Rust type, and
+# `deny_unknown_fields` is a deserializer-side rejection with no expression in a
+# TypeScript type, so neither can move the generated bindings. The notices are
+# printed straight to stderr by the proc macro rather than raised as rustc
+# diagnostics, which is why `[workspace.lints.rust]` never turned them into errors
+# and the rustdoc gate stayed green while emitting 24 of them per `cargo doc` —
+# noise that trains readers to skim the gate's output. The cost of the flag is
+# that a future serde key ts-rs cannot parse *and* which would have changed the
+# output is now silent too; the generated bindings are checked in and diffed, so
+# that change surfaces as a contract diff instead of a build notice.
+ts-rs = { version = "12", features = ["no-serde-warnings"] }
 # Cross-platform PATH lookup for the container runtime binary. A hand-rolled
 # search misses the `.exe`/`PATHEXT` resolution Windows needs; `which` handles
 # that and the Unix case behind one API.

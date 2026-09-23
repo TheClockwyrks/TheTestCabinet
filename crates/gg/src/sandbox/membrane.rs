@@ -91,7 +91,7 @@ use super::{ProgramCompletion, ProgramError, ProgramErrorKind, ProgramScope};
 use crate::ending::{Ending, EndingRole};
 use crate::tools::{ApiData, ToolFailure, ToolOutcome};
 
-mod capture;
+pub(crate) mod capture;
 mod context;
 mod delegation;
 mod docs;

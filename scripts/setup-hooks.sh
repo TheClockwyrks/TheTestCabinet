@@ -7,9 +7,8 @@
 #
 # Because git never runs committed hooks until something wires them into a clone,
 # this is the single command that does that wiring. CI (scripts/ci/*, driven by
-# azure-pipelines.yml and .github/workflows/ci.yml) runs the same
-# formatting/lint/spell gates, so it stays the backstop even if a clone never
-# runs this.
+# azure-pipelines.yml) runs the same formatting/lint/spell gates, so it stays the
+# backstop even if a clone never runs this.
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"

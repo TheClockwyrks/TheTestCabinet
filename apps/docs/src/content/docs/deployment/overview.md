@@ -129,6 +129,22 @@ base manifests so staging is a faithful rehearsal, differing in their namespace,
 their own secrets, their hostnames, and their `TCAB_ENV` tag. The kustomize
 overlays under `deployments/k8s/overlays/` are exactly that difference.
 
+## Delivery
+
+The Azure pipeline (`azure-pipelines.yml`) is the route a commit takes into both
+remote environments. A push to `staging` or `master` runs the gates, mirrors the
+commit to GitHub, builds every service and run-container image into the
+`testcabinet.azurecr.io` registry tagged by the commit sha, and rolls the
+matching cluster to those images: `staging` rolls staging and `master` rolls
+prod. The same run deploys the docs site. Rolling an environment is therefore
+merging to its branch.
+
+The pipeline's deploy identity may write only the application namespace, so the
+few cluster-scoped objects an environment needs are a one-time bootstrap applied
+by a cluster administrator. See
+[Cluster prerequisites](/deployment/kubernetes/overview/#cluster-prerequisites)
+and [Deploying](/deployment/kubernetes/overview/#deploying).
+
 ## Access
 
 Reachability is the first line of access control. Every service is a `ClusterIP`
@@ -190,7 +206,8 @@ remain the reference for every variable each service reads.
 ## Next steps
 
 - [Kubernetes](/deployment/kubernetes/overview/): the cluster build, covering
-  topology, prerequisites, overlays, and network policy.
+  topology, prerequisites, the cluster bootstrap, the pipeline's deploy,
+  overlays, and network policy.
 - [Backups](/deployment/backups/): protecting the two irreplaceable databases.
 - [Telemetry](/deployment/telemetry/): choosing and wiring a collector for
   staging and prod.

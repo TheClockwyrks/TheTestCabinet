@@ -406,6 +406,7 @@ fn session_summary() -> GgSessionSummary {
             tool_failures: BTreeMap::from([("not-found".to_string(), 5)]),
         },
         tool_calls: 0,
+        loop_abort_unpriced: 1,
         provider_stats: Vec::new(),
         issues_created: 0,
         issues_completed: 0,
@@ -423,6 +424,10 @@ fn session_summary() -> GgSessionSummary {
                     comparable: Some(0.25),
                     actual: Some(0.25),
                 }),
+                work_cost: Some(Cost {
+                    comparable: Some(0.25),
+                    actual: Some(0.25),
+                }),
             },
             GgSlotCost {
                 profile_id: "reviewer".to_string(),
@@ -437,8 +442,19 @@ fn session_summary() -> GgSessionSummary {
                     comparable: Some(0.05),
                     actual: Some(0.05),
                 }),
+                // The reviewer's priced turn produced nothing gg ran, so its slot carries the
+                // total and no work figure — the pair a fault-only slot reads as.
+                work_cost: None,
             },
         ],
+        cost: Some(Cost {
+            comparable: Some(0.30),
+            actual: Some(0.30),
+        }),
+        work_cost: Some(Cost {
+            comparable: Some(0.25),
+            actual: Some(0.25),
+        }),
         effective_tools: vec!["shell".to_string(), "read_file".to_string()],
         limits: GgRunLimits::default(),
         limit_hit: None,

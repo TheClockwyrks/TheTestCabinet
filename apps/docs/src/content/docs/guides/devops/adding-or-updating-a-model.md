@@ -14,11 +14,11 @@ the same task reduced to its steps.
 ## Where the catalog lives
 
 The catalog is owned by the backend. Model records, their aliases, and their
-price history live in the backend store as the `model`, `model_alias`, and
+billed-rate history live in the backend store as the `model`, `model_alias`, and
 `model_price` tables. The backend serves the catalog at `GET /models` and writes
 the models a published run references into the [public
 projection](/components/backend/projection/), so the gallery renders model
-metadata and prices without reaching the backend.
+metadata and rates without reaching the backend.
 
 Curating a model is an in-app edit that takes effect immediately, with no
 recompile and no release.
@@ -54,9 +54,34 @@ A model record has these fields:
 - Provider logo, supplied as an [svgl.app](https://svgl.app) `https://` URL. The
   backend fetches and sanitizes the SVG server-side.
 - Description, markdown prose shown on the model's page.
-- OpenRouter slug, the id OpenRouter lists the model under, used for the
-  comparable-cost lookup. It is separate from the aliases, so a model can carry
-  it without ever being run through an OpenRouter harness.
+- OpenRouter slug, the id OpenRouter lists the model under, used to observe the
+  model's billed rate. It is separate from the aliases, so a model can carry it
+  without ever being run through an OpenRouter harness.
+- List price: the model developer's published uncached input, cached input, and
+  output rates per Mtok, with the date the figures were taken. An operator
+  enters them from the developer's own pricing page, and they are what a run's
+  comparable cost is priced from. Fill from OpenRouter seeds the three rates
+  from the official endpoint's listing, for confirmation or correction against
+  the pricing page. The three rates are saved together with their date or not
+  at all, and a blank set on an existing model keeps the stored one.
+- Developer provider, the OpenRouter provider name of the model developer's own
+  endpoint. Blank takes the provider whose `provider_name` on the endpoints
+  listing matches the author segment of the model id, ignoring case and
+  punctuation. Set it where the two differ (`qwen/…` served by `Alibaba`). Its
+  endpoint's rates are the billed rate the catalog records.
+- Native quantization, the level every provider a gg run uses must serve the
+  model at. Blank takes the highest level any endpoint of the model declares.
+- Price ceiling, the input and output rates in USD per million tokens a provider
+  must be at or below when OpenRouter lists no developer endpoint. It is unused
+  while the developer endpoint is listed, since that endpoint's own rates are
+  the ceiling.
+- Banned providers, the providers a gg run of the model never uses.
+- Unknown-quantization providers, the providers accepted despite declaring
+  `unknown` quantization. Every other `unknown` endpoint is left out.
+
+The last five fields decide a gg run's
+[candidate list](/gg/overview/#the-candidate-list). See
+[Choosing the providers a gg run uses](#choosing-the-providers-a-gg-run-uses).
 
 ### Alias harness families
 
@@ -84,7 +109,7 @@ reporting details.
 ## Filling the form in from OpenRouter
 
 The form's first field is the OpenRouter slug, and Fill from OpenRouter beside it
-looks the slug up in OpenRouter's catalog and fills in three fields:
+looks the slug up in OpenRouter's catalog and fills in the display fields:
 
 - Display name and Provider, split out of OpenRouter's own `Provider: Model`
   name, so `Anthropic: Claude Sonnet 4.5` becomes the name Claude Sonnet 4.5
@@ -93,18 +118,23 @@ looks the slug up in OpenRouter's catalog and fills in three fields:
 - Description, as OpenRouter publishes it. OpenRouter truncates long blurbs
   itself, so what lands in the field is what it serves.
 
+The fill also seeds the three list-price rates from the official provider's
+endpoint in the model's endpoints listing, the same endpoint the developer provider
+follows. The figures are a seed: confirm or correct them against the developer's
+pricing page, and enter the date they were taken.
+
 When the id list is still untouched, the fill also claims the slug as the entry's
 first alias under Others (OpenRouter). A list you have already put an id into is
 left alone.
 
-Fill replaces those three fields rather than filling only the blanks, and runs
+Fill replaces the display fields rather than filling only the blanks, and runs
 only on an explicit press. Nothing persists until Save, so leaving the page
 discards a fill you did not want.
 
-Fill leaves two things alone. The provider logo comes from svgl.app and is picked
-by hand. The prices, context window, release date, and input modalities are
-recorded by the backend itself. A slug OpenRouter does not list reports inline
-and changes nothing.
+Fill leaves one thing alone: the provider logo comes from svgl.app and is picked
+by hand. The context window, release date, and input modalities are recorded by
+the backend itself. A slug OpenRouter does not list reports inline and changes
+nothing.
 
 ## Two ways to add a model
 
@@ -120,38 +150,44 @@ name is required.
 
 ## Price history
 
-Comparable cost is computed from OpenRouter's per-token prices (see
-[Metrics](/components/core/metrics/#cost)). The backend fetches them and retains
-them as a per-model history:
+A run's comparable cost is computed from the list price curated on the model's
+catalog entry, entered from the developer's pricing page (see
+[Metrics](/components/core/metrics/#cost)). The comparable cost is a published
+statistic, so a launch naming a model with no list price is refused at enqueue
+with the reason named.
 
-- The backend fetches a model's current OpenRouter price when a run completes,
-  and again on a 24-hour periodic refresh.
+Beside the list price the backend retains a per-model history of the official
+endpoint's billed rate:
+
+- The backend observes the official endpoint's current billed rate when a run
+  completes, and again on a 24-hour periodic refresh.
 - It records a first observation the moment a model first appears: when you save
   it here with an OpenRouter slug, when a run that binds it is enqueued (on every
   enqueue path — the run form, a gg launch, a coverage top-up, an automatic
   retry), and at backend startup for every known model still missing one. The
   startup pass is what prices a freshly seeded deployment's curated catalog
   before its first run. All of this seeding is missing-only, so a model already
-  on record is left to the two paths above.
-- An observation is appended only when something changed: the price, or one of
-  the catalog facts riding along on it. The stored history collapses
-  consecutive-equal prices, so an observation recorded for a fact change adds no
-  spurious price step.
-- Fetching at run-completion time captures promotional pricing as it stood when
-  the run ran.
-- A `:free`-tagged OpenRouter run is priced at the model's base rate. The free
+  on record is left to the two paths above. A model on record with no developer
+  provider counts as missing.
+- Each observation carries the model's developer provider, read from the model's
+  endpoints listing beside the rate.
+- An observation is appended only when something changed: the billed rate, or one
+  of the catalog facts riding along on it. The stored history collapses
+  consecutive-equal rates, so an observation recorded for a fact change adds no
+  spurious rate step.
+- A `:free`-tagged OpenRouter run observes the model's base rate. The free
   variant is a routing tag rather than a free run.
 
-The history is what a run's comparable cost is priced against, so a run keeps the
-rate it actually ran at. It is not charted in the console: a model's price
-changes rarely enough that a chart of it was almost always two or three points,
-so the model's Stats tab shows the latest per-Mtok rates instead of the series.
+The observed billed rate never rewrites the list price and never changes what a
+run is scored at. The model's Stats tab shows the latest list price and billed
+rate side by side with the difference, so a discount, a price change, or a
+listing error is visible on the model rather than silently in the runs.
 
-## Catalog facts recorded with each price
+## Catalog facts recorded with each observation
 
-Each observation carries the model's context window, release date, and input
-modalities as OpenRouter reported them at that moment, which makes the catalog
-the single store of those facts.
+Each billed-rate observation carries the model's context window, release date,
+and input modalities as OpenRouter reported them at that moment, which makes the
+catalog the single store of those facts.
 
 The context window is what a [gg](/gg/overview/) run's window-fullness accounting
 and [compaction](/gg/compaction/) trigger are measured against. When a gg run is
@@ -159,11 +195,11 @@ enqueued the backend looks the window up here for every model the run's
 capability set binds and pushes the figures onto the launch, so gg keeps no model
 table of its own.
 
-A model with no observation yet is seeded at enqueue by the launch-time price
-fetch. Should that not answer, the launch falls back to a per-model lookup for
-that one model. If neither can answer, the launch is rejected: gg assumes no
-default window, because a run measured against a guessed one reports the wrong
-thing while looking healthy. See
+A model with no observation yet is seeded at enqueue by the launch-time
+billed-rate fetch. Should that not answer, the launch falls back to a per-model
+lookup for that one model. If neither can answer, the launch is rejected: gg
+assumes no default window, because a run measured against a guessed one reports
+the wrong thing while looking healthy. See
 [Runs with no resolved window](/gg/context-visibility/#runs-with-no-resolved-window).
 
 The input modalities (`text`, `image`, `file`, …) are shown on the model's Stats
@@ -177,6 +213,34 @@ An unknown modality list is recorded as unknown and the run proceeds. gg treats
 an unannotated model optimistically and recovers if the provider refuses the
 image, so an empty list in the console means the modalities have yet to be
 observed.
+
+## Choosing the providers a gg run uses
+
+OpenRouter is a gg run's gateway and bill, and gg chooses which of a model's
+providers serves each request. The backend builds each bound model's candidate
+list when the run is enqueued, from the model's endpoints listing read at that
+moment, filtered and ordered as
+[the candidate list](/gg/overview/#the-candidate-list) describes. The list rides
+on the launch, and gg moves down it when a provider fails a request past its
+retries or keeps missing its own cache.
+
+The model's Stats tab shows the list the next enqueue would build, with each
+candidate's quantization, prices and recorded fault rate, or the reason it would
+refuse. The list shown assumes an agent that sets no reasoning; an enqueue whose
+agents set one also drops the providers that do not support `reasoning`.
+
+A provider's fault rate is its stalls, its unexpected cache misses and the turns
+that ended on its failed model calls (`model_retry_exhausted`, `model_timeout`,
+`model_parse`), over its calls, across every recorded gg run of the model. A
+provider no recorded run used has a rate of zero. The rate orders the
+candidates; it removes none. Removing a provider for good is the ban list's job.
+
+A model with no candidate refuses the enqueue with the reason, which names the
+filter that emptied the list. The usual fixes are on the model's form: set the
+developer provider when the listing spells it differently, set the native level
+when the observed one is wrong, name a provider under unknown-quantization
+providers when its endpoint is known to serve the native level, or set a price
+ceiling when OpenRouter lists no developer endpoint.
 
 ## Updating an existing model
 

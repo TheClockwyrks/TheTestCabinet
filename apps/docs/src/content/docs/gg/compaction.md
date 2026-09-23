@@ -128,13 +128,17 @@ never interrupted and never offered the `compact` tool; its next turn finds a
 smaller window. They condense on the model the capability's `model` parameter
 names, resolved through the same client factory every agent's model is. The
 parameter is optional, and a capability that names no summarizer condenses on the
-working agent's own model.
+working agent's own model. A named summarizer runs at its provider's default
+reasoning, while one that falls back to the working agent's model carries that
+agent's [reasoning setting](/gg/configurations/#reasoning-effort).
 
 - Handoff summarization (`handoff-summarization`). The compaction model is
   given no tools and answers with prose.
 - Handoff compaction (`handoff-compaction`). The compaction model is given
   only the `compact` tool and is required to call it, so it chooses the files to
-  re-read as well as the summary.
+  re-read as well as the summary. The call is pinned the way a responses-as-code
+  turn's is, and asked for on `auto` for a model whose provider
+  [refused the pin](/gg/responses-as-code/programs/#the-submission-gg-accepts).
 
 The thread is rebuilt before the handoff model reads it. The working agent's
 system prompt, skills and memories are dropped, since they are retained anyway

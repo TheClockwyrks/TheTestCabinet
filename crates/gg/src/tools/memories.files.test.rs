@@ -439,3 +439,266 @@ async fn read_memory_describes_where_slugs_come_from() {
     let description = ReadMemoryTool::new(keyword).definition().description;
     assert!(description.contains("search_memories"), "{description}");
 }
+
+// ---------------------------------------------------------------------------
+// The argument diagnostics the file-shaped tools raise
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn a_create_missing_its_name_is_an_argument_error() {
+    let (store, ctx, _dir) = fixture(MemoryStrategy::Markdown);
+    let tool = CreateMemoryTool::new(store.clone());
+
+    let outcome = tool.invoke(json!({ "contents": "x" }), &ctx).await;
+    assert_eq!(outcome.failure, Some(ToolFailure::InvalidArgument));
+    assert!(outcome.output.contains("name"), "{}", outcome.output);
+    assert_eq!(store.lock().count(), 0);
+}
+
+#[tokio::test]
+async fn a_create_missing_its_contents_is_an_argument_error() {
+    let (store, ctx, _dir) = fixture(MemoryStrategy::Markdown);
+    let tool = CreateMemoryTool::new(store.clone());
+
+    let outcome = tool.invoke(json!({ "name": "n" }), &ctx).await;
+    assert_eq!(outcome.failure, Some(ToolFailure::InvalidArgument));
+    assert!(outcome.output.contains("contents"), "{}", outcome.output);
+    assert_eq!(store.lock().count(), 0);
+}
+
+/// The description is optional, not untyped: a non-string is still refused, so a program that
+/// passed the wrong value is told rather than having it silently dropped.
+#[tokio::test]
+async fn a_create_with_an_ill_typed_description_is_an_argument_error() {
+    let (store, ctx, _dir) = fixture(MemoryStrategy::KeywordSearch);
+    let tool = CreateMemoryTool::new(store.clone());
+
+    let outcome = tool
+        .invoke(
+            json!({ "name": "n", "description": 3, "contents": "x" }),
+            &ctx,
+        )
+        .await;
+    assert_eq!(outcome.failure, Some(ToolFailure::InvalidArgument));
+    assert!(
+        outcome.output.contains("`description` must be a string"),
+        "{}",
+        outcome.output
+    );
+    assert_eq!(store.lock().count(), 0);
+}
+
+#[tokio::test]
+async fn a_read_missing_its_name_is_an_argument_error() {
+    let (store, ctx, _dir) = fixture(MemoryStrategy::KeywordSearch);
+    let tool = ReadMemoryTool::new(store);
+
+    let outcome = tool.invoke(json!({}), &ctx).await;
+    assert_eq!(outcome.failure, Some(ToolFailure::InvalidArgument));
+    assert!(outcome.output.contains("name"), "{}", outcome.output);
+}
+
+#[tokio::test]
+async fn a_read_with_an_ill_typed_name_is_an_argument_error() {
+    let (store, ctx, _dir) = fixture(MemoryStrategy::KeywordSearch);
+    let tool = ReadMemoryTool::new(store);
+
+    let outcome = tool.invoke(json!({ "name": 1 }), &ctx).await;
+    assert_eq!(outcome.failure, Some(ToolFailure::InvalidArgument));
+    assert!(
+        outcome.output.contains("`name` must be a string"),
+        "{}",
+        outcome.output
+    );
+}
+
+/// Editing a slug the store does not hold is not-found rather than a bad argument: the call was
+/// well formed, and the recovery is to create the memory or to name a different one.
+#[tokio::test]
+async fn an_edit_of_an_unknown_memory_is_not_found() {
+    let (store, ctx, _dir) = fixture(MemoryStrategy::Markdown);
+    store
+        .lock()
+        .create("", "held", "d", "the contents", MemoryCode::default())
+        .unwrap();
+
+    let outcome = EditMemoryTool::new(store.clone())
+        .invoke(
+            json!({ "name": "ghost", "old_string": "the", "new_string": "a" }),
+            &ctx,
+        )
+        .await;
+    assert_eq!(outcome.failure, Some(ToolFailure::NotFound));
+    assert!(
+        outcome.output.contains("no memory named `ghost`"),
+        "{}",
+        outcome.output
+    );
+    assert_eq!(store.lock().read("held").unwrap().body(), "the contents");
+}
+
+#[tokio::test]
+async fn an_edit_missing_its_name_or_old_string_is_an_argument_error() {
+    let (store, ctx, _dir) = fixture(MemoryStrategy::Markdown);
+    store
+        .lock()
+        .create("", "m", "d", "the contents", MemoryCode::default())
+        .unwrap();
+    let tool = EditMemoryTool::new(store.clone());
+
+    for (args, field) in [
+        (json!({ "old_string": "the", "new_string": "a" }), "name"),
+        (json!({ "name": "m", "new_string": "a" }), "old_string"),
+    ] {
+        let outcome = tool.invoke(args, &ctx).await;
+        assert_eq!(outcome.failure, Some(ToolFailure::InvalidArgument));
+        assert!(outcome.output.contains(field), "{}", outcome.output);
+    }
+    assert_eq!(store.lock().read("m").unwrap().body(), "the contents");
+}
+
+/// The replacement may be omitted — that is how text is cut out — but a non-string is refused all
+/// the same.
+#[tokio::test]
+async fn an_edit_with_an_ill_typed_new_string_is_an_argument_error() {
+    let (store, ctx, _dir) = fixture(MemoryStrategy::Markdown);
+    store
+        .lock()
+        .create("", "m", "d", "the contents", MemoryCode::default())
+        .unwrap();
+
+    let outcome = EditMemoryTool::new(store.clone())
+        .invoke(
+            json!({ "name": "m", "old_string": "the", "new_string": 5 }),
+            &ctx,
+        )
+        .await;
+    assert_eq!(outcome.failure, Some(ToolFailure::InvalidArgument));
+    assert!(
+        outcome.output.contains("`new_string` must be a string"),
+        "{}",
+        outcome.output
+    );
+    assert_eq!(store.lock().read("m").unwrap().body(), "the contents");
+}
+
+// ---------------------------------------------------------------------------
+// The limits a file-shaped create or edit can breach
+// ---------------------------------------------------------------------------
+
+/// A store already holding every memory it may refuses the next one as a limit, with the guidance
+/// to revise or evict rather than to rephrase.
+#[tokio::test]
+async fn a_create_past_the_memory_count_cap_is_a_limit() {
+    let (store, ctx, _dir) = fixture_with(
+        MemoryStrategy::KeywordSearch,
+        MemoryCaps {
+            max_count: Some(1),
+            ..MemoryCaps::UNBOUNDED
+        },
+    );
+    let tool = CreateMemoryTool::new(store.clone());
+
+    assert!(
+        tool.invoke(json!({ "name": "a", "contents": "first" }), &ctx)
+            .await
+            .ok
+    );
+
+    let outcome = tool
+        .invoke(json!({ "name": "b", "contents": "second" }), &ctx)
+        .await;
+    assert_eq!(outcome.failure, Some(ToolFailure::LimitExceeded));
+    assert!(
+        outcome.output.contains("at the maximum of 1 memories"),
+        "{}",
+        outcome.output
+    );
+    assert_eq!(store.lock().count(), 1);
+}
+
+#[tokio::test]
+async fn a_create_past_the_per_memory_cap_is_a_limit() {
+    let (store, ctx, _dir) = fixture_with(
+        MemoryStrategy::KeywordSearch,
+        MemoryCaps {
+            max_len_per_memory: Some(8),
+            ..MemoryCaps::UNBOUNDED
+        },
+    );
+    let tool = CreateMemoryTool::new(store.clone());
+
+    let outcome = tool
+        .invoke(
+            json!({ "name": "m", "contents": "contents far past the ceiling" }),
+            &ctx,
+        )
+        .await;
+    assert_eq!(outcome.failure, Some(ToolFailure::LimitExceeded));
+    assert!(
+        outcome
+            .output
+            .contains("memory `m` is 29 characters (max 8)"),
+        "{}",
+        outcome.output
+    );
+    assert_eq!(store.lock().count(), 0);
+}
+
+#[tokio::test]
+async fn a_create_with_an_over_long_description_is_a_limit() {
+    let (store, ctx, _dir) = fixture_with(
+        MemoryStrategy::Markdown,
+        MemoryCaps {
+            max_len_description: Some(8),
+            ..MemoryCaps::UNBOUNDED
+        },
+    );
+    let tool = CreateMemoryTool::new(store.clone());
+
+    let outcome = tool
+        .invoke(
+            json!({
+                "name": "m",
+                "description": "a summary far longer than the ceiling allows",
+                "contents": "x",
+            }),
+            &ctx,
+        )
+        .await;
+    assert_eq!(outcome.failure, Some(ToolFailure::LimitExceeded));
+    assert!(
+        outcome.output.contains("the description for memory `m`"),
+        "{}",
+        outcome.output
+    );
+    assert!(outcome.output.contains("(max 8)"), "{}", outcome.output);
+    assert_eq!(store.lock().count(), 0);
+}
+
+/// An edit is measured after the replacement, so growing a memory past its ceiling is refused and
+/// the stored contents are left exactly as they were.
+#[tokio::test]
+async fn an_edit_past_the_per_memory_cap_is_a_limit() {
+    let (store, ctx, _dir) = fixture_with(
+        MemoryStrategy::Markdown,
+        MemoryCaps {
+            max_len_per_memory: Some(10),
+            ..MemoryCaps::UNBOUNDED
+        },
+    );
+    store
+        .lock()
+        .create("", "m", "d", "abc", MemoryCode::default())
+        .unwrap();
+
+    let outcome = EditMemoryTool::new(store.clone())
+        .invoke(
+            json!({ "name": "m", "old_string": "abc", "new_string": "a replacement far too long" }),
+            &ctx,
+        )
+        .await;
+    assert_eq!(outcome.failure, Some(ToolFailure::LimitExceeded));
+    assert!(outcome.output.contains("(max 10)"), "{}", outcome.output);
+    assert_eq!(store.lock().read("m").unwrap().body(), "abc");
+}

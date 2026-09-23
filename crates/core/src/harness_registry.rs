@@ -344,7 +344,7 @@ impl AgentHarness for GgHarness {
     }
 
     /// gg needs no third-party install step. In k8s the gg binary is fetched from a
-    /// GitHub release and locally it is a no-deps local build; either way that is
+    /// published release in blob storage and locally it is a no-deps local build; either way that is
     /// the gg executor's concern, not a container-side `sh -c` CLI install.
     fn install_command(&self) -> Option<&str> {
         None

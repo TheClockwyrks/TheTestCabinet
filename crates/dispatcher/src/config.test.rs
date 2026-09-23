@@ -81,7 +81,10 @@ fn set(key: &str, value: &str) {
 fn set_required() {
     set("TCAB_BACKEND_URL", "http://backend:8787/");
     set("TCAB_BACKEND_SERVICE_TOKEN", "svc-tok");
-    set("TCAB_DRIVER_IMAGE", "ghcr.io/example/tcab-driver:1.0");
+    set(
+        "TCAB_DRIVER_IMAGE",
+        "registry.example.com/example/tcab-driver:1.0",
+    );
 }
 
 #[test]
@@ -93,7 +96,10 @@ fn resolves_with_required_and_defaults() {
         // Trailing slash trimmed.
         assert_eq!(config.backend_url, "http://backend:8787");
         assert_eq!(config.service_token, "svc-tok");
-        assert_eq!(config.driver_image, "ghcr.io/example/tcab-driver:1.0");
+        assert_eq!(
+            config.driver_image,
+            "registry.example.com/example/tcab-driver:1.0"
+        );
         // Defaults.
         assert_eq!(config.max_inflight, 8);
         assert_eq!(config.poll_interval.as_secs(), 2);
@@ -118,7 +124,10 @@ fn resolves_with_required_and_defaults() {
 fn publisher_config_parses_when_set() {
     with_env(|| {
         set_required();
-        set("TCAB_PUBLISHER_IMAGE", "ghcr.io/example/tcab-publisher:1.0");
+        set(
+            "TCAB_PUBLISHER_IMAGE",
+            "registry.example.com/example/tcab-publisher:1.0",
+        );
         set(
             "TCAB_DISPATCHER_PUBLISHER_SECRETS",
             "tcab-publisher-secrets, tcab-cf ",
@@ -129,7 +138,7 @@ fn publisher_config_parses_when_set() {
 
         assert_eq!(
             config.publisher_image.as_deref(),
-            Some("ghcr.io/example/tcab-publisher:1.0")
+            Some("registry.example.com/example/tcab-publisher:1.0")
         );
         // A configured image enables the publish path.
         assert!(config.publishing_enabled());
@@ -157,7 +166,10 @@ fn publisher_config_parses_when_set() {
 fn artifacts_url_is_forwarded_into_publish_jobs() {
     with_env(|| {
         set_required();
-        set("TCAB_PUBLISHER_IMAGE", "ghcr.io/example/tcab-publisher:1.0");
+        set(
+            "TCAB_PUBLISHER_IMAGE",
+            "registry.example.com/example/tcab-publisher:1.0",
+        );
         set("TCAB_ARTIFACTS_URL", "http://tcab-artifacts:8790");
         let config = Config::from_env().expect("config should resolve");
         // The artifact-service URL is forwarded into both driver and publish Jobs:
@@ -316,11 +328,11 @@ fn artifacts_url_is_passed_through() {
 fn container_image_vars_are_passed_through() {
     with_env(|| {
         set_required();
-        set("TCAB_CONTAINER_REGISTRY", "ghcr.io/theclockwyrks");
+        set("TCAB_CONTAINER_REGISTRY", "testcabinet.azurecr.io");
         set("TCAB_CONTAINER_TAG", "deadbeef");
         set(
             "TCAB_CONTAINER_IMAGE_ADVERSARIAL",
-            "ghcr.io/example/custom-adversarial:1.0",
+            "registry.example.com/example/custom-adversarial:1.0",
         );
 
         let config = Config::from_env().expect("config should resolve");
@@ -329,7 +341,7 @@ fn container_image_vars_are_passed_through() {
         // the deployment chose, instead of the compiled `:latest` default.
         assert!(config.passthrough_k8s_env.contains(&(
             "TCAB_CONTAINER_REGISTRY".to_string(),
-            "ghcr.io/theclockwyrks".to_string()
+            "testcabinet.azurecr.io".to_string()
         )));
         assert!(
             config
@@ -339,7 +351,7 @@ fn container_image_vars_are_passed_through() {
         // Per-image full-ref overrides ride the same passthrough.
         assert!(config.passthrough_k8s_env.contains(&(
             "TCAB_CONTAINER_IMAGE_ADVERSARIAL".to_string(),
-            "ghcr.io/example/custom-adversarial:1.0".to_string()
+            "registry.example.com/example/custom-adversarial:1.0".to_string()
         )));
         // The unset per-image overrides are not forwarded ("forward only if set").
         assert_eq!(config.passthrough_k8s_env.len(), 3);

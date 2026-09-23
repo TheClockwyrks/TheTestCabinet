@@ -78,8 +78,11 @@ Model errors are recorded by class, because the class is what the loop branches
 on: a missing credential, a fatal provider status, retry exhaustion, an
 unsupported image modality, an unparseable response, and a response that
 [loop detection](/gg/loop-detection/) abandoned on every attempt. Two of them change
-control flow directly. A vision refusal strips images and re-runs the turn, and
-a retry exhaustion counts against the run's error ceiling.
+control flow directly. A vision refusal strips images and re-runs the turn. A
+retry exhaustion ends the run on its first occurrence as a model error
+attributed to the provider, because the client has already retried the call
+over its whole schedule and a second retry layer in the loop would only repeat
+it with a worse backoff.
 
 Prompt templates, memories, autoloaded specification files and skills are not
 recorded as filesystem reads. Templates are embedded in the gg binary, so the

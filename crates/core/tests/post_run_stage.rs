@@ -32,11 +32,10 @@ use test_cabinet_core::{
     ContainerRuntime, ContainerSpec, ContainerStart, CredFile, CredSource, EngineCatalog,
     EngineSelection, EventFormat, EventSink, ExecOutput, FsRepoSeeder, HarnessInvocation,
     HarnessOutcome, HarnessRegistry, HarnessSlug, ManualClock, MapCreds, MediaKind, NoopEventSink,
-    OpenRouterPrices, OrchestratorCatalog, OrchestratorSelection, OutputSink, OutputStream,
-    PostRunContext, PostRunReport, PostRunStage, PrerenderedReferenceRenderer, ProofFile,
-    RenderedReference, Result as CoreResult, RunCancellation, RunEngine, RunRequest,
-    SubscriptionSpec, TestCaseCatalog, TestCaseVersion, TokenCounts, Usage, ValidationSummary,
-    Validator, Variant,
+    OrchestratorCatalog, OrchestratorSelection, OutputSink, OutputStream, PostRunContext,
+    PostRunReport, PostRunStage, PrerenderedReferenceRenderer, ProofFile, RenderedReference,
+    Result as CoreResult, RunCancellation, RunEngine, RunRequest, SubscriptionSpec,
+    TestCaseCatalog, TestCaseVersion, TokenCounts, Usage, ValidationSummary, Validator, Variant,
 };
 
 /// The repository's `test-cases/` directory — the real catalog, so the run is
@@ -343,7 +342,6 @@ async fn the_post_run_stage_runs_after_collection_before_validation_and_outside_
         validator: FakeValidator {
             steps: Arc::clone(&steps),
         },
-        prices: OpenRouterPrices::new(),
         output_dir: out_dir.path().to_path_buf(),
         creds: Some(Box::new(MapCreds::new(
             [(
@@ -370,7 +368,10 @@ async fn the_post_run_stage_runs_after_collection_before_validation_and_outside_
         container_image: None,
         gg_capability_set: None,
         gg_model_windows: Default::default(),
+        gg_model_providers: Default::default(),
         gg_model_modalities: Default::default(),
+        gg_model_prices: Default::default(),
+        model_prices: None,
     };
 
     let record = engine

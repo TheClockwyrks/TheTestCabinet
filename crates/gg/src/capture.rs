@@ -210,6 +210,8 @@ pub struct RecordedSeed<'a> {
     /// figure narrowed by any override and reduced by the compaction headroom, which is the
     /// number the fullness signal and the compaction trigger actually use.
     pub model_windows: BTreeMap<String, u64>,
+    /// The ordered candidate list each bound model may run on.
+    pub model_providers: BTreeMap<String, Vec<test_cabinet_core::gg::GgProviderCandidate>>,
     /// The modality state of each bound model **as it stands now**. Recorded again at the end of
     /// the run if it has moved, so the record carries the resolved state rather than the
     /// declared one.
@@ -300,8 +302,15 @@ fn session_model_error(error: &ModelError) -> GgSessionModelError {
             attempts: None,
             model_id: Some(model_id.clone()),
         },
-        ModelError::Parse(_) => GgSessionModelError {
+        ModelError::Parse { .. } => GgSessionModelError {
             kind: GgSessionModelErrorKind::Parse,
+            message,
+            status: None,
+            attempts: None,
+            model_id: None,
+        },
+        ModelError::ProviderMismatch { .. } => GgSessionModelError {
+            kind: GgSessionModelErrorKind::ProviderMismatch,
             message,
             status: None,
             attempts: None,
@@ -571,6 +580,7 @@ impl GgRecorder {
             baseline_commit: seed.baseline_commit.map(str::to_string),
             prompt: seed.prompt.to_string(),
             model_windows: seed.model_windows,
+            model_providers: seed.model_providers,
             model_modalities: seed.model_modalities,
         });
     }
@@ -1154,8 +1164,11 @@ fn split_tool_data(data: Option<&ApiData>) -> (Option<Value>, Option<String>) {
 /// model step the session took. The `model_id` and error behavior pass straight through, so
 /// wrapping is invisible to the loop.
 pub struct RecordingClient {
-    /// The wrapped real client.
-    inner: Box<dyn ModelClient>,
+    /// The wrapped real client. Shared (`Arc`) rather than boxed because the session's own frame
+    /// keeps a handle to the same client — to [price the replies](ModelClient::price_generation)
+    /// loop detection abandoned, at session end — after this wrapper has been handed to the agent's
+    /// turn loop.
+    inner: std::sync::Arc<dyn ModelClient>,
     /// The shared recorder this client's I/O is streamed into.
     recorder: std::sync::Arc<GgRecorder>,
     /// The id of the agent this client drives, stamped onto every recorded entry.
@@ -1170,7 +1183,7 @@ impl RecordingClient {
     /// Wrap `inner` so each of its `complete` calls is recorded under `agent_id` into `recorder`,
     /// as the agent's own turn loop.
     pub fn new(
-        inner: Box<dyn ModelClient>,
+        inner: std::sync::Arc<dyn ModelClient>,
         recorder: std::sync::Arc<GgRecorder>,
         agent_id: impl Into<String>,
     ) -> Self {
@@ -1195,7 +1208,7 @@ impl RecordingClient {
     /// and a reader serves the wrong one to whichever asked first — so the discriminator
     /// is not labelling, it is the correctness condition for capturing this client at all.
     pub fn for_compaction(
-        inner: Box<dyn ModelClient>,
+        inner: std::sync::Arc<dyn ModelClient>,
         recorder: std::sync::Arc<GgRecorder>,
         agent_id: impl Into<String>,
     ) -> Self {
@@ -1284,6 +1297,18 @@ impl ModelClient for RecordingClient {
 
     fn announce_retries_on(&self, emitter: &crate::telemetry::Emitter) {
         self.inner.announce_retries_on(emitter);
+    }
+
+    /// Forwarded like everything else a decorator must not change: the record of abandoned replies
+    /// is the run's, shared across every client, and wrapping one in capture must neither hide nor
+    /// duplicate it.
+    fn abandoned_replies(&self) -> Vec<crate::model::AbandonedReply> {
+        self.inner.abandoned_replies()
+    }
+
+    /// Forwarded to the real client's own lookup — the gateway is its transport, capture or not.
+    async fn price_generation(&self, generation_id: &str) -> Option<crate::model::ReplySpend> {
+        self.inner.price_generation(generation_id).await
     }
 }
 

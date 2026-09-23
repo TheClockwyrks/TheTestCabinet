@@ -19,15 +19,21 @@
 use serde_json::{Value, json};
 
 use super::substrate::{
-    evaluate, evaluate_closing_docviews, evaluate_with_program, logs, prepare, trap,
+    evaluate, evaluate_closing_docviews, evaluate_refusing_view, evaluate_with_program, logs,
+    prepare, trap,
 };
 use crate::ending::{Ending, EndingRole};
-use test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE;
+use test_cabinet_core::gg::{
+    CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_DOCVIEW_CLOSE, CAPABILITY_EXEC, CAPABILITY_FORK,
+    CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_READ_FILE,
+};
 
 use crate::sandbox::fake::{CallLog, all_operations, all_operations_without, canned_outcome};
+use crate::sandbox::invoker::ViewRefusal;
 use crate::sandbox::membrane::RunEnding;
+use crate::sandbox::operations::DELEGATION_TRANSITION_STATE;
 use crate::sandbox::outcome::SandboxOutcome;
-use crate::tools::{ToolFailure, ToolOutcome};
+use crate::tools::{ApiData, ArchiveSearchData, SubagentResultData, ToolFailure, ToolOutcome};
 
 /// The catalogue this arm's build reflects, read as a **document** rather than through
 /// [`SignatureCatalogue`](crate::sandbox::signatures) — deliberately, and now that this arm is
@@ -428,168 +434,6 @@ fn every_operation_crosses_the_membrane_from_its_rust_spelling() {
     assert_eq!(
         covered, vocabulary,
         "every bound operation needs a crossing, and only bound operations may have one"
-    );
-}
-
-#[test]
-fn the_views_module_the_helper_and_the_standard_ending_are_reached_in_rust_too() {
-    // Three of the families that are NOT gg tools, so none of them appears in the crossing table
-    // above — and they are where a program puts something in front of the model and finds out what
-    // it may call at all, which makes them the ones a silent bridging mistake would cost the most.
-    let (outcome, log) = evaluate(
-        &prepare(&whole(
-            &["docs", "files", "session", "views"],
-            r####"    let shown = views::ViewOptions { offset: Some(1), limit: Some(2), ..Default::default() };
-    let read = views::open_file("notes.md", shown)?;
-    views::open_text("summary", "eight files, two failing")?;
-    views::open_docs_view("read_file")?;
-    let closed = views::close("summary")?;
-    let missing = views::close("never opened")?;
-    gg::log(format!("{closed} {missing}"));
-    gg::log(match read {
-        files::FileRead::Text(file) => file.contents.lines().next().unwrap_or_default().to_string(),
-        files::FileRead::Image(picture) => picture.label,
-    });
-    let found = docs::search(docs::SearchOptions {
-        query: Some("open"),
-        modules: &["views"],
-        kind: Some(docs::DocKind::Function),
-        limit: Some(5),
-        ..Default::default()
-    })?;
-    gg::log(format!("{} {} {}", found.total, found.offset, found.hits.len()));
-    match docs::close("gg::views::open_text") {
-        Ok(count) => gg::log(format!("closed {count}")),
-        Err(failure) => gg::log(format!("{:?} on {}", failure.code, failure.operation)),
-    }
-    match docs::close_all() {
-        Ok(count) => gg::log(format!("closed {count}")),
-        Err(failure) => gg::log(format!("{:?} on {}", failure.code, failure.operation)),
-    }
-    session::finish("read the file and showed the result")?;
-"####,
-        )),
-        &all_operations_without(CAPABILITY_DOCVIEW_CLOSE),
-        &[],
-        RunEnding::Role(EndingRole::Standard),
-        false,
-        canned_outcome,
-    );
-    let lines = logs(&outcome);
-    // Closing something that is not open is `0` rather than a failure, so a program that tidies up
-    // unconditionally does not have to guard every call.
-    assert_eq!(lines[0], "1 0");
-    assert_eq!(lines[1], "contents of notes.md");
-    // A search hands the program a page it can read in the turn that asked for it — the count, the
-    // echoed offset, and the hits themselves. The double models no catalogue, so the honest page is
-    // an empty one; what this proves is the crossing, which is the half no other test covers on this
-    // arm. The ranking over a real catalogue is `docs::search`'s own to prove.
-    assert_eq!(lines[2], "0 0 0");
-    // Closing documentation is the one part of this family a run buys, and this run did not: the
-    // program is refused by the host under the call's own name rather than by a name that was never
-    // in scope, because a compiled arm cannot withhold a name.
-    assert_eq!(lines[3], "Unavailable on close");
-    assert_eq!(lines[4], "Unavailable on close_all");
-    // Every view the program opened is recorded, the documentation one and the search's own
-    // included — a search puts its page in the window as well as handing it back.
-    assert_eq!(
-        outcome
-            .views_opened
-            .iter()
-            .map(|view| view.selector.as_str())
-            .collect::<Vec<_>>(),
-        ["notes.md", "summary", "read_file", "search results"]
-    );
-    assert!(
-        matches!(
-            outcome.completion.as_ref().map(|completion| &completion.ending),
-            Some(Ending::Finished { summary }) if summary.starts_with("read the file")
-        ),
-        "the ending the program declared: {:?}",
-        outcome.completion
-    );
-
-    // And the same two calls once the run has bought the capability, which is the only way to reach
-    // their answer at all: refused, the count a program reads is never lowered. The double holds no
-    // window, so nothing is open and `0` is the honest number — a success, exactly as it is in
-    // production for a key that is not open.
-    let (granted, _log) = evaluate_closing_docviews(
-        &prepare(&whole(
-            &["docs"],
-            r####"    gg::log(format!("{} {}", docs::close("gg::views::open_text")?, docs::close_all()?));
-"####,
-        )),
-        canned_outcome,
-    );
-    assert_eq!(logs(&granted), ["0 0"]);
-
-    // One read reached gg's dispatch and arrived as `read_file`: the one `views::open_file`
-    // performs. It has no tool name of its own, which is exactly the point — a view is a read gg
-    // also shows.
-    assert_eq!(log.names(), ["read_file"]);
-    assert_eq!(
-        log.args("read_file"),
-        Some(json!({ "path": "notes.md", "offset": 1, "limit": 2 }))
-    );
-}
-
-#[test]
-fn the_program_library_and_a_reviewers_verdict_are_reached_in_rust_too() {
-    // The program library is bound from the CAPABILITY rather than from a tool name, and a reviewer
-    // gets the other ending group. Between this, the two functions above and the alias case below,
-    // every function this arm's catalogue describes has been driven through the real membrane.
-    let (outcome, _log) = evaluate(
-        &prepare(&whole(
-            &["programs", "session"],
-            r####"    let history = programs::history()?;
-    gg::log(history.len().to_string());
-    match programs::get("p2") {
-        Ok(source) => gg::log(source),
-        Err(failure) => gg::log(format!("{:?}", failure.code)),
-    }
-    programs::rerun("gg::log(\"again\");")?;
-    session::request_changes(&["widen the test", "name the file"])?;
-"####,
-        )),
-        &[],
-        &[],
-        RunEnding::Role(EndingRole::Review),
-        true,
-        canned_outcome,
-    );
-    // A session that has run nothing has an empty history — never an error — and an id it never
-    // issued a program under is a `NotFound` the program matches on in Rust's own idiom.
-    assert_eq!(logs(&outcome), ["0", "NotFound"]);
-    assert!(outcome.rerun.is_some(), "the hand-over is recorded");
-    assert!(
-        matches!(
-            outcome.completion.as_ref().map(|completion| &completion.ending),
-            Some(Ending::ChangesRequested { items }) if items.len() == 2
-        ),
-        "the reviewer's verdict, with both items: {:?}",
-        outcome.completion
-    );
-
-    // The other verdict, which is the same role's other ending, and the one call in the surface that
-    // takes nothing at all.
-    let (outcome, _log) = evaluate(
-        &prepare(&whole(&["session"], "    session::approve()?;\n")),
-        &[],
-        &[],
-        RunEnding::Role(EndingRole::Review),
-        false,
-        canned_outcome,
-    );
-    assert!(
-        matches!(
-            outcome
-                .completion
-                .as_ref()
-                .map(|completion| &completion.ending),
-            Some(Ending::Approved)
-        ),
-        "{:?}",
-        outcome.completion
     );
 }
 
@@ -1260,4 +1104,3819 @@ fn dozens_of_large_writes_complete_under_the_default_ceiling() {
         outcome.result
     );
     assert_eq!(log.calls().len(), 48, "every write crossed the membrane");
+}
+
+// ---------------------------------------------------------------------------------------------
+// What a successful call hands a program back, and what a program catches when one fails
+// ---------------------------------------------------------------------------------------------
+
+/// **Compile and run one program under a run that offers everything and fails every call.**
+///
+/// The other half of the [crossing table](crossings): that table is the argument-lowering gate, and
+/// this is the gate on what comes *back*. Every runtime failure a well-typed Rust call can meet is
+/// a `ToolFailure` gg's own tool implementation raises, so the arm's job is to lower it onto an
+/// [`ApiError`](crate::sandbox::membrane) the program can read — under the operation's own name,
+/// carrying gg's own words.
+///
+/// A responder that fails *every* call is the right shape here because each of these programs makes
+/// exactly one, and it keeps a failure test to a program and its assertion.
+fn fails_with(source: &str, failure: ToolFailure, detail: &str) -> (SandboxOutcome, CallLog) {
+    let message = detail.to_string();
+    run_with(
+        source,
+        &all_operations(),
+        move |_name: &str, _args: &Value| ToolOutcome::failed(failure, message.clone()),
+    )
+}
+
+/// **The body of a failure test's program**: make the call, and log the class and the operation of
+/// the failure it came back with.
+///
+/// The `Ok` arm logs rather than panicking so a case that wrongly *succeeded* fails on the assertion
+/// with the reason visible, instead of on a trap the reader has to decode.
+fn caught(call: &str) -> String {
+    let arms = "        Ok(_) => gg::log(\"it succeeded\"),\n        \
+                Err(failure) => gg::log(format!(\"{:?} on {}\", failure.code, failure.operation)),\n    }\n";
+    format!("    match {call} {{\n{arms}")
+}
+
+/// [`caught`], logging the failure's message too — for the cases where gg puts in it the one thing
+/// the program needs to recover: how many times an ambiguous edit matched, which skills do exist.
+fn caught_with_message(call: &str) -> String {
+    let arms = "        Ok(_) => gg::log(\"it succeeded\"),\n        \
+                Err(failure) => gg::log(format!(\"{:?} on {}: {}\", failure.code, failure.operation, failure.message)),\n    }\n";
+    format!("    match {call} {{\n{arms}")
+}
+
+// --- shell -----------------------------------------------------------------------------------
+
+#[test]
+fn a_shell_run_hands_the_program_its_exit_code_and_output() {
+    let (outcome, log) = run_with(
+        &whole(
+            &["shell"],
+            r####"    let ran = shell::run("npm test", Some(5.0))?;
+    gg::log(format!("{:?} {} {}", ran.exit_code, ran.output, ran.truncated));
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["Some(0) ran `npm test` false"]);
+    assert_eq!(
+        log.args("shell"),
+        Some(json!({ "command": "npm test", "timeout_secs": 5.0 }))
+    );
+}
+
+#[test]
+fn a_non_zero_exit_is_a_value_the_program_reads() {
+    // The double answers `ok: false` with a full sidecar and NO failure classification for a command
+    // saying `fail`, which is exactly what the real tool produces for a process that ran and exited
+    // non-zero. The membrane has to turn that back into a value: a failing test suite is a fact to
+    // branch on, not an exception.
+    let (outcome, _log) = run_with(
+        &whole(
+            &["shell"],
+            r####"    let ran = shell::run("npm test || fail", None)?;
+    gg::log(format!("{:?} {}", ran.exit_code, ran.exit_code == Some(0)));
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["Some(1) false"]);
+}
+
+#[test]
+fn a_shell_timeout_reaches_the_program_as_limit_exceeded() {
+    let (outcome, log) = fails_with(
+        &whole(&["shell"], &caught(r#"shell::run("sleep 600", Some(1.0))"#)),
+        ToolFailure::LimitExceeded,
+        "shell: the command was killed after 1s",
+    );
+    assert_eq!(logs(&outcome), ["LimitExceeded on shell"]);
+    assert_eq!(
+        log.args("shell"),
+        Some(json!({ "command": "sleep 600", "timeout_secs": 1.0 }))
+    );
+}
+
+#[test]
+fn a_shell_that_could_not_be_launched_is_an_io_error() {
+    let (outcome, log) = fails_with(
+        &whole(&["shell"], &caught(r#"shell::run("npm test", None)"#)),
+        ToolFailure::IoError,
+        "shell: could not spawn `sh`",
+    );
+    assert_eq!(logs(&outcome), ["IoError on shell"]);
+    // The timeout the program left out is gg's default rather than an absent key: the arm lowers
+    // `None` onto the clamped number the membrane computed, which is what really reached dispatch.
+    assert_eq!(
+        log.args("shell")
+            .and_then(|args| args["command"].as_str().map(str::to_string)),
+        Some("npm test".to_string())
+    );
+}
+
+// --- files -----------------------------------------------------------------------------------
+
+#[test]
+fn a_text_read_hands_the_program_the_text_window() {
+    let (outcome, log) = run_with(
+        &whole(
+            &["files"],
+            r####"    let files::FileRead::Text(file) =
+        files::read_file("notes.md", files::ReadOptions { offset: Some(1), limit: Some(2) })?
+    else {
+        gg::log("the read was a picture");
+        return Ok(());
+    };
+    gg::log(format!(
+        "{} {} {} {} {}",
+        file.contents.replace('\n', "|"), file.first_line, file.last_line, file.total_lines,
+        file.byte_truncated
+    ));
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    assert_eq!(
+        logs(&outcome),
+        ["contents of notes.md|line two| 1 2 2 false"]
+    );
+    assert_eq!(
+        log.args("read_file"),
+        Some(json!({ "path": "notes.md", "offset": 1, "limit": 2 }))
+    );
+}
+
+#[test]
+fn an_image_read_hands_the_program_the_image_variant() {
+    let (outcome, log) = run_with(
+        &whole(
+            &["files"],
+            r####"    match files::read_file("logo.png", files::ReadOptions::default())? {
+        files::FileRead::Image(picture) => gg::log(format!(
+            "{} {} {} {} {:?}",
+            picture.media_type, picture.label, picture.bytes, picture.shown,
+            picture.not_shown_reason
+        )),
+        files::FileRead::Text(_) => gg::log("the read was text"),
+    }
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    // The bytes never enter the program: what a read hands over is gg's description of the picture.
+    // `shown` is `false` and the reason says why — a bare `read_file` places nothing in the window,
+    // so the recovery named in the reason is the call that does, spelled this arm's way.
+    assert_eq!(
+        logs(&outcome),
+        [
+            "image/png PNG 1234 false Some(\"`gg::files::read_file` does not show images; open one \
+             with `gg::views::open_file(path)`\")"
+        ]
+    );
+    assert_eq!(
+        log.args("read_file"),
+        Some(json!({ "path": "logo.png", "offset": null, "limit": null }))
+    );
+}
+
+#[test]
+fn a_write_hands_the_program_the_byte_count() {
+    let (outcome, log) = run_with(
+        &whole(
+            &["files"],
+            r####"    let written = files::write_file("out.txt", "hello")?;
+    gg::log(written.to_string());
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    assert_eq!(
+        logs(&outcome),
+        ["5"],
+        "the count is UTF-8 bytes, not characters"
+    );
+    assert_eq!(
+        log.args("write_file"),
+        Some(json!({ "path": "out.txt", "contents": "hello" }))
+    );
+}
+
+#[test]
+fn an_empty_write_path_is_an_argument_error() {
+    let (outcome, log) = fails_with(
+        &whole(&["files"], &caught(r#"files::write_file("", "hello")"#)),
+        ToolFailure::InvalidArgument,
+        "write_file: `path` must not be empty",
+    );
+    assert_eq!(logs(&outcome), ["InvalidArgument on write_file"]);
+    // The refusal is gg's tool's; what is claimed here is that the empty path the program wrote
+    // really crossed, and came back as a code the program can read under the call's own name.
+    assert_eq!(
+        log.args("write_file"),
+        Some(json!({ "path": "", "contents": "hello" }))
+    );
+}
+
+#[test]
+fn a_write_that_failed_is_an_io_error() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["files"],
+            &caught(r#"files::write_file("out/a.txt", "hello")"#),
+        ),
+        ToolFailure::IoError,
+        "write_file: could not create `out`: permission denied",
+    );
+    assert_eq!(logs(&outcome), ["IoError on write_file"]);
+    assert_eq!(
+        log.args("write_file"),
+        Some(json!({ "path": "out/a.txt", "contents": "hello" }))
+    );
+}
+
+#[test]
+fn an_edit_that_matched_once_returns_to_its_program() {
+    let (outcome, log) = run_with(
+        &whole(
+            &["files"],
+            r####"    files::edit_file("src/a.rs", "alpha", "beta")?;
+    gg::log("edited");
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    // An edit hands back nothing at all — `Result<(), ApiError>` — so what a program reads is that
+    // it carried on, which is the one thing the unit return has to mean.
+    assert_eq!(logs(&outcome), ["edited"]);
+    assert_eq!(
+        log.args("edit_file"),
+        Some(json!({ "path": "src/a.rs", "old_string": "alpha", "new_string": "beta" }))
+    );
+}
+
+#[test]
+fn an_edit_whose_text_is_absent_is_not_found() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["files"],
+            &caught(r#"files::edit_file("src/a.rs", "gamma", "delta")"#),
+        ),
+        ToolFailure::NotFound,
+        "edit_file: `gamma` does not appear in `src/a.rs`",
+    );
+    assert_eq!(logs(&outcome), ["NotFound on edit_file"]);
+    assert_eq!(
+        log.args("edit_file"),
+        Some(json!({ "path": "src/a.rs", "old_string": "gamma", "new_string": "delta" }))
+    );
+}
+
+#[test]
+fn an_edit_whose_text_repeats_is_a_conflict_carrying_the_count() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["files"],
+            &caught_with_message(r#"files::edit_file("src/a.rs", "alpha", "beta")"#),
+        ),
+        ToolFailure::Conflict,
+        "edit_file: `alpha` appears 3 times in `src/a.rs`; make it unique",
+    );
+    // The count is the recovery: a program that reads it knows to widen `old_string` rather than to
+    // retry the same edit, so the detail has to survive the crossing rather than be flattened away.
+    assert_eq!(
+        logs(&outcome),
+        ["Conflict on edit_file: edit_file: `alpha` appears 3 times in `src/a.rs`; make it unique"]
+    );
+    assert_eq!(
+        log.args("edit_file"),
+        Some(json!({ "path": "src/a.rs", "old_string": "alpha", "new_string": "beta" }))
+    );
+}
+
+#[test]
+fn a_listing_hands_the_program_its_entries_and_their_kinds() {
+    let (outcome, log) = run_with(
+        &whole(
+            &["files"],
+            r####"    for entry in files::list_dir(Some("src"))? {
+        gg::log(format!("{} {:?}", entry.name, entry.kind));
+    }
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    assert_eq!(
+        logs(&outcome),
+        ["a.ts File", "b.test.ts File", "sub Directory"],
+        "an entry is a name and a kind, not a line of rendered text"
+    );
+    assert_eq!(log.args("list_dir"), Some(json!({ "path": "src" })));
+}
+
+#[test]
+fn an_omitted_listing_path_lists_the_root() {
+    let (outcome, log) = run_with(
+        &whole(
+            &["files"],
+            r####"    gg::log(files::list_dir(None)?.len().to_string());
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["3"]);
+    // `None` crosses as the wire's own absence rather than as an empty string, which is the one
+    // thing that separates "list the workspace root" from the argument error below it.
+    assert_eq!(log.args("list_dir"), Some(json!({ "path": null })));
+}
+
+#[test]
+fn an_empty_directory_is_an_empty_list() {
+    let (outcome, _log) = run_with(
+        &whole(
+            &["files"],
+            r####"    let entries = files::list_dir(Some("empty"))?;
+    gg::log(format!("{} {}", entries.len(), entries.is_empty()));
+"####,
+        ),
+        &all_operations(),
+        |name: &str, _args: &Value| {
+            assert_eq!(name, "list_dir");
+            ToolOutcome::ok("", "0 entries").with_data(ApiData::DirEntries(Vec::new()))
+        },
+    );
+    // Nothing in the directory is a `Vec` with nothing in it, never a `NotFound` — so a program that
+    // walks a tree does not have to treat an empty leaf as an error.
+    assert_eq!(logs(&outcome), ["0 true"]);
+}
+
+#[test]
+fn a_listing_of_a_directory_that_is_not_there_is_not_found() {
+    let (outcome, log) = fails_with(
+        &whole(&["files"], &caught(r#"files::list_dir(Some("gone"))"#)),
+        ToolFailure::NotFound,
+        "list_dir: no such directory: gone",
+    );
+    assert_eq!(logs(&outcome), ["NotFound on list_dir"]);
+    assert_eq!(log.args("list_dir"), Some(json!({ "path": "gone" })));
+}
+
+#[test]
+fn a_listing_path_that_is_given_but_empty_is_an_argument_error() {
+    let (outcome, log) = fails_with(
+        &whole(&["files"], &caught(r#"files::list_dir(Some(""))"#)),
+        ToolFailure::InvalidArgument,
+        "list_dir: `path` was given but empty",
+    );
+    assert_eq!(logs(&outcome), ["InvalidArgument on list_dir"]);
+    // `Some("")` and `None` are two different calls in this arm's types, and they cross as two
+    // different arguments: the empty string reaches dispatch and is refused there.
+    assert_eq!(log.args("list_dir"), Some(json!({ "path": "" })));
+}
+
+#[test]
+fn a_tree_hands_the_program_its_rendering() {
+    let (outcome, log) = run_with(
+        &whole(
+            &["files"],
+            r####"    let rendered = files::tree(files::TreeOptions { path: Some("src"), depth: Some(3) })?;
+    gg::log(rendered);
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    // One block of text, indentation and trailing `/` included: a tree is rendered by gg and handed
+    // over whole, not a structure the program reassembles.
+    assert_eq!(logs(&outcome), ["a.ts\nb.test.ts\nsub/\n  c.ts"]);
+    assert_eq!(log.args("tree"), Some(json!({ "path": "src", "depth": 3 })));
+}
+
+#[test]
+fn a_tree_of_a_path_that_is_not_there_is_not_found() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["files"],
+            &caught(
+                r#"files::tree(files::TreeOptions { path: Some("gone"), ..Default::default() })"#,
+            ),
+        ),
+        ToolFailure::NotFound,
+        "tree: no such path: gone",
+    );
+    assert_eq!(logs(&outcome), ["NotFound on tree"]);
+    assert_eq!(
+        log.args("tree"),
+        Some(json!({ "path": "gone", "depth": null }))
+    );
+}
+
+#[test]
+fn a_tree_rooted_at_a_file_is_an_argument_error() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["files"],
+            &caught(
+                r#"files::tree(files::TreeOptions { path: Some("src/a.ts"), ..Default::default() })"#,
+            ),
+        ),
+        ToolFailure::InvalidArgument,
+        "tree: `src/a.ts` is a file, not a directory",
+    );
+    assert_eq!(logs(&outcome), ["InvalidArgument on tree"]);
+    assert_eq!(
+        log.args("tree"),
+        Some(json!({ "path": "src/a.ts", "depth": null }))
+    );
+}
+
+#[test]
+fn a_tree_depth_of_zero_is_an_argument_error() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["files"],
+            &caught(r#"files::tree(files::TreeOptions { depth: Some(0), ..Default::default() })"#),
+        ),
+        ToolFailure::InvalidArgument,
+        "tree: `depth` must be at least 1",
+    );
+    assert_eq!(logs(&outcome), ["InvalidArgument on tree"]);
+    // A NEGATIVE depth is not a case this arm has — `Option<u32>` makes it a compile error — but a
+    // zero is well-typed, so it is gg's to refuse and this arm's to lower back.
+    assert_eq!(log.args("tree"), Some(json!({ "path": null, "depth": 0 })));
+}
+
+#[test]
+fn a_search_hands_the_program_its_matches() {
+    let (outcome, log) = run_with(
+        &whole(
+            &["files"],
+            r####"    for found in files::search("answer", files::SearchOptions { path: Some("src"), limit: Some(10) })? {
+        gg::log(format!("{} {} {}", found.path, found.line, found.text));
+    }
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["src/a.ts 3 const answer = 42;"]);
+    assert_eq!(
+        log.args("search"),
+        Some(json!({ "query": "answer", "path": "src", "limit": 10 }))
+    );
+}
+
+#[test]
+fn a_search_that_matched_nothing_is_an_empty_list() {
+    let (outcome, _log) = run_with(
+        &whole(
+            &["files"],
+            r####"    let found = files::search("nothing", files::SearchOptions::default())?;
+    gg::log(format!("{} {}", found.len(), found.is_empty()));
+"####,
+        ),
+        &all_operations(),
+        |name: &str, _args: &Value| {
+            assert_eq!(name, "search");
+            ToolOutcome::ok("", "0 matches").with_data(ApiData::SearchMatches(Vec::new()))
+        },
+    );
+    assert_eq!(logs(&outcome), ["0 true"]);
+}
+
+#[test]
+fn a_blank_search_query_is_an_argument_error() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["files"],
+            &caught(r#"files::search("   ", files::SearchOptions::default())"#),
+        ),
+        ToolFailure::InvalidArgument,
+        "search: `query` must not be blank",
+    );
+    assert_eq!(logs(&outcome), ["InvalidArgument on search"]);
+    assert_eq!(
+        log.args("search"),
+        Some(json!({ "query": "   ", "path": null, "limit": null }))
+    );
+}
+
+#[test]
+fn a_search_pattern_that_does_not_parse_is_an_argument_error() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["files"],
+            &caught(r#"files::search("(unclosed", files::SearchOptions::default())"#),
+        ),
+        ToolFailure::InvalidArgument,
+        "search: `(unclosed` is not a valid regular expression: unclosed group",
+    );
+    assert_eq!(logs(&outcome), ["InvalidArgument on search"]);
+    // A pattern is a string in every arm, so this is one of the few argument errors Rust's types
+    // cannot remove: it is a runtime refusal here exactly as it is everywhere else.
+    assert_eq!(
+        log.args("search"),
+        Some(json!({ "query": "(unclosed", "path": null, "limit": null }))
+    );
+}
+
+#[test]
+fn a_search_limit_of_zero_is_an_argument_error() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["files"],
+            &caught(
+                r#"files::search("answer", files::SearchOptions { limit: Some(0), ..Default::default() })"#,
+            ),
+        ),
+        ToolFailure::InvalidArgument,
+        "search: `limit` must be at least 1",
+    );
+    assert_eq!(logs(&outcome), ["InvalidArgument on search"]);
+    assert_eq!(
+        log.args("search"),
+        Some(json!({ "query": "answer", "path": null, "limit": 0 }))
+    );
+}
+
+#[test]
+fn a_search_path_that_is_not_there_is_not_found() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["files"],
+            &caught(
+                r#"files::search("answer", files::SearchOptions { path: Some("gone"), ..Default::default() })"#,
+            ),
+        ),
+        ToolFailure::NotFound,
+        "search: no such path: gone",
+    );
+    assert_eq!(logs(&outcome), ["NotFound on search"]);
+    assert_eq!(
+        log.args("search"),
+        Some(json!({ "query": "answer", "path": "gone", "limit": null }))
+    );
+}
+
+// --- skills ----------------------------------------------------------------------------------
+
+#[test]
+fn a_skill_read_hands_the_program_the_skill_body() {
+    let (outcome, log) = run_with(
+        &whole(
+            &["skills"],
+            r####"    gg::log(skills::read_skill("testing")?);
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["the skill body"]);
+    assert_eq!(log.args("read_skill"), Some(json!({ "name": "testing" })));
+}
+
+#[test]
+fn an_unknown_skill_names_the_skills_that_exist() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["skills"],
+            &caught_with_message(r#"skills::read_skill("nope")"#),
+        ),
+        ToolFailure::NotFound,
+        "read_skill: no skill named `nope`; available skills: testing",
+    );
+    // The recovery is in the message: the list of names that do exist, which is what gg's own tool
+    // puts there and what a program has to be able to read back to ask for a real one.
+    let line = &logs(&outcome)[0];
+    assert!(line.starts_with("NotFound on read_skill: "), "{line}");
+    assert!(line.contains("available skills"), "{line}");
+    assert_eq!(log.args("read_skill"), Some(json!({ "name": "nope" })));
+}
+
+// --- memories --------------------------------------------------------------------------------
+
+#[test]
+fn a_written_memory_hands_the_program_the_usage_after_it() {
+    let (outcome, log) = run_with(
+        &whole(
+            &["memories"],
+            r####"    let usage = memories::write_memory("layout", "where things are", "the crate map",
+                                       memories::MemoryOptions::default())?;
+    gg::log(format!("{} {:?} {}", usage.count, usage.max_count, usage.total_chars));
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["1 Some(8) 12"]);
+    assert_eq!(
+        log.args("write_memory"),
+        Some(json!({ "name": "layout", "description": "where things are",
+                     "body": "the crate map", "code": null, "onUse": null }))
+    );
+}
+
+#[test]
+fn a_duplicate_memory_name_is_a_conflict() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["memories"],
+            &caught(
+                r#"memories::write_memory("layout", "d", "b", memories::MemoryOptions::default())"#,
+            ),
+        ),
+        ToolFailure::Conflict,
+        "write_memory: a memory named `layout` already exists",
+    );
+    assert_eq!(logs(&outcome), ["Conflict on write_memory"]);
+    assert_eq!(
+        log.args("write_memory"),
+        Some(json!({ "name": "layout", "description": "d", "body": "b",
+                     "code": null, "onUse": null }))
+    );
+}
+
+#[test]
+fn a_memory_body_over_the_cap_is_limit_exceeded() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["memories"],
+            &caught(
+                r#"memories::write_memory("layout", "d", "b", memories::MemoryOptions::default())"#,
+            ),
+        ),
+        ToolFailure::LimitExceeded,
+        "write_memory: the body would take this run past its 4000-character budget",
+    );
+    assert_eq!(logs(&outcome), ["LimitExceeded on write_memory"]);
+    assert_eq!(
+        log.args("write_memory"),
+        Some(json!({ "name": "layout", "description": "d", "body": "b",
+                     "code": null, "onUse": null }))
+    );
+}
+
+#[test]
+fn an_updated_memory_hands_the_program_the_usage_after_it() {
+    let (outcome, log) = run_with(
+        &whole(
+            &["memories"],
+            r####"    let usage = memories::update_memory("layout", "d2", "b2",
+                                        memories::MemoryOptions::default())?;
+    gg::log(format!("{} {:?} {}", usage.count, usage.max_count, usage.total_chars));
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["1 Some(8) 12"]);
+    assert_eq!(
+        log.args("update_memory"),
+        Some(json!({ "name": "layout", "description": "d2", "body": "b2",
+                     "code": null, "onUse": null }))
+    );
+}
+
+#[test]
+fn an_update_of_a_memory_that_is_not_there_is_not_found() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["memories"],
+            &caught(
+                r#"memories::update_memory("gone", "d", "b", memories::MemoryOptions::default())"#,
+            ),
+        ),
+        ToolFailure::NotFound,
+        "update_memory: no memory named `gone`",
+    );
+    assert_eq!(logs(&outcome), ["NotFound on update_memory"]);
+    assert_eq!(
+        log.args("update_memory"),
+        Some(json!({ "name": "gone", "description": "d", "body": "b",
+                     "code": null, "onUse": null }))
+    );
+}
+
+#[test]
+fn a_created_memory_hands_the_program_the_usage_after_it() {
+    let (outcome, log) = run_with(
+        &whole(
+            &["memories"],
+            r####"    let usage = memories::create_memory("layout", "where things are", "the crate map",
+                                        memories::MemoryOptions {
+                                            code: Some("pub fn one() -> i32 { 1 }"),
+                                            ..Default::default()
+                                        })?;
+    gg::log(format!("{} {:?} {}", usage.count, usage.max_count, usage.total_chars));
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["1 Some(8) 12"]);
+    // The code half is not context and counts against no body limit, so the usage it comes back
+    // with is the prose's alone — and the wire key for the body here is `contents`, not `body`.
+    assert_eq!(
+        log.args("create_memory"),
+        Some(json!({ "name": "layout", "description": "where things are",
+                     "contents": "the crate map", "code": "pub fn one() -> i32 { 1 }",
+                     "onUse": null }))
+    );
+}
+
+#[test]
+fn a_blank_field_on_a_new_memory_is_an_argument_error() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["memories"],
+            &caught(
+                r#"memories::create_memory("layout", "", "b", memories::MemoryOptions::default())"#,
+            ),
+        ),
+        ToolFailure::InvalidArgument,
+        "create_memory: `description` must not be blank",
+    );
+    assert_eq!(logs(&outcome), ["InvalidArgument on create_memory"]);
+    assert_eq!(
+        log.args("create_memory"),
+        Some(
+            json!({ "name": "layout", "description": "", "contents": "b",
+                     "code": null, "onUse": null })
+        )
+    );
+}
+
+#[test]
+fn a_slug_a_name_may_not_hold_is_an_argument_error() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["memories"],
+            &caught(
+                r#"memories::create_memory("my layout!", "d", "b", memories::MemoryOptions::default())"#,
+            ),
+        ),
+        ToolFailure::InvalidArgument,
+        "create_memory: `my layout!` is not a slug: letters, digits, `-`, `_` and `.` only",
+    );
+    assert_eq!(logs(&outcome), ["InvalidArgument on create_memory"]);
+    assert_eq!(
+        log.args("create_memory"),
+        Some(
+            json!({ "name": "my layout!", "description": "d", "contents": "b",
+                     "code": null, "onUse": null })
+        )
+    );
+}
+
+#[test]
+fn a_duplicate_memory_slug_is_a_conflict() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["memories"],
+            &caught(
+                r#"memories::create_memory("layout", "d", "b", memories::MemoryOptions::default())"#,
+            ),
+        ),
+        ToolFailure::Conflict,
+        "create_memory: a memory named `layout` already exists",
+    );
+    assert_eq!(logs(&outcome), ["Conflict on create_memory"]);
+    assert_eq!(
+        log.args("create_memory"),
+        Some(
+            json!({ "name": "layout", "description": "d", "contents": "b",
+                     "code": null, "onUse": null })
+        )
+    );
+}
+
+#[test]
+fn a_new_memory_over_a_limit_is_limit_exceeded() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["memories"],
+            &caught(
+                r#"memories::create_memory("layout", "d", "b", memories::MemoryOptions::default())"#,
+            ),
+        ),
+        ToolFailure::LimitExceeded,
+        "create_memory: the index entry would take this run past its index budget",
+    );
+    assert_eq!(logs(&outcome), ["LimitExceeded on create_memory"]);
+    assert_eq!(
+        log.args("create_memory"),
+        Some(
+            json!({ "name": "layout", "description": "d", "contents": "b",
+                     "code": null, "onUse": null })
+        )
+    );
+}
+
+#[test]
+fn a_memory_read_hands_the_program_its_contents() {
+    let (outcome, log) = run_with(
+        &whole(
+            &["memories"],
+            r####"    gg::log(memories::read_memory("layout")?);
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["the memory contents"]);
+    assert_eq!(log.args("read_memory"), Some(json!({ "name": "layout" })));
+}
+
+#[test]
+fn a_read_of_a_memory_that_is_not_there_is_not_found() {
+    let (outcome, log) = fails_with(
+        &whole(&["memories"], &caught(r#"memories::read_memory("gone")"#)),
+        ToolFailure::NotFound,
+        "read_memory: no memory named `gone`",
+    );
+    assert_eq!(logs(&outcome), ["NotFound on read_memory"]);
+    assert_eq!(log.args("read_memory"), Some(json!({ "name": "gone" })));
+}
+
+#[test]
+fn an_edited_memory_hands_the_program_the_usage_after_it() {
+    let (outcome, log) = run_with(
+        &whole(
+            &["memories"],
+            r####"    let usage = memories::edit_memory("layout", "old", "new")?;
+    gg::log(format!("{} {:?} {}", usage.count, usage.max_count, usage.total_chars));
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["1 Some(8) 12"]);
+    assert_eq!(
+        log.args("edit_memory"),
+        Some(json!({ "name": "layout", "old_string": "old", "new_string": "new" }))
+    );
+}
+
+#[test]
+fn a_memory_edit_whose_text_is_absent_is_not_found() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["memories"],
+            &caught(r#"memories::edit_memory("layout", "gamma", "delta")"#),
+        ),
+        ToolFailure::NotFound,
+        "edit_memory: `gamma` does not appear in `layout`",
+    );
+    assert_eq!(logs(&outcome), ["NotFound on edit_memory"]);
+    assert_eq!(
+        log.args("edit_memory"),
+        Some(json!({ "name": "layout", "old_string": "gamma", "new_string": "delta" }))
+    );
+}
+
+#[test]
+fn a_memory_edit_whose_text_repeats_is_a_conflict() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["memories"],
+            &caught_with_message(r#"memories::edit_memory("layout", "old", "new")"#),
+        ),
+        ToolFailure::Conflict,
+        "edit_memory: `old` appears 2 times in `layout`; make it unique",
+    );
+    assert_eq!(
+        logs(&outcome),
+        ["Conflict on edit_memory: edit_memory: `old` appears 2 times in `layout`; make it unique"]
+    );
+    assert_eq!(
+        log.args("edit_memory"),
+        Some(json!({ "name": "layout", "old_string": "old", "new_string": "new" }))
+    );
+}
+
+#[test]
+fn a_memory_edit_over_the_cap_is_limit_exceeded() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["memories"],
+            &caught(r#"memories::edit_memory("layout", "old", "new")"#),
+        ),
+        ToolFailure::LimitExceeded,
+        "edit_memory: the result would take this run past its 4000-character budget",
+    );
+    assert_eq!(logs(&outcome), ["LimitExceeded on edit_memory"]);
+    assert_eq!(
+        log.args("edit_memory"),
+        Some(json!({ "name": "layout", "old_string": "old", "new_string": "new" }))
+    );
+}
+
+#[test]
+fn a_memory_edit_that_would_empty_it_is_an_argument_error() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["memories"],
+            &caught(r#"memories::edit_memory("layout", "the whole body", "")"#),
+        ),
+        ToolFailure::InvalidArgument,
+        "edit_memory: the edit would leave `layout` empty; delete it instead",
+    );
+    assert_eq!(logs(&outcome), ["InvalidArgument on edit_memory"]);
+    assert_eq!(
+        log.args("edit_memory"),
+        Some(json!({ "name": "layout", "old_string": "the whole body", "new_string": "" }))
+    );
+}
+
+#[test]
+fn a_memory_search_hands_the_program_each_hits_ranking() {
+    let (outcome, log) = run_with(
+        &whole(
+            &["memories"],
+            r####"    for hit in memories::search_memories(&["cargo", "nextest"])? {
+        gg::log(format!("{} {} {} {}", hit.description, hit.matched, hit.occurrences, hit.excerpt));
+    }
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    // The ranking numbers and the window are what let a program choose which hit to read; the hit's
+    // `name` and its `read` alias are driven by the alias test above.
+    assert_eq!(
+        logs(&outcome),
+        ["How to build 2 3 …cargo nextest run --workspace…"]
+    );
+    assert_eq!(
+        log.args("search_memories"),
+        Some(json!({ "keywords": ["cargo", "nextest"] }))
+    );
+}
+
+#[test]
+fn a_memory_search_that_matched_nothing_is_an_empty_list() {
+    let (outcome, _log) = run_with(
+        &whole(
+            &["memories"],
+            r####"    let hits = memories::search_memories(&["nothing"])?;
+    gg::log(format!("{} {}", hits.len(), hits.is_empty()));
+"####,
+        ),
+        &all_operations(),
+        |name: &str, _args: &Value| {
+            assert_eq!(name, "search_memories");
+            ToolOutcome::ok("0 of 1 memories match", "searched memories")
+                .with_data(ApiData::MemoryHits(Vec::new()))
+        },
+    );
+    assert_eq!(logs(&outcome), ["0 true"]);
+}
+
+#[test]
+fn a_memory_search_of_empty_keywords_is_an_argument_error() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["memories"],
+            &caught(r#"memories::search_memories(&["", "   "])"#),
+        ),
+        ToolFailure::InvalidArgument,
+        "search_memories: every keyword was empty",
+    );
+    assert_eq!(logs(&outcome), ["InvalidArgument on search_memories"]);
+    assert_eq!(
+        log.args("search_memories"),
+        Some(json!({ "keywords": ["", "   "] }))
+    );
+}
+
+#[test]
+fn a_deleted_memory_hands_the_program_the_usage_after_it() {
+    let (outcome, log) = run_with(
+        &whole(
+            &["memories"],
+            r####"    let usage = memories::delete_memory("layout")?;
+    gg::log(format!("{} {:?} {}", usage.count, usage.max_count, usage.total_chars));
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["1 Some(8) 12"]);
+    assert_eq!(log.args("delete_memory"), Some(json!({ "name": "layout" })));
+}
+
+#[test]
+fn a_delete_of_a_memory_that_is_not_there_is_not_found() {
+    let (outcome, log) = fails_with(
+        &whole(&["memories"], &caught(r#"memories::delete_memory("gone")"#)),
+        ToolFailure::NotFound,
+        "delete_memory: no memory named `gone`",
+    );
+    assert_eq!(logs(&outcome), ["NotFound on delete_memory"]);
+    assert_eq!(log.args("delete_memory"), Some(json!({ "name": "gone" })));
+}
+
+// --- tasks -----------------------------------------------------------------------------------
+
+#[test]
+fn an_added_task_hands_the_program_the_task_usage() {
+    let (outcome, log) = run_with(
+        &whole(
+            &["tasks"],
+            r####"    let usage = tasks::add_task("t1", "Parse the manifest", tasks::TaskOptions {
+        description: Some("the reader, not the writer"),
+        blocked_by: &["t0"],
+    })?;
+    gg::log(format!("{} {}", usage.count, usage.max_tasks));
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["2 20"]);
+    assert_eq!(
+        log.args("add_task"),
+        Some(json!({ "id": "t1", "title": "Parse the manifest",
+                     "description": "the reader, not the writer", "blockedBy": ["t0"] }))
+    );
+}
+
+#[test]
+fn a_blank_task_id_is_an_argument_error() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["tasks"],
+            &caught(r#"tasks::add_task("", "Parse the manifest", tasks::TaskOptions::default())"#),
+        ),
+        ToolFailure::InvalidArgument,
+        "add_task: `id` must not be blank",
+    );
+    assert_eq!(logs(&outcome), ["InvalidArgument on add_task"]);
+    assert_eq!(
+        log.args("add_task"),
+        Some(json!({ "id": "", "title": "Parse the manifest",
+                     "description": null, "blockedBy": [] }))
+    );
+}
+
+#[test]
+fn a_blank_task_title_is_an_argument_error() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["tasks"],
+            &caught(r#"tasks::add_task("t1", "   ", tasks::TaskOptions::default())"#),
+        ),
+        ToolFailure::InvalidArgument,
+        "add_task: `title` must not be blank",
+    );
+    assert_eq!(logs(&outcome), ["InvalidArgument on add_task"]);
+    assert_eq!(
+        log.args("add_task"),
+        Some(json!({ "id": "t1", "title": "   ", "description": null, "blockedBy": [] }))
+    );
+}
+
+#[test]
+fn a_duplicate_task_id_is_a_conflict() {
+    // The very refusal gg's own store raises, injected here and caught in Rust: what this adds to
+    // the membrane's own test of it is that a compiled program reads the CLASS rather than a string.
+    let (outcome, log) = fails_with(
+        &whole(
+            &["tasks"],
+            &caught(r#"tasks::add_task("t1", "T", tasks::TaskOptions::default())"#),
+        ),
+        ToolFailure::Conflict,
+        "add_task: a task `t1` already exists",
+    );
+    assert_eq!(logs(&outcome), ["Conflict on add_task"]);
+    assert_eq!(
+        log.args("add_task"),
+        Some(json!({ "id": "t1", "title": "T", "description": null, "blockedBy": [] }))
+    );
+}
+
+#[test]
+fn a_task_edge_that_closes_a_cycle_is_a_conflict() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["tasks"],
+            &caught(
+                r#"tasks::add_task("t2", "T", tasks::TaskOptions { blocked_by: &["t1"], ..Default::default() })"#,
+            ),
+        ),
+        ToolFailure::Conflict,
+        "add_task: `t1` already waits on `t2`; the edge would close a cycle",
+    );
+    assert_eq!(logs(&outcome), ["Conflict on add_task"]);
+    assert_eq!(
+        log.args("add_task"),
+        Some(json!({ "id": "t2", "title": "T", "description": null, "blockedBy": ["t1"] }))
+    );
+}
+
+#[test]
+fn an_unknown_task_blocker_is_not_found() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["tasks"],
+            &caught(
+                r#"tasks::add_task("t2", "T", tasks::TaskOptions { blocked_by: &["gone"], ..Default::default() })"#,
+            ),
+        ),
+        ToolFailure::NotFound,
+        "add_task: no task `gone` to block on",
+    );
+    assert_eq!(logs(&outcome), ["NotFound on add_task"]);
+    assert_eq!(
+        log.args("add_task"),
+        Some(json!({ "id": "t2", "title": "T", "description": null, "blockedBy": ["gone"] }))
+    );
+}
+
+#[test]
+fn a_task_over_the_cap_is_limit_exceeded() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["tasks"],
+            &caught(r#"tasks::add_task("t21", "T", tasks::TaskOptions::default())"#),
+        ),
+        ToolFailure::LimitExceeded,
+        "add_task: this run allows 20 tasks",
+    );
+    assert_eq!(logs(&outcome), ["LimitExceeded on add_task"]);
+    assert_eq!(
+        log.args("add_task"),
+        Some(json!({ "id": "t21", "title": "T", "description": null, "blockedBy": [] }))
+    );
+}
+
+#[test]
+fn an_updated_task_returns_to_its_program() {
+    let (outcome, log) = run_with(
+        &whole(
+            &["tasks"],
+            r####"    tasks::update_task("t1", tasks::TaskPatch {
+        description: tasks::TextEdit::Clear,
+        status: Some(tasks::TaskStatus::Done),
+        ..Default::default()
+    })?;
+    gg::log("updated");
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["updated"]);
+    // `Clear` is an EMPTY description on the wire, and the title the patch left alone is `null` —
+    // two different absences that a three-way field exists to keep apart.
+    assert_eq!(
+        log.args("update_task"),
+        Some(json!({ "id": "t1", "title": null, "status": "done", "description": "" }))
+    );
+}
+
+#[test]
+fn a_task_patch_with_no_field_is_an_argument_error() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["tasks"],
+            &caught(r#"tasks::update_task("t1", tasks::TaskPatch::default())"#),
+        ),
+        ToolFailure::InvalidArgument,
+        "update_task: at least one field must be supplied",
+    );
+    assert_eq!(logs(&outcome), ["InvalidArgument on update_task"]);
+    // A patch that changes nothing crosses as every key absent, which is what gg refuses on.
+    assert_eq!(
+        log.args("update_task"),
+        Some(json!({ "id": "t1", "title": null, "status": null }))
+    );
+}
+
+#[test]
+fn a_blanked_task_field_is_an_argument_error() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["tasks"],
+            &caught(
+                r#"tasks::update_task("t1", tasks::TaskPatch { title: Some("  "), ..Default::default() })"#,
+            ),
+        ),
+        ToolFailure::InvalidArgument,
+        "update_task: `title` must not be blank",
+    );
+    assert_eq!(logs(&outcome), ["InvalidArgument on update_task"]);
+    assert_eq!(
+        log.args("update_task"),
+        Some(json!({ "id": "t1", "title": "  ", "status": null }))
+    );
+}
+
+#[test]
+fn an_update_of_a_task_that_is_not_there_is_not_found() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["tasks"],
+            &caught(
+                r#"tasks::update_task("gone", tasks::TaskPatch { status: Some(tasks::TaskStatus::InProgress), ..Default::default() })"#,
+            ),
+        ),
+        ToolFailure::NotFound,
+        "update_task: no task `gone`",
+    );
+    assert_eq!(logs(&outcome), ["NotFound on update_task"]);
+    assert_eq!(
+        log.args("update_task"),
+        Some(json!({ "id": "gone", "title": null, "status": "in_progress" }))
+    );
+}
+
+#[test]
+fn a_cleared_task_blocker_list_returns_to_its_program() {
+    let (outcome, log) = run_with(
+        &whole(
+            &["tasks"],
+            r####"    tasks::set_blocked_by("t1", &[])?;
+    gg::log("cleared");
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["cleared"]);
+    assert_eq!(
+        log.args("set_blocked_by"),
+        Some(json!({ "id": "t1", "blockedBy": [] }))
+    );
+}
+
+#[test]
+fn a_blank_id_on_a_task_blocker_list_is_an_argument_error() {
+    let (outcome, log) = fails_with(
+        &whole(&["tasks"], &caught(r#"tasks::set_blocked_by("", &["t0"])"#)),
+        ToolFailure::InvalidArgument,
+        "set_blocked_by: `id` must not be blank",
+    );
+    assert_eq!(logs(&outcome), ["InvalidArgument on set_blocked_by"]);
+    assert_eq!(
+        log.args("set_blocked_by"),
+        Some(json!({ "id": "", "blockedBy": ["t0"] }))
+    );
+}
+
+#[test]
+fn a_blank_blocker_on_a_task_is_an_argument_error() {
+    let (outcome, log) = fails_with(
+        &whole(&["tasks"], &caught(r#"tasks::set_blocked_by("t1", &[""])"#)),
+        ToolFailure::InvalidArgument,
+        "set_blocked_by: a blocker id must not be blank",
+    );
+    assert_eq!(logs(&outcome), ["InvalidArgument on set_blocked_by"]);
+    assert_eq!(
+        log.args("set_blocked_by"),
+        Some(json!({ "id": "t1", "blockedBy": [""] }))
+    );
+}
+
+#[test]
+fn blocking_a_task_that_is_not_there_is_not_found() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["tasks"],
+            &caught(r#"tasks::set_blocked_by("gone", &["t0"])"#),
+        ),
+        ToolFailure::NotFound,
+        "set_blocked_by: no task `gone`",
+    );
+    assert_eq!(logs(&outcome), ["NotFound on set_blocked_by"]);
+    assert_eq!(
+        log.args("set_blocked_by"),
+        Some(json!({ "id": "gone", "blockedBy": ["t0"] }))
+    );
+}
+
+#[test]
+fn a_task_blocker_that_is_not_there_is_not_found() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["tasks"],
+            &caught(r#"tasks::set_blocked_by("t1", &["gone"])"#),
+        ),
+        ToolFailure::NotFound,
+        "set_blocked_by: no task `gone` to block on",
+    );
+    assert_eq!(logs(&outcome), ["NotFound on set_blocked_by"]);
+    assert_eq!(
+        log.args("set_blocked_by"),
+        Some(json!({ "id": "t1", "blockedBy": ["gone"] }))
+    );
+}
+
+#[test]
+fn a_task_blocker_that_closes_a_cycle_is_a_conflict() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["tasks"],
+            &caught(r#"tasks::set_blocked_by("t1", &["t2"])"#),
+        ),
+        ToolFailure::Conflict,
+        "set_blocked_by: `t2` already waits on `t1`; the edge would close a cycle",
+    );
+    assert_eq!(logs(&outcome), ["Conflict on set_blocked_by"]);
+    assert_eq!(
+        log.args("set_blocked_by"),
+        Some(json!({ "id": "t1", "blockedBy": ["t2"] }))
+    );
+}
+
+#[test]
+fn a_task_blocked_on_itself_is_a_conflict() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["tasks"],
+            &caught(r#"tasks::set_blocked_by("t1", &["t1"])"#),
+        ),
+        ToolFailure::Conflict,
+        "set_blocked_by: `t1` cannot block on itself",
+    );
+    assert_eq!(logs(&outcome), ["Conflict on set_blocked_by"]);
+    assert_eq!(
+        log.args("set_blocked_by"),
+        Some(json!({ "id": "t1", "blockedBy": ["t1"] }))
+    );
+}
+
+#[test]
+fn a_completed_task_returns_to_its_program() {
+    let (outcome, log) = run_with(
+        &whole(
+            &["tasks"],
+            r####"    tasks::complete_task("t1")?;
+    gg::log("completed");
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["completed"]);
+    assert_eq!(log.args("complete_task"), Some(json!({ "id": "t1" })));
+}
+
+#[test]
+fn completing_a_task_that_is_not_there_is_not_found() {
+    let (outcome, log) = fails_with(
+        &whole(&["tasks"], &caught(r#"tasks::complete_task("gone")"#)),
+        ToolFailure::NotFound,
+        "complete_task: no task `gone`",
+    );
+    assert_eq!(logs(&outcome), ["NotFound on complete_task"]);
+    assert_eq!(log.args("complete_task"), Some(json!({ "id": "gone" })));
+}
+
+#[test]
+fn a_removed_task_hands_the_program_the_usage_after_it() {
+    let (outcome, log) = run_with(
+        &whole(
+            &["tasks"],
+            r####"    let usage = tasks::remove_task("t1")?;
+    gg::log(format!("{} {}", usage.count, usage.max_tasks));
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["2 20"]);
+    assert_eq!(log.args("remove_task"), Some(json!({ "id": "t1" })));
+}
+
+#[test]
+fn removing_a_task_that_is_not_there_is_not_found() {
+    let (outcome, log) = fails_with(
+        &whole(&["tasks"], &caught(r#"tasks::remove_task("gone")"#)),
+        ToolFailure::NotFound,
+        "remove_task: no task `gone`",
+    );
+    assert_eq!(logs(&outcome), ["NotFound on remove_task"]);
+    assert_eq!(log.args("remove_task"), Some(json!({ "id": "gone" })));
+}
+
+// --- board -----------------------------------------------------------------------------------
+
+#[test]
+fn a_created_epic_hands_the_program_its_id_and_usage() {
+    let (outcome, log) = run_with(
+        &whole(
+            &["board"],
+            r####"    let epic = board::create_epic("epc", "The parser", "everything under the parser")?;
+    gg::log(format!("{} {} {}", epic.id, epic.board.issues, epic.board.max_issues));
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    // The id is the board's to mint — the prefix upper-cased — and it comes back beside the budget,
+    // which is what a program needs to decide whether to create the next one.
+    assert_eq!(logs(&outcome), ["EPIC 3 20"]);
+    assert_eq!(
+        log.args("create_epic"),
+        Some(json!({ "prefix": "epc", "title": "The parser",
+                     "description": "everything under the parser" }))
+    );
+}
+
+#[test]
+fn a_prefix_under_three_letters_is_an_argument_error() {
+    let (outcome, log) = fails_with(
+        &whole(&["board"], &caught(r#"board::create_epic("ep", "E", "D")"#)),
+        ToolFailure::InvalidArgument,
+        "create_epic: `prefix` must be 3-6 letters",
+    );
+    assert_eq!(logs(&outcome), ["InvalidArgument on create_epic"]);
+    assert_eq!(
+        log.args("create_epic"),
+        Some(json!({ "prefix": "ep", "title": "E", "description": "D" }))
+    );
+}
+
+#[test]
+fn a_prefix_over_six_letters_is_an_argument_error() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["board"],
+            &caught(r#"board::create_epic("epicical", "E", "D")"#),
+        ),
+        ToolFailure::InvalidArgument,
+        "create_epic: `prefix` must be 3-6 letters",
+    );
+    assert_eq!(logs(&outcome), ["InvalidArgument on create_epic"]);
+    assert_eq!(
+        log.args("create_epic"),
+        Some(json!({ "prefix": "epicical", "title": "E", "description": "D" }))
+    );
+}
+
+#[test]
+fn a_prefix_that_is_not_letters_is_an_argument_error() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["board"],
+            &caught(r#"board::create_epic("ep1", "E", "D")"#),
+        ),
+        ToolFailure::InvalidArgument,
+        "create_epic: `prefix` must be letters only",
+    );
+    assert_eq!(logs(&outcome), ["InvalidArgument on create_epic"]);
+    assert_eq!(
+        log.args("create_epic"),
+        Some(json!({ "prefix": "ep1", "title": "E", "description": "D" }))
+    );
+}
+
+#[test]
+fn a_blank_epic_field_is_an_argument_error() {
+    let (outcome, log) = fails_with(
+        &whole(&["board"], &caught(r#"board::create_epic("epc", "", "D")"#)),
+        ToolFailure::InvalidArgument,
+        "create_epic: `title` must not be blank",
+    );
+    assert_eq!(logs(&outcome), ["InvalidArgument on create_epic"]);
+    assert_eq!(
+        log.args("create_epic"),
+        Some(json!({ "prefix": "epc", "title": "", "description": "D" }))
+    );
+}
+
+#[test]
+fn a_prefix_another_epic_holds_is_a_conflict() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["board"],
+            &caught(r#"board::create_epic("epc", "E", "D")"#),
+        ),
+        ToolFailure::Conflict,
+        "create_epic: an epic `EPC` already exists",
+    );
+    assert_eq!(logs(&outcome), ["Conflict on create_epic"]);
+    assert_eq!(
+        log.args("create_epic"),
+        Some(json!({ "prefix": "epc", "title": "E", "description": "D" }))
+    );
+}
+
+#[test]
+fn an_epic_over_the_cap_is_limit_exceeded() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["board"],
+            &caught(r#"board::create_epic("epc", "E", "D")"#),
+        ),
+        ToolFailure::LimitExceeded,
+        "create_epic: this run allows 4 epics",
+    );
+    assert_eq!(logs(&outcome), ["LimitExceeded on create_epic"]);
+    assert_eq!(
+        log.args("create_epic"),
+        Some(json!({ "prefix": "epc", "title": "E", "description": "D" }))
+    );
+}
+
+#[test]
+fn a_created_issue_hands_the_program_the_board_usage() {
+    let (outcome, log) = run_with(
+        &whole(
+            &["board"],
+            r####"    let issue = board::create_issue("Parse the manifest", "the parser", "the writer",
+                                    "tests pass", "Builder", board::IssueOptions::default())?;
+    gg::log(format!("{} {} {}", issue.id, issue.board.issues, issue.board.max_issues));
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["EPIC-1 3 20"]);
+    assert_eq!(
+        log.args("create_issue"),
+        Some(json!({
+            "title": "Parse the manifest",
+            "description": null,
+            "inScope": "the parser",
+            "outOfScope": "the writer",
+            "completionCriteria": "tests pass",
+            "blockedBy": [],
+            "epicId": null,
+            "agent": "Builder",
+            "reviewers": [],
+        }))
+    );
+}
+
+#[test]
+fn a_blank_issue_field_is_an_argument_error() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["board"],
+            &caught(
+                r#"board::create_issue("I", "", "o", "c", "Builder", board::IssueOptions::default())"#,
+            ),
+        ),
+        ToolFailure::InvalidArgument,
+        "create_issue: `inScope` must not be blank",
+    );
+    assert_eq!(logs(&outcome), ["InvalidArgument on create_issue"]);
+    assert_eq!(
+        log.args("create_issue").map(|args| args["inScope"].clone()),
+        Some(json!(""))
+    );
+}
+
+#[test]
+fn an_agent_this_session_may_not_assign_is_an_argument_error() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["board"],
+            &caught(
+                r#"board::create_issue("I", "s", "o", "c", "Stranger", board::IssueOptions::default())"#,
+            ),
+        ),
+        ToolFailure::InvalidArgument,
+        "create_issue: this session may not assign `Stranger`",
+    );
+    assert_eq!(logs(&outcome), ["InvalidArgument on create_issue"]);
+    assert_eq!(
+        log.args("create_issue").map(|args| args["agent"].clone()),
+        Some(json!("Stranger"))
+    );
+}
+
+#[test]
+fn a_reviewer_this_session_may_not_assign_is_an_argument_error() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["board"],
+            &caught(
+                r#"board::create_issue("I", "s", "o", "c", "Builder", board::IssueOptions { reviewers: &["Stranger"], ..Default::default() })"#,
+            ),
+        ),
+        ToolFailure::InvalidArgument,
+        "create_issue: this session may not assign the reviewer `Stranger`",
+    );
+    assert_eq!(logs(&outcome), ["InvalidArgument on create_issue"]);
+    assert_eq!(
+        log.args("create_issue")
+            .map(|args| args["reviewers"].clone()),
+        Some(json!(["Stranger"]))
+    );
+}
+
+#[test]
+fn an_issue_under_an_epic_that_is_not_there_is_not_found() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["board"],
+            &caught(
+                r#"board::create_issue("I", "s", "o", "c", "Builder", board::IssueOptions { epic_id: Some("GONE"), ..Default::default() })"#,
+            ),
+        ),
+        ToolFailure::NotFound,
+        "create_issue: no epic `GONE`",
+    );
+    assert_eq!(logs(&outcome), ["NotFound on create_issue"]);
+    assert_eq!(
+        log.args("create_issue").map(|args| args["epicId"].clone()),
+        Some(json!("GONE"))
+    );
+}
+
+#[test]
+fn an_issue_blocker_that_is_not_there_is_not_found() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["board"],
+            &caught(
+                r#"board::create_issue("I", "s", "o", "c", "Builder", board::IssueOptions { blocked_by: &["GONE-1"], ..Default::default() })"#,
+            ),
+        ),
+        ToolFailure::NotFound,
+        "create_issue: no issue `GONE-1` to block on",
+    );
+    assert_eq!(logs(&outcome), ["NotFound on create_issue"]);
+    assert_eq!(
+        log.args("create_issue")
+            .map(|args| args["blockedBy"].clone()),
+        Some(json!(["GONE-1"]))
+    );
+}
+
+#[test]
+fn an_issue_over_the_cap_is_limit_exceeded() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["board"],
+            &caught(
+                r#"board::create_issue("I", "s", "o", "c", "Builder", board::IssueOptions::default())"#,
+            ),
+        ),
+        ToolFailure::LimitExceeded,
+        "create_issue: this run allows 20 issues",
+    );
+    assert_eq!(logs(&outcome), ["LimitExceeded on create_issue"]);
+    assert_eq!(
+        log.args("create_issue").map(|args| args["title"].clone()),
+        Some(json!("I"))
+    );
+}
+
+#[test]
+fn an_updated_issue_returns_to_its_program() {
+    let (outcome, log) = run_with(
+        &whole(
+            &["board"],
+            r####"    board::update_issue("EPIC-1", board::IssuePatch {
+        status: Some(board::IssueStatus::Done),
+        epic: board::EpicAssignment::Ungroup,
+        ..Default::default()
+    })?;
+    gg::log("updated");
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["updated"]);
+    // `Ungroup` detaches the issue, which gg's schema spells as the empty string; the description
+    // this patch left at `Keep` is an absent key rather than a `null`.
+    assert_eq!(
+        log.args("update_issue"),
+        Some(json!({
+            "id": "EPIC-1",
+            "title": null,
+            "inScope": null,
+            "outOfScope": null,
+            "completionCriteria": null,
+            "status": "done",
+            "epicId": "",
+        }))
+    );
+}
+
+#[test]
+fn an_issue_patch_with_no_field_is_an_argument_error() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["board"],
+            &caught(r#"board::update_issue("EPIC-1", board::IssuePatch::default())"#),
+        ),
+        ToolFailure::InvalidArgument,
+        "update_issue: at least one field must be supplied",
+    );
+    assert_eq!(logs(&outcome), ["InvalidArgument on update_issue"]);
+    assert_eq!(
+        log.args("update_issue"),
+        Some(json!({
+            "id": "EPIC-1",
+            "title": null,
+            "inScope": null,
+            "outOfScope": null,
+            "completionCriteria": null,
+            "status": null,
+        }))
+    );
+}
+
+#[test]
+fn a_blanked_issue_field_is_an_argument_error() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["board"],
+            &caught(
+                r#"board::update_issue("EPIC-1", board::IssuePatch { in_scope: Some("  "), ..Default::default() })"#,
+            ),
+        ),
+        ToolFailure::InvalidArgument,
+        "update_issue: `inScope` must not be blank",
+    );
+    assert_eq!(logs(&outcome), ["InvalidArgument on update_issue"]);
+    assert_eq!(
+        log.args("update_issue").map(|args| args["inScope"].clone()),
+        Some(json!("  "))
+    );
+}
+
+#[test]
+fn an_update_of_an_issue_that_is_not_there_is_not_found() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["board"],
+            &caught(
+                r#"board::update_issue("GONE-1", board::IssuePatch { status: Some(board::IssueStatus::InProgress), ..Default::default() })"#,
+            ),
+        ),
+        ToolFailure::NotFound,
+        "update_issue: no issue `GONE-1`",
+    );
+    assert_eq!(logs(&outcome), ["NotFound on update_issue"]);
+    assert_eq!(
+        log.args("update_issue").map(|args| args["status"].clone()),
+        Some(json!("in_progress"))
+    );
+}
+
+#[test]
+fn a_patch_naming_an_epic_that_is_not_there_is_not_found() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["board"],
+            &caught(
+                r#"board::update_issue("EPIC-1", board::IssuePatch { epic: board::EpicAssignment::Set("GONE"), ..Default::default() })"#,
+            ),
+        ),
+        ToolFailure::NotFound,
+        "update_issue: no epic `GONE`",
+    );
+    assert_eq!(logs(&outcome), ["NotFound on update_issue"]);
+    // `Set` puts the epic's id on the wire where `Ungroup` puts the empty string, so the id the
+    // program named is what reached dispatch and what gg could not find.
+    assert_eq!(
+        log.args("update_issue").map(|args| args["epicId"].clone()),
+        Some(json!("GONE"))
+    );
+}
+
+#[test]
+fn an_issue_blocker_list_returns_to_its_program() {
+    let (outcome, log) = run_with(
+        &whole(
+            &["board"],
+            r####"    board::set_issue_blocked_by("EPIC-2", &["EPIC-1"])?;
+    gg::log("blocked");
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["blocked"]);
+    assert_eq!(
+        log.args("set_issue_blocked_by"),
+        Some(json!({ "id": "EPIC-2", "blockedBy": ["EPIC-1"] }))
+    );
+}
+
+#[test]
+fn a_blank_id_on_an_issue_blocker_list_is_an_argument_error() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["board"],
+            &caught(r#"board::set_issue_blocked_by("", &["EPIC-1"])"#),
+        ),
+        ToolFailure::InvalidArgument,
+        "set_issue_blocked_by: `id` must not be blank",
+    );
+    assert_eq!(logs(&outcome), ["InvalidArgument on set_issue_blocked_by"]);
+    assert_eq!(
+        log.args("set_issue_blocked_by"),
+        Some(json!({ "id": "", "blockedBy": ["EPIC-1"] }))
+    );
+}
+
+#[test]
+fn a_blank_blocker_on_an_issue_is_an_argument_error() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["board"],
+            &caught(r#"board::set_issue_blocked_by("EPIC-2", &[""])"#),
+        ),
+        ToolFailure::InvalidArgument,
+        "set_issue_blocked_by: a blocker id must not be blank",
+    );
+    assert_eq!(logs(&outcome), ["InvalidArgument on set_issue_blocked_by"]);
+    assert_eq!(
+        log.args("set_issue_blocked_by"),
+        Some(json!({ "id": "EPIC-2", "blockedBy": [""] }))
+    );
+}
+
+#[test]
+fn blocking_an_issue_that_is_not_there_is_not_found() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["board"],
+            &caught(r#"board::set_issue_blocked_by("GONE-1", &["EPIC-1"])"#),
+        ),
+        ToolFailure::NotFound,
+        "set_issue_blocked_by: no issue `GONE-1`",
+    );
+    assert_eq!(logs(&outcome), ["NotFound on set_issue_blocked_by"]);
+    assert_eq!(
+        log.args("set_issue_blocked_by"),
+        Some(json!({ "id": "GONE-1", "blockedBy": ["EPIC-1"] }))
+    );
+}
+
+#[test]
+fn an_issue_blocker_the_board_lacks_is_not_found() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["board"],
+            &caught(r#"board::set_issue_blocked_by("EPIC-2", &["GONE-1"])"#),
+        ),
+        ToolFailure::NotFound,
+        "set_issue_blocked_by: no issue `GONE-1` to block on",
+    );
+    assert_eq!(logs(&outcome), ["NotFound on set_issue_blocked_by"]);
+    assert_eq!(
+        log.args("set_issue_blocked_by"),
+        Some(json!({ "id": "EPIC-2", "blockedBy": ["GONE-1"] }))
+    );
+}
+
+#[test]
+fn an_issue_edge_that_closes_a_cycle_is_a_conflict() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["board"],
+            &caught(r#"board::set_issue_blocked_by("EPIC-1", &["EPIC-2"])"#),
+        ),
+        ToolFailure::Conflict,
+        "set_issue_blocked_by: `EPIC-2` already waits on `EPIC-1`; the edge would close a cycle",
+    );
+    assert_eq!(logs(&outcome), ["Conflict on set_issue_blocked_by"]);
+    assert_eq!(
+        log.args("set_issue_blocked_by"),
+        Some(json!({ "id": "EPIC-1", "blockedBy": ["EPIC-2"] }))
+    );
+}
+
+#[test]
+fn an_issue_blocked_on_itself_is_a_conflict() {
+    let (outcome, log) = fails_with(
+        &whole(
+            &["board"],
+            &caught(r#"board::set_issue_blocked_by("EPIC-1", &["EPIC-1"])"#),
+        ),
+        ToolFailure::Conflict,
+        "set_issue_blocked_by: `EPIC-1` cannot block on itself",
+    );
+    assert_eq!(logs(&outcome), ["Conflict on set_issue_blocked_by"]);
+    assert_eq!(
+        log.args("set_issue_blocked_by"),
+        Some(json!({ "id": "EPIC-1", "blockedBy": ["EPIC-1"] }))
+    );
+}
+
+#[test]
+fn a_removed_epic_hands_the_program_the_usage_after_it() {
+    let (outcome, log) = run_with(
+        &whole(
+            &["board"],
+            r####"    let usage = board::remove_epic("EPIC")?;
+    gg::log(format!("{} {} {} {}", usage.epics, usage.max_epics, usage.issues, usage.max_issues));
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    // A removal hands back the budget and no id: the epic's issues survive it ungrouped, so the
+    // issue count is the number a program reads to know nothing else went with it.
+    assert_eq!(logs(&outcome), ["1 4 3 20"]);
+    assert_eq!(log.args("remove_epic"), Some(json!({ "id": "EPIC" })));
+}
+
+#[test]
+fn removing_an_epic_that_is_not_there_is_not_found() {
+    let (outcome, log) = fails_with(
+        &whole(&["board"], &caught(r#"board::remove_epic("GONE")"#)),
+        ToolFailure::NotFound,
+        "remove_epic: no epic `GONE`",
+    );
+    assert_eq!(logs(&outcome), ["NotFound on remove_epic"]);
+    assert_eq!(log.args("remove_epic"), Some(json!({ "id": "GONE" })));
+}
+
+#[test]
+fn a_removed_issue_hands_the_program_the_usage_after_it() {
+    let (outcome, log) = run_with(
+        &whole(
+            &["board"],
+            r####"    let usage = board::remove_issue("EPIC-1")?;
+    gg::log(format!("{} {}", usage.issues, usage.max_issues));
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["3 20"]);
+    assert_eq!(log.args("remove_issue"), Some(json!({ "id": "EPIC-1" })));
+}
+
+#[test]
+fn removing_an_issue_that_is_not_there_is_not_found() {
+    let (outcome, log) = fails_with(
+        &whole(&["board"], &caught(r#"board::remove_issue("GONE-1")"#)),
+        ToolFailure::NotFound,
+        "remove_issue: no issue `GONE-1`",
+    );
+    assert_eq!(logs(&outcome), ["NotFound on remove_issue"]);
+    assert_eq!(log.args("remove_issue"), Some(json!({ "id": "GONE-1" })));
+}
+
+#[test]
+fn a_registered_wait_does_not_stop_the_program() {
+    // The surprising half of the call, and the one a model gets wrong: nothing blocks INSIDE the
+    // program. The wait is registered, the call returns gg's acknowledgement at once, and the rest
+    // of the program runs — the suspension happens after the turn ends.
+    let (outcome, log) = run_with(
+        &whole(
+            &["board"],
+            r####"    gg::log("before the wait");
+    gg::log(board::wait_for_issue("EPIC-1")?);
+    gg::log("after the wait");
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    assert_eq!(
+        logs(&outcome),
+        ["before the wait", "wait registered", "after the wait"],
+        "a registered wait suspended the program instead of returning to it"
+    );
+    assert_eq!(log.names(), ["wait_for_issue"]);
+    assert_eq!(
+        log.args("wait_for_issue"),
+        Some(json!({ "issueId": "EPIC-1" }))
+    );
+}
+
+#[test]
+fn a_blank_wait_id_is_an_argument_error() {
+    let (outcome, log) = fails_with(
+        &whole(&["board"], &caught(r#"board::wait_for_issue("")"#)),
+        ToolFailure::InvalidArgument,
+        "wait_for_issue: `issueId` must not be blank",
+    );
+    assert_eq!(logs(&outcome), ["InvalidArgument on wait_for_issue"]);
+    assert_eq!(log.args("wait_for_issue"), Some(json!({ "issueId": "" })));
+}
+
+#[test]
+fn waiting_on_this_sessions_own_issue_is_an_argument_error() {
+    let (outcome, log) = fails_with(
+        &whole(&["board"], &caught(r#"board::wait_for_issue("EPIC-1")"#)),
+        ToolFailure::InvalidArgument,
+        "wait_for_issue: `EPIC-1` is the issue this session was assigned",
+    );
+    assert_eq!(logs(&outcome), ["InvalidArgument on wait_for_issue"]);
+    assert_eq!(
+        log.args("wait_for_issue"),
+        Some(json!({ "issueId": "EPIC-1" }))
+    );
+}
+
+#[test]
+fn waiting_on_an_issue_that_is_not_there_is_not_found() {
+    let (outcome, log) = fails_with(
+        &whole(&["board"], &caught(r#"board::wait_for_issue("GONE-1")"#)),
+        ToolFailure::NotFound,
+        "wait_for_issue: no issue `GONE-1`",
+    );
+    assert_eq!(logs(&outcome), ["NotFound on wait_for_issue"]);
+    assert_eq!(
+        log.args("wait_for_issue"),
+        Some(json!({ "issueId": "GONE-1" }))
+    );
+}
+
+#[test]
+fn waiting_without_a_board_is_unavailable() {
+    // The one failure of the six modules that no responder can produce, because the membrane refuses
+    // it before a responder is reached: a run with no board withholds the call, and a compiled arm
+    // cannot withhold the NAME, so the program compiles and the host refuses it.
+    let (outcome, log) = run_with(
+        &whole(&["board"], &caught(r#"board::wait_for_issue("EPIC-1")"#)),
+        &all_operations_without(CAPABILITY_PROJECT_MANAGEMENT),
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["Unavailable on wait_for_issue"]);
+    assert!(
+        log.names().is_empty(),
+        "a withheld call must not reach gg's dispatch at all"
+    );
+}
+
+// ---------------------------------------------------------------------------------------------
+// The session-side families: what each call leaves behind, and what a program reads when one fails
+// ---------------------------------------------------------------------------------------------
+
+/// Compile and run one program under `ending`'s group, with every operation offered and no library.
+///
+/// The [`run_with`] beside it fixes the ending group at [`None`](RunEnding::None), which is the
+/// right scope for everything that is not an ending — and the wrong one for the three calls that
+/// are, since the group is exactly what binds them.
+fn run_as(source: &str, ending: RunEnding) -> (SandboxOutcome, CallLog) {
+    evaluate(
+        &prepare(source),
+        &all_operations(),
+        &[],
+        ending,
+        false,
+        canned_outcome,
+    )
+}
+
+/// Compile and run one program for an agent that **keeps a program library**, granting nothing else.
+///
+/// The library is a scope flag rather than an entry in the allowlist, so it is the one thing a
+/// `programs` case cannot express by naming operations — see
+/// [`granted_operations`](crate::sandbox::fake::granted_operations).
+fn run_with_library(source: &str) -> (SandboxOutcome, CallLog) {
+    evaluate(
+        &prepare(source),
+        &[],
+        &[],
+        RunEnding::None,
+        true,
+        canned_outcome,
+    )
+}
+
+/// A view or documentation refusal the [double](crate::sandbox::fake::FakeOperationApi) is armed
+/// with, for the failures the api raises rather than a tool.
+fn refusal(failure: ToolFailure, message: &str) -> ViewRefusal {
+    ViewRefusal {
+        failure,
+        message: message.to_string(),
+    }
+}
+
+// --- context ---------------------------------------------------------------------------------
+
+#[test]
+fn an_evicted_file_view_hands_the_program_the_reclaim_report() {
+    let (outcome, log) = run_with(
+        &whole(
+            &["context"],
+            r####"    let freed = context::evict_file_view(Some("src/a.ts"))?;
+    gg::log(format!("{} {} {:?} {}", freed.items, freed.reclaimed_tokens, freed.paths, freed.detail));
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), [r#"2 300 ["src/a.ts"] dropped 2 items"#]);
+    assert_eq!(
+        log.args("evict_file_view"),
+        Some(json!({ "path": "src/a.ts" }))
+    );
+}
+
+#[test]
+fn evicting_every_file_view_is_an_absent_path_rather_than_a_list() {
+    // `None` is the whole of how a program says "all of them": there is no second call and no
+    // sentinel path, so a lowering that sent an empty string instead would drop nothing and report
+    // success.
+    let (outcome, log) = run_with(
+        &whole(
+            &["context"],
+            r####"    let freed = context::evict_file_view(None)?;
+    gg::log(freed.detail);
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["dropped 2 items"]);
+    assert_eq!(log.args("evict_file_view"), Some(json!({ "path": null })));
+}
+
+#[test]
+fn an_empty_eviction_path_is_an_argument_error() {
+    let (outcome, _log) = fails_with(
+        &whole(
+            &["context"],
+            &caught(r#"context::evict_file_view(Some(""))"#),
+        ),
+        ToolFailure::InvalidArgument,
+        "`path` must not be empty; omit it to drop every file view",
+    );
+    assert_eq!(logs(&outcome), ["InvalidArgument on evict_file_view"]);
+}
+
+#[test]
+fn an_archived_thread_hands_the_program_the_reclaim_report() {
+    let (outcome, log) = run_with(
+        &whole(
+            &["context"],
+            r####"    let freed = context::archive_thread(&[4..=19, 30..=31])?;
+    gg::log(format!("{} {} {} {}", freed.items, freed.reclaimed_tokens, freed.paths.len(), freed.detail));
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["2 300 1 dropped 2 items"]);
+    assert_eq!(
+        log.args("archive_thread"),
+        Some(json!({ "ranges": [[4, 19], [30, 31]] }))
+    );
+}
+
+#[test]
+fn an_empty_archive_span_list_is_an_argument_error() {
+    let (outcome, _log) = fails_with(
+        &whole(&["context"], &caught("context::archive_thread(&[])")),
+        ToolFailure::InvalidArgument,
+        "`ranges` must name at least one span of turns",
+    );
+    assert_eq!(logs(&outcome), ["InvalidArgument on archive_thread"]);
+}
+
+#[test]
+fn more_archive_spans_than_the_cap_is_an_argument_error() {
+    let spans = "    let spans: Vec<std::ops::RangeInclusive<u32>> =\n        \
+                 (0..64u32).map(|turn| turn..=turn).collect();\n";
+    let (outcome, _log) = fails_with(
+        &whole(
+            &["context"],
+            &format!("{spans}{}", caught("context::archive_thread(&spans)")),
+        ),
+        ToolFailure::InvalidArgument,
+        "at most 16 spans may be archived at once",
+    );
+    assert_eq!(logs(&outcome), ["InvalidArgument on archive_thread"]);
+}
+
+#[test]
+fn an_archive_span_that_ends_before_it_starts_is_an_argument_error() {
+    let (outcome, log) = fails_with(
+        &whole(&["context"], &caught("context::archive_thread(&[19..=4])")),
+        ToolFailure::InvalidArgument,
+        "a span ends before it starts: 19..=4",
+    );
+    assert_eq!(logs(&outcome), ["InvalidArgument on archive_thread"]);
+    // The two ends reached the host the way round the program wrote them, which is the half of this
+    // an arm could get wrong on its own: a lowering that sorted them would turn a program's mistake
+    // into a silently different archive.
+    assert_eq!(
+        log.args("archive_thread"),
+        Some(json!({ "ranges": [[19, 4]] }))
+    );
+}
+
+#[test]
+fn an_archive_search_hands_the_program_each_hits_role_and_text() {
+    let (outcome, log) = run_with(
+        &whole(
+            &["context"],
+            r####"    let found = context::search_archive("the earlier")?;
+    let hit = &found.hits[0];
+    gg::log(format!("{} {} {:?} {}", found.archive_empty, hit.seq, hit.role, hit.text));
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["false 3 Assistant the earlier answer"]);
+    assert_eq!(
+        log.args("search_archive"),
+        Some(json!({ "query": "the earlier" }))
+    );
+}
+
+#[test]
+fn an_empty_archive_is_told_apart_from_a_search_that_matched_nothing() {
+    // The one field that distinguishes them, read on both shapes by one program: an empty answer
+    // alone cannot say whether the archive is empty or the words are not in it, and the recovery is
+    // opposite — archive more, or search for something else.
+    let mut answered = 0u32;
+    let (outcome, _log) = run_with(
+        &whole(
+            &["context"],
+            r####"    for query in ["anything", "nothing"] {
+        let found = context::search_archive(query)?;
+        gg::log(format!("{} {}", found.archive_empty, found.hits.len()));
+    }
+"####,
+        ),
+        &all_operations(),
+        move |_name: &str, _args: &Value| {
+            answered += 1;
+            ToolOutcome::ok("0 hits", "searched").with_data(ApiData::ArchiveSearch(
+                ArchiveSearchData {
+                    archive_empty: answered == 1,
+                    hits: Vec::new(),
+                },
+            ))
+        },
+    );
+    assert_eq!(logs(&outcome), ["true 0", "false 0"]);
+}
+
+#[test]
+fn an_empty_archive_query_is_an_argument_error() {
+    let (outcome, _log) = fails_with(
+        &whole(&["context"], &caught(r#"context::search_archive("")"#)),
+        ToolFailure::InvalidArgument,
+        "`query` must not be empty",
+    );
+    assert_eq!(logs(&outcome), ["InvalidArgument on search_archive"]);
+}
+
+#[test]
+fn a_compaction_is_registered_and_the_program_runs_on() {
+    // The call that would be an exception on any other design: it rewrites the very window the
+    // program is composing into. It returns nothing, the program keeps running, and gg performs the
+    // rewrite once the turn has ended — so what a test can observe is that the program reached its
+    // own last line after making it.
+    let (outcome, log) = run_with(
+        &whole(
+            &["context"],
+            r####"    context::compact("parsed the manifest; the writer is next", &["src/a.ts"])?;
+    gg::log("still running");
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["still running"]);
+    assert_eq!(
+        log.args("compact"),
+        Some(
+            json!({ "summary": "parsed the manifest; the writer is next", "files": ["src/a.ts"] })
+        )
+    );
+}
+
+#[test]
+fn a_blank_compaction_summary_is_an_argument_error() {
+    let (outcome, _log) = fails_with(
+        &whole(&["context"], &caught(r#"context::compact("   ", &[])"#)),
+        ToolFailure::InvalidArgument,
+        "`summary` must not be blank; it is the whole of the restarted window",
+    );
+    assert_eq!(logs(&outcome), ["InvalidArgument on compact"]);
+}
+
+// --- delegation ------------------------------------------------------------------------------
+
+#[test]
+fn a_spawned_child_hands_the_program_its_handle() {
+    let (outcome, log) = run_with(
+        &whole(
+            &["delegation"],
+            r####"    let child = delegation::spawn_subagent("Builder", delegation::Brief::Prompt("take the writer"))?;
+    gg::log(format!("{} {} {}", child.id, child.slot, child.model_id));
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["agent-1 primary test/model"]);
+    assert_eq!(
+        log.args("spawn_subagent"),
+        Some(json!({ "agent": "Builder", "prompt": "take the writer", "issueId": null }))
+    );
+}
+
+#[test]
+fn a_child_briefed_from_an_issue_carries_the_issue_id_and_no_prompt() {
+    // The other arm of `Brief`, and the one an enum could get wrong silently: both variants carry a
+    // string, so a lowering that filled the wrong slot would spawn a child briefed with an issue id
+    // as its whole instructions.
+    let (outcome, log) = run_with(
+        &whole(
+            &["delegation"],
+            r####"    let child = delegation::spawn_subagent("Builder", delegation::Brief::Issue("AUTH-1"))?;
+    gg::log(child.id);
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["agent-1"]);
+    assert_eq!(
+        log.args("spawn_subagent"),
+        Some(json!({ "agent": "Builder", "prompt": null, "issueId": "AUTH-1" }))
+    );
+}
+
+#[test]
+fn a_spawn_at_the_delegation_depth_cap_is_limit_exceeded() {
+    let (outcome, _log) = fails_with(
+        &whole(
+            &["delegation"],
+            &caught(
+                r#"delegation::spawn_subagent("Builder", delegation::Brief::Prompt("take the writer"))"#,
+            ),
+        ),
+        ToolFailure::LimitExceeded,
+        "this session is already 3 levels deep; no further children may be spawned",
+    );
+    assert_eq!(logs(&outcome), ["LimitExceeded on spawn_subagent"]);
+}
+
+#[test]
+fn an_agent_this_session_may_not_spawn_is_an_argument_error() {
+    let (outcome, _log) = fails_with(
+        &whole(
+            &["delegation"],
+            &caught_with_message(
+                r#"delegation::spawn_subagent("Nobody", delegation::Brief::Prompt("take the writer"))"#,
+            ),
+        ),
+        ToolFailure::InvalidArgument,
+        "`Nobody` is not an agent this session may spawn; it may spawn `Builder`",
+    );
+    assert_eq!(
+        logs(&outcome),
+        [
+            "InvalidArgument on spawn_subagent: `Nobody` is not an agent this session may spawn; it may spawn `Builder`"
+        ]
+    );
+}
+
+#[test]
+fn waiting_on_children_hands_the_program_each_result() {
+    let (outcome, log) = run_with(
+        &whole(
+            &["delegation"],
+            r####"    let collected = delegation::wait_for_subagents(Some(&["agent-1"]))?;
+    let first = &collected[0];
+    gg::log(format!("{} {:?} {}", first.id, first.status, first.summary));
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["agent-1 Some(Completed) did the work"]);
+    assert_eq!(
+        log.args("wait_for_subagents"),
+        Some(json!({ "ids": ["agent-1"] }))
+    );
+}
+
+#[test]
+fn waiting_with_no_ids_waits_for_every_outstanding_child() {
+    let (outcome, log) = run_with(
+        &whole(
+            &["delegation"],
+            r####"    let collected = delegation::wait_for_subagents(None)?;
+    gg::log(collected.len().to_string());
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["1"]);
+    assert_eq!(log.args("wait_for_subagents"), Some(json!({ "ids": null })));
+}
+
+#[test]
+fn a_child_that_produced_no_ending_has_no_status() {
+    // The `Option` is the point: a child that never declared an ending is a fact the parent has to
+    // be able to read, and an arm that defaulted it to `Completed` would have the parent believe
+    // work was finished that nobody finished.
+    let (outcome, _log) = run_with(
+        &whole(
+            &["delegation"],
+            r####"    let collected = delegation::wait_for_subagents(Some(&["agent-1"]))?;
+    gg::log(format!("{:?} {:?}", collected[0].status, collected[0].summary));
+"####,
+        ),
+        &all_operations(),
+        |_name: &str, _args: &Value| {
+            ToolOutcome::ok("collected", "collected").with_data(ApiData::SubagentResults(vec![
+                SubagentResultData {
+                    id: "agent-1".to_string(),
+                    status: None,
+                    summary: String::new(),
+                },
+            ]))
+        },
+    );
+    assert_eq!(logs(&outcome), [r#"None """#]);
+}
+
+#[test]
+fn waiting_on_an_id_this_session_did_not_spawn_is_not_found() {
+    let (outcome, _log) = fails_with(
+        &whole(
+            &["delegation"],
+            &caught(r#"delegation::wait_for_subagents(Some(&["agent-9"]))"#),
+        ),
+        ToolFailure::NotFound,
+        "no child was spawned under the id `agent-9`",
+    );
+    assert_eq!(logs(&outcome), ["NotFound on wait_for_subagents"]);
+}
+
+#[test]
+fn a_message_to_a_running_child_is_delivered_and_the_program_runs_on() {
+    let (outcome, log) = run_with(
+        &whole(
+            &["delegation"],
+            r####"    delegation::send_message("agent-1", "prefer the simpler parser")?;
+    gg::log("carried on");
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["carried on"]);
+    assert_eq!(
+        log.args("send_message"),
+        Some(json!({ "agentId": "agent-1", "message": "prefer the simpler parser" }))
+    );
+}
+
+#[test]
+fn a_message_to_an_unknown_agent_is_not_found() {
+    let (outcome, _log) = fails_with(
+        &whole(
+            &["delegation"],
+            &caught(r#"delegation::send_message("agent-9", "look again")"#),
+        ),
+        ToolFailure::NotFound,
+        "no child is running under the id `agent-9`",
+    );
+    assert_eq!(logs(&outcome), ["NotFound on send_message"]);
+}
+
+#[test]
+fn a_message_to_a_child_that_has_returned_is_a_conflict() {
+    // A different class from an unknown id, and the difference is what the program does next: a
+    // child that has returned has a result to collect, so there is nothing to retry and nothing to
+    // correct.
+    let (outcome, _log) = fails_with(
+        &whole(
+            &["delegation"],
+            &caught(r#"delegation::send_message("agent-1", "look again")"#),
+        ),
+        ToolFailure::Conflict,
+        "`agent-1` has already returned; collect its result instead",
+    );
+    assert_eq!(logs(&outcome), ["Conflict on send_message"]);
+}
+
+#[test]
+fn a_state_transition_is_registered_and_the_program_runs_to_its_end() {
+    let (outcome, log) = run_with(
+        &whole(
+            &["delegation"],
+            r####"    delegation::transition_state("review", Some("the parser is done"))?;
+    gg::log("ran to the end");
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["ran to the end"]);
+    assert_eq!(
+        log.args("transition_state"),
+        Some(json!({ "state": "review", "note": "the parser is done" }))
+    );
+}
+
+#[test]
+fn a_state_this_session_may_not_move_to_is_an_argument_error() {
+    let (outcome, _log) = fails_with(
+        &whole(
+            &["delegation"],
+            &caught_with_message(r#"delegation::transition_state("shipping", None)"#),
+        ),
+        ToolFailure::InvalidArgument,
+        "`shipping` is not an edge of the current state; it may move to `review`",
+    );
+    assert_eq!(
+        logs(&outcome),
+        [
+            "InvalidArgument on transition_state: `shipping` is not an edge of the current state; it may move to `review`"
+        ]
+    );
+}
+
+#[test]
+fn a_second_state_transition_in_one_turn_is_refused_and_the_first_stands() {
+    let mut seen = 0u32;
+    let (outcome, log) = run_with(
+        &whole(
+            &["delegation"],
+            &format!(
+                "    delegation::transition_state(\"review\", None)?;\n    gg::log(\"the first stands\");\n{}",
+                caught(r#"delegation::transition_state("writing", None)"#)
+            ),
+        ),
+        &all_operations(),
+        move |_name: &str, _args: &Value| {
+            seen += 1;
+            if seen == 1 {
+                ToolOutcome::ok("moving on once this turn ends", "transition")
+            } else {
+                ToolOutcome::failed(
+                    ToolFailure::Refused,
+                    "this turn has already declared where it goes next".to_string(),
+                )
+            }
+        },
+    );
+    assert_eq!(
+        logs(&outcome),
+        ["the first stands", "Refused on transition_state"]
+    );
+    // The first declaration reached the host with its own target, which is what "the first stands"
+    // means: `CallLog::args` answers with the FIRST call under a name.
+    assert_eq!(
+        log.args("transition_state"),
+        Some(json!({ "state": "review", "note": null }))
+    );
+    assert_eq!(log.names(), ["transition_state", "transition_state"]);
+}
+
+#[test]
+fn a_state_transition_this_run_withheld_is_unavailable() {
+    // The one operation an instance holds rather than a capability, so the grant that withholds it
+    // is a subtraction of one row rather than of a capability's whole family: everything else this
+    // agent may do it still may.
+    let granted: Vec<_> = all_operations()
+        .into_iter()
+        .filter(|id| *id != DELEGATION_TRANSITION_STATE)
+        .collect();
+    let (outcome, log) = run_with(
+        &whole(
+            &["delegation"],
+            &caught_with_message(r#"delegation::transition_state("review", None)"#),
+        ),
+        &granted,
+        canned_outcome,
+    );
+    assert_eq!(
+        logs(&outcome),
+        ["Unavailable on transition_state: `gg::delegation::transition_state` is not available."]
+    );
+    assert!(
+        log.names().is_empty(),
+        "an operation this agent does not hold must not reach gg's dispatch"
+    );
+}
+
+#[test]
+fn an_exec_is_registered_and_the_program_runs_on() {
+    let (outcome, log) = run_with(
+        &whole(
+            &["delegation"],
+            r####"    delegation::exec("Builder", Some("pick it up from here"))?;
+    gg::log("still this agent, for now");
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["still this agent, for now"]);
+    assert_eq!(
+        log.args("exec"),
+        Some(json!({ "agent": "Builder", "prompt": "pick it up from here" }))
+    );
+}
+
+#[test]
+fn an_agent_this_session_may_not_become_is_an_argument_error() {
+    let (outcome, _log) = fails_with(
+        &whole(
+            &["delegation"],
+            &caught_with_message(r#"delegation::exec("Nobody", None)"#),
+        ),
+        ToolFailure::InvalidArgument,
+        "`Nobody` is not an agent this session may become; it may become `Builder`",
+    );
+    assert_eq!(
+        logs(&outcome),
+        [
+            "InvalidArgument on exec: `Nobody` is not an agent this session may become; it may become `Builder`"
+        ]
+    );
+}
+
+#[test]
+fn an_exec_a_machine_driven_session_does_not_hold_is_unavailable() {
+    // A session inside a state machine does not bind `exec` at all: the succession it makes is the
+    // machine's, and the way out of the state is `delegation::transition_state` — which the same
+    // grant still holds, because the two are bound by different things.
+    let (outcome, log) = run_with(
+        &whole(
+            &["delegation"],
+            &caught_with_message(r#"delegation::exec("Builder", None)"#),
+        ),
+        &all_operations_without(CAPABILITY_EXEC),
+        canned_outcome,
+    );
+    assert_eq!(
+        logs(&outcome),
+        ["Unavailable on exec: `gg::delegation::exec` is not available."]
+    );
+    assert!(
+        log.names().is_empty(),
+        "a withheld succession must not reach gg's dispatch"
+    );
+}
+
+#[test]
+fn an_exec_after_a_state_transition_is_refused() {
+    // The two are one succession slot, declared two ways, and the first declaration wins — so a
+    // program that took the machine's edge and then tried to choose its own successor is told the
+    // question is already settled.
+    let (outcome, log) = run_with(
+        &whole(
+            &["delegation"],
+            &format!(
+                "    delegation::transition_state(\"review\", None)?;\n{}",
+                caught(r#"delegation::exec("Builder", None)"#)
+            ),
+        ),
+        &all_operations(),
+        |name: &str, _args: &Value| match name {
+            "exec" => ToolOutcome::failed(
+                ToolFailure::Refused,
+                "this turn has already declared where it goes next".to_string(),
+            ),
+            _ => ToolOutcome::ok("moving on once this turn ends", "transition"),
+        },
+    );
+    assert_eq!(logs(&outcome), ["Refused on exec"]);
+    assert_eq!(log.names(), ["transition_state", "exec"]);
+}
+
+#[test]
+fn a_fork_hands_the_program_the_copys_handle_before_the_copy_has_started() {
+    // The handle is minted at the call and the copy is started when the turn ends, which is what
+    // lets the program name the copy in the very program that made it — and why the id it reads is
+    // a second one rather than this session's own.
+    let (outcome, log) = run_with(
+        &whole(
+            &["delegation"],
+            r####"    let copy = delegation::fork("try the other fix")?;
+    gg::log(format!("{} {} {}", copy.id, copy.slot, copy.model_id));
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["agent-2 primary test/model"]);
+    assert_eq!(
+        log.args("fork"),
+        Some(json!({ "prompt": "try the other fix" }))
+    );
+}
+
+#[test]
+fn a_blank_fork_prompt_is_an_argument_error() {
+    let (outcome, _log) = fails_with(
+        &whole(&["delegation"], &caught(r#"delegation::fork("   ")"#)),
+        ToolFailure::InvalidArgument,
+        "`prompt` must not be blank; it is the only difference the copy has",
+    );
+    assert_eq!(logs(&outcome), ["InvalidArgument on fork"]);
+}
+
+#[test]
+fn a_fork_at_the_delegation_depth_cap_is_limit_exceeded() {
+    let (outcome, _log) = fails_with(
+        &whole(
+            &["delegation"],
+            &caught(r#"delegation::fork("try the other fix")"#),
+        ),
+        ToolFailure::LimitExceeded,
+        "this session is already 3 levels deep; no further copies may be started",
+    );
+    assert_eq!(logs(&outcome), ["LimitExceeded on fork"]);
+}
+
+#[test]
+fn a_fork_this_run_withheld_is_unavailable() {
+    let (outcome, log) = run_with(
+        &whole(
+            &["delegation"],
+            &caught_with_message(r#"delegation::fork("try the other fix")"#),
+        ),
+        &all_operations_without(CAPABILITY_FORK),
+        canned_outcome,
+    );
+    assert_eq!(
+        logs(&outcome),
+        ["Unavailable on fork: `gg::delegation::fork` is not available."]
+    );
+    assert!(log.names().is_empty());
+}
+
+// --- programs --------------------------------------------------------------------------------
+
+#[test]
+fn an_empty_program_library_is_an_empty_history_rather_than_a_failure() {
+    // The first turn of every session, and the reason `history` answers with a `Result` at all: an
+    // empty list and a refusal are different facts, and a session that keeps a library and has run
+    // nothing into it has the first of them.
+    let (outcome, _log) = run_with_library(&whole(
+        &["programs"],
+        r####"    gg::log(programs::history()?.len().to_string());
+"####,
+    ));
+    assert_eq!(logs(&outcome), ["0"]);
+}
+
+#[test]
+fn a_seeded_library_hands_the_program_each_programs_shape() {
+    let (outcome, _log) = evaluate_with_program(
+        &prepare(&whole(
+            &["programs"],
+            r####"    let history = programs::history()?;
+    let first = &history[0];
+    gg::log(format!("{} {} {} {} {} {:?}", first.id, first.turn, first.lines, first.chars, first.ok, first.error));
+"####,
+        )),
+        "p3",
+        3,
+        r#"gg::log("the program that ran");"#,
+        canned_outcome,
+    );
+    // A shape and never a source: the id `get` takes, the turn it ran on, how big it was, and that
+    // it ran to its end with nothing to report.
+    assert_eq!(logs(&outcome), ["p3 3 1 32 true None"]);
+}
+
+#[test]
+fn a_history_without_a_library_is_unavailable() {
+    let (outcome, _log) = run_with(
+        &whole(&["programs"], &caught("programs::history()")),
+        &[],
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["Unavailable on history"]);
+}
+
+#[test]
+fn a_seeded_program_hands_the_program_its_source() {
+    let (outcome, _log) = evaluate_with_program(
+        &prepare(&whole(
+            &["programs"],
+            r####"    gg::log(programs::get("p3")?);
+"####,
+        )),
+        "p3",
+        3,
+        r#"gg::log("the program that ran");"#,
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), [r#"gg::log("the program that ran");"#]);
+}
+
+#[test]
+fn an_id_the_library_never_issued_is_not_found() {
+    let (outcome, _log) = run_with_library(&whole(
+        &["programs"],
+        &caught_with_message(r#"programs::get("p2")"#),
+    ));
+    assert_eq!(
+        logs(&outcome),
+        ["NotFound on get: no program is kept under the id `p2`; no program has been kept yet"]
+    );
+}
+
+#[test]
+fn an_id_a_non_empty_library_does_not_hold_names_the_ids_it_does() {
+    // The other way to miss, and the one where the sentence is worth something: the model asked for
+    // a program that is not there, and what it needs is the list of the ones that are — rather than
+    // a second turn spent discovering the same thing.
+    let (outcome, _log) = evaluate_with_program(
+        &prepare(&whole(
+            &["programs"],
+            &caught_with_message(r#"programs::get("p9")"#),
+        )),
+        "p3",
+        3,
+        r#"gg::log("the program that ran");"#,
+        canned_outcome,
+    );
+    assert_eq!(
+        logs(&outcome),
+        ["NotFound on get: no program is kept under the id `p9`; ids held: `p3` (turn 3)"]
+    );
+}
+
+#[test]
+fn a_program_fetch_without_a_library_is_unavailable() {
+    let (outcome, _log) = run_with(
+        &whole(&["programs"], &caught(r#"programs::get("p3")"#)),
+        &[],
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["Unavailable on get"]);
+}
+
+#[test]
+fn a_handed_over_program_is_recorded_on_the_outcome() {
+    let (outcome, log) = run_with_library(&whole(
+        &["programs"],
+        r####"    programs::rerun("gg::log(\"again\");")?;
+    gg::log("the calling program still finished");
+"####,
+    ));
+    assert_eq!(logs(&outcome), ["the calling program still finished"]);
+    assert_eq!(outcome.rerun.as_deref(), Some(r#"gg::log("again");"#));
+    assert!(!outcome.revoked_rerun);
+    // It touches no tool at all: what it sets is a field in this agent's host-side state, which the
+    // loop reads once the program has ended.
+    assert!(log.names().is_empty());
+}
+
+#[test]
+fn a_blank_rerun_source_is_an_argument_error() {
+    let (outcome, _log) = run_with_library(&whole(
+        &["programs"],
+        &caught_with_message(r#"programs::rerun("   ")"#),
+    ));
+    assert_eq!(
+        logs(&outcome),
+        ["InvalidArgument on rerun: `source` must not be blank"]
+    );
+    assert!(outcome.rerun.is_none());
+}
+
+#[test]
+fn a_second_rerun_in_one_program_is_refused_and_the_first_stands() {
+    let (outcome, _log) = run_with_library(&whole(
+        &["programs"],
+        &format!(
+            "    programs::rerun(\"gg::log(\\\"first\\\");\")?;\n{}",
+            caught_with_message(r#"programs::rerun("gg::log(\"second\");")"#)
+        ),
+    ));
+    assert_eq!(
+        logs(&outcome),
+        ["Refused on rerun: this program already handed one over"]
+    );
+    assert_eq!(outcome.rerun.as_deref(), Some(r#"gg::log("first");"#));
+}
+
+#[test]
+fn a_rerun_without_a_library_is_unavailable() {
+    let (outcome, _log) = run_with(
+        &whole(
+            &["programs"],
+            &caught(r#"programs::rerun("gg::log(\"again\");")"#),
+        ),
+        &[],
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["Unavailable on rerun"]);
+    assert!(outcome.rerun.is_none());
+}
+
+#[test]
+fn a_hand_over_from_a_program_that_then_fails_is_taken_back() {
+    // What the program chose rests on checks it never finished running, so the hand-over goes with
+    // everything else it decided — and the turn ends in an ordinary error rather than in a second
+    // program the model no longer has a reason to want.
+    let (outcome, _log) = run_with_library(&whole(
+        &["programs"],
+        r####"    programs::rerun("gg::log(\"again\");")?;
+    panic!("the work after the hand-over failed");
+"####,
+    ));
+    assert!(
+        trap(&outcome).contains("the work after the hand-over failed"),
+        "the program failed with its own words: {}",
+        trap(&outcome)
+    );
+    assert!(outcome.rerun.is_none(), "the hand-over was taken back");
+    assert!(outcome.revoked_rerun, "and the turn's feedback can say so");
+}
+
+// --- docs ------------------------------------------------------------------------------------
+
+#[test]
+fn a_documentation_search_hands_the_program_a_page_and_opens_its_view() {
+    // The result is a value AND a view: the page is readable in the turn that asked for it, and the
+    // same page is put in the next prompt under `search results`.
+    let (outcome, log) = run_with(
+        &whole(
+            &["docs"],
+            r####"    let found = docs::search(docs::SearchOptions {
+        query: Some("open"),
+        modules: &["views"],
+        kind: Some(docs::DocKind::Function),
+        limit: Some(5),
+        ..Default::default()
+    })?;
+    gg::log(format!("{} {} {}", found.total, found.offset, found.hits.len()));
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    // The double models no catalogue, so the honest page is an empty one; the ranking over a real
+    // catalogue is `docs::search`'s own to prove, next to the catalogue.
+    assert_eq!(logs(&outcome), ["0 0 0"]);
+    assert_eq!(
+        outcome
+            .views_opened
+            .iter()
+            .map(|view| view.selector.as_str())
+            .collect::<Vec<_>>(),
+        ["search results"]
+    );
+    assert!(
+        log.names().is_empty(),
+        "a documentation search dispatches no gg tool"
+    );
+}
+
+#[test]
+fn a_documentation_search_answers_a_program_granted_nothing() {
+    // The `Always` binding, which is the whole of how a model with no capabilities at all can learn
+    // what it holds: the prompt names no function, so a run that offered nothing would otherwise
+    // leave the model nothing to ask.
+    let (outcome, _log) = run_with(
+        &whole(
+            &["docs"],
+            r####"    gg::log(docs::search(docs::SearchOptions { query: Some("open"), ..Default::default() })?.total.to_string());
+"####,
+        ),
+        &[],
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["0"]);
+}
+
+#[test]
+fn a_search_with_neither_a_query_nor_a_filter_is_an_argument_error() {
+    let (outcome, _log) = evaluate_refusing_view(
+        &prepare(&whole(
+            &["docs"],
+            &caught_with_message("docs::search(docs::SearchOptions::default())"),
+        )),
+        refusal(
+            ToolFailure::InvalidArgument,
+            "`docs::search` needs a query, a module, a type or a kind; it narrows nothing as it is",
+        ),
+    );
+    assert_eq!(
+        logs(&outcome),
+        [
+            "InvalidArgument on search: `docs::search` needs a query, a module, a type or a kind; it narrows nothing as it is"
+        ]
+    );
+}
+
+#[test]
+fn a_documentation_search_limit_of_zero_is_an_argument_error() {
+    // The one number in the call whose zero is not a clamp: a larger limit than the ceiling clamps
+    // rather than fails, so a program could read the refusal as "any limit is advisory" if this did
+    // the same.
+    let (outcome, _log) = evaluate_refusing_view(
+        &prepare(&whole(
+            &["docs"],
+            &caught_with_message(
+                r#"docs::search(docs::SearchOptions { query: Some("open"), limit: Some(0), ..Default::default() })"#,
+            ),
+        )),
+        refusal(
+            ToolFailure::InvalidArgument,
+            "`limit` must be at least 1; leave it out for the default page of 20",
+        ),
+    );
+    assert_eq!(
+        logs(&outcome),
+        [
+            "InvalidArgument on search: `limit` must be at least 1; leave it out for the default page of 20"
+        ]
+    );
+}
+
+#[test]
+fn closing_a_documentation_view_without_the_capability_is_unavailable() {
+    // This arm cannot withhold a NAME: `docs::close` is compiled into every program, so the host is
+    // the only thing that can refuse it — under the call's own key, rather than as a name that was
+    // never in scope.
+    let (outcome, _log) = run_with(
+        &whole(&["docs"], &caught(r#"docs::close("gg::views::open_text")"#)),
+        &all_operations_without(CAPABILITY_DOCVIEW_CLOSE),
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["Unavailable on close"]);
+}
+
+#[test]
+fn closing_every_documentation_view_without_the_capability_is_unavailable() {
+    let (outcome, _log) = run_with(
+        &whole(&["docs"], &caught("docs::close_all()")),
+        &all_operations_without(CAPABILITY_DOCVIEW_CLOSE),
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["Unavailable on close_all"]);
+}
+
+#[test]
+fn closing_a_documentation_view_that_is_not_open_is_zero() {
+    // Refused, the count a program reads is never lowered: nothing is open here, and `0` is a
+    // success exactly as it is in production for a key that is not open.
+    let (granted, _log) = evaluate_closing_docviews(
+        &prepare(&whole(
+            &["docs"],
+            r####"    gg::log(docs::close("gg::views::open_text")?.to_string());
+"####,
+        )),
+        canned_outcome,
+    );
+    assert_eq!(logs(&granted), ["0"]);
+}
+
+#[test]
+fn closing_every_documentation_view_when_none_is_open_is_zero() {
+    let (granted, _log) = evaluate_closing_docviews(
+        &prepare(&whole(
+            &["docs"],
+            r####"    gg::log(docs::close_all()?.to_string());
+"####,
+        )),
+        canned_outcome,
+    );
+    assert_eq!(logs(&granted), ["0"]);
+}
+
+// --- views -----------------------------------------------------------------------------------
+
+#[test]
+fn a_file_view_hands_the_program_the_window_and_records_the_view() {
+    // The value and the view are separate copies of one read: the program reads the window in the
+    // turn that asked for it, and the same window is in the next prompt under the path.
+    let (outcome, log) = run_with(
+        &whole(
+            &["files", "views"],
+            r####"    let shown = views::ViewOptions { offset: Some(1), limit: Some(2), ..Default::default() };
+    match views::open_file("notes.md", shown)? {
+        files::FileRead::Text(file) => gg::log(format!(
+            "{} {} {}",
+            file.contents.lines().next().unwrap_or_default(), file.first_line, file.total_lines
+        )),
+        files::FileRead::Image(picture) => gg::log(picture.label),
+    }
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["contents of notes.md 1 2"]);
+    assert_eq!(
+        outcome
+            .views_opened
+            .iter()
+            .map(|view| view.selector.as_str())
+            .collect::<Vec<_>>(),
+        ["notes.md"]
+    );
+    // One read reached gg's dispatch, and it arrived as `read_file`: a view has no tool name of its
+    // own, which is exactly the point — it is a read gg also shows.
+    assert_eq!(log.names(), ["read_file"]);
+    assert_eq!(
+        log.args("read_file"),
+        Some(json!({ "path": "notes.md", "offset": 1, "limit": 2 }))
+    );
+}
+
+#[test]
+fn a_file_view_of_a_path_that_is_not_there_opens_nothing() {
+    // The refusal is the one thing this feature must never let happen quietly: the material never
+    // reached the window, so a view that failed is reported rather than left as a silence the model
+    // would read as evidence its program never ran.
+    let (outcome, _log) = fails_with(
+        &whole(
+            &["views"],
+            &caught(r#"views::open_file("gone.md", views::ViewOptions::default())"#),
+        ),
+        ToolFailure::NotFound,
+        "no such file: gone.md",
+    );
+    assert_eq!(logs(&outcome), ["NotFound on open_file"]);
+    assert!(outcome.views_opened.is_empty(), "nothing was opened");
+    assert_eq!(outcome.view_refusals, ["no such file: gone.md"]);
+}
+
+#[test]
+fn a_view_offset_past_the_end_of_the_file_is_an_argument_error() {
+    let (outcome, _log) = fails_with(
+        &whole(
+            &["views"],
+            &caught_with_message(
+                r#"views::open_file("notes.md", views::ViewOptions { offset: Some(900), ..Default::default() })"#,
+            ),
+        ),
+        ToolFailure::InvalidArgument,
+        "`offset` 900 is past the end of notes.md, which has 2 lines",
+    );
+    assert_eq!(
+        logs(&outcome),
+        [
+            "InvalidArgument on open_file: `offset` 900 is past the end of notes.md, which has 2 lines"
+        ]
+    );
+}
+
+#[test]
+fn a_view_line_cut_of_zero_is_an_argument_error() {
+    // Unlike a zero `offset`, which plainly means the first line, a zero line cut names nothing —
+    // so it is refused by name rather than normalised into "leave every line whole".
+    let (outcome, log) = fails_with(
+        &whole(
+            &["views"],
+            &caught(
+                r#"views::open_file("notes.md", views::ViewOptions { max_line_chars: Some(0), ..Default::default() })"#,
+            ),
+        ),
+        ToolFailure::InvalidArgument,
+        "`max_line_chars` must be between 1 and 65536",
+    );
+    assert_eq!(logs(&outcome), ["InvalidArgument on open_file"]);
+    assert_eq!(
+        log.args("read_file")
+            .map(|args| args["maxLineChars"].clone()),
+        Some(json!(0)),
+        "the zero reached the host rather than being dropped on the way"
+    );
+}
+
+#[test]
+fn a_view_line_cut_over_the_ceiling_is_an_argument_error() {
+    let (outcome, _log) = fails_with(
+        &whole(
+            &["views"],
+            &caught(
+                r#"views::open_file("notes.md", views::ViewOptions { max_line_chars: Some(70000), ..Default::default() })"#,
+            ),
+        ),
+        ToolFailure::InvalidArgument,
+        "`max_line_chars` must be between 1 and 65536",
+    );
+    assert_eq!(logs(&outcome), ["InvalidArgument on open_file"]);
+}
+
+#[test]
+fn a_file_view_over_the_size_cap_names_the_size_and_the_bound() {
+    // Nothing is ever silently truncated: a window that would carry more than the view body's cap
+    // is refused, and the sentence carries both numbers so the program can pick a smaller window
+    // rather than guess at one.
+    let (outcome, _log) = fails_with(
+        &whole(
+            &["views"],
+            &caught_with_message(r#"views::open_file("huge.md", views::ViewOptions::default())"#),
+        ),
+        ToolFailure::LimitExceeded,
+        "the window is 131,072 bytes; a view body is capped at 65,536",
+    );
+    assert_eq!(
+        logs(&outcome),
+        [
+            "LimitExceeded on open_file: the window is 131,072 bytes; a view body is capped at 65,536"
+        ]
+    );
+    assert!(outcome.views_opened.is_empty());
+}
+
+#[test]
+fn a_file_view_with_the_read_withheld_is_unavailable() {
+    // It shares the read gate with `files::read_file`, so a run that did not buy reading cannot buy
+    // showing either — and the refusal names `views::open_file`, which is the call the model wrote.
+    let (outcome, log) = run_with(
+        &whole(
+            &["views"],
+            &caught_with_message(r#"views::open_file("notes.md", views::ViewOptions::default())"#),
+        ),
+        &all_operations_without(CAPABILITY_READ_FILE),
+        canned_outcome,
+    );
+    assert_eq!(
+        logs(&outcome),
+        ["Unavailable on open_file: `gg::views::open_file` is not available."]
+    );
+    assert!(log.names().is_empty());
+}
+
+#[test]
+fn opening_one_path_twice_supersedes_rather_than_duplicating() {
+    // Re-opening the same page replaces what it showed, and the turn's feedback says so — which is
+    // what lets a program refresh a view in a loop without the window growing a copy each time.
+    let (outcome, _log) = run_with(
+        &whole(
+            &["views"],
+            r####"    views::open_file("notes.md", views::ViewOptions::default())?;
+    views::open_file("notes.md", views::ViewOptions::default())?;
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    let opened: Vec<(&str, bool)> = outcome
+        .views_opened
+        .iter()
+        .map(|view| (view.selector.as_str(), view.superseded))
+        .collect();
+    assert_eq!(opened, [("notes.md", false), ("notes.md", true)]);
+}
+
+#[test]
+fn a_text_view_puts_what_the_program_computed_in_the_window() {
+    let (outcome, log) = run_with(
+        &whole(
+            &["views"],
+            r####"    views::open_text("summary", "eight files, two failing")?;
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    assert!(logs(&outcome).is_empty());
+    assert_eq!(
+        outcome
+            .views_opened
+            .iter()
+            .map(|view| view.selector.as_str())
+            .collect::<Vec<_>>(),
+        ["summary"]
+    );
+    assert!(
+        log.names().is_empty(),
+        "showing the model a value dispatches no gg tool"
+    );
+}
+
+#[test]
+fn a_text_view_is_shown_by_a_program_granted_nothing() {
+    // The other `Always` binding, and the reason it is one: a run that offered no capability at all
+    // would otherwise be a run whose model can compute something and show it to nobody.
+    let (outcome, _log) = run_with(
+        &whole(
+            &["views"],
+            r####"    views::open_text("summary", "eight files, two failing")?;
+"####,
+        ),
+        &[],
+        canned_outcome,
+    );
+    assert_eq!(
+        outcome
+            .views_opened
+            .iter()
+            .map(|view| view.selector.as_str())
+            .collect::<Vec<_>>(),
+        ["summary"]
+    );
+}
+
+#[test]
+fn an_empty_text_view_label_is_an_argument_error() {
+    // A view is filed under its label, so a view with no label is a view nothing could ever name to
+    // close it.
+    let (outcome, _log) = run_with(
+        &whole(
+            &["views"],
+            &caught(r#"views::open_text("", "eight files")"#),
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["InvalidArgument on open_text"]);
+    assert!(outcome.views_opened.is_empty());
+}
+
+#[test]
+fn a_text_view_body_over_the_cap_names_the_cap() {
+    let (outcome, _log) = evaluate_refusing_view(
+        &prepare(&whole(
+            &["views"],
+            &caught_with_message(r#"views::open_text("summary", "eight files, two failing")"#),
+        )),
+        refusal(
+            ToolFailure::LimitExceeded,
+            "the body is 98,304 characters; a text view is capped at 65,536",
+        ),
+    );
+    assert_eq!(
+        logs(&outcome),
+        [
+            "LimitExceeded on open_text: the body is 98,304 characters; a text view is capped at 65,536"
+        ]
+    );
+    assert!(outcome.views_opened.is_empty());
+}
+
+#[test]
+fn a_text_view_label_over_the_cap_names_its_own_cap() {
+    // A cap of its own, and a much smaller one: the label is a selector rather than material, and a
+    // program told only "over the cap" would shorten the wrong half of the call.
+    let (outcome, _log) = evaluate_refusing_view(
+        &prepare(&whole(
+            &["views"],
+            &caught_with_message(r#"views::open_text("summary", "eight files, two failing")"#),
+        )),
+        refusal(
+            ToolFailure::LimitExceeded,
+            "the label is 400 characters; a view label is capped at 200",
+        ),
+    );
+    assert_eq!(
+        logs(&outcome),
+        ["LimitExceeded on open_text: the label is 400 characters; a view label is capped at 200"]
+    );
+}
+
+#[test]
+fn a_documentation_view_is_recorded_under_the_name_it_opened() {
+    // Every view the call placed is recorded, which is why the api answers with a list: one call can
+    // place a function's view and one per type in its signature, and the turn's feedback has to
+    // report the window the model actually got.
+    let (outcome, log) = run_with(
+        &whole(
+            &["views"],
+            r####"    views::open_docs_view("read_file")?;
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    assert_eq!(
+        outcome
+            .views_opened
+            .iter()
+            .map(|view| view.selector.as_str())
+            .collect::<Vec<_>>(),
+        ["read_file"]
+    );
+    assert!(log.names().is_empty());
+}
+
+#[test]
+fn a_documentation_view_is_opened_by_a_program_granted_nothing() {
+    let (outcome, _log) = run_with(
+        &whole(
+            &["views"],
+            r####"    views::open_docs_view("gg::views::open_text")?;
+"####,
+        ),
+        &[],
+        canned_outcome,
+    );
+    assert_eq!(
+        outcome
+            .views_opened
+            .iter()
+            .map(|view| view.selector.as_str())
+            .collect::<Vec<_>>(),
+        ["gg::views::open_text"]
+    );
+}
+
+#[test]
+fn a_documentation_view_of_an_unknown_name_is_not_found() {
+    let (outcome, _log) = evaluate_refusing_view(
+        &prepare(&whole(
+            &["views"],
+            &caught_with_message(r#"views::open_docs_view("open_tex")"#),
+        )),
+        refusal(
+            ToolFailure::NotFound,
+            "no documentation entry is keyed by `open_tex`",
+        ),
+    );
+    assert_eq!(
+        logs(&outcome),
+        ["NotFound on open_docs_view: no documentation entry is keyed by `open_tex`"]
+    );
+    assert!(outcome.views_opened.is_empty());
+}
+
+#[test]
+fn a_documentation_view_of_a_name_this_agent_does_not_bind_points_at_the_search() {
+    // Unknown and unbound are one class deliberately: what the model has to do next is the same in
+    // both cases, and the sentence names the one call that enumerates what it does hold.
+    let (outcome, _log) = evaluate_refusing_view(
+        &prepare(&whole(
+            &["views"],
+            &caught_with_message(r#"views::open_docs_view("gg::shell::run")"#),
+        )),
+        refusal(
+            ToolFailure::NotFound,
+            "`gg::shell::run` is not part of this session's surface; `docs::search` lists what is",
+        ),
+    );
+    assert_eq!(
+        logs(&outcome),
+        [
+            "NotFound on open_docs_view: `gg::shell::run` is not part of this session's surface; `docs::search` lists what is"
+        ]
+    );
+}
+
+#[test]
+fn closing_a_view_reports_how_many_it_closed() {
+    let (outcome, _log) = run_with(
+        &whole(
+            &["views"],
+            r####"    views::open_text("summary", "eight files, two failing")?;
+    gg::log(views::close("summary")?.to_string());
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["1"]);
+    assert_eq!(outcome.views_closed, ["summary"]);
+}
+
+#[test]
+fn closing_a_selector_nothing_is_open_under_is_zero_rather_than_a_failure() {
+    // So a program that tidies up unconditionally does not have to guard every call.
+    let (outcome, _log) = run_with(
+        &whole(
+            &["views"],
+            r####"    gg::log(views::close("never opened")?.to_string());
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["0"]);
+    assert!(
+        outcome.views_closed.is_empty(),
+        "a close that closed nothing is not a close"
+    );
+}
+
+#[test]
+fn an_empty_close_selector_is_an_argument_error() {
+    // An empty selector names nothing rather than everything, which is the reading that would make
+    // a typo empty the whole window.
+    let (outcome, _log) = run_with(
+        &whole(&["views"], &caught(r#"views::close("")"#)),
+        &all_operations(),
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["InvalidArgument on close"]);
+}
+
+#[test]
+fn closing_a_view_without_agent_managed_context_is_unavailable() {
+    let (outcome, _log) = run_with(
+        &whole(
+            &["views"],
+            &caught_with_message(r#"views::close("summary")"#),
+        ),
+        &all_operations_without(CAPABILITY_AGENT_MANAGED_CONTEXT),
+        canned_outcome,
+    );
+    assert_eq!(
+        logs(&outcome),
+        ["Unavailable on close: `gg::views::close` is not available."]
+    );
+}
+
+// --- session ---------------------------------------------------------------------------------
+
+#[test]
+fn the_standard_endings_summary_reaches_the_outcome() {
+    let (outcome, log) = run_as(
+        &whole(
+            &["session"],
+            r####"    session::finish("read the file and showed the result")?;
+    gg::log("the program did not stop");
+"####,
+        ),
+        RunEnding::Role(EndingRole::Standard),
+    );
+    assert_eq!(logs(&outcome), ["the program did not stop"]);
+    let completion = outcome.completion.as_ref().expect("the session ended");
+    assert_eq!(
+        completion.ending,
+        Ending::Finished {
+            summary: "read the file and showed the result".to_string()
+        }
+    );
+    assert_eq!(completion.superseded, 0);
+    assert!(log.names().is_empty(), "an ending dispatches no gg tool");
+}
+
+#[test]
+fn a_blank_ending_summary_is_an_argument_error() {
+    // The summary becomes the session's whole answer to whoever asked for the work, so "I am done
+    // and have nothing to say about it" is not an ending gg accepts on the model's behalf.
+    let (outcome, _log) = run_as(
+        &whole(
+            &["session"],
+            &caught_with_message(r#"session::finish("   ")"#),
+        ),
+        RunEnding::Role(EndingRole::Standard),
+    );
+    assert_eq!(logs(&outcome).len(), 1);
+    assert!(
+        logs(&outcome)[0].starts_with(
+            "InvalidArgument on finish: `gg::session::finish` requires a non-empty summary"
+        ),
+        "{:?}",
+        logs(&outcome)
+    );
+    assert!(outcome.completion.is_none(), "nothing ended the session");
+}
+
+#[test]
+fn a_second_ending_replaces_the_first_and_the_replacement_is_counted() {
+    // With no unwind, ending twice is an ordinary thing for a program to do — two branches that both
+    // run, an ending inside a loop — and the later declaration is the one made with more of the
+    // program's work behind it. The count is kept because it is worth a line on the operator's
+    // stream.
+    let (outcome, _log) = run_as(
+        &whole(
+            &["session"],
+            r####"    session::finish("parsed the manifest")?;
+    session::finish("parsed the manifest and wrote the tests")?;
+"####,
+        ),
+        RunEnding::Role(EndingRole::Standard),
+    );
+    let completion = outcome.completion.as_ref().expect("the session ended");
+    assert_eq!(
+        completion.ending,
+        Ending::Finished {
+            summary: "parsed the manifest and wrote the tests".to_string()
+        }
+    );
+    assert_eq!(completion.superseded, 1);
+}
+
+#[test]
+fn an_ending_from_a_program_that_then_fails_is_revoked() {
+    // The declaration rests on checks the program never finished running, so it goes with everything
+    // else that program decided — and the turn's feedback can say the ending was cancelled and what
+    // it was.
+    let (outcome, _log) = run_as(
+        &whole(
+            &["session"],
+            r####"    session::finish("parsed the manifest")?;
+    panic!("the work after the ending failed");
+"####,
+        ),
+        RunEnding::Role(EndingRole::Standard),
+    );
+    assert!(trap(&outcome).contains("the work after the ending failed"));
+    assert!(outcome.completion.is_none(), "the session did not end");
+    assert_eq!(
+        outcome.revoked_completion,
+        Some(Ending::Finished {
+            summary: "parsed the manifest".to_string()
+        })
+    );
+}
+
+#[test]
+fn an_ending_a_reviewer_may_not_declare_names_the_two_it_may() {
+    // An agent that reached for the wrong ending has a right one, and being told which is the
+    // difference between a turn it recovers from and a turn it spends guessing.
+    let (outcome, _log) = run_as(
+        &whole(
+            &["session"],
+            &caught_with_message(r#"session::finish("read the file")"#),
+        ),
+        RunEnding::Role(EndingRole::Review),
+    );
+    assert_eq!(
+        logs(&outcome),
+        [
+            "Unavailable on finish: `gg::session::finish` is not available. Use `gg::session::approve` or `gg::session::request_changes` instead."
+        ]
+    );
+    assert!(outcome.completion.is_none());
+}
+
+#[test]
+fn an_approval_from_a_standard_session_is_unavailable() {
+    let (outcome, _log) = run_as(
+        &whole(&["session"], &caught_with_message("session::approve()")),
+        RunEnding::Role(EndingRole::Standard),
+    );
+    assert_eq!(
+        logs(&outcome),
+        [
+            "Unavailable on approve: `gg::session::approve` is not available. Use `gg::session::finish` instead."
+        ]
+    );
+}
+
+#[test]
+fn a_reviewers_approval_reaches_the_outcome() {
+    // The one call in the whole surface that takes nothing at all.
+    let (outcome, _log) = run_as(
+        &whole(&["session"], "    session::approve()?;\n"),
+        RunEnding::Role(EndingRole::Review),
+    );
+    assert_eq!(
+        outcome.completion.as_ref().map(|done| &done.ending),
+        Some(&Ending::Approved)
+    );
+}
+
+#[test]
+fn a_reviewers_change_request_reaches_the_outcome_with_every_item() {
+    let (outcome, _log) = run_as(
+        &whole(
+            &["session"],
+            r####"    session::request_changes(&["widen the test", "name the file"])?;
+"####,
+        ),
+        RunEnding::Role(EndingRole::Review),
+    );
+    assert_eq!(
+        outcome.completion.as_ref().map(|done| &done.ending),
+        Some(&Ending::ChangesRequested {
+            items: vec!["widen the test".to_string(), "name the file".to_string()],
+        })
+    );
+}
+
+#[test]
+fn an_empty_change_list_is_an_argument_error() {
+    // The list is dispatched verbatim to the agent that must fix the work, so a rejection with
+    // nothing in it would send that agent back to re-read criteria it already believed it had met.
+    let (outcome, _log) = run_as(
+        &whole(
+            &["session"],
+            &caught_with_message("session::request_changes(&[])"),
+        ),
+        RunEnding::Role(EndingRole::Review),
+    );
+    assert!(
+        logs(&outcome)[0].starts_with(
+            "InvalidArgument on request_changes: `gg::session::request_changes` requires at least one change"
+        ),
+        "{:?}",
+        logs(&outcome)
+    );
+    assert!(outcome.completion.is_none());
+}
+
+#[test]
+fn a_change_list_whose_entries_are_all_blank_is_an_argument_error() {
+    // A distinct cause from the empty list and the same refusal: blank entries are dropped, and what
+    // is left is nothing — so a reviewer whose loop built a list of empty strings is told the same
+    // thing as one that built no list at all, rather than having the whitespace dispatched.
+    let (outcome, _log) = run_as(
+        &whole(
+            &["session"],
+            &caught_with_message(r#"session::request_changes(&["   ", ""])"#),
+        ),
+        RunEnding::Role(EndingRole::Review),
+    );
+    assert!(
+        logs(&outcome)[0].starts_with(
+            "InvalidArgument on request_changes: `gg::session::request_changes` requires at least one change"
+        ),
+        "{:?}",
+        logs(&outcome)
+    );
+    assert!(outcome.completion.is_none());
+}
+
+#[test]
+fn a_change_request_from_a_standard_session_is_unavailable() {
+    let (outcome, _log) = run_as(
+        &whole(
+            &["session"],
+            &caught_with_message(r#"session::request_changes(&["widen the test"])"#),
+        ),
+        RunEnding::Role(EndingRole::Standard),
+    );
+    assert_eq!(
+        logs(&outcome),
+        [
+            "Unavailable on request_changes: `gg::session::request_changes` is not available. Use `gg::session::finish` instead."
+        ]
+    );
+}
+
+// --- feedback --------------------------------------------------------------------------------
+//
+// The caps themselves — a line over the per-line ceiling, more lines than the line ceiling, and
+// lines past the byte ceiling — are driven from this arm's programs in
+// [`feedback`](super::feedback), which is the file that carries the same eight
+// rows for every arm. What is here is the rest of the channel: what `gg::log` accepts, what the
+// channel beside it does not carry, and the three outcome fields this arm never fills.
+
+#[test]
+fn a_value_that_is_not_a_string_reaches_the_operator_log_through_its_display() {
+    // `gg::log` takes `impl Display` rather than `&str`, which is what lets a program log the value
+    // it already has instead of formatting one first — so the thing to prove is that the
+    // implementation the PROGRAM wrote is what the operator reads.
+    let (outcome, _log) = run_with(
+        &whole(
+            &[],
+            r####"    struct Progress { done: u32, total: u32 }
+
+    impl std::fmt::Display for Progress {
+        fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(formatter, "{} of {}", self.done, self.total)
+        }
+    }
+
+    gg::log(Progress { done: 8, total: 12 });
+    gg::log(42);
+"####,
+        ),
+        &[],
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["8 of 12", "42"]);
+}
+
+#[test]
+fn standard_output_reaches_nobody_and_the_logged_line_is_kept() {
+    // gg attaches no standard output to the guest, so a `println!` succeeds and its bytes are kept
+    // by nothing. That is the whole reason `gg::log` exists, and the failure it guards against is
+    // silent: a program that reported its work with `println!` would look, from every record gg
+    // keeps, like a program that reported nothing.
+    let (outcome, _log) = run_with(
+        &whole(
+            &[],
+            r####"    println!("nobody reads this");
+    gg::log("this is the channel");
+"####,
+        ),
+        &[],
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["this is the channel"]);
+}
+
+#[test]
+fn a_program_that_logs_and_returns_uses_no_other_channel() {
+    // The three the arm never fills, pinned rather than exercised: this arm's shell reaches the
+    // model's own `main` through the platform entry symbol and propagates its status, so there is no
+    // return value for gg to discard, no microtask to run after the program, and no module to fail
+    // to load. A future shell that grew one of them would be reported to the model as a fact about
+    // its program, and this is what would say so first.
+    let (outcome, _log) = run_with(
+        &whole(&[], "    gg::log(\"did the work\");\n"),
+        &[],
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["did the work"]);
+    assert!(
+        !outcome.returned_value,
+        "a Rust `main` returns no value gg discards"
+    );
+    assert_eq!(outcome.deferred_note, None);
+    assert!(outcome.module_errors.is_empty());
 }

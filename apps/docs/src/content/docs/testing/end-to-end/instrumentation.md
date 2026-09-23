@@ -430,8 +430,9 @@ the model's build to decide it and synthesize its actual media. The baseline
 half of the side-by-side is the same thing run against the case's reference
 implementation for that engine, a fixed property of the case version, so it is
 synthesized once by
-[`tcab capture-baselines`](/components/cli/overview/#commands) and committed
-under the version folder at `validation-baseline/<engine>/<variant>/`. Run that
+[`tcab capture-baselines`](/components/cli/overview/#commands) and committed to
+the `cold-storage` submodule under the version's mirrored
+`validation-baseline/<engine>/<variant>/`. Run that
 command whenever you add or change a script or a validator suite, or change the
 reference implementation it runs against; it needs only the case's toolchain,
 and a browser for a case decided by browser scripts.

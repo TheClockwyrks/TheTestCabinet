@@ -66,20 +66,19 @@ points.
 
 ## Contents
 
-| Path                   | Seeded to run? | Purpose                                                                 |
-| ---------------------- | -------------- | ----------------------------------------------------------------------- |
-| `specs/`               | Yes            | The spec handed to the model, by concern.                               |
-| `workspaces/`          | Yes            | The starter TypeScript project, `<engine>/`, seeded at the run root.    |
-| `references/`          | No             | The authored, correct build, `<engine>/<variant>/`. Never seeded.       |
-| `validation/`          | No             | The validator suites deciding every review point, `<engine>/`.          |
-| `validation-baseline/` | No             | The baseline media, captured from each reference build.                 |
-| `showcase/`            | No             | Each variant's catalog media and description, plus its capture driver.  |
-| `prompt.hbs`           | No             | Rendered into the model's prompt; not seeded.                           |
-| `test-case.toml`       | No             | Manifest: workspaces, engines, toolchain, specs, domains, review items. |
-| `variants/`            | No             | One TOML file per variant (listed in `variants`).                       |
-| `description.md`       | No             | The site-facing introduction on the case's detail page.                 |
-| `changelog.md`         | No             | This version's entry in the case's changelog.                           |
-| `README.md`            | No             | This overview.                                                          |
+| Path             | Seeded to run? | Purpose                                                                 |
+| ---------------- | -------------- | ----------------------------------------------------------------------- |
+| `specs/`         | Yes            | The spec handed to the model, by concern.                               |
+| `workspaces/`    | Yes            | The starter TypeScript project, `<engine>/`, seeded at the run root.    |
+| `references/`    | No             | The authored, correct build, `<engine>/<variant>/`. Never seeded.       |
+| `validation/`    | No             | The validator suites deciding every review point, `<engine>/`.          |
+| `showcase/`      | No             | Each variant's catalog media and description, plus its capture driver.  |
+| `prompt.hbs`     | No             | Rendered into the model's prompt; not seeded.                           |
+| `test-case.toml` | No             | Manifest: workspaces, engines, toolchain, specs, domains, review items. |
+| `variants/`      | No             | One TOML file per variant (listed in `variants`).                       |
+| `description.md` | No             | The site-facing introduction on the case's detail page.                 |
+| `changelog.md`   | No             | This version's entry in the case's changelog.                           |
+| `README.md`      | No             | This overview.                                                          |
 
 The specification is split across `specs/` by concern, and every file is seeded
 for every run:
@@ -126,9 +125,9 @@ in Chromium through `window.__coil`; the two engine projects run in process
 against the vendored engine and reach the surface through `engine.debug`. The
 three run the same scenarios and differ in how they reach the build.
 
-`validation-baseline/<engine>/<variant>/` holds the media the same suites captured
-from that engine's reference build, so a reviewer sees the build's evidence and
-the reference's side by side.
+This version's `validation-baseline/<engine>/<variant>/` in the `cold-storage`
+submodule holds the media the same suites captured from that engine's reference
+build, so a reviewer sees the build's evidence and the reference's side by side.
 
 ## Versioning
 

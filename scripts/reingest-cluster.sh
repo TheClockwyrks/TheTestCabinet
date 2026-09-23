@@ -21,7 +21,9 @@
 # authenticated `az` (no local kubeconfig or port-forward). The invoked command execs
 # into the backend pod's `ingest` sidecar — which already carries git + curl and
 # mounts the /state/checkout the backend ingests from — to `git fetch` the latest
-# pushed HEAD and POST a forced ingest over localhost (the NetworkPolicy admits only
+# pushed HEAD, update its cold-storage submodule (the baseline validation media ingest
+# copies into the store) to the pinned commit shallowly, and POST a forced ingest over
+# localhost (the NetworkPolicy admits only
 # intra-pod traffic to the backend).
 #
 # A case's identity is the `slug` its test-case.toml declares (NOT its folder name; the
@@ -50,7 +52,7 @@
 # from scripts/lib/env.sh for the chosen env (staging → `staging`, prod → `master`).
 # The branch tip is fetched, so a re-ingest picks up whatever catalog + reference-build
 # lockfile changes have been pushed — that on-demand refresh is what this script is for.
-# The service CODE version is pinned separately by the overlay's image newTag.
+# The service CODE version is the commit the pipeline last deployed (scripts/ci/deploy.sh).
 set -euo pipefail
 
 # Resolve the target environment from a REQUIRED --env <prod|staging> (scripts/lib/env.sh);
@@ -104,6 +106,9 @@ kubectl -n ${namespace} exec deploy/tcab-backend -c ingest -- sh -c 'set -e
 echo "ingest: refreshing /state/checkout to origin/\$1"
 git -C /state/checkout fetch --depth 1 origin "\$1"
 git -C /state/checkout reset --hard FETCH_HEAD
+echo "ingest: updating the cold-storage submodule"
+git -C /state/checkout submodule sync
+git -C /state/checkout submodule update --init --depth 1
 echo "ingest: triggering forced re-ingest"
 curl -sS --fail-with-body -X POST http://127.0.0.1:8787/ingest -H "content-type: application/json" --data "\$2"
 echo' sh "${TCAB_INGEST_BRANCH}" '${body}'

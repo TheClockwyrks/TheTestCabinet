@@ -114,7 +114,7 @@ export type RunEnvironment = {
    * The run-container image the run executed in: the single shared base image,
    * the same for every harness. The full, pullable reference pulled by digest
    * from the registry (for example,
-   * `ghcr.io/theclockwyrks/test-cabinet-base@sha256:…`), or the local-build
+   * `testcabinet.azurecr.io/test-cabinet-base@sha256:…`), or the local-build
    * fallback tag for an offline run.
    */
   containerImage: string;
@@ -378,27 +378,56 @@ export type TokenMetrics = {
 };
 
 /**
+ * Per-token prices (USD) used to compute the comparable cost.
+ *
+ * These are the model developer's published list prices, curated on the
+ * model's catalog entry — not the billed rate of whichever endpoint served the
+ * run. Reasoning tokens are priced at the output rate, so no separate field is
+ * needed.
+ *
+ * Each price is optional: `None` means the price is **unknown** (OpenRouter
+ * does not list one, or lists a nonsensical value such as a negative sentinel),
+ * which is distinct from `Some(0.0)` (a genuinely free class). A class priced
+ * `None` poisons any cost it contributes to rather than being silently treated
+ * as free — see [`Cost::comparable_from`].
+ */
+export type TokenPrices = {
+  /**
+   * Price per uncached input token, or `None` when unknown.
+   */
+  uncachedInput: number | null;
+  /**
+   * Price per cached input token, or `None` when unknown.
+   */
+  cachedInput: number | null;
+  /**
+   * Price per output token (also applied to reasoning tokens), or `None` when
+   * unknown.
+   */
+  output: number | null;
+};
+
+/**
  * Cost of a run, recorded two ways.
  *
  * Each figure is optional: `None` means the cost is **unknown** — typically
- * because the model's per-token prices could not be resolved (the model is
- * absent from OpenRouter's catalog, or OpenRouter lists a nonsensical price).
- * This is distinct from `Some(0.0)`, a genuinely free run. Keeping the two
- * apart avoids presenting an unknown cost as `$0.00`.
+ * because the model's per-token list prices could not be resolved (the model's
+ * catalog entry curates none). This is distinct from `Some(0.0)`, a genuinely
+ * free run. Keeping the two apart avoids presenting an unknown cost as `$0.00`.
  */
 export type CostMetrics = {
   /**
    * The canonical figure shown on the site, stable across providers. It is
-   * derived from token classes and OpenRouter's listed prices, except for
-   * harnesses that drive a single provider directly and report their own
-   * exact cost (such as Claude Code), where that reported cost — itself
-   * provider-stable — is used instead. `None` when the cost is unknown.
+   * computed from the run's token classes and the model's curated list
+   * price, and from nothing else: a billed figure never feeds it, so two
+   * runs of one model at different billed rates still compare on the same
+   * basis. `None` when the cost is unknown.
    */
   comparable: number | null;
   /**
-   * The amount actually charged for the run, recorded for reference. Equal
-   * to the comparable figure unless the harness reports its own exact cost.
-   * `None` when the cost is unknown.
+   * The amount the run was actually billed, recorded for reference: the
+   * harness's own accounting where it reports one, otherwise the comparable
+   * figure. `None` when the cost is unknown.
    */
   actual: number | null;
 };

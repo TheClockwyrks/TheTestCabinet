@@ -4,6 +4,8 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
+import { promql } from "./src/grammars/promql.mjs";
+import { traceql } from "./src/grammars/traceql.mjs";
 
 // Repairs Expressive Code's external stylesheet, which is broken under this
 // project's stack (astro-expressive-code 0.43.1 + Astro 6.4.7 + the satteri
@@ -94,7 +96,7 @@ function fixExpressiveCodeStylesheet() {
 
 // Developer documentation site for The Test Cabinet. Built as a fully static
 // bundle by `astro build` and deployed to Cloudflare Pages at docs.testcabinet.ai
-// (see .github/workflows/deploy-docs.yml). The public gallery (apps/site) is a
+// (see scripts/ci/deploy-docs.sh). The public gallery (apps/site) is a
 // separate deployment at testcabinet.ai; these are two sites, not one.
 //
 // `site` is the canonical origin used for generated absolute URLs (sitemap,
@@ -120,8 +122,13 @@ export default defineConfig({
         TableOfContents: "./src/components/TableOfContents.astro",
       },
       // Synthwave code blocks, in keeping with the palette. The theme ships with
-      // the Expressive Code integration Starlight already bundles.
-      expressiveCode: { themes: ["synthwave-84"] },
+      // the Expressive Code integration Starlight already bundles. Shiki bundles
+      // no grammar for the query languages the observability docs quote, so
+      // those two are registered from `src/grammars/`.
+      expressiveCode: {
+        themes: ["synthwave-84"],
+        shiki: { langs: [promql, traceql] },
+      },
       // The order mirrors the system overview on the home page.
       sidebar: [
         { label: "Overview", link: "/" },
@@ -993,6 +1000,7 @@ export default defineConfig({
                     "gg/telemetry/overview",
                     "gg/telemetry/turn-outcomes",
                     "gg/telemetry/turn-timing",
+                    "gg/telemetry/usage",
                     "gg/telemetry/context-spend",
                     "gg/telemetry/code-execution",
                     "gg/telemetry/shell-commands",

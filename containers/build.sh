@@ -113,7 +113,8 @@
 # Configuration via environment variables:
 #   PUSH          set to 1 to push the images and pin them by digest (default: unset)
 #   IMAGE_REGISTRY  registry/namespace the pushed images live under, e.g.
-#                 ghcr.io/theclockwyrks (required when PUSH=1). Matches the
+#                 testcabinet.azurecr.io (required when PUSH=1; pushing there needs
+#                 `az acr login --name testcabinet` and AcrPush). Matches the
 #                 runner's default TCAB_CONTAINER_REGISTRY.
 #   IMAGE_TAG     tag applied to the images (default: latest)
 #   IMAGE_NAME_PREFIX  image name prefix (default: test-cabinet-); the base is
@@ -128,14 +129,6 @@
 #                 performance image is IMAGE_NAME_PREFIXperformance
 #   DOCKER        container build command (default: docker; set to "podman"
 #                 to build with Podman instead)
-#
-# ONE IMAGE UNDER containers/ IS DELIBERATELY NOT BUILT HERE: containers/gg-ci, the image
-# that carries gg's eleven program-language toolchains under a staged $HOME so a CI job
-# that must COMPILE test-cabinet-gg can copy them in. It is not a run image, nothing
-# `COPY --from`s it, and it is ~1.9 GB — so `make run-images` must not start building it.
-# It has its own workflow (.github/workflows/build-gg-ci-image.yml) with its own trigger,
-# and `./build.sh gg-ci` is rejected as an unknown name by the check below, which is the
-# intended answer rather than an oversight.
 #
 # GATING THE `-gg` VARIANTS ON `gg selfcheck` (`--gg-selfcheck <PATH-TO-GG>`).
 #
@@ -157,9 +150,9 @@
 # silently — a workflow edit that drops it leaves a build that still passes and publishes
 # exactly the images this exists to keep unpublished, and quietly ceasing to be worth
 # anything is the single most likely way this whole change stops mattering. A flag is
-# visible in the one command line a reader of `build-containers.yml` reads, and the
-# workflow additionally greps this script's output for the per-image `gg selfcheck ok:`
-# lines below, so a refactor that stops passing it FAILS rather than skips.
+# visible in the one command line a reader of `scripts/ci/run-images.sh` reads, and that
+# script additionally requires this script's per-image `gg selfcheck ok:` lines below, so
+# a refactor that stops passing it FAILS rather than skips.
 #
 # WHICH IMAGES IT RUNS IN is argued at GG_SELFCHECK_IMAGES; what stops a run image from
 # quietly becoming an environment nothing checks is `assert_gg_environments`, and what pins
@@ -370,8 +363,8 @@ readonly TOOLS_IMAGE="${IMAGE_NAME_PREFIX}tools:${IMAGE_TAG}"
 # storage, node pulls, and the `docker save` a local import feeds on. Read the comment on
 # that `COPY` before touching it; it is the line this paragraph depends on.
 #
-# Because it is not in image-names.sh, the `manifest` job in build-containers.yml — which
-# is driven by that list — fuses this one by name, immediately after its loop. See there.
+# Because it is not in image-names.sh, the pipeline's run-image manifest job, which is
+# driven by that list, appends this one by name to what it hands scripts/ci/manifest.sh.
 readonly GG_TOOLCHAINS_IMAGE="${IMAGE_NAME_PREFIX}gg-toolchains:${IMAGE_TAG}"
 # The AUDIO STORE image: every published audio pack, as data. Like GG_TOOLCHAINS_IMAGE it
 # is not a RUN image — nothing executes in it and nothing resolves it for a run; it is a
@@ -379,14 +372,15 @@ readonly GG_TOOLCHAINS_IMAGE="${IMAGE_NAME_PREFIX}gg-toolchains:${IMAGE_TAG}"
 # `scripts/fetch-audio-store.sh` pulls onto a local checkout. And like it, it IS pushed,
 # and it is deliberately absent from image-names.sh for the same mechanical reason:
 # `build_one` dispatches on that list by name, so an entry there would route it through
-# `build_asset_image`. The manifest job in build-containers.yml fuses this one by name too.
+# `build_asset_image`. The pipeline fuses this one in its own scripts/ci/manifest.sh call.
 #
 # A run container is given the packs its test case declares in `[audio] packs`, staged out
 # of this store when the container starts (`crates/core/src/audio_stage.rs`). Publishing
 # the store as its own image is what keeps the R2 presign credentials to ONE build: the
-# driver image, `make -C deployments/local images` and a contributor's `./build.sh` all
-# obtain the store by pulling a public image, so none of them needs a credential and a
-# clean clone can build every run image. See containers/audio-store/Dockerfile.
+# driver image build takes the published image (the pipeline passes the one it pushed at
+# the same commit), `make -C deployments/local images` builds its own, and a contributor's
+# `./build.sh` skips it, so a clean clone with no credential can build every run image.
+# See containers/audio-store/Dockerfile.
 readonly AUDIO_STORE_IMAGE="${IMAGE_NAME_PREFIX}audio-store:${IMAGE_TAG}"
 readonly ADVERSARIAL_IMAGE="${IMAGE_NAME_PREFIX}adversarial:${IMAGE_TAG}"
 readonly PERFORMANCE_IMAGE="${IMAGE_NAME_PREFIX}performance:${IMAGE_TAG}"
@@ -394,7 +388,7 @@ readonly PERFORMANCE_IMAGE="${IMAGE_NAME_PREFIX}performance:${IMAGE_TAG}"
 # In push mode IMAGE_REGISTRY is required: a digest reference must be
 # registry-qualified to be pullable by a runner.
 if [[ -n "${PUSH}" && -z "${IMAGE_REGISTRY}" ]]; then
-	echo "PUSH=1 requires IMAGE_REGISTRY (e.g. ghcr.io/theclockwyrks)" >&2
+	echo "PUSH=1 requires IMAGE_REGISTRY (e.g. testcabinet.azurecr.io)" >&2
 	exit 1
 fi
 
@@ -832,8 +826,8 @@ gg_selfcheck() {
 		echo "       compilation.md#self-contained-toolchains." >&2
 		exit 1
 	fi
-	# The line the workflow greps for. Changing its shape is changing an assertion in
-	# .github/workflows/build-containers.yml.
+	# The line scripts/ci/run-images.sh requires. Changing its shape is changing an
+	# assertion there.
 	echo "==> gg selfcheck ok: ${name} — every language arm passed in ${image}"
 }
 
@@ -1104,8 +1098,8 @@ build_one() {
 # The full set of images, in dependency order (base first — every other image is
 # `FROM` it). With no arguments the script builds all of them; with arguments it
 # builds only the named subset.
-# The canonical image list lives in image-names.sh so build.sh and the manifest job
-# in build-containers.yml can't drift (see that script's header).
+# The canonical image list lives in image-names.sh so build.sh and the pipeline's
+# manifest job can't drift (see that script's header).
 mapfile -t ALL_NAMES < <("${SCRIPT_DIR}/image-names.sh")
 
 # Before anything is built: if this build is claiming to gate the `-gg` variants, the claim

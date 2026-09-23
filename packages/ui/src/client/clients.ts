@@ -21,6 +21,7 @@ import type {
   ModelListing,
   ModelProbe,
   ModelProbeDetail,
+  ModelCandidates,
   ModelProbeProviders,
   ModelProbeTriggerInput,
   ModelSeed,
@@ -230,6 +231,11 @@ export interface BackendClient {
     slug: string,
     token: string,
   ): Promise<ModelProbeProviders>;
+  /** The provider candidate list the next gg enqueue of the model would build,
+   * read from OpenRouter's endpoints listing now, for an agent that sets no
+   * reasoning (`GET /models/{slug}/candidates`, Bearer). Optional like the
+   * provider enumeration: a third-party reach the static site cannot make. */
+  getModelCandidates?(slug: string, token: string): Promise<ModelCandidates>;
 
   // Provider & accuracy statistics — deployment-wide folds over stored gg runs
   // (and, for providers, the probe corpus). Open reads, but optional: the static

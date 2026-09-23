@@ -25,6 +25,14 @@
 //! Each `#[test]` is its own process under `cargo nextest`, so each obtains the ECMAScript
 //! guest once. A function groups the programs that exercise one behaviour, so they share that
 //! cost; one that grows into the slow end of the suite is split rather than extended.
+//!
+//! A test that asks what one SDK call hands a program back is a fact about that call rather than
+//! about this arm, and it lands in one of the files beside this one: the workspace half of the SDK
+//! (`shell`, `files`, `memories`, `tasks`, `board`, `skills`) in
+//! [`javascript.workspace.test.rs`](super::workspace), the session-side half (`context`,
+//! `delegation`, `programs`, `docs`, `views`, `session`) in
+//! [`javascript.surface.test.rs`](super::surface), and what a program logs, defers or fails with in
+//! [`javascript.feedback.test.rs`](super::feedback).
 
 use serde_json::json;
 use test_cabinet_core::gg::GgProgramLanguage;
@@ -52,13 +60,13 @@ fn javascript() -> &'static dyn ProgramLanguage {
 }
 
 /// Run `program` on this arm with every tool bound, the canned invoker and the default ceilings.
-fn run(program: &str) -> (SandboxOutcome, CallLog) {
+pub(super) fn run(program: &str) -> (SandboxOutcome, CallLog) {
     run_with(program, &all_operations())
 }
 
 /// Run `program` on this arm against exactly `enabled` — what a reduced toolset really looks like
 /// from inside a program.
-fn run_with(
+pub(super) fn run_with(
     program: &str,
     operations: &[crate::sandbox::operations::OperationId],
 ) -> (SandboxOutcome, CallLog) {
@@ -67,12 +75,50 @@ fn run_with(
 
 /// Run `program` with code modules supplied to it, which is what a turn after a code skill was used
 /// looks like.
-fn run_scoped(
+pub(super) fn run_scoped(
     program: &str,
     operations: &[crate::sandbox::operations::OperationId],
     modules: &[CodeModule],
 ) -> (SandboxOutcome, CallLog) {
     let log = CallLog::default();
+    let outcome = run_modular(
+        program,
+        operations,
+        modules,
+        RunEnding::Role(EndingRole::Standard),
+        FakeOperationApi::with(&log, canned_outcome),
+    );
+    (outcome, log)
+}
+
+/// Run `program` against the [double](FakeOperationApi) the caller **built** — a seeded program
+/// library, a seeded catalogue, an armed refusal, a responder of its own — in the
+/// [ending role](RunEnding) the case is about.
+///
+/// The two axes [`run_scoped`] fixes are the two a case about the session-side surface has to vary:
+/// half of that surface answers out of the api rather than out of a tool, so the only way to drive
+/// one of its refusals is to hand the run a double that raises it; and the three ending calls are
+/// bound by the role the run was dispatched in, so a reviewer's program is a different run rather
+/// than a different call.
+pub(super) fn run_api(
+    program: &str,
+    operations: &[crate::sandbox::operations::OperationId],
+    ending: RunEnding,
+    api: FakeOperationApi,
+) -> SandboxOutcome {
+    run_modular(program, operations, &[], ending, api)
+}
+
+/// The one call into [`run_program`](crate::sandbox::run_program) this file makes, with every axis
+/// its helpers vary spelled out — so a helper above is a choice of arguments rather than a fifth
+/// copy of the scope.
+fn run_modular(
+    program: &str,
+    operations: &[crate::sandbox::operations::OperationId],
+    modules: &[CodeModule],
+    ending: RunEnding,
+    api: FakeOperationApi,
+) -> SandboxOutcome {
     let (outcome, _api) = run_program(
         javascript(),
         program,
@@ -80,14 +126,14 @@ fn run_scoped(
             capabilities: &all_capabilities(),
             operations,
             modules,
-            ending: RunEnding::Role(EndingRole::Standard),
+            ending,
         },
         &crate::sandbox::AgentWorkspace::new(),
         SandboxLimits::AMPLE,
         None,
-        FakeOperationApi::with(&log, canned_outcome),
+        api,
     );
-    (outcome, log)
+    outcome
 }
 
 /// The lines a successful program logged, with the program's own failure surfaced rather than
@@ -95,14 +141,17 @@ fn run_scoped(
 /// The throw the guest reported, which is how every failure of a program's own reaches gg on
 /// this arm — the guest reports over `feedback.report-error` and returns, so `result` is `Ok` and
 /// the error rides on it.
-fn thrown<'a>(outcome: &'a SandboxOutcome, why: &str) -> &'a crate::sandbox::outcome::ProgramError {
+pub(super) fn thrown<'a>(
+    outcome: &'a SandboxOutcome,
+    why: &str,
+) -> &'a crate::sandbox::outcome::ProgramError {
     match &outcome.result {
         Ok(result) => result.error.as_ref().expect(why),
         Err(error) => panic!("{why}: the store died instead of the guest reporting — {error:?}"),
     }
 }
 
-fn logs(outcome: &SandboxOutcome) -> &[String] {
+pub(super) fn logs(outcome: &SandboxOutcome) -> &[String] {
     match &outcome.result {
         Ok(result) => {
             assert!(

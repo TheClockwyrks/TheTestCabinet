@@ -17,7 +17,7 @@
 # It runs under its own ServiceAccount, which holds exactly one read-only
 # cluster-scoped grant: `nodes` list/watch + `nodes/metrics` get, so its Prometheus
 # can scrape each kubelet's cAdvisor endpoint for per-container CPU and memory (see
-# rbac-lgtm.yaml and prometheus.yaml). Everything else it does — receiving OTLP,
+# ../../cluster/observability/rbac-lgtm.yaml and prometheus.yaml). Everything else it does — receiving OTLP,
 # serving Grafana — needs no API access at all, and it is granted none.
 #
 # Telemetry is still OPT-IN: standing this stack up does nothing until a workload's

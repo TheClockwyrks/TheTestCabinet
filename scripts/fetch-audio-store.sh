@@ -9,12 +9,12 @@
 # image carries that store at `/opt/tcab-audio`. On a laptop running `tcab run` or
 # `tcab validate` there is nothing to carry it, so this script puts it there — once.
 #
-# It needs NO CREDENTIALS, and that is the point of the whole arrangement. The clip bytes
-# live in a private R2 bucket that only the publish-side tooling
+# The clip bytes live in a private R2 bucket that only the publish-side tooling
 # (`scripts/stage-audio-store.mjs`, `scripts/build-sample-pack.mjs`) can read, with the
-# `CLOUDFLARE_AUDIO_R2_PRESIGN` pair. Those bytes are published ONCE into a public,
-# data-only image (`containers/audio-store/Dockerfile`), and a contributor obtains them
-# by pulling it — exactly the capability they already have.
+# `CLOUDFLARE_AUDIO_R2_PRESIGN` pair. The Azure pipeline publishes those bytes into a
+# data-only image (`containers/audio-store/Dockerfile`) in the Test Cabinet ACR, so
+# anyone who can pull from the registry (`az acr login --name testcabinet`, with
+# AcrPull) obtains them without an audio credential.
 #
 # THE IMAGE IS NOT THE ONLY SOURCE, because it must not be the only source. An image is
 # published behind the object store, so anyone who has just published a pack and wants to
@@ -37,10 +37,11 @@
 #
 # The destination defaults to `$TCAB_AUDIO_STORE` when that is set, and otherwise to
 # ~/.cache/tcab/audio-store. The image reference is built the way `crates/core` resolves a
-# run image — `$TCAB_CONTAINER_REGISTRY` (default ghcr.io/theclockwyrks) and
+# run image — `$TCAB_CONTAINER_REGISTRY` (default testcabinet.azurecr.io) and
 # `$TCAB_CONTAINER_TAG` (default latest) — so a deployment that pins its images somewhere
 # else fetches its store from the same place, and an override is one variable rather than
-# an argument to remember.
+# an argument to remember. The pipeline tags every image by the commit it built, so set
+# `TCAB_CONTAINER_TAG` to a `master` or `staging` commit to pull the store of that commit.
 #
 # Re-running it is safe and is how a new pack version arrives: the tree is replaced
 # wholesale by whichever source produced it rather than merged into, so the store on disk
@@ -78,7 +79,7 @@ USAGE
 	shift
 done
 
-REGISTRY="${TCAB_CONTAINER_REGISTRY:-ghcr.io/theclockwyrks}"
+REGISTRY="${TCAB_CONTAINER_REGISTRY:-testcabinet.azurecr.io}"
 TAG="${TCAB_CONTAINER_TAG:-latest}"
 IMAGE="${REGISTRY%/}/test-cabinet-audio-store:${TAG}"
 DEST="${DEST_ARG:-${TCAB_AUDIO_STORE:-$HOME/.cache/tcab/audio-store}}"
@@ -139,8 +140,9 @@ fetch_from_image() {
 }
 
 # The image first, then the object store — unless `--stage` said otherwise. The fallback
-# is not a nicety: the image is published BEHIND the object store, so a namespace that has
-# not published one yet, a fork, or a pack newer than the last push all land here, and in
+# is not a nicety: the image is published BEHIND the object store, so a tag the registry
+# does not hold, a machine not logged in to it, or a pack newer than the last push all land
+# here, and in
 # every one of those cases the object store still has the right bytes. A pull failure is
 # therefore a WARNING and a second attempt rather than the end of the script; only both
 # sources failing is fatal.
@@ -156,8 +158,8 @@ elif ! fetch_from_image; then
 	echo "==> falling back to the audio object store" >&2
 	if ! stage_from_object_store; then
 		echo "ERROR: neither source produced an audio store." >&2
-		echo "       The image is PUBLIC and needs no login — if this is a fork or a private" >&2
-		echo "       namespace, point TCAB_CONTAINER_REGISTRY at one that publishes it." >&2
+		echo "       Pulling the image needs \`az acr login --name testcabinet\` (AcrPull) and" >&2
+		echo "       TCAB_CONTAINER_TAG set to a master or staging commit the pipeline built." >&2
 		echo "       Staging directly instead (--stage) needs \`node\` and the read-scoped" >&2
 		echo "       CLOUDFLARE_AUDIO_R2_PRESIGN credentials in the environment or the repo-root" >&2
 		echo "       .env." >&2

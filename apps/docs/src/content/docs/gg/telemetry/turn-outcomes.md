@@ -29,7 +29,7 @@ A run emits exactly one per model call it made.
 | `consecutiveErrors`                     | This agent's failing streak after this turn.                                                                                                                                                                                                                                                                                                                          |
 | `turns`                                 | How many turns this agent has recorded, including this one. It is this agent's own running total rather than the run's, and the same figure its turn ceiling is measured against.                                                                                                                                                                                     |
 | `loopAborts`                            | How many replies [loop detection](/gg/loop-detection/) discarded before this turn produced one. Omitted when zero.                                                                                                                                                                                                                                                    |
-| `loopAbortWords`, `loopAbortChars`      | How much generated output those discarded replies produced, measured by the detector as they streamed. Present on exactly the turns `loopAborts` is. There is no token count and no price, since an abandoned stream reports no usage, and this output is deliberately absent from the turn's cost.                                                                   |
+| `loopAbortWords`, `loopAbortChars`      | How much generated output those discarded replies produced, measured by the detector as they streamed. Present on exactly the turns `loopAborts` is. There is no token count and no price on these figures, since an abandoned stream reports no usage: the price is read back at [session end](/gg/execution-limits/#maxcost) and lands in the run's total cost.     |
 | `responseChars`, `responseOutputTokens` | The reply's size in two units: characters, and completion tokens (output plus reasoning, the unit a provider's output cap is measured in). The character count covers the model's raw text together with the `program` string of every `submit_program` call the turn made, which under responses as code carries nearly all of the turn's output. Omitted when zero. |
 
 `consecutiveErrors` is `0` on every non-error turn, including a `finished` or
@@ -70,13 +70,13 @@ wider than its meaning, because the value is what persisted records carry.
 Underneath each base kind sits an `errorType`, and that is where the failure is
 named. There are nineteen types, one per distinction gg makes.
 
-| Base kind            | Types under it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `model_api`          | `model_auth` (the credential was refused), `model_rejected` (another non-retryable `4xx`), `model_retry_exhausted` (the provider never served the request), `model_response_loop` (it served it and [loop detection](/gg/loop-detection/) discarded every answer), `model_vision_unsupported`, `model_parse`, `model_timeout` (the call ran into gg's [per-call ceiling](/gg/execution-limits/#model-api-errors)), `model_length_capped` (the reply hit the provider's output cap and was [rejected whole](/gg/execution-limits/#model-api-errors)) |
-| `transpile`          | `transpile_syntax`, `transpile_compile` (the language's compiler read the whole program and rejected it), `transpile_unsupported`                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `program_fault`      | `program_api_error` (an uncaught failed call: the model is fighting the API rather than mis-writing it), `program_unknown_name` (it reached for something this run does not offer it, either a name that is not in scope or a call the host refused as `unavailable`), `program_throw`                                                                                                                                                                                                                                                              |
-| `sandbox_limit`      | `sandbox_timeout`, `sandbox_out_of_memory`, `sandbox_trap`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `missing_completion` | `missing_completion_no_call`, `missing_completion_compaction` (a prose reply where a compaction was pending, which is answered differently), `missing_completion_no_program` (a responses-as-code reply that made no `submit_program` call)                                                                                                                                                                                                                                                                                                         |
+| Base kind            | Types under it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `model_api`          | `model_auth` (the credential was refused), `model_rejected` (another non-retryable `4xx`), `model_retry_exhausted` (the provider never served the request), `model_response_loop` (it served it and [loop detection](/gg/loop-detection/) discarded every answer), `model_vision_unsupported`, `model_parse` (a `2xx` reply gg could not read), `model_provider_mismatch` (a provider other than the [candidate in force](/gg/overview/#the-request) served the call), `model_timeout` (the call ran into gg's [per-call ceiling](/gg/execution-limits/#model-api-errors)), `model_length_capped` (the reply hit the provider's output cap and was [rejected whole](/gg/execution-limits/#model-api-errors)) |
+| `transpile`          | `transpile_syntax`, `transpile_compile` (the language's compiler read the whole program and rejected it), `transpile_unsupported`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `program_fault`      | `program_api_error` (an uncaught failed call: the model is fighting the API rather than mis-writing it), `program_unknown_name` (it reached for something this run does not offer it, either a name that is not in scope or a call the host refused as `unavailable`), `program_throw`                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `sandbox_limit`      | `sandbox_timeout`, `sandbox_out_of_memory`, `sandbox_trap`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `missing_completion` | `missing_completion_no_call`, `missing_completion_compaction` (a prose reply where a compaction was pending, which is answered differently), `missing_completion_no_program` (a responses-as-code reply that made no `submit_program` call)                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 
 :::caution[`transpile` is empty by construction for an eval-in-guest arm]
 A [program language](/gg/languages/overview/) whose guest carries its own
@@ -176,9 +176,9 @@ A [rejected length-capped reply](/gg/execution-limits/#model-api-errors) is an
 error turn here and is additionally recorded on its own terms: a
 `response_rejected` event carries the reply's size, usage, cost and serving
 provider, and the summary's `rejectedResponses` rollup sums the count, tokens
-and cost. That spend is deliberately absent from the run's own usage and cost —
-a degenerate generation must not make a run look expensive — so the rollup is
-the one place it appears.
+and cost. The same spend is in the run's
+[total cost](/gg/execution-limits/#maxcost) and outside its work cost, so a
+degenerate generation never makes the run's work look expensive.
 
 Two things are deliberately excluded from the error counts. A tool call that
 failed inside a program that carried on is counted in `toolFailures` instead: the
@@ -209,27 +209,59 @@ has.summary:true | stats sum(summary.errors.byType.program_api_error) as fights 
 
 ## Provider attribution
 
-A run's model calls may be served by different upstream providers — OpenRouter
-names the serving provider on each response — and provider-specific failures are
-only diagnosable from a record that says who served what. The summary therefore
-carries `providerStats`: one slice per `(provider, model)` pair observed, folded
-from the same stream as the rollups above.
+Every request of a run names the one
+[candidate](/gg/overview/#the-candidate-list) in force for its model:
+`provider.only` carries its provider, `provider.quantizations` its level, and
+fallbacks are refused. Each call's `usage` event records the provider that
+served it. A response from any other provider ends the run as a harness
+failure: the turn is recorded as `model_provider_mismatch`, and its error names
+the candidate and the served provider.
+
+Two events record what the run saw of its providers. Both are emitted on the
+stream of the agent whose request saw the fault.
+
+```jsonc
+{ "type": "provider_fault", "modelId": "z-ai/glm-5.3",
+  "provider": "Z.AI", "fault": "stall" }
+{ "type": "provider_switch", "modelId": "z-ai/glm-5.3",
+  "from": "Z.AI", "to": "Baidu", "fault": "failed_call",
+  "detail": "the stream stalled: no delta from the model for 60s (provider: Z.AI)" }
+```
+
+- `provider_fault` is one stall or one unexpected cache miss, `fault` being
+  `stall` or `cache_miss`, against the provider the request was sent to.
+- `provider_switch` is one [move](/gg/overview/#moving-to-the-next-candidate)
+  to the model's next candidate. `fault` is `failed_call` for a spent retry
+  schedule, `unavailable` for a candidate OpenRouter refused with `404`, or
+  `cache_miss` for a provider that reached
+  [`providerCacheMissLimit`](/gg/execution-limits/#providercachemisslimit).
+  `detail` is the last failure's cause, or the miss count that reached the
+  limit.
+
+OpenRouter names the serving provider on each response, and provider-specific
+failures are only diagnosable from a record that says who served what. The
+summary therefore carries `providerStats`: one slice per `(provider, model)` pair
+observed, folded from the same stream as the rollups above. A run that stayed
+on its first candidate has one slice per model, and a run that moved has one
+per provider it spent against.
 
 ```jsonc
 "providerStats": [
   { "provider": "DeepInfra", "modelId": "qwen/qwen3.8-2.4t-a95b",
     "calls": 41, "tokens": { "uncachedInput": 63167, "output": 71310 },
     "cost": { "comparable": 0.70, "actual": 0.70 },
-    "turns": 41, "working": 39, "errors": { "transpile_compile": 2 } }
+    "turns": 41, "working": 39, "errors": { "transpile_compile": 2 },
+    "stalls": 1, "cacheMisses": 0 }
 ]
 ```
 
 Each slice records the calls that reported usage (`calls`, with their summed
 tokens and cost), the length-capped replies the provider served (`rejected`),
-and the turns attributed to it: `turns`, the `working` (progressed or finished)
-turns among them, and an `errors` map keyed by the same `errorType` wire ids
-`byType` uses. Two invariants hold: the slices' `turns` sum to `errors.turns`,
-and a slice's `turns` minus `working` minus its error count is its fatal turns.
+the turns attributed to it (`turns`, the `working` turns among them, and an
+`errors` map keyed by the same `errorType` wire ids `byType` uses), and the
+`provider_fault` events against it (`stalls` and `cacheMisses`). Two invariants
+hold: the slices' `turns` sum to `errors.turns`, and a slice's `turns` minus
+`working` minus its error count is its fatal turns.
 
 A turn is attributed to the provider named by its own call's `usage`, `prompt`
 or `response_rejected` event. A call that produced no reply — a model timeout —

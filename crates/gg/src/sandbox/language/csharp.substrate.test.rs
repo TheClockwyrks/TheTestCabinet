@@ -157,16 +157,46 @@ pub(super) fn evaluate_with_program(
     })
 }
 
-/// What both of the above are: one evaluation, with everything the scope carries stated.
+/// [`evaluate_with_program`] for a library seeded with several programs, each `(id, turn, source)`,
+/// recorded oldest first, into a library retaining the most recent `keep` of them (`None` keeps
+/// every one, the double's default).
+///
+/// Its own function because the library's retention is a rule about *several* programs: seeding more
+/// than it holds is the only way to reach an id gg really issued and has since let go, which is a
+/// `NotFound` for a different reason from an id it never issued. The retention is set before the
+/// first program is recorded, because the library drops as each one arrives.
+pub(super) fn evaluate_with_programs(
+    program: &str,
+    keep: Option<usize>,
+    programs: &[(&str, u64, &str)],
+    responder: impl FnMut(&str, &serde_json::Value) -> ToolOutcome + Send + 'static,
+) -> (SandboxOutcome, CallLog) {
+    let programs: Vec<(String, u64, String)> = programs
+        .iter()
+        .map(|(id, turn, source)| ((*id).to_string(), *turn, (*source).to_string()))
+        .collect();
+    evaluate_granting(program, &[], RunEnding::None, true, move |log| {
+        let api = FakeOperationApi::with(log, responder);
+        let api = match keep {
+            Some(keep) => api.keeping(keep),
+            None => api,
+        };
+        programs.iter().fold(api, |api, (id, turn, source)| {
+            api.with_program(id, *turn, source)
+        })
+    })
+}
+
+/// What all of the above are: one evaluation, with everything the scope carries stated.
 ///
 /// It is also where the component-before-store ordering [`evaluate`]'s documentation explains
 /// actually happens, since that is a property of this body rather than of any wrapper.
 ///
 /// The double is BUILT here rather than passed in, because the log it writes to is created here and
 /// the two must be the same one. `build` takes that log and hands back the api, which is what lets a
-/// caller seed the double — a program library with something in it — without a second parameter for
-/// every thing a caller might seed.
-fn evaluate_granting(
+/// caller seed the double — a program library with something in it, a documentation index — without
+/// a second parameter for every thing a caller might seed.
+pub(super) fn evaluate_granting(
     program: &str,
     operations: &[crate::sandbox::operations::OperationId],
     ending: RunEnding,
@@ -214,7 +244,7 @@ fn evaluate_granting(
 }
 
 /// Compile and run one C# program with no gg tool offered — the shape most cases here want.
-fn run(source: &str) -> SandboxOutcome {
+pub(super) fn run(source: &str) -> SandboxOutcome {
     evaluate(
         &prepare(source),
         &[],

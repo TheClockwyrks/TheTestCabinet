@@ -5,6 +5,12 @@ x-devcontainer-build-args: &devcontainer-build-args
   DOCKER_GID: ${DOCKER_GID:-999}
   LAZYGIT_VERSION: 0.61.1
   NODE_VERSION: 24.16.0
+  # Playwright, which installs Chromium and resolves the system libraries it
+  # needs (tools/browsers.sh and system/browser-deps.sh). Both scripts read the pin
+  # from this line when run by hand. Keep it equal to the `playwright` in
+  # packages/case-harness and packages/browser-driver: Playwright resolves a browser
+  # build per client version, so a mismatch bakes in a Chromium the tests never ask for.
+  PLAYWRIGHT_VERSION: 1.63.0
   NEXTEST_VERSION: 0.9.140
   RUST_VERSION: 1.97.1
   TZ: ${TZ:-UTC}

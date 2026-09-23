@@ -608,6 +608,13 @@ mod tests;
 #[path = "rust.substrate.test.rs"]
 mod substrate;
 
+/// **The [`feedback`](crate::sandbox::membrane::capture) channel, driven from Rust programs** — what
+/// the capture keeps of what a program logs, what a program's end hands gg, and what a code module
+/// that fails tells the model.
+#[cfg(test)]
+#[path = "rust.feedback.test.rs"]
+mod feedback;
+
 /// **Every Rust example a model is shown, put through `rustc`** — the prompt's, the notice's and the
 /// catalogue's.
 ///

@@ -71,21 +71,20 @@ common `stock` category: six on Draw One and ten on Draw Three.
 
 ## Contents
 
-| Path                                      | Seeded to a run? | Purpose                                                    |
-| ----------------------------------------- | ---------------- | ---------------------------------------------------------- |
-| `specs/`                                  | **Yes**          | The specification handed to the model, by concern.         |
-| `workspaces/none/`                        | **Yes**          | The engineless starter project, shared by both variants.   |
-| `workspaces/<variant>/<engine>/`          | **Yes**          | The per-engine starter project for that variant.           |
-| `prompt.hbs`                              | No               | Rendered into the model's prompt; not seeded.              |
-| `references/<engine>/<variant>/`          | No               | The authored, correct playable builds, six of them.        |
-| `showcase/<variant>/`                     | No               | Curated demo media and description for the catalog.        |
-| `validation/<engine>/`                    | No               | The Vitest validator suite for that engine.                |
-| `validation-baseline/<engine>/<variant>/` | No               | The baseline half of the validation media.                 |
-| `test-case.toml`                          | No               | The manifest: engines, workspaces, specs, domains, review. |
-| `variants/`                               | No               | The two variant files.                                     |
-| `description.md`                          | No               | The site-facing introduction on the case's detail page.    |
-| `changelog.md`                            | No               | This version's entry in the case's changelog.              |
-| `README.md`                               | No               | This overview.                                             |
+| Path                             | Seeded to a run? | Purpose                                                    |
+| -------------------------------- | ---------------- | ---------------------------------------------------------- |
+| `specs/`                         | **Yes**          | The specification handed to the model, by concern.         |
+| `workspaces/none/`               | **Yes**          | The engineless starter project, shared by both variants.   |
+| `workspaces/<variant>/<engine>/` | **Yes**          | The per-engine starter project for that variant.           |
+| `prompt.hbs`                     | No               | Rendered into the model's prompt; not seeded.              |
+| `references/<engine>/<variant>/` | No               | The authored, correct playable builds, six of them.        |
+| `showcase/<variant>/`            | No               | Curated demo media and description for the catalog.        |
+| `validation/<engine>/`           | No               | The Vitest validator suite for that engine.                |
+| `test-case.toml`                 | No               | The manifest: engines, workspaces, specs, domains, review. |
+| `variants/`                      | No               | The two variant files.                                     |
+| `description.md`                 | No               | The site-facing introduction on the case's detail page.    |
+| `changelog.md`                   | No               | This version's entry in the case's changelog.              |
+| `README.md`                      | No               | This overview.                                             |
 
 ## The specification
 
@@ -185,9 +184,9 @@ two exemptions are `constants.ts`, which may take named bindings from the build
 and here takes none, and `harness.ts`, which stands the build up through its
 entry `../src/game`.
 
-`validation-baseline/<engine>/<variant>/` holds the media the same suites
-captured from that engine's reference build, so a reviewer sees the run's
-evidence and the reference's side by side.
+This version's `validation-baseline/<engine>/<variant>/` in the `cold-storage`
+submodule holds the media the same suites captured from that engine's reference
+build, so a reviewer sees the run's evidence and the reference's side by side.
 
 ## Scoring
 

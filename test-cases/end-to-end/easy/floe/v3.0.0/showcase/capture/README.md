@@ -97,7 +97,7 @@ build is untouched — it asks the engine's loader for the same paths and draws 
 same frames — and the committed clip renders with every operation resolved.
 Fathom v3.0.0's capture drivers do the same thing for the same reason.
 
-Note that the case's committed `validation-baseline/` replays are captured
-WITHOUT this shim, by `tcab capture-baselines`, and so carry opaque markers where
-their sprites would be. That is a property of the baseline pipeline rather than
-of this driver, and it is not this directory's to change.
+Note that the case's baseline replays in cold storage (`validation-baseline/`)
+are captured WITHOUT this shim, by `tcab capture-baselines`, and so carry opaque
+markers where their sprites would be. That is a property of the baseline
+pipeline rather than of this driver, and it is not this directory's to change.

@@ -117,6 +117,8 @@ async fn run_inheritance(dir: &Path, scope: GgMemoryScope) -> Vec<GgTelemetryEve
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let spawn = ModelResponse {
             text: Some("Handing the reading to a child.".to_string()),
@@ -130,6 +132,8 @@ async fn run_inheritance(dir: &Path, scope: GgMemoryScope) -> Vec<GgTelemetryEve
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let wait = ModelResponse {
             text: Some("Waiting.".to_string()),
@@ -143,6 +147,8 @@ async fn run_inheritance(dir: &Path, scope: GgMemoryScope) -> Vec<GgTelemetryEve
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         Box::new(MockClient::new(
             "mock/primary",

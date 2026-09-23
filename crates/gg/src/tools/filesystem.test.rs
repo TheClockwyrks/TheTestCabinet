@@ -442,3 +442,109 @@ async fn tools_reach_outside_the_workspace() {
     assert!(read.ok, "{}", read.output);
     assert!(read.output.contains("outside"));
 }
+
+// ---------------------------------------------------------------------------
+// Paths of the wrong kind
+// ---------------------------------------------------------------------------
+//
+// A model names a directory where a file belongs, or a file where a directory does, far more
+// often than it hits a permission bit — and a path of the wrong kind is something the test can
+// build on any filesystem, including one the suite runs on as root. Each case below enters one
+// of the tools' I/O branches that way, and asserts the class the caller branches on plus a
+// message that names what was asked for.
+
+/// A directory read as a file is an I/O failure naming the path, not an empty file.
+#[tokio::test]
+async fn reading_a_directory_is_an_io_error() {
+    let (dir, ctx) = workspace();
+    std::fs::create_dir(dir.path().join("src")).unwrap();
+
+    let read = reader().invoke(json!({ "path": "src" }), &ctx).await;
+    assert!(!read.ok, "{}", read.output);
+    assert_eq!(read.failure, Some(ToolFailure::IoError));
+    assert!(read.output.contains("src"), "{}", read.output);
+}
+
+/// `read_file` reaches the same empty-path branch `write_file` is asserted through above.
+#[tokio::test]
+async fn an_empty_read_path_is_an_argument_error() {
+    let (_dir, ctx) = workspace();
+
+    let read = reader().invoke(json!({ "path": "  " }), &ctx).await;
+    assert!(!read.ok, "{}", read.output);
+    assert_eq!(read.failure, Some(ToolFailure::InvalidArgument));
+}
+
+/// A parent that is a regular file fails the write while gg is still creating directories, and
+/// the message says so rather than blaming the write.
+#[tokio::test]
+async fn writing_under_a_file_is_an_io_error() {
+    let (dir, ctx) = workspace();
+    std::fs::write(dir.path().join("a.txt"), "i am a file").unwrap();
+
+    let write = WriteFileTool
+        .invoke(json!({ "path": "a.txt/b.txt", "contents": "x" }), &ctx)
+        .await;
+    assert!(!write.ok, "{}", write.output);
+    assert_eq!(write.failure, Some(ToolFailure::IoError));
+    assert!(
+        write.output.contains("creating parent dirs"),
+        "{}",
+        write.output
+    );
+}
+
+/// Writing onto an existing directory gets past parent creation and fails on the write itself.
+#[tokio::test]
+async fn writing_onto_a_directory_is_an_io_error() {
+    let (dir, ctx) = workspace();
+    std::fs::create_dir(dir.path().join("assets")).unwrap();
+
+    let write = WriteFileTool
+        .invoke(json!({ "path": "assets", "contents": "x" }), &ctx)
+        .await;
+    assert!(!write.ok, "{}", write.output);
+    assert_eq!(write.failure, Some(ToolFailure::IoError));
+    assert!(write.output.contains("assets"), "{}", write.output);
+}
+
+/// Editing a directory is an I/O failure rather than a missing-`old_string` one: the model is
+/// told the path is wrong, not the text.
+#[tokio::test]
+async fn editing_a_directory_is_an_io_error() {
+    let (dir, ctx) = workspace();
+    std::fs::create_dir(dir.path().join("src")).unwrap();
+
+    let edit = EditFileTool
+        .invoke(
+            json!({ "path": "src", "old_string": "alpha", "new_string": "beta" }),
+            &ctx,
+        )
+        .await;
+    assert!(!edit.ok, "{}", edit.output);
+    assert_eq!(edit.failure, Some(ToolFailure::IoError));
+    assert!(edit.output.contains("src"), "{}", edit.output);
+}
+
+/// A regular file listed as a directory is an I/O failure, reported under the tool's own name.
+#[tokio::test]
+async fn listing_a_file_is_an_io_error() {
+    let (dir, ctx) = workspace();
+    std::fs::write(dir.path().join("a.txt"), "one\n").unwrap();
+
+    let list = ListDirTool.invoke(json!({ "path": "a.txt" }), &ctx).await;
+    assert!(!list.ok, "{}", list.output);
+    assert_eq!(list.failure, Some(ToolFailure::IoError));
+    assert!(list.output.starts_with("list_dir:"), "{}", list.output);
+}
+
+/// An explicitly empty `list_dir` path is an argument error, not the workspace root: the default
+/// is an *absent* path, and a caller that computed an empty string is told so.
+#[tokio::test]
+async fn an_empty_listing_path_is_an_argument_error() {
+    let (_dir, ctx) = workspace();
+
+    let list = ListDirTool.invoke(json!({ "path": "" }), &ctx).await;
+    assert!(!list.ok, "{}", list.output);
+    assert_eq!(list.failure, Some(ToolFailure::InvalidArgument));
+}

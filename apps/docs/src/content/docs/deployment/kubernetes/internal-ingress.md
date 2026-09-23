@@ -40,13 +40,17 @@ prerequisite.
   `proxy-read-timeout` and `proxy-send-timeout: "3600"`, because the backend and
   arena serve long-lived NDJSON streams that the default 60 s timeout would
   sever; and `proxy-buffering: "off"`, so stream chunks flush straight through.
-- A cert-manager `ClusterIssuer` (`letsencrypt-internal`) issuing each host a
-  Let's Encrypt certificate over the ACME production directory, solved by DNS-01
+- Each `Ingress` names the cert-manager `ClusterIssuer` `letsencrypt-internal`,
+  which issues each host a Let's Encrypt certificate over the ACME production
+  directory, solved by DNS-01
   over Cloudflare. DNS-01 is required because the hosts are internal-only: Let's
   Encrypt cannot reach an HTTP-01 token, while proving control of the
   `testcabinet.ai` zone with a TXT record needs no inbound path. The solver reads
   a Cloudflare API token with `Zone:DNS:Edit` from the `cert-manager-cloudflare`
-  Secret, key `api-token`.
+  Secret, key `api-token`. The `ClusterIssuer` is cluster-scoped, so it lives in
+  `deployments/k8s/cluster/internal-ingress` and is applied with the
+  [cluster prerequisites](/deployment/kubernetes/overview/#cluster-prerequisites)
+  rather than by this component.
 - Three additive `NetworkPolicy` rules admitting the `ingress-nginx` namespace
   through the base default-deny, covering the four services, `tcab-web`, and
   `tcab-lgtm`; see
@@ -124,7 +128,7 @@ the ingress controller has its internal LB IP.
    zone is linked to the AKS VNet, so in-cluster DNS resolves those names to the
    private LB IP and sees no public NS records. Without them cert-manager loops
    on "Could not determine authoritative nameservers" and issues no certificate.
-   The CRDs must exist before the component's `ClusterIssuer` applies.
+   The CRDs must exist before the `ClusterIssuer` applies.
 
 4. Provision the Cloudflare DNS-01 token. Mint a Cloudflare API token with
    `Zone:DNS:Edit` scoped to `testcabinet.ai`; a Pages-scoped publishing token
@@ -163,7 +167,9 @@ the ingress controller has its internal LB IP.
    `tcab-lgtm` pod stays in `CreateContainerConfigError`, which is deliberately
    fail-closed.
 
-6. Apply the overlay, then
+6. Apply the cluster-scoped objects with
+   `kubectl apply -k deployments/k8s/cluster/azure-<env>`, let the pipeline
+   deploy the overlay, then
    `kubectl rollout restart deploy/tcab-keyvault-sync -n <namespace>` so the new
    `cert-manager-cloudflare` and `tcab-grafana-admin` Secrets materialize.
    cert-manager completes the DNS-01 challenge with the Cloudflare token and

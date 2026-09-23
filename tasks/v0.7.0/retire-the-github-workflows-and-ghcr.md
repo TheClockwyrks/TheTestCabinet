@@ -4,23 +4,22 @@ Delete every GitHub Actions workflow and every reference to GHCR, so the GitHub
 repository is a source mirror of Azure and nothing else.
 
 This issue depends on
-[`build-ci-cd-on-azure-pipelines-with-deploys-to-staging-and-prod.md`](build-ci-cd-on-azure-pipelines-with-deploys-to-staging-and-prod.md)
+[`build-ci-cd-on-azure-pipelines-with-deploys-to-staging-and-prod.md`](done/build-ci-cd-on-azure-pipelines-with-deploys-to-staging-and-prod.md)
 and
-[`publish-gg-release-binaries-to-azure-blob-storage.md`](publish-gg-release-binaries-to-azure-blob-storage.md),
+[`publish-gg-release-binaries-to-azure-blob-storage.md`](done/publish-gg-release-binaries-to-azure-blob-storage.md),
 which take over everything the workflows did that still matters.
 
 ## Current state
 
-`.github/workflows/` holds `binary-macos.yml`, `build-containers.yml`,
-`build-gg-ci-image.yml`, `build-service-images.yml`, `ci.yml`,
-`deploy-docs.yml`, `publish-reference.yml`, `release-promote.yml` and
-`release.yml`. `scripts/ci/README.md` describes GitHub Actions as the secondary
-CI that owns macOS validation, the Pages deploys and the images.
+`.github/` holds the mirror README alone, and Azure Pipelines is the only CI.
+The run-container registry defaults to `testcabinet.azurecr.io`, and the
+release docs follow the Azure tag route.
 
-The `azure-staging` and `azure-prod` overlays, the dispatcher's defaults for
-`TCAB_CONTAINER_REGISTRY`, and core's run-image resolution all name
-`ghcr.io/theclockwyrks`. The cut-a-release quickstart and guide drive releases
-through `gh`.
+The remaining `ghcr.io` references are in the desktop app:
+`deployments/k8s/overlays/app` and `crates/desktop/src/cluster.test.rs`, which
+[`drop-the-desktop-app.md`](drop-the-desktop-app.md) deletes. The desktop build
+scripts and `scripts/ci/desktop-build.sh` still name `release.yml` and GHCR for
+the same reason.
 
 The project stays open source because a closed benchmark is not one to trust,
 and that means the code is readable. Nobody is expected to run their own
@@ -57,10 +56,10 @@ deleted with the others.
 
 ## Done when
 
-- [ ] `.github/` holds the mirror README and nothing else.
-- [ ] `scripts/ci/README.md` and `development/building.md` name Azure Pipelines
+- [x] `.github/` holds the mirror README and nothing else.
+- [x] `scripts/ci/README.md` and `development/building.md` name Azure Pipelines
       as the only CI.
 - [ ] A search of the checkout for `ghcr.io` and `gh workflow` finds nothing.
-- [ ] A run launched on a cluster deployed from the ACR pulls its run-container
+- [x] A run launched on a cluster deployed from the ACR pulls its run-container
       image from the ACR by default.
 - [ ] Gates green.
