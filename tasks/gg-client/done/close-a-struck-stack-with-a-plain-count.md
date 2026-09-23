@@ -27,6 +27,6 @@ beside the rule that a struck frame is counted.
 
 ## Done when
 
-- [ ] Both count lines read `… and N more frames (external code)`.
-- [ ] The invariants page states the form.
-- [ ] Gates green.
+- [x] Both count lines read `… and N more frames (external code)`.
+- [x] The invariants page states the form.
+- [x] Gates green.
