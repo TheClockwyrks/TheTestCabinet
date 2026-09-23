@@ -87,13 +87,10 @@ spec:
               # gating on it would deadlock the sidecar against itself.
               echo "ingest: waiting for backend healthz"
               until curl -fsS -o /dev/null http://127.0.0.1:8787/healthz; do sleep 3; done
-              # A bare scan (no force): a cold volume ingests everything, while a store
-              # carried over on the PVC skips already-ingested versions instead of
-              # re-rendering them. A carried-over store this image reads differently
-              # from the one that wrote it is re-ingested whole regardless, which is
-              # what makes a record-shape change reach a PVC that survived the deploy.
-              # Retry a stuck POST a few times so a slow-to-ready backend does not
-              # leave the store empty.
+              # A forced scan, so every deploy serves exactly the catalog it shipped:
+              # edited versions are overwritten and removed ones pruned, each swapped
+              # into place atomically. Retry a stuck POST a few times so a
+              # slow-to-ready backend does not leave the store empty.
               n=0
               until curl -fsS -X POST http://127.0.0.1:8787/ingest \
                      -H 'content-type: application/json' -d '{"force": true}' >/dev/null; do
