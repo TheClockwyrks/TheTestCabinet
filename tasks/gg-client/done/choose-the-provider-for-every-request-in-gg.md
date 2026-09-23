@@ -123,18 +123,18 @@ add-or-update-a-model quickstart.
 
 ## Done when
 
-- [ ] `modelProviders` carries an ordered candidate list per model, and the
+- [x] `modelProviders` carries an ordered candidate list per model, and the
       backend builds it at enqueue from the endpoints listing under the
       filters above.
-- [ ] Every request names one provider and one quantization with fallbacks
+- [x] Every request names one provider and one quantization with fallbacks
       refused.
-- [ ] A spent retry schedule moves the run to the next candidate, and a
+- [x] A spent retry schedule moves the run to the next candidate, and a
       provider reaching `providerCacheMissLimit` is left at the next request,
       each recorded as `provider_switch`.
-- [ ] `GgProviderStat` counts stalls and unexpected misses, the backend rolls
+- [x] `GgProviderStat` counts stalls and unexpected misses, the backend rolls
       them up per provider, and the console edits a model's native level,
       price ceiling and ban list.
-- [ ] The skill's script prints the candidate list and the templates carry the
+- [x] The skill's script prints the candidate list and the templates carry the
       shape.
-- [ ] The pages above describe the list, the request, the move and the policy.
-- [ ] Gates green.
+- [x] The pages above describe the list, the request, the move and the policy.
+- [x] Gates green.
