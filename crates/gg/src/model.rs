@@ -451,7 +451,7 @@ pub enum ModelError {
     /// blame it for a route gg asked not to be taken. The turn loop ends the session on it.
     #[error("provider mismatch: pinned to `{pinned}`, served by `{served}`")]
     ProviderMismatch {
-        /// The OpenRouter provider slug the launch pinned this model to.
+        /// The OpenRouter provider the launch pinned this model to.
         pinned: String,
         /// The provider the response named as having served it.
         served: String,
@@ -519,7 +519,7 @@ impl ModelError {
             ModelError::ResponseLoop { .. } => TurnErrorType::ModelResponseLoop,
             ModelError::VisionUnsupported { .. } => TurnErrorType::ModelVisionUnsupported,
             ModelError::Parse(_) => TurnErrorType::ModelParse,
-            ModelError::ProviderMismatch { .. } => TurnErrorType::ProviderMismatch,
+            ModelError::ProviderMismatch { .. } => TurnErrorType::ModelProviderMismatch,
             ModelError::Timeout { .. } => TurnErrorType::ModelTimeout,
         }
     }

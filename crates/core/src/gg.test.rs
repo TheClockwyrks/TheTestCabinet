@@ -2126,20 +2126,14 @@ fn every_error_type_has_a_stable_id_a_label_and_exactly_one_base() {
             json!(error.wire_id()),
             "{error:?}: the id and the serde spelling must be one value"
         );
-        // `provider_mismatch` is the exception the event is published under: the ranking shows
-        // the name the harness failure is recorded as, and that name does not carry the base.
-        let prefix = match error {
-            GgTurnErrorType::ProviderMismatch => "provider_",
-            _ => match error.kind() {
+        assert!(
+            error.wire_id().starts_with(match error.kind() {
                 GgTurnErrorKind::ModelApi => "model_",
                 GgTurnErrorKind::Transpile => "transpile_",
                 GgTurnErrorKind::ProgramFault => "program_",
                 GgTurnErrorKind::SandboxLimit => "sandbox_",
                 GgTurnErrorKind::MissingCompletion => "missing_completion_",
-            },
-        };
-        assert!(
-            error.wire_id().starts_with(prefix),
+            }),
             "{error:?}: a type's id names its base, because a ranking shows it without one"
         );
     }

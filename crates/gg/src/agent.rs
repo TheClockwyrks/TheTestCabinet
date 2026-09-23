@@ -174,7 +174,9 @@ use crate::archive::ArchiveStore;
 use crate::board::{BoardCaps, BoardRuntime, IssuePolicy, IssueStatus};
 use crate::cancel::CancelWatch;
 use crate::capture::{GgRecorder, RecordedSeed, RecordingClient};
-use crate::client::{AgentIdentity, ClientFactory, DefaultClientFactory, provider_for};
+use crate::client::{
+    AgentIdentity, ClientFactory, DefaultClientFactory, ProviderKind, provider_for,
+};
 use crate::compaction::{
     self, CompactionRequest, CompactionSetup, CompactionVerdict, PendingCompaction, RestoredFile,
 };
@@ -1011,9 +1013,8 @@ pub(crate) async fn run_with_seams(
         root_emitter.emit(session_ended("error"));
         return SessionOutcome::HarnessError;
     }
-    // Launch check 3b: every bound model must name the one provider its requests are pinned to.
-    // Same refusal as a missing window, and reported together: a launch missing several is fixed
-    // in one pass.
+    // Launch check 3b: every bound model must name the one provider its requests are pinned to,
+    // reported together like the windows.
     if let Err(err) = validate_model_providers(set, &invocation.model_providers) {
         root_emitter.emit(log("error", err));
         root_emitter.emit(session_ended("error"));
@@ -7068,7 +7069,20 @@ impl Agent {
                             return hook_failed(self, emitter, &limits, failure, turn);
                         }
                         let (request, fallback) =
-                            compaction::condense_out_of_band(context, client, &compaction).await;
+                            match compaction::condense_out_of_band(context, client, &compaction)
+                                .await
+                            {
+                                Ok(condensed) => condensed,
+                                // A reply from another provider on the summarizer's call is the same
+                                // harness failure it is on a turn. Raised on the run's latch, which
+                                // stops the tree at the next turn boundary; the thread is compacted
+                                // from the fixed note so it is whole until then.
+                                Err(err) => {
+                                    emitter.emit(log("error", format!("compaction failed: {err}")));
+                                    limits.fault.in_agent(&self.id, &self.profile_id, &err);
+                                    (compaction::fallback_request(), true)
+                                }
+                            };
                         let files = restore_compact_files(&request.files, tool_ctx, emitter).await;
                         // Read *before* the rewrite too, for the reason the files are: the keys are
                         // in the window `clear_ephemeral` is about to empty.
@@ -10781,11 +10795,10 @@ fn validate_model_windows(
 }
 
 /// Check that every model `set` binds names the one OpenRouter provider its requests are pinned
-/// to — the launch check that makes a run unable to start on an unpinned model.
+/// to, reporting every missing pin together.
 ///
-/// A missing pin is the same class of refusal as a missing window: the backend stamps both, and
-/// an invocation written by hand has to carry both. Reported together, so one launch names every
-/// model it cannot pin.
+/// A model the [mock client](crate::client::ProviderKind::Mock) answers is exempt: it sends no
+/// request, so there is no provider to pin.
 fn validate_model_providers(
     set: &GgCapabilitySet,
     providers: &BTreeMap<String, String>,
@@ -10793,6 +10806,7 @@ fn validate_model_providers(
     let missing: Vec<&str> = set
         .bound_model_ids()
         .into_iter()
+        .filter(|id| provider_for(&GgSlotBinding::new("", *id)) != ProviderKind::Mock)
         .filter(|id| {
             providers
                 .get(*id)
@@ -10803,8 +10817,8 @@ fn validate_model_providers(
         return Ok(());
     }
     Err(format!(
-        "the invocation carries no provider pin for the model(s) {}: a model whose official \
-         endpoint is not listed is not testable",
+        "the invocation carries no provider pin for the model(s) {}: every bound model needs a \
+         `modelProviders` entry naming its developer's own OpenRouter provider",
         missing
             .iter()
             .map(|id| format!("`{id}`"))

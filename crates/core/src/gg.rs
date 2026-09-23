@@ -5013,7 +5013,7 @@ pub enum GgTurnErrorType {
     /// request was well-formed and the provider answered it; the answer is unusable because the
     /// cost recorded from it on would be on a different price basis. gg ends the run as a harness
     /// failure rather than scoring it against the model.
-    ProviderMismatch,
+    ModelProviderMismatch,
     /// The model call ran into the run's
     /// [**per-call ceiling**](GgRunLimits::model_call_timeout_secs) without producing a reply — a
     /// stalled provider, not a refusal. Unlike every other `model_` type this one does **not**
@@ -5111,7 +5111,7 @@ impl GgTurnErrorType {
         Self::ModelResponseLoop,
         Self::ModelVisionUnsupported,
         Self::ModelParse,
-        Self::ProviderMismatch,
+        Self::ModelProviderMismatch,
         Self::ModelTimeout,
         Self::ModelLengthCapped,
         Self::TranspileSyntax,
@@ -5142,7 +5142,7 @@ impl GgTurnErrorType {
             | Self::ModelResponseLoop
             | Self::ModelVisionUnsupported
             | Self::ModelParse
-            | Self::ProviderMismatch
+            | Self::ModelProviderMismatch
             | Self::ModelTimeout
             | Self::ModelLengthCapped => GgTurnErrorKind::ModelApi,
             Self::TranspileSyntax | Self::TranspileCompile | Self::TranspileUnsupported => {
@@ -5174,7 +5174,7 @@ impl GgTurnErrorType {
             Self::ModelResponseLoop => "model_response_loop",
             Self::ModelVisionUnsupported => "model_vision_unsupported",
             Self::ModelParse => "model_parse",
-            Self::ProviderMismatch => "provider_mismatch",
+            Self::ModelProviderMismatch => "model_provider_mismatch",
             Self::ModelTimeout => "model_timeout",
             Self::ModelLengthCapped => "model_length_capped",
             Self::TranspileSyntax => "transpile_syntax",
@@ -5205,7 +5205,7 @@ impl GgTurnErrorType {
             Self::ModelResponseLoop => "model looped every attempt",
             Self::ModelVisionUnsupported => "model cannot see images",
             Self::ModelParse => "unparseable model response",
-            Self::ProviderMismatch => "served by another provider",
+            Self::ModelProviderMismatch => "served by another provider",
             Self::ModelTimeout => "model call timed out",
             Self::ModelLengthCapped => "length-capped reply rejected",
             Self::TranspileSyntax => "syntax error",
@@ -5383,7 +5383,7 @@ pub struct GgInvocation {
     /// and has nothing to invent one from.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub model_windows: BTreeMap<String, u64>,
-    /// The OpenRouter **provider slug** each model this run may bind is pinned to — the model's
+    /// The OpenRouter **provider** each model this run may bind is pinned to — the model's
     /// own developer, resolved from the catalog when the run was triggered and pushed in here on
     /// the same terms as [`model_windows`](Self::model_windows). Keyed by the model id the
     /// [binding](GgSlotBinding::model_id) names.
@@ -7231,7 +7231,7 @@ pub enum GgTelemetryKind {
         /// Without it a live view can only guess what a run is capable of and must
         /// offer every surface, including the ones this run's configuration disabled.
         capability_set: Box<GgCapabilitySet>,
-        /// The OpenRouter provider slug each bound model is pinned to, beside the session
+        /// The OpenRouter provider each bound model is pinned to, beside the session
         /// id. A run's cost is recorded against this pin; a response from any other
         /// provider ends the run.
         #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]

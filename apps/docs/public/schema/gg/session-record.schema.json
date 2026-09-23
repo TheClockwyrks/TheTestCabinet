@@ -759,7 +759,7 @@
           "additionalProperties": {
             "type": "string"
           },
-          "description": "The OpenRouter provider slug each bound model was pinned to. Recorded because a\nrun's cost is on that provider's price basis, and a reader that guessed the pin\nwould price the run against a different one.",
+          "description": "The OpenRouter provider each bound model was pinned to. Recorded because a\nrun's cost is on that provider's price basis, and a reader that guessed the pin\nwould price the run against a different one.",
           "type": "object"
         },
         "modelWindows": {

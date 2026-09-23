@@ -28,7 +28,8 @@ def fetch(url):
         return json.load(response)
 
 def normalize(name):
-    return "".join(ch for ch in name.lower() if ch not in " -_")
+    # One provider, however OpenRouter spells it: `Z.AI` and `z-ai` agree.
+    return "".join(ch for ch in name.lower() if ch.isalnum())
 
 want = sys.argv[1:]
 catalog = {m["id"]: m for m in fetch("https://openrouter.ai/api/v1/models")["data"]}

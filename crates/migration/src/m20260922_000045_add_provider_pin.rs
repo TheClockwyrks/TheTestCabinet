@@ -1,4 +1,4 @@
-//! Adds the `provider_slug` column to the `model_price` table.
+//! Adds the `provider_pin` column to the `model_price` table.
 //!
 //! A gg run is pinned to the model developer's own OpenRouter provider, and the catalog
 //! is the single store of that fact. It rides along on a price observation exactly as
@@ -18,7 +18,7 @@ impl MigrationTrait for Migration {
             .alter_table(
                 Table::alter()
                     .table(ModelPrice::Table)
-                    .add_column(ColumnDef::new(ModelPrice::ProviderSlug).string().null())
+                    .add_column(ColumnDef::new(ModelPrice::ProviderPin).string().null())
                     .to_owned(),
             )
             .await?;
@@ -28,7 +28,7 @@ impl MigrationTrait for Migration {
             .alter_table(
                 Table::alter()
                     .table(Model::Table)
-                    .add_column(ColumnDef::new(Model::ProviderSlug).string().null())
+                    .add_column(ColumnDef::new(Model::ProviderPin).string().null())
                     .to_owned(),
             )
             .await?;
@@ -40,7 +40,7 @@ impl MigrationTrait for Migration {
             .alter_table(
                 Table::alter()
                     .table(Model::Table)
-                    .drop_column(Model::ProviderSlug)
+                    .drop_column(Model::ProviderPin)
                     .to_owned(),
             )
             .await?;
@@ -48,7 +48,7 @@ impl MigrationTrait for Migration {
             .alter_table(
                 Table::alter()
                     .table(ModelPrice::Table)
-                    .drop_column(ModelPrice::ProviderSlug)
+                    .drop_column(ModelPrice::ProviderPin)
                     .to_owned(),
             )
             .await?;
@@ -59,11 +59,11 @@ impl MigrationTrait for Migration {
 #[derive(DeriveIden)]
 enum ModelPrice {
     Table,
-    ProviderSlug,
+    ProviderPin,
 }
 
 #[derive(DeriveIden)]
 enum Model {
     Table,
-    ProviderSlug,
+    ProviderPin,
 }

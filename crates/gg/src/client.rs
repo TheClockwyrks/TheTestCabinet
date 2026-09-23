@@ -412,7 +412,7 @@ pub struct OpenRouterClient {
     /// intermediary that filters one of them can quietly cost the run its cache). `None` leaves
     /// the key off the wire entirely.
     session_key: Option<String>,
-    /// The OpenRouter provider slug this client's requests are pinned to — the model's own
+    /// The OpenRouter provider this client's requests are pinned to — the model's own
     /// developer, resolved at enqueue and pushed in as
     /// [`GgInvocation::model_providers`](test_cabinet_core::gg::GgInvocation::model_providers).
     /// Sent as `provider.only` with fallbacks refused, so a run cannot be moved onto another
@@ -624,30 +624,27 @@ impl OpenRouterClient {
     /// Reject a reply the pinned provider did not serve.
     ///
     /// OpenRouter names the serving provider on every response, and [`usage`](crate::model)
-    /// already records it. A response from any other provider ends the call as
+    /// records it. A response from any other provider ends the call as
     /// [`ProviderMismatch`](ModelError::ProviderMismatch): the cost recorded from that point
-    /// would be on a different price basis than the pin, so the reply is unusable even though
-    /// the request succeeded. A reply that names no provider is left alone — there is nothing to
-    /// disagree with, and inventing a mismatch from an absence would end runs on a field a
-    /// provider may omit.
+    /// would be on a different price basis than the pin. The two are compared as
+    /// [the same provider](test_cabinet_core::pricing::same_provider), since a response spells
+    /// the provider as the endpoints listing does and a hand-set pin may use the tag's spelling.
+    /// A reply that names no provider has nothing to disagree with and passes.
     fn pinned(
         &self,
         parsed: Result<ModelResponse, ModelError>,
     ) -> Result<ModelResponse, ModelError> {
-        let Some(pinned) = self.provider.as_deref() else {
+        let (Some(pinned), Ok(response)) = (self.provider.as_deref(), &parsed) else {
             return parsed;
         };
-        match parsed {
-            Ok(response) => match response.provider.as_deref() {
-                Some(served) if !served.eq_ignore_ascii_case(pinned) => {
-                    Err(ModelError::ProviderMismatch {
-                        pinned: pinned.to_string(),
-                        served: served.to_string(),
-                    })
-                }
-                _ => Ok(response),
-            },
-            Err(err) => Err(err),
+        match response.provider.as_deref() {
+            Some(served) if !test_cabinet_core::pricing::same_provider(served, pinned) => {
+                Err(ModelError::ProviderMismatch {
+                    pinned: pinned.to_string(),
+                    served: served.to_string(),
+                })
+            }
+            _ => parsed,
         }
     }
 
@@ -1310,7 +1307,7 @@ pub fn build_request_body(
         body["prompt_cache_key"] = json!(key);
     }
 
-    // The pin. `only` names the one provider slug this model's requests may be served by, and
+    // The pin. `only` names the one provider this model's requests may be served by, and
     // `allow_fallbacks: false` makes an outage of that provider the error it is rather than a
     // silent move onto another provider's price basis. The sticky key stays: it still keeps a
     // run on one endpoint *within* the pinned provider. Absent only for a caller that has no
@@ -4147,7 +4144,7 @@ pub struct DefaultClientFactory {
     /// The run's resolved [retry schedule](crate::limits::RunLimits::retry_policy), stamped on
     /// every live client this factory builds beside the ceiling.
     retry_policy: RetryPolicy,
-    /// The pinned OpenRouter provider slug of each model this run binds, keyed by model id. A
+    /// The pinned OpenRouter provider of each model this run binds, keyed by model id. A
     /// live client is stamped with its model's entry, so every request carries `provider.only`.
     model_providers: BTreeMap<String, String>,
 }
@@ -4172,6 +4169,11 @@ impl DefaultClientFactory {
             model_providers,
         }
     }
+
+    /// The provider the launch pinned `model_id` to, stamped on every live client built for it.
+    fn pin_for(&self, model_id: &str) -> Option<&str> {
+        self.model_providers.get(model_id).map(String::as_str)
+    }
 }
 
 impl ClientFactory for DefaultClientFactory {
@@ -4181,9 +4183,7 @@ impl ClientFactory for DefaultClientFactory {
             self.session_key.as_deref(),
             self.model_call_timeout,
             self.retry_policy,
-            self.model_providers
-                .get(&binding.model_id)
-                .map(String::as_str),
+            self.pin_for(&binding.model_id),
         )
     }
 }
@@ -4203,3 +4203,7 @@ mod timeout_tests;
 #[cfg(test)]
 #[path = "client.retry.test.rs"]
 mod retry_tests;
+
+#[cfg(test)]
+#[path = "client.pin.test.rs"]
+mod pin_tests;

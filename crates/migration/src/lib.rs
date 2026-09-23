@@ -68,7 +68,7 @@ mod m20260901_000041_add_gg_config_id;
 mod m20260901_000042_create_backfill_state;
 mod m20260901_000043_add_engine_pins;
 mod m20260906_000044_add_job_started_at;
-mod m20260922_000045_add_model_price_provider_slug;
+mod m20260922_000045_add_provider_pin;
 
 pub struct Migrator;
 
@@ -124,7 +124,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260901_000042_create_backfill_state::Migration),
             Box::new(m20260901_000043_add_engine_pins::Migration),
             Box::new(m20260906_000044_add_job_started_at::Migration),
-            Box::new(m20260922_000045_add_model_price_provider_slug::Migration),
+            Box::new(m20260922_000045_add_provider_pin::Migration),
         ]
     }
 }

@@ -80,7 +80,7 @@ export type GgSessionSeed = {
    */
   modelWindows?: { [key in string]: number };
   /**
-   * The OpenRouter provider slug each bound model was pinned to. Recorded because a
+   * The OpenRouter provider each bound model was pinned to. Recorded because a
    * run's cost is on that provider's price basis, and a reader that guessed the pin
    * would price the run against a different one.
    */

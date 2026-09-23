@@ -299,7 +299,7 @@ pub struct RunRequest {
     /// falls back to a conservative default. Meaningless for a non-gg run, which leaves
     /// it empty.
     pub gg_model_windows: BTreeMap<String, u64>,
-    /// The OpenRouter provider slug each model a **gg** run is pinned to, resolved from the
+    /// The OpenRouter provider each model a **gg** run is pinned to, resolved from the
     /// model catalog alongside [`gg_model_windows`](Self::gg_model_windows). Passed straight
     /// through to
     /// [`GgInvocation::model_providers`](crate::gg::GgInvocation::model_providers).

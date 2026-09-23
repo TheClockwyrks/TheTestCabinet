@@ -121,7 +121,7 @@ pub struct LaunchBody {
     /// the catalog knows no window for any bound model, and for every non-gg run.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub gg_model_windows: std::collections::BTreeMap<String, u64>,
-    /// The OpenRouter provider slug each model this **gg** run is pinned to.
+    /// The OpenRouter provider each model this **gg** run is pinned to.
     ///
     /// **Filled in by the backend at enqueue, not sent by a client**, on the same terms as
     /// [`gg_model_windows`](Self::gg_model_windows) and from the same lookup. A model the catalog

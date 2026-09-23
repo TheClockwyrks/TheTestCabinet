@@ -1270,7 +1270,7 @@
           "type": "string"
         },
         {
-          "const": "provider_mismatch",
+          "const": "model_provider_mismatch",
           "description": "The gateway served the call from a provider other than the one the launch pinned. The\nrequest was well-formed and the provider answered it; the answer is unusable because the\ncost recorded from it on would be on a different price basis. gg ends the run as a harness\nfailure rather than scoring it against the model.",
           "type": "string"
         },
@@ -1409,7 +1409,7 @@
           "additionalProperties": {
             "type": "string"
           },
-          "description": "The OpenRouter provider slug each bound model is pinned to, beside the session\nid. A run's cost is recorded against this pin; a response from any other\nprovider ends the run.",
+          "description": "The OpenRouter provider each bound model is pinned to, beside the session\nid. A run's cost is recorded against this pin; a response from any other\nprovider ends the run.",
           "type": "object"
         },
         "type": {

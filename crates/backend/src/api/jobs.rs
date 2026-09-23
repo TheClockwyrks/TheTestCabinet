@@ -303,13 +303,13 @@ pub(super) fn launch_models(body: &LaunchBody) -> Vec<(String, HarnessSlug)> {
 /// Resolution is two steps per model:
 ///
 /// 1. the [catalog](super::models::launch_facts_for) — the observations the backend
-///    already holds; then
+///    already holds, and the provider pin set by hand on a curated model; then
 /// 2. a live [per-model fetch](test_cabinet_core::OpenRouterPrices::model_launch_facts)
 ///    from OpenRouter, for a model the catalog has not observed yet (the first run against a
 ///    just-released model). Only the models this run needs are fetched, not the catalog, and
 ///    both facts come out of one request.
 ///
-/// The two facts fail differently, on purpose:
+/// The facts fail differently, on purpose:
 ///
 /// - **No context window fails the launch.** An assumed window is not a smaller version of
 ///   the right answer: it silently mis-scales every fullness figure, moves the compaction
@@ -320,6 +320,8 @@ pub(super) fn launch_models(body: &LaunchBody) -> Vec<(String, HarnessSlug)> {
 ///   (see [`crate::api::gg`] and gg's own vision handling). Refusing to launch because
 ///   OpenRouter did not annotate a model would block runs over a fact that only affects
 ///   whether one tool result may carry a picture.
+/// - **No provider pin fails the launch.** Every run runs on the model developer's own
+///   provider; a model OpenRouter lists no official endpoint for is not testable.
 ///
 /// Whatever the client sent is discarded first — these are backend-resolved facts, not
 /// client input.
@@ -352,7 +354,7 @@ pub(super) async fn resolve_gg_model_facts(
 pub(super) struct GgModelFacts {
     /// The context window every bound model is measured against.
     windows: std::collections::BTreeMap<String, u64>,
-    /// The OpenRouter provider slug every bound model is pinned to.
+    /// The OpenRouter provider every bound model is pinned to.
     providers: std::collections::BTreeMap<String, String>,
     /// The input modalities of the bound models the catalog (or OpenRouter) lists them for.
     /// A model with none is simply absent: unknown modalities are not a launch failure.
@@ -410,62 +412,12 @@ struct ResolvedModelFacts {
     input_modalities: Vec<String>,
 }
 
-/// The pin a launch stamps for `model_id`: the catalog's hand-set slug when one is set,
-/// otherwise the official endpoint on the live listing. A model with neither is refused.
-async fn resolve_provider_pin(
-    db: &crate::db::Db,
-    prices: &test_cabinet_core::OpenRouterPrices,
-    model_id: &str,
-    harness: HarnessSlug,
-    lookup: &str,
-    stored: Option<String>,
-) -> Result<String, String> {
-    if let Some(provider) = stored.filter(|provider| !provider.trim().is_empty()) {
-        return Ok(provider);
-    }
-    if let Some(provider) = super::models::curated_provider_slug(db, model_id, harness)
-        .await
-        .map_err(|err| format!("could not read the curated provider pin for `{model_id}`: {err}"))?
-        .filter(|provider| !provider.trim().is_empty())
-    {
-        return Ok(provider);
-    }
-    match prices.provider_routes(lookup).await {
-        Ok(routes) => {
-            let author = lookup.split(['/', ':']).next().unwrap_or(lookup);
-            let want: String = author
-                .chars()
-                .filter(|ch| !ch.is_whitespace() && *ch != '-' && *ch != '_')
-                .flat_map(|ch| ch.to_lowercase())
-                .collect();
-            routes
-                .into_iter()
-                .find(|route| {
-                    route
-                        .name
-                        .chars()
-                        .filter(|ch| !ch.is_whitespace() && *ch != '-' && *ch != '_')
-                        .flat_map(|ch| ch.to_lowercase())
-                        .collect::<String>()
-                        == want
-                })
-                .map(|route| route.name)
-                .ok_or_else(|| {
-                    format!(
-                        "`{model_id}` has no official endpoint on OpenRouter (looked up as \
-                         `{lookup}`; no route belongs to its developer), so it is not testable"
-                    )
-                })
-        }
-        Err(err) => Err(format!(
-            "`{model_id}` has no official endpoint on OpenRouter (looked up as `{lookup}`, and \
-             the listing could not be read: {err}), so it is not testable"
-        )),
-    }
-}
-
 /// One model's launch facts: the catalog's observation, else a live per-model fetch from
 /// OpenRouter, else the reason this run cannot start.
+///
+/// The pin is the catalog entry's hand-set one when it has one, else the official provider
+/// the catalog observed, else the one the live fetch finds. A model with none is refused:
+/// it is not testable on any other provider.
 async fn resolve_one_model_facts(
     db: &crate::db::Db,
     prices: &test_cabinet_core::OpenRouterPrices,
@@ -482,55 +434,59 @@ async fn resolve_one_model_facts(
             ));
         }
     };
-    // The window is what the launch hinges on. When the catalog has it, the run can start —
-    // even if it has no modality list, which gg is allowed not to know.
-    // The id to ask under is the same one prices are looked up by, so a curated model
-    // resolves through its configured slug.
-    let lookup = crate::bootstrap::openrouter_lookup_id(db, model_id, harness)
+    let curated_pin = super::models::curated_provider_pin(db, model_id, harness)
         .await
-        .unwrap_or_else(|_| test_cabinet_core::model_id::openrouter_price_id(model_id, harness));
-    let provider = resolve_provider_pin(
-        db,
-        prices,
-        model_id,
-        harness,
-        &lookup,
-        stored.provider_slug.clone(),
-    )
-    .await?;
-    // The window is what the launch hinges on. When the catalog has it, the run can start —
-    // even if it has no modality list, which gg is allowed not to know. The pin is required
-    // either way: a model with no official endpoint is not testable.
-    if let Some(window) = stored.context_window {
+        .map_err(|err| format!("could not read the provider pin set for `{model_id}`: {err}"))?;
+    let known_pin = curated_pin.or(stored.provider_pin);
+    // When the catalog has the window and the pin, the run can start — even with no modality
+    // list, which gg is allowed not to know.
+    if let (Some(window), Some(provider)) = (stored.context_window, known_pin.clone()) {
         return Ok(ResolvedModelFacts {
             window,
             provider,
             input_modalities: stored.input_modalities,
         });
     }
-    match prices.model_launch_facts(&lookup).await {
-        Ok(facts) => match facts.context_window {
-            Some(window) => Ok(ResolvedModelFacts {
-                window,
-                provider: facts.provider_slug.unwrap_or(provider),
-                // Prefer the live list; fall back to whatever the catalog held, so a
-                // fetch that answered the window but not the modalities does not
-                // discard an older observation of them.
-                input_modalities: if facts.input_modalities.is_empty() {
-                    stored.input_modalities
-                } else {
-                    facts.input_modalities
-                },
-            }),
-            None => Err(format!(
-                "OpenRouter lists `{lookup}` but reports no context window for it"
-            )),
-        },
-        Err(err) => Err(format!(
-            "no context window is known for `{model_id}` (not in the model catalog, and \
+    // Something the launch needs is unobserved: ask OpenRouter for this one model. The id to
+    // ask under is the same one prices are looked up by, so a curated model resolves through
+    // its configured slug.
+    let lookup = crate::bootstrap::openrouter_lookup_id(db, model_id, harness)
+        .await
+        .unwrap_or_else(|_| test_cabinet_core::model_id::openrouter_price_id(model_id, harness));
+    let facts = prices.model_launch_facts(&lookup).await.map_err(|err| {
+        let missing = if stored.context_window.is_none() {
+            "no context window"
+        } else {
+            "no official provider"
+        };
+        format!(
+            "{missing} is known for `{model_id}` (the model catalog has observed none, and \
              looking it up as `{lookup}` failed: {err})"
-        )),
-    }
+        )
+    })?;
+    let window = stored
+        .context_window
+        .or(facts.context_window)
+        .ok_or_else(|| {
+            format!("OpenRouter lists `{lookup}` but reports no context window for it")
+        })?;
+    let provider = known_pin.or(facts.provider_pin).ok_or_else(|| {
+        format!(
+            "`{model_id}` is not testable: OpenRouter lists no endpoint for `{lookup}` from its \
+             developer, and its catalog entry sets no provider pin"
+        )
+    })?;
+    Ok(ResolvedModelFacts {
+        window,
+        provider,
+        // Prefer the live list; fall back to whatever the catalog held, so a fetch that
+        // answered the window but not the modalities does not discard an older observation.
+        input_modalities: if facts.input_modalities.is_empty() {
+            stored.input_modalities
+        } else {
+            facts.input_modalities
+        },
+    })
 }
 
 /// The test type of the case version a launch request targets, read from the

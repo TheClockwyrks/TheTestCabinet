@@ -100,10 +100,7 @@ fn invocation(dir: &Path, set: GgCapabilitySet) -> GgInvocation {
     }
 }
 
-/// The window map a launch would push for `set`: [`TEST_CONTEXT_WINDOW`] for every model it
-/// binds.
 /// The pin map a launch would push for `set`: the author segment of every bound model id.
-/// A mock id pins to `mock`, which the offline client never sends.
 fn test_providers(set: &GgCapabilitySet) -> BTreeMap<String, String> {
     set.bound_model_ids()
         .into_iter()
@@ -114,6 +111,8 @@ fn test_providers(set: &GgCapabilitySet) -> BTreeMap<String, String> {
         .collect()
 }
 
+/// The window map a launch would push for `set`: [`TEST_CONTEXT_WINDOW`] for every model it
+/// binds.
 fn test_windows(set: &GgCapabilitySet) -> BTreeMap<String, u64> {
     set.bound_model_ids()
         .into_iter()
@@ -698,6 +697,8 @@ enum FailureMode {
     /// [`Retryable`](Self::Retryable), and deliberately reported under its own name: "retries
     /// exhausted" would send an operator looking for a provider outage that never happened.
     Looping,
+    /// The gateway answered from a provider other than the pin.
+    ProviderMismatch,
 }
 
 /// A [`ModelClient`] whose every turn fails, for asserting the loop surfaces model
@@ -734,6 +735,10 @@ impl ModelClient for FailingClient {
                 },
                 detail: "2 words repeated across 3000 consecutive words, 3065 words into the reply"
                     .to_string(),
+            }),
+            FailureMode::ProviderMismatch => Err(ModelError::ProviderMismatch {
+                pinned: "OpenAI".to_string(),
+                served: "Azure".to_string(),
             }),
         }
     }
@@ -2755,6 +2760,26 @@ fn validate_model_providers_requires_every_bound_model() {
 
     assert!(validate_model_providers(&set, &test_providers(&set)).is_ok());
     assert!(validate_model_providers(&GgCapabilitySet::default(), &BTreeMap::new()).is_ok());
+}
+
+/// A model the offline mock answers sends no request, so it needs no pin: the free
+/// validation launch against `mock/test` stays a launch with a window and nothing else.
+#[test]
+fn validate_model_providers_exempts_a_mock_model() {
+    let mut set = GgCapabilitySet::minimal("mock/test");
+    assert!(validate_model_providers(&set, &BTreeMap::new()).is_ok());
+
+    set.agents.push(GgAgentConfig {
+        name: "subagent".to_string(),
+        model_id: "openai/gpt-5.4-mini".to_string(),
+        ..GgAgentConfig::root()
+    });
+    let err = validate_model_providers(&set, &BTreeMap::new())
+        .expect_err("a live model beside the mock still needs its pin");
+    assert!(
+        err.contains("openai/gpt-5.4-mini") && !err.contains("mock/test"),
+        "{err}"
+    );
 }
 
 /// A `context-window-override` capability enabled with the given `windowLimit`, the lever the
@@ -5286,6 +5311,40 @@ async fn run_scores_a_root_that_looped_every_attempt() {
             GgTelemetryKind::SessionEnded { status } if status == "model_error"
         )),
         "the session still ends `model_error`"
+    );
+}
+
+/// A reply from a provider other than the pin ends the run as gg's failure, not the model's: the
+/// session ends `internal_error`, and the error names the pinned and the served provider.
+#[tokio::test]
+async fn run_ends_as_a_harness_failure_on_a_provider_mismatch() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-mismatch".to_string()), Box::new(sink.clone()));
+    let inv = invocation(dir.path(), GgCapabilitySet::minimal("mock/primary"));
+    let factory = ScriptedFactory::new().slot(ROOT_PROFILE_ID, |_| {
+        Box::new(FailingClient {
+            mode: FailureMode::ProviderMismatch,
+        })
+    });
+
+    run_with_factory(&inv, &emitter, Arc::new(factory)).await;
+
+    let events = sink.events();
+    assert!(
+        events.iter().any(|e| matches!(
+            &e.kind,
+            GgTelemetryKind::SessionEnded { status } if status == "internal_error"
+        )),
+        "the session ends `internal_error`"
+    );
+    assert!(
+        events.iter().any(|e| matches!(
+            &e.kind,
+            GgTelemetryKind::Log { level, message }
+                if level == "error" && message.contains("OpenAI") && message.contains("Azure")
+        )),
+        "an error line names the pinned and the served provider"
     );
 }
 

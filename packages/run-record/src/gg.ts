@@ -2278,7 +2278,7 @@ export type GgTurnErrorType =
   | "model_response_loop"
   | "model_vision_unsupported"
   | "model_parse"
-  | "provider_mismatch"
+  | "model_provider_mismatch"
   | "model_timeout"
   | "model_length_capped"
   | "transpile_syntax"
@@ -3003,7 +3003,7 @@ export type GgTelemetryKind =
        */
       capabilitySet: GgCapabilitySet;
       /**
-       * The OpenRouter provider slug each bound model is pinned to, beside the session
+       * The OpenRouter provider each bound model is pinned to, beside the session
        * id. A run's cost is recorded against this pin; a response from any other
        * provider ends the run.
        */
@@ -4242,7 +4242,7 @@ export type GgTelemetryEvent = {
        */
       capabilitySet: GgCapabilitySet;
       /**
-       * The OpenRouter provider slug each bound model is pinned to, beside the session
+       * The OpenRouter provider each bound model is pinned to, beside the session
        * id. A run's cost is recorded against this pin; a response from any other
        * provider ends the run.
        */
@@ -5594,7 +5594,7 @@ export const GG_TURN_ERROR_TYPE_LABELS: Readonly<
   model_response_loop: "model looped every attempt",
   model_vision_unsupported: "model cannot see images",
   model_parse: "unparseable model response",
-  provider_mismatch: "served by another provider",
+  model_provider_mismatch: "served by another provider",
   model_timeout: "model call timed out",
   model_length_capped: "length-capped reply rejected",
   transpile_syntax: "syntax error",
@@ -5624,7 +5624,7 @@ export const GG_TURN_ERROR_TYPE_BASE: Readonly<
   model_response_loop: "model_api",
   model_vision_unsupported: "model_api",
   model_parse: "model_api",
-  provider_mismatch: "model_api",
+  model_provider_mismatch: "model_api",
   model_timeout: "model_api",
   model_length_capped: "model_api",
   transpile_syntax: "transpile",
@@ -5653,7 +5653,7 @@ export const GG_TURN_ERROR_TYPES: readonly GgTurnErrorType[] = [
   "model_response_loop",
   "model_vision_unsupported",
   "model_parse",
-  "provider_mismatch",
+  "model_provider_mismatch",
   "model_timeout",
   "model_length_capped",
   "transpile_syntax",

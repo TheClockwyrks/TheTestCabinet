@@ -310,7 +310,7 @@ fn window_observation(model_id: &str, context_length: i64) -> crate::db::PriceWr
         context_length: Some(context_length),
         released_at: None,
         input_modalities: None,
-        provider_slug: Some(model_id.split('/').next().unwrap_or(model_id).to_string()),
+        provider_pin: Some(model_id.split('/').next().unwrap_or(model_id).to_string()),
     }
 }
 
@@ -446,7 +446,7 @@ async fn unknown_modalities_do_not_block_a_launch() {
             .get("anthropic/claude-opus-4.8")
             .map(String::as_str),
         Some("anthropic"),
-        "the observed provider slug is the pin"
+        "the observed provider is the pin"
     );
 }
 
@@ -456,7 +456,7 @@ async fn unknown_modalities_do_not_block_a_launch() {
 async fn launch_is_refused_when_a_model_has_no_official_endpoint() {
     let db = Db::connect_in_memory().await.unwrap();
     let mut observation = window_observation("mystery/model", 128_000);
-    observation.provider_slug = None;
+    observation.provider_pin = None;
     db.insert_price_observation(observation).await.unwrap();
 
     let mut launch = GgRunRequest {
@@ -470,8 +470,125 @@ async fn launch_is_refused_when_a_model_has_no_official_endpoint() {
         .await
         .expect_err("a model with no official endpoint is not testable");
     assert!(
-        err.contains("mystery/model") && err.contains("no official endpoint"),
+        err.contains("mystery/model") && err.contains("no official provider"),
         "unexpected reason: {err}"
+    );
+}
+
+/// Serve `endpoints` as every model's OpenRouter `/models/{id}/endpoints` body on a loopback
+/// port, and return a price source pointed at it.
+async fn endpoints_listing(endpoints: serde_json::Value) -> test_cabinet_core::OpenRouterPrices {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let body = serde_json::json!({ "data": { "name": "Some: Model", "endpoints": endpoints } });
+    let app = axum::Router::new().fallback(move || {
+        let body = body.clone();
+        async move { axum::Json(body) }
+    });
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    test_cabinet_core::OpenRouterPrices::with_endpoint(format!("http://{addr}/models"))
+}
+
+/// A model the catalog has not pinned yet is pinned from its live endpoints listing, to the
+/// endpoint whose provider is its developer, spelled as the listing spells it.
+#[tokio::test]
+async fn launch_pins_an_unpinned_model_to_its_developers_endpoint() {
+    let db = Db::connect_in_memory().await.unwrap();
+    let mut observation = window_observation("z-ai/glm-5.2", 1_048_576);
+    observation.provider_pin = None;
+    db.insert_price_observation(observation).await.unwrap();
+    let prices = endpoints_listing(serde_json::json!([
+        { "provider_name": "DeepInfra", "context_length": 1_048_576 },
+        { "provider_name": "Z.AI", "context_length": 1_048_576 },
+    ]))
+    .await;
+
+    let mut launch = GgRunRequest {
+        capability_set: authored(GgCapabilitySet::minimal("z-ai/glm-5.2")),
+        ..sample_request()
+    }
+    .into_launch_body()
+    .unwrap();
+    resolve_gg_model_facts(&db, &prices, &mut launch)
+        .await
+        .expect("the developer serves it");
+    assert_eq!(
+        launch
+            .gg_model_providers
+            .get("z-ai/glm-5.2")
+            .map(String::as_str),
+        Some("Z.AI")
+    );
+}
+
+/// A model only third parties serve is refused at enqueue with the reason, rather than
+/// launched on one of them.
+#[tokio::test]
+async fn launch_refuses_a_model_only_third_parties_serve() {
+    let db = Db::connect_in_memory().await.unwrap();
+    let prices = endpoints_listing(serde_json::json!([
+        { "provider_name": "Novita", "context_length": 262_144 },
+    ]))
+    .await;
+
+    let mut launch = GgRunRequest {
+        capability_set: authored(GgCapabilitySet::minimal("moonshotai/kimi-k2")),
+        ..sample_request()
+    }
+    .into_launch_body()
+    .unwrap();
+    let err = resolve_gg_model_facts(&db, &prices, &mut launch)
+        .await
+        .expect_err("no official endpoint");
+    assert!(
+        err.contains("moonshotai/kimi-k2") && err.contains("not testable"),
+        "unexpected reason: {err}"
+    );
+}
+
+/// A pin set by hand on the curated model wins over the observed one: it is the override for a
+/// developer the listing names differently from the model id.
+#[tokio::test]
+async fn a_hand_set_pin_wins_over_the_observed_one() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.insert_price_observation(window_observation("qwen/qwen3-coder", 262_144))
+        .await
+        .unwrap();
+    db.upsert_model_config(crate::db::ModelConfigWrite {
+        slug: "qwen3-coder".to_string(),
+        display_name: "Qwen3 Coder".to_string(),
+        provider: "Qwen".to_string(),
+        provider_logo_url: None,
+        provider_logo_svg: None,
+        description_md: None,
+        openrouter_slug: Some("qwen/qwen3-coder".to_string()),
+        provider_pin: Some("Alibaba".to_string()),
+        aliases: vec![crate::db::AliasEntry {
+            alias: "qwen/qwen3-coder".to_string(),
+            family: test_cabinet_core::run_record::HarnessFamily::Openrouter,
+        }],
+        now: "2026-01-01T00:00:00Z".to_string(),
+    })
+    .await
+    .unwrap();
+
+    let mut launch = GgRunRequest {
+        capability_set: authored(GgCapabilitySet::minimal("qwen/qwen3-coder")),
+        ..sample_request()
+    }
+    .into_launch_body()
+    .unwrap();
+    resolve_gg_model_facts(&db, &unreachable_prices(), &mut launch)
+        .await
+        .expect("the catalog holds both facts");
+    assert_eq!(
+        launch
+            .gg_model_providers
+            .get("qwen/qwen3-coder")
+            .map(String::as_str),
+        Some("Alibaba")
     );
 }
 
