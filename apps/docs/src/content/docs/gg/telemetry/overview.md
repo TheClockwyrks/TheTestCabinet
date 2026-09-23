@@ -18,8 +18,8 @@ Each page in this section documents one part of it.
   tokens to the material that occupied the window.
 - [Turn timing](/gg/telemetry/turn-timing/) — where a turn's wall-clock went, and
   the per-request metric graphs.
-- [Usage](/gg/telemetry/usage/) — how each call's spend is attributed, and how the
-  output/reasoning split is bounded by the reply gg holds.
+- [Usage](/gg/telemetry/usage/) — what each model call spent, and how its
+  output/reasoning split is bounded by the reply's own size.
 - [Turn outcomes](/gg/telemetry/turn-outcomes/) — how each turn ended, the error
   taxonomy, and the run-level error rollup.
 - [Code execution](/gg/telemetry/code-execution/) — what one code-shaped turn's

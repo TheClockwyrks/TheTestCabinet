@@ -2,49 +2,42 @@
 title: "Usage"
 ---
 
-Every model call that reports usage emits one `usage` event, on the stream of the
-agent that took the turn. It carries that call's four normalized token classes and
-its cost, named to the agent [profile](/gg/configurations/#identity) and the model
-that spent them, beside the upstream provider that served the call. The events are
-deltas, so a consumer sums them; the `slot_usage` rollups, one per
-`(profile, model)`, carry the same figures for the durable record, and a consumer
-sums one, never both.
+One `usage` event rides on the stream per model call that reported tokens or
+cost, emitted on the stream of the agent that made the call. The events are
+deltas: summing one `(profile, model)` key's events reproduces that key's
+`slot_usage` rollup, so a consumer sums the deltas or the rollups, never both.
 
-Attribution on each delta is what makes a live multi-model run readable: summing
-one `(profile, model)` key's deltas reproduces that key's rollup exactly, so the
-per-model split is derivable from the first turn rather than once an agent ends.
+## What the event carries
+
+| Field                  | What it carries                                                                                                        |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `profileId`, `modelId` | The agent [profile](/gg/configurations/#identity) and the model that spent the tokens.                                 |
+| `tokens`               | The call's four normalized token classes, with output and reasoning split as described below.                          |
+| `cost`                 | The call's cost, when the provider reported one.                                                                       |
+| `provider`             | The upstream provider that served the call, when the gateway named one.                                                |
+| `wire`                 | The provider's usage object, verbatim as the gateway returned it. Present on every row whose call reported usage.      |
+| `reconciled`           | `true` on a row whose output and reasoning figures are gg's bound rather than the provider's split. Omitted otherwise. |
+
+`wire` keeps the provider's own keys and every field gg maps nothing onto, so a
+disagreement between the provider's figures and the recorded split can be read
+off the row.
 
 ## The output split
 
-A provider reports its completion total and, in `completion_tokens_details`, how
-much of that total was reasoning. gg records output as the remainder. The
-provider's split is recorded as given when it is consistent with the reply gg
-holds — when the reply fits under it. Otherwise the split is bounded by the reply:
-output is never recorded below the reply's own estimated size, the figure the
-[message log](/gg/context-visibility/#the-message-log) charges the reply, and
-reasoning is what remains of `completion_tokens` after it.
+A provider reports its completion total as `completion_tokens` and, in
+`completion_tokens_details.reasoning_tokens`, how much of that total was
+reasoning. gg bounds that split by the reply it received. Output is at least the
+reply's own estimated size, which is gg's estimate of the reply's text and tool
+calls: the same estimate its [context accounting](/gg/context-visibility/)
+charges the reply. Reasoning is what remains of `completion_tokens`.
 
-The bound exists because a provider's reasoning figure can leave the reply no room.
-A provider that reports `reasoning_tokens` equal to `completion_tokens` on every
-turn would otherwise record every reply it serves as zero output and all reasoning,
-however large the reply gg measures in its own hand. On such a row output is
-recorded as the reply's own size and the event marks the row `reconciled`, so a
-reader of the record can tell gg's figure from the provider's.
+A provider whose reasoning figure leaves the reply room under the completion
+total is recorded as given, with output as `completion_tokens` minus
+`reasoning_tokens`. A provider whose reasoning figure leaves the reply less room
+than its estimated size is recorded with that size as output and the remainder as
+reasoning, and the row carries `reconciled`. When the estimated size exceeds the
+completion total, output is the whole total and reasoning is zero.
 
-The total is the provider's either way. Reasoning is priced as output, so the
-billed figure is unaffected, and `output` plus `reasoning` is `completion_tokens`
-on every row.
-
-## The provider's object
-
-`wire` carries the provider's usage object verbatim, exactly as the gateway
-returned it, beside the mapped counts. It is present on every row that reported
-usage, so a disagreement between the provider's own figures and the split gg
-recorded is checkable from the record rather than invisible: a dashboard figure and
-a published per-turn output figure can be read against each other and against the
-row's own `reconciled` flag.
-
-| Field        | What it carries                                                                                                                           |
-| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `wire`       | The provider's usage object, verbatim as the gateway returned it, beside the mapped counts. Present whenever the call reported usage.     |
-| `reconciled` | Set on a row whose output/reasoning split is gg's bound rather than the provider's. Absent on a row recorded as the provider reported it. |
+Output plus reasoning equals `completion_tokens` on every row, so the billed total
+is the provider's either way. A call that reported no completion total, or
+returned an empty reply, is recorded as the provider reported it.
