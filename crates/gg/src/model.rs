@@ -425,9 +425,9 @@ pub enum ModelError {
     Parse {
         /// What could not be read, and where.
         message: String,
-        /// What the request billed for before the reply stopped making sense — `None` when the
-        /// failure struck before any usage did (an unparseable body), which [`parse`](Self::parse)
-        /// builds and [`parse_billed`](Self::parse_billed) folds an unreported spend into.
+        /// What the request billed for before the reply stopped making sense, as
+        /// [`parse_billed`](Self::parse_billed) recorded it; `None` when the stream had reported
+        /// nothing yet.
         spend: Option<Box<ReplySpend>>,
     },
     /// Every attempt the client made was abandoned mid-stream by
