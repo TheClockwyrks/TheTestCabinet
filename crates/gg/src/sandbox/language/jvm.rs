@@ -107,9 +107,8 @@ pub(super) const HOME_ROOT: &str = ".local/share/gg-java";
 /// ```
 ///
 /// and `serde` reads `[0.001s]…` as a JSON *array* whose first element is a float:
-/// `invalid type: floating point `0.001`, expected u32 at line 1 column 6`. It was found as a
-/// full-suite-only flake in the Java arm's substrate tests, which is what a resource warning looks
-/// like: sixteen preparations compiling at once is when a VM has something to warn about.
+/// `invalid type: floating point `0.001`, expected u32 at line 1 column 6`. A VM warns when it is
+/// short of a resource, which is exactly when many preparations are compiling at once.
 ///
 /// Disabling and re-enabling to stderr rather than disabling outright, because the lines are worth
 /// having — [`CompilerDaemon::stderr_tail`](super::compile::CompilerDaemon::stderr_tail) puts the
@@ -133,16 +132,15 @@ pub(super) const LOG_TO_STDERR: [&str; 2] = [
 /// serial collector leaves the cores to the fifteen other preparations that may be compiling beside
 /// it.
 ///
-/// **Under test, the JIT stops at C1.** A test process starts its own daemons and builds a handful
-/// of programs in them, and in that stretch C2 costs far more than it returns: on a 20-core machine
-/// a Kotlin test that builds about eight programs spent 53-63 s of CPU in its daemon, two thirds of
-/// it on C2 threads, against 15-16 s at C1 only — and finished sooner, because a daemon's first
-/// builds are faster at C1 (Kotlin's first build 3.4 s against 5.0-5.3 s). A daemon in a run is the
-/// other case: it serves up to `MAX_BUILDS` builds, and once C2 has compiled `javac`, `kotlinc` and
-/// TeaVM a warm build is about 30% faster than at C1 (Java 450 against 640 ms, Kotlin 900 against
-/// 1,250-1,300 ms), which over a daemon's whole life is what a run waits on. So the run keeps the
-/// default tiered JIT. The tier changes how fast the compilers run and never what they emit, so a
-/// test's compiler is the run's compiler in everything a test asserts.
+/// **Under test, the JIT stops at C1 and the VM sizes itself for two processors.** A test process
+/// starts its own daemons and builds a handful of programs in them, while nextest runs a test per
+/// core beside it. In that stretch C2 costs far more CPU than it returns, and a VM that sizes its
+/// compiler threads and the libraries' worker pools for every core on the machine competes with
+/// every other test for them. A daemon in a run is the other case: it serves up to `MAX_BUILDS`
+/// builds, and once C2 has compiled `javac`, `kotlinc` and TeaVM a warm build is faster, which over
+/// a daemon's whole life is what a run waits on. So the run keeps the default tiered JIT and the
+/// machine's processor count. Neither changes what the compilers emit, so a test's compiler is the
+/// run's compiler in everything a test asserts.
 pub(super) fn daemon(java: &Path, heap: &str) -> Result<DaemonCommand, String> {
     let mut command = compile::daemon(java)?;
     command
@@ -157,7 +155,9 @@ pub(super) fn daemon(java: &Path, heap: &str) -> Result<DaemonCommand, String> {
         .arg("-Xms64m")
         .arg(format!("-Xmx{heap}"));
     #[cfg(test)]
-    command.arg("-XX:TieredStopAtLevel=1");
+    command
+        .arg("-XX:TieredStopAtLevel=1")
+        .arg("-XX:ActiveProcessorCount=2");
     Ok(command)
 }
 
