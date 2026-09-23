@@ -353,10 +353,9 @@ const SCHEMA_BASE_URL: &str = "https://docs.testcabinet.ai/schema/";
 /// Generation 3 is the toolchain summary's `ToolchainTests` gaining `tests` and
 /// `testsTruncated` — the per-test entries beside the per-file rows. Neither is
 /// optional or defaulted, so a record stored with a test report before this change
-/// lacks both keys and no longer reads. Its digest last moved when gg's turn
-/// errors gained `model_provider_mismatch`, the provider pin's refusal: a new enum
-/// value no stored record carries, so stored records go on reading and the
-/// generation does not move.
+/// lacks both keys and no longer reads. Its digest last moved when gg's run
+/// limits gained `modelStreamIdleSecs`: an optional key absent from every stored
+/// record, so stored records go on reading and the generation does not move.
 ///
 /// Generation 2 was the gg agent profile's `openingTurn` becoming required: every gg
 /// record stored before it lacks the key and no longer reads. Its digest last moved
@@ -366,10 +365,6 @@ const SCHEMA_BASE_URL: &str = "https://docs.testcabinet.ai/schema/";
 /// an `Option` that is `None` on older records. Generation 1's digest last moved
 /// when `DebugScriptResult` gained
 /// [`inconclusive`](tcab_core::validation::Inconclusive), for the same reason.
-///
-/// Generation 3's digest last moved when the gg run limits gained
-/// `modelStreamIdleSecs` — a change stored records survive for the same reason: the
-/// new key is an `Option` that is absent on older records.
 const RECORD_SHAPES: &[(u32, &str)] = &[
     (
         1,
@@ -381,7 +376,7 @@ const RECORD_SHAPES: &[(u32, &str)] = &[
     ),
     (
         3,
-        "afe2ebbd245c6233ee142c9f25b5a7de00a94f4682b596d05a025e9be8411112",
+        "4e3b62395e35939f8bf10dc7b897519e3824b247192f58f514a73e5f0d3c9621",
     ),
 ];
 
