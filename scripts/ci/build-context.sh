@@ -740,8 +740,8 @@ done
 # --- what a COPY cannot tell you, part four: the paths the toolchain installers read ---
 
 # `scripts/ci/install-gg-toolchains.sh` and the per-arm installers it runs are copied into
-# three images — the devcontainer, containers/gg-ci and the driver image's gg stage — along
-# with a slice of `packages/`, and they read pins, lockfiles and manifests out of that slice
+# two images, the devcontainer and the driver image's gg stage, along with a slice of
+# `packages/`, and they read pins, lockfiles and manifests out of that slice
 # by `$REPO_ROOT/<path>`. No COPY names those files, so nothing above sees them; a missing
 # one fails the image build minutes in with cargo's "manifest path ... does not exist".
 #
