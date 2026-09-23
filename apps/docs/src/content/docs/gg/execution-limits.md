@@ -106,11 +106,14 @@ the replies loop detection discarded on the way with the size of the output they
 threw away, for every run rather than only for the runs a ceiling stopped. A
 discarded reply counts towards neither the errors nor the turns, because the
 request was retried and the turn was judged on whatever the retry produced, and
-its output is absent from the cost the `maxCost` ceiling reads. A
+no price exists for its output — a stream gg abandoned never delivered its
+usage — so it enters neither of the run's two cost figures. A
 [rejected length-capped reply](#model-api-errors) differs on exactly one of
 those terms: it does count as an error, so the ceilings bound a model that keeps
-capping out, while its usage stays out of the run's cost and turn count and is
-summed on the summary's `rejectedResponses` rollup instead.
+capping out, and its usage is in the run's [total cost](#maxcost) — through a
+`usage` delta marked `total` — while staying out of its
+[work cost](#maxcost) and out of the turn count, with the rejection summed on
+the summary's `rejectedResponses` rollup as well.
 
 ## What is required and what is armed
 
@@ -205,10 +208,23 @@ ceiling gg has no threshold to judge against.
 
 ### `maxCost`
 
-Compared against the run's accumulated cost, which is the USD figure the run's
+Compared against the run's **total cost**, which is the USD figure the run's
 closing summary prints and the one that lands in the run record's per-profile
 costs. It is checked at each agent's turn boundary, before the next model call,
 exactly as the wall-clock deadline is.
+
+The session summary records the run's spend as two figures, per model slot on
+`slotCosts` and summed run-wide beside them. The **total** is the sum over every
+request the run made that reported a price — the turns answered as
+[model-api error turns](#model-api-errors), the rejected replies and every other
+non-work spend among them, beside the work turns — and it is this ceiling's
+figure. The **work cost** is the sum over the turns that produced a program or a
+tool call gg ran. What separates the two is what the run's faults cost apart
+from what its work cost: every `usage` delta names which figure its turn fed, so
+a consumer sums the marked deltas rather than guessing. This ceiling stays on
+the total — a run whose model burns money looping, capping out or sending
+unparseable arguments is spending real money whether or not any of it did work,
+and `maxCost` is the bound on spending.
 
 1. The turn that crosses the line completes in full, because gg has already paid
    for that response.
@@ -644,32 +660,28 @@ per-capability bound gg reads.
 
 ### Model API errors
 
-A failed model call ends the agent on its first occurrence. The client has
+Most model-call failures end the agent on their first occurrence. The client has
 already retried `429`, `5xx` and transport failures on the run's
 [schedule](#maxmodelretries-and-modelretrymaxdelaysecs), so one reaching the
 loop means the provider failed every attempt within a single turn. Counting it
 against a ceiling would be a second retry layer with a worse backoff.
 
-The agent ends under `model_error`. When it is the root, a spent schedule or a
-fatal status on the first attempt exits the process `1`, so the host records a
+Such an agent ends under `model_error`. When it is the root, a spent schedule or
+a fatal status on the first attempt exits the process `1`, so the host records a
 retryable harness error rather than scoring a run the provider cut short. A
 refused credential ends under `auth_error` and exits `1` on the same terms, so
 it is never scored against a model that never ran.
 
-A reply that [looped](/gg/loop-detection/) on every one of the client's attempts
-arrives here too and ends the agent under `model_error`, but the failure is the
-model's, so the process exits `0` and the run is collected and scored. It is
-named separately in the log (_"model looped every attempt"_), because "retries
-exhausted" would send an operator looking at the provider for an outage that
-never happened. The recorded base error kind is `model_api` and the recorded
-type is `model_response_loop`.
-
-Two model-call failures are recoverable rather than fatal. Each is recorded as
-an error turn — it spends the consecutive-error count and the error-rate window
-exactly as a failed call does — and the same request is then asked again on the
-same turn. Nothing enters the context between the attempts, so the retry is
-byte-identical, and only the error ceilings, the run's wall clock and an
-operator's kill (both re-checked between attempts) decide when to stop asking.
+Four model-call failures are answerable rather than fatal — a timed-out call, a
+length-capped reply, an unparseable reply, and a reply that
+[looped](/gg/loop-detection/) on every one of the client's attempts. Each is
+recorded as an error turn — it spends the consecutive-error count and the
+error-rate window exactly as a failed call does — and the same request is then
+asked again on the same turn. Nothing enters the context between the attempts,
+so the retry is byte-identical, and only the error ceilings, the run's wall clock
+and an operator's kill (both re-checked between attempts) decide when to stop
+asking. So a model that loops once, or emits arguments gg cannot read, loses a
+turn rather than the run.
 
 - A timed-out call. Every model call runs under the run's
   [`modelCallTimeoutSecs`](#modelcalltimeoutsecs) ceiling: a total-duration cap
@@ -684,14 +696,32 @@ operator's kill (both re-checked between attempts) decide when to stop asking.
 - A length-capped reply. A reply whose finish reason is `length` hit the
   provider's own output cap, and gg presumes it is a degenerate generation
   rather than work. It is rejected whole: it never enters the context, and its
-  usage is excluded from the run's cost and turn count so one looping turn
-  cannot taint the run's data. The spend is not lost — a `response_rejected`
-  event carries the reply's size, usage, cost and serving provider, and the
-  session summary's `rejectedResponses` rollup sums them. Recorded as
-  `model_length_capped`.
+  usage is charged to the run's [total cost](#maxcost) only — a `usage` delta
+  marks it `total`, so it never taints the run's work — while the turn count
+  shows only the turn that eventually answered. The spend is not lost to the
+  rejection's own record either — a `response_rejected` event carries the
+  reply's size, usage, cost and serving provider, and the session summary's
+  `rejectedResponses` rollup sums them. Recorded as `model_length_capped`.
+- An unparseable reply. A `2xx` response gg could not read into a reply — an
+  unparseable envelope, an error object in a success status, or tool call
+  arguments the provider cut off mid-JSON. There is nothing to put in the
+  context, so the retry starts from the identical window; any usage the provider
+  reported before the reply stopped making sense is charged to the run's total
+  cost on a delta marked `total`, never to its work cost. (A reply that was no
+  tool call at all parses fine and is answered as its `missing_completion`
+  error instead.) Recorded as `model_parse`.
+- A reply that looped on every one of the client's attempts. The failure is the
+  model's rather than the provider's, and it is named separately in the log
+  (_"model looped every attempt"_), because "retries exhausted" would send an
+  operator looking at the provider for an outage that never happened. None of
+  the discarded replies ever entered the context, their size rides the error
+  turn's `loopAborts` figures, and their spend reaches neither cost figure — a
+  stream gg dropped never delivered a usage payload to price it with. The
+  recorded base error kind is `model_api` and the recorded type is
+  `model_response_loop`.
 
-A run that ends on these two does so under `limit_exceeded`, on whichever
-error ceiling the repeated failures breached, and never under `model_error`.
+A run that ends on these does so under `limit_exceeded`, on whichever error
+ceiling the repeated failures breached, and never under `model_error`.
 
 ## Breach records
 

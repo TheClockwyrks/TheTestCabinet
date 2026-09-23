@@ -244,15 +244,21 @@ impl TurnOutcome {
 /// mode-agnostic; the error *shapes* are not, because the protocols are not.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TurnErrorKind {
-    /// The model call itself failed, after the [client](crate::client) had already exhausted its
-    /// own retry/backoff budget. No turn happened at all.
+    /// The model call failed — the far side of a request, whichever of the
+    /// [types](TurnErrorType) it was.
     ///
-    /// Named here so the definition of a turn error stays whole, **not** because a ceiling ever
-    /// gets to observe two of them: a `ModelError` reaching the loop means the provider failed
-    /// every attempt within one turn, the fatal kinds recur identically, and a rejected credential
-    /// ends the agent that hit it — it is one of the two non-launch statuses (the other being a gg
-    /// defect) that leave no run to score, read off the root's ending. Making model-API errors
-    /// survivable is a change to gg's model-error policy and would be designed as one.
+    /// Which type decides whether a turn happened. A
+    /// [timeout](TurnErrorType::ModelTimeout), a reply gg could not
+    /// [parse](TurnErrorType::ModelParse) and a reply that
+    /// [looped](TurnErrorType::ModelResponseLoop) on every client attempt are answered as error
+    /// turns: they spend this kind's count in the
+    /// ceilings like any other failed turn, and the loop asks again with nothing in the context.
+    /// The rest recur identically on every attempt and end the agent — a refused credential
+    /// among them, which is one of the two non-launch statuses (the other being a gg defect) that
+    /// leave no run to score, read off the root's ending.
+    ///
+    /// Named here so the definition of a turn error stays whole: every failure of a model call is
+    /// this one kind, whether or not the run survived it, and the ceilings count them together.
     ModelApi,
     /// The program could not be prepared for its guest — a syntax error, a module feature the
     /// [sandbox](crate::sandbox) has no implementation of, or a program past the size/nesting
@@ -326,19 +332,25 @@ pub enum TurnErrorType {
     ModelRejected,
     /// The client retried a transient condition to its policy and every attempt failed.
     ModelRetryExhausted,
-    /// Every attempt was a [generation loop](crate::loopguard) and was discarded.
+    /// Every attempt was a [generation loop](crate::loopguard) and was discarded — answered as
+    /// an error turn, so the loop asks again with none of the discarded replies in the context.
     ModelResponseLoop,
     /// The model cannot accept an image the request carried, and there was nothing left to strip.
     ModelVisionUnsupported,
-    /// A successful response could not be parsed into a reply.
+    /// A `2xx` response could not be read into a reply — an unparseable envelope, or tool call
+    /// arguments that are not JSON. Answered as an error turn: the unreadable reply never enters
+    /// the context and the loop asks again, so a reply gg could not read costs the model a turn
+    /// rather than the run.
     ModelParse,
     /// The call ran into the run's [per-call ceiling](RunLimits::model_call_timeout) without
-    /// producing a reply — a stalled provider. The one model error the loop retries at the turn
-    /// level rather than ending the session on.
+    /// producing a reply — a stalled provider. Answered as an error turn on the same terms as
+    /// [`ModelParse`](Self::ModelParse) and [`ModelResponseLoop`](Self::ModelResponseLoop).
     ModelTimeout,
     /// The reply hit the provider's output cap (`finish_reason: length`) and was rejected whole —
-    /// presumed a degenerate generation, kept out of the context and the run's metrics, and
-    /// retried on the same terms as [`ModelTimeout`](Self::ModelTimeout).
+    /// presumed a degenerate generation, kept out of the context and out of the run's
+    /// [work cost](test_cabinet_core::gg::GgSessionSummary::work_cost) (its price rides its
+    /// `Usage` delta into the [total](test_cabinet_core::gg::GgSessionSummary::cost) and its
+    /// rejection event), and retried on the same terms as [`ModelTimeout`](Self::ModelTimeout).
     ModelLengthCapped,
     /// The program is not valid source in its language.
     TranspileSyntax,

@@ -2463,9 +2463,12 @@ export type GgErrorSummary = {
    * at the end of a stream an abandoned reply never reached, so any figure in those units would
    * be an estimate published where every neighbouring figure is a measurement.
    *
-   * This output is charged to the provider bill and is absent from the run's recorded cost, by
-   * design: a looping reply is a model defect, and a run must not be made to look expensive for
-   * one. The figures here are what makes that omission visible rather than silent.
+   * This output is charged to the provider bill, and it reaches neither of the run's cost
+   * figures — the [work](GgSessionSummary::work_cost) nor the
+   * [total](GgSessionSummary::cost) — because gg has no price for it: a looping reply is
+   * dropped before the stream's usage trailer, so unlike every other spend in this summary it
+   * is a measurement gg never received rather than one it set aside. The figures here are what
+   * makes that omission visible rather than silent.
    */
   loopAbortWords: number;
   /**
@@ -2574,11 +2577,12 @@ export type GgUndocumentedCalls = {
  * The run's **rejected-reply** rollup: how many model replies gg refused to use (today, exactly
  * the length-capped ones — see [`GgTelemetryKind::ResponseRejected`]), and the spend they burned.
  *
- * This bucket exists so the exclusion is visible rather than silent. A rejected reply's usage is
- * deliberately kept **out** of the run's cost and turn metrics — a degenerate generation must not
- * make a run look expensive or long — but the money was still spent, and "how often does this
- * model cap out, and what does it cost?" is a question the owner asks of the durable record.
- * Folded from the [`ResponseRejected`](GgTelemetryKind::ResponseRejected) events the run emitted.
+ * This bucket exists so the exclusion is visible rather than silent. A rejected reply's usage
+ * never counts as the run's **work** — a degenerate generation must not make a run's work look
+ * expensive or long — but it is in the run's [total cost](GgSessionSummary::cost) like every
+ * other request's, and "how often does this model cap out, and what did those attempts cost?" is
+ * a question the owner asks of the durable record. Folded from the
+ * [`ResponseRejected`](GgTelemetryKind::ResponseRejected) events the run emitted.
  */
 export type GgRejectedResponses = {
   /**
@@ -2586,13 +2590,15 @@ export type GgRejectedResponses = {
    */
   count: number;
   /**
-   * The tokens the provider billed for them, summed — spend absent from the run's own
-   * [token totals](crate::metrics::TokenCounts) by design.
+   * The tokens the provider billed for them, summed — absent from the run's
+   * [work](GgSessionSummary::work_cost) figures by design, and inside its
+   * [total](GgSessionSummary::cost) ones like every other request's.
    */
   tokens: TokenMetrics;
   /**
-   * Their cost, summed, when the provider reported any — spend absent from the run's recorded
-   * cost by design.
+   * Their cost, summed, when the provider reported any — in the run's
+   * [total cost](GgSessionSummary::cost), never its
+   * [work cost](GgSessionSummary::work_cost).
    */
   cost?: CostMetrics;
 };
@@ -2600,12 +2606,15 @@ export type GgRejectedResponses = {
 /**
  * One `(slot, model)` token+cost rollup in a [`GgSessionSummary`] — the aggregatable
  * tail of the [`SlotUsage`](GgTelemetryKind::SlotUsage) rollups, folded onto the run so a
- * query can total or slice a gg run's spend per model without replaying the stream.
+ * query can total or slice a gg run's spend per model without replaying the stream — carrying
+ * the run's spend as the [two figures](GgSessionSummary::cost) it records: the total over every
+ * request, and the work cost over the turns that produced a program or a tool call gg ran.
  *
  * A gg run spans several models (subagents can run on different, possibly cross-provider,
  * [slots](GgSlotBinding) than the parent), so cost is accumulated **per slot** rather than
  * as one figure for one model. This is the same shape a `SlotUsage` telemetry event carries,
- * captured once per `(slot, model)` the run touched, so [result aggregation] can answer
+ * captured once per `(slot, model)` the run touched and joined by the work figure folded from
+ * the run's [`Usage`](GgTelemetryKind::Usage) deltas, so [result aggregation] can answer
  * "does a cheaper subagent slot cost accuracy?" from the durable record.
  *
  * [result aggregation]: https://docs.testcabinet.ai/gg/result-aggregation/
@@ -2624,13 +2633,24 @@ export type GgSlotCost = {
   modelId: string;
   /**
    * The tokens accumulated on this slot/model across the run, in the shared [`TokenCounts`]
-   * units.
+   * units — every request of the slot that reported usage, the errored and rejected ones
+   * included, so this is the **total** side of the account.
    */
   tokens: TokenMetrics;
   /**
-   * The cost accumulated on this slot/model, when any turn on it reported one.
+   * The slot's **total cost**: the sum over every request it made that reported a price, the
+   * turns answered as error turns and the rejected replies among them. `None` when nothing on
+   * the slot reported one.
    */
   cost?: CostMetrics;
+  /**
+   * The slot's **work cost**: the sum over the requests whose turns
+   * [produced a program or a tool call gg ran](GgUsageFigure::Work) only. A fault's spend is
+   * therefore absent here and present in [`cost`](Self::cost), and the difference between the
+   * two figures is what the run's faults cost on this slot. `None` when the slot's priced
+   * turns were all non-work, and omitted from the wire then.
+   */
+  workCost?: CostMetrics;
 };
 
 /**
@@ -2870,9 +2890,11 @@ export type GgSessionSummary = {
   toolCalls?: number;
   /**
    * How many model replies gg **rejected whole** — the length-capped ones — and the spend they
-   * burned; see [`GgRejectedResponses`]. Their usage is excluded from the run's cost and turn
-   * metrics by design, so this rollup is where it lives instead. Omitted from the wire for the
-   * ordinary run that rejected nothing.
+   * burned; see [`GgRejectedResponses`]. Their usage stays out of the run's
+   * [work cost](GgSessionSummary::work_cost) by design while it is inside the
+   * [total](GgSessionSummary::cost), so this rollup is where the spend is *also* answerable as
+   * rejections rather than only as cost. Omitted from the wire for the ordinary run that
+   * rejected nothing.
    */
   rejectedResponses?: GgRejectedResponses;
   /**
@@ -2930,9 +2952,27 @@ export type GgSessionSummary = {
    * The per-`(slot, model)` token+cost rollup for the run — the durable tail of the
    * [`SlotUsage`](GgTelemetryKind::SlotUsage) rollups, one entry per slot/model the run touched,
    * in first-seen order. Empty only for a run that recorded no usage (a launch that never ran a
-   * turn).
+   * turn). Each entry carries both cost figures: its
+   * [`cost`](GgSlotCost::cost) over every request and its [`work_cost`](GgSlotCost::work_cost)
+   * over the turns that did work.
    */
   slotCosts: Array<GgSlotCost>;
+  /**
+   * The run's **total cost**, rolled up across every model slot: the sum over every request
+   * the run made that reported a price — the turns answered as error turns, the rejected
+   * replies and every other non-work spend among them, beside the work turns. This is the
+   * figure a run's `maxCost` ceiling reads, and it equals the sum of the
+   * [`slot_costs`](Self::slot_costs) entries' [`cost`](GgSlotCost::cost). `None` for a run that
+   * reported no price at all, and omitted from the wire then.
+   */
+  cost?: CostMetrics;
+  /**
+   * The run's **work cost**, rolled up across every model slot: the sum over the turns that
+   * [produced a program or a tool call gg ran](GgUsageFigure::Work) only. The difference
+   * between this and [`cost`](Self::cost) is what the run's faults cost apart from what its
+   * work cost. `None` for a run whose priced turns were all non-work, and omitted then.
+   */
+  workCost?: CostMetrics;
   /**
    * The per-`(provider, model)` health rollup for the run — which upstream providers served its
    * model calls and how the calls each one served went; see [`GgProviderStat`]. One slice per
@@ -3165,6 +3205,22 @@ export type GgTelemetryKind =
        */
       cost?: CostMetrics;
       /**
+       * Which of the session's two cost figures this turn's spend fed — the
+       * [work cost](GgSessionSummary::work_cost) or the [total](GgSessionSummary::cost) alone.
+       *
+       * The cost figures of the two kinds of turn a run has: a turn that
+       * [produced a program or a tool call gg ran](GgUsageFigure::Work), whose spend belongs in
+       * both figures, and one that produced nothing usable — a rejected, unparseable or
+       * otherwise [errored](GgTurnErrorType) turn — whose spend belongs only in the total, so
+       * what a run's faults cost stays readable apart from what its work cost. Every delta
+       * counts toward the total; `work` is what marks the narrower figure.
+       *
+       * Absent on a stream recorded before the split: such a delta contributed to the one
+       * figure the run kept, and it reads back as total-only rather than being scored as work
+       * retroactively.
+       */
+      figure?: GgUsageFigure;
+      /**
        * The upstream **provider** that served the call, when the gateway reported one
        * (OpenRouter's `provider` response field). A model id is served by several providers
        * behind one name, and provider-shaped failures are only attributable — and a provider
@@ -3185,13 +3241,15 @@ export type GgTelemetryKind =
        */
       chars: number;
       /**
-       * The usage the provider billed for the rejected call — spend the run's own metrics do
-       * not include, kept here so nothing is silently lost.
+       * The usage the provider billed for the rejected call — the same figure its
+       * [`Usage`](Self::Usage) delta carries into the run's total cost, kept here so the
+       * rejection is answerable on its own terms too.
        */
       tokens: TokenMetrics;
       /**
-       * The rejected call's cost, when the provider reported one. Excluded from the run's
-       * recorded cost on the same terms as the tokens.
+       * The rejected call's cost, when the provider reported one — in the run's
+       * [total cost](GgSessionSummary::cost) on the same terms as the tokens, and out of its
+       * [work cost](GgSessionSummary::work_cost).
        */
       cost?: CostMetrics;
       /**
@@ -4406,6 +4464,22 @@ export type GgTelemetryEvent = {
        */
       cost?: CostMetrics;
       /**
+       * Which of the session's two cost figures this turn's spend fed — the
+       * [work cost](GgSessionSummary::work_cost) or the [total](GgSessionSummary::cost) alone.
+       *
+       * The cost figures of the two kinds of turn a run has: a turn that
+       * [produced a program or a tool call gg ran](GgUsageFigure::Work), whose spend belongs in
+       * both figures, and one that produced nothing usable — a rejected, unparseable or
+       * otherwise [errored](GgTurnErrorType) turn — whose spend belongs only in the total, so
+       * what a run's faults cost stays readable apart from what its work cost. Every delta
+       * counts toward the total; `work` is what marks the narrower figure.
+       *
+       * Absent on a stream recorded before the split: such a delta contributed to the one
+       * figure the run kept, and it reads back as total-only rather than being scored as work
+       * retroactively.
+       */
+      figure?: GgUsageFigure;
+      /**
        * The upstream **provider** that served the call, when the gateway reported one
        * (OpenRouter's `provider` response field). A model id is served by several providers
        * behind one name, and provider-shaped failures are only attributable — and a provider
@@ -4426,13 +4500,15 @@ export type GgTelemetryEvent = {
        */
       chars: number;
       /**
-       * The usage the provider billed for the rejected call — spend the run's own metrics do
-       * not include, kept here so nothing is silently lost.
+       * The usage the provider billed for the rejected call — the same figure its
+       * [`Usage`](Self::Usage) delta carries into the run's total cost, kept here so the
+       * rejection is answerable on its own terms too.
        */
       tokens: TokenMetrics;
       /**
-       * The rejected call's cost, when the provider reported one. Excluded from the run's
-       * recorded cost on the same terms as the tokens.
+       * The rejected call's cost, when the provider reported one — in the run's
+       * [total cost](GgSessionSummary::cost) on the same terms as the tokens, and out of its
+       * [work cost](GgSessionSummary::work_cost).
        */
       cost?: CostMetrics;
       /**
@@ -5425,6 +5501,21 @@ export type GgTelemetryEvent = {
       status: string;
     }
 );
+
+/**
+ * Which of a session's two cost figures a [`Usage`](GgTelemetryKind::Usage) delta contributed
+ * to — the answer to "is this spend the run's work, or one of its faults?".
+ *
+ * A run's cost is recorded twice over: the **work cost** is the sum over the turns that
+ * [produced a program or a tool call gg ran](GgSessionSummary::work_cost), and the **total** is
+ * the sum over every request the run made, including the turns answered as error turns and the
+ * replies gg rejected or could not read ([`GgSessionSummary::cost`]). Every delta counts toward
+ * the total; this value says whether the delta's turn also fed the work figure, which is what
+ * keeps what a run's faults cost readable apart from what its work cost.
+ *
+ * Serialized as the plain strings `"work"` and `"total"`.
+ */
+export type GgUsageFigure = "work" | "total";
 
 /**
  * An operator's saved, reusable gg configuration: a named

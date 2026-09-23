@@ -73,8 +73,8 @@ use test_cabinet_core::metrics::{Cost, TokenCounts};
 
 use crate::loopguard::{LoopGuard, LoopGuardConfig, LoopVerdict, resolve_loop_guard};
 use crate::model::{
-    FinishReason, LoopAborts, Message, ModelClient, ModelError, ModelResponse, Role, ToolCall,
-    ToolDefinition,
+    FinishReason, LoopAborts, Message, ModelClient, ModelError, ModelResponse, ReplySpend, Role,
+    ToolCall, ToolDefinition,
 };
 use crate::telemetry::Emitter;
 
@@ -819,7 +819,9 @@ impl OpenRouterClient {
         match classify_status(status) {
             StatusClass::Success => BufferedAttempt::Done(match resp.text().await {
                 Ok(text) => parse_response(&text),
-                Err(err) => Err(ModelError::Parse(format!("reading response body: {err}"))),
+                // Reading the body itself failed: no usage behind this one — the reply never arrived
+                // as data. `parse` is the no-billed-usage constructor; see [`ModelError::Parse`].
+                Err(err) => Err(ModelError::parse(format!("reading response body: {err}"))),
             }),
             StatusClass::Fatal => {
                 let body = resp.text().await.unwrap_or_default();
@@ -1641,33 +1643,55 @@ fn role_str(role: Role) -> &'static str {
 /// output, per the metrics contract) and any reported cost onto [`Cost`].
 pub fn parse_response(body: &str) -> Result<ModelResponse, ModelError> {
     let parsed: WireResponse = serde_json::from_str(body)
-        .map_err(|err| ModelError::Parse(format!("{err}; body: {}", truncate(body))))?;
+        .map_err(|err| ModelError::parse(format!("{err}; body: {}", truncate(body))))?;
+
+    // Read the bookkeeping before the parts that can fail take `parsed` apart: usage a provider
+    // reported ahead of the failure (an error object, tool call arguments that do not parse) is
+    // spend the run actually made, and belongs in the run's total cost rather than vanishing with
+    // the reply. See [`ModelError::Parse`].
+    let provider = parsed.provider.filter(|provider| !provider.is_empty());
+    let (usage, cost) = map_usage(parsed.usage.as_ref());
 
     // OpenRouter surfaces provider errors in a `2xx` envelope too; treat that as fatal
     // rather than silently returning an empty turn.
     if let Some(err) = parsed.error {
-        return Err(ModelError::Parse(format!(
-            "provider returned an error object: {}",
-            err.message
-        )));
+        return Err(ModelError::parse_billed(
+            format!("provider returned an error object: {}", err.message),
+            ReplySpend {
+                tokens: usage,
+                cost,
+                provider,
+            },
+        ));
     }
 
-    let provider = parsed.provider.filter(|provider| !provider.is_empty());
-    let choice = parsed
-        .choices
-        .into_iter()
-        .next()
-        .ok_or_else(|| ModelError::Parse("response had no choices".to_string()))?;
+    let choice = parsed.choices.into_iter().next().ok_or_else(|| {
+        ModelError::parse_billed(
+            "response had no choices",
+            ReplySpend {
+                tokens: usage,
+                cost,
+                provider: provider.clone(),
+            },
+        )
+    })?;
 
     let text = choice.message.content.filter(|content| !content.is_empty());
 
     let mut tool_calls = Vec::with_capacity(choice.message.tool_calls.len());
     for (index, call) in choice.message.tool_calls.into_iter().enumerate() {
         let arguments = parse_arguments(&call.function.arguments).map_err(|err| {
-            ModelError::Parse(format!(
-                "tool call #{index} ({}) had unparseable arguments: {err}",
-                call.function.name
-            ))
+            ModelError::parse_billed(
+                format!(
+                    "tool call #{index} ({}) had unparseable arguments: {err}",
+                    call.function.name
+                ),
+                ReplySpend {
+                    tokens: usage,
+                    cost,
+                    provider: provider.clone(),
+                },
+            )
         })?;
         tool_calls.push(ToolCall {
             id: call.id,
@@ -1682,8 +1706,6 @@ pub fn parse_response(body: &str) -> Result<ModelResponse, ModelError> {
     if finish_reason == FinishReason::Stop && !tool_calls.is_empty() {
         finish_reason = FinishReason::ToolCalls;
     }
-
-    let (usage, cost) = map_usage(parsed.usage.as_ref());
 
     Ok(ModelResponse {
         text,
@@ -1973,13 +1995,13 @@ impl StreamAccumulator {
                 line = rest;
             }
             let line = std::str::from_utf8(line).map_err(|err| {
-                ModelError::Parse(format!("stream carried a line that is not UTF-8: {err}"))
+                self.parse_error(format!("stream carried a line that is not UTF-8: {err}"))
             })?;
             self.push_line(line, &mut delta)?;
         }
 
         if self.buffer.len() > MAX_SSE_LINE_BYTES {
-            return Err(ModelError::Parse(format!(
+            return Err(self.parse_error(format!(
                 "stream sent {} bytes with no line break; giving up at {MAX_SSE_LINE_BYTES}",
                 self.buffer.len()
             )));
@@ -1997,6 +2019,22 @@ impl StreamAccumulator {
     /// abandoned, so the [timeout](ModelError::Timeout) can say who was serving it.
     pub fn provider(&self) -> Option<&str> {
         self.provider.as_deref()
+    }
+
+    /// The [`ModelError::Parse`] for a stream that stopped making sense, carrying whatever usage
+    /// and cost the accumulator had received before it did — usually none mid-stream, but a
+    /// provider that sent its usage and then something unreadable still billed for the request,
+    /// and the run's total cost is over every request. See [`ModelError::Parse`].
+    fn parse_error(&self, message: String) -> ModelError {
+        let (usage, cost) = map_usage(self.usage.as_ref());
+        ModelError::parse_billed(
+            message,
+            ReplySpend {
+                tokens: usage,
+                cost,
+                provider: self.provider.clone(),
+            },
+        )
     }
 
     /// Take one complete SSE line, appending any assistant text it carried to `delta`.
@@ -2017,13 +2055,13 @@ impl StreamAccumulator {
         }
 
         let chunk: WireStreamChunk = serde_json::from_str(payload).map_err(|err| {
-            ModelError::Parse(format!("{err}; stream chunk: {}", truncate(payload)))
+            self.parse_error(format!("{err}; stream chunk: {}", truncate(payload)))
         })?;
 
         // A provider error arriving mid-stream, worded exactly as `parse_response` words the same
         // object in a `2xx` envelope: the two transports must not describe one failure two ways.
         if let Some(error) = chunk.error {
-            return Err(ModelError::Parse(format!(
+            return Err(self.parse_error(format!(
                 "provider returned an error object: {}",
                 error.message
             )));
@@ -2077,20 +2115,35 @@ impl StreamAccumulator {
     /// other hand, was cut off, and reporting that as an empty reply would hand the turn loop a
     /// silence the model never produced.
     pub fn finish(self) -> Result<ModelResponse, ModelError> {
+        // Mapped first so a reply that stops making sense below still carries the usage it
+        // reported — that spend is the run's total cost even though the reply is unusable.
+        let (usage, cost) = map_usage(self.usage.as_ref());
         let has_calls = !self.tool_calls.is_empty();
         if self.text.is_empty() && !has_calls && self.finish_reason.is_none() {
-            return Err(ModelError::Parse(
-                "the stream ended without a reply or a finish reason".to_string(),
+            return Err(ModelError::parse_billed(
+                "the stream ended without a reply or a finish reason",
+                ReplySpend {
+                    tokens: usage,
+                    cost,
+                    provider: self.provider,
+                },
             ));
         }
 
         let mut tool_calls = Vec::with_capacity(self.tool_calls.len());
         for (index, call) in self.tool_calls {
             let arguments = parse_arguments(&call.arguments).map_err(|err| {
-                ModelError::Parse(format!(
-                    "tool call #{index} ({}) had unparseable arguments: {err}",
-                    call.name
-                ))
+                ModelError::parse_billed(
+                    format!(
+                        "tool call #{index} ({}) had unparseable arguments: {err}",
+                        call.name
+                    ),
+                    ReplySpend {
+                        tokens: usage,
+                        cost,
+                        provider: self.provider.clone(),
+                    },
+                )
             })?;
             tool_calls.push(ToolCall {
                 id: call.id,
@@ -2105,8 +2158,6 @@ impl StreamAccumulator {
         if finish_reason == FinishReason::Stop && has_calls {
             finish_reason = FinishReason::ToolCalls;
         }
-
-        let (usage, cost) = map_usage(self.usage.as_ref());
 
         Ok(ModelResponse {
             text: (!self.text.is_empty()).then_some(self.text),

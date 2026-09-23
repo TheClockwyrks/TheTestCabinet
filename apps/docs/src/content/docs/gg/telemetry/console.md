@@ -57,7 +57,10 @@ the same rows twice, which is a fact about that configuration.
 A run binds one model per [agent profile](/gg/configurations/), so every `usage`
 event names the [profile id](/gg/configurations/#identity) and model that spent
 it and every split above is derived from the delta stream, from the run's first
-turn. The `slot_usage` rollups, one per `(profile, model)` the run touched and
+turn. Each delta also names the [cost figure](/gg/execution-limits/#maxcost) its
+turn fed — `work` or `total` — so the account's total and its work cost are both
+summed straight off the same stream. The `slot_usage` rollups, one per
+`(profile, model)` the run touched and
 all of them emitted once the run's last agent has joined, carry the same figures
 for the durable record; a consumer sums the deltas, never both.
 

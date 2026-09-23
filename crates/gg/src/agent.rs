@@ -159,8 +159,8 @@ use test_cabinet_core::gg::{
     GgCapabilitySet, GgContextAction, GgContextSource, GgHookAgentKind, GgHookEvent,
     GgIssueReviewPhase, GgLimitBreach, GgLimitKind, GgProgramLanguage, GgReviewer, GgRosterEntry,
     GgRunLimits, GgSlotBinding, GgSubagentScope, GgTelemetryKind, GgUndocumentedCalls,
-    MAX_OPENING_TREE_DEPTH, PARAM_SIGNAL_THRESHOLD_PERCENT, PARAM_SKILLS_DIR, PARAM_TOP_FILE_VIEWS,
-    PARAM_WINDOW_LIMIT, PROJECT_MANAGEMENT_PARAM_MERGE_AGENT,
+    GgUsageFigure, MAX_OPENING_TREE_DEPTH, PARAM_SIGNAL_THRESHOLD_PERCENT, PARAM_SKILLS_DIR,
+    PARAM_TOP_FILE_VIEWS, PARAM_WINDOW_LIMIT, PROJECT_MANAGEMENT_PARAM_MERGE_AGENT,
 };
 use test_cabinet_core::gg_session_journal::GG_SESSION_JOURNAL_PATH;
 use test_cabinet_core::gg_session_record::{
@@ -199,8 +199,8 @@ use crate::loopguard::LoopGuardConfig;
 use crate::memories::{MemoriesRuntime, MemoryRegistry, MemoryScope, MemoryStrategy};
 use crate::message_log::finish_reason_token;
 use crate::model::{
-    FinishReason, LoopAborts, Message, ModelClient, ModelError, ModelResponse, ToolCall,
-    ToolDefinition,
+    FinishReason, LoopAborts, Message, ModelClient, ModelError, ModelResponse, ReplySpend,
+    ToolCall, ToolDefinition,
 };
 use crate::modules::{
     CapabilityModules, HistorySetup, InheritedModules, Module, ModuleIdMint, ModuleIds, ModuleKind,
@@ -7191,24 +7191,33 @@ impl Agent {
             // The same boundary on the turn's phase accounting: everything before this was
             // assembling the request, everything after handling what it returned.
             turn_timer.model_call_started();
-            // The model call, retried **within this turn** for the two failures the loop recovers
+            // The model call, retried **within this turn** for the four failures the loop recovers
             // from rather than dying on:
             //
-            // - a call that hit the run's [per-call ceiling](crate::limits::RunLimits::model_call_timeout)
-            //   — a stalled provider;
+            // - a call that hit the run's
+            //   [per-call ceiling](crate::limits::RunLimits::model_call_timeout) — a stalled
+            //   provider;
             // - a reply that hit the **provider's output cap** (`finish_reason: length`), which is
-            //   presumed a degenerate generation and rejected whole.
+            //   presumed a degenerate generation and rejected whole;
+            // - a reply gg **could not read** (`ModelError::Parse`) — the envelope unparseable, or
+            //   tool call arguments the provider cut off mid-JSON, the shape that cost a run of
+            //   `tencent/hy4-preview` sixty-five turns of uncommitted work when it ended the
+            //   session instead;
+            // - a reply that [looped](crate::loopguard) on every attempt the client made
+            //   (`ModelError::ResponseLoop`).
             //
-            // Both are recorded as error turns first — they spend the consecutive-error count and
-            // the error-rate window exactly as a failed model call does, which is what bounds a
+            // All four are recorded as error turns first — they spend the consecutive-error count
+            // and the error-rate window exactly as a failed model call does, which is what bounds a
             // model (or an endpoint) that keeps doing it — and then the same request is simply
             // asked again: nothing entered the context, so the retry is byte-identical and the
-            // turn keeps its number. A rejected attempt is therefore absent from the run's turn
-            // count and its usage absent from the run's tokens and cost (the `ResponseRejected`
-            // event and the summary's rejected rollup carry the spend instead); only the error
-            // ceilings — and the run-wide deadline and an operator's kill, both re-checked
-            // between attempts because a retry chain can outlast a turn boundary — decide when to
-            // stop asking.
+            // turn keeps its number. An attempt that produced no usable reply is therefore absent
+            // from the run's turn count (the `ResponseRejected` event and the summary's rejected
+            // rollup carry a rejection's spend besides), while any usage the provider reported
+            // before giving up on the reply is counted into the run's **total** cost through a
+            // `Usage` delta marked `total` — never its work cost, since no work was done with it.
+            // Only the error ceilings — and the run-wide deadline and an operator's kill, both
+            // re-checked between attempts because a retry chain can outlast a turn boundary —
+            // decide when to stop asking.
             let response = loop {
                 let attempt_started = Instant::now();
                 let recoverable = match complete_with_vision_recovery(
@@ -7224,9 +7233,11 @@ impl Agent {
                     // A length-capped reply is rejected whole, before anything reads it: it never
                     // becomes the assistant turn, so the next attempt's context does not carry it.
                     // Recorded twice, deliberately — the `ResponseRejected` event (and its summary
-                    // rollup) carries the spend the run's own metrics exclude, and the message log
+                    // rollup) keeps it answerable as a rejection, and the message log
                     // keeps the rejected exchange itself so a degenerate reply is inspectable
-                    // rather than merely counted.
+                    // rather than merely counted. Its spend follows the same double rule: the
+                    // `Usage` delta the shared tail below emits marks it `total`, so the price is
+                    // in the run's total cost and out of its work cost.
                     Ok(response) if response.finish_reason == FinishReason::Length => {
                         let size = ResponseSize::of(&response);
                         emitter.emit(GgTelemetryKind::ResponseRejected {
@@ -7251,7 +7262,11 @@ impl Agent {
                         );
                         // What loop detection discarded on the way to this reply rides on the
                         // rejection's own error turn — the reply it preceded is not becoming one.
-                        (TurnErrorType::ModelLengthCapped, response.loop_aborts)
+                        (
+                            TurnErrorType::ModelLengthCapped,
+                            response.loop_aborts,
+                            Some(ReplySpend::of(&response)),
+                        )
                     }
                     Ok(response) => break response,
                     // A timed-out call: the client surfaced it without spending its own retry
@@ -7259,22 +7274,51 @@ impl Agent {
                     // bounded retry is this one.
                     Err(err @ ModelError::Timeout { .. }) => {
                         emitter.emit(log("error", model_call_retried(turn, &err)));
-                        (TurnErrorType::ModelTimeout, LoopAborts::none())
+                        (TurnErrorType::ModelTimeout, LoopAborts::none(), None)
+                    }
+                    // A reply gg could not read: the envelope unparseable, an error object in a
+                    // `2xx`, or tool call arguments that are not JSON — a provider that cut the
+                    // arguments off mid-JSON is the shape that matters, and ending the session on
+                    // it threw away sixty-five turns of uncommitted work once. Answered as a
+                    // `model_parse` error turn instead: nothing was pushed (there was nothing to
+                    // push), the ceilings spend, and the same request goes out again. A reply
+                    // that was no tool call at all never arrives here — it parses, and the loop
+                    // files it under its `missing_completion` types — so this arm's meaning stays
+                    // "a reply existed and gg could not read it". Any usage the provider reported
+                    // before the reply stopped making sense is the run's spend and rides out to
+                    // the total cost; it bought no work, so it never enters the work cost.
+                    Err(err @ ModelError::Parse { .. }) => {
+                        emitter.emit(log("error", model_call_retried(turn, &err)));
+                        // Take what the provider billed before the reply stopped making sense —
+                        // the arm's guard above is what makes this destructure total, and the
+                        // spend was boxed precisely so this arm is the one that pays for it.
+                        let ModelError::Parse { spend, .. } = err else {
+                            unreachable!("the match arm's pattern is `Parse`")
+                        };
+                        (
+                            TurnErrorType::ModelParse,
+                            LoopAborts::none(),
+                            spend.map(|spend| *spend),
+                        )
+                    }
+                    // A reply that looped on every attempt the client made: each discarded reply
+                    // never entered the context, so the retry is byte-identical, and the error
+                    // ceilings — not the first loop — are what bound a model that keeps doing it.
+                    // The discarded replies' size rides the error turn the shared tail below
+                    // records; their spend cannot, because a stream gg dropped never delivered
+                    // its usage payload.
+                    Err(err @ ModelError::ResponseLoop { discarded, .. }) => {
+                        emitter.emit(log("error", model_call_retried(turn, &err)));
+                        (TurnErrorType::ModelResponseLoop, discarded, None)
                     }
                     Err(err) => {
                         // Surface the failure loudly — a `Log(error)` and a failed
                         // session end — rather than discarding the run silently. A
                         // retry-exhausted transient failure and a fatal one both end the
                         // session here; the client has already exhausted its own retries, so
-                        // there is nothing left to retry at the turn level in Phase 0.
-                        //
-                        // A [generation loop](crate::loopguard) that survived every attempt is one of
-                        // those retry-exhausted failures and ends the session on exactly the same terms
-                        // — but it is named separately, because "retries exhausted" would send an
-                        // operator looking at the provider for an outage that never happened. What
-                        // actually happened is that the model kept writing the same thing and gg kept
-                        // throwing it away.
-                        //
+                        // there is nothing left to retry at the turn level in Phase 0. What
+                        // *could* be answered as an error turn — a timeout, an unreadable reply
+                        // and a reply that looped every attempt — was, in the three arms above.
                         // The classification is made ONCE, as the value that is recorded, and the log
                         // line's phrase is read back off it, so no aggregate can disagree with what the
                         // line says.
@@ -7347,12 +7391,11 @@ impl Agent {
                             emitter,
                             &limits,
                             TurnOutcome::Error(error_type),
-                            // A turn that never got a reply at all still says what it threw away
-                            // trying: every attempt looped, so the error carries the whole tally.
-                            match &err {
-                                ModelError::ResponseLoop { discarded, .. } => *discarded,
-                                _ => LoopAborts::none(),
-                            },
+                            // Nothing here throws replies away any more: the one error that could
+                            // carry a whole tally (a spent loop retry) is answered as an error
+                            // turn above, and every failure that still ends the session is a
+                            // refusal or an exhausted schedule, none of which ever read a reply.
+                            LoopAborts::none(),
                             ResponseSize::none(),
                         );
                         return LoopEnd {
@@ -7385,7 +7428,28 @@ impl Agent {
                 // The shared recoverable tail: the attempt is an error turn — counted against the
                 // ceilings on exactly the terms a failed model call is — and if no ceiling (nor
                 // the run's clock, nor an operator) says stop, the same request goes out again.
-                let (error_type, aborts) = recoverable;
+                let (error_type, aborts, billed) = recoverable;
+                // What a rejected or unreadable attempt still billed for, counted before the turn
+                // is recorded so every ending below reads totals that include it. The attempt
+                // produced no program and no tool call gg ran, so its delta is marked `total`:
+                // the spend reaches the run's **total** cost — the figure the closing summary
+                // prints and the cost ceiling reads — and stays out of the work cost. A timeout
+                // and a spent loop retry pass `None`: a stalled provider and a stream gg dropped
+                // never delivered a usage payload to count.
+                if let Some(billed) = billed {
+                    record_usage_delta(
+                        billed.tokens,
+                        billed.cost,
+                        billed.provider,
+                        &self.profile_id,
+                        client.model_id(),
+                        GgUsageFigure::Total,
+                        emitter,
+                    );
+                    total_tokens = add_counts(total_tokens, billed.tokens);
+                    total_cost = add_cost(total_cost, billed.cost);
+                    limits.spend.add(billed.cost);
+                }
                 if let Some(breach) = self.record_turn(
                     &mut agent_limits,
                     emitter,
@@ -7471,12 +7535,32 @@ impl Agent {
                 ));
             }
 
-            record_usage(&response, emitter, &self.profile_id, client.model_id());
+            // The delta names the figure this turn's spend fed: [`Work`](GgUsageFigure::Work) when
+            // the reply produced a program or a tool call gg ran — the definition of the run's
+            // work — and [`Total`](GgUsageFigure::Total) when it produced nothing gg ran (a prose
+            // reply the loop will file as a `missing_completion`, a summary turn). Every delta is
+            // in the total; the mark is what keeps a fault's price out of the work cost.
+            let figure = if response.tool_calls.is_empty() {
+                GgUsageFigure::Total
+            } else {
+                GgUsageFigure::Work
+            };
+            record_usage_delta(
+                response.usage,
+                response.cost,
+                response.provider.clone(),
+                &self.profile_id,
+                client.model_id(),
+                figure,
+                emitter,
+            );
             total_tokens = add_counts(total_tokens, response.usage);
             total_cost = add_cost(total_cost, response.cost);
             // The same figure, folded into the run-wide total every agent's cost ceiling reads. Fed
             // here rather than at the agent's end, because a subagent forty turns deep must
-            // contribute to the run's spend while it is still running.
+            // contribute to the run's spend while it is still running. The ceiling reads the
+            // run's **total** — every request, the rejected and unreadable ones the shared tail
+            // above counted included — never only its work.
             limits.spend.add(response.cost);
 
             // The assistant turn is recorded exactly as the model sent it, in **both** modes: its
@@ -9138,10 +9222,11 @@ fn model_call_failed(
     format!("model turn {turn} failed — {}: {err}", error_type.phrase())
 }
 
-/// The operator's `error` line for a **timed-out model call** — the recoverable failure the loop
-/// answers by recording an error turn and asking again, unlike [`model_call_failed`]'s, which end
-/// the session. That the turn is retried, and the ceilings that bound how often, are gg's handling
-/// of the failure rather than the failure, so the line reports the symptom and stops there.
+/// The operator's `error` line for a **recoverable model failure** — a timed-out call, a reply gg
+/// could not read, a reply that looped every attempt — the failures the loop answers by recording
+/// an error turn and asking again, unlike [`model_call_failed`]'s, which end the session. That the
+/// turn is retried, and the ceilings that bound how often, are gg's handling of the failure rather
+/// than the failure, so the line reports the symptom and stops there.
 fn model_call_retried(turn: usize, err: &ModelError) -> String {
     format!(
         "model turn {turn} — {}: {err}",
@@ -12410,25 +12495,38 @@ const IMAGE_STRIPPED_NOTE: &str = "[The image could not be shown: the model runn
      does not accept image input. Reading it again will not help — work from the written \
      specification instead.]";
 
-/// Emit a [`Usage`](GgTelemetryKind::Usage) event for a turn when it reported any
-/// tokens or cost, attributed to the `slot` (agent profile) and `model_id` that spent it.
+/// Emit a [`Usage`](GgTelemetryKind::Usage) delta for a model request when it reported any tokens
+/// or cost, attributed to the `slot` (agent profile) and `model_id` that spent it and naming the
+/// [figure](GgUsageFigure) its turn fed: [`Work`](GgUsageFigure::Work) for a reply that produced
+/// a program or a tool call gg ran, [`Total`](GgUsageFigure::Total) for every other request — one
+/// whose reply was rejected or could not be read, or one that ended with no call.
 ///
 /// The attribution is what makes a *live* multi-model run readable: a bare delta can only be
 /// summed into one figure, so a console watching a run that spans several models could show the
 /// money going out but not where — the per-model split had to wait for the end-of-agent
 /// [`SlotUsage`](GgTelemetryKind::SlotUsage) rollups. Stamping each delta with its own
 /// `(slot, model)` makes every consumer's breakdown derivable from the first turn on, and summing
-/// the deltas of one key reproduces that key's rollup exactly.
-fn record_usage(response: &ModelResponse, emitter: &Emitter, profile_id: &str, model_id: &str) {
-    if response.usage == TokenCounts::default() && response.cost.is_none() {
+/// the deltas of one key reproduces that key's rollup exactly — the figure mark included, since
+/// the [summary](crate::summary) folds the work figure from these same marks.
+fn record_usage_delta(
+    tokens: TokenCounts,
+    cost: Option<Cost>,
+    provider: Option<String>,
+    profile_id: &str,
+    model_id: &str,
+    figure: GgUsageFigure,
+    emitter: &Emitter,
+) {
+    if tokens == TokenCounts::default() && cost.is_none() {
         return;
     }
     emitter.emit(GgTelemetryKind::Usage {
         profile_id: profile_id.to_string(),
         model_id: model_id.to_string(),
-        tokens: response.usage,
-        cost: response.cost,
-        provider: response.provider.clone(),
+        tokens,
+        cost,
+        figure: Some(figure),
+        provider,
     });
 }
 

@@ -1215,6 +1215,7 @@ fn usage_telemetry_reuses_the_shared_token_and_cost_types() {
                 comparable: Some(0.021),
                 actual: Some(0.021),
             }),
+            figure: Some(GgUsageFigure::Work),
             provider: Some("anthropic".to_string()),
         },
     };
@@ -1222,6 +1223,11 @@ fn usage_telemetry_reuses_the_shared_token_and_cost_types() {
     assert_eq!(value["profileId"], json!(ROOT_PROFILE_ID));
     assert_eq!(value["provider"], json!("anthropic"));
     assert_eq!(value["modelId"], json!("anthropic/claude-opus-5"));
+    assert_eq!(
+        value["figure"],
+        json!("work"),
+        "the delta names the cost figure its turn fed"
+    );
     let back: GgTelemetryEvent = serde_json::from_value(value).expect("deserialize");
     assert_eq!(event, back);
 }

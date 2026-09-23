@@ -49,8 +49,9 @@ The telemetry must let a console display:
 - Every reply gg [rejected whole](/gg/execution-limits/#model-api-errors) — a
   length-capped one — as one `response_rejected` per rejection, carrying the
   reply's size, the usage and cost the provider billed for it, and the provider
-  that served it. The run's own usage excludes a rejected call, so this event is
-  the only place its spend appears live.
+  that served it. The rejection stays answerable as a rejection while its spend
+  joins the run's [total cost](/gg/execution-limits/#maxcost) on a `usage`
+  delta marked `total` — never its work cost.
 - Every shell command gg ran on an agent's behalf: one `shell` event per command
   line, naming which of the three command paths issued it, where it ran, its
   exit code, and the capped tails of its streams. See
@@ -73,6 +74,32 @@ sends on every request of the run as both `session_id` and `prompt_cache_key`
 (see [prompt caching](/gg/overview/#prompt-caching)). It is the value a provider
 dashboard shows for the run's requests, so it is how a dashboard row is matched
 to a run.
+
+## The closing summary
+
+The last typed event before `session_ended` is `session_summary`: the run's
+whole [aggregatable outcome](/gg/telemetry/turn-outcomes/#the-run-rollup),
+folded from the stream as it ran. Its cost figures are recorded twice over,
+per model slot on `slotCosts` and summed run-wide beside them:
+
+- the **total cost** (`cost`) — the sum over every request the run made that
+  reported a price: the work turns, the turns answered as
+  [error turns](/gg/execution-limits/#model-api-errors), the rejected replies
+  and the ones gg could not read. This is the figure the run's `maxCost` ceiling
+  reads;
+- the **work cost** (`work_cost`) — the sum over the turns that produced a
+  program or a tool call gg ran. The difference between the two is what the run's
+  faults cost apart from what its work cost.
+
+Which figure a turn fed is never inferred after the fact: every `usage` delta
+carries a `figure` naming it — `work` for a turn that did work (its spend is in
+both figures), `total` for one that produced nothing usable — so a consumer
+sums the deltas marked `work` for the work figure and every delta for the total.
+A delta recorded before the split carries no figure and reads as `total`-only.
+
+The summary ends with the ceilings in force, the ceiling that stopped the run
+when one did, the per-slot and per-provider cost rollups, and the capability set
+the run executed under.
 
 ## The channel
 
