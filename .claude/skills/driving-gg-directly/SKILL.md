@@ -180,7 +180,6 @@ and the study profile leaves it unarmed.
 
 ### Things gg does not do
 
-- No reasoning or effort parameter is sent. A model runs at its provider default.
 - The only provider is OpenRouter. A model not listed there cannot be run.
 - The shell runs as your user with no sandbox. The templates arm the built-in
   `guard-destructive-shell` hook on `pre-shell`; add an `agent-stop` command

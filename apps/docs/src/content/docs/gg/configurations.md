@@ -115,7 +115,8 @@ Each profile carries:
   functions its fresh window opens holding documentation of;
 - its own [model slots](#agent-slots), and one model either pinned outright or
   deferred to one of them, with the
-  [prompt-cache lifetime](#prompt-cache-lifetime) its requests ask for;
+  [prompt-cache lifetime](#prompt-cache-lifetime) its requests ask for and the
+  [reasoning setting](#reasoning-effort) every request of the agent carries;
 - optional custom instructions, operator prose inserted into the agent's [system
   prompt](/gg/prompts/), and a complete system-prompt template override for full
   control (the editor seeds the override with gg's built-in template, so the
@@ -315,12 +316,13 @@ library](/gg/program-library/) and Close documentation are offered to a RaC
 agent and not to a Tools one, because there are no programs in a tool-calling
 session to keep and nothing in one opens a documentation view.
 
-An FSM profile is offered no capabilities, no model binding, no prompt-cache
-lifetime, no custom instructions, no system-prompt override, and no roster. Its
-configuration is the machine. The rule the whole form follows is that a control
-exists only where gg would read what it sets, since a field the harness ignores
-invites an operator to configure a run that does not exist and then to read the
-recorded set as though it had. So a machine is never asked for a model, the save
+An FSM profile is offered no capabilities, no model binding, no reasoning
+setting, no prompt-cache lifetime, no custom instructions, no system-prompt
+override, and no roster. Its configuration is the machine. The rule the whole
+form follows is that a control exists only where gg would read what it sets,
+since a field the harness ignores invites an operator to configure a run that
+does not exist and then to read the recorded set as though it had. So a machine
+is never asked for a model, the save
 gate never demands one of it, and a launch collects no [model
 slot](#model-slots) on its behalf. What the machine runs on is each state's own
 profile, and when the machine is the root the run is recorded under the model
@@ -417,6 +419,30 @@ The rolling tail marker always takes the provider default, whatever the agent is
 set to: it is rewritten every turn and read exactly once. Setting this on an
 agent bound to a model that caches implicitly, meaning everything outside the
 Anthropic family, changes nothing, because gg sends those providers no markers.
+
+## Reasoning effort
+
+Each agent may name how hard its model is asked to think, so a run can hold a
+model to the effort its task warrants rather than the provider's default. The
+setting is sent as OpenRouter's unified `reasoning` request object, which the
+provider maps onto the model's own parameter.
+
+The setting names one of two things:
+
+- An effort level, one of `xhigh`, `high`, `medium`, `low`, `minimal` or
+  `none`.
+- A budget, `maxTokens`: a whole count of one or more reasoning tokens, for the
+  providers that cap reasoning by tokens instead of naming a level.
+
+An agent that names neither runs at its provider's default, and gg sends no
+`reasoning` parameter for it at all. A setting that names both, or names
+neither, or a budget of zero, refuses the launch.
+
+Every request gg sends for the agent carries the object, its compaction
+summaries included: a summary runs on the agent's model at the agent's task, so
+it reasons at the same setting. The form offers the field beside the
+prompt-cache lifetime, and the resolved capability set a run
+[records and announces](#watching-a-run) carries it per agent profile.
 
 ## Storage
 
