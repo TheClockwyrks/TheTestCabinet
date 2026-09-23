@@ -53,7 +53,7 @@
 //! `componentize-py` links a real CPython against gg's WIT world directly, so the wire needed
 //! nothing added to it and the run container needs nothing installed in it — a program crosses as a
 //! string and the interpreter is already inside the artifact. The cost is the artifact: ~24 MiB
-//! against the ECMAScript guest's 13.4 MB, because it carries an interpreter, a curated standard
+//! against the ECMAScript guest's ~1.2 MB, because it carries an interpreter, a curated standard
 //! library and the SDK. The build is **not byte-reproducible** — it snapshots a running
 //! interpreter's memory — so a test holds it to a size band rather than to a hash. That is also why
 //! this arm could never have been covered by a regenerate-and-diff gate, and therefore part of the
@@ -466,8 +466,8 @@ mod tests;
 /// linker, membrane and store.
 ///
 /// A second test file rather than more of [`tests`], because these are a different kind of test: each
-/// one compiles a 25 MB component and instantiates it, which is seconds rather than microseconds,
-/// where everything next door is a pure function over text.
+/// one obtains a ~24 MiB component and instantiates it, where everything next door is a pure
+/// function over text.
 #[cfg(test)]
 #[path = "python.substrate.test.rs"]
 mod substrate_tests;

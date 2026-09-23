@@ -255,16 +255,11 @@ fn the_embedded_bundle_says_which_opal_and_which_ruby_it_is() {
 /// **Compiling is a real, repeated cost**: every preparation spawns the compiler and is handed back
 /// what *that* process wrote.
 ///
-/// This was a stopwatch — three compiles timed, each asserted at `>= 10 ms` and `< COMPILE_TIMEOUT`
-/// — and both bounds were claims about the machine rather than about this arm: a floor saying the
-/// box is slow enough, a ceiling saying it is fast enough. Neither is the property the test is named
-/// for, and the ceiling could only ever be reached by a compile the seam had already killed, which
-/// arrives here as `the embedded Opal did not compile valid Ruby` and names the wrong thing. The
-/// floor's real subject is gated without a clock and for every arm at once, by
+/// That a compile costs something is gated for every arm at once, by
 /// [`every_language_reports_what_compiling_its_program_cost`](crate::sandbox::tests::compile_tests):
-/// a compiled arm's per-turn reading has to arrive on the outcome and be greater than zero.
+/// a compiled arm's per-turn reading has to arrive on the outcome.
 ///
-/// What is left is the half nothing else asks — that the second compile is a **second compile**. An
+/// This is the half nothing else asks — that the second compile is a **second compile**. An
 /// arm that memoised on the source, or handed back an artifact a previous preparation wrote, would
 /// be reporting a compiler it did not run, and that is observable in the preparation's own tree
 /// rather than on a clock: each compile must have read its own `program.rb` and been handed back the

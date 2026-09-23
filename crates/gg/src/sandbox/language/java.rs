@@ -636,9 +636,9 @@ mod tests;
 /// **The Java arm's execution substrate**, driven end to end through gg's real compiler, linker,
 /// membrane and store.
 ///
-/// A separate test file from [`tests`], because these are a different kind of test: each one
-/// compiles a 20 MB component and starts a JVM that loads TeaVM, which is seconds rather than
-/// microseconds, where everything next door is a pure function over text.
+/// A separate test file from [`tests`], because these are a different kind of test: each one starts
+/// a JVM that loads TeaVM and builds a component per program, where everything next door is a pure
+/// function over text.
 #[cfg(test)]
 #[path = "java.substrate.test.rs"]
 mod substrate;

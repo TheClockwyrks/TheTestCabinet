@@ -305,11 +305,10 @@ fn code_mode_names_objects_and_teaches_discovery() {
 /// **No call is named**, which is why every assertion is over a sentence rather than a spelling:
 /// what a model can do is stated, and which function does it is left to a search.
 ///
-/// What this no longer reads is the **gating**. The section used to grow a sentence when the run
-/// offered `read_file` and another when it offered `shell`, and both are gone by the ruling that a
-/// prompt describes no capability whose functions' own briefs describe it — an opening turn listing
-/// a module (a fresh profile's lists `files` and `shell`) puts those briefs in the window before the
-/// model's first real turn. The one fact under this heading
+/// The section does not grow a sentence per granted `read_file` or `shell`: a prompt describes no
+/// capability whose functions' own briefs describe it, and an opening turn listing a module (a fresh
+/// profile's lists `files` and `shell`) puts those briefs in the window before the model's first
+/// real turn. The one fact under this heading
 /// that is still gated on `read_file` is whether the model can be shown an image, which no brief can
 /// answer, and [`code_mode_states_image_support_and_neither_capability_contract`] is where that is
 /// read.
@@ -389,12 +388,9 @@ fn code_mode_teaches_views_rather_than_logging() {
 
 /// **The code prompt states whether an image can be shown, and neither capability's contract.**
 ///
-/// This used to be the gate that the prompt *named* two capabilities where it described the others —
-/// that a program may read a workspace file, and that it may run a command — on the argument that
-/// reading a file and running a build are what a program is usually for. Both sentences are gone,
-/// and the ruling that removed them is the one this now proves the other side of: the opening turn
-/// runs a search that puts every function of the modules the profile's `openingTurn` lists, one
-/// brief each, into the window, so a prompt that described either capability was writing a second
+/// The prompt does not describe reading a workspace file or running a command. The opening turn runs
+/// a search that puts every function of the modules the profile's `openingTurn` lists, one brief
+/// each, into the window, so a prompt that described either capability would be writing a second
 /// copy of a brief the model already holds — with nothing keeping the copies equal.
 ///
 /// What survives is the one fact under the same heading that **no brief can answer**, because it is
@@ -1677,16 +1673,12 @@ fn the_context_usage_signal_renders() {
 /// section **on**, so a template that dropped one fails here rather than shipping a model a prompt
 /// with a hole in it.
 ///
-/// It used to be the list that paid for eleven template files — a copied template can silently lose
-/// a section, and a table of required headings was the cheapest way to catch one that had. There is
-/// one file now and that failure is gone with it, but the list is not: what it catches now is a
-/// section swallowed by a `{{#if}}` that should not have been wrapped around it, and it is still
-/// rendered **for every arm**, because a language segment that forgot to close a block would take
-/// the rest of the document with it on that arm alone.
-/// Every heading is an `##`, and there is no longer a `###` anywhere: the document has one level
-/// because its sections are peers, and the two that used to be nested under the opening section
-/// (`### The program you are writing`, which stated the reply contract, and the ending) are read by
-/// a model as subordinate to it when they are not.
+/// What the list catches is a section swallowed by a `{{#if}}` that should not have been wrapped
+/// around it, and it is rendered **for every arm**, because a language segment that forgot to close
+/// a block would take the rest of the document with it on that arm alone.
+/// Every heading is an `##`, and there is no `###` anywhere: the document has one level because its
+/// sections are peers, and a section nested under the opening one — the reply contract, or the
+/// ending — would be read by a model as subordinate to it when it is not.
 ///
 /// **`## Tasks` is one sentence long, and that is the ruling.** What it keeps is when a task list is
 /// worth reaching for, which is a judgement no function's brief makes; what it lost is every
@@ -2265,22 +2257,17 @@ fn every_language_prompt_states_the_rules_a_program_runs_under() {
 
 /// **A rendered prompt names no function of gg's surface — except the one that ends the session.**
 ///
-/// The positive half of the capability model, and the shape of it inverted. It used to be
-/// `REQUIRED_CALLS`: a table pairing every capability with the call its section had to name, so a
-/// model handed "You have access to a task list" and no call could not be mistaken for a model that
-/// simply could not use tasks. With the prompt naming nothing, that table is retired rather than
-/// retargeted, and the reason is the template rather than the design: one file now serves every
-/// [program language](crate::sandbox::ProgramLanguage), and a language-agnostic template **cannot
-/// spell a call** — the spelling is the arm's. There is no sentence left for such a table to hold to
-/// account. What it once asserted is not withheld from the model either: the
-/// [bootstrap](crate::bootstrap)'s opening turn runs a program that lists the modules the agent's
-/// `openingTurn` configuration names, with a one-line brief per function, so the surface still
-/// arrives on turn one — just not out of a `.hbs` file.
+/// The positive half of the capability model, and the shape of it inverted. The prompt names no call
+/// because one template serves every [program language](crate::sandbox::ProgramLanguage), and a
+/// language-agnostic template **cannot spell a call** — the spelling is the arm's. The surface still
+/// reaches the model on turn one: the [bootstrap](crate::bootstrap)'s opening turn runs a program
+/// that lists the modules the agent's `openingTurn` configuration names, with a one-line brief per
+/// function.
 ///
-/// What it was protecting moved to [the discoverability gate](crate::docs), which verifies the same
-/// property end to end and far better: for every capability an agent is granted, the words a model
-/// would reach for return something it may actually call, through the real catalogue, the real
-/// ranking and the real permission filter.
+/// That a granted capability can be *found* is [the discoverability gate](crate::docs)'s to hold,
+/// end to end: for every capability an agent is granted, the words a model would reach for return
+/// something it may actually call, through the real catalogue, the real ranking and the real
+/// permission filter.
 ///
 /// So this asserts the other side. Every arm's prompt is rendered with every section on, and the
 /// only catalogued spelling allowed to appear anywhere in it is the **ending** call — which is bound
@@ -2294,9 +2281,8 @@ fn every_language_prompt_states_the_rules_a_program_runs_under() {
 /// template's: [`modules`](SystemContext::modules), whose lines are the catalogue's own prose, and
 /// [`code_headings`](SystemContext::code_headings), whose descriptions are authored in Rust. Both
 /// are exactly where a call name gets in — and running this against
-/// [`every_code_section_on`]'s literals, which is what it used to do, is running it against the
-/// one input that cannot exhibit the failure. It passed over a prompt that named a function on
-/// every arm.
+/// [`every_code_section_on`]'s literals would be running it against the one input that cannot
+/// exhibit the failure: it passes there over a prompt that names a function on every arm.
 ///
 /// So the two fields come from [`module_views`](crate::agent::module_views) and
 /// [`code_heading_views`](crate::agent::code_heading_views), the functions the loop itself calls,
@@ -2484,12 +2470,10 @@ fn a_rendered_prompt_names_no_type_the_documentation_would_open() {
 /// be an instruction it cannot follow — an agent told to write memories regularly and then refused
 /// every call that writes one spends its turns looking for the one it was promised.
 ///
-/// It used to assert that the section **named** the one or two calls such a holder keeps, on the
-/// grounds that the naming was load-bearing where the writing half's was not. It is not asserted any
-/// more, because the prompt names no call at all: a read-only holder finds the read side the way
-/// every other agent finds every other call, and the
-/// [discoverability gate](crate::docs) is what holds that it can. What survives is the half that was
-/// always the section's own — that the prose changes shape.
+/// It does not assert that the section names the calls such a holder keeps, because the prompt names
+/// no call at all: a read-only holder finds the read side the way every other agent finds every
+/// other call, and the [discoverability gate](crate::docs) is what holds that it can. What is
+/// asserted is the section's own half — that the prose changes shape.
 ///
 /// The tool-calling rendering of the same property is
 /// [`the_memory_section_changes_shape_for_a_read_only_holder`]; this is the code-mode half.

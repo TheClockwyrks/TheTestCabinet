@@ -49,8 +49,8 @@
 //! What is *not* enforced by construction, because Rust cannot: a language may still declare a
 //! `static Mutex<Compiler>` and share it. That is what [`CompilerPool`] is the sanctioned answer to
 //! and what the isolation harness (`language/isolation.rs`) exists to catch — it drives any preparation
-//! 16-way with distinguishable inputs and fails the one whose results do not each belong to their
-//! own input. A source-level gate in that harness's tests also refuses a direct [`Command`] or
+//! several ways at once with distinguishable inputs and fails the one whose results do not each
+//! belong to their own input. A source-level gate in that harness's tests also refuses a direct [`Command`] or
 //! [`temp_dir`](std::env::temp_dir) anywhere in a language module, so a compiler that never went
 //! through here is a failing test rather than a discovery.
 //!
@@ -322,8 +322,8 @@ impl PrepareContext {
     /// The workspace path, **only if this preparation actually asked for one**.
     ///
     /// For the isolation harness (`language/isolation.rs`), which collects the path each of its
-    /// preparations was handed: sixteen concurrent agents must be handed sixteen different trees, and
-    /// one agent's sixteen sequential preparations must all be handed the same one. The `Option` is
+    /// preparations was handed: concurrent agents must each be handed a different tree, and one
+    /// agent's sequential preparations must all be handed the same one. The `Option` is
     /// the whole point: a preparation that never asked for a workspace has no path to compare, and is
     /// skipped rather than counted. Nothing on the turn path reads it.
     #[cfg(test)]

@@ -22,12 +22,12 @@
 //! drives: real PureScript, really compiled, whose calls arrive at gg's dispatch carrying the same
 //! JSON every other arm's do.
 //!
-//! # Why these tests are consolidated
+//! # How these tests are grouped
 //!
-//! Each `#[test]` is its own process under `cargo nextest`, and the first thing any of these does is
-//! compile the guest and unpack a 1.4 MB library tree. So each function drives *many* programs
-//! against many stores rather than being one behaviour per function, exactly as `sandbox.test.rs`
-//! does. Add a program to an existing function rather than adding a function.
+//! Each `#[test]` is its own process under `cargo nextest`, so each obtains the ECMAScript
+//! guest once, and every program in it costs a real `purs` and `esbuild`. A function groups the
+//! programs that exercise one behaviour, so they share that cost; one that grows into the slow
+//! end of the suite is split rather than extended.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Instant;
@@ -799,13 +799,11 @@ fn what_a_compiled_program_weighs_and_what_a_turn_pays_for_it() {
         );
     }
 
-    // Printed rather than asserted, because it is the arm's cost rather than its correctness.
-    // Interleaved so the two share one window of whatever else the machine is doing, and taken as
-    // the MINIMUM rather than the sum, which is the least-contaminated sample rather than the one
-    // carrying every stall — the same reading `ruby.substrate.test.rs` takes. `cargo nextest run
-    // --no-capture` is where these figures come from: 9.2 ms against 2.9 ms idle on this
-    // repository's dev container, and 9.1-10.5 ms against the same control with eighteen copies of
-    // this test running at once.
+    // Printed rather than asserted, because it is the arm's cost rather than its correctness, and a
+    // timing is a reading of the machine as much as of the arm. Interleaved so the two share one
+    // window of whatever else the machine is doing, and taken as the MINIMUM rather than the sum,
+    // which is the least-contaminated sample rather than the one carrying every stall. `cargo
+    // nextest run --no-capture` shows it.
     let mut compiled = std::time::Duration::MAX;
     let mut plain = std::time::Duration::MAX;
     for _ in 0..5 {
@@ -1132,12 +1130,10 @@ fn program_of(statements: &[&str]) -> String {
 fn every_operation_crosses_the_membrane_from_its_purescript_spelling() {
     let crossings = crossings();
 
-    // One program rather than one per crossing, which is a difference from the other arms and a
-    // deliberate one: a `purs` compile costs ~290 ms where Opal's costs ~180 ms and CPython's costs
-    // nothing, so thirty-five of them would be half a minute of compiler for a table that reads the
-    // same. What is checked is stronger for being one program — the calls must arrive in the order
-    // the program made them, so a call that reached gg's dispatch under a NEIGHBOUR's name fails
-    // here as well.
+    // One program rather than one per crossing: each program is a `purs` compile, so thirty-five of
+    // them would be thirty-five compiles for a table that reads the same. What is checked is
+    // stronger for being one program — the calls must arrive in the order the program made them, so
+    // a call that reached gg's dispatch under a NEIGHBOUR's name fails here as well.
     let statements: Vec<&str> = crossings
         .iter()
         .map(|crossing| crossing.statement)

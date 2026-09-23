@@ -32,12 +32,12 @@
 //! spelling, the catalogue reflected out of that SDK's own Javadoc, and the libraries this arm says
 //! a program may reach — is [next door](super::surface).
 //!
-//! # Why these tests are consolidated
+//! # How these tests are grouped
 //!
-//! Each `#[test]` is its own process under `cargo nextest`, and the first thing any of these does is
-//! start a JVM that loads TeaVM — seconds rather than microseconds. So each function drives *many*
-//! programs rather than being one behaviour per function, exactly as `sandbox.test.rs` does. Add a
-//! program to an existing function rather than adding a function.
+//! Each `#[test]` is its own process under `cargo nextest`, so each starts a JVM that loads
+//! TeaVM, and every program in it costs a build through that JVM. A function groups the
+//! programs that exercise one behaviour, so they share that cost; one that grows into the slow
+//! end of the suite is split rather than extended.
 
 use std::time::Instant;
 

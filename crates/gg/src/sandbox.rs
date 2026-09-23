@@ -589,7 +589,7 @@ fn linker<A: OperationApi>() -> Result<Linker<MembraneState<A>>, SandboxError> {
 }
 
 /// [`linker`], against an engine of the caller's choosing — the shared one, or under test the
-/// [metered](engine::metered_engine) one.
+/// metered one (`engine::metered_engine`).
 fn linker_on<A: OperationApi>(
     engine: &wasmtime::Engine,
 ) -> Result<Linker<MembraneState<A>>, SandboxError> {
@@ -643,7 +643,7 @@ fn bounded_store<A: OperationApi>(
 }
 
 /// [`bounded_store`], against an engine of the caller's choosing — the shared one, or under test the
-/// [metered](engine::metered_engine) one.
+/// metered one (`engine::metered_engine`).
 fn bounded_store_on<A: OperationApi>(
     engine: &wasmtime::Engine,
     state: MembraneState<A>,

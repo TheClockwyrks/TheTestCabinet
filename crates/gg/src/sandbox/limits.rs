@@ -49,14 +49,12 @@
 //! filesystem or socket API. It is **reachable today** from the [Python](super::language()) arm, where
 //! `time.sleep(60)` is an ordinary thing for a model to write.
 //!
-//! What that costs was measured, and the measurement says the overrun is bounded by the longest
-//! single park rather than by the budget. `time.sleep(8)` against a 2 s budget ran the **whole 8 s**
-//! in five of five runs (8.02 s elapsed); `time.sleep(4)` against a 1 s budget ran the whole 4 s in
-//! eight of eight. A program parking in short hops is a different story and the same rule: 200
-//! `time.sleep(0.05)`s — ten seconds of sleeping — against a 1 s budget stopped at 1.00–1.09 s,
-//! because the deadline lands at the first hop that returns to wasm. So a program is always stopped
-//! and the elapsed figure is always honest, but the deadline bounds the guest's *execution* and not
-//! the wall clock: it can only fire between parks, never inside one.
+//! The overrun is bounded by the longest single park rather than by the budget. A `time.sleep(8)`
+//! against a 2 s budget sleeps the whole 8 s, because nothing returns to wasm until it ends; a
+//! program that parks in short hops is stopped at the first hop that returns to wasm after its
+//! budget is spent. So a program is always stopped and the elapsed figure is always honest, but the
+//! deadline bounds the guest's *execution* and not the wall clock: it can only fire between parks,
+//! never inside one.
 //!
 //! `the_interpreters_own_landmines_are_defused` pins the half that is a behaviour: a program that
 //! parks in short hops forever is stopped as a timeout. The long-park half is an acceptance rather

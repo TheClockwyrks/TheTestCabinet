@@ -8,12 +8,12 @@
 //! `evictFileView` really shrinks the live window, or that a picture it read reaches the model —
 //! because all three of those live in [`run_code_program`], not in the sandbox.
 //!
-//! # These cost a component compile each
+//! # How these are grouped
 //!
-//! `cargo nextest` runs one process per test, and any test here compiles the ~13 MB artifact once
-//! (~1.2 s with the root manifest's cranelift `[profile.dev.package.*]` pins). Each function
-//! therefore asserts everything its scenario can support rather than being split one assertion per
-//! function; add an assertion to an existing scenario before adding a scenario.
+//! `cargo nextest` runs one process per test, so each test obtains the compiled guest once — under
+//! test usually a load from the on-disk component cache (`sandbox/engine.cache.rs`). Each function
+//! asserts everything its scenario can support rather than being split one assertion per function,
+//! because the scenario — a whole run through the loop — is the unit that costs something.
 
 use super::*;
 use crate::model::Role;

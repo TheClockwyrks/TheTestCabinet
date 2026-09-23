@@ -1,7 +1,7 @@
 //! Tests for **the Ruby arm of the seam** — the answers this language gives to the questions
 //! [`ProgramLanguage`](super::ProgramLanguage) asks that are pure functions over text.
 //!
-//! What is *not* here is anything that compiles or runs a program: that costs a `node` and a 20 MB
+//! What is *not* here is anything that compiles or runs a program: that costs a `node` and a ~20 MB
 //! component, and lives next door in [`ruby.substrate.test.rs`](super::substrate) and
 //! [`ruby.compile.test.rs`](super::compile::tests). The split is the reason these cases run in
 //! microseconds.

@@ -14,11 +14,12 @@
 //! a failed call are recorded by the **host**, on the membrane, whatever the guest then does with
 //! the throw.
 //!
-//! # Two tests, because each pays a component compile
+//! # How these are grouped
 //!
-//! `cargo nextest` runs one process per test and the first thing either of these does is compile the
-//! guest. So they are consolidated by *what kind of thing went wrong*, with each driving many
-//! programs against its own store. Add a program to one of them rather than a third function.
+//! By *what kind of thing went wrong*, each driving many programs against its own store. Each test
+//! is its own process under `cargo nextest` and obtains the compiled guest once — under test usually
+//! a load from the on-disk component cache (`sandbox/engine.cache.rs`) — so a new kind of failure is
+//! a new function rather than more programs in an existing one.
 
 use super::*;
 

@@ -1,12 +1,12 @@
 //! End-to-end tests against the **prebuilt component** — real TypeScript, really evaluated.
 //!
-//! # These cost a component compile each, so they are consolidated
+//! # How these are grouped
 //!
-//! `cargo nextest` runs one process per test, and the first thing any test here does is compile the
-//! ~13 MB artifact: ~1.2 s with the root manifest's cranelift `[profile.dev.package.*]` pins, ~7.6 s
-//! without them. So each test function drives **many** programs against many stores rather than
-//! being split one behaviour per function — the compile is per process, the instantiate is 24–124 µs.
-//! Resist the urge to split these up; add a program to an existing function instead.
+//! `cargo nextest` runs one process per test, so each test obtains the compiled guest once — under
+//! test usually a load from the on-disk component cache (`sandbox/engine.cache.rs`) — and then pays
+//! only an instantiate per program. A function groups the programs that exercise one behaviour
+//! against their own stores; one that grows into the slow end of the suite is split rather than
+//! extended.
 //!
 //! The submodules below follow the same rule and share these helpers.
 

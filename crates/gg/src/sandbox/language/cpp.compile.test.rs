@@ -29,8 +29,7 @@ fn the_archive_holds_exactly_what_its_manifest_declares() {
     // Both sides come out of one run of `build.sh` — the file list is `find`'s reading of the
     // staging directory and the archive is `tar`'s — so what this asks is whether gg's own unpacking
     // put back everything that was packed, at the size it was packed at. That is a live question
-    // however the archive got here, which is why it outlived the drift checks that used to sit
-    // beside it.
+    // however the archive got here.
     let guest = guest().expect("the C++ guest this build cut unpacks");
     for name in guest_files() {
         let path = guest.file(name);
@@ -69,25 +68,12 @@ fn the_archive_is_placed_read_only() {
     }
 }
 
-// WHAT USED TO BE HERE: `what_gg_compiles_every_program_against_is_what_this_checkout_committed`
-// and the `SDK_HEADERS` table it read. Between them they unpacked the archive and compared its
-// `prelude.hpp`, its `shell.cpp` and all sixteen SDK headers, byte for byte, against
-// `packages/gg-sandbox-cpp/Sources` — because the archive was COMMITTED, and somebody could edit a
-// header and not re-cut it, leaving every program on this arm declared against a surface the
-// catalogue no longer described.
-//
-// Both sides of that comparison are now cut by the same `cargo build`. `crates/gg-sandbox-artifacts/
-// cpp` runs `build.sh` whenever anything under `Sources/` moves, and `build.sh` stages those exact
-// files into a wiped directory with `cp` immediately before packing it. There is no interval in
-// which the two can differ and no operation between them that could make them, so the assertion
-// could not fail — and a test that cannot fail is worse than no test, because it reads like cover.
-//
-// The archive is still checked, and by the two tests either side of this note, which ask a different
-// question: `the_archive_holds_exactly_what_its_manifest_declares` holds the packed tree to the file
-// list `build.sh` wrote from that same tree, and `every_header_the_manifest_claims_is_one_the_
-// prelude_really_includes` holds the library set a MODEL is told about to the prelude that actually
-// ships it. Those are agreements between two generators rather than claims about a committed file,
-// and a build script that staged the wrong thing still fails them.
+// No test compares the archive's headers with `packages/gg-sandbox-cpp/Sources`, because both are
+// cut by the same `cargo build`: `crates/gg-sandbox-artifacts/cpp` runs `build.sh` whenever anything
+// under `Sources/` moves, and `build.sh` stages those exact files into a wiped directory immediately
+// before packing it. The archive is held instead to what two generators agree on: the test above
+// holds the packed tree to the file list `build.sh` wrote from that same tree, and the one below
+// holds the library set a MODEL is told about to the prelude that actually ships it.
 
 #[test]
 fn every_header_the_manifest_claims_is_one_the_prelude_really_includes() {
@@ -268,15 +254,6 @@ fn the_toolchain_is_looked_for_where_the_installer_and_the_image_put_it() {
          installer's"
     );
 }
-
-// WHAT USED TO BE HERE: `the_precompiled_headers_key_moves_when_the_compiler_is_reinstalled`, which
-// asserted that the shared directory a precompiled prelude was written into was keyed on a stamp of
-// the compiler binary — because a PCH may only be read by the clang that wrote it, so a wasi-sdk
-// reinstalled at the same version invalidated one without changing any version anybody wrote down.
-//
-// There is no PCH. Nothing is put in front of a C++ program, so nothing is precompiled ahead of one,
-// so there is no shared artifact to key and no stamp to move. The test has no subject left rather
-// than a weaker one, and `compiler_stamp` is gone with it.
 
 #[test]
 fn the_flags_that_have_to_agree_are_the_ones_the_prebuilt_objects_were_built_with() {

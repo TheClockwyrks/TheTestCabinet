@@ -643,12 +643,10 @@ fn wasi_context(
     // An environment variable rather than a WIT parameter because the world is shared with ten
     // sibling guests and adding a parameter reshapes every one of them.
     //
-    // ONE EPOCH TICK SHORT of gg's own ceiling, and the subtraction is what makes the whole thing
-    // work rather than a rounding nicety. gg's deadline is armed in whole ticks against a
-    // free-running counter, so it can be delivered up to a tick EARLY; a guest asked to stop at
-    // the same instant therefore loses the race and the model reads an epoch trap after all —
-    // measured, on a 250 ms ceiling. A tick is gg's own resolution, so giving it away costs a
-    // 30 s budget 0.3% of itself and buys every runaway loop a sentence naming the function.
+    // A [head start](super::engine::GUEST_HEAD_START) SHORT of gg's own ceiling, and the
+    // subtraction is what makes the whole thing work rather than a rounding nicety: a guest asked to
+    // stop at the same instant gg's deadline fires loses the race, and the model reads an epoch trap
+    // after all. [`guest_deadline`] is the figure, and what the head start has to cover is on it.
     if language.stops_itself_at_ggs_deadline() {
         builder.env(
             GUEST_DEADLINE,
@@ -879,9 +877,9 @@ impl<A: OperationApi> MembraneState<A> {
     /// [cost](super::SandboxOutcome::elapsed) a turn reports for a program that had not run a statement,
     /// and — the reason this exists — it is subtracted from the
     /// [head start](super::engine::GUEST_HEAD_START) that lets a guest which can stop itself answer
-    /// a runaway loop before gg's ceiling does. An instantiate that stretched under load used to eat
-    /// that whole margin, and the model read an epoch trap naming nothing instead of its own
-    /// engine's `InternalError: interrupted`.
+    /// a runaway loop before gg's ceiling does. Charged to the program, an instantiate stretched by
+    /// load could eat that whole margin, and the model would read an epoch trap naming nothing
+    /// instead of its own engine's `InternalError: interrupted`.
     ///
     /// Nothing unbounded escapes the ceiling by moving it: instantiation is fixed work on gg's own
     /// artifact, the memory cap is armed on the store before it and still denies a guest its heap

@@ -487,9 +487,8 @@ mod tests;
 /// compiler, linker, membrane and store.
 ///
 /// A second test file rather than more of [`tests`], because these are a different kind of test:
-/// each one compiles a 20 MB component, materialises a 2.9 MB compiler and spawns a real `node`,
-/// which is seconds rather than microseconds, where everything next door is a pure function over
-/// text.
+/// each one obtains a ~20 MB component, materialises a 2.9 MB compiler and spawns a real `node`,
+/// where everything next door is a pure function over text.
 #[cfg(test)]
 #[path = "ruby.substrate.test.rs"]
 mod substrate;

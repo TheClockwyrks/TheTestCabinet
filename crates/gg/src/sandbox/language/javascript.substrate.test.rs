@@ -22,9 +22,9 @@
 //! bytes — and is driven through [`run_program`](crate::sandbox::run_program), the function a turn
 //! calls, with the production linker, the production ceilings and the real membrane.
 //!
-//! One test rather than a file of them, and one process's component compile is why: `cargo nextest`
-//! runs a process per test and the first thing any test here does is compile the guest. Add a
-//! program to the function that is here rather than a second function beside it.
+//! Each `#[test]` is its own process under `cargo nextest`, so each obtains the ECMAScript
+//! guest once. A function groups the programs that exercise one behaviour, so they share that
+//! cost; one that grows into the slow end of the suite is split rather than extended.
 
 use serde_json::json;
 use test_cabinet_core::gg::GgProgramLanguage;

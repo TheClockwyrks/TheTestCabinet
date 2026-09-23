@@ -16,13 +16,12 @@
 //! side is [`FakeOperationApi`](super::super::super::fake::FakeOperationApi), which is what every other
 //! end-to-end sandbox test uses, and it records the exact JSON each call arrived as.
 //!
-//! # Why these tests are consolidated
+//! # How these tests are grouped
 //!
-//! Each `#[test]` is its own process under `cargo nextest`, and the first thing any of these does is
-//! compile a 20 MB component — around 1.2 s in the dev test profile — and materialise a 2.9 MB
-//! compiler. So each function drives *many* programs against many stores rather than being one
-//! behaviour per function, exactly as `sandbox.test.rs` does. Add a program to an existing function
-//! rather than adding a function.
+//! Each `#[test]` is its own process under `cargo nextest`, so each obtains the embedded guest
+//! once and materialises the Opal compiler, and every program in it costs a `node` running that
+//! compiler. A function groups the programs that exercise one behaviour, so they share that
+//! cost; one that grows into the slow end of the suite is split rather than extended.
 
 use serde_json::{Value, json};
 use test_cabinet_core::gg::GgProgramLanguage;
@@ -54,12 +53,9 @@ fn ruby() -> &'static dyn crate::sandbox::ProgramLanguage {
     crate::sandbox::language(GgProgramLanguage::Ruby)
 }
 
-/// The embedded guest, compiled once per test process — through the **production** per-language
-/// cache, now that this arm has a wire id to be cached under.
-///
-/// The same bargain a run strikes, and for the same reason: compiling 20 MB costs a second and
-/// instantiating the result costs half a millisecond, so a function that drives ten programs must
-/// not pay ten compiles.
+/// The embedded guest, obtained once per test process through the **production** per-language
+/// cache — the same bargain a run strikes: a compiled component is instantiated per program and
+/// never compiled per program.
 fn component() -> &'static Component {
     engine::component(ruby())
         .expect("the embedded Ruby guest compiles")
@@ -1736,9 +1732,7 @@ fn the_generated_catalogue_agrees_with_the_arms_it_will_be_compared_against() {
     // The **real** capability gate, over the real Ruby catalogue. It is what stands between a
     // configured `language` param and an invalidated study: an arm that quietly offers a model
     // fewer capabilities than the arm it is measured against is a green test suite, and this is the
-    // only thing that would notice. It ran here before this arm was registered, wearing the seam's
-    // fixture so it could be handed a catalogue whose id the wire enum did not carry yet; now that
-    // `ruby` is a language an operator configures, it runs against the registry itself.
+    // only thing that would notice.
     let document: Value =
         serde_json::from_str(SIGNATURES).expect("the generated Ruby catalogue is valid JSON");
     assert_eq!(

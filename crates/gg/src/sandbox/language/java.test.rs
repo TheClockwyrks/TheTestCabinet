@@ -2,7 +2,7 @@
 //! [`ProgramLanguage`](super::ProgramLanguage) asks that are pure functions over text.
 //!
 //! What is *not* here is anything that compiles or runs a program: that costs a JVM with TeaVM
-//! loaded and a 20 MB component, and lives next door in
+//! loaded and a component per program, and lives next door in
 //! [`java.substrate.test.rs`](super::substrate), [`java.surface.test.rs`](super::surface) and
 //! [`java.compile.test.rs`](super::compile::tests). The split is the reason these cases run in
 //! microseconds.

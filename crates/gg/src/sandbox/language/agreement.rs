@@ -121,7 +121,7 @@
 //!   would be a register rule about content rather than a completeness rule about a field. Until
 //!   the schema carries the field, this is a known gap.
 //!
-//! Two rules that used to be here now live elsewhere, and are stronger for it. Every brief, detail,
+//! Two neighbouring rules live elsewhere. Every brief, detail,
 //! parameter description, type description and member description belongs to the register gate
 //! (`language/register.rs`), which asks not only whether the prose is *there* but whether it is one
 //! line, closes its code spans and is written in the register gg chose. Every fully-qualified name,
@@ -129,10 +129,9 @@
 //! (`signatures.fqn.rs`), which also holds a declared type to being reachable and a reference to
 //! resolving.
 //!
-//! One rule was **dropped rather than moved**, and it is worth naming. A non-tool function spelled
-//! exactly as one of gg's own tool names used to fail: two vocabularies shared one flat program
-//! scope, so a collision would have been resolved by bind order rather than by anyone's decision.
-//! With a module-scoped surface there is no single flat scope to collide in — `read_file` under the
+//! One rule is **deliberately absent**, and it is worth naming: a non-tool function spelled exactly
+//! as one of gg's own tool names. In one flat program scope such a collision would be resolved by
+//! bind order rather than by anyone's decision. With a module-scoped surface there is no single flat scope to collide in — `read_file` under the
 //! files module and `read_file` under another are two names, and shadowing *within* one grouping is
 //! what [`usable_spellings`] still refuses. The hazard survives only on the arms that inject bare
 //! names into a program's scope, and telling those apart needs a field in the catalogue saying so,

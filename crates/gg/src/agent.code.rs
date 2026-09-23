@@ -577,7 +577,7 @@ async fn run_one_program(
         logs_suppressed: outcome.logs_suppressed,
         // Non-zero only for the program that beat the run's warm-up to the one shared component
         // compile and paid it itself — the figure that separates "this program was slow" from
-        // "this program compiled a 13 MB component inside its own span".
+        // "this program compiled the guest component inside its own span".
         compile_wait_ms: outcome
             .compile_wait
             .map(|waited| saturating_u64(waited.as_millis())),

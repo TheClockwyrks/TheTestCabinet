@@ -67,8 +67,8 @@ static COMPILES: AtomicU64 = AtomicU64::new(0);
 ///
 /// A [`Component`] is bound to the [`Engine`] that compiled it, so sharing one engine is the *only*
 /// thing that makes a compiled component reusable — for free, in memory — by every later program.
-/// A fresh engine per run would mean recompiling a 13.4 MB component on every single turn: ~660 ms
-/// against a ~30 µs instantiate. Per-run resource limits live on the [`Store`], never on the
+/// A fresh engine per run would mean recompiling a language's guest component on every single turn,
+/// where a turn otherwise pays only an instantiate that is orders of magnitude cheaper. Per-run resource limits live on the [`Store`], never on the
 /// engine, precisely so one shared engine stays sound for programs with different ceilings.
 ///
 /// [`OptLevel::None`] is deliberate: programs are short-lived, so optimising the generated code
@@ -229,16 +229,14 @@ pub(crate) const EPOCH_TICK: Duration = Duration::from_millis(100);
 /// that measures a few milliseconds on an idle machine — and it is wall clock, so on a machine that
 /// is loaded, thermally throttled, or paging it stretches by whatever factor the scheduler applies.
 ///
-/// **It used to be one [`EPOCH_TICK`], and one tick was not enough.** A full workspace run on a
-/// throttled laptop stretched a ~5 ms path past 100 ms and gg's ceiling answered first: the ECMAScript
-/// arm's `a_runaway_loop_is_stopped_by_the_engine_rather_than_by_an_epoch_trap` came back with an
-/// empty standard error and `Timeout { limit: 400ms }`, which is exactly the opaque stop the guest's
-/// self-interrupt exists to replace. Half a second is a hundred times the idle cost of that path,
-/// and it is charged against a budget sized in tens of seconds: the default 30 s ceiling becomes
-/// 29.5 s of program, which no honest program is anywhere near — the heaviest one measured spends
-/// about 1.8 s. The other half of that fix is [`MembraneState::start_program`](super::membrane::MembraneState::start_program),
-/// which keeps gg's own instantiation from being charged against this head start before the program
-/// has run a statement.
+/// **Half a second, rather than one [`EPOCH_TICK`],** because a single tick is within reach of that
+/// stretch: when gg's ceiling answers first, the model reads an empty standard error and an opaque
+/// timeout instead of its engine's own report. Half a second is two orders of magnitude above the
+/// idle cost of that path, and it is charged against a budget sized in tens of seconds, so the
+/// default 30 s ceiling becomes 29.5 s of program. The other half of keeping the guest ahead is
+/// [`MembraneState::start_program`](super::membrane::MembraneState::start_program), which keeps gg's
+/// own instantiation from being charged against this head start before the program has run a
+/// statement.
 ///
 /// A flat duration rather than a fraction of the timeout, because what it covers is a fixed amount
 /// of work rather than a share of the program's budget: a run configured with a two-second ceiling
@@ -506,9 +504,9 @@ pub(crate) fn classify<A: OperationApi>(
 /// **Whether the guest stopped itself because it reached the budget gg gave it.**
 ///
 /// gg states its execution ceiling to a guest that can stop itself
-/// ([`GUEST_DEADLINE`](super::membrane::GUEST_DEADLINE)), one epoch tick short of its own, so that a
-/// runaway program is answered by the engine — in the engine's words, at the model's own line —
-/// rather than by an epoch trap that names nothing. What that costs is the flag: gg's own deadline
+/// ([`GUEST_DEADLINE`](super::membrane::GUEST_DEADLINE)), a [head start](GUEST_HEAD_START) short of
+/// its own, so that a runaway program is answered by the engine — in the engine's words, at the
+/// model's own line — rather than by an epoch trap that names nothing. What that costs is the flag: gg's own deadline
 /// callback never fires, because the store is already dead when it would have.
 ///
 /// So the ceiling is recognised here instead, on the same terms the memory cap is: a guest that

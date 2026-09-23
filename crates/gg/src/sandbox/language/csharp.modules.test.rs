@@ -8,9 +8,8 @@
 //! here is the claim none of them can make: that a real `csc` accepts the compilation unit gg
 //! writes, that the library it produces is where a program looks for it, that the line a program
 //! writes is the only route in, and that a member of it runs **inside the embedded interpreter**
-//! with gg's surface still in scope. Each of these compiles a
-//! 35.3 MB component once, so each function drives several statements rather than being one
-//! behaviour per function.
+//! with gg's surface still in scope. Each of these obtains the 35.3 MB guest once and pays a real
+//! `csc` per compilation, so a function groups the statements that exercise one behaviour.
 
 use crate::sandbox::{CodeModule, PrepareContext, PrepareError, PrepareFailure};
 

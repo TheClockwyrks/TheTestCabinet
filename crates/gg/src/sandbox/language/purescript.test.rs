@@ -2,7 +2,7 @@
 //! [`ProgramLanguage`](super::ProgramLanguage) asks that are pure functions over text.
 //!
 //! What is *not* here is anything that compiles or runs a program: that costs a `purs`, an `esbuild`
-//! and a 20 MB component, and lives next door in
+//! and the ECMAScript guest, and lives next door in
 //! [`purescript.substrate.test.rs`](super::substrate) and
 //! [`purescript.compile.test.rs`](super::compile::tests). The split is the reason these cases run in
 //! microseconds.

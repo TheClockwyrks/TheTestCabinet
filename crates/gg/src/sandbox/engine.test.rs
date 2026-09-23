@@ -465,7 +465,7 @@ fn bad_component_bytes_are_a_compile_error() {
 /// is not stable under a rebuild: the `--disable` set in `packages/gg-sandbox/build.sh` decides it,
 /// and a flag added or dropped there silently changes what a program can do. That already happened
 /// once — dropping `random clocks` is what made `Date.now()` and `crypto.randomUUID()` read the
-/// *host's* clock and entropy — and it was invisible in the diff, because the artifact is a 13 MB
+/// *host's* clock and entropy — and it was invisible in the diff, because the artifact is a
 /// binary nobody reads. Asserting the list is what makes the next such change deliberate.
 ///
 /// Two halves, and both matter:

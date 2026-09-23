@@ -7,12 +7,12 @@
 //! the bracket (`recording.test.rs`) can prove that an answer is recorded, and only a session can
 //! prove that the answer is the right one.
 //!
-//! # These cost a component compile
+//! # One scenario
 //!
-//! Like every test under `agent.sandbox.test.rs`, and for the same reason: nextest runs one process
-//! per test and each one here compiles the interpreter component. So there is one scenario, driving
-//! every case through a single run — a model that guesses, then guesses again while opening the page
-//! in the same breath, then finally calls what it read last turn — rather than four sessions.
+//! The cases are turns of one run — a model that guesses, then guesses again while opening the page
+//! in the same breath, then finally calls what it read last turn — because what is under test is the
+//! boundary *between* turns, and only a run that carries a window from one turn to the next has
+//! one.
 
 use super::*;
 

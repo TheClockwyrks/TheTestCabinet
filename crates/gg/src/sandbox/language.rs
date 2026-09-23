@@ -225,26 +225,12 @@ mod register;
 #[path = "language/isolation.rs"]
 mod isolation;
 
-// WHAT USED TO BE DECLARED HERE: `artifacts`, the hand-built artifact gate — the assertion that
-// every committed binary gg carried was built from the sources of the checkout carrying it. It
-// recomputed, from the tree, the SHA-256 of every source a `build.sh` had recorded in a manifest
-// beside its output, and failed BY ARM NAME when the two had parted; and its last test inverted the
-// question, walking `crates/gg/src/sandbox/{guests,checkers}` and demanding that every file found
-// there be either described by a manifest or argued for by name.
-//
-// GG CARRIES NO COMMITTED BINARY ANY MORE, so it had no subject left. Ten crates under
+// gg carries no committed binary, so there is no provenance gate over one. Ten crates under
 // `crates/gg-sandbox-artifacts/` serve the eleven arms — `typescript` cuts the guest the JavaScript
-// and PureScript arms read too — each running its `build.sh` into a cargo `OUT_DIR`, and the arm
-// modules `include_bytes!` from there — so a source edited without a rebuild is not a
-// state the tree can reach, rather than a state a test reports. `guests/` no longer exists at all,
-// and `checkers/` holds five files that are gg's own hand-written Java and its two JVM pins.
-//
-// The one test worth mourning is `every_committed_artifact_is_covered`, which existed to force
-// somebody to SAY, in prose, why a newly committed blob needed no gate. It dies correctly: it was a
-// question about committed files, and the answer it was pushing toward — "generate it during the
-// build" — is the one every arm took. `scripts/gg-arms.sh`'s `--artifacts` list is what a twelfth
-// arm must now be added to, and `gg-artifact-build` checks that list against what the build really
-// wrote, which is the same forcing function one layer up and on the right side of the gap.
+// and PureScript arms read too — each running its `build.sh` into a cargo `OUT_DIR` the arm modules
+// `include_bytes!` from, so a source edited without a rebuild is not a state the tree can reach. A
+// twelfth arm is added to `scripts/gg-arms.sh`'s `--artifacts` list, and `gg-artifact-build` checks
+// that list against what the build really wrote.
 
 /// The **authorship gate**: the assertion that the bytes an arm compiles are the bytes it was
 /// handed, held against the table of the arms that do something else.
@@ -756,8 +742,8 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// **Whether this arm's guest reads gg's execution budget and stops itself at it**, rather than
     /// running until gg's own epoch deadline traps the store.
     ///
-    /// gg states the budget in [`GUEST_DEADLINE`](super::membrane::GUEST_DEADLINE), one epoch tick
-    /// short of its own ceiling, so that a runaway loop is answered by the engine in the model's own
+    /// gg states the budget in [`GUEST_DEADLINE`](super::membrane::GUEST_DEADLINE), a
+    /// [head start](super::engine::GUEST_HEAD_START) short of its own ceiling, so that a runaway loop is answered by the engine in the model's own
     /// words. What that costs is gg's [`timed_out`](super::membrane::MembraneState::timed_out) flag:
     /// the deadline callback never fires, because the store is already dead when it would have, so
     /// [`classify`](super::engine::classify) recognises the ceiling from the elapsed time instead.
@@ -911,8 +897,7 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// [module step](Self::prepare_module) with: the isolation gate (`language/isolation.rs`) and
     /// the authorship gate (`language/authorship.rs`).
     ///
-    /// The isolation gate drives *both* preparation steps sixteen ways, so it needs a source valid
-    /// for each, and it takes the shorter of the two whole programs the seam guarantees, which is
+    /// The isolation gate drives *both* preparation steps, so it needs a source valid for each, and it takes the shorter of the two whole programs the seam guarantees, which is
     /// the one that carries a name it can look for afterwards:
     /// [`open_docs_views_statement`](Self::open_docs_views_statement). Wherever a code module is
     /// **ordinary source of the language** — which is every arm but one — that program is a module

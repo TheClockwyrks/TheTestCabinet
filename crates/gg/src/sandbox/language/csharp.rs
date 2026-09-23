@@ -322,7 +322,7 @@ impl ProgramLanguage for CSharp {
     /// [Rust](super::rust), [Swift](super::swift) and [C++](super::cpp) answer `None` here because
     /// their compilers produce the *program* and the program is the component. Roslyn produces
     /// neither wasm nor source: it produces an **IL assembly**, which is not a component and cannot
-    /// be one, and the thing that runs it is a 34.9 MB interpreter that never changes. So this arm
+    /// be one, and the thing that runs it is a 35.3 MB interpreter that never changes. So this arm
     /// commits a component like an interpreted one and compiles like a compiled one, and the two
     /// halves meet at [`PreparedProgram::source`](super::PreparedProgram::source), which carries the
     /// assembly base64-encoded over the string every arm already has.
@@ -622,8 +622,8 @@ mod pins;
 /// membrane and store.
 ///
 /// A separate test file from any unit tests, because these are a different kind of test: each one
-/// runs a real `csc` and instantiates a 34.9 MB component, which is hundreds of milliseconds rather
-/// than microseconds.
+/// runs a real `csc` and instantiates a 35.3 MB component, where a unit test is a pure function over
+/// text.
 #[cfg(test)]
 #[path = "csharp.substrate.test.rs"]
 mod substrate;

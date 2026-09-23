@@ -29,7 +29,7 @@ fn the_archive_holds_exactly_what_its_manifest_declares() {
     // Both sides come out of one run of `build.sh` — the file list is its reading of the staging
     // tree and the archive is `tar`'s — so what this asks is whether gg's own unpacking put back
     // everything that was packed, at the size it was packed at. That is a live question however the
-    // archive got here, which is why it outlived the drift checks that used to sit beside it.
+    // archive got here.
     let guest = guest().expect("the Swift guest this build cut unpacks");
     for name in guest_files() {
         let path = guest.file(name);
@@ -68,21 +68,10 @@ fn the_archive_is_placed_read_only() {
     }
 }
 
-// WHAT USED TO BE HERE: `the_shell_gg_compiles_beside_every_program_is_the_one_this_checkout_
-// committed`, which unpacked the guest archive and compared its `shell.swift` and `gg-shell.h`
-// against `packages/gg-sandbox-swift/Sources` byte for byte. The archive was COMMITTED, so somebody
-// could edit the shell and not re-cut it, and those two files were the only part of this arm's guest
-// that anything could read back out — the SDK is `gg.o` and `gg.swiftmodule`, and no comparison
-// reaches inside either.
-//
-// Both sides are now cut by the same `cargo build`: `crates/gg-sandbox-artifacts/swift` runs
-// `build.sh` whenever anything under `Sources/` moves, and `build.sh` copies those exact two files
-// into the staging tree immediately before packing it. The assertion could not fail, and a test that
-// cannot fail reads like cover for the part of the surface that never was covered.
-//
-// Nothing was gained by keeping it and nothing was lost by removing it, because the hole it sat
-// beside is the one that closed: an edit to `Sources/SDK/**` used to match nothing anything could
-// compare, and it now re-cuts `gg.swiftmodule` before the host that embeds it finishes compiling.
+// No test compares the archive's `shell.swift` and `gg-shell.h` with
+// `packages/gg-sandbox-swift/Sources`, because both are cut by the same `cargo build`:
+// `crates/gg-sandbox-artifacts/swift` runs `build.sh` whenever anything under `Sources/` moves, and
+// `build.sh` copies those exact files into the staging tree immediately before packing it.
 
 #[test]
 fn a_compiler_that_said_nothing_is_never_reported_as_the_models_failure() {

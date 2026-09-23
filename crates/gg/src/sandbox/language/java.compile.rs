@@ -36,11 +36,11 @@
 //!    has a hundred class loaders' worth of metaspace and nothing gg can do about it from here.
 //!
 //! **Verified by mutation, and one of the two mutations did not fire — which is worth saying.**
-//! Pointed at a single shared `classes` directory, the arm's own sixteen-way gate failed four
-//! independent ways, including artifacts *carrying another preparation's program*: exactly the
-//! silent-corruption shape. But made to reuse one `InProcessBuildStrategy` across builds, it
-//! **passed** — because the pool has already removed the precondition the measured bug needed, which
-//! was two threads inside one builder at once. So the fresh strategy is kept for what it is (cheap,
+//! Pointed at a single shared `classes` directory, the arm's own isolation gate fails two
+//! independent ways — an artifact that does not carry its own marker, and one *carrying another
+//! preparation's program*: exactly the silent-corruption shape. But made to reuse one
+//! `InProcessBuildStrategy` across builds, it **passes** — because the pool has already removed the
+//! precondition that bug needs, which is two threads inside one builder at once. So the fresh strategy is kept for what it is (cheap,
 //! and the only thing that makes a build independent of the last one through the same JVM) rather
 //! than for a failure this gate has been shown to catch.
 //!

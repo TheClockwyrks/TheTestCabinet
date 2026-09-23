@@ -6,7 +6,7 @@
 //!
 //! Because these tests cost a different order of magnitude from the ones next door in
 //! [`python.test.rs`](super::tests). Everything there is a pure function over text and runs in
-//! microseconds; every function here compiles a 25 MB component and instantiates it. Splitting them
+//! microseconds; every function here obtains a ~24 MiB component and instantiates it. Splitting them
 //! keeps "what does this arm do to a reply?" cheap to run and cheap to read, and keeps the expensive
 //! cases together where their cost is obvious.
 //!
@@ -21,12 +21,11 @@
 //! side is [`FakeOperationApi`](super::super::super::fake::FakeOperationApi), which is what every other
 //! end-to-end sandbox test uses, and it records the exact JSON each call arrived as.
 //!
-//! # Why these tests are consolidated
+//! # How these tests are grouped
 //!
-//! Each `#[test]` is its own process under `cargo nextest`, and the first thing any of these does is
-//! compile that component — around 3.5 s in the dev test profile. So each function drives *many*
-//! programs against many stores rather than being one behaviour per function, exactly as
-//! `sandbox.test.rs` does. Add a program to an existing function rather than adding a function.
+//! Each `#[test]` is its own process under `cargo nextest`, so each obtains the embedded guest
+//! once. A function groups the programs that exercise one behaviour, so they share that cost;
+//! one that grows into the slow end of the suite is split rather than extended.
 
 use std::time::Duration;
 
@@ -56,11 +55,10 @@ fn python() -> &'static dyn crate::sandbox::ProgramLanguage {
     crate::sandbox::language(GgProgramLanguage::Python)
 }
 
-/// The embedded guest, compiled once per test process through the **production** cache.
+/// The embedded guest, obtained once per test process through the **production** cache.
 ///
-/// The same bargain a run strikes, and for the same reason: compiling 25 MB costs seconds and
-/// instantiating the result costs milliseconds, so a function that drives ten programs must not pay
-/// ten compiles. Reaching for it through [`engine::component`](super::super::super::engine::component)
+/// The same bargain a run strikes: a compiled component is instantiated per program and never
+/// compiled per program. Reaching for it through [`engine::component`](super::super::super::engine::component)
 /// rather than a local `OnceLock` is what makes these cases exercise the slot this language's
 /// programs really come out of, indexed by its own wire id.
 fn component() -> &'static Component {

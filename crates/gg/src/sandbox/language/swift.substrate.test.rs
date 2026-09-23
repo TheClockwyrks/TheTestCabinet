@@ -32,12 +32,10 @@
 //!
 //! Isolation is **not** here, in any form. The seam's own gate drives this arm's program and module
 //! steps concurrently along with every other language's, and it needs nothing from this arm to do
-//! it: it searches an artifact for markers, and this arm's artifacts carry them as written. What
-//! used to be here beside the gate was the derivation for a byte-equality check the gate no longer
-//! makes — a projection that set this arm's `.debug_*` sections and `swiftc`'s random module stamp
-//! aside. That check and everything under it are gone; the reasoning is recorded in
-//! [`isolation`](crate::sandbox::language::isolation)'s own module documentation, which is the place
-//! to read before reinventing it.
+//! it: it searches an artifact for markers, and this arm's artifacts carry them as written. Why it
+//! does not compare artifacts byte for byte — which on this arm would mean setting the `.debug_*`
+//! sections and `swiftc`'s random module stamp aside — is recorded in
+//! [`isolation`](crate::sandbox::language::isolation)'s own module documentation.
 //!
 //! What is **not** here is the surface: which functions the SDK offers, on which objects, spelled
 //! how, and whether the catalogue a model reads describes them. That is
@@ -49,12 +47,13 @@
 //! through the prebuilt `gg` module, the `import gg` the program itself writes and the `-I` that
 //! resolves it — every part of the arrangement a call really travels.
 //!
-//! # Why these tests are consolidated
+//! # How these tests are grouped
 //!
-//! Each `#[test]` is its own process under `cargo nextest`, and every program in them costs a
-//! `swiftc` — which on this arm is ~0.3 s rather than the Rust arm's ~60 ms. So each function
-//! drives *many* programs rather than being one behaviour per function, exactly as
-//! `sandbox.test.rs` does. Add a program to an existing function rather than adding a function.
+//! Each `#[test]` is its own process under `cargo nextest`, and every program in it costs a
+//! real `swiftc` and a Cranelift compile of the component it produced — a Swift artifact is not
+//! byte-for-byte reproducible, so the test-only component cache cannot serve it. A function
+//! groups the programs that exercise one behaviour, so they share that cost; one that grows
+//! into the slow end of the suite is split rather than extended.
 
 use std::time::Instant;
 

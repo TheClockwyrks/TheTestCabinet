@@ -684,29 +684,15 @@ fn a_purs_that_did_not_compile_the_tree_is_refused_by_name() {
         .expect("the `purs` on PATH is the pinned release");
 }
 
-// WHAT USED TO BE HERE: `the_shipped_sdk_is_the_sdk_in_the_working_tree`, and the `sdk_sources`
-// walker it needed. It unpacked the tarball and compared `libs/gg-sdk/src` with
-// `packages/gg-sandbox-purescript/src` file for file, the `.js` foreign modules included, naming the
-// one that had drifted.
+// No test compares the shipped SDK with `packages/gg-sandbox-purescript/src`, because the two cannot
+// differ. `crates/gg-sandbox-artifacts/purescript` runs `build.sh` whenever `src/` moves, `build.sh`
+// stages that same `src/` into a wiped tree with `cp -aL` and compiles it, and `crates/gg` embeds the
+// result — all in the `cargo build` that also reflects the catalogue, which reads the tarball this
+// crate just produced.
 //
-// It was the gate under this arm's central claim — *the surface a model is shown and the surface it
-// is compiled against are one artifact* — and it was the most load-bearing drift check in the whole
-// sandbox, because this is the arm where the two halves were most easily separated. The catalogue is
-// reflected out of `src/` on every build; a compile resolves `Gg` against the SDK inside the
-// TARBALL. While the tarball was committed, an SDK edit reached the prompt immediately and the
-// compile only when somebody remembered to re-cut it, and every other gate stayed green: the
-// manifest check above compares directory NAMES and counts module directories, neither of which
-// moves when a function's body, its lowering, or an added export inside an existing module changes.
-//
-// The claim is now true by construction rather than by assertion. `crates/gg-sandbox-artifacts/
-// purescript` runs `build.sh` whenever `src/` moves, `build.sh` stages that same `src/` into a wiped
-// tree with `cp -aL` and compiles it, and `crates/gg` embeds the result — all in the `cargo build`
-// that also reflects the catalogue, which reads the tarball this crate just produced. Two vintages
-// is not a state this arm can be in, so the comparison had no way left to fail.
-//
-// That is also why this arm was the reason the artifact crates are ORDINARY `[dependencies]` of
-// `crates/gg` rather than a step of its build script: the reflection needs the tarball, so the
-// tarball has to be built first, and a dependency edge is how cargo is told that.
+// That is why the artifact crates are ORDINARY `[dependencies]` of `crates/gg` rather than a step of
+// its build script: the reflection needs the tarball, so the tarball has to be built first, and a
+// dependency edge is how cargo is told that.
 
 #[test]
 fn the_shared_tree_is_sealed_and_each_preparation_gets_its_own() {

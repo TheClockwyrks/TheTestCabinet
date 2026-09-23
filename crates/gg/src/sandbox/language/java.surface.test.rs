@@ -10,12 +10,12 @@
 //! silent: an SDK and a catalogue that agree with each other and with nothing else are two green
 //! test suites and an invalidated experiment.
 //!
-//! # Why they are consolidated all the same
+//! # How they are grouped
 //!
-//! Each `#[test]` is its own process under `cargo nextest`, and the first thing any of these does is
-//! compile a 20 MB component and start a JVM that loads TeaVM. So each function drives *many*
-//! programs rather than being one behaviour per function. Add a statement to an existing function
-//! rather than adding a function.
+//! Each `#[test]` is its own process under `cargo nextest`, so each starts a JVM that loads
+//! TeaVM, and every program in it costs a build through that JVM. A function groups the
+//! programs that exercise one behaviour, so they share that cost; one that grows into the slow
+//! end of the suite is split rather than extended.
 
 use serde_json::{Value, json};
 

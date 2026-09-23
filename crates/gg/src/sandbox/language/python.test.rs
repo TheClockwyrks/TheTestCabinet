@@ -1,7 +1,7 @@
 //! Tests for **the Python arm of the seam** — the answers this language gives to the questions
 //! [`ProgramLanguage`](super::ProgramLanguage) asks, all of which are pure functions over text.
 //!
-//! What is *not* here is anything that runs a program: that costs a 25 MB component compile and
+//! What is *not* here is anything that runs a program: that costs a ~24 MiB component and
 //! lives next door in [`python.substrate.test.rs`](super::substrate_tests). The split is the reason
 //! these cases run in microseconds.
 

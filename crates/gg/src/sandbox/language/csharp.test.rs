@@ -2,7 +2,7 @@
 //! [`ProgramLanguage`](super::ProgramLanguage) asks that are pure functions over text.
 //!
 //! What is *not* here is anything that compiles or runs a program: that costs a real `csc` and a
-//! 34.9 MB component, and lives next door in [`csharp.substrate.test.rs`](super::substrate),
+//! 35.3 MB component, and lives next door in [`csharp.substrate.test.rs`](super::substrate),
 //! [`csharp.surface.test.rs`](super::surface), [`csharp.modules.test.rs`](super::modules) and
 //! [`csharp.compile.test.rs`](super::compile::tests). The split is the reason these cases run in
 //! microseconds.

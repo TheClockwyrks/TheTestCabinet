@@ -39,12 +39,12 @@
 //! still the substrate: that the crossing happens, not that it is spelled well.
 //! [`surface`](super::surface) is where the spelling is driven, function by function.
 //!
-//! # Why these tests are consolidated
+//! # How these tests are grouped
 //!
-//! Each `#[test]` is its own process under `cargo nextest`, and every program in them costs a real
-//! `clang++` over the whole of what the program included. So each function drives *many* programs
-//! rather than being one behaviour per function, exactly as `sandbox.test.rs` does. Add a program to
-//! an existing function rather than adding a function.
+//! Each `#[test]` is its own process under `cargo nextest`, and every program in it costs a
+//! real `clang++` over the whole of what the program included. A function groups the programs
+//! that exercise one behaviour, so they share that cost; one that grows into the slow end of
+//! the suite is split rather than extended.
 
 use std::time::Instant;
 

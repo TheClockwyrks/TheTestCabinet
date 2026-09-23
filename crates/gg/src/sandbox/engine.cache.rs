@@ -36,7 +36,8 @@
 //!
 //! Many test processes read and write the directory at once. An entry is staged under a name unique
 //! to this process and call, flushed to disk and [renamed](std::fs::rename) into place, so a reader
-//! sees either no file or a whole one, even after a crash; two writers of the same key write the same bytes and the last rename wins.
+//! sees either no file or a whole one, even after a crash; two writers of the same key write the
+//! same bytes and the last rename wins.
 //! Nothing is ever written into an existing entry, which is what mapping one with
 //! [`Component::deserialize_file`] requires: replacing or deleting a file leaves every mapping of
 //! the old one intact.

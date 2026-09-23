@@ -77,11 +77,11 @@
 //!    `TMPDIR` and the `XDG_*` roots are inside that private tree — which is what covers whatever
 //!    `purs` and `esbuild` write that this module never thought about.
 //!
-//! It is **verified by mutation** rather than only by passing. Pointed at one shared output tree —
-//! the measured shape — the seam's own isolation gate (`language/isolation.rs`) failed this arm
-//! three independent ways at sixteen-way: artifacts that did not carry their own marker, artifacts
-//! that carried *another preparation's program*, and one preparation reading a `package.json` another
-//! was halfway through writing. Reverted, it is green.
+//! It is **verified by mutation** rather than only by passing. Pointed at one shared output tree,
+//! the seam's own isolation gate (`language/isolation.rs`) fails this arm three independent ways:
+//! an artifact that does not carry its own marker, an artifact that carries *another preparation's
+//! program*, and a preparation whose compile finds its output swept away by another's. Reverted, it
+//! is green.
 //!
 //! # The two failures, and which is the model's
 //!
