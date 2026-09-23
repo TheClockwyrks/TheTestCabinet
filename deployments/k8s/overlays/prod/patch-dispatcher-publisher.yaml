@@ -5,8 +5,7 @@
 # TCAB_PUBLISHER_IMAGE is a plain env VALUE, not a container `image:` field, so the
 # images: transformer cannot rewrite it (the same reason patch-dispatcher-driver-image.yaml
 # exists for TCAB_DRIVER_IMAGE). Pin it to the registry + tag the publisher image is
-# published under, in lockstep with the dispatcher/driver tags; pin an immutable
-# :<git-sha> rather than :latest in a real deploy.
+# published under, in lockstep with the dispatcher/driver tags.
 #
 # TCAB_DISPATCHER_PUBLISHER_SECRETS names the Secret(s) the dispatcher mounts (envFrom)
 # into each publish Job: tcab-publisher-secrets, carrying GH_TOKEN (for `gh`) and
@@ -27,6 +26,6 @@ spec:
         - name: dispatcher
           env:
             - name: TCAB_PUBLISHER_IMAGE
-              value: "ghcr.io/REPLACE_OWNER/tcab-publisher:latest"
+              value: "testcabinet.azurecr.io/tcab-publisher:REPLACE_SHA"
             - name: TCAB_DISPATCHER_PUBLISHER_SECRETS
               value: "tcab-publisher-secrets"

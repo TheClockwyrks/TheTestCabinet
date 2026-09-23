@@ -17,11 +17,11 @@ use crate::metrics::TokenCounts;
 use crate::run_record::HarnessSlug;
 use crate::test_case::{AssetDimension, AssetKind, TestType};
 
-/// The default registry/namespace the run-container image is published under,
-/// used when `TCAB_CONTAINER_REGISTRY` is unset. Matches the namespace
-/// `containers/build.sh` pushes to, so the resolve side and the publish side
-/// default to the same place.
-const DEFAULT_CONTAINER_REGISTRY: &str = "ghcr.io/theclockwyrks";
+/// The default registry the run-container image is pulled from, used when
+/// `TCAB_CONTAINER_REGISTRY` is unset: the Test Cabinet Azure Container Registry,
+/// which the Azure pipeline pushes every run-container image to and every cluster
+/// it deploys pulls from.
+const DEFAULT_CONTAINER_REGISTRY: &str = "testcabinet.azurecr.io";
 /// The default image tag, used when `TCAB_CONTAINER_TAG` is unset.
 const DEFAULT_CONTAINER_TAG: &str = "latest";
 /// The name of the Rust/wasm base run-container image (`base-wasm`), used by every
@@ -516,8 +516,9 @@ fn image_spec_for_run(
 ///    An explicitly empty `TCAB_CONTAINER_REGISTRY` drops the registry prefix,
 ///    naming a local image (`{name}:{tag}`) for offline development.
 ///
-/// The default with nothing set is the published image on the latest tag, e.g.
-/// `ghcr.io/theclockwyrks/test-cabinet-base-wasm:latest` for an end-to-end run.
+/// The default with nothing set is the image in the Test Cabinet ACR on the latest
+/// tag, e.g. `testcabinet.azurecr.io/test-cabinet-base-wasm:latest` for an end-to-end
+/// run.
 pub fn resolve_run_image(
     test_type: TestType,
     asset_kind: AssetKind,

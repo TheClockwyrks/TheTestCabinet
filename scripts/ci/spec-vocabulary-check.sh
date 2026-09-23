@@ -12,7 +12,7 @@
 # fix a failure are all in the header of scripts/ci/spec-vocabulary-check.mjs.
 #
 # Node only, no `npm ci`: the checker is dependency-free and finishes in well under
-# a second, which is what lets it sit on the commit hook as well as both CI systems.
+# a second, which is what lets it sit on the commit hook as well as in the pipeline.
 set -euo pipefail
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"

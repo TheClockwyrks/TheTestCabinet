@@ -108,9 +108,10 @@ Where that store comes from depends on who is building:
 
 - **A pipeline build** passes the `test-cabinet-audio-store:<sha>` the same run
   pushed to the registry, so the driver bakes the store of its own commit.
-- **Any other deployment build** takes the arg's default, the published
-  `test-cabinet-audio-store` image, or overrides it with a digest to pin the store
-  alongside the environment's other images.
+- **Any other driver build** passes the arg itself, naming a
+  `testcabinet.azurecr.io/test-cabinet-audio-store:<sha>` the pipeline pushed or a
+  store built from the checkout. The arg defaults to `scratch`, so a driver build
+  without it fails rather than baking an empty store.
 - **A local build does not pull anything.** `local/Makefile`'s `audio-store` target
   builds the store from the checkout (staging it out of the audio object store with
   the read-scoped `CLOUDFLARE_AUDIO_R2_PRESIGN` credentials) and `make images` passes

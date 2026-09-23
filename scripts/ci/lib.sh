@@ -3,9 +3,9 @@
 #
 # Sourced (not executed) by each script. It resolves the repository root from
 # this file's own location and changes into it, so every CI script behaves
-# identically regardless of the directory it is invoked from. Both the Azure
-# DevOps pipeline and the GitHub workflows call these scripts, so keeping the
-# real commands here keeps the two CI systems running exactly the same checks.
+# identically regardless of the directory it is invoked from. The Azure pipeline
+# calls these scripts, and a developer reproduces any of its jobs by running the
+# same script locally.
 
 # Resolve the repo root two levels up from scripts/ci/ and work from there.
 CI_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

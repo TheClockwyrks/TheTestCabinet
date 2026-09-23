@@ -49,7 +49,7 @@
   // re-downloads that one arm rather than costing a full image rebuild.
   //
   // It stays one script (scripts/ci/install-gg-toolchains.sh) rather than a line per arm,
-  // so that the image, this file, CI, the release workflow and the driver image's gg build
+  // so that the image, this file, CI, the pipeline's gg builds and the driver image's gg build
   // stage all provision from one pinned list. It is ~1.9 GB installed — a Swift toolchain
   // and its wasm SDK, a JDK and TeaVM's jars, wasi-sdk, .NET and Roslyn, `purs` and
   // `esbuild`, the Kotlin compiler, the wasm32 standard library, uv and YARD — and it
@@ -65,7 +65,7 @@
   // re-creates node_modules, which is a thing to do to a checkout on purpose rather than as
   // a side effect of installing compilers. The installer above deliberately will not run it
   // (it says so at the end of its own output instead), and every other surface that builds
-  // gg — the Azure rust job, ci.yml, the release workflow, the driver image's gg stage —
+  // gg — the Azure rust job, the pipeline's gg builds, the driver image's gg stage —
   // pairs the two calls exactly like this. On a first create there is no node_modules to
   // lose, which is what makes it safe here.
   "postCreateCommand": "sudo chown \"$(id -u):$(id -g)\" /cargo-target && (bash scripts/setup-hooks.sh || echo 'setup-hooks failed; run scripts/setup-hooks.sh manually') && (bash scripts/ci/install-gg-toolchains.sh || echo 'install-gg-toolchains failed; building test-cabinet-gg needs them \u2014 run scripts/ci/install-gg-toolchains.sh manually') && (npm ci || echo 'npm ci failed; the workspaces hold the typescript that reflects two of gg\u2019s eleven arms \u2014 run npm ci manually')",

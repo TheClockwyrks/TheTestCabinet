@@ -212,22 +212,25 @@ fn an_undecided_attempt_still_reports_what_the_command_managed_to_say() {
 #[test]
 fn image_id_with_digest_is_kept() {
     assert_eq!(
-        normalize_image_id("ghcr.io/x/base@sha256:abc"),
-        Some("ghcr.io/x/base@sha256:abc".to_string())
+        normalize_image_id("registry.example.com/x/base@sha256:abc"),
+        Some("registry.example.com/x/base@sha256:abc".to_string())
     );
 }
 
 #[test]
 fn image_id_strips_docker_pullable_prefix() {
     assert_eq!(
-        normalize_image_id("docker-pullable://ghcr.io/x/base@sha256:abc"),
-        Some("ghcr.io/x/base@sha256:abc".to_string())
+        normalize_image_id("docker-pullable://registry.example.com/x/base@sha256:abc"),
+        Some("registry.example.com/x/base@sha256:abc".to_string())
     );
 }
 
 #[test]
 fn image_id_without_digest_is_none() {
-    assert_eq!(normalize_image_id("ghcr.io/x/base:latest"), None);
+    assert_eq!(
+        normalize_image_id("registry.example.com/x/base:latest"),
+        None
+    );
     assert_eq!(normalize_image_id(""), None);
 }
 
@@ -288,7 +291,7 @@ fn quantity_map_all_unset_is_none() {
 fn pod_carries_both_env_channels_with_secrets_last() {
     // The harness runs inside this pod, so its telemetry configuration has to be
     // on the pod spec: the Kubernetes exec API carries no environment of its own.
-    let mut s = spec("ghcr.io/x/base:latest");
+    let mut s = spec("registry.example.com/x/base:latest");
     s.env.insert(
         "OTEL_EXPORTER_OTLP_ENDPOINT".to_string(),
         "http://tcab-lgtm:4318".to_string(),
@@ -320,7 +323,7 @@ fn pod_carries_both_env_channels_with_secrets_last() {
 
 #[test]
 fn pod_carries_image_secrets_labels_and_no_command() {
-    let mut s = spec("ghcr.io/x/base:latest");
+    let mut s = spec("registry.example.com/x/base:latest");
     s.secrets
         .insert("ANTHROPIC_API_KEY".to_string(), "sk-test".to_string());
     let mut config = KubernetesConfig {
@@ -337,7 +340,10 @@ fn pod_carries_image_secrets_labels_and_no_command() {
     let container = &pod_spec.containers[0];
 
     assert_eq!(container.name, RUN_CONTAINER);
-    assert_eq!(container.image.as_deref(), Some("ghcr.io/x/base:latest"));
+    assert_eq!(
+        container.image.as_deref(),
+        Some("registry.example.com/x/base:latest")
+    );
     // The image's keep-alive CMD must run — no command override.
     assert!(container.command.is_none());
     let env = container.env.as_ref().expect("env");
@@ -768,12 +774,12 @@ fn scheduling_message_falls_back_to_reason_or_message_alone() {
 fn resolved_digest_reads_running_container_image_id() {
     let pod = pod_with_container_status(ContainerStatus {
         name: RUN_CONTAINER.to_string(),
-        image_id: "ghcr.io/x/base@sha256:deadbeef".to_string(),
+        image_id: "registry.example.com/x/base@sha256:deadbeef".to_string(),
         ..Default::default()
     });
     assert_eq!(
         resolved_image_digest(&pod),
-        Some("ghcr.io/x/base@sha256:deadbeef".to_string())
+        Some("registry.example.com/x/base@sha256:deadbeef".to_string())
     );
 }
 

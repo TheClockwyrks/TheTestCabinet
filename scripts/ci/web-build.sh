@@ -24,7 +24,7 @@
 # empty-published-dataset path a fresh deployment takes. That is not merely
 # tolerated, it is the point: it is the only place that path is exercised.
 #
-# This is the critical front-end validation that both Azure DevOps and GitHub run.
+# This is the critical front-end validation the Azure pipeline runs.
 set -euo pipefail
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"

@@ -39,7 +39,7 @@ Overlays:
 
 | Overlay                  | Purpose                                                                                                                                                                        |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `overlays/prod`          | Production: the base + `cluster/namespace` + `cluster/observability`, with placeholder image pins. Applied by hand.                                                            |
+| `overlays/prod`          | Production: the base + `cluster/namespace` + `cluster/observability`, with every image pinned to the ACR at a placeholder commit. Applied by hand.                             |
 | `overlays/staging`       | Staging: the same manifests, renamed to `tcab-staging` with `TCAB_ENV=staging`. Applied by hand.                                                                               |
 | `overlays/azure-prod`    | The production deployment on **managed PostgreSQL**, Key Vault and the internal ingress. Deployed by the Azure pipeline from `master`; namespaced objects only, no image tags. |
 | `overlays/azure-staging` | The staging deployment, identical to `azure-prod` apart from its targets. Deployed by the Azure pipeline from `staging`; namespaced objects only, no image tags.               |
@@ -74,9 +74,9 @@ every push to `master` and `staging`, and pushes each to
 `tcab-publisher`, `tcab-web`, and the `test-cabinet-*` run images). The `azure-*`
 overlays carry no image names or tags: the pipeline's
 [`scripts/ci/deploy.sh`](../../scripts/ci/deploy.sh) sets every one of them to the
-commit being deployed. The generic `prod` and `staging` overlays pin placeholder
-registries in their `images:` blocks; pin an immutable `:<git-sha>` tag rather
-than `:latest` there.
+commit being deployed. The generic `prod` and `staging` overlays pin every image,
+and the run-container tag, to the ACR at `REPLACE_SHA`; replace it with the
+commit whose images to run.
 
 ## Cluster prerequisites
 
@@ -135,8 +135,8 @@ kubectl apply -k deployments/k8s/overlays/prod      # or staging
 > **Note:** in the generic `prod` and `staging` overlays the dispatcher's
 > `TCAB_DRIVER_IMAGE` is an env _value_, not a container `image:` field, so
 > kustomize's `images:` transformer cannot rewrite it; those overlays carry a
-> `patch-dispatcher-driver-image.yaml` that sets it to match the driver image.
-> Keep the two tags in lockstep.
+> `patch-dispatcher-driver-image.yaml` that sets it, and `TCAB_CONTAINER_TAG`,
+> to the same commit as the driver image.
 
 ## Per environment
 

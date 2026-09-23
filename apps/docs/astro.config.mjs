@@ -94,7 +94,7 @@ function fixExpressiveCodeStylesheet() {
 
 // Developer documentation site for The Test Cabinet. Built as a fully static
 // bundle by `astro build` and deployed to Cloudflare Pages at docs.testcabinet.ai
-// (see .github/workflows/deploy-docs.yml). The public gallery (apps/site) is a
+// (see scripts/ci/deploy-docs.sh). The public gallery (apps/site) is a
 // separate deployment at testcabinet.ai; these are two sites, not one.
 //
 // `site` is the canonical origin used for generated absolute URLs (sitemap,

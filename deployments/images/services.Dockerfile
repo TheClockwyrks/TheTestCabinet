@@ -35,9 +35,9 @@
 # same value is already committed in plaintext in the compose file, the k8s
 # manifests and the .env.example files. No secret is baked into any image.
 #
-# The canonical images are published to GHCR by the build-service-images.yml GitHub
-# Actions workflow (as ghcr.io/<owner>/tcab-<name>, tagged :latest and :<git-sha>)
-# on every push to master that touches the crates or this file.
+# The canonical images are built by the Azure pipeline (scripts/ci/service-image.sh)
+# on every push to master and staging, natively per architecture, and pushed to the
+# Test Cabinet ACR as testcabinet.azurecr.io/tcab-<name>:<sha>.
 
 # Pinned wrangler version, used by the publisher stage. Bump deliberately
 # (Cloudflare ships frequent releases); pinning keeps the publish path reproducible
@@ -45,10 +45,14 @@
 # `ARG WRANGLER_VERSION` inherits this default.
 ARG WRANGLER_VERSION=4.40.3
 
-# The published audio store the driver stage copies in. Declared here, before the
-# first FROM, because that is the only scope a `FROM` can resolve an ARG from; a
-# deployment overrides it with a digest to pin the store alongside its other images.
-ARG AUDIO_STORE_IMAGE=ghcr.io/theclockwyrks/test-cabinet-audio-store:latest
+# The audio store the driver stage copies in. Declared here, before the first FROM,
+# because that is the only scope a `FROM` can resolve an ARG from. A driver build must
+# pass it: the pipeline passes testcabinet.azurecr.io/test-cabinet-audio-store:<sha>,
+# and deployments/local/Makefile passes the store it builds from the checkout. The
+# default is `scratch` rather than blank because BuildKit refuses a blank `FROM` in any
+# stage, which would break every other target; a driver built without the arg fails at
+# its `COPY --from=audio-store` with `lstat /opt/tcab-audio: no such file or directory`.
+ARG AUDIO_STORE_IMAGE=scratch
 
 # ── Shared build stage ───────────────────────────────────────────────────────
 # Compiles every service binary in ONE cargo invocation. The cargo registry/git, the
@@ -182,10 +186,10 @@ ENV PATH=/root/.local/bin:$PATH
 #
 # The toolchains land in a CACHE MOUNT (/root/.local) rather than in a layer, and that
 # is a size decision rather than a speed one. Installed they are ~1.9 GB — Swift alone
-# is 835 MB after its installer prunes 3.3 GB down — and .github/workflows/build-service-images.yml
-# exports every stage's layers with `cache-to: type=gha,mode=max`, into a cache whose
-# whole-repository budget is 10 GB. A 1.9 GB layer would evict every other image's cache
-# on the first driver build. A cache mount is not exported at all: a warm local BuildKit
+# is 835 MB after its installer prunes 3.3 GB down — and scripts/ci/service-image.sh
+# exports every stage's layers to a registry cache with `mode=max`, so a 1.9 GB layer
+# would be pushed into every service's cache on every build. A cache mount is not
+# exported at all: a warm local BuildKit
 # (`make -C deployments/local images`) reuses it and never re-downloads, and a cold CI
 # runner pays the download once per run. Everything the installers write lives under that
 # one prefix, which is what makes a single mount enough; ~/.cache carries uv's own
@@ -292,14 +296,12 @@ RUN --mount=type=cache,target=/root/.npm \
 # driver whose every full-stack, game-jam, sfx-sample and music run fails at
 # container start.
 #
-# THE DEFAULT IS FOR A DEPLOYMENT, NOT FOR A LOCAL BUILD. Pulling the published store is
-# right when the driver image is built to be deployed — CI has already published it, and
-# an environment overrides the arg with a digest so the store is pinned alongside the
-# rest of its images. It is wrong for a build on a developer's machine: it makes `make
-# images` depend on a registry, and it makes an audio change untestable until it has been
-# published. `deployments/local/Makefile` therefore builds the store from the checkout
-# (its `audio-store` target) and passes THAT ref in here, so a local build reaches no
-# registry for audio at all. Any other out-of-CI build of this target should do the same.
+# WHICH STORE depends on who builds. The pipeline passes the store it pushed at the same
+# commit, so a deployed driver bakes the store of its own commit. A build on a
+# developer's machine should not depend on a registry, and an audio change should be
+# testable before it is published, so `deployments/local/Makefile` builds the store from
+# the checkout (its `audio-store` target) and passes THAT ref in here. Any other build of
+# this target should do the same.
 FROM ${AUDIO_STORE_IMAGE} AS audio-store
 
 # ── Shared slim runtime ──────────────────────────────────────────────────────
@@ -495,7 +497,7 @@ COPY --from=build /out/tcab-driver /usr/local/bin/tcab-driver
 
 # Bake the static-musl gg harness in (built in the gg-build stage above). core,
 # running in this driver pod, reads it from here and copies it into each sandbox run
-# pod, so a Kubernetes gg run installs LOCALLY with no GitHub release or network
+# pod, so a Kubernetes gg run installs LOCALLY with no release download or network
 # egress. World-readable (a+rX via the 0755) so the unprivileged `node` user reads it.
 COPY --from=gg-build /gg /usr/local/lib/tcab/gg
 RUN chmod 0755 /usr/local/lib/tcab/gg

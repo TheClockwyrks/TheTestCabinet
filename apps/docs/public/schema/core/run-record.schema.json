@@ -1628,7 +1628,7 @@
           "description": "Which authentication mode the run used. This is how the run's cost should\nbe read: an API-key run is billed against that key, while a subscription\nrun carries no per-run provider charge (a harness that still reports an\nexact charge — Claude Code does even on a subscription — is recorded\nas-is; one that reports none falls back to OpenRouter comparable pricing)."
         },
         "containerImage": {
-          "description": "The run-container image the run executed in: the single shared base image,\nthe same for every harness. The full, pullable reference pulled by digest\nfrom the registry (for example,\n`ghcr.io/theclockwyrks/test-cabinet-base@sha256:…`), or the local-build\nfallback tag for an offline run.",
+          "description": "The run-container image the run executed in: the single shared base image,\nthe same for every harness. The full, pullable reference pulled by digest\nfrom the registry (for example,\n`testcabinet.azurecr.io/test-cabinet-base@sha256:…`), or the local-build\nfallback tag for an offline run.",
           "type": "string"
         },
         "nodeVersion": {

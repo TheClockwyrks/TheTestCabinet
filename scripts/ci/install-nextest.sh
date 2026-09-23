@@ -2,8 +2,8 @@
 # Install cargo-nextest (the repo's Rust test runner; see .config/nextest.toml)
 # from its official prebuilt binary. Pinned to NEXTEST_VERSION so CI matches the
 # devcontainer (.devcontainer/docker-compose.yml). Cross-platform: the binary
-# smoke gate release-tests on Linux and Windows (Azure) and macOS (GitHub), and
-# every leg drives this through `bash`, so it detects the platform and fetches
+# smoke gate release-tests on Linux and Windows, and every leg drives this
+# through `bash`, so it detects the platform and fetches
 # the matching tarball. Idempotent: a matching version already on PATH (e.g. the
 # devcontainer's, or a cache restore) is left as-is.
 set -euo pipefail

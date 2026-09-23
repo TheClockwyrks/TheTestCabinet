@@ -26,6 +26,6 @@ spec:
         - name: dispatcher
           env:
             - name: TCAB_PUBLISHER_IMAGE
-              value: "ghcr.io/REPLACE_OWNER/tcab-publisher:latest"
+              value: "testcabinet.azurecr.io/tcab-publisher:REPLACE_SHA"
             - name: TCAB_DISPATCHER_PUBLISHER_SECRETS
               value: "tcab-publisher-secrets"

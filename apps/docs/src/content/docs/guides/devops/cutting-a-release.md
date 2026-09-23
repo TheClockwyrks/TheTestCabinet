@@ -9,9 +9,9 @@ sequence, in order, with the reasoning for each step; the
 [Cut a Release](/quickstarts/devops/cut-a-release/) quickstart is the terse version
 for someone who has done it before.
 
-It assumes the mechanics documented elsewhere and links to them rather than
-restating them: [Releasing](/development/releasing/) for the two GitHub Release
-workflows and the Cloudflare Pages topology,
+It links to the mechanics documented elsewhere rather than restating them:
+[Releasing](/development/releasing/) for what a tag publishes and the Cloudflare
+Pages topology,
 [Rolling Production Service Images](/guides/devops/rolling-prod-service-images/)
 for the cluster roll, and
 [Publishing a Reference Implementation](/guides/devops/publishing-a-reference-implementation/)
@@ -19,26 +19,20 @@ for the answer keys.
 
 ## What ships, and by what path
 
-| What                                               | Reaches users by                        | Triggered by                                                               |
-| -------------------------------------------------- | --------------------------------------- | -------------------------------------------------------------------------- |
-| `tcab`, the services, the desktop app              | a GitHub release at `vX.Y.Z`            | the **Release** + **Release (promote)** workflows, by hand                 |
-| The catalog (test cases, jams, references, errata) | the backend ingesting a **branch tip**  | merging to `master`, whose deploy restarts the backend and re-ingests      |
-| The running services                               | the Azure pipeline's deploy of a commit | merging to `master`                                                        |
-| The gallery and the docs                           | a Cloudflare Pages build                | a push to `master` (docs) and the backend's snapshot deploy hook (gallery) |
+| What                                               | Reaches users by                                                         | Triggered by                                                               |
+| -------------------------------------------------- | ------------------------------------------------------------------------ | -------------------------------------------------------------------------- |
+| `tcab` and `gg`                                    | the tag's pipeline artifacts (`tcab`) and the `gg-releases` blobs (`gg`) | pushing the `vX.Y.Z` tag to Azure Repos                                    |
+| The catalog (test cases, jams, references, errata) | the backend ingesting a **branch tip**                                   | merging to `master`, whose deploy restarts the backend and re-ingests      |
+| The running services                               | the Azure pipeline's deploy of a commit                                  | merging to `master`                                                        |
+| The gallery and the docs                           | a Cloudflare Pages build                                                 | a push to `master` (docs) and the backend's snapshot deploy hook (gallery) |
 
-The important consequence: **the version tag governs only the downloadable
-artifacts.** Nothing else in the system knows about `v0.6.1`. The catalog and
-the services ship because the pipeline deployed a merge commit. A release is
-"these four are at the same commit", not "the tag was pushed".
+The version tag governs only the binaries. The catalog and the services ship
+because the pipeline deployed a merge commit, and nothing else in the system
+reads the tag. A release is "these four are at the same commit", not "the tag
+was pushed".
 
 ## What is _not_ a release step
 
-- **There is no version to bump.** The Cargo workspace stays at `version =
-"0.0.0"` and `tauri.conf.json` at `"0.0.0"`; the Release workflow stamps the
-  desktop app's version from its `version` input, and the tag itself is the
-  version. Nothing in the repository names the release except the changelog.
-- **There is no tag to push.** The Release workflow's `gh release create
---target <sha>` creates the tag at the commit it was dispatched on.
 - **The model catalog is not a release artifact.** Models are curated in the app
   and served from the backend; see
   [Adding or Updating a Model](/guides/devops/adding-or-updating-a-model/).
@@ -168,23 +162,27 @@ rather than fixing it in a new version, that is an
 manifest. Errata ride the catalog, so they land with the same re-ingest as
 everything else — no separate deploy.
 
-### Green CI, including macOS
+### The version
 
-Azure is the primary CI and covers Linux and Windows on every push. It has **no
-macOS agents**, so the macOS binary is validated on demand: dispatch
-`binary-macos.yml` before you cut. Skipping it means the first macOS build of the
-release is the one being published to users.
+`crates/gg` and `crates/core` carry the release version, and a test pins them to
+each other. Bump both to `X.Y.Z` on the release branch. The tag's pipeline run
+fails its gates when `gg --version` differs from the tag with its `v` stripped,
+naming the two crates, so a missed bump surfaces on the tag rather than in a
+deployment. See [Releasing `gg`](/development/releasing/#releasing-gg).
 
-Frozen versions need no action — [the `.frozen` gate](/development/frozen-versions/)
-is enforced by the commit hook and by CI, so a green pipeline already proves no
-version with runs against it was edited.
+### Green CI
+
+The Azure pipeline gates every push on Linux and Windows. Frozen versions need
+no action: [the `.frozen` gate](/development/frozen-versions/) is enforced by
+the commit hook and by CI, so a green pipeline already proves no version with
+runs against it was edited.
 
 ## Phase 2 — Rehearse on staging
 
 Merge `nightly` into `staging` as `vX.Y.Z-rcN`. Staging is a faithful mirror of
 prod — same manifests, differing only in namespace, `TCAB_ENV`, secrets, and the
-resources they point at — so it is a real rehearsal of everything Phase 4 will
-do to production, and its tip is what gets promoted in Phase 3.
+resources they point at — so it is a real rehearsal of everything Phase 3 will
+do to production, and its tip is what Phase 3 promotes.
 
 1. **Let the pipeline deploy it.** The merge commit runs the gates, the GitHub
    mirror, the `images` stage, which builds every service and run-container
@@ -210,74 +208,68 @@ If you want the reference-publish flow rehearsed as well, `tcab publish-referenc
 lockfile's `staging` key; prod and staging entries live side by side in the one
 file and neither disturbs the other.
 
-## Phase 3 — Cut the artifacts on GitHub
+## Phase 3 — Land it in production
 
-Promote `staging` into `master` as a `vX.Y.Z` PR — the tree that was rehearsed,
-not a fresh merge from `nightly`. The pipeline's `mirror` job pushes the merge
-commit to the **GitHub mirror** once it passes the gates; public releases are cut
-on GitHub because the Azure DevOps repository is private, and every release
-workflow lives there.
-
-Then, in order:
-
-1. **Wait for the image workflows to publish at the master sha.** The Release
-   workflow bakes `TCAB_DESKTOP_IMAGE_TAG=<sha>` into the desktop app, which is how
-   the self-contained cluster the app stands up pins the images it pulls; if no
-   images exist at that sha, the shipped app cannot pull anything. Both workflows
-   run **unfiltered** on every `master` push, so the merge always publishes at this
-   sha regardless of what it touched — there is nothing to dispatch by hand, only
-   a run to wait for. Release also refuses to build the desktop app until those
-   images resolve (its `images` job), so a premature dispatch fails in CI in
-   seconds rather than in a user's hands at first launch.
-2. **Dispatch the Release workflow** on `master` with `version = vX.Y.Z`. It
-   builds the five headless binaries for Linux (static musl), Windows, and macOS,
-   smoke-tests every platform's `tcab`, builds the desktop installers, and
-   publishes the lot — plus a `SHA256SUMS` — as a **prerelease**, creating the tag
-   at that commit. Re-running for the same tag refreshes its assets.
-3. **Download and exercise the artifacts.** The binaries are smoke-tested in the
-   workflow; the servers and the desktop app are not, and this is the only gate
-   they get. On macOS the app is
-   [unsigned](/development/releasing/#macos-code-signing) and needs
-   its quarantine attribute cleared — the prerelease notes say so, but confirm the
-   note is there.
-4. **Dispatch Release (promote)** with the same tag. It flips the prerelease to
-   the latest full release without rebuilding, so exactly what you tested is what
-   ships.
-
-## Phase 4 — Land it in production
-
-The merge into `master` is what lands the release in production; the GitHub
-release is downloads.
+Promote `staging` into `master` as a `vX.Y.Z` PR. Promote the tree that was
+rehearsed rather than a fresh merge from `nightly`.
 
 1. **Confirm the prod roll.** The merge commit's pipeline run builds every image
    at the release sha and `deploy_prod` rolls `tcab-prod` to them, service images
    and run images together. Full walkthrough:
    [Rolling Production Service Images](/guides/devops/rolling-prod-service-images/).
 2. **Confirm the catalog.** The roll restarts the backend, whose ingest sidecar
-   force-ingests the `master` tip. That publishes the release's test-case work —
+   force-ingests the `master` tip. That publishes the release's test-case work:
    new versions, graduated cases, errata, and the reference-build URLs from the
    committed lockfile. A whole-catalog forced ingest also prunes versions the
    checkout no longer declares (except any a published run still references), so
    a case deleted in this release disappears here.
-3. **Let the sites rebuild.** Both are automatic, but for different reasons, and
-   both are worth watching:
+3. **Let the sites rebuild.** Both are automatic, for different reasons:
    - The **docs** deploy from the pipeline's `docs` job on every `master` build
      that reaches the `deploy` stage.
    - The **gallery** rebuilds because an ingest that actually changed something
      queues a snapshot refresh, and the backend fires the Pages deploy hook after
-     uploading the snapshot. A no-op ingest queues nothing — so if the gallery
-     does not move, check that the re-ingest reported work rather than assuming
-     the hook failed.
+     uploading the snapshot. A no-op ingest queues nothing, so if the gallery
+     does not move, check that the re-ingest reported work before suspecting the
+     hook.
+
+The same run's `mirror` job pushes the merge commit to the GitHub mirror once
+it passes the gates.
+
+## Phase 4 — Tag the release
+
+Once the `master` run is green, tag its merge commit in Azure Repos and push the
+tag:
+
+```sh
+git switch master && git pull
+git tag -a vX.Y.Z -m "vX.Y.Z"
+git push origin vX.Y.Z      # origin is the Azure Repos remote
+```
+
+The tag's pipeline run:
+
+1. **Gates the commit again**, including the gg version gate.
+2. **Publishes `tcab`.** The `binary` job release-builds and smoke-tests `tcab`
+   on Linux and Windows and keeps each binary as the run's `tcab-linux` and
+   `tcab-windows` artifacts.
+3. **Publishes `gg`.** `gg_publish` uploads both static gg binaries and
+   `gg-reference.tar.gz` to `gg-releases/vX.Y.Z/` and reads each back.
+4. **Mirrors the tag.** The `mirror` job pushes it to the GitHub mirror.
+
+The tag run builds no images and deploys nothing, because `master` already did.
 
 ### Verify
 
-- The GitHub release for `vX.Y.Z` is marked **Latest**, is not a prerelease, and
-  carries every platform's archives, the installers, and `SHA256SUMS`.
+- `git ls-remote` shows `vX.Y.Z` at the same commit on Azure Repos and on the
+  GitHub mirror.
+- The tag's pipeline run carries the `tcab-linux` and `tcab-windows` artifacts.
+- `https://testcabinetartifacts.blob.core.windows.net/gg-releases/vX.Y.Z/` holds
+  both gg binaries and `gg-reference.tar.gz`.
 - `docs.testcabinet.ai` serves the new changelog **and** links it in the sidebar.
 - `testcabinet.ai` shows the cases that graduated this release, each with a
   working **Reference** tab.
-- The console can enqueue a run of a graduated case — the sharpest single check
-  that the catalog, the images, and the run containers agree.
+- The console can enqueue a run of a graduated case, which is the sharpest
+  single check that the catalog, the images, and the run containers agree.
 - Every `tcab-*` workload in `tcab-prod` reports the release sha.
 
 ## After the release
@@ -295,22 +287,22 @@ test-cases/<type>/<difficulty>/<slug>/vX.Y.Z` — at the moment you trigger that
 
 ## Gotchas
 
-| Symptom                                                                    | Cause                                                                                                                                                                                                                                                    |
-| -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| The changelog is live but nothing links to it                              | Not added to the `Changelogs` sidebar group in `apps/docs/astro.config.mjs`.                                                                                                                                                                             |
-| The Release workflow fails at `Verify service images exist at this commit` | Dispatched before `build-service-images` finished at that sha, or that run failed. Wait for it (or fix and re-run it), then re-dispatch — never work around the gate; it is the only thing between a bad sha and an installer that dies at first launch. |
-| A graduated case is missing its **Reference** tab                          | The lockfile has no `prod` entry for that variant, or prod has not re-ingested since it gained one.                                                                                                                                                      |
-| The gallery still shows the old catalog                                    | The re-ingest was a no-op (nothing changed), so no snapshot refresh and no deploy hook.                                                                                                                                                                  |
-| Reviewers see baselines that disagree with the current scripts             | Scripts changed without a `publish-reference` / `tcab capture-baselines` pass on that case.                                                                                                                                                              |
-| Prod runs behave like the old code                                         | `deploy_prod` failed and undid a rollout, leaving that workload on its previous image; its job log carries the workload's description and logs.                                                                                                          |
+| Symptom                                                        | Cause                                                                                                                                           |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| The changelog is live but nothing links to it                  | Not added to the `Changelogs` sidebar group in `apps/docs/astro.config.mjs`.                                                                    |
+| The tag's run fails "gg version matches the tag"               | `crates/gg` and `crates/core` were not bumped to the tag's version. Bump both on `nightly`, promote again, and tag the new `master` commit.     |
+| A graduated case is missing its **Reference** tab              | The lockfile has no `prod` entry for that variant, or prod has not re-ingested since it gained one.                                             |
+| The gallery still shows the old catalog                        | The re-ingest was a no-op (nothing changed), so no snapshot refresh and no deploy hook.                                                         |
+| Reviewers see baselines that disagree with the current scripts | Scripts changed without a `publish-reference` / `tcab capture-baselines` pass on that case.                                                     |
+| Prod runs behave like the old code                             | `deploy_prod` failed and undid a rollout, leaving that workload on its previous image; its job log carries the workload's description and logs. |
 
 ## Next steps
 
-- [Cut a Release](/quickstarts/devops/cut-a-release/) — the same sequence as
+- [Cut a Release](/quickstarts/devops/cut-a-release/): the same sequence as
   copy-paste commands.
-- [Releasing](/development/releasing/) — the Release workflows, the macOS signing
-  gap, and the one-time Cloudflare Pages setup behind each static site.
-- [Rolling Production Service Images](/guides/devops/rolling-prod-service-images/)
-  — the cluster half of Phase 4, and rolling back.
-- [Publishing a Reference Implementation](/guides/devops/publishing-a-reference-implementation/)
-  — the reference flow and the non-experimental gate it enforces.
+- [Releasing](/development/releasing/): what a tag publishes, the gg release
+  host, and the one-time Cloudflare Pages setup behind each static site.
+- [Rolling Production Service Images](/guides/devops/rolling-prod-service-images/):
+  the cluster half of Phase 3, and rolling back.
+- [Publishing a Reference Implementation](/guides/devops/publishing-a-reference-implementation/):
+  the reference flow and the non-experimental gate it enforces.
