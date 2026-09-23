@@ -7,19 +7,18 @@
 # INSIDE the backend pod as a sidecar: it shares the `state` volume (writing the
 # /state/checkout the backend ingests) and calls POST /ingest over localhost — intra-pod
 # traffic, so the NetworkPolicy never applies and no service token / extra route is
-# needed. It runs a ONE-SHOT ingest on backend start, then idles. /state is a PVC (see
-# components/postgres/deployment-backend.yaml), so the store normally survives a
-# reschedule and this is a cheap refresh; it is what fills the store on a genuinely
-# cold volume (first deploy, replaced disk), and /readyz holds the pod out of its
+# needed. It runs a ONE-SHOT forced ingest on backend start, then idles; every pipeline
+# deploy starts a new backend pod, so every deploy re-ingests the branch tip it shipped
+# (see the azure-prod copy of this patch). /state is a PVC (see
+# components/postgres/deployment-backend.yaml), so on a cold volume (first deploy,
+# replaced disk) this is what fills the store, and /readyz holds the pod out of its
 # Service until it lands.
 #
 # BRANCH: ingest the `staging` branch TIP, so a fresh pod and `scripts/reingest-cluster.sh`
 # pick up pushed test-case edits and reference-build lockfile updates on demand — that
 # on-demand catalog refresh (no roll) is the whole point of the ingest. It is a stable
 # BRANCH, never a release tag like `v0.5.0`, which does not exist while that release is
-# still being tested on staging. The service CODE version is pinned separately by this
-# overlay's image `newTag`; the catalog may lead the code slightly, which is exactly what
-# staging exists to test. Keep BRANCH == TCAB_INGEST_BRANCH in scripts/lib/env.sh.
+# still being tested on staging. Keep BRANCH == TCAB_INGEST_BRANCH in scripts/lib/env.sh.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -42,7 +41,7 @@ spec:
               done
               REPO=https://github.com/TheClockwyrks/TheTestCabinet.git
               CHECKOUT=/state/checkout
-              # One-shot: check out the catalog branch tip, then trigger a single ingest.
+              # One-shot: check out the catalog branch tip, then trigger a single forced ingest.
               # No periodic loop. Refresh the live checkout if one survives a lone sidecar
               # restart, else clone the branch fresh.
               if [ -d "$CHECKOUT/.git" ]; then
@@ -73,7 +72,7 @@ spec:
               until curl -fsS -o /dev/null http://127.0.0.1:8787/healthz; do sleep 3; done
               n=0
               until curl -fsS -X POST http://127.0.0.1:8787/ingest \
-                     -H 'content-type: application/json' -d '{}' >/dev/null; do
+                     -H 'content-type: application/json' -d '{"force": true}' >/dev/null; do
                 n=$((n + 1))
                 if [ "$n" -ge 10 ]; then
                   echo "ingest: POST /ingest failed 10x; giving up (run scripts/reingest-cluster.sh --env staging)"

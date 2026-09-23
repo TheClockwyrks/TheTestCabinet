@@ -1,0 +1,9 @@
+# The read-only cluster-scoped grant the observability component's Prometheus needs
+# to scrape each kubelet (see rbac-lgtm.yaml). The including kustomization's
+# `namespace:` directive points the binding at that environment's tcab-lgtm
+# ServiceAccount.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - rbac-lgtm.yaml

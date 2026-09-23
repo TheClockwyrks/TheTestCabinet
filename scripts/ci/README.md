@@ -1,10 +1,13 @@
 # CI scripts
 
-Shared validation scripts invoked by both CI systems:
+Shared scripts invoked by both CI systems:
 
-- **Azure DevOps** (`azure-pipelines.yml`) is the primary CI and runs every
-  script, on both the Linux and Windows platforms. If a check can run without a
-  macOS agent, it runs here — a release must never be the first thing to fail.
+- **Azure DevOps** (`azure-pipelines.yml`) is the primary CI and the one CI/CD
+  pipeline: it gates every commit, mirrors gated commits to GitHub, builds every
+  image into the Test Cabinet Azure Container Registry, publishes gg, and
+  deploys staging, production and the docs site. It runs every check, on both
+  the Linux and Windows platforms. If a check can run without a macOS agent, it
+  runs here — a release must never be the first thing to fail.
 - **GitHub Actions** (`.github/workflows/`) runs the critical subset so a green
   GitHub run still means the components actually build and pass. It
   also owns **macOS** validation, since Azure has no macOS agents — but because
@@ -16,8 +19,8 @@ Shared validation scripts invoked by both CI systems:
 
 Keeping the real commands here — rather than inline in each pipeline's YAML —
 means both systems run exactly the same checks. The pipeline YAML is responsible
-only for provisioning toolchains (Rust, Node), caching, and (on GitHub) Pages
-deployment; the scripts own the actual validation.
+only for provisioning toolchains (Rust, Node), caching, and the credentials a
+step runs under; the scripts own the actual validation, builds and deploys.
 
 Each script resolves the repository root from its own location (via `lib.sh`)
 and can be run from anywhere, including locally:
@@ -25,6 +28,41 @@ and can be run from anywhere, including locally:
 ```sh
 ./scripts/ci/rust-test.sh
 ```
+
+## The Azure pipeline
+
+`azure-pipelines.yml` triggers on pushes to `master`, `staging`, `nightly` and
+`v*` tags. Pull requests into `master` and `staging` run it through build
+validation policies on those branches (Azure Repos ignores a `pr:` block), and
+any other branch runs the gates only. It has three stages, each after the one
+before it has passed:
+
+| Stage    | Runs on                   | Jobs                                                                                                                                                                                                                                                                                                                                                          |
+| -------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gates`  | every run                 | `rust`, `binary`, `web`, `webtest`, `specs`, `format`, `validators`, `frozen`, `audiopacks`, `specvocabulary`, `buildcontext`, `contract`, `manifests` (`k8s-manifests.sh`); on `master`, `staging` and tags `gg_amd64`/`gg_arm64` (`gg-dist.sh`, plus `gg-version-gate.sh` on a tag); then `mirror` (`mirror.sh`) on `master`, `staging`, `nightly` and tags |
+| `images` | `master`, `staging`, tags | on `master` and `staging`: the audio store (`audio-store-image.sh`), every run-container image (`run-images.sh`) and every service image (`service-image.sh`), per architecture, then fused by `manifest.sh`; on `master` and tags: `gg_publish` (`publish-gg.sh`)                                                                                            |
+| `deploy` | `master`, `staging`       | `deploy_staging` (environment `tcab-staging`, on `staging`) or `deploy_prod` (environment `tcab-prod`, on `master`) running `deploy.sh`, and `docs` running `deploy-docs.sh`                                                                                                                                                                                  |
+
+Every image is built natively: `amd64` on Microsoft-hosted `ubuntu-24.04` agents
+and `arm64` on the organisation's arm64 pool
+`pool-dev-linux-arm64-wus3-4c-eph-01`. Each architecture pushes
+`<image>:<sha>-<arch>` to `testcabinet.azurecr.io`, and `manifest.sh` fuses the
+two into the multi-arch `<image>:<sha>` a deployment pins. `:latest` is never
+pushed.
+
+No job holds a stored credential. Registry pushes go through the Docker Registry
+service connection `tcab-acr` (workload identity federation, `AcrPush`); the
+deploys through the Azure Resource Manager connection `tcab-deploy` (workload
+identity federation, the custom "Test Cabinet AKS Command Invoke" role on each
+cluster and "Azure Kubernetes Service RBAC Admin" on its application namespace);
+the gg upload through `tcab-gg-publish` (workload identity federation, Storage
+Blob Data Contributor on `testcabinetartifacts`); the mirror push through the
+deploy key in the secure file `github-mirror-key`. The docs deploy needs the
+secret pipeline variables `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`,
+and the audio store needs `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_AUDIO_R2_BUCKET`,
+`CLOUDFLARE_AUDIO_R2_PRESIGN_ACCESS_KEY_ID` and
+`CLOUDFLARE_AUDIO_R2_PRESIGN_SECRET_ACCESS_KEY`; all of them must be set on the
+pipeline. Checkouts leave submodules off.
 
 ## Scripts
 
@@ -47,7 +85,18 @@ and can be run from anywhere, including locally:
 | `submodule-pins.sh`              | every pinned submodule commit is an ancestor of that submodule's `master`, fetched commits-only from the host the superproject was cloned from; `submodule-pins.test.sh` is its offline table test                                                                                                                                                                                                             | yes      |
 | `spec-vocabulary-check.sh`       | every non-frozen version's `prompt.hbs` and `specs/**`, plus the shared preambles in `crates/core/src/prompt.rs`, name nothing about evaluation or this project; frozen hits are reported, not failed                                                                                                                                                                                                          | yes      |
 | `validators-typecheck.sh`        | `npm ci`, `tsc --noEmit` over every case's `validation/<engine>/` project                                                                                                                                                                                                                                                                                                                                      | yes      |
+| `k8s-manifests.sh`               | every kustomization under `deployments/k8s/overlays/` and `deployments/k8s/cluster/` renders; each deploy set is namespaced, in its environment's namespace, and names every image at the ACR and the commit; the `azure-*` overlays name no registry; the `cluster/azure-*` bootstraps hold cluster-scoped objects only                                                                                       | yes      |
 | `build-context.sh`               | every Dockerfile `COPY` source — and every gg guest package, every tree the workspace bakes in with `include_str!`, and every package `stage-tcab-packages.mjs` bakes into the host package store — survives every `.dockerignore` allowlist that can apply to it; no allowlist re-includes a wildcard family (which makes BuildKit walk the whole tree), and the families they enumerate instead are complete | yes      |
+| `mirror.sh`                      | force-push the built branch with its tags, or the built tag, to the GitHub mirror                                                                                                                                                                                                                                                                                                                              | —        |
+| `gg-dist.sh`                     | build the static musl `gg-<target>` for this architecture, plus `gg-reference.tar.gz` on `x86_64`                                                                                                                                                                                                                                                                                                              | —        |
+| `gg-version-gate.sh`             | on a tag build, `gg --version` equals the tag with its `v` stripped; names `crates/gg` and `crates/core` to bump when it does not                                                                                                                                                                                                                                                                              | yes      |
+| `publish-gg.sh`                  | re-run the version gate, upload gg's binaries and reference tarball to `v<version>/` in the `gg-releases` blob container, read each back anonymously                                                                                                                                                                                                                                                           | —        |
+| `audio-store-image.sh`           | build and push `test-cabinet-audio-store:<sha>-<arch>`                                                                                                                                                                                                                                                                                                                                                         | —        |
+| `run-images.sh`                  | build every run-container image with `--gg-selfcheck`, push `test-cabinet-<name>:<sha>-<arch>`, and fail unless each `-gg` representative's self-check ran                                                                                                                                                                                                                                                     | —        |
+| `service-image.sh`               | build and push one service image as `<image>:<sha>-<arch>`, with a registry layer cache                                                                                                                                                                                                                                                                                                                        | —        |
+| `manifest.sh`                    | fuse each image's `<sha>-amd64` and `<sha>-arm64` into the multi-arch `<sha>`                                                                                                                                                                                                                                                                                                                                  | —        |
+| `deploy.sh`                      | roll an environment's cluster to one sha's images, wait for every rollout, undo and fail on one that is not ready; `--render` prints the set without a cluster                                                                                                                                                                                                                                                 | —        |
+| `deploy-docs.sh`                 | build `apps/docs` and deploy it with `wrangler` to `test-cabinet-docs` (`master`) or `test-cabinet-docs-staging` (`staging`)                                                                                                                                                                                                                                                                                   | —        |
 
 "Critical" scripts are the ones that catch a genuinely broken change (a crate or
 front end failing to build or test), so they run on both CI systems. The lint
@@ -70,8 +119,8 @@ finishes in a fraction of a second, which is why it also runs on the commit hook
 building one. `.dockerignore` is an **allowlist** (`*`, then explicit `!`
 re-inclusions), so a `Dockerfile` that `COPY`s a path nobody re-included fails at
 build time with `failed to compute cache key: "/path": not found` — and the image
-builds run on a GitHub workflow that only fires on `master`/`staging`, long after
-the commit that broke them. This script reads every tracked Dockerfile against every
+builds run only on `master`/`staging`, after the gates, long after the commit
+that broke them. This script reads every tracked Dockerfile against every
 allowlist that can apply to it, applying Docker's own matching rules, and fails on any
 context source that is missing or excluded. "Every allowlist that can apply" is not
 pedantry: `.devcontainer/ubuntu.dockerfile` carries a sibling
@@ -200,7 +249,10 @@ Azure run is never the only thing between a broken binary and users. It takes a
 binary path rather than resolving the repo root, so it does not use `lib.sh`.
 
 `lib.sh` is a sourced helper (not a standalone script): it resolves the repo root
-and provides the `log` helper.
+and provides the `log` helper, the registry name (`CI_REGISTRY`), the
+architecture an image is published under (`ci_arch`), and the manifest reader
+and namespace check (`ci_manifest_index`, `ci_assert_namespaced`) that
+`deploy.sh` and `k8s-manifests.sh` share.
 
 `fetch.sh` is the other sourced helper, and it has no side effect at all — not
 even a `cd` — because the six toolchain installers that source it are also run
@@ -213,6 +265,55 @@ service-image build already mounts a BuildKit cache over. That last part is what
 1.05 GB Swift toolchain on a 1.5 MB/s link needs: a dropped connection costs the
 remainder of the transfer rather than all of it, and it costs the _next_ run
 nothing at all.
+
+### Delivery scripts
+
+`mirror.sh <key-file> <ref>` pushes a gated commit to
+`github.com/TheClockwyrks/TheTestCabinet`. A branch is force-pushed with every
+tag it contains, and a tag on its own. It is the only thing that pushes there, so
+the mirror follows Azure exactly and holds gated commits only. The job checks out
+with full history and tags, because GitHub refuses a push from a shallow clone.
+
+`service-image.sh <service> <sha>`, `run-images.sh <gg-binary> <sha>` and
+`audio-store-image.sh <sha>` build for the machine's own architecture and push
+`<image>:<sha>-<arch>`; `manifest.sh <sha> <image>...` fuses the two
+architectures into `<image>:<sha>` once both have pushed, so `<sha>` never names
+a single-architecture image. The audio store is built first because the driver
+image bakes `test-cabinet-audio-store:<sha>`. `run-images.sh` builds through
+`containers/build.sh --gg-selfcheck` with the gg the gates built, and requires
+each `-gg` representative's `gg selfcheck ok:` line by name, so a dropped flag
+fails the job rather than publishing unchecked images.
+
+`deploy.sh <staging|prod> <sha>` rolls `testcabinet-<env>-westus2-aks`. It
+writes a throwaway kustomization beside `deployments/k8s/overlays/azure-<env>`
+that sets every service image to `testcabinet.azurecr.io/<image>:<sha>` and the
+dispatcher's `TCAB_DRIVER_IMAGE`, `TCAB_PUBLISHER_IMAGE`,
+`TCAB_CONTAINER_REGISTRY` and `TCAB_CONTAINER_TAG`, renders it with `kubectl
+kustomize` into one manifest file, and refuses a file holding anything outside
+`tcab-<env>`. The clusters' API servers are private, so it then runs
+`kubectl apply -f` and each `rollout status` (600 seconds per `Deployment` and
+`StatefulSet`) inside the cluster through `az aks command invoke`, uploading the
+file with the apply. A rollout that is not ready is described, its logs printed,
+and undone the same way, and the script fails. The caller needs the custom
+"Test Cabinet AKS Command Invoke" role
+(`deployments/azure/aks-command-invoke.role.json`) on the cluster and "Azure
+Kubernetes Service RBAC Admin" on the namespace. Run by hand it rolls to any sha
+in the registry, which is how an earlier commit is put back.
+`k8s-manifests.sh` gates on `deploy.sh --render`, the same bytes the deploy
+applies, so a cluster-scoped object or a stray image reference fails the commit
+that adds it rather than the deploy.
+
+`gg-dist.sh <out-dir>` builds gg's release objects on each architecture, and
+`gg-version-gate.sh <gg> <ref>` fails a tag build whose gg reports another
+version. `publish-gg.sh <dist-dir> <ref>` runs that gate again, then uploads
+`gg-x86_64-unknown-linux-musl`, `gg-aarch64-unknown-linux-musl` and
+`gg-reference.tar.gz` to `v<version>/` in the `gg-releases` container of
+`testcabinetartifacts`, the layout `core::gg_exec::release_asset_url` downloads
+from.
+
+`deploy-docs.sh <branch>` builds the docs site and deploys it to the Cloudflare
+Pages project for `master` or `staging`, with `CLOUDFLARE_API_TOKEN` and
+`CLOUDFLARE_ACCOUNT_ID` from the pipeline's secret variables.
 
 ## Scope
 

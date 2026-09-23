@@ -19,16 +19,16 @@ for the answer keys.
 
 ## What ships, and by what path
 
-| What                                               | Reaches users by                         | Triggered by                                                               |
-| -------------------------------------------------- | ---------------------------------------- | -------------------------------------------------------------------------- |
-| `tcab`, the services, the desktop app              | a GitHub release at `vX.Y.Z`             | the **Release** + **Release (promote)** workflows, by hand                 |
-| The catalog (test cases, jams, references, errata) | the backend ingesting a **branch tip**   | merging to `master`, then `scripts/reingest-cluster.sh --env prod`         |
-| The running services                               | a **git-sha** pinned in the prod overlay | re-pinning `overlays/azure-prod` and applying it                           |
-| The gallery and the docs                           | a Cloudflare Pages build                 | a push to `master` (docs) and the backend's snapshot deploy hook (gallery) |
+| What                                               | Reaches users by                        | Triggered by                                                               |
+| -------------------------------------------------- | --------------------------------------- | -------------------------------------------------------------------------- |
+| `tcab`, the services, the desktop app              | a GitHub release at `vX.Y.Z`            | the **Release** + **Release (promote)** workflows, by hand                 |
+| The catalog (test cases, jams, references, errata) | the backend ingesting a **branch tip**  | merging to `master`, whose deploy restarts the backend and re-ingests      |
+| The running services                               | the Azure pipeline's deploy of a commit | merging to `master`                                                        |
+| The gallery and the docs                           | a Cloudflare Pages build                | a push to `master` (docs) and the backend's snapshot deploy hook (gallery) |
 
 The important consequence: **the version tag governs only the downloadable
-artifacts.** Nothing else in the system knows about `v0.6.1`. The catalog ships
-because a branch moved; the services ship because a sha was pinned. A release is
+artifacts.** Nothing else in the system knows about `v0.6.1`. The catalog and
+the services ship because the pipeline deployed a merge commit. A release is
 "these four are at the same commit", not "the tag was pushed".
 
 ## What is _not_ a release step
@@ -68,10 +68,10 @@ so the branches never diverge.
 
 Each backend ingests its catalog from a stable **branch**, never a tag —
 `staging` for staging, `master` for prod (`TCAB_INGEST_BRANCH` in
-`scripts/lib/env.sh`). Service **code** is pinned separately by sha in the
-overlay. That split is why a test-case-only change can ship to prod with a
-re-ingest and no cluster roll, and why a code change needs the roll even though
-the catalog did not move.
+`scripts/lib/env.sh`). Every merge to either branch deploys its commit's images,
+which restarts the backend, and the backend's ingest sidecar force-ingests the
+branch tip on start, so code and catalog ship together.
+`scripts/reingest-cluster.sh` republishes the catalog between deploys.
 
 ## Phase 1 — Prepare the release on `nightly`
 
@@ -182,33 +182,28 @@ version with runs against it was edited.
 ## Phase 2 — Rehearse on staging
 
 Merge `nightly` into `staging` as `vX.Y.Z-rcN`. Staging is a faithful mirror of
-prod — same manifests, differing only in namespace, `TCAB_ENV`, secrets, and image
-tags — so it is a real rehearsal of everything Phase 4 will do to production, and
-its tip is what gets promoted in Phase 3.
+prod — same manifests, differing only in namespace, `TCAB_ENV`, secrets, and the
+resources they point at — so it is a real rehearsal of everything Phase 4 will
+do to production, and its tip is what gets promoted in Phase 3.
 
-1. **Let CI build the images.** Both `build-service-images.yml` and
-   `build-containers.yml` run on **every** push to `staging`, unfiltered, each
-   tagging `:latest` and `:<git-sha>`. So every rc sha carries a complete set —
-   services _and_ run containers — and the sha you rehearse on is one you can pin
-   everything to. (`build-containers` is the slow one; it recompiles Rust and wasm
-   uncached, so give it time before re-pinning.)
-2. **Re-pin `overlays/azure-staging`** to the new sha (the `images:` block plus
-   the two env-value image refs, `TCAB_CONTAINER_TAG` among them), apply it, and
-   confirm the rollout. The mechanics
-   are identical to
+1. **Let the pipeline deploy it.** The merge commit runs the gates, the GitHub
+   mirror, the `images` stage, which builds every service and run-container
+   image at the rc sha, and `deploy_staging`, which rolls the staging cluster to
+   them and waits for every rollout. The mechanics are identical to
    [rolling prod](/guides/devops/rolling-prod-service-images/), with the staging
-   cluster and namespace.
-3. **Re-ingest:** `scripts/reingest-cluster.sh --env staging`. This is what makes
-   the merged catalog visible — including the cases that just stopped being
-   experimental.
-4. **Exercise it.** Enqueue runs of the cases that changed in this release,
+   cluster and namespace. The run images recompile Rust and wasm, so the
+   `images` stage is the slow part.
+2. **Confirm the catalog.** The deploy restarts the backend, whose ingest
+   sidecar force-ingests the `staging` tip. That is what makes the merged catalog
+   visible, including the cases that just stopped being experimental.
+3. **Exercise it.** Enqueue runs of the cases that changed in this release,
    through the harness they will actually be run with, and review one end to end.
    A validator repair that was verified locally against a reference build is not
    the same evidence as a real run through the deployed driver.
 
 Anything the rehearsal turns up goes back onto `nightly` and comes through as the
 next rc, so the sha `master` is eventually promoted from is one that was actually
-exercised here. Re-pin and re-apply staging for each rc that changes service code.
+exercised here. Each rc merge deploys itself.
 
 If you want the reference-publish flow rehearsed as well, `tcab publish-reference
 --env staging <slug>` deploys to the staging Pages project and records under the
@@ -218,13 +213,10 @@ file and neither disturbs the other.
 ## Phase 3 — Cut the artifacts on GitHub
 
 Promote `staging` into `master` as a `vX.Y.Z` PR — the tree that was rehearsed,
-not a fresh merge from `nightly` — and make sure the **GitHub mirror** carries
-that merge commit; public releases are cut on GitHub because the Azure DevOps
-repository is private, and every release workflow lives there:
-
-```sh
-git push gh master
-```
+not a fresh merge from `nightly`. The pipeline's `mirror` job pushes the merge
+commit to the **GitHub mirror** once it passes the gates; public releases are cut
+on GitHub because the Azure DevOps repository is private, and every release
+workflow lives there.
 
 Then, in order:
 
@@ -254,26 +246,23 @@ Then, in order:
 
 ## Phase 4 — Land it in production
 
-The GitHub release is downloads. Production is still on the previous sha and the
-previous catalog until you move it.
+The merge into `master` is what lands the release in production; the GitHub
+release is downloads.
 
-1. **Roll the prod service images** to the release sha — re-pin the three files in
-   `overlays/azure-prod`, preview, apply, verify, commit. Full walkthrough:
+1. **Confirm the prod roll.** The merge commit's pipeline run builds every image
+   at the release sha and `deploy_prod` rolls `tcab-prod` to them, service images
+   and run images together. Full walkthrough:
    [Rolling Production Service Images](/guides/devops/rolling-prod-service-images/).
-   Advance `TCAB_CONTAINER_TAG` to the same sha: `build-containers` runs on every
-   `master` push too, so the release sha carries run images as well and the two
-   pins move together.
-2. **Re-ingest the catalog:** `scripts/reingest-cluster.sh --env prod`. This is
-   the step that publishes the release's test-case work — new versions, graduated
-   cases, errata, and the reference-build URLs from the committed lockfile. A
-   whole-catalog re-ingest also prunes versions the checkout no longer declares
-   (except any a published run still references), so a case deleted in this
-   release disappears here.
+2. **Confirm the catalog.** The roll restarts the backend, whose ingest sidecar
+   force-ingests the `master` tip. That publishes the release's test-case work —
+   new versions, graduated cases, errata, and the reference-build URLs from the
+   committed lockfile. A whole-catalog forced ingest also prunes versions the
+   checkout no longer declares (except any a published run still references), so
+   a case deleted in this release disappears here.
 3. **Let the sites rebuild.** Both are automatic, but for different reasons, and
    both are worth watching:
-   - The **docs** deploy from `deploy-docs.yml` on a push to `master` that touched
-     `apps/docs/**` — which a release always does, because of the changelog. If a
-     release somehow carried no docs change, dispatch the workflow by hand.
+   - The **docs** deploy from the pipeline's `docs` job on every `master` build
+     that reaches the `deploy` stage.
    - The **gallery** rebuilds because an ingest that actually changed something
      queues a snapshot refresh, and the backend fires the Pages deploy hook after
      uploading the snapshot. A no-op ingest queues nothing — so if the gallery
@@ -313,7 +302,7 @@ test-cases/<type>/<difficulty>/<slug>/vX.Y.Z` — at the moment you trigger that
 | A graduated case is missing its **Reference** tab                          | The lockfile has no `prod` entry for that variant, or prod has not re-ingested since it gained one.                                                                                                                                                      |
 | The gallery still shows the old catalog                                    | The re-ingest was a no-op (nothing changed), so no snapshot refresh and no deploy hook.                                                                                                                                                                  |
 | Reviewers see baselines that disagree with the current scripts             | Scripts changed without a `publish-reference` / `tcab capture-baselines` pass on that case.                                                                                                                                                              |
-| Prod runs behave like the old code                                         | Images rolled but not re-ingested, or re-ingested but not rolled — the two are separate steps by design.                                                                                                                                                 |
+| Prod runs behave like the old code                                         | `deploy_prod` failed and undid a rollout, leaving that workload on its previous image; its job log carries the workload's description and logs.                                                                                                          |
 
 ## Next steps
 
@@ -322,6 +311,6 @@ test-cases/<type>/<difficulty>/<slug>/vX.Y.Z` — at the moment you trigger that
 - [Releasing](/development/releasing/) — the Release workflows, the macOS signing
   gap, and the one-time Cloudflare Pages setup behind each static site.
 - [Rolling Production Service Images](/guides/devops/rolling-prod-service-images/)
-  — the cluster half of Phase 4 in full.
+  — the cluster half of Phase 4, and rolling back.
 - [Publishing a Reference Implementation](/guides/devops/publishing-a-reference-implementation/)
   — the reference flow and the non-experimental gate it enforces.

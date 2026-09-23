@@ -19,8 +19,10 @@
 #                              Prometheus as a pure OTLP sink with no scrape jobs,
 #                              so there is otherwise no per-container CPU/memory
 #                              history to size run pods against).
-#   5. rbac-lgtm.yaml        — the read-only cluster-scoped grant that scrape needs
-#                              (nodes list/watch + nodes/metrics get).
+#
+# The read-only cluster-scoped grant that scrape needs (nodes list/watch +
+# nodes/metrics get) is ../../cluster/observability, applied with the other
+# cluster-scoped objects, so this component stays namespaced.
 #
 # Retention windows are env vars on the StatefulSet, not values here: an overlay
 # retunes an environment by patching LOKI_RETENTION_PERIOD / TEMPO_BLOCK_RETENTION /
@@ -42,7 +44,6 @@ kind: Component
 resources:
   - lgtm.yaml
   - networkpolicy-lgtm.yaml
-  - rbac-lgtm.yaml
 
 configMapGenerator:
   # Name-suffixed with a content hash, so editing either file changes the ConfigMap

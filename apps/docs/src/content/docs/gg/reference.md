@@ -253,7 +253,8 @@ The service image bakes the documents at `/opt/gg-reference` out of the same
 build stage that produces the `gg` binary the driver image ships, so a deployed
 console and the harness its runs execute are one build of one checkout. A
 backend run from a release tarball unpacks the arch-independent
-`gg-reference-<version>.tar.gz` asset and points `TCAB_GG_REFERENCE` at it; a
+`v<version>/gg-reference.tar.gz` from gg's release container and points
+`TCAB_GG_REFERENCE` at it; a
 developer running the binary from a checkout leaves the variable unset and runs
 `scripts/gg-reference.sh`.
 

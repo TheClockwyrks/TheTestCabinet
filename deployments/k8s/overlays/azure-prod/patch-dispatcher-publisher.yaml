@@ -1,30 +1,23 @@
-# Enable in-cluster publishing: point the dispatcher at the tcab-publisher image and
-# its credential Secret so it claims queued publish jobs and turns each into one
-# per-publish tcab-publisher Job.
+# Enable in-cluster publishing and point it at the prod publish targets.
 #
-# TCAB_PUBLISHER_IMAGE is a plain env VALUE, not a container `image:` field, so
-# kustomize's `images:` transformer cannot rewrite it (the same reason
-# patch-dispatcher-driver-image.yaml exists for TCAB_DRIVER_IMAGE). Patch it here to
-# the registry + tag the publisher image is published under, and keep it in lockstep
-# with the dispatcher/driver image tags so they version together. Pin an immutable
-# :<git-sha> tag here once the image is built rather than :latest in a real deploy.
+# TCAB_DISPATCHER_PUBLISHER_SECRETS names the Secret the dispatcher envFrom-mounts into
+# each publish Job (tcab-publisher-secrets: GH_TOKEN for `gh`, CLOUDFLARE_API_TOKEN +
+# CLOUDFLARE_ACCOUNT_ID for `wrangler`), synced from the prod Key Vault by the
+# keyvault-csi component. The publisher needs no Kubernetes API access.
 #
-# TCAB_DISPATCHER_PUBLISHER_SECRETS names the Secret(s) the dispatcher mounts (envFrom)
-# into each publish Job's pod — tcab-publisher-secrets, materialised from Key Vault by
-# the keyvault-csi component, carrying GH_TOKEN (for `gh`) and CLOUDFLARE_API_TOKEN
-# (for `wrangler`). The publisher needs NO Kubernetes API access; the dispatcher's
-# build_publish_job sets no ServiceAccount, so the Job runs under the namespace
-# `default` SA (explicitly NOT the pod-creating tcab-driver SA).
+# TCAB_PUBLISHER_IMAGE, which enables the publish path, is set by the pipeline's deploy
+# (scripts/ci/deploy.sh) to the tcab-publisher image of the commit being deployed.
 #
-# TCAB_GITHUB_ORG + TCAB_PAGES_PROJECT are the prod publish targets, set explicitly.
+# TCAB_GITHUB_ORG + TCAB_PAGES_PROJECT are the crux of publish decoupling:
 # core::publish::PublishConfig::from_env requires both (no compiled-in fallback), so
-# every environment — prod included — names its own org and Cloudflare Pages project
-# rather than relying on a default; staging sets its own values the same way. The
-# dispatcher forwards both into every publish Job (PUBLISHER_PASSTHROUGH_VARS).
+# every environment names its own org and Cloudflare Pages project. The dispatcher
+# forwards both into every publish Job (PUBLISHER_PASSTHROUGH_VARS), where from_env
+# reads them.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: tcab-dispatcher
+  # the base pins tcab-prod; this overlay's `namespace:` directive retargets it on build
   namespace: tcab-prod
 spec:
   template:
@@ -32,8 +25,6 @@ spec:
       containers:
         - name: dispatcher
           env:
-            - name: TCAB_PUBLISHER_IMAGE
-              value: "ghcr.io/theclockwyrks/tcab-publisher:49654d1b228be0a3dc3f54b412d46ba4426d0eef"
             - name: TCAB_DISPATCHER_PUBLISHER_SECRETS
               value: "tcab-publisher-secrets"
             - name: TCAB_GITHUB_ORG

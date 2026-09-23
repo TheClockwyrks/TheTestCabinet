@@ -333,14 +333,15 @@ rest of the request in full.
 ## Installation & distribution
 
 gg is installed by context. Locally it runs with no external resources, so a
-developer can exercise it fully offline from a local build. In k8s it is
-published as a GitHub release and downloaded from there at run time, the same
-shape as the third-party harnesses' install step. The install runs in the run's
+developer can exercise it fully offline from a local build. In k8s the driver
+image bakes it, and a run with no local binary downloads a published release from
+gg's release container at run time, the same shape as the third-party harnesses'
+install step. The install runs in the run's
 setup stage, so it is recorded as
 [setup](/components/core/metrics/#durations) rather than as the model's session.
 
-The release asset is a bare static-musl executable named `gg-<target>`, hanging
-off the release tag `v<version>`, published for both `x86_64` and `aarch64`. The
+The release object is a bare static-musl executable named `gg-<target>` under
+the prefix `v<version>`, published for both `x86_64` and `aarch64`. The
 driver picks the architecture, not the run container. The version in that URL is
 `core`'s own, and `gg --version`, read out of the run container, is what a run
 records as its `subject.harnessVersion`, so the two crates are versioned in

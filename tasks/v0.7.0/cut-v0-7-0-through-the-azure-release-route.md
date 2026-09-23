@@ -11,8 +11,8 @@ This issue depends on every other release-blocking issue in this folder:
 [the submodule addressing](done/address-submodules-by-relative-url-and-mirror-them-to-github.md),
 [the desktop drop](drop-the-desktop-app.md),
 [the gallery design pages](move-the-gallery-origin-design-pages-onto-the-share-links-branch.md),
-[the Azure CI/CD](build-ci-cd-on-azure-pipelines-with-deploys-to-staging-and-prod.md),
-[the gg binaries](publish-gg-release-binaries-to-azure-blob-storage.md), and
+[the Azure CI/CD](done/build-ci-cd-on-azure-pipelines-with-deploys-to-staging-and-prod.md),
+[the gg binaries](done/publish-gg-release-binaries-to-azure-blob-storage.md), and
 [the GitHub retirement](retire-the-github-workflows-and-ghcr.md).
 
 ## Current state
