@@ -1093,90 +1093,42 @@ fn what_a_program_costs_and_what_it_weighs() {
     );
 }
 
-/// **A pooled JVM is reused and the first one is the expensive one** — the measurement this arm's
-/// whole shape rests on, taken through the production path rather than quoted.
+/// **A pooled JVM is reused.**
 ///
 /// `kotlinc` has no daemon of its own, and a compiler started per compile would make this arm ten
 /// times dearer than every other one — which is a difference in the harness rather than in the
-/// language.
-///
-/// # The reuse is a count, and only the saving is a clock
-///
-/// That every compilation here went through ONE JVM is a fact the pool can simply be asked for, and
-/// it is asked, because a test that inferred it from a stopwatch would be reporting the machine as
-/// often as the pool. A bound in seconds was tried first and is a bound on the machine outright: it
-/// failed at 144.8 s against a 360 s ceiling under a full workspace run, on a claim that was
-/// supposed to be about the compiler.
-///
-/// # And the clock's readings are taken next to each other
-///
-/// What replaced that bound was a ratio — the cold phase at the top of the test against the cheapest
-/// of three warm builds after it — on the reasoning that a cold reading and a warm one inflate
-/// together. **They inflate together only if they are readings of the same machine**, and taken tens
-/// of seconds apart on a laptop that throttles they are not: this failed with a cold reading of
-/// 4.7 s against warm builds of 9.63 s, 8.29 s and 6.25 s, an inversion no ratio survives.
-///
-/// So the reading the gate rests on is a **second** cold build, taken after the warm ones by
-/// throwing the pool's JVM away — with a further warm build after *it*, so the cold reading has a
-/// warm neighbour on either side and a machine that drifts in either direction drifts under both.
-/// The cold phase at the top is still read and still printed, because it is the number this arm's
-/// documentation quotes; it is no longer what the assertion compares.
-///
-/// It also says what the pool's cost actually is, which the old shape hid: starting a JVM is 0.5 s,
-/// and the FIRST build in it is the four or five seconds. The pool is keeping a warm compiler, not
-/// skipping a process start.
+/// language. So the arm keeps warm JVMs in a pool, and this asserts the reuse as counts: builds on one
+/// thread start one JVM between them, and emptying the pool makes the next build start exactly one
+/// more and the build after it reuse that.
 #[test]
-fn a_pooled_jvm_is_reused_and_the_first_one_is_the_expensive_one() {
-    // The cold half is a JVM start AND the first build inside it, because that pair is what a
-    // per-compile process would pay every single time.
-    let first_cold = Instant::now();
+fn a_pooled_jvm_is_reused() {
+    use super::compile::{discard_pooled_jvms, jvms_started, live_jvms};
+
     warm();
-    let _ = prepare(&whole("", "    gg.log(\"warm\")\n"));
-    let first_cold = first_cold.elapsed();
-
-    // Three more through the same pool. Three rather than one because a single warm build that
-    // landed in a bad scheduling window would be a reading of the scheduler.
-    let mut warm_builds: Vec<_> = (0..3).map(timed_build).collect();
-
-    // **The reuse itself**, which is not a measurement: this thread built four programs, and if the
-    // pool had started a JVM for any of them there would be more than one alive.
+    assert_eq!(jvms_started(), 1, "warming the arm starts one JVM");
+    for index in 0..2 {
+        let _ = prepare(&whole("", &format!("    gg.log(\"warm {index}\")\n")));
+    }
     assert_eq!(
-        super::compile::live_jvms(),
-        1,
-        "four compilations on one thread went through more than one JVM, so nothing was pooled"
+        (jvms_started(), live_jvms()),
+        (1, 1),
+        "two compilations on one thread must go through the one JVM warming started"
     );
 
-    // **The cold reading the gate rests on**, taken here — beside the warm builds it is compared
-    // with — by making the pool cold again.
-    super::compile::discard_pooled_jvms();
-    let cold = Instant::now();
+    discard_pooled_jvms();
+    assert_eq!(live_jvms(), 0, "the emptied pool holds no JVM");
     let _ = prepare(&whole("", "    gg.log(\"cold again\")\n"));
-    let cold = cold.elapsed();
-
-    // And one more warm build, through the JVM that cold one left behind, so the cold reading is
-    // bracketed by warm ones rather than followed by nothing.
-    warm_builds.push(timed_build(3));
-    let steady = warm_builds
-        .iter()
-        .copied()
-        .min()
-        .expect("four warm builds were timed");
-
-    assert!(
-        cold > steady * 2,
-        "starting a JVM and building in it took {cold:?} and a warm build takes {steady:?} \
-         ({warm_builds:?}); the first one is supposed to be the expensive one, so a pool that made \
-         no difference is what this reads like",
+    assert_eq!(
+        (jvms_started(), live_jvms()),
+        (2, 1),
+        "the build after the pool was emptied starts exactly one JVM"
     );
-
-    println!("kotlin pool: first cold {first_cold:?}, cold again {cold:?}, warm {warm_builds:?}");
-}
-
-/// One build through the pool, and what it took.
-fn timed_build(index: usize) -> std::time::Duration {
-    let started = Instant::now();
-    let _ = prepare(&whole("", &format!("    gg.log(\"warm {index}\")\n")));
-    started.elapsed()
+    let _ = prepare(&whole("", "    gg.log(\"warm again\")\n"));
+    assert_eq!(
+        (jvms_started(), live_jvms()),
+        (2, 1),
+        "and the build after that reuses it"
+    );
 }
 
 /// **The programs gg writes for this arm are whole programs, and they run.**

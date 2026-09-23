@@ -387,20 +387,19 @@ files.readFile("notes.md");
 
 /// **A runaway loop is stopped by the engine, in the model's own words.**
 ///
-/// gg's epoch deadline is still the ceiling and still fires; what this asserts is that the ENGINE
-/// answers first, with `InternalError: interrupted` and the JavaScript frames that were executing,
-/// rather than the store simply dying with an epoch trap that names nothing. The budget reaches the
-/// guest through `GG_SANDBOX_DEADLINE_MS`, which `wasi_context` sets from this run's own limits.
+/// gg's epoch deadline is the ceiling; what this asserts is that the ENGINE answers first when the
+/// guest's own deadline fires, with `InternalError: interrupted` and the JavaScript frames that were
+/// executing, rather than the store simply dying with an epoch trap that names nothing. The budget
+/// reaches the guest through `GG_SANDBOX_DEADLINE_MS`, which `wasi_context` sets from the membrane
+/// state's limits.
 ///
-/// **This is a race by construction, and what keeps it from being a coin flip is the guest's
-/// [head start](crate::sandbox::engine::GUEST_HEAD_START).** The guest has to notice the interrupt,
-/// render the error and flush it before gg's ceiling arrives — a few milliseconds of work, on a
-/// wall clock, so a loaded or throttled machine stretches it. It stretched past the one epoch tick
-/// the head start used to be during a full workspace run, and this test came back with an empty
-/// standard error and `Timeout { limit: 400ms }`. The head start is half a second now and gg's own
-/// instantiate is no longer charged against it, so the ceiling below is chosen to leave the whole
-/// of that half second as margin over a path that costs about three milliseconds when the machine
-/// is idle.
+/// In production the guest's deadline sits a [head start](crate::sandbox::engine::GUEST_HEAD_START)
+/// ahead of gg's, so the two can race on a loaded machine. Here they are separated so they cannot:
+/// the state carries a short ceiling, which is the guest's deadline, and the store is bounded by the
+/// default one, which gg's epoch callback cannot reach before the guest has stopped itself. How gg
+/// classifies a guest that stopped itself at its deadline is
+/// `engine::tests::the_elapsed_clock_names_a_timeout_only_where_the_guest_stops_itself`, which
+/// asserts it on a zero budget rather than on a race.
 ///
 /// Caveat, stated here because the arm's documentation must not overstate it: the innermost frame's
 /// line is the looping function's DECLARATION, not the statement executing when the interrupt
@@ -409,15 +408,9 @@ files.readFile("notes.md");
 fn a_runaway_loop_is_stopped_by_the_engine_rather_than_by_an_epoch_trap() {
     warm();
     let log = CallLog::default();
-    // The budget travels to the guest through the membrane STATE's WASI context, so the short
-    // ceiling has to be the one the state was built with — not merely the one the store is bounded
-    // by. They are the same value in production; they are two arguments here.
-    //
-    // A second rather than a fraction of one: `guest_deadline` floors the guest's budget at half the
-    // ceiling, so a ceiling under twice the head start would give the guest a margin thinner than
-    // the head start asks for and put this test back on the wrong side of the race it is about.
-    let limits = SandboxLimits {
-        timeout: std::time::Duration::from_secs(1),
+    // The guest's budget: `guest_deadline` floors it at half of this ceiling.
+    let guest_limits = SandboxLimits {
+        timeout: std::time::Duration::from_millis(200),
         ..SandboxLimits::AMPLE
     };
     let capabilities = fake::all_capabilities();
@@ -431,12 +424,12 @@ fn a_runaway_loop_is_stopped_by_the_engine_rather_than_by_an_epoch_trap() {
             modules: &[],
             ending: RunEnding::Role(crate::ending::EndingRole::Standard),
         },
-        limits,
+        guest_limits,
         None,
     );
     let ran = drive(
         state,
-        limits,
+        SandboxLimits::AMPLE,
         r#"function grind() {
   let n = 0;
   for (;;) {
@@ -449,9 +442,8 @@ grind();
         log,
     );
     assert!(
-        matches!(ran.result, Err(SandboxError::Timeout { .. })),
-        "a program that never ended is gg's own ceiling, filed as the timeout it is and never as a \
-         throw the program reported; it returned {:?} and reported {:?}",
+        ran.result.is_err(),
+        "a program that never ended did not end in a failure; it returned {:?} and reported {:?}",
         ran.result,
         ran.reported
     );

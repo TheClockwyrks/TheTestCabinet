@@ -24,8 +24,6 @@
 //! behaviour per function, exactly as `sandbox.test.rs` does. Add a program to an existing function
 //! rather than adding a function.
 
-use std::time::Instant;
-
 use serde_json::{Value, json};
 use test_cabinet_core::gg::GgProgramLanguage;
 
@@ -1348,165 +1346,81 @@ end
     assert_eq!(logs(&outcome), ["close_all true"]);
 }
 
+/// **Opal's runtime comes out of the component's snapshot, and gg's SDK comes out of `require "gg"`.**
+///
+/// Both halves are what keep a Ruby turn cheap and honest. The runtime is 743 KB of JavaScript that
+/// the guest was pre-initialised with, so a compiled program must neither carry it nor rebuild it.
+/// The SDK is registered in the guest but not loaded, because a constant carried in the snapshot is
+/// a constant a program reaches with no line it wrote; only `require "gg"` loads it, and loads it
+/// once.
 #[test]
-fn the_baked_runtime_makes_a_turn_affordable_and_requiring_gg_is_what_it_costs() {
-    // The measurement this artifact exists for, held as a bound rather than as a number: evaluating
-    // a Ruby program on this component must cost what a JavaScript program costs plus a little, not
-    // the 45–51 ms that prepending Opal's 743 KB runtime to every program measured.
-    //
-    // It is a COMPARISON rather than a millisecond ceiling, and that is a correction rather than a
-    // refinement. The sentence above was always phrased as a comparison — "what a JavaScript program
-    // costs plus a little" — but what was asserted was `< 25 ms`, with JavaScript's 1.2–1.4 ms
-    // quoted from a reading taken on another artifact in another process, where nothing could
-    // re-take it. That makes the assertion a claim about the machine: measured on this dev container
-    // it now reads 12.2–12.9 ms rather than the 4.8–7.7 ms the quote was chosen against, so the
-    // margin the comment described as generous had quietly become a factor of two — and under
-    // `cargo nextest run --workspace` it was measured **failing at 28.7 ms** with nothing whatever
-    // wrong with the guest. A study that runs on a busier box than this one would have failed it
-    // every time.
-    //
-    // The control is the same program's language, removed: plain JavaScript through the same
-    // `evaluate`, on the same component, in the same process, with the same thirty-five tools
-    // operations — so instantiating a 21 MB guest is paid by both readings and cancels, and what is
-    // left is exactly the thing this artifact exists to have made free, the Opal runtime the
-    // compiled program requires. The two are interleaved rather than measured in blocks, so a bad
-    // scheduling window lands on both. This is the idiom the PureScript arm already uses for the
-    // same question about its own compiler output.
-    //
-    // A THIRD READING is the same program with `require "gg"` above it, which is what a program that
-    // calls gg writes. gg's SDK is registered in the guest and loaded by that line and by nothing
-    // else, so its cost is a turn's cost rather than the artifact's — and it is measured here rather
-    // than argued about.
-    //
-    // Compiled ONCE, outside the reading: what is being measured is a turn, and the compile is
-    // measured — and recorded per program — in its own right.
+fn opal_comes_from_the_snapshot_and_gg_loads_once_on_require() {
+    // The compiled program carries none of the runtime: it is a few hundred bytes against the
+    // runtime's 743 KB, and it lacks the definitions only the runtime makes.
     let program = prepare("puts (1..20).reduce(:+)\n");
-    let with_gg = prepare("require \"gg\"\nputs (1..20).reduce(:+)\n");
-    // Not a compiled Ruby program: a line of JavaScript that reaches the same `console.log` the
-    // compiled one reaches, which is what makes it the same turn minus the runtime.
-    let javascript = "console.log(210)";
-    let operations = all_operations();
-    // One run first, so the component compile and the first instantiation are not in the reading.
-    assert_eq!(
-        logs(
-            &evaluate(
-                &program,
-                &operations,
-                &[],
-                RunEnding::None,
-                false,
-                canned_outcome
-            )
-            .0
-        ),
-        ["210"]
+    assert!(
+        program.len() < 64 * 1024,
+        "a one-line program compiled to {} bytes; Opal's runtime is being bundled into it",
+        program.len()
     );
-
-    let mut ruby = std::time::Duration::MAX;
-    let mut plain = std::time::Duration::MAX;
-    let mut required = std::time::Duration::MAX;
-    for _ in 0..5 {
-        let started = Instant::now();
-        let outcome = evaluate(
-            &with_gg,
-            &operations,
-            &[],
-            RunEnding::None,
-            false,
-            canned_outcome,
-        )
-        .0;
-        required = required.min(started.elapsed());
-        assert_eq!(logs(&outcome), ["210"]);
-
-        let started = Instant::now();
-        let outcome = evaluate(
-            &program,
-            &operations,
-            &[],
-            RunEnding::None,
-            false,
-            canned_outcome,
-        )
-        .0;
-        ruby = ruby.min(started.elapsed());
-        assert_eq!(logs(&outcome), ["210"]);
-
-        let started = Instant::now();
-        let outcome = evaluate(
-            javascript,
-            &operations,
-            &[],
-            RunEnding::None,
-            false,
-            canned_outcome,
-        )
-        .0;
-        plain = plain.min(started.elapsed());
-        assert_eq!(
-            logs(&outcome),
-            ["210"],
-            "the control has to be the same turn, not a different one"
+    for runtime_only in [
+        "Opal.add_stubs = function",
+        "Opal.queue = function",
+        "var Opal =",
+    ] {
+        assert!(
+            !program.contains(runtime_only),
+            "the compiled program defines `{runtime_only}`, which only Opal's runtime does:\n{program}"
         );
     }
-    // Twice, against a ratio measured at 1.02–1.04 in every condition it was taken in: 12.2 ms
-    // against 11.8 ms on an idle dev container, 12.9 against 12.6 beside six arms' substrate and
-    // surface tests, and 12.7 against 12.4 with twenty-four busy loops holding the machine down. The
-    // regression it is set against is the one in the first paragraph — Opal's 743 KB runtime
-    // prepended to every program, 45–51 ms against a 4.8–7.7 ms base, which is a ratio near seven.
-    // Two sits an order of magnitude below that and comfortably above every reading of a healthy
-    // artifact, and unlike a millisecond ceiling it does not move when the machine does.
+    // Nor does it carry gg's SDK, which a program without the line must not reach.
     assert!(
-        ruby < plain * 2,
-        "a Ruby turn on this component took {ruby:?} against plain JavaScript's {plain:?} on the \
-         same component and the same operations set; Opal's runtime is being built or prepended per \
-         turn rather than coming out of the component's pre-initialised snapshot",
+        !program.contains("Opal.modules[\"gg\"]"),
+        "the compiled program carries gg's SDK:\n{program}"
     );
 
-    // The ratio above cannot see the cost the two readings SHARE, and that is most of what a turn
-    // costs: instantiating the 20.1 MiB guest and building the SDK's surface is ~11 ms of an ~11.6 ms
-    // reading, so it cancels. A regression that put the shared half at 500 ms would leave the ratio
-    // at ~1.0 and this test green while a turn had got forty times dearer — and the test is named
-    // for a turn being *affordable*, which is an absolute claim the ratio does not make.
-    //
-    // So the absolute bound is kept, deliberately loose, as a second assertion rather than as the
-    // first. What made the old one flake was not that it was absolute but that it was TIGHT: 25 ms
-    // chosen against a 4.8–7.7 ms reading had drifted to 2.15x margin as this container got slower,
-    // and 28.7 ms beside a full workspace run was enough to fail it. 250 ms against the 11–12 ms
-    // measured here is 23x, which no amount of machine weather reaches and which still catches the
-    // shared-cost regression the ratio is blind to. It bounds the CONTROL, not the Ruby reading,
-    // because the control is the shared cost with none of Opal's share in it.
-    assert!(
-        plain < std::time::Duration::from_millis(250),
-        "a plain JavaScript turn on this component took {plain:?}; the cost this arm shares with it \
-         — instantiating the guest and building the SDK surface — has regressed, which the Ruby/JS \
-         ratio above cannot see because it cancels",
+    // And yet it runs Ruby, so the runtime it ran on is the one the component was baked with.
+    let operations = all_operations();
+    let outcome = evaluate(
+        &program,
+        &operations,
+        &[],
+        RunEnding::None,
+        false,
+        canned_outcome,
+    )
+    .0;
+    assert_eq!(logs(&outcome), ["210"]);
+    // The same holds from outside Ruby: a line of plain JavaScript finds Opal already defined.
+    let outcome = evaluate(
+        "console.log(typeof Opal, typeof Opal.modules[\"gg\"])",
+        &operations,
+        &[],
+        RunEnding::None,
+        false,
+        canned_outcome,
+    )
+    .0;
+    assert_eq!(
+        logs(&outcome),
+        ["object function"],
+        "the runtime is in the snapshot and gg's SDK is registered in its require registry"
     );
 
-    // WHAT THE INVARIANT COSTS, measured rather than estimated. `require "gg"` runs the SDK's whole
-    // top level — thirteen modules, every type they declare, and `GG::Scope` reflecting the calling
-    // shape of all thirty-five bound functions with `Method#parameters` twice each — and that used
-    // to happen once, at bake time, inside the heap `wizer` snapshots. It cannot any more: a
-    // constant carried in the snapshot is a constant a program reaches with no line it wrote, which
-    // is the thing this arm was converted to stop doing.
-    //
-    // Measured on this repository's dev container, best of five, interleaved with the two readings
-    // above: 2.1 ms plain JavaScript, 2.7 ms Ruby, 20.4 ms Ruby under `require "gg"`. So the line
-    // costs about 17.7 ms of a turn — against the ~127 ms this arm spends in `node` compiling that
-    // same program, which is where a Ruby turn's time actually goes.
-    //
-    // The bound is set on the RATIO to the same turn without the line, loose for the reason the
-    // bound above is loose: what it has to catch is the SDK being loaded more than once per program
-    // or the reflection growing without bound, not machine weather.
-    assert!(
-        required < ruby * 20,
-        "`require \"gg\"` took {required:?} against {ruby:?} for the same program without it; \
-         loading gg's SDK has got dramatically dearer, or it is being loaded more than once",
+    // gg's SDK is not loaded until a program asks for it, and a second `require` loads nothing.
+    let outcome = run("puts defined?(GG).inspect
+puts require \"gg\"
+puts require \"gg\"
+puts defined?(GG).inspect
+");
+    assert_eq!(
+        logs(&outcome),
+        ["nil", "true", "false", "\"constant\""],
+        "`GG` is absent until `require \"gg\"`, which loads the SDK exactly once"
     );
 
-    // And what that line buys, asserted from inside a program: the lifted table `GG::Scope` needs in
-    // order to refuse a wrong argument count or an unknown keyword is built and closed. Two
-    // requires do not build it twice — Ruby's `require` is idempotent and this arm relies on it.
+    // What that one load builds: the lifted table `GG::Scope` needs in order to refuse a wrong
+    // argument count or an unknown keyword, closed once it is built.
     let outcome = run("require \"gg\"
 require \"gg\"
 puts GG::Scope::IMPLEMENTATIONS.size
@@ -1594,26 +1508,16 @@ end
 
     // `sleep` is a busy wait in Opal rather than a park in a host call, so the execution deadline
     // reaches it exactly as it reaches any other runaway — which is the opposite of what the Python
-    // arm measured, and worth pinning for the same reason.
+    // arm documents, and worth pinning for the same reason. The program sleeps forever, so it can
+    // only end by being stopped; a deadline that could not reach the sleep would hang the test.
     let limits = SandboxLimits {
-        timeout: std::time::Duration::from_millis(400),
+        timeout: std::time::Duration::from_millis(100),
         ..SandboxLimits::AMPLE
     };
-    // Everything the host has to do is done BEFORE the reading and before the store. `bounded_store`
-    // arms the 400 ms deadline the moment it builds the state, against a WALL clock that only credits
-    // back time parked in bridged calls, so host work done after it is charged to a program that has
-    // not started.
-    //
-    // What that costs *here* is the `prepare` alone, and the distinction is worth stating precisely
-    // rather than borrowing the alarming version from the arms where this was a live defect. The
-    // `prepare` is a real `opal` invocation and would genuinely have been inside the armed window.
-    // The `component()` beside it would not: it is a `OnceLock::get_or_init`, and this test calls
-    // `run(...)` three times before reaching this case, so the compile is long since paid and the
-    // call returns in nanoseconds. The multi-second compile figures that justify this ordering in
-    // `evaluate` — where the store is built once per process, before anything has warmed the lock —
-    // are costs this particular case could never have paid. The ordering is right for both; only one
-    // of them was ever at risk.
-    let program = prepare("sleep 30\nputs 'never'\n");
+    // The host's work — the real `opal` compile and the component lookup — is done before the store
+    // is built, because `bounded_store` arms the deadline the moment it builds the state, and host
+    // work done after that would be charged to a program that has not started.
+    let program = prepare("puts 'sleeping'\nloop { sleep 1 }\nputs 'never'\n");
     let component = component();
     let log = CallLog::default();
     let linker = linker::<FakeOperationApi>().expect("the production linker builds");
@@ -1623,7 +1527,6 @@ end
         modules: &[],
         ending: RunEnding::None,
     };
-    let started = Instant::now();
     let mut store = bounded_store(
         MembraneState::new(
             FakeOperationApi::with(&log, canned_outcome),
@@ -1651,14 +1554,14 @@ end
         .map_err(|error| engine::classify(&store, limits, &error, SandboxError::Trap));
     let (outcome, _api) = reclaim(store, returned, None, None);
     assert!(
-        outcome.result.is_err(),
+        matches!(outcome.result, Err(SandboxError::Timeout { .. })),
         "a sleeping Ruby program is stopped by the deadline: {:?}",
         outcome.result
     );
-    assert!(
-        started.elapsed() < std::time::Duration::from_secs(10),
-        "the deadline reached the sleep after {:?} rather than letting the 30 s run out",
-        started.elapsed()
+    assert_eq!(
+        outcome.logs,
+        ["sleeping"],
+        "the deadline stopped the program inside its sleep"
     );
 }
 

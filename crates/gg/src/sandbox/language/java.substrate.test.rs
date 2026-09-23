@@ -976,72 +976,42 @@ fn what_a_program_costs_and_what_it_weighs() {
     );
 }
 
-/// **A pooled JVM is reused and the first one is the expensive one** — the measurement that
-/// justifies the pool, taken through the production path rather than quoted.
+/// **A pooled JVM is reused.**
 ///
-/// Shaped exactly as the Kotlin arm's copy of this is, and for the reasons written out at length
-/// there. Two of them decide the shape.
-///
-/// The reuse is a **count** the pool is asked for rather than a reading of a stopwatch, because a
-/// bound in seconds is a bound on the machine.
-///
-/// The saving is a clock, and its two readings are taken next to each other. A cold reading and a
-/// warm one inflate together only while they are readings of the same machine, and taken tens of
-/// seconds apart under a full workspace run they are not. So the reading the gate rests on is a
-/// second cold build, taken after the warm ones by throwing the pool's JVM away, with further warm
-/// builds after it — and the figure it is compared with is the **cheapest** of the warm builds,
-/// since a single one that landed in a bad scheduling window is a reading of the scheduler.
+/// A compiler started per compile would make this arm several times dearer than it needs to be,
+/// which is a difference in the harness rather than in the language. So the arm keeps warm JVMs in a
+/// pool, and this asserts the reuse as counts: builds on one thread start one JVM between them, and
+/// emptying the pool makes the next build start exactly one more and the build after it reuse that.
 #[test]
-fn a_pooled_jvm_is_reused_and_the_first_one_is_the_expensive_one() {
-    let first_cold = Instant::now();
-    prepare(&whole(&["Gg"], "        Gg.log(\"warm\");\n"));
-    let first_cold = first_cold.elapsed();
+fn a_pooled_jvm_is_reused() {
+    use super::compile::{discard_pooled_jvms, jvms_started, live_jvms};
 
-    // Three more through the same pool. The pool holds more than one JVM and this is one thread, so
-    // every one of these is served by the JVM the first left behind.
-    let mut warm_builds: Vec<_> = (0..3).map(timed_build).collect();
-
-    // **The reuse itself**, which is not a measurement: four compilations on one thread, and if the
-    // pool had started a JVM for any of them there would be more than one alive.
+    for index in 0..2 {
+        prepare(&whole(
+            &["Gg"],
+            &format!("        Gg.log(\"warm {index}\");\n"),
+        ));
+    }
     assert_eq!(
-        super::compile::live_jvms(),
-        1,
-        "four compilations on one thread went through more than one JVM, so nothing was pooled"
+        (jvms_started(), live_jvms()),
+        (1, 1),
+        "two compilations on one thread must go through one JVM"
     );
 
-    // **The cold reading the gate rests on**, taken here — beside the warm builds it is compared
-    // with — by making the pool cold again.
-    super::compile::discard_pooled_jvms();
-    let cold = Instant::now();
+    discard_pooled_jvms();
+    assert_eq!(live_jvms(), 0, "the emptied pool holds no JVM");
     prepare(&whole(&["Gg"], "        Gg.log(\"cold again\");\n"));
-    let cold = cold.elapsed();
-
-    // And one more warm build, through the JVM that cold one left behind, so the cold reading has a
-    // warm neighbour on either side and a machine that drifts drifts under both.
-    warm_builds.push(timed_build(3));
-    let steady = warm_builds
-        .iter()
-        .copied()
-        .min()
-        .expect("four warm builds were timed");
-
-    assert!(
-        steady * 2 < cold,
-        "a warm build ({steady:?} of {warm_builds:?}) is not meaningfully cheaper than the cold \
-         one ({cold:?}, and {first_cold:?} for the first of the run): the pool is not keeping a JVM"
+    assert_eq!(
+        (jvms_started(), live_jvms()),
+        (2, 1),
+        "the build after the pool was emptied starts exactly one JVM"
     );
-
-    println!("java pool: first cold {first_cold:?}, cold again {cold:?}, warm {warm_builds:?}");
-}
-
-/// One build through the pool, and what it took.
-fn timed_build(index: usize) -> std::time::Duration {
-    let started = Instant::now();
-    prepare(&whole(
-        &["Gg"],
-        &format!("        Gg.log(\"warm {index}\");\n"),
-    ));
-    started.elapsed()
+    prepare(&whole(&["Gg"], "        Gg.log(\"warm again\");\n"));
+    assert_eq!(
+        (jvms_started(), live_jvms()),
+        (2, 1),
+        "and the build after that reuses it"
+    );
 }
 
 /// **The programs gg writes for this arm are whole programs, and they run.**

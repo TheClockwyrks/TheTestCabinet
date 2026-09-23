@@ -172,6 +172,16 @@ impl AgentWorkspace {
         }
     }
 
+    /// **How many preparations are waiting for this agent's tree** — blocked because another
+    /// preparation holds it.
+    #[cfg(test)]
+    pub fn waiters(&self) -> usize {
+        match self.tree.get() {
+            Some(Ok(workspace)) => workspace.waiters.load(Ordering::SeqCst),
+            _ => 0,
+        }
+    }
+
     /// **Every file this agent's tree has recorded as a loaded module's build output.**
     ///
     /// For the gate that reads what a read left behind and requires a turn to leave it alone. The
@@ -420,6 +430,10 @@ pub struct Workspace {
     occupied: Mutex<bool>,
     /// The wait for [`occupied`](Self::occupied) to fall.
     free: Condvar,
+    /// How many preparations are inside [`claim`](Self::claim) waiting for the tree, so a test can
+    /// tell a second preparation that is blocked on it from one that has not asked yet.
+    #[cfg(test)]
+    waiters: AtomicUsize,
     /// Whatever the language laid out for the whole agent, and what happened when it tried. See
     /// [`stage_once`](Self::stage_once).
     staged: OnceLock<Result<(), String>>,
@@ -486,6 +500,8 @@ impl Workspace {
             staged_keep: OnceLock::new(),
             occupied: Mutex::new(false),
             free: Condvar::new(),
+            #[cfg(test)]
+            waiters: AtomicUsize::new(0),
             staged: OnceLock::new(),
         };
         for path in [
@@ -752,10 +768,14 @@ impl Workspace {
             .occupied
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
+        #[cfg(test)]
+        self.waiters.fetch_add(1, Ordering::SeqCst);
         let (mut occupied, timeout) = self
             .free
             .wait_timeout_while(occupied, PREPARATION_WAIT, |occupied| *occupied)
             .unwrap_or_else(std::sync::PoisonError::into_inner);
+        #[cfg(test)]
+        self.waiters.fetch_sub(1, Ordering::SeqCst);
         if timeout.timed_out() {
             return Err(format!(
                 "the compile workspace {} was still held by another preparation after \
@@ -1602,6 +1622,10 @@ struct PoolState<T> {
     idle: Vec<T>,
     /// How many instances exist — idle plus checked out. Bounded by the pool's capacity.
     live: usize,
+    /// How many instances `make` has built over the pool's life, so a test can assert which
+    /// compilations started a compiler rather than infer it from how long they took.
+    #[cfg(test)]
+    started: usize,
 }
 
 impl<T> CompilerPool<T> {
@@ -1617,6 +1641,8 @@ impl<T> CompilerPool<T> {
             state: Mutex::new(PoolState {
                 idle: Vec::new(),
                 live: 0,
+                #[cfg(test)]
+                started: 0,
             }),
             returned: Condvar::new(),
         }
@@ -1651,10 +1677,19 @@ impl<T> CompilerPool<T> {
                 state.live += 1;
                 drop(state);
                 return match make() {
-                    Ok(instance) => Ok(Checkout {
-                        pool: self,
-                        lent: Some(instance),
-                    }),
+                    Ok(instance) => {
+                        #[cfg(test)]
+                        {
+                            self.state
+                                .lock()
+                                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                                .started += 1;
+                        }
+                        Ok(Checkout {
+                            pool: self,
+                            lent: Some(instance),
+                        })
+                    }
                     Err(error) => {
                         self.release(None);
                         Err(error)
@@ -1682,14 +1717,24 @@ impl<T> CompilerPool<T> {
             .live
     }
 
+    /// **How many instances this pool has started** over its life, counting only the ones `make`
+    /// built successfully.
+    ///
+    /// Test-only. With [`live`](Self::live) it says which compilations started a compiler and which
+    /// were handed one already running, as counts rather than as timings.
+    #[cfg(test)]
+    pub fn started(&self) -> usize {
+        self.state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .started
+    }
+
     /// **Throw every idle instance away**, so the next checkout starts a fresh one.
     ///
-    /// Test-only, and it exists so a COLD reading can be taken at a chosen moment rather than only
-    /// at the start of a process: what a pool saves is the difference between a first compilation in
-    /// a new instance and a later one in the same instance, and comparing two readings taken far
-    /// apart on a machine that changes speed between them compares two machines. Checked-out
-    /// instances are untouched — this drops what the pool is holding, and a compilation in flight
-    /// still owns its own.
+    /// Test-only, so a test can show that an emptied pool starts exactly one new instance and then
+    /// reuses it. Checked-out instances are untouched — this drops what the pool is holding, and a
+    /// compilation in flight still owns its own.
     #[cfg(test)]
     pub fn evict_idle(&self) {
         let mut state = self

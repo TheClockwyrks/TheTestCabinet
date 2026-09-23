@@ -620,11 +620,9 @@ fn the_limits_stop_a_runaway_program() {
         outcome.result
     );
 
-    // **And the default timeout has enormous headroom over the heaviest honest program.** The
-    // timeout is a pure infinite-loop guard, not a work ration: even the heaviest honest program —
-    // read, rewrite and write back twenty 64 KiB files — spends a fraction of a second of guest CPU,
-    // orders of magnitude under the 30 s ceiling. This runs that workload and asserts a wide margin,
-    // which is the property that keeps the timeout from ever tripping on real work.
+    // **And the heaviest honest program completes under the default limits.** The timeout is an
+    // infinite-loop guard, not a work ration: reading, rewriting and writing back twenty 64 KiB files
+    // must finish under `SandboxLimits::AMPLE` rather than be stopped by it.
     let (outcome, log) = run_with(
         concat!(
             "import * as gg from \"gg\";\n",
@@ -655,22 +653,13 @@ fn the_limits_stop_a_runaway_program() {
         },
     );
 
-    assert_eq!(
-        logs(&outcome).len(),
-        1,
-        "the heaviest honest program must complete within the default ceiling"
-    );
-    assert_eq!(log.names().len(), 40, "twenty reads and twenty writes");
-    // `elapsed` is the guest's *wall clock* with bridged-call time subtracted, not CPU time,
-    // so this reading is only about the workload when the workload has the machine. That is
-    // what `.config/nextest.toml` gives it: the override there makes this test take every
-    // runner slot, so a busy suite cannot inflate the number and red the gate over nothing.
-    let default_timeout = SandboxLimits::AMPLE.timeout;
     assert!(
-        outcome.elapsed * 5 < default_timeout,
-        "the default timeout has lost its headroom: the workload ran for {:?} of {default_timeout:?}",
-        outcome.elapsed
+        matches!(&outcome.result, Ok(result) if result.error.is_none()),
+        "the heaviest honest program must complete within the default limits: {:?}",
+        outcome.result
     );
+    assert_eq!(logs(&outcome).len(), 1, "the program reached its last line");
+    assert_eq!(log.names().len(), 40, "twenty reads and twenty writes");
 }
 
 /// **A program ends the run by calling `finish`, and nothing else does.**

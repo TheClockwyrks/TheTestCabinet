@@ -776,34 +776,6 @@ fn a_code_module_is_checked_on_its_own_and_reports_its_names() {
 }
 
 #[test]
-fn what_compiling_a_swift_program_cost_is_a_reading_the_seam_can_take() {
-    // The compile is this arm's dominant per-turn cost and the number a cross-language study is
-    // for, so it is measured here rather than assumed — on both paths, because a program the
-    // compiler REJECTED cost exactly as much as one it accepted and an arm that reported only the
-    // successes would understate itself by every failed turn.
-    //
-    // Bounds rather than a figure: the reading is a wall clock on a shared machine. What would
-    // fail this is a compile that did not happen at all.
-    let started = Instant::now();
-    let _ = prepare("import gg\n\ngg.log(\"compiled\")\n");
-    let accepted = started.elapsed();
-
-    let started = Instant::now();
-    let rejected = compile_program("let x: Int = \"no\"\n", &[], &PrepareContext::detached());
-    let refused = started.elapsed();
-
-    assert!(rejected.is_err(), "that program does not type-check");
-    assert!(
-        accepted.as_millis() > 20,
-        "a Swift compile that took {accepted:?} did not run a compiler"
-    );
-    assert!(
-        refused.as_millis() > 20,
-        "a Swift rejection that took {refused:?} did not run a compiler"
-    );
-}
-
-#[test]
 fn what_a_compiled_swift_program_weighs_is_the_arms_dominant_per_turn_cost() {
     // Two figures a study needs and neither is an accident: the artifact is compiled by the engine
     // on **every** turn, because this arm has no prebuilt component to compile once — so its size

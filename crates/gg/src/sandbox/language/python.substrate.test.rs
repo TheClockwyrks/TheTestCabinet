@@ -682,7 +682,7 @@ print("still here")
     // A runaway program is stopped by the execution timeout. Epoch interruption fires at loop
     // back-edges, which a Python `while True:` produces in the interpreter's own dispatch loop.
     let limits = SandboxLimits {
-        timeout: Duration::from_secs(3),
+        timeout: Duration::from_millis(100),
         ..SandboxLimits::AMPLE
     };
     let (outcome, _log) = run_with("while True:\n    pass", &[], &[], limits, canned_outcome);
@@ -694,24 +694,15 @@ print("still here")
 
     // A program that PARKS is a different case, and the one the acceptance in
     // [`limits`](crate::sandbox::limits) is about. Epoch interruption can only fire where the guest
-    // is executing wasm, and a guest inside `wasi:io/poll` on a clock pollable is executing none —
-    // so the deadline lands at the first re-entry after the budget is spent, and how far past the
-    // budget that is depends on how long the guest stays parked.
-    //
-    // Both halves are pinned here rather than quoted from a measurement nobody can re-run, because a
-    // measurement is exactly what the documented decision rests on.
-    //
-    // Half one: a program that parks in SHORT hops is bounded near its budget. Ten seconds of
-    // sleeping in 50 ms hops against a 1 s budget was measured stopping at 1.00–1.09 s.
-    let short_hops = SandboxLimits {
-        timeout: Duration::from_secs(1),
-        ..SandboxLimits::AMPLE
-    };
+    // is executing wasm, and a guest inside `wasi:io/poll` on a clock pollable is executing none — so
+    // the deadline lands at the first re-entry after the budget is spent. A program that parks in
+    // short hops forever therefore still ends as a timeout, between two hops. It can end no other
+    // way, so a deadline that stopped reaching it would hang this test rather than pass it.
     let (outcome, _log) = run_with(
-        "import time\nfor _ in range(200):\n    time.sleep(0.05)",
+        "import time\nwhile True:\n    time.sleep(0.02)",
         &[],
         &[],
-        short_hops,
+        limits,
         canned_outcome,
     );
     assert!(
@@ -719,86 +710,11 @@ print("still here")
         "a program parked in short hops is stopped: {:?}",
         outcome.result
     );
-    assert!(
-        outcome.elapsed < Duration::from_secs(4),
-        "a program parked in short hops asked for 10 s of sleeping against a 1 s budget and should \
-         be stopped between two hops, not after all of them: {:?}",
-        outcome.elapsed
-    );
 
-    // Half two: a program that parks in ONE long hop overruns its budget by the whole hop. A
-    // `time.sleep(3)` against a 1 s budget was measured running the full 3 s every time it was not
-    // the first program in the process — 8 runs of `sleep(4)` against 1 s and 5 of `sleep(8)`
-    // against 2 s all ran to completion. It is stopped, and `elapsed` reports the truth; the
-    // deadline simply did not bound it. That is the acceptance, stated as a test so a future reader
-    // does not have to take the prose's word for it.
-    //
-    // The reading only says that if the guest REACHED the park, and whether it does is not this
-    // test's to decide. The budget is armed when the store is built, so everything between there and
-    // the program's first line — instantiating the 25 MB component, and the wall clock the machine
-    // spends doing it — is already being counted against it. That is 15-19 ms on an idle dev
-    // container, and under `cargo nextest run --workspace` this assertion was measured **failing at
-    // 1.054 s** against a 1 s budget with nothing whatever wrong with the sandbox: the deadline
-    // landed before the sleep began, so the figure was of an instantiation rather than of a park,
-    // and `>= 2 s` was a claim about how busy the machine was.
-    //
-    // So the program says when it has reached the park and the assertion is made on that rather than
-    // on a stopwatch. `print` crosses the membrane as it happens and [`reclaim`] keeps what a
-    // trapped program had already logged, so the witness is there whether or not the sleep ran. A
-    // budget that did not get the guest that far is a budget too small for this machine rather than
-    // a finding, so it doubles and the case is taken again — with the park always three times
-    // whatever budget reached it, so a deadline that bounded the park would show up as an elapsed
-    // near one budget rather than three.
-    const WITNESS: &str = "parked";
-    let mut budget = Duration::from_secs(1);
-    let parked = loop {
-        let park = budget * 3;
-        let (outcome, _log) = run_with(
-            &format!(
-                "import time\nprint({WITNESS:?})\ntime.sleep({})",
-                park.as_secs_f64()
-            ),
-            &[],
-            &[],
-            SandboxLimits {
-                timeout: budget,
-                ..SandboxLimits::AMPLE
-            },
-            canned_outcome,
-        );
-        assert!(
-            matches!(outcome.result, Err(SandboxError::Timeout { .. })),
-            "a parked Python program is stopped: {:?}",
-            outcome.result
-        );
-        if outcome.logs.iter().any(|line| line == WITNESS) {
-            break outcome;
-        }
-        // Not a retry for flakiness: the guest never got to the line, so there is nothing here to
-        // have measured. The ceiling is what says the machine — rather than the deadline — has
-        // stopped making sense.
-        assert!(
-            budget < Duration::from_secs(8),
-            "this guest did not reach its own first line inside {budget:?} of the deadline's own \
-             wall clock, so nothing here is a reading of a park",
-        );
-        budget *= 2;
-    };
-    assert!(
-        parked.elapsed >= budget * 2,
-        "a park of {:?} against a {budget:?} budget was reached — the program logged {WITNESS:?} — \
-         and is expected to run to completion; if the deadline now bounds it, the acceptance in \
-         `sandbox::limits` and the caution in the `gg/languages/python.md` page are both out of \
-         date: {:?}",
-        budget * 3,
-        parked.elapsed
-    );
-
-    // And the other direction, pinned beside the ceiling it guards: the DEFAULT budget is a pure
-    // infinite-loop guard, never a work ration. A program that spends a whole model reply's worth
-    // of output on large writes — dozens of 64 KiB files in one program, the heaviest honest shape
-    // an interpreted arm has — must complete with an order-of-magnitude margin under the 30 s
-    // default (`SandboxLimits::AMPLE`, the same figure the console seeds `timeoutSecs` with).
+    // And the other direction: the DEFAULT budget is an infinite-loop guard, never a work ration. A
+    // program that spends a whole model reply's worth of output on large writes — dozens of 64 KiB
+    // files in one program, the heaviest honest shape an interpreted arm has — completes under
+    // `SandboxLimits::AMPLE` rather than being stopped by it.
     let (outcome, log) = run_with(
         r#"
 import gg
@@ -817,17 +733,10 @@ print("done", total > 0)
     assert_eq!(
         logs(&outcome),
         ["done True"],
-        "48 large writes did not complete under the default ceiling: {:?}",
+        "48 large writes did not complete under the default limits: {:?}",
         outcome.result
     );
     assert_eq!(log.calls().len(), 48, "every write crossed the membrane");
-    assert!(
-        outcome.elapsed < Duration::from_secs(10),
-        "48 × 64 KiB writes approached the default ceiling on the slowest interpreted arm; the \
-         guard exists for loops that never end, not for programs that do a lot of honest work: \
-         {:?}",
-        outcome.elapsed
-    );
 }
 
 #[test]

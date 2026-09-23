@@ -408,16 +408,20 @@ fn two_preparations_of_one_agent_do_not_clear_under_each_other() {
         }
     });
 
-    // The tree is still the first preparation's while it holds the context, whatever the second
-    // thread is doing: a reset that ran here would take this file with it.
-    for _ in 0..20 {
-        assert_eq!(
-            std::fs::read_to_string(work.join("program.src")).unwrap_or_default(),
-            "the first response",
-            "a second preparation cleared the tree while the first was writing in it"
+    // Once the second preparation is blocked on the tree, the tree is still the first preparation's:
+    // a reset that ran here would take this file with it.
+    while agent.waiters() == 0 {
+        assert!(
+            !waiting.is_finished(),
+            "the second preparation finished while the first still held the tree"
         );
-        std::thread::sleep(std::time::Duration::from_millis(5));
+        std::thread::yield_now();
     }
+    assert_eq!(
+        std::fs::read_to_string(work.join("program.src")).unwrap_or_default(),
+        "the first response",
+        "a second preparation cleared the tree while the first was writing in it"
+    );
     drop(holder);
 
     waiting.join().expect("the waiting preparation finished");
@@ -876,6 +880,11 @@ fn a_returned_instance_is_the_next_preparations_instance() {
         assert_eq!(daemon.build("x"), "0:x");
     }
     assert_eq!(BUILT.load(Ordering::Relaxed), 1);
+    assert_eq!(
+        POOL.started(),
+        1,
+        "the pool's own count agrees with how many were built"
+    );
 }
 
 /// An instance a compilation left in a bad state is thrown away rather than handed to the next
@@ -918,4 +927,9 @@ fn a_compiler_that_cannot_start_does_not_consume_the_pool() {
         })
         .expect("the pool still has room");
     assert_eq!(daemon.build("x"), "7:x");
+    assert_eq!(
+        POOL.started(),
+        1,
+        "only the instance that started counts as started"
+    );
 }

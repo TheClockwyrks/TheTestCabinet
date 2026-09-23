@@ -663,10 +663,10 @@ fn the_compiler_tells_a_rejected_program_from_a_broken_toolchain() {
 #[test]
 fn what_a_program_costs_and_what_it_weighs() {
     // Not a benchmark and not a threshold anyone should tune: a band wide enough that only a change
-    // in KIND fails it. The figures the arm's documentation quotes were measured here, and the
-    // reason they are asserted at all is that the whole feasibility argument for this arm rests on
-    // the artifact being tens of kilobytes rather than the megabytes a whole-surface relink
-    // produces — which is what the study measured before the prebuilt library set existed.
+    // in KIND fails it. The reason it is asserted at all is that the whole feasibility argument for
+    // this arm rests on the artifact being tens of kilobytes rather than the megabytes a
+    // whole-surface relink produces — which is what the study measured before the prebuilt library
+    // set existed.
     super::compile::warm();
     let started = Instant::now();
     let component = prepare(&format!("fn main() {{\n    {LOG}(\"weighed\");\n}}\n"));
@@ -679,18 +679,10 @@ fn what_a_program_costs_and_what_it_weighs() {
          dead-stripping",
         component.len()
     );
-    assert!(
-        compiled < std::time::Duration::from_secs(30),
-        "compiling one small Rust program took {compiled:?}"
-    );
-    // Printed rather than asserted, because it is the arm's cost rather than its correctness and a
-    // shared machine is the wrong place to fail over a stopwatch. `cargo nextest run --no-capture`
-    // is where the figures this arm's documentation quotes come from.
-    let started = Instant::now();
-    engine::compile_bytes(&component).expect("a freshly compiled Rust program is a component");
+    // Printed rather than asserted: what the compile costs is a reading of the machine as much as
+    // of the arm. `cargo nextest run --no-capture` shows it.
     println!(
-        "rustc and the component encode {compiled:?}; wasmtime Component::new {:?}; {} bytes",
-        started.elapsed(),
+        "rustc and the component encode {compiled:?}; {} bytes",
         component.len()
     );
 

@@ -403,9 +403,10 @@ async fn a_git_call_leaves_the_runtime_thread_free_for_other_agents() {
 /// A commit id hashes the timestamps as well as the tree, and gg puts a commit sha into a
 /// *prompt* — an issue review brief names the commit the work is measured against — so a
 /// clock-derived date makes the reviewer's very first request differ between two runs of the same
-/// work for a reason that has nothing to do with the work. It showed up
-/// exactly as one would expect if nobody had thought about it: the multi-agent round trip passed
-/// whenever the two baselines happened to land in the same second.
+/// work for a reason that has nothing to do with the work.
+///
+/// The clock's absence is asserted directly, as the dates the commit carries, rather than by
+/// committing twice far enough apart for a clock-derived date to differ.
 #[tokio::test]
 async fn gg_commits_are_a_function_of_their_content_and_not_of_the_clock() {
     let first = TempDir::new().unwrap();
@@ -414,8 +415,18 @@ async fn gg_commits_are_a_function_of_their_content_and_not_of_the_clock() {
         .await
         .expect("a baseline");
 
-    // Far enough apart that a clock-derived commit date could not coincide.
-    tokio::time::sleep(std::time::Duration::from_millis(1_100)).await;
+    let dates = std::process::Command::new("git")
+        .args(["log", "-1", "--format=%at %ct"])
+        .current_dir(first.path())
+        .output()
+        .expect("git runs");
+    assert!(dates.status.success(), "git log failed: {dates:?}");
+    assert_eq!(
+        String::from_utf8_lossy(&dates.stdout).trim(),
+        "0 0",
+        "the baseline's author and committer dates are gg's pinned epoch ({GG_COMMIT_DATE}), not \
+         the clock's",
+    );
 
     let second = TempDir::new().unwrap();
     write(second.path(), "index.html", "<!doctype html>\n");

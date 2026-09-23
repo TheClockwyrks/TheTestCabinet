@@ -224,17 +224,21 @@ pub(super) fn warm() {
     }
 }
 
-/// **How many JVMs the pool is holding**, so a test can assert that four compilations went through
-/// one of them rather than infer it from how long they took.
+/// **How many JVMs the pool is holding**, so a test can assert that several compilations went
+/// through one of them rather than infer it from how long they took.
 #[cfg(test)]
 pub(super) fn live_jvms() -> usize {
     POOL.live()
 }
 
-/// **Throw the pool's warm JVMs away**, so the next compilation pays for a new one.
-///
-/// Test-only, and it is what lets a COLD reading be taken at a chosen moment instead of only at the
-/// start of a process — see [`CompilerPool::evict_idle`].
+/// **How many JVMs the pool has started** in this process — see [`CompilerPool::started`].
+#[cfg(test)]
+pub(super) fn jvms_started() -> usize {
+    POOL.started()
+}
+
+/// **Throw the pool's warm JVMs away**, so the next compilation starts a new one — see
+/// [`CompilerPool::evict_idle`].
 #[cfg(test)]
 pub(super) fn discard_pooled_jvms() {
     POOL.evict_idle();

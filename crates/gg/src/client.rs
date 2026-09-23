@@ -722,7 +722,9 @@ impl OpenRouterClient {
                     let status = resp.status().as_u16();
                     match classify_status(status) {
                         StatusClass::Success => {
-                            match read_stream(resp, guard, self.model_call_timeout).await {
+                            match read_stream(resp.bytes_stream(), guard, self.model_call_timeout)
+                                .await
+                            {
                                 StreamOutcome::Reply(response) => {
                                     // The tally of thrown-away attempts rides out on the reply that
                                     // worked; nothing else the turn loop is handed could carry it.
@@ -860,17 +862,25 @@ struct Generated {
 /// reply, and carrying a window across attempts would let words from a discarded reply condemn its
 /// replacement.
 ///
-/// Abandoning is simply returning: the [`reqwest::Response`] and its chunk stream are dropped on
-/// the way out, which closes the connection and stops the provider sending the rest. gg neither
-/// reads nor pays for the remainder.
-async fn read_stream(
-    resp: reqwest::Response,
+/// Abandoning is simply returning: the response's chunk stream is dropped on the way out, which
+/// closes the connection and stops the provider sending the rest. gg neither reads nor pays for the
+/// remainder.
+///
+/// Generic over the chunk stream rather than taking the [`reqwest::Response`], so a test can hand it
+/// chunks that are ready without any I/O and then a stream that never yields again — which is what
+/// lets the idle half of the ceiling be asserted under paused time instead of by waiting it out.
+async fn read_stream<S, B, E>(
+    mut stream: S,
     config: LoopGuardConfig,
     model_call_timeout: Duration,
-) -> StreamOutcome {
+) -> StreamOutcome
+where
+    S: futures_util::Stream<Item = Result<B, E>> + Unpin,
+    B: AsRef<[u8]>,
+    E: std::fmt::Display,
+{
     let mut guard = LoopGuard::new(config);
     let mut accumulator = StreamAccumulator::new();
-    let mut stream = resp.bytes_stream();
 
     loop {
         // The idle half of the run's per-call ceiling: a stream still producing bytes is not
@@ -888,7 +898,7 @@ async fn read_stream(
             Ok(chunk) => chunk,
             Err(err) => return StreamOutcome::Interrupted(format!("stream interrupted: {err}")),
         };
-        let delta = match accumulator.push_bytes(&chunk) {
+        let delta = match accumulator.push_bytes(chunk.as_ref()) {
             Ok(delta) => delta,
             Err(err) => return StreamOutcome::Malformed(err),
         };

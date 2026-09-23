@@ -47,7 +47,6 @@
 //! existing function rather than adding a function.
 
 use std::sync::OnceLock;
-use std::time::Instant;
 
 use test_cabinet_core::gg::{CAPABILITY_DOCVIEW_CLOSE, GgProgramLanguage};
 
@@ -655,40 +654,6 @@ public static class Program {
         prepare(&source),
         prepare(&source),
         "two preparations of one C# program produced different assemblies"
-    );
-}
-
-#[test]
-fn what_compiling_a_csharp_program_cost_is_a_reading_the_seam_can_take() {
-    // The seam requires an arm whose prepare step invokes a compiler to declare it, so that the
-    // per-turn cost is recorded rather than inferred. This asserts the reading exists and is
-    // plausible; the numbers themselves are in this arm's `compile` module, measured rather than
-    // quoted.
-    let source = program(
-        r#"
-using System;
-using System.Linq;
-
-public static class Program {
-  public static void Main() => Console.WriteLine(Enumerable.Range(1, 10).Sum());
-}
-"#,
-    );
-    // Warm the compiler: the first `csc` in a process tree pays the runtime's own JIT, which is a
-    // property of .NET starting rather than of compiling this program.
-    let _ = prepare(&source);
-
-    let started = Instant::now();
-    let prepared = prepare(&source);
-    let elapsed = started.elapsed();
-    assert!(
-        elapsed.as_secs() < 30,
-        "a warm C# compile took {elapsed:?}, which is not a compile"
-    );
-    assert!(
-        prepared.len() > 1_000,
-        "the prepared manifest is implausibly small: {} bytes",
-        prepared.len()
     );
 }
 

@@ -15,8 +15,6 @@
 //! `rustc` and a `Component::new`. So each function drives *many* statements rather than being one
 //! behaviour per function. Add a statement to an existing function rather than adding a function.
 
-use std::time::Duration;
-
 use serde_json::{Value, json};
 
 use super::substrate::{
@@ -1262,10 +1260,9 @@ fn the_generated_catalogue_describes_the_surface_the_sdk_offers() {
 /// **The default execution ceiling is an infinite-loop guard, not a work ration**, proven on a
 /// compiled arm beside the interpreted proof in `python.substrate.test.rs`: a program that spends
 /// a whole model reply's worth of output on large writes — dozens of 64 KiB files in one program —
-/// completes with an order-of-magnitude margin under the 30 s default (`SandboxLimits::AMPLE`,
-/// the same figure the console seeds `timeoutSecs` with).
+/// completes under the default limits (`SandboxLimits::AMPLE`) rather than being stopped by them.
 #[test]
-fn dozens_of_large_writes_complete_far_inside_the_default_ceiling() {
+fn dozens_of_large_writes_complete_under_the_default_ceiling() {
     let (outcome, log) = run_with(
         &whole(
             &["files"],
@@ -1287,10 +1284,4 @@ fn dozens_of_large_writes_complete_far_inside_the_default_ceiling() {
         outcome.result
     );
     assert_eq!(log.calls().len(), 48, "every write crossed the membrane");
-    assert!(
-        outcome.elapsed < Duration::from_secs(10),
-        "48 × 64 KiB writes approached the default ceiling; the guard exists for loops that never \
-         end, not for programs that do a lot of honest work: {:?}",
-        outcome.elapsed
-    );
 }

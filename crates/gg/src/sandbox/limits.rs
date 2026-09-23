@@ -56,23 +56,12 @@
 //! `time.sleep(0.05)`s — ten seconds of sleeping — against a 1 s budget stopped at 1.00–1.09 s,
 //! because the deadline lands at the first hop that returns to wasm. So a program is always stopped
 //! and the elapsed figure is always honest, but the deadline bounds the guest's *execution* and not
-//! the wall clock: it can only fire between parks, never inside one. Both halves are pinned by
-//! `the_interpreters_own_landmines_are_defused`.
+//! the wall clock: it can only fire between parks, never inside one.
 //!
-//! (An earlier note here quoted a 2.5–9.4 s spread for that first case. Those figures were the first
-//! program run in a test process, whose budget the ~1 s component compile had already spent — they
-//! measured the compile, not the sleep.)
-//!
-//! The long-park half is pinned on the program's **own witness that it reached the park**, and that
-//! is worth stating here because the obvious pinning is wrong in a way that looks right. Asserting
-//! only that the elapsed figure overran the budget makes a claim about the machine: the budget is
-//! armed when the store is built, so a container slow enough to spend it instantiating the 25 MB
-//! guest stops the program before its sleep begins, and the reading is then of an instantiation
-//! rather than of a park. That is not a hypothetical — it was measured under `cargo nextest run
-//! --workspace` at 1.054 s against a 1 s budget, on a sandbox with nothing whatever wrong with it.
-//! So the program logs a line before it sleeps, the test insists on seeing that line before it reads
-//! the clock at all, and a budget that did not get the guest that far is doubled rather than
-//! reported.
+//! `the_interpreters_own_landmines_are_defused` pins the half that is a behaviour: a program that
+//! parks in short hops forever is stopped as a timeout. The long-park half is an acceptance rather
+//! than a behaviour, and no test asserts it, because the only way to observe a park outlasting its
+//! budget is to time it, and a timing is a reading of the machine as much as of the sandbox.
 //!
 //! # The decision, settled with the first arm that can reach it
 //!

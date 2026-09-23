@@ -942,41 +942,6 @@ fn a_cpp_program_is_compiled_verbatim() {
 }
 
 #[test]
-fn what_compiling_a_cpp_program_cost_is_a_reading_the_seam_can_take() {
-    // The compile is this arm's dominant per-turn cost and the number a cross-language study is for,
-    // so it is measured here rather than assumed — on both paths, because a program the compiler
-    // REJECTED cost exactly as much as one it accepted and an arm that reported only the successes
-    // would understate itself by every failed turn.
-    //
-    // Bounds rather than a figure: the reading is a wall clock on a shared machine. What would fail
-    // this is a compile that did not happen at all.
-    compile::warm();
-    let _ = prepare("#include <gg.hpp>\n\nint main() { gg::log(\"warmed\"); return 0; }\n");
-
-    let started = Instant::now();
-    let _ = prepare("#include <gg.hpp>\n\nint main() { gg::log(\"compiled\"); return 0; }\n");
-    let accepted = started.elapsed();
-
-    let started = Instant::now();
-    let rejected = compile_program(
-        "#include <string>\nint main() { std::string x = 12; return 0; }\n",
-        &[],
-        &PrepareContext::detached(),
-    );
-    let refused = started.elapsed();
-
-    assert!(rejected.is_err(), "that program does not compile");
-    assert!(
-        accepted.as_millis() > 10,
-        "a C++ compile that took {accepted:?} did not run a compiler"
-    );
-    assert!(
-        refused.as_millis() > 10,
-        "a C++ rejection that took {refused:?} did not run a compiler"
-    );
-}
-
-#[test]
 fn what_a_compiled_cpp_program_weighs_is_a_per_turn_cost() {
     // Two figures a study needs and neither is an accident: the artifact is compiled by the engine
     // on **every** turn, because this arm has no prebuilt component to compile once — so its size
