@@ -9,7 +9,7 @@
 # secret + backend explicit and lets an overlay patch a single host in isolation.
 # cert-manager watches the `cert-manager.io/cluster-issuer` annotation and issues a
 # certificate for each `tls[].hosts` into the named secret (the ClusterIssuer in
-# clusterissuer.yaml solves the ACME challenge over Cloudflare DNS-01).
+# ../../cluster/internal-ingress/clusterissuer.yaml solves the ACME challenge over Cloudflare DNS-01).
 #
 # Hostnames default to the prod `*.testcabinet.ai` names; an overlay for another
 # environment patches the host strings (and the cert hosts) — see task-3.

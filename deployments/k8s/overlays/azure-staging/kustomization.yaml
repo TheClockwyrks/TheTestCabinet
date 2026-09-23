@@ -3,14 +3,18 @@
 # Same components and patches as azure-prod, so staging rehearses prod exactly;
 # only the namespace, TCAB_ENV, the resources it points at (staging Key Vault,
 # staging Postgres, *.staging.tcab.testcabinet.ai hostnames, the staging GitHub
-# org + Cloudflare Pages project), and the image tags differ. Apply INSTEAD of
-# overlays/staging.
+# org + Cloudflare Pages project) differ. Apply INSTEAD of overlays/staging.
 #
 # Kustomize applies `components` before this overlay's own `patches`, and the
 # `namespace:` directive retargets every resource (and every patch target, which
 # is matched BEFORE the namespace transformer runs) to tcab-staging.
 #
-# Apply with:  kubectl apply -k deployments/k8s/overlays/azure-staging
+# The Azure pipeline deploys it through scripts/ci/deploy.sh, which sets every image
+# to the Test Cabinet ACR at the commit being deployed, so this overlay carries no
+# image names or tags of its own. Every object it renders is namespaced; the Namespace
+# and the other cluster-scoped objects are ../../cluster/azure-staging, applied by hand
+# (see "Cluster prerequisites" in ../../README.md).
+#
 # Prerequisites (out of band, mirroring azure-prod / the runbook):
 #   - the staging Key Vault holds every secret the keyvault-csi SecretProviderClass
 #     lists (see .env.staging + the upload commands), and the tcab-keyvault-sync
@@ -53,9 +57,7 @@ patches:
   # Retag TCAB_ENV to staging + point every workload at the in-cluster collector, and
   # retarget the dispatcher's sandbox/Job namespace to tcab-staging.
   - path: patch-env.yaml
-  # Env VALUES the images: transformer can't reach — pin to the staging image tags.
-  - path: patch-dispatcher-driver-image.yaml
-  # In-cluster publishing: publisher image + credential Secret, plus the STAGING
+  # In-cluster publishing: the publisher credential Secret, plus the STAGING
   # GitHub org + Cloudflare Pages project the dispatcher forwards into publish Jobs.
   - path: patch-dispatcher-publisher.yaml
   # Subscription auth (Codex + Claude Code), identical to prod.
@@ -128,49 +130,3 @@ patches:
       - op: replace
         path: /spec/tls/0/hosts/0
         value: grafana.staging.tcab.testcabinet.ai
-
-# Pin ALL service images (the CODE) to ONE git-sha so they version together. Currently
-# 49654d1b228be0a3dc3f54b412d46ba4426d0eef (the v0.6.3-rc5 build — the latest `staging`
-# commit at which `build-service-images` published, all eight images on both arches).
-# Bumped from the v0.6.3-rc3 pin 711c71d8. Prod is still on the v0.6.2-rc1 pin 31568780,
-# so staging stays one release ahead of prod.
-#
-# This pin STAYS ON the `staging` branch tip, which it is exactly level with today.
-# Expect tip and pin to diverge the next time a catalog-only commit lands; that content
-# reaches staging through the ingest sidecar, which tracks the branch tip separately
-# (patch-backend-ingest.yaml).
-#
-# The run-container images are pinned SEPARATELY via TCAB_CONTAINER_TAG in
-# patch-dispatcher-driver-image.yaml, because that tag decides the image every future RUN
-# executes inside. The two pins CONVERGED at 31568780 (v0.6.2-rc1, the first build after
-# both workflows were made unfiltered in 5ef86c1d) and stay converged here: this build
-# published the service images AND all 27 run images at the same sha. `containers/` did
-# not change between 711c71d8 and this sha, so the run images are rebuilds of the same
-# Dockerfiles — only upstream base layers moved. Keep re-pinning both together.
-images:
-  - name: REPLACE_REGISTRY/tcab-backend
-    newName: ghcr.io/theclockwyrks/tcab-backend
-    newTag: 49654d1b228be0a3dc3f54b412d46ba4426d0eef
-  - name: REPLACE_REGISTRY/tcab-auth-service
-    newName: ghcr.io/theclockwyrks/tcab-auth-service
-    newTag: 49654d1b228be0a3dc3f54b412d46ba4426d0eef
-  - name: REPLACE_REGISTRY/tcab-dispatcher
-    newName: ghcr.io/theclockwyrks/tcab-dispatcher
-    newTag: 49654d1b228be0a3dc3f54b412d46ba4426d0eef
-  - name: REPLACE_REGISTRY/tcab-driver
-    newName: ghcr.io/theclockwyrks/tcab-driver
-    newTag: 49654d1b228be0a3dc3f54b412d46ba4426d0eef
-  - name: REPLACE_REGISTRY/tcab-artifacts
-    newName: ghcr.io/theclockwyrks/tcab-artifacts
-    newTag: 49654d1b228be0a3dc3f54b412d46ba4426d0eef
-  - name: REPLACE_REGISTRY/tcab-arena
-    newName: ghcr.io/theclockwyrks/tcab-arena
-    newTag: 49654d1b228be0a3dc3f54b412d46ba4426d0eef
-  - name: REPLACE_REGISTRY/tcab-web
-    newName: ghcr.io/theclockwyrks/tcab-web
-    newTag: 49654d1b228be0a3dc3f54b412d46ba4426d0eef
-  # Referenced as an env VALUE (TCAB_PUBLISHER_IMAGE), not a container image: field,
-  # so this rewrites nothing today; kept so the registry/tag set stays complete.
-  - name: REPLACE_REGISTRY/tcab-publisher
-    newName: ghcr.io/theclockwyrks/tcab-publisher
-    newTag: 49654d1b228be0a3dc3f54b412d46ba4426d0eef

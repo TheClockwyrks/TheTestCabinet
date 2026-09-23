@@ -1,0 +1,32 @@
+# The cluster-scoped objects the azure-prod overlay depends on. A cluster
+# administrator applies them by hand before the pipeline's first deploy and again
+# whenever one of them changes (see "Cluster prerequisites" in ../../README.md). The
+# pipeline's deploy identity cannot write any of them.
+#
+# Apply with:  kubectl apply -k deployments/k8s/cluster/azure-prod
+#
+# There is no `namespace:` directive, because every object here is cluster-scoped.
+# The patches name the environment's Namespace and point the observability binding at
+# the ServiceAccount the overlay creates in it.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../namespace
+  - ../observability
+  - ../internal-ingress
+
+patches:
+  - target: { kind: Namespace, name: tcab-prod }
+    patch: |-
+      - op: replace
+        path: /metadata/name
+        value: tcab-prod
+      - op: replace
+        path: /metadata/labels/tcab.dev~1env
+        value: prod
+  - target: { kind: ClusterRoleBinding, name: tcab-lgtm-node-metrics }
+    patch: |-
+      - op: replace
+        path: /subjects/0/namespace
+        value: tcab-prod

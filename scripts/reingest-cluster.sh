@@ -50,7 +50,7 @@
 # from scripts/lib/env.sh for the chosen env (staging → `staging`, prod → `master`).
 # The branch tip is fetched, so a re-ingest picks up whatever catalog + reference-build
 # lockfile changes have been pushed — that on-demand refresh is what this script is for.
-# The service CODE version is pinned separately by the overlay's image newTag.
+# The service CODE version is the commit the pipeline last deployed (scripts/ci/deploy.sh).
 set -euo pipefail
 
 # Resolve the target environment from a REQUIRED --env <prod|staging> (scripts/lib/env.sh);

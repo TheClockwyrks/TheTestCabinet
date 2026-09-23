@@ -16,14 +16,15 @@ here uses **placeholder values** (`REPLACE_REGISTRY`, `REPLACE_OWNER`,
 
 The flat manifests live in [`base/`](base/) — the shared **base**
 ([`base/kustomization.yaml`](base/kustomization.yaml)); apply an **overlay**, never
-the base directly. `base/` is a sibling of `overlays/` (not a parent) so an overlay
-can reference it as `../../base` without kustomize flagging an overlay→ancestor
-cycle.
+the base directly. Every object in the base and its components is namespaced; the
+cluster-scoped objects live under [`cluster/`](cluster/) (see
+[Cluster prerequisites](#cluster-prerequisites)). `base/` is a sibling of
+`overlays/` (not a parent) so an overlay can reference it as `../../base` without
+kustomize flagging an overlay→ancestor cycle.
 
 | File (under `base/`)   | What it is                                                                                                                                                                                                                                                                                                  |
 | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `kustomization.yaml`   | The base: lists every resource below for the overlays to reference.                                                                                                                                                                                                                                         |
-| `namespace.yaml`       | The per-environment namespace (`tcab-staging` / `tcab-prod`).                                                                                                                                                                                                                                               |
 | `rbac.yaml`            | The `tcab-driver` SA/Role (pod create/get/list/delete + pods/exec get+create — the driver execs over a WebSocket, a GET to the exec subresource, so `get` is required, not just `create`, for the sandbox) and the `tcab-dispatcher` SA/Role (jobs create/get/list/watch/delete + pods/log, for the queue). |
 | `secrets.example.yaml` | Secret templates (R2 creds, the shared service token, harness keys, registry pull secret) — **placeholders only**, not a base resource.                                                                                                                                                                     |
 | `backend.yaml`         | Backend StatefulSet (1 replica) + PVC + ClusterIP Service.                                                                                                                                                                                                                                                  |
@@ -36,13 +37,23 @@ cycle.
 
 Overlays:
 
-| Overlay                  | Purpose                                                                                                                |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
-| `overlays/prod`          | Production: the base + the image registry pinned.                                                                      |
-| `overlays/staging`       | Staging: the same manifests, renamed to `tcab-staging` with `TCAB_ENV=staging`.                                        |
-| `overlays/azure-prod`    | Prod on **managed PostgreSQL**: `overlays/prod` + the `postgres` component. Apply instead of `overlays/prod`.          |
-| `overlays/azure-staging` | Staging on **managed PostgreSQL**: `overlays/staging` + the `postgres` component. Apply instead of `overlays/staging`. |
-| `overlays/local`         | The k3d development mirror (driven by [`../local/Makefile`](../local/Makefile)).                                       |
+| Overlay                  | Purpose                                                                                                                                                                        |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `overlays/prod`          | Production: the base + `cluster/namespace` + `cluster/observability`, with placeholder image pins. Applied by hand.                                                            |
+| `overlays/staging`       | Staging: the same manifests, renamed to `tcab-staging` with `TCAB_ENV=staging`. Applied by hand.                                                                               |
+| `overlays/azure-prod`    | The production deployment on **managed PostgreSQL**, Key Vault and the internal ingress. Deployed by the Azure pipeline from `master`; namespaced objects only, no image tags. |
+| `overlays/azure-staging` | The staging deployment, identical to `azure-prod` apart from its targets. Deployed by the Azure pipeline from `staging`; namespaced objects only, no image tags.               |
+| `overlays/local`         | The k3d development mirror (driven by [`../local/Makefile`](../local/Makefile)), including `cluster/namespace` and `cluster/observability`.                                    |
+
+The cluster-scoped objects:
+
+| Kustomization              | Purpose                                                                                                                |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `cluster/namespace`        | The environment's `Namespace`, named by the including kustomization.                                                   |
+| `cluster/observability`    | The `tcab-lgtm-node-metrics` `ClusterRole` + `ClusterRoleBinding` the LGTM stack's kubelet scrape needs.               |
+| `cluster/internal-ingress` | The cert-manager `ClusterIssuer` `letsencrypt-internal` the internal ingress's certificates are issued by.             |
+| `cluster/azure-staging`    | The three above for `tcab-staging`: the bootstrap a cluster administrator applies before the pipeline deploys staging. |
+| `cluster/azure-prod`       | The same for `tcab-prod`.                                                                                              |
 
 Overlays compose in reusable kustomize **components**:
 
@@ -55,18 +66,63 @@ Overlays compose in reusable kustomize **components**:
 The service container images are built from [`../images/`](../images/) — every Rust
 service is a `--target` of the shared `services.Dockerfile` (`backend`, `auth`,
 `dispatcher`, `driver`, `artifacts`, `arena`, `publisher`), and the console has its
-own `web.Dockerfile` — and published to
-GHCR by the
-[`build-service-images.yml`](../../.github/workflows/build-service-images.yml)
-workflow as `ghcr.io/<owner>/tcab-backend`, `…/tcab-auth-service`,
-`…/tcab-dispatcher`, `…/tcab-driver`, `…/tcab-artifacts`, `…/tcab-arena`, and `…/tcab-web`. The overlays' `images:`
-blocks point each at that namespace — pin the immutable `:<git-sha>` tag rather
-than `:latest` in a real deployment. The **run-container** images the sandbox runs
-inside are separate — see [`containers/`](../../containers/README.md).
+own `web.Dockerfile`. The Azure pipeline builds them, and the **run-container**
+images the sandbox runs inside ([`containers/`](../../containers/README.md)), on
+every push to `master` and `staging`, and pushes each to
+`testcabinet.azurecr.io/<image>:<sha>` (`tcab-backend`, `tcab-auth-service`,
+`tcab-dispatcher`, `tcab-driver`, `tcab-artifacts`, `tcab-arena`,
+`tcab-publisher`, `tcab-web`, and the `test-cabinet-*` run images). The `azure-*`
+overlays carry no image names or tags: the pipeline's
+[`scripts/ci/deploy.sh`](../../scripts/ci/deploy.sh) sets every one of them to the
+commit being deployed. The generic `prod` and `staging` overlays pin placeholder
+registries in their `images:` blocks; pin an immutable `:<git-sha>` tag rather
+than `:latest` there.
+
+## Cluster prerequisites
+
+The pipeline's deploy identity holds the custom "Test Cabinet AKS Command
+Invoke" role ([`../azure/aks-command-invoke.role.json`](../azure/aks-command-invoke.role.json))
+on each cluster and "Azure Kubernetes Service RBAC Admin" on its application
+namespace only, so it cannot create a cluster-scoped object. A
+cluster administrator bootstraps each environment by hand, once before the
+pipeline's first deploy and again whenever anything under `cluster/` changes:
+
+1. Helm-install ingress-nginx (internal LB) and cert-manager with its CRDs, with
+   `clusterResourceNamespace` set to the environment's namespace, as
+   [Internal ingress](../../apps/docs/src/content/docs/deployment/kubernetes/internal-ingress.md#prerequisites)
+   describes.
+2. Create the environment's secrets in its Key Vault (every object the
+   `keyvault-csi` `SecretProviderClass` lists).
+3. Apply the cluster-scoped objects:
+
+   ```sh
+   kubectl apply -k deployments/k8s/cluster/azure-staging   # or azure-prod
+   ```
+
+4. Create the custom role once
+   (`az role definition create --role-definition @deployments/azure/aks-command-invoke.role.json`)
+   and grant the deploy identity both roles: the custom role on the cluster,
+   RBAC Admin on `<cluster resource id>/namespaces/tcab-<env>`.
+
+The full procedure is in
+[`deployment/kubernetes/overview.md`](../../apps/docs/src/content/docs/deployment/kubernetes/overview.md#cluster-prerequisites).
+[`scripts/ci/k8s-manifests.sh`](../../scripts/ci/k8s-manifests.sh) gates every
+commit on the split: the `azure-*` overlays render namespaced objects only, and
+`cluster/azure-*` holds cluster-scoped objects only.
 
 ## Apply
 
-Render and apply an overlay with kustomize (`kubectl -k`):
+The `azure-staging` and `azure-prod` overlays are deployed by the Azure pipeline:
+a push to `staging` or `master` runs `scripts/ci/deploy.sh`, which renders the
+overlay at the commit's images and applies it and waits for every rollout inside
+the private cluster through `az aks command invoke`. Preview what it
+applies with:
+
+```sh
+scripts/ci/deploy.sh --render prod <sha>   # or staging
+```
+
+Render and apply any other overlay with kustomize (`kubectl -k`):
 
 ```sh
 # Inspect what an overlay renders first.
@@ -76,17 +132,18 @@ kubectl kustomize deployments/k8s/overlays/prod    # or staging
 kubectl apply -k deployments/k8s/overlays/prod      # or staging
 ```
 
-> **Note:** the dispatcher's `TCAB_DRIVER_IMAGE` is an env _value_, not a container
-> `image:` field, so kustomize's `images:` transformer cannot rewrite it; each
-> overlay carries a `patch-dispatcher-driver-image.yaml` that sets it to match the
-> driver image. Keep the two tags in lockstep.
+> **Note:** in the generic `prod` and `staging` overlays the dispatcher's
+> `TCAB_DRIVER_IMAGE` is an env _value_, not a container `image:` field, so
+> kustomize's `images:` transformer cannot rewrite it; those overlays carry a
+> `patch-dispatcher-driver-image.yaml` that sets it to match the driver image.
+> Keep the two tags in lockstep.
 
 ## Per environment
 
 Staging and prod are the same manifests; only the namespace, `TCAB_ENV`, and
-secrets differ — `overlays/staging` rewrites them. Keep them otherwise identical so
-staging rehearses prod. The dispatcher's `TCAB_K8S_*` sandbox settings are
-documented in
+secrets differ — `overlays/staging` and `overlays/azure-staging` rewrite them.
+Keep them otherwise identical so staging rehearses prod. The dispatcher's
+`TCAB_K8S_*` sandbox settings are documented in
 [`deployment/kubernetes/run-plane.md`](../../apps/docs/src/content/docs/deployment/kubernetes/run-plane.md)
 and the dispatcher's
 [`config.rs`](../../crates/dispatcher/src/config.rs).

@@ -40,7 +40,7 @@ tcab_env_resolve() {
       # The branch whose tip the backend ingests its catalog (test-case defs + the
       # reference-build lockfile) from. A stable branch — NOT a per-release tag — so
       # reingest picks up pushed catalog/reference changes on demand without a roll;
-      # the service CODE version is pinned separately by the overlay's image newTag.
+      # the service CODE version is the commit the pipeline last deployed.
       # Kept == the branch each overlay's patch-backend-ingest.yaml clones.
       TCAB_INGEST_BRANCH="master"
       # The artifact service's PUBLIC (internal-ingress) read URL for this env.

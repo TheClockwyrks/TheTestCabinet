@@ -5,13 +5,19 @@
 # PostgreSQL — Flexible Server instance instead of embedded SQLite. Apply INSTEAD of
 # overlays/prod. The base and all SQLite overlays (staging, local, app) are untouched.
 #
-# Same namespace, TCAB_ENV (`prod`, from the base), and image registry as
-# overlays/prod; the only difference is the database shape the component supplies.
+# Same namespace and TCAB_ENV (`prod`, from the base) as overlays/prod; the only
+# difference is the database shape the component supplies.
 #
-# Apply with:  kubectl apply -k deployments/k8s/overlays/azure-prod
-# (after creating the real Secrets — base/secrets.example.yaml for the backend's R2 /
-# token keys, and components/postgres/secrets.postgres.example.yaml for the two
-# Postgres connection strings, ideally synced from Azure Key Vault.)
+# The Azure pipeline deploys it: scripts/ci/deploy.sh layers a throwaway
+# kustomization over this overlay that sets every service image, the dispatcher's
+# driver and publisher images and the run-container registry and tag to the Test
+# Cabinet ACR at the commit being deployed. This overlay therefore carries no image
+# names or tags of its own.
+#
+# Every object it renders is namespaced, because the deploy identity may write the
+# tcab-prod namespace and nothing else. The Namespace and the other cluster-scoped
+# objects it depends on are ../../cluster/azure-prod, applied by hand by a cluster
+# administrator (see "Cluster prerequisites" in ../../README.md).
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
@@ -34,11 +40,11 @@ components:
   # Serve the web console in-cluster and expose it + the four services over an
   # INTERNAL (VPN-reachable, never public) ingress-nginx at host-per-service
   # `*.testcabinet.ai` names with cert-manager TLS. Adds the tcab-web Deployment +
-  # Service, the five Ingress routes, the Let's Encrypt ClusterIssuer, and the
-  # ingress-source NetworkPolicy. The component defaults to the prod hostnames /
-  # ClusterIssuer email; this overlay patches the runtime console + backend URLs
-  # below (patch-web-config.yaml / patch-backend-public-urls.yaml). The ingress-nginx
-  # + cert-manager controllers are a Helm-installed cluster prerequisite (task-4).
+  # Service, the five Ingress routes, and the ingress-source NetworkPolicy. The
+  # component defaults to the prod hostnames; this overlay patches the runtime console
+  # + backend URLs below (patch-web-config.yaml / patch-backend-public-urls.yaml). The
+  # ingress-nginx + cert-manager controllers and the Let's Encrypt ClusterIssuer are
+  # cluster prerequisites ("Cluster prerequisites" in ../../README.md).
   - ../../components/internal-ingress
   # Passwordless (Microsoft Entra managed-identity) Postgres auth for backend + auth.
   # ENABLED at the v0.6.0-rc2 cutover (2026-07-26): the pods run the db-auth service
@@ -51,16 +57,13 @@ components:
   # for the cutover order.
   - ../../components/postgres-azure-ad
 
-# TCAB_DRIVER_IMAGE is an env value, not a container image: field, so the images
-# transformer can't reach it — patch it to match the driver image.
 patches:
-  - path: patch-dispatcher-driver-image.yaml
   - path: patch-otel.yaml
   # Enable subscription auth (Codex + Claude Code) by mounting the
   # tcab-driver-subscription Secret into each driver Job.
   - path: patch-dispatcher-subscription.yaml
-  # Enable in-cluster publishing: point the dispatcher at the tcab-publisher image
-  # (an env VALUE the images: transformer can't reach) and its credential Secret.
+  # Enable in-cluster publishing: the publisher credential Secret and the prod publish
+  # targets. The publisher image itself is set by the pipeline's deploy.
   - path: patch-dispatcher-publisher.yaml
   # Repoint the backend's advertised data-plane URLs (TCAB_ARTIFACTS_PUBLIC_URL /
   # TCAB_ARENA_PUBLIC_URL — env VALUES the images: transformer can't reach) to the
@@ -81,84 +84,3 @@ patches:
   - path: patch-backend-ingest.yaml
   # …and suspend that now-superseded base CronJob so it stops failing every 30 min.
   - path: patch-suspend-ingest-cronjob.yaml
-
-# Same image registry pinning as overlays/prod — pin an immutable :<git-sha> tag
-# rather than :latest in a real deployment.
-#
-# All service images are pinned to ONE git-sha so they version together, currently
-# `49654d1b` (the v0.6.3-rc5 build — the `staging` branch tip at which
-# `build-service-images` rebuilt and published multi-arch (amd64+arm64) for every
-# service). Bumped from the v0.6.2-rc1 pin `31568780`, promoting prod onto the same
-# build staging runs: prod and overlays/azure-staging are pinned to the SAME sha again,
-# which staging has been exercising since that bump (2026-08-18).
-#
-# What the promotion carries, over the 77 commits since `31568780`:
-#   - reviewer SCHEDULING as a surface: coverage plans gain a sweep order, a review
-#     buffer and top-up, and ladders arrive whole (`ce8813da5`, `e542e7baf`,
-#     `2fa80f2ad`) — see components/backend/coverage.md and ladders.md;
-#   - a supervised console notification stream replacing the reconcile poll
-#     (`7d5ef9b9f`, `54d4674c2`), plus publish failures surfaced as notifications;
-#   - memory sizing across the whole deployment (`33ee61f6d`, `ecc226421`): every
-#     container gets a limit, memory request == limit so the scheduler's arithmetic is
-#     the guarantee, the sandbox run pod goes 1Gi → 4Gi on both, and the driver stops
-#     buffering a run tree in memory (it spools the tarball to disk and streams it);
-#   - kubelet cAdvisor scraping into Prometheus (`c387a207e`) — the per-container
-#     memory history the sizing above was measured from;
-#   - a dispatcher fix that stops the autoscaler evicting live driver Jobs
-#     (`e76758582`) and one that dispatches the run queue in enqueue order;
-#   - gzip response compression (`f6db9b515`) and a snapshot refresh that costs
-#     changed runs rather than all runs (`a90403a87`);
-#   - a wide sweep of console UI work (run filtering by version and multiple axes,
-#     an Unpublished batch-publish tab, themed dialogs, the ladder board).
-#
-# UNLIKE the last promotion, this one DOES carry schema migrations — five, added
-# between these two shas (`m20260815_000025`…`_000029`: the job queue sequence, job
-# attribution, coverage-plan scheduling, coverage settings, and the ladder tables).
-# The backend runs `Migrator::up` at startup (crates/backend/src/db.rs), so they apply
-# when the rolled pod boots; they are additive, and staging has run them since
-# 2026-08-18. Take a database backup before the roll — see deployment/backups.md.
-#
-# The RUN-CONTAINER images (test-cabinet-base/-base-wasm/-sprite/-sprite-sheet/-adversarial/
-# -performance, plus the voxel/mesh/skin/ui/material/particle/audio kinds) are pinned
-# SEPARATELY via TCAB_CONTAINER_TAG in patch-dispatcher-driver-image.yaml, because that
-# tag decides the image every future RUN executes inside: it advances with a rehearsed
-# release, not with every service roll. The two pins CONVERGED at `31568780` (the first
-# build after `5ef86c1d` made both image workflows unfiltered) and stay converged here:
-# this build published the service images AND all 27 run images at the same sha. Nothing
-# under containers/ changed between `31568780` and this sha, so the run images are
-# rebuilds of identical Dockerfiles (only upstream base layers moved), not new content
-# of ours. Keep the two pins in lockstep from here rather than letting this drift again.
-# Roll the service images — staging before prod — when promoting.
-images:
-  - name: REPLACE_REGISTRY/tcab-backend
-    newName: ghcr.io/theclockwyrks/tcab-backend
-    newTag: 49654d1b228be0a3dc3f54b412d46ba4426d0eef
-  - name: REPLACE_REGISTRY/tcab-auth-service
-    newName: ghcr.io/theclockwyrks/tcab-auth-service
-    newTag: 49654d1b228be0a3dc3f54b412d46ba4426d0eef
-  - name: REPLACE_REGISTRY/tcab-dispatcher
-    newName: ghcr.io/theclockwyrks/tcab-dispatcher
-    newTag: 49654d1b228be0a3dc3f54b412d46ba4426d0eef
-  - name: REPLACE_REGISTRY/tcab-driver
-    newName: ghcr.io/theclockwyrks/tcab-driver
-    newTag: 49654d1b228be0a3dc3f54b412d46ba4426d0eef
-  - name: REPLACE_REGISTRY/tcab-artifacts
-    newName: ghcr.io/theclockwyrks/tcab-artifacts
-    newTag: 49654d1b228be0a3dc3f54b412d46ba4426d0eef
-  - name: REPLACE_REGISTRY/tcab-arena
-    newName: ghcr.io/theclockwyrks/tcab-arena
-    newTag: 49654d1b228be0a3dc3f54b412d46ba4426d0eef
-  # The publisher image is referenced as an env VALUE (TCAB_PUBLISHER_IMAGE in
-  # patch-dispatcher-publisher.yaml), not a container image: field, so this entry
-  # rewrites nothing today — it is kept for parity so the registry/tag set stays
-  # complete and a future container-image reference to the publisher is covered.
-  - name: REPLACE_REGISTRY/tcab-publisher
-    newName: ghcr.io/theclockwyrks/tcab-publisher
-    newTag: 49654d1b228be0a3dc3f54b412d46ba4426d0eef
-  # The in-cluster web console image (the internal-ingress component's tcab-web
-  # Deployment). One environment-agnostic build per git-sha; the per-env backend/auth
-  # URLs are injected at runtime via env, not baked. GHCR package is Public/anonymously
-  # pullable.
-  - name: REPLACE_REGISTRY/tcab-web
-    newName: ghcr.io/theclockwyrks/tcab-web
-    newTag: 49654d1b228be0a3dc3f54b412d46ba4426d0eef

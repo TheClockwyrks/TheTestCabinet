@@ -31,33 +31,38 @@ deployments/
 ├── local/
 │   ├── compose.yml            # backend + auth service in containers (a minimal stack)
 │   └── Makefile               # the full stack on a local k3d cluster (`make local-up`)
-├── images/                    # service images, published to GHCR by CI (see below)
+├── images/                    # service images, built into the ACR by the Azure pipeline (see below)
 │   ├── services.Dockerfile    # EVERY Rust service, one `--target` each, over one
 │   │                          #   shared cargo build stage: backend (+ headless
 │   │                          #   Chromium), auth, dispatcher, driver, artifacts,
 │   │                          #   arena, publisher
 │   └── web.Dockerfile         # tcab-web, the console SPA behind nginx (no crate)
 ├── k8s/
-│   ├── kustomization.yaml     # the kustomize BASE (the flat manifests below)
-│   ├── namespace.yaml         # per-environment namespace
-│   ├── rbac.yaml              # tcab-driver SA/Role (sandbox pods) + tcab-dispatcher SA/Role (Jobs)
-│   ├── secrets.example.yaml   # Secret templates (placeholders only)
-│   ├── backend.yaml           # backend StatefulSet (1 replica) + PVC + Service
-│   ├── auth.yaml              # auth StatefulSet (1 replica) + PVC + Service
-│   ├── dispatcher.yaml        # dispatcher Deployment (1 replica), no Service
-│   ├── artifacts.yaml         # artifact StatefulSet (1 replica) + PVC + Service + SA
-│   ├── ingest-cronjob.yaml    # periodic POST /ingest to refresh the catalog
-│   ├── networkpolicy.yaml     # optional default-deny-ingress + allows
-│   ├── components/
-│   │   ├── observability/    # in-cluster Grafana LGTM stack (tcab-lgtm) — the default OTLP collector
-│   │   └── postgres/         # managed-PostgreSQL conversion of backend + auth (azure-* overlays)
+│   ├── base/                  # the kustomize BASE, namespaced objects only
+│   │   ├── kustomization.yaml
+│   │   ├── rbac.yaml          # tcab-driver SA/Role (sandbox pods) + tcab-dispatcher SA/Role (Jobs)
+│   │   ├── secrets.example.yaml # Secret templates (placeholders only)
+│   │   ├── backend.yaml       # backend StatefulSet (1 replica) + PVC + Service
+│   │   ├── auth.yaml          # auth StatefulSet (1 replica) + PVC + Service
+│   │   ├── dispatcher.yaml    # dispatcher Deployment (1 replica), no Service
+│   │   ├── artifacts.yaml     # artifact StatefulSet (1 replica) + PVC + Service + SA
+│   │   ├── arena.yaml         # arena Deployment (1 replica) + Service + SA
+│   │   ├── ingest-cronjob.yaml # periodic POST /ingest to refresh the catalog
+│   │   └── networkpolicy.yaml # optional default-deny-ingress + allows
+│   ├── components/            # observability, postgres, postgres-azure-ad, keyvault-csi, web, internal-ingress
+│   ├── cluster/               # cluster-scoped objects, applied by hand by a cluster administrator
+│   │   ├── namespace/         # the environment's Namespace
+│   │   ├── observability/     # the LGTM stack's node-metrics ClusterRole + binding
+│   │   ├── internal-ingress/  # the cert-manager ClusterIssuer
+│   │   ├── azure-staging/     # the bootstrap for tcab-staging
+│   │   └── azure-prod/        # the bootstrap for tcab-prod
 │   ├── overlays/
-│   │   ├── prod/              # production overlay (registry pinned)
+│   │   ├── prod/              # production overlay (placeholder registry pinned)
 │   │   ├── staging/           # staging overlay (tcab-staging, TCAB_ENV=staging)
-│   │   ├── azure-prod/        # prod on managed PostgreSQL (postgres + observability components)
-│   │   ├── azure-staging/     # staging on managed PostgreSQL
+│   │   ├── azure-prod/        # prod on managed PostgreSQL, deployed by the Azure pipeline from master
+│   │   ├── azure-staging/     # staging on managed PostgreSQL, deployed by the Azure pipeline from staging
 │   │   └── local/             # k3d development mirror (driven by ../local/Makefile)
-│   └── README.md              # apply order + per-environment notes
+│   └── README.md              # cluster prerequisites, apply, per-environment notes
 ├── backups/
 │   └── litestream.yml         # example Litestream config: stream the SQLite DB to object storage
 ├── telemetry/
@@ -79,19 +84,19 @@ of each service's configuration.
 
 ## Service images
 
-The service images under `images/` are published to GHCR by the
-[`build-service-images.yml`](../.github/workflows/build-service-images.yml) GitHub
-Actions workflow on every push to `master` that touches the crates or a
-Dockerfile, as `ghcr.io/<owner>/tcab-backend`, `…/tcab-auth-service`,
-`…/tcab-dispatcher`, `…/tcab-driver`, and `…/tcab-artifacts` (each tagged `:latest`
-and the immutable `:<git-sha>`). The kustomize overlays' `images:` blocks point
-each at that namespace, pinning the `:<git-sha>` tag in a real deployment. To build
-and push them by hand instead, see the build instructions in each Dockerfile's
-header.
+The Azure pipeline ([`azure-pipelines.yml`](../azure-pipelines.yml)) builds the
+service images under `images/` on every push to `master` and `staging`, natively
+for `amd64` and `arm64`, and pushes each to the Test Cabinet Azure Container
+Registry as `testcabinet.azurecr.io/tcab-backend:<sha>`, `…/tcab-auth-service`,
+`…/tcab-dispatcher`, `…/tcab-driver`, `…/tcab-artifacts`, `…/tcab-arena`,
+`…/tcab-publisher`, and `…/tcab-web`. Its deploy then sets every image of the
+`azure-*` overlays to that sha; the overlays carry no image tags of their own. To
+build and push them by hand instead, see the build instructions in each
+Dockerfile's header.
 
 These are the long-running **service** images, distinct from the **run-container**
-images a run executes inside ([`containers/`](../containers/README.md)), which are
-published separately by [`build-containers.yml`](../.github/workflows/build-containers.yml).
+images a run executes inside ([`containers/`](../containers/README.md)), which the
+same pipeline run builds and pushes at the same sha.
 
 The `tcab-driver` stage carries the [audio store](../containers/README.md#the-audio-store)
 at `/opt/tcab-audio`, resolved through the `AUDIO_STORE_IMAGE` build arg, so the
@@ -101,9 +106,11 @@ out of that store, so it and `TCAB_CONTAINER_TAG` move to the same commit; see
 
 Where that store comes from depends on who is building:
 
-- **A deployment build** takes the arg's default — the published
-  `test-cabinet-audio-store` image `build-containers.yml` pushes — or overrides it
-  with a digest to pin the store alongside the environment's other images.
+- **A pipeline build** passes the `test-cabinet-audio-store:<sha>` the same run
+  pushed to the registry, so the driver bakes the store of its own commit.
+- **Any other deployment build** takes the arg's default, the published
+  `test-cabinet-audio-store` image, or overrides it with a digest to pin the store
+  alongside the environment's other images.
 - **A local build does not pull anything.** `local/Makefile`'s `audio-store` target
   builds the store from the checkout (staging it out of the audio object store with
   the read-scoped `CLOUDFLARE_AUDIO_R2_PRESIGN` credentials) and `make images` passes
