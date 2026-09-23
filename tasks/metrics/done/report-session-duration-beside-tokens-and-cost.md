@@ -12,7 +12,7 @@ record carries them. No comparison surface reports them: a run's duration was
 left out of the model comparisons because it depended on which provider
 OpenRouter routed the run to, which varies from run to run of one model.
 
-[`pin-every-run-to-the-model-s-official-provider.md`](../gg-client/pin-every-run-to-the-model-s-official-provider.md)
+[`pin-every-run-to-the-model-s-official-provider.md`](../../gg-client/pin-every-run-to-the-model-s-official-provider.md)
 sends every run of a model to its developer's own endpoint. Duration is then a
 property of the model, and one that decides whether a model is worth using: a
 model that costs the same as another and takes five times as long on a task is
@@ -51,10 +51,10 @@ as a metric.
 
 ## Done when
 
-- [ ] The test case Metrics tab charts session duration per model.
-- [ ] The Leaderboard tab, model overview, comparison detail page and the
+- [x] The test case Metrics tab charts session duration per model.
+- [x] The Leaderboard tab, model overview, comparison detail page and the
       site's case and model pages report session duration beside tokens and
       cost.
-- [ ] The comparisons statistics page and the metrics page describe the
+- [x] The comparisons statistics page and the metrics page describe the
       metric.
-- [ ] Gates green.
+- [x] Gates green.
