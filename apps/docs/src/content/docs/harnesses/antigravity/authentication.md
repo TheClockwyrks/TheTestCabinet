@@ -19,7 +19,7 @@ performs the Google sign-in itself. The CLI stores it at
 
 For a run, that token is copied into the container at
 `/home/node/.gemini/antigravity-cli/antigravity-oauth-token`, where the CLI reads
-it. On the CLI and desktop path it is read from the host home. On the
+it. On the CLI path it is read from the host home. On the
 backend-driven cluster path it comes from an operator-provided Secret mounted
 into the driver pod, so Antigravity runs from the console as well as locally. See
 [Set Up Authentication](/quickstarts/setup/set-up-authentication/) for that

@@ -21,7 +21,7 @@ for the answer keys.
 
 | What                                               | Reaches users by                         | Triggered by                                                               |
 | -------------------------------------------------- | ---------------------------------------- | -------------------------------------------------------------------------- |
-| `tcab`, the services, the desktop app              | a GitHub release at `vX.Y.Z`             | the **Release** + **Release (promote)** workflows, by hand                 |
+| `tcab` and the services                            | a GitHub release at `vX.Y.Z`             | the **Release** + **Release (promote)** workflows, by hand                 |
 | The catalog (test cases, jams, references, errata) | the backend ingesting a **branch tip**   | merging to `master`, then `scripts/reingest-cluster.sh --env prod`         |
 | The running services                               | a **git-sha** pinned in the prod overlay | re-pinning `overlays/azure-prod` and applying it                           |
 | The gallery and the docs                           | a Cloudflare Pages build                 | a push to `master` (docs) and the backend's snapshot deploy hook (gallery) |
@@ -34,9 +34,8 @@ because a branch moved; the services ship because a sha was pinned. A release is
 ## What is _not_ a release step
 
 - **There is no version to bump.** The Cargo workspace stays at `version =
-"0.0.0"` and `tauri.conf.json` at `"0.0.0"`; the Release workflow stamps the
-  desktop app's version from its `version` input, and the tag itself is the
-  version. Nothing in the repository names the release except the changelog.
+"0.0.0"`, and the tag itself is the version. Nothing in the repository names
+  the release except the changelog.
 - **There is no tag to push.** The Release workflow's `gh release create
 --target <sha>` creates the tag at the commit it was dispatched on.
 - **The model catalog is not a release artifact.** Models are curated in the app
@@ -221,27 +220,14 @@ git push gh master
 
 Then, in order:
 
-1. **Wait for the image workflows to publish at the master sha.** The Release
-   workflow bakes `TCAB_DESKTOP_IMAGE_TAG=<sha>` into the desktop app, which is how
-   the self-contained cluster the app stands up pins the images it pulls; if no
-   images exist at that sha, the shipped app cannot pull anything. Both workflows
-   run **unfiltered** on every `master` push, so the merge always publishes at this
-   sha regardless of what it touched — there is nothing to dispatch by hand, only
-   a run to wait for. Release also refuses to build the desktop app until those
-   images resolve (its `images` job), so a premature dispatch fails in CI in
-   seconds rather than in a user's hands at first launch.
-2. **Dispatch the Release workflow** on `master` with `version = vX.Y.Z`. It
+1. **Dispatch the Release workflow** on `master` with `version = vX.Y.Z`. It
    builds the five headless binaries for Linux (static musl), Windows, and macOS,
-   smoke-tests every platform's `tcab`, builds the desktop installers, and
-   publishes the lot — plus a `SHA256SUMS` — as a **prerelease**, creating the tag
-   at that commit. Re-running for the same tag refreshes its assets.
-3. **Download and exercise the artifacts.** The binaries are smoke-tested in the
-   workflow; the servers and the desktop app are not, and this is the only gate
-   they get. On macOS the app is
-   [unsigned](/development/releasing/#macos-code-signing) and needs
-   its quarantine attribute cleared — the prerelease notes say so, but confirm the
-   note is there.
-4. **Dispatch Release (promote)** with the same tag. It flips the prerelease to
+   smoke-tests every platform's `tcab`, and publishes the lot, plus a
+   `SHA256SUMS`, as a **prerelease**, creating the tag at that commit. Re-running
+   for the same tag refreshes its assets.
+2. **Download and exercise the artifacts.** The binaries are smoke-tested in the
+   workflow; the servers are not, and this is the only gate they get.
+3. **Dispatch Release (promote)** with the same tag. It flips the prerelease to
    the latest full release without rebuilding, so exactly what you tested is what
    ships.
 
@@ -276,7 +262,7 @@ previous catalog until you move it.
 ### Verify
 
 - The GitHub release for `vX.Y.Z` is marked **Latest**, is not a prerelease, and
-  carries every platform's archives, the installers, and `SHA256SUMS`.
+  carries every platform's archives and `SHA256SUMS`.
 - `docs.testcabinet.ai` serves the new changelog **and** links it in the sidebar.
 - `testcabinet.ai` shows the cases that graduated this release, each with a
   working **Reference** tab.
@@ -299,21 +285,20 @@ test-cases/<type>/<difficulty>/<slug>/vX.Y.Z` — at the moment you trigger that
 
 ## Gotchas
 
-| Symptom                                                                    | Cause                                                                                                                                                                                                                                                    |
-| -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| The changelog is live but nothing links to it                              | Not added to the `Changelogs` sidebar group in `apps/docs/astro.config.mjs`.                                                                                                                                                                             |
-| The Release workflow fails at `Verify service images exist at this commit` | Dispatched before `build-service-images` finished at that sha, or that run failed. Wait for it (or fix and re-run it), then re-dispatch — never work around the gate; it is the only thing between a bad sha and an installer that dies at first launch. |
-| A graduated case is missing its **Reference** tab                          | The lockfile has no `prod` entry for that variant, or prod has not re-ingested since it gained one.                                                                                                                                                      |
-| The gallery still shows the old catalog                                    | The re-ingest was a no-op (nothing changed), so no snapshot refresh and no deploy hook.                                                                                                                                                                  |
-| Reviewers see baselines that disagree with the current scripts             | Scripts changed without a `publish-reference` / `tcab capture-baselines` pass on that case.                                                                                                                                                              |
-| Prod runs behave like the old code                                         | Images rolled but not re-ingested, or re-ingested but not rolled — the two are separate steps by design.                                                                                                                                                 |
+| Symptom                                                        | Cause                                                                                                    |
+| -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| The changelog is live but nothing links to it                  | Not added to the `Changelogs` sidebar group in `apps/docs/astro.config.mjs`.                             |
+| A graduated case is missing its **Reference** tab              | The lockfile has no `prod` entry for that variant, or prod has not re-ingested since it gained one.      |
+| The gallery still shows the old catalog                        | The re-ingest was a no-op (nothing changed), so no snapshot refresh and no deploy hook.                  |
+| Reviewers see baselines that disagree with the current scripts | Scripts changed without a `publish-reference` / `tcab capture-baselines` pass on that case.              |
+| Prod runs behave like the old code                             | Images rolled but not re-ingested, or re-ingested but not rolled — the two are separate steps by design. |
 
 ## Next steps
 
 - [Cut a Release](/quickstarts/devops/cut-a-release/) — the same sequence as
   copy-paste commands.
-- [Releasing](/development/releasing/) — the Release workflows, the macOS signing
-  gap, and the one-time Cloudflare Pages setup behind each static site.
+- [Releasing](/development/releasing/) — the Release workflows and the one-time
+  Cloudflare Pages setup behind each static site.
 - [Rolling Production Service Images](/guides/devops/rolling-prod-service-images/)
   — the cluster half of Phase 4 in full.
 - [Publishing a Reference Implementation](/guides/devops/publishing-a-reference-implementation/)

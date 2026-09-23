@@ -24,13 +24,11 @@ is
 The repository-host and Cloudflare credentials the release itself needs live with
 the backend's publisher Job, not on your machine.
 
-## From a console
+## From the web console
 
-In the [desktop app](/components/tauri/overview/) or the
-[web console](/components/web/overview/), sign in and open the run. The web
+In the [web console](/components/web/overview/), sign in and open the run. The
 console offers Submit review and Publish run as separate actions, with Publish
-gated on a legacy run carrying a review. The desktop app offers a single Publish
-run that saves your review and publishes in one step.
+gated on a legacy run carrying a review.
 
 ## From the CLI
 
@@ -51,8 +49,8 @@ legacy run missing its review stops before releasing any of it. `--dry-run` is
 the fastest way to confirm a batch is fully reviewed.
 
 When someone else reviews the run, they submit it with
-`tcab review <run-id> --writeup <file>` or from a console, and the run is
-published from a console afterwards.
+`tcab review <run-id> --writeup <file>` or from the web console, and the run is
+published from the web console afterwards.
 
 ## What publishing releases
 

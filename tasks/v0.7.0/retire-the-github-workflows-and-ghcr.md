@@ -40,8 +40,7 @@ committed on GitHub directly is lost.
 
 `scripts/ci/README.md` and the CI section of `development/building.md` describe
 Azure Pipelines as the only CI, with the gates, the mirror, the images and the
-deploys it owns. The macOS validation and the desktop jobs leave with the
-desktop app.
+deploys it owns. The macOS validation leaves with the GitHub workflows.
 
 ### Registries
 

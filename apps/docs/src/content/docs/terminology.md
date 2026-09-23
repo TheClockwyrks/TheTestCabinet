@@ -252,9 +252,9 @@ the run's is the worst across every review. See
 ## Reporters
 
 Reporters are The Test Cabinet components capable of reporting run results. Only
-GUI reporters allow users to interact with test case implementations. The [Tauri
-desktop app](/components/tauri/overview/) and the [web console](#web-console)
-are both reporters and [runners](#runners).
+GUI reporters allow users to interact with test case implementations. The [web
+console](#web-console) is both a reporter and a launcher of
+[runs](#runners).
 
 ## Review
 
@@ -301,7 +301,7 @@ validators' verdicts, so a review's effective checklist is the validators'
 verdicts overlaid with its overrides. Overriding is the exception, for a
 validator whose precondition could not be met or a build that does the right
 thing despite broken instrumentation. On a legacy run the
-[consoles](#web-console) present the checklist as a guided review with a
+[web console](#web-console) presents the checklist as a guided review with a
 completeness gate: every item and sub-item needs a verdict before a review can
 be saved or the run published. The checklist is reporter-side and is never
 seeded, so it stays out of the model's input.
@@ -338,8 +338,7 @@ to a different case.
 A runner is the component that actually executes a test case. There is exactly
 one: the per-run [driver](#driver) a [dispatcher](#dispatcher) creates for each
 run, built on the [core](/components/core/overview/). The
-[CLI](/components/cli/overview/), the [desktop
-app](/components/tauri/overview/), and the [web console](#web-console) enqueue a
+[CLI](/components/cli/overview/) and the [web console](#web-console) enqueue a
 run at the [backend](#backend) and watch it.
 
 ## Score
@@ -448,8 +447,8 @@ retried and only completed runs are evidence.
 ## Web console
 
 The [web console](/components/web/overview/) is The Test Cabinet's
-runner/reporter GUI running in a plain browser. It is the same console as the
-[Tauri desktop app](/components/tauri/overview/), sharing its entire UI,
-delivered as a static web app. It enqueues runs at the [backend](#backend),
+runner/reporter GUI, delivered as a static web app that runs in a plain browser.
+It mounts the routed application from the [UI
+library](/components/ui/overview/). It enqueues runs at the [backend](#backend),
 which a [dispatcher](#dispatcher) drains into per-run [driver](#driver) `Job`s.
 It is an operator tool served on the private network, not a public site.

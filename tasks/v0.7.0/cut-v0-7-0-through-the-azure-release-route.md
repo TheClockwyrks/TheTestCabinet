@@ -9,7 +9,7 @@ This issue depends on every other release-blocking issue in this folder:
 [the baselines move](move-validation-baselines-into-the-cold-storage-submodule.md),
 [the history rewrite](rewrite-the-repository-history-without-baselines-and-wasm-blobs.md),
 [the submodule addressing](address-submodules-by-relative-url-and-mirror-them-to-github.md),
-[the desktop drop](drop-the-desktop-app.md),
+[the desktop drop](done/drop-the-desktop-app.md),
 [the gallery design pages](move-the-gallery-origin-design-pages-onto-the-share-links-branch.md),
 [the Azure CI/CD](build-ci-cd-on-azure-pipelines-with-deploys-to-staging-and-prod.md),
 [the gg binaries](publish-gg-release-binaries-to-azure-blob-storage.md), and
@@ -21,7 +21,7 @@ The cut-a-release quickstart and the cutting-a-release guide describe a flow of
 `rel/vX.Y.Z` into `nightly`, `nightly` into `staging` as an rc, and `staging`
 into `master`. GitHub workflows build the service and run-container images on
 every push to those branches, `release.yml` cuts a GitHub prerelease with the
-binaries and the desktop app, `release-promote.yml` flips it to latest, and the
+binaries, `release-promote.yml` flips it to latest, and the
 image shas are re-pinned by hand in the Azure overlays before each roll.
 
 The existing `rel/v0.7.0` branch is a merge from 2026-08-25 and sits 3817

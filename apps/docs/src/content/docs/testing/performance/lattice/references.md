@@ -65,10 +65,9 @@ simulating it. The training scenarios exist to build and validate the engine.
 ### The secrecy boundary
 
 Held out means held out from the run rather than from the repository. The scored
-scenarios and their expected outputs are committed with the case, and they ship
-inside the distributed desktop app, which stages the `test-cases/` tree so it can
-run and grade a case locally. Grading reads both the input and the expected
-answer, so a local runner needs them.
+scenarios and their expected outputs are committed with the case, so anyone with
+a checkout of the repository holds them. Grading reads both the input and the
+expected answer, so the grader needs them.
 
 That is safe because the boundary is enforced at run time. The submission
 executes as sandboxed wasm with no filesystem access, and the scored set is

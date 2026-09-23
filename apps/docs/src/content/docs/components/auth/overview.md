@@ -22,7 +22,7 @@ The auth service owns user identity end to end:
   username, a password, and a display name. Passwords are hashed with Argon2id.
   Registration returns a token, so a new account is signed in immediately.
 - Login. A username and password are exchanged for an opaque bearer token and
-  the account it identifies. That token is what the CLI and the consoles present
+  the account it identifies. That token is what the CLI and the web console present
   on mutating calls.
 - Verification. The backend hands each request's bearer token to the auth
   service, which resolves it to an account or rejects it. This is how the
@@ -66,11 +66,10 @@ The account and token shapes are specified in
 
 ## Who talks to it
 
-- The [CLI](/components/cli/overview/) (`tcab register`, `login`, `logout`), the
-  [Tauri app](/components/tauri/overview/), and the [web
-  console](/components/web/overview/) register and log in against it, then send
-  the resulting bearer token to the backend on review and publish. The CLI and
-  the Tauri app are pointed at it with `TCAB_AUTH_URL`; the web console takes it
+- The [CLI](/components/cli/overview/) (`tcab register`, `login`, `logout`) and
+  the [web console](/components/web/overview/) register and log in against it,
+  then send the resulting bearer token to the backend on review and publish. The
+  CLI is pointed at it with `TCAB_AUTH_URL`; the web console takes it
   from the deployment's injected runtime config, falling back to the build-time
   `VITE_AUTH_URL` and then to the backend URL. The CLI stores its token at
   `~/.config/tcab/credentials.json`, overridable with `$TCAB_CONFIG_DIR`.

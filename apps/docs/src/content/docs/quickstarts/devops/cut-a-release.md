@@ -3,7 +3,7 @@ title: Cut a Release
 ---
 
 Ship `vX.Y.Z`: prepare the release branch, rehearse on staging, publish the
-binaries and desktop app from GitHub, then land the catalog and the services in
+binaries from GitHub, then land the catalog and the services in
 production. The full walkthrough and the _why_ behind each step are in
 [Cutting a Release](/guides/devops/cutting-a-release/).
 
@@ -106,7 +106,7 @@ back onto `nightly` and return as the next rc — never straight onto `staging`.
 git push gh master
 
 # Both image workflows run on EVERY master push, so the merge always publishes a
-# complete `:<sha>` set — just wait for them (the release gates on it either way).
+# complete `:<sha>` set; wait for them before rolling prod in step 4.
 gh run list --workflow=build-service-images.yml --branch master --limit 5 \
   --json headSha,conclusion,createdAt
 gh run list --workflow=build-containers.yml --branch master --limit 5 \
@@ -114,7 +114,7 @@ gh run list --workflow=build-containers.yml --branch master --limit 5 \
 
 gh workflow run release.yml --ref master -f version=vX.Y.Z   # builds + PRERELEASE + tag
 # ... download every platform's artifacts and exercise them (this is the only gate
-#     the servers and the desktop app get) ...
+#     the servers get) ...
 gh workflow run release-promote.yml -f tag=vX.Y.Z            # flips to latest, no rebuild
 ```
 
@@ -135,8 +135,8 @@ move.
 
 ## Verify
 
-- The GitHub release is **Latest**, not a prerelease, with every archive, both
-  installers, and `SHA256SUMS`.
+- The GitHub release is **Latest**, not a prerelease, with every archive and
+  `SHA256SUMS`.
 - `docs.testcabinet.ai` serves the changelog _and_ links it in the sidebar.
 - `testcabinet.ai` shows the graduated cases, each with a working **Reference**
   tab.

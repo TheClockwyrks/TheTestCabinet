@@ -22,8 +22,7 @@ publish, split so anyone may judge a run someone else produced (see
 
 This guide covers driving these from the [CLI](/components/cli/overview/), the
 path for scripting and batch sweeps. The
-[Tauri desktop app](/components/tauri/overview/) and the
-[web console](/components/web/overview/) run the same operations interactively
+[web console](/components/web/overview/) runs the same operations interactively
 from a run's review and publish actions. The final product is released as it is,
 bugs and all, rather than reduced to a score.
 

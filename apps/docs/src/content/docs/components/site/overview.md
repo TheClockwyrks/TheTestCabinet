@@ -14,11 +14,11 @@ The gallery is served by an origin that resolves routes and reads the published
 set at request time, so a run appears as soon as it is published. See
 [Serving](/components/site/serving/).
 
-The gallery is the same routed application the [web](/components/web/overview/)
-and [Tauri](/components/tauri/overview/) consoles render, shared through the [UI
+The gallery is the same routed application the [web
+console](/components/web/overview/) renders, shared through the [UI
 library](/components/ui/overview/), mounted with execution disabled so it shows
 the published gallery alone. Signing in and launching runs stay with the
-consoles.
+console.
 
 The dataset is split by shape. Run listings, search, and leaderboards read the
 [public projection](/components/backend/projection/) the backend writes as it

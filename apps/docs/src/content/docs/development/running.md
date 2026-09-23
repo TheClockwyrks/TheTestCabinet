@@ -3,9 +3,8 @@ title: Running
 ---
 
 Every launcher enqueues a run at the backend and watches it: the
-[CLI](/components/cli/overview/) (`tcab`), the
-[Tauri desktop app](/components/tauri/overview/), and the
-[web console](/components/web/overview/). None of them executes a test case on
+[CLI](/components/cli/overview/) (`tcab`) and the
+[web console](/components/web/overview/). Neither of them executes a test case on
 its own machine. Running The Test Cabinet locally therefore means standing up the
 service stack that drains that queue.
 
@@ -18,13 +17,8 @@ from the same manifests a [deployment](/deployment/overview/) applies, so what
 runs locally and what runs in staging or production differ only in the namespace
 they live in.
 
-`tcab run` and the desktop app are thin enqueue-and-watch clients. They need a
-reachable backend (`TCAB_BACKEND_URL`) and an account, and no container runtime
-of their own. Left with `TCAB_BACKEND_URL` unset, the shipped desktop app stands
-up its own bundled k3d cluster from the published images (see
-[Self-contained cluster](/components/tauri/overview/#self-contained-cluster)),
-which ingests the bundled catalog; during development, point it at a backend you
-can re-ingest at will.
+`tcab run` is a thin enqueue-and-watch client. It needs a reachable backend
+(`TCAB_BACKEND_URL`) and an account, and no container runtime of its own.
 
 ## Prerequisites
 
@@ -129,9 +123,8 @@ Its backend and auth URLs are pre-set to the forwarded addresses by the committe
 `apps/web/.env.development`, so there is nothing to configure. The backend and
 auth CORS layers accept the dev server's cross-origin requests.
 
-`tcab run` and the desktop app target the same forwarded backend. Point `tcab` at
-it with `TCAB_BACKEND_URL=http://127.0.0.1:8787` after `tcab login`; the desktop
-app takes the same URL in its Connections settings.
+`tcab run` targets the same forwarded backend. Point `tcab` at it with
+`TCAB_BACKEND_URL=http://127.0.0.1:8787` after `tcab login`.
 
 ### Clearing stale forwards
 

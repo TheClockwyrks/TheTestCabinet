@@ -17,10 +17,10 @@ how it stores what it serves, is internal.
 The backend serves two kinds of client, described in [Runners and
 Reporters](/components/architecture/#runners-and-reporters):
 
-- Runners (the CLI, driver and Tauri app) resolve test case definitions from the
+- Runners (the CLI and driver) resolve test case definitions from the
   backend. The driver reports each [run record](/components/core/run-records/)
   back to it when the run finishes.
-- Reporters (the consoles, and the public site through the snapshot) read
+- Reporters (the web console, and the public site through the snapshot) read
   definitions and published results to display them.
 
 Each runner resolves its run-container image from its own registry
@@ -144,7 +144,7 @@ failing tree listing abandons the pass the same way.
 
 The backend holds each account's reviewer scheduling state: what runs that
 account wants to exist, and how fast it wants them arriving. The data is private
-to the account, stays inside the backend and the consoles, and reaches neither
+to the account, stays inside the backend and the web console, and reaches neither
 the public snapshot nor the projection.
 
 - A [coverage plan](/components/backend/coverage/) declares cases pinned to a
@@ -206,13 +206,13 @@ skipping the public write.
 | `TCAB_OPENROUTER_API_KEY`            | OpenRouter key the backend's own [model probes](/components/backend/api/#model-probes) are billed to. Distinct from the runners' `OPENROUTER_API_KEY`. Unset, a probe trigger fails with `openrouter_key_missing`. | —                                         |
 | `TCAB_REFERENCE_BROWSER`             | Headless browser used to render references at ingest.                                                                                                                                                              | image Chromium                            |
 | `TCAB_GG_REFERENCE`                  | Directory holding gg's projected reference documents.                                                                                                                                                              | `<checkout>/target/gg-reference`          |
-| `TCAB_ARTIFACTS_PUBLIC_URL`          | Artifact service base URL, advertised to consoles.                                                                                                                                                                 | —                                         |
+| `TCAB_ARTIFACTS_PUBLIC_URL`          | Artifact service base URL, advertised to the web console.                                                                                                                                                          | —                                         |
 | `TCAB_ARTIFACTS_URL`                 | Artifact service base URL the backend itself calls to prune and sweep run trees. Unset disables the prune, the sweep, and the snapshot's artifact media fallback.                                                  | —                                         |
 | `TCAB_ARTIFACT_SWEEP_INTERVAL_HOURS` | Interval between reclamation sweeps; `0` disables the sweep.                                                                                                                                                       | `6`                                       |
 | `TCAB_ARTIFACT_SWEEP_GRACE_HOURS`    | How old a run-less tree must be before a sweep deletes it.                                                                                                                                                         | `24`                                      |
-| `TCAB_ARENA_PUBLIC_URL`              | Arena service base URL, advertised to consoles.                                                                                                                                                                    | —                                         |
-| `TCAB_GRAFANA_PUBLIC_URL`            | Grafana base URL, advertised to consoles.                                                                                                                                                                          | —                                         |
-| `TCAB_SNAPSHOT_PUBLIC_URL`           | Public read base URL of the document bucket, advertised to consoles.                                                                                                                                               | —                                         |
+| `TCAB_ARENA_PUBLIC_URL`              | Arena service base URL, advertised to the web console.                                                                                                                                                             | —                                         |
+| `TCAB_GRAFANA_PUBLIC_URL`            | Grafana base URL, advertised to the web console.                                                                                                                                                                   | —                                         |
+| `TCAB_SNAPSHOT_PUBLIC_URL`           | Public read base URL of the document bucket, advertised to the web console.                                                                                                                                        | —                                         |
 
 The backend binds `8787`, the [auth service](/components/auth/overview/) `8789`,
 the [artifact service](/components/artifacts/overview/) `8790`, and the

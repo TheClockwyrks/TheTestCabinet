@@ -2,19 +2,19 @@
 title: Releasing
 ---
 
-This page covers cutting a release of the downloadable binaries and the desktop
-app, and the one-time configuration behind the project's deployed static sites.
-For the whole `vX.Y.Z` sequence these workflows sit inside — preparing the
-release on `nightly`, rehearsing it on staging, and landing the catalog and the
-services in production afterwards — see
-[Cutting a Release](/guides/devops/cutting-a-release/) and its
-[quickstart](/quickstarts/devops/cut-a-release/). Standing the always-on services
-up as staging or production environments is covered by
+This page covers cutting a release of the downloadable binaries, and the
+one-time configuration behind the project's deployed static sites. For the whole
+`vX.Y.Z` sequence these workflows sit inside — preparing the release on
+`nightly`, rehearsing it on staging, and landing the catalog and the services in
+production afterwards — see [Cutting a
+Release](/guides/devops/cutting-a-release/) and its
+[quickstart](/quickstarts/devops/cut-a-release/). Standing the always-on
+services up as staging or production environments is covered by
 [Deployment](/deployment/overview/); running them on your own machine is covered
 by [Running](/development/running/); building locally is covered by
 [Building](/development/building/).
 
-## Releasing the binaries and desktop app
+## Releasing the binaries
 
 Public releases are cut on GitHub, driven by two manual workflows so artifacts
 are tested before they reach users.
@@ -31,10 +31,7 @@ are tested before they reach users.
    - [`gg`](/gg/overview/), the in-container coding harness, as a bare
      static-musl executable for `x86_64` and `aarch64`, plus gg's reference
      documents as one arch-independent `gg-reference-<version>.tar.gz` (see
-     [Releasing `gg`](#releasing-gg));
-   - the [Tauri desktop app](/components/tauri/overview/) as the platform's
-     installer: a `.deb` on Linux, a `.dmg` on macOS, an `.msi` and an NSIS
-     `.exe` on Windows.
+     [Releasing `gg`](#releasing-gg)).
 
    It publishes everything, with a `SHA256SUMS`, to a GitHub prerelease at
    that tag. Re-running for the same tag refreshes its assets.
@@ -47,16 +44,7 @@ are tested before they reach users.
 
 The per-platform `tcab` smoke check is the same `scripts/ci/smoke-binary.sh` the
 CI binary job runs, so the CLI is validated continuously and again on the shipped
-artifact. The services and the desktop app are exercised by hand from the
-prerelease.
-
-Both halves of the desktop app are compiled and tested on every change by
-`scripts/ci/desktop-build.sh`, on Linux and Windows in Azure and on the same
-`ubuntu-22.04` image `release.yml` bundles on in GitHub. `release.yml` builds the
-desktop UI through the root `build:packages` script, which is the single source
-of truth for which workspace packages the UI's typecheck resolves its imports
-against. The macOS desktop app is the one artifact a release is first to build,
-because no Azure agent can build it.
+artifact. The services are exercised by hand from the prerelease.
 
 ### Releasing `gg`
 
@@ -133,28 +121,6 @@ declares packs fails at container start naming both the path and the script;
 end-to-end, adversarial, and performance runs are unaffected. The `tcab-driver`
 container image needs none of this: it copies the same tree in at
 `/opt/tcab-audio`, which is where the driver looks by default.
-
-### macOS code signing
-
-The macOS `.dmg` is neither code-signed nor notarized: the Release workflow
-builds it with a bare `cargo tauri build`. macOS therefore marks a downloaded app
-with the `com.apple.quarantine` attribute, and Gatekeeper refuses to launch it,
-reporting "“The Test Cabinet” is damaged and can't be opened. You should move it
-to the Trash." The app is unsigned rather than corrupt, and the symptom is most
-pronounced on Apple Silicon.
-
-The prerelease notes carry the workaround, which is to clear the quarantine
-attribute once after installing:
-
-```sh
-xattr -dr com.apple.quarantine "/Applications/The Test Cabinet.app"
-```
-
-`xattr` is more reliable than right-click Open, which Gatekeeper withholds for
-the "damaged" state on Apple Silicon. Signing with a Developer ID Application
-certificate and notarizing the `.dmg` in the workflow removes the step; Tauri
-reads `APPLE_CERTIFICATE`/`APPLE_SIGNING_IDENTITY` and the notarization
-credentials from the environment.
 
 ## Static-site topology
 

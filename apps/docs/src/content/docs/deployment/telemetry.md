@@ -32,9 +32,9 @@ protocol, and `TCAB_ENV` into every per-run driver `Job` and every publish `Job`
 so their spans export alongside the long-lived services with no extra wiring.
 
 The [web console](/components/web/overview/) is a browser app that exports traces
-only, through the `VITE_OTEL_*` build-time variables. The CLI and Tauri app are
-operator tools rather than deployed services, and read the same `OTEL_*`
-variables on whatever host runs them.
+only, through the `VITE_OTEL_*` build-time variables. The CLI is an
+operator tool rather than a deployed service, and reads the same `OTEL_*`
+variables on whatever host runs it.
 
 ## Choosing a collector
 

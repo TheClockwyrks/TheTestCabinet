@@ -171,8 +171,8 @@ preview template, so an operation needs no canvas flags.
 
 ## Live preview
 
-When a run is watched, driven by a [driver](/components/driver/overview/) or the
-[Tauri app](/components/tauri/overview/) rather than a plain `tcab run`, the
+When a run is watched, driven by a [driver](/components/driver/overview/)
+rather than a plain `tcab run`, the
 model's painting streams to the viewer in real time. The orchestrator adds a
 `live` block to the seeded config carrying a `host.docker.internal` endpoint and
 an opaque per-run token. After each operation the binary connects back to the run
