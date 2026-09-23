@@ -919,55 +919,68 @@ fn a_command_that_outlives_its_cap_is_stopped_and_reported_as_timed_out() {
 /// host afterwards; the group kill is what makes the claim true. The background child here stands
 /// in for those workers.
 ///
-/// The worker holds the write end of a FIFO open for as long as it lives, and a read of a FIFO
-/// reaches end-of-file exactly when its last writer is gone — so reading it to the end after the cap
-/// returns completes if the worker died with the command and blocks if it survived. There is no
-/// window to watch and nothing to time. Linux-only because it relies on Linux opening a FIFO
-/// read-write without blocking, which is how the test holds the FIFO open while the worker starts.
+/// The worker opens the write end of a FIFO, writes one byte to say it exists, and holds the FIFO
+/// open for as long as it lives. A read of a FIFO reaches end-of-file exactly when its last writer
+/// is gone, so reading it to the end after the cap returns completes if the worker died with the
+/// command and blocks if it survived. There is no window to watch and nothing to time.
+///
+/// The byte is what keeps the pass from being vacuous: a cap that fired before the worker had
+/// started leaves no writer at all, and the read ends at once whether or not the group kill works.
+/// That attempt proves nothing either way, so it is made again under a doubled cap until the worker
+/// has said it exists — the outcome depends on the kill, never on how quickly the host started a
+/// shell. Linux-only because it relies on Linux opening a FIFO read-write without blocking, which
+/// is how the test holds the FIFO open while the worker starts.
 #[cfg(target_os = "linux")]
 #[test]
 fn a_stopped_command_takes_the_workers_it_started_with_it() {
     use std::io::Read;
 
     let scratch = tempfile::tempdir().expect("a scratch directory");
-    let fifo = scratch.path().join("worker");
-    let made = std::process::Command::new("mkfifo")
-        .arg(&fifo)
-        .status()
-        .expect("mkfifo runs");
-    assert!(made.success(), "mkfifo made the FIFO");
-    // Held read-write so the worker's open for writing finds a reader and does not block, and so
-    // the test's own read-only open below finds a writer.
-    let keeper = std::fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open(&fifo)
-        .expect("the FIFO opens");
+    let mut cap = Duration::from_millis(200);
+    for attempt in 0.. {
+        assert!(
+            attempt < 8,
+            "the worker never started inside a cap of {cap:?}; the host cannot run this test"
+        );
+        let fifo = scratch.path().join(format!("worker-{attempt}"));
+        let made = std::process::Command::new("mkfifo")
+            .arg(&fifo)
+            .status()
+            .expect("mkfifo runs");
+        assert!(made.success(), "mkfifo made the FIFO");
+        // Held read-write so the worker's open for writing finds a reader and does not block, so
+        // its byte is buffered until it is read, and so the test's own read-only open below finds a
+        // writer.
+        let keeper = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&fifo)
+            .expect("the FIFO opens");
 
-    // The worker opens the FIFO for writing and then waits forever with it open.
-    let command = format!(
-        "(exec 3>'{}'; exec sleep infinity) & wait",
-        fifo.to_string_lossy().replace('\'', ""),
-    );
-    run_bounded(
-        scratch.path(),
-        &command,
-        Duration::from_millis(200),
-        scratch.path(),
-        "tree",
-        &[],
-    )
-    .expect_err("the command outlives its cap");
+        // The worker opens the FIFO for writing, says so, and then waits forever with it open.
+        let command = format!(
+            "(exec 3>'{}'; printf x >&3; exec sleep infinity) & wait",
+            fifo.to_string_lossy().replace('\'', ""),
+        );
+        run_bounded(scratch.path(), &command, cap, scratch.path(), "tree", &[])
+            .expect_err("the command outlives its cap");
 
-    let mut reader = std::fs::File::open(&fifo).expect("the FIFO opens for reading");
-    drop(keeper);
-    // End-of-file once every writer is gone. A worker that outlived the cap still holds its write
-    // end, and this read then blocks until nextest stops the test.
-    let mut rest = Vec::new();
-    reader
-        .read_to_end(&mut rest)
-        .expect("the FIFO reads to its end");
-    assert!(rest.is_empty(), "the worker wrote nothing");
+        let mut reader = std::fs::File::open(&fifo).expect("the FIFO opens for reading");
+        drop(keeper);
+        // End-of-file once every writer is gone. A worker that outlived the cap still holds its
+        // write end, and this read then blocks until nextest stops the test.
+        let mut said = Vec::new();
+        reader
+            .read_to_end(&mut said)
+            .expect("the FIFO reads to its end");
+        if said.is_empty() {
+            // The cap fired before the worker existed.
+            cap *= 2;
+            continue;
+        }
+        assert_eq!(said, b"x", "the worker wrote only its one byte");
+        return;
+    }
 }
 
 #[test]
