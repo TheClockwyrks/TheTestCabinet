@@ -43,7 +43,8 @@ use crate::sandbox::fake::{
 use crate::sandbox::membrane::{MembraneState, RunEnding, Sandbox};
 use crate::sandbox::outcome::{ProgramError, ProgramErrorKind, SandboxError, SandboxOutcome};
 use crate::sandbox::{
-    CodeModule, PrepareContext, ProgramScope, SandboxLimits, bounded_store, engine, linker, reclaim,
+    CodeModule, PrepareContext, ProgramScope, SandboxLimits, bounded_store, bounded_store_on,
+    engine, linker, linker_on, reclaim,
 };
 use crate::tools::ToolOutcome;
 
@@ -858,7 +859,7 @@ struct Crossing {
     /// The gg tool name the call must arrive under.
     tool: &'static str,
     /// The call, exactly as a model would write it. The [`require`](super::SURFACE_IMPORT) that
-    /// reaches it is written by the loop below rather than thirty-five times here.
+    /// reaches it is written once, at the head of the one program the test runs every call in.
     program: &'static str,
     /// The JSON the invoker must have seen.
     expected: fn() -> Value,
@@ -1099,21 +1100,31 @@ fn every_operation_crosses_the_membrane_from_its_ruby_spelling() {
     let crossings = crossings();
     let operations = all_operations();
 
+    // One program rather than one per crossing, as every compiled arm does: each program is an Opal
+    // compile, so thirty-five of them would be thirty-five compiler processes for a table that reads
+    // the same. It is also the stronger check — the calls must arrive in the order the program made
+    // them, so a call that reached gg's dispatch under a NEIGHBOUR's name fails here as well.
+    let program: String = std::iter::once(format!("{}\n", super::SURFACE_IMPORT))
+        .chain(
+            crossings
+                .iter()
+                .map(|crossing| format!("{}\n", crossing.program)),
+        )
+        .collect();
+    let (outcome, log) = run_with(&program, &operations, &[], canned_outcome);
+    assert!(
+        matches!(&outcome.result, Ok(result) if result.error.is_none()),
+        "the program did not run cleanly: {:?}",
+        outcome.result
+    );
+
+    let expected: Vec<&str> = crossings.iter().map(|crossing| crossing.tool).collect();
+    assert_eq!(
+        log.names(),
+        expected,
+        "the calls did not reach gg's dispatch under their own names, in order"
+    );
     for crossing in &crossings {
-        let program = format!("{}\n{}\n", super::SURFACE_IMPORT, crossing.program);
-        let (outcome, log) = run_with(&program, &operations, &[], canned_outcome);
-        assert!(
-            matches!(&outcome.result, Ok(result) if result.error.is_none()),
-            "`{}` did not run cleanly: {:?}",
-            crossing.tool,
-            outcome.result
-        );
-        assert_eq!(
-            log.names(),
-            [crossing.tool],
-            "`{}` did not reach gg's dispatch under its own name",
-            crossing.program
-        );
         assert_eq!(
             log.args(crossing.tool),
             Some((crossing.expected)()),
@@ -1344,13 +1355,86 @@ end
     assert_eq!(logs(&outcome), ["close_all true"]);
 }
 
-/// **Opal's runtime comes out of the component's snapshot, and gg's SDK comes out of `require "gg"`.**
+/// The embedded guest compiled for the [metered engine](engine::metered_engine), once per process.
+fn metered_component() -> &'static Component {
+    static METERED: std::sync::OnceLock<Component> = std::sync::OnceLock::new();
+    METERED.get_or_init(|| {
+        engine::compile_metered(COMPONENT).expect("the embedded Ruby guest compiles")
+    })
+}
+
+/// **How much work the guest does to run `program`**, instantiation included, as the number of wasm
+/// instructions it executes on the [metered engine](engine::metered_engine).
+///
+/// A count rather than a time, so it reads the same on an idle machine and on one running forty
+/// other tests: the guest executes the same instructions either way.
+fn work_of(program: &str) -> u64 {
+    const FUEL: u64 = u64::MAX;
+    let limits = SandboxLimits::AMPLE;
+    let log = CallLog::default();
+    let api = FakeOperationApi::with(&log, canned_outcome);
+    let linker = linker_on::<FakeOperationApi>(engine::metered_engine())
+        .expect("the production linker builds on the metered engine");
+    let operations = granted_operations(&[], false);
+    let scope = ProgramScope {
+        capabilities: &all_capabilities(),
+        operations: &operations,
+        modules: &[],
+        ending: RunEnding::None,
+    };
+    let mut store = bounded_store_on(
+        engine::metered_engine(),
+        MembraneState::new(api, ruby(), scope, limits, None),
+        limits,
+    );
+    store
+        .set_fuel(FUEL)
+        .expect("the metered engine counts fuel");
+    let bound = Sandbox::instantiate(&mut store, metered_component(), &linker)
+        .expect("the embedded Ruby guest instantiates on the metered engine");
+    store.data_mut().start_program();
+    let returned = bound
+        .call_run(&mut store, program, &[], &[], RunEnding::None.into(), false)
+        .map_err(|error| engine::classify(&store, limits, &error, SandboxError::Trap));
+    let spent = FUEL - store.get_fuel().expect("the metered engine counts fuel");
+    let (outcome, _api) = reclaim(store, returned, None, None);
+    assert_eq!(logs(&outcome), ["1"], "the program ran to its end");
+    spent
+}
+
+/// **Opal's runtime is not rebuilt for a program**: running a compiled Ruby program costs the guest
+/// about what running a line of plain JavaScript on the same component does.
+///
+/// The runtime is 743 KB of JavaScript. The component is built with it already evaluated — its heap
+/// snapshotted into the artifact — so a turn instantiates a runtime that exists rather than building
+/// one. A build that stopped snapshotting it, or a guest that evaluated it on every call, would
+/// still run every program correctly and pass every other test here; what it would change is how
+/// much the guest executes per turn, by several times the whole of what a small program costs. So
+/// that is what is compared, as a count of instructions (see [`work_of`]): a Ruby program that
+/// prints one line against a JavaScript line that prints the same, both instantiation and all. The
+/// two are close to equal when the runtime comes from the snapshot, and the Ruby one is allowed
+/// twice the JavaScript one's count before this fails.
+#[test]
+fn opals_runtime_is_not_rebuilt_for_a_program() {
+    let ruby_program = work_of(&prepare("puts 1\n"));
+    let javascript = work_of("console.log(1)");
+    println!("a Ruby program {ruby_program} instructions; a JavaScript line {javascript}");
+    assert!(
+        ruby_program < javascript * 2,
+        "a one-line Ruby program executed {ruby_program} wasm instructions against {javascript} for \
+         a line of JavaScript on the same component: something is building Opal's runtime per \
+         program instead of reading it from the snapshot"
+    );
+}
+
+/// **Opal's runtime comes with the component rather than with the program, and gg's SDK comes out
+/// of `require "gg"`.**
 ///
 /// Both halves are what keep a Ruby turn cheap and honest. The runtime is 743 KB of JavaScript that
-/// the guest was pre-initialised with, so a compiled program must neither carry it nor rebuild it.
-/// The SDK is registered in the guest but not loaded, because a constant carried in the snapshot is
-/// a constant a program reaches with no line it wrote; only `require "gg"` loads it, and loads it
-/// once.
+/// the guest was pre-initialised with, so a compiled program must not carry it — that it is not
+/// rebuilt on every turn either is [`opals_runtime_is_not_rebuilt_for_a_program`]. The SDK is
+/// registered in the guest but not loaded, because a constant carried in the snapshot is a constant
+/// a program reaches with no line it wrote; only `require "gg"` loads it, and loads it once.
 #[test]
 fn opal_comes_from_the_snapshot_and_gg_loads_once_on_require() {
     // The compiled program carries none of the runtime: it is a few hundred bytes against the

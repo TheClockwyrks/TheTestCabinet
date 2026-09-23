@@ -585,7 +585,15 @@ fn keep_reported_error<A: OperationApi>(
 /// corrupt the run's event stream. [`MembraneState`]'s context is built without it, and
 /// `console.*` is rebound to the feedback channel instead.
 fn linker<A: OperationApi>() -> Result<Linker<MembraneState<A>>, SandboxError> {
-    let mut linker = Linker::new(engine::shared_engine());
+    linker_on(engine::shared_engine())
+}
+
+/// [`linker`], against an engine of the caller's choosing — the shared one, or under test the
+/// [metered](engine::metered_engine) one.
+fn linker_on<A: OperationApi>(
+    engine: &wasmtime::Engine,
+) -> Result<Linker<MembraneState<A>>, SandboxError> {
+    let mut linker = Linker::new(engine);
     Sandbox::add_to_linker::<_, HasSelf<_>>(&mut linker, |state| state)
         .map_err(|error| SandboxError::Engine(error.to_string()))?;
     // The one door the JVM arms come through, beside the fifteen typed interfaces rather than
@@ -631,7 +639,17 @@ fn bounded_store<A: OperationApi>(
     state: MembraneState<A>,
     limits: SandboxLimits,
 ) -> Store<MembraneState<A>> {
-    let mut store = Store::new(engine::shared_engine(), state);
+    bounded_store_on(engine::shared_engine(), state, limits)
+}
+
+/// [`bounded_store`], against an engine of the caller's choosing — the shared one, or under test the
+/// [metered](engine::metered_engine) one.
+fn bounded_store_on<A: OperationApi>(
+    engine: &wasmtime::Engine,
+    state: MembraneState<A>,
+    limits: SandboxLimits,
+) -> Store<MembraneState<A>> {
+    let mut store = Store::new(engine, state);
     store.limiter(|state| state.limiter());
 
     let timeout = limits.timeout;

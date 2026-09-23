@@ -98,84 +98,119 @@ static COMPILES: AtomicU64 = AtomicU64::new(0);
 /// reason.
 fn engine() -> &'static Engine {
     ENGINE.get_or_init(|| {
-        let mut config = Config::new();
-        config.wasm_component_model(true);
-        // Epoch interruption — not fuel — is the runaway guard: a program's execution is bounded by
-        // a wall-clock timeout rather than an instruction count. The [`ticker`] below advances the
-        // engine's epoch on a fixed cadence, each [`Store`] arms a deadline against it, and the
-        // guest traps when its own execution time (parked-in-host time excluded) outruns the
-        // ceiling. The deadline is only ever delivered where the guest is running wasm, so it does
-        // not reach one parked in a synchronous WASI call. See [`limits`](super::limits) for why a
-        // timeout replaced fuel, and for what that exclusion costs a language that can block.
-        config.epoch_interruption(true);
-        config.cranelift_opt_level(OptLevel::None);
-        // Under test, one compile thread per process. Production compiles in parallel because it is
-        // one process per run with the machine to itself and the compile is latency it pays. A test
-        // run is the opposite shape: nextest runs a process per test and fills every core with them,
-        // so a compile fanned out across every core competes with the other tests for the same cores,
-        // and the fan-out's own overhead — a thread pool whose idle workers spin while they look for
-        // work — is paid on top. Measured on one Swift test compiling five programs, parallel
-        // compilation cost several times the CPU of compiling them one thread at a time, for the same
-        // artifacts. The thread count changes no compiled code.
-        #[cfg(test)]
-        config.parallel_compilation(false);
-        // Symbolicate a trap's frames out of the artifact's own DWARF rather than reporting them as
-        // addresses. It is off by default in wasmtime, and gg turns it on because on a compiled arm
-        // with no exception mechanism a trap is how an ORDINARY program failure arrives — and for
-        // the [Swift](super::language::swift) arm it is the whole error surface, not a nicety: that
-        // compiler encodes `Swift runtime failure: Index out of range` as the name of a synthetic
-        // inlined frame rather than printing it anywhere, so without this a model is told
-        // `program.wasm!main` and nothing else. Inlined frames are what make that legible, and they
-        // are the same feature.
-        //
-        // It costs nothing for a guest carrying no debug information — the embedded interpreter
-        // components carry none — and the work is done only where a trap is actually being
-        // rendered, never on the path a program takes when it succeeds.
-        config.wasm_backtrace_details(WasmBacktraceDetails::Enable);
-        // The wasm **exception-handling** proposal, which is what makes `throw`, `try` and `catch`
-        // work in a [C++](super::language::cpp) program. It is off by default in wasmtime and gg
-        // turns it on for one arm, because the alternative for that arm is `-fno-exceptions` —
-        // under which every `try` a model writes is a compile error, and the arm measures gg's flag
-        // rather than the language.
-        //
-        // It costs the other guests nothing: enabling a proposal widens what a module MAY contain,
-        // and every artifact here is produced by a toolchain gg pins. What it did cost is a build
-        // feature — wasmtime gates this setter behind `gc`, because an exception reference is a
-        // GC-managed value — and that feature is shared with `foray-host` and `lattice-host`, which
-        // turn `gc_support` back off on their own engines rather than inheriting a wider validation
-        // surface from a decision made here. See the root `Cargo.toml`.
-        config.wasm_exceptions(true);
-        // **How much host stack a guest may spend before wasmtime traps it**, raised from wasmtime's
-        // 512 KiB default to 1 MiB for one arm's sake and measured rather than chosen.
-        //
-        // A JavaScript recursion on the ECMAScript guest (`packages/gg-sandbox/guest`) spends TWO
-        // stacks at once: quickjs's own, which lives in the guest's linear memory and is what the
-        // engine measures a recursion against, and the wasm call stack under it, which is this. If
-        // this one runs out first the store dies with `wasm trap: call stack exhausted` and the model
-        // reads nothing at all; if the engine's does, the model reads `RangeError: Maximum call stack
-        // size exceeded` with its own frames, which is the whole point. Measured on that guest, the
-        // recursion depth reached before the engine reports the overflow itself:
-        //
-        //     JavaScript ceiling  |  512 KiB here  |  1 MiB here  |  2 MiB here
-        //     128 KiB             |  452           |  452         |  452
-        //     256 KiB             |  907           |  907         |  907
-        //     512 KiB             |  host trap     |  1817        |  1817
-        //     1 MiB               |  host trap     |  host trap   |  3637
-        //
-        // The guest's ceiling is 512 KiB, so this is the 1 MiB row. NOT 2 MiB, although wasmtime
-        // accepts it: this engine runs wasm on whatever thread called it, and a Rust test thread's
-        // default stack is 2 MiB — a ceiling equal to the whole thread stack would turn a guest
-        // overflow into a native one, which is not a trap but a crash.
-        //
-        // It widens what every other arm may spend before being trapped, by half a megabyte, and
-        // costs them nothing else: the limit is a ceiling, not an allocation.
-        config.max_wasm_stack(1024 * 1024);
         // A fixed, known-valid configuration: nothing here depends on the host, the run, or any
         // input, so a failure would be a programming error rather than a runtime condition.
+        let engine = Engine::new(&config()).expect("the fixed wasmtime Config is valid");
+        spawn_ticker(engine.clone());
+        engine
+    })
+}
+
+/// The configuration of the process-wide [`engine`], every setting with its reason.
+fn config() -> Config {
+    let mut config = Config::new();
+    config.wasm_component_model(true);
+    // Epoch interruption — not fuel — is the runaway guard: a program's execution is bounded by
+    // a wall-clock timeout rather than an instruction count. The [`ticker`] below advances the
+    // engine's epoch on a fixed cadence, each [`Store`] arms a deadline against it, and the
+    // guest traps when its own execution time (parked-in-host time excluded) outruns the
+    // ceiling. The deadline is only ever delivered where the guest is running wasm, so it does
+    // not reach one parked in a synchronous WASI call. See [`limits`](super::limits) for why a
+    // timeout replaced fuel, and for what that exclusion costs a language that can block.
+    config.epoch_interruption(true);
+    config.cranelift_opt_level(OptLevel::None);
+    // Under test, one compile thread per process. Production compiles in parallel because it is
+    // one process per run with the machine to itself and the compile is latency it pays. A test
+    // run is the opposite shape: nextest runs a process per test and fills every core with them,
+    // so a compile fanned out across every core competes with the other tests for the same cores,
+    // and the fan-out's own overhead — a thread pool whose idle workers spin while they look for
+    // work — is paid on top. Measured on one Swift test compiling five programs, parallel
+    // compilation cost several times the CPU of compiling them one thread at a time, for the same
+    // artifacts. The thread count changes no compiled code.
+    #[cfg(test)]
+    config.parallel_compilation(false);
+    // Symbolicate a trap's frames out of the artifact's own DWARF rather than reporting them as
+    // addresses. It is off by default in wasmtime, and gg turns it on because on a compiled arm
+    // with no exception mechanism a trap is how an ORDINARY program failure arrives — and for
+    // the [Swift](super::language::swift) arm it is the whole error surface, not a nicety: that
+    // compiler encodes `Swift runtime failure: Index out of range` as the name of a synthetic
+    // inlined frame rather than printing it anywhere, so without this a model is told
+    // `program.wasm!main` and nothing else. Inlined frames are what make that legible, and they
+    // are the same feature.
+    //
+    // It costs nothing for a guest carrying no debug information — the embedded interpreter
+    // components carry none — and the work is done only where a trap is actually being
+    // rendered, never on the path a program takes when it succeeds.
+    config.wasm_backtrace_details(WasmBacktraceDetails::Enable);
+    // The wasm **exception-handling** proposal, which is what makes `throw`, `try` and `catch`
+    // work in a [C++](super::language::cpp) program. It is off by default in wasmtime and gg
+    // turns it on for one arm, because the alternative for that arm is `-fno-exceptions` —
+    // under which every `try` a model writes is a compile error, and the arm measures gg's flag
+    // rather than the language.
+    //
+    // It costs the other guests nothing: enabling a proposal widens what a module MAY contain,
+    // and every artifact here is produced by a toolchain gg pins. What it did cost is a build
+    // feature — wasmtime gates this setter behind `gc`, because an exception reference is a
+    // GC-managed value — and that feature is shared with `foray-host` and `lattice-host`, which
+    // turn `gc_support` back off on their own engines rather than inheriting a wider validation
+    // surface from a decision made here. See the root `Cargo.toml`.
+    config.wasm_exceptions(true);
+    // **How much host stack a guest may spend before wasmtime traps it**, raised from wasmtime's
+    // 512 KiB default to 1 MiB for one arm's sake and measured rather than chosen.
+    //
+    // A JavaScript recursion on the ECMAScript guest (`packages/gg-sandbox/guest`) spends TWO
+    // stacks at once: quickjs's own, which lives in the guest's linear memory and is what the
+    // engine measures a recursion against, and the wasm call stack under it, which is this. If
+    // this one runs out first the store dies with `wasm trap: call stack exhausted` and the model
+    // reads nothing at all; if the engine's does, the model reads `RangeError: Maximum call stack
+    // size exceeded` with its own frames, which is the whole point. Measured on that guest, the
+    // recursion depth reached before the engine reports the overflow itself:
+    //
+    //     JavaScript ceiling  |  512 KiB here  |  1 MiB here  |  2 MiB here
+    //     128 KiB             |  452           |  452         |  452
+    //     256 KiB             |  907           |  907         |  907
+    //     512 KiB             |  host trap     |  1817        |  1817
+    //     1 MiB               |  host trap     |  host trap   |  3637
+    //
+    // The guest's ceiling is 512 KiB, so this is the 1 MiB row. NOT 2 MiB, although wasmtime
+    // accepts it: this engine runs wasm on whatever thread called it, and a Rust test thread's
+    // default stack is 2 MiB — a ceiling equal to the whole thread stack would turn a guest
+    // overflow into a native one, which is not a trap but a crash.
+    //
+    // It widens what every other arm may spend before being trapped, by half a megabyte, and
+    // costs them nothing else: the limit is a ceiling, not an allocation.
+    config.max_wasm_stack(1024 * 1024);
+    config
+}
+
+/// **A second engine, test-only, configured as the shared one but for fuel**: every wasm
+/// instruction a store on it executes is counted, so a test can assert how much work something is
+/// as a count rather than as a time.
+///
+/// A component is bound to the engine that compiled it, so a component run here is compiled for it
+/// by [`compile_metered`]; nothing outside the tests that ask for a count ever runs on it. A store
+/// created against it starts with no fuel and has to be given some before anything runs.
+#[cfg(test)]
+pub(crate) fn metered_engine() -> &'static Engine {
+    static METERED: OnceLock<Engine> = OnceLock::new();
+    METERED.get_or_init(|| {
+        let mut config = config();
+        config.consume_fuel(true);
         let engine = Engine::new(&config).expect("the fixed wasmtime Config is valid");
         spawn_ticker(engine.clone());
         engine
     })
+}
+
+/// `bytes` compiled for the [`metered_engine`], through the test suite's cache like every other
+/// compile.
+#[cfg(test)]
+pub(crate) fn compile_metered(bytes: &[u8]) -> Result<Component, SandboxError> {
+    cache::load_or_compile(metered_engine(), bytes, cache::directory(), |bytes| {
+        Component::new(metered_engine(), bytes)
+            .map_err(|err| SandboxError::Compile(failure_reason(&err)))
+    })
+    .map(|(component, _)| component)
 }
 
 /// How often the [ticker](spawn_ticker) advances the engine's epoch. Each tick is the resolution of
