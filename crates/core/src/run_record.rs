@@ -70,9 +70,9 @@ impl HarnessSlug {
     ///
     /// These are the harnesses that ship a `harnesses/<slug>/harness.toml`
     /// manifest, install a CLI into the run container, and are shelled out to. It
-    /// is what the registry, the `harnesses/` directory guard, the `tcab
-    /// harnesses` listing, and desktop harness-auth all enumerate. [`Gg`](HarnessSlug::Gg) is **not** here on purpose — it is the
-    /// first-party in-container executor, invoked directly and registered on its
+    /// is what the registry, the `harnesses/` directory guard, and the `tcab
+    /// harnesses` listing all enumerate. [`Gg`](HarnessSlug::Gg) is **not** here on
+    /// purpose — it is the first-party in-container executor, invoked directly and registered on its
     /// own path (see [`crate::harness_registry`]); a wire slug that must resolve to
     /// *any* variant, gg included, goes through [`from_wire`](HarnessSlug::from_wire),
     /// and a surface that enumerates every harness a *run* can be queued for takes

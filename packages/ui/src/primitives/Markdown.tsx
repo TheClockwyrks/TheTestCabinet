@@ -95,8 +95,9 @@ export function Markdown({
   // Rewrite relative image references through the caller's resolver; every other
   // URL (links, absolute images) goes through react-markdown's default transform
   // exactly as it would without a resolver. The resolved URL is returned as-is —
-  // NOT re-sanitized — because a host may resolve to a custom scheme (the desktop
-  // console's asset protocol) the default transform would strip.
+  // NOT re-sanitized — because it is the host's own URL (an artifact-service or
+  // snapshot link), not model-authored input, and a host may resolve to a scheme
+  // the default transform would strip.
   const urlTransform: Options["urlTransform"] = resolveImageUrl
     ? (url, key) => {
         if (key === "src" && isRelativeReference(url)) {

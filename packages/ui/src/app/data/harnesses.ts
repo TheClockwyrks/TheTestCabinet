@@ -1,9 +1,8 @@
 // The agent harnesses the application can drive. This is a fixed, code-defined
 // catalog — the set of supported harnesses is part of the product, not something
 // the backend serves or that depends on which container images happen to be
-// published. It mirrors the core's canonical `HarnessSlug` list (and the desktop
-// shell's `HarnessSlug::ALL`), in the same order, so the gallery never drifts
-// from it. The runner resolves each harness's container image from its own
+// published. It mirrors the core's canonical `HarnessSlug` list, in the same
+// order, so the gallery never drifts from it. The runner resolves each harness's container image from its own
 // registry configuration (see docs/components/core/execution.md); the backend
 // plays no part in container distribution.
 

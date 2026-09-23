@@ -220,8 +220,7 @@ export function NotificationsLayer() {
       worker.client.subscribeToNotifications({
         onNotification: handlePush,
         onRunLifecycle: handleRunLifecycle,
-        // A transport fault is non-fatal: the web EventSource reconnects on its
-        // own; a desktop listen error just means no notifications until retried.
+        // A transport fault is non-fatal: the EventSource reconnects on its own.
         onError: () => {},
         // The feed carries no backlog, so anything published while the channel was
         // down is never replayed. Reconcile against the active list on every

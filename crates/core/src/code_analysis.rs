@@ -4,7 +4,7 @@
 //! The analysis itself lives in `crates/code-analysis`, which depends on this crate for
 //! these types. The dependency is deliberately one-way: the analyzer needs the contract,
 //! and core must never gain a parser — `oxc` and `syn` would otherwise be linked into
-//! every binary that links core, the desktop shell included. See
+//! every binary that links core, including those that never analyze a run. See
 //! [`post_run`](crate::post_run) for the seam the analyzer is injected through.
 //!
 //! # Two tiers, on purpose

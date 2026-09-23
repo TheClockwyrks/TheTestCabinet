@@ -57,7 +57,7 @@ shortest prefix of the run's digest that no published run already holds, and it
 is stored on the run's row.
 
 Assignment happens once. A code that has been handed out keeps addressing the
-run it was minted for, whatever is published afterwards, and the consoles read a
+run it was minted for, whatever is published afterwards, and the web console reads a
 run's code from its record.
 
 ## Schema version

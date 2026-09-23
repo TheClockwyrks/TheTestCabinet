@@ -155,7 +155,7 @@ export interface ReviewModel {
 
 // The gallery's data source, injected by the host app. The same routed UI lives
 // in `@clockwyrks/ui`, but its data differs per app: the static site builds
-// this from the build-time public snapshot; the web/desktop consoles build it
+// this from the build-time public snapshot; the web console builds it
 // live from a backend (catalog + published runs) and a worker (in-progress and
 // produced runs). Pages read it through the existing data hooks
 // (`queryRunSummaries`/`useCaseRunSummaries`, `useTestCases`, `findReview`), which
@@ -175,19 +175,15 @@ export type { InProgressRun } from "../../client/types";
  * head-to-head matches and tournaments — the consoles when a worker is connected.
  * The static site omits it, so the arena UI hides. Run methods (`runMatch`,
  * `runTournament`) additionally require {@link GalleryDataInput.canExecute}; the
- * read methods only need this object to be present. Each host wires its own
- * transport behind these: the web host runs matches/tournaments on the dedicated
- * `tcab-arena` service and reads persisted tournaments and replays from the backend
- * (there are no run-local controllers in the web topology — only baselines and
- * pushed controllers are resolvable there); the desktop host invokes the local
- * core's Tauri commands and channels, where a single built-in local worker can also
- * resolve a `"run"` controller from its own output dir.
+ * read methods only need this object to be present. The web console's transport
+ * runs matches/tournaments on the dedicated `tcab-arena` service and reads
+ * persisted tournaments and replays from the backend; only baselines and pushed
+ * controllers are resolvable there.
  */
-/** A worker the arena can run matches/tournaments on. The web host presents a single
- * fixed execution host (the arena service); the desktop host has a single built-in
- * local worker. */
+/** A worker the arena can run matches/tournaments on. The web console presents a
+ * single fixed execution host (the arena service). */
 export interface ArenaWorkerOption {
-  /** Stable id (the local worker uses the reserved id `"local"`). */
+  /** Stable id. */
   id: string;
   /** Display label. */
   label: string;
@@ -195,15 +191,14 @@ export interface ArenaWorkerOption {
 
 export interface ArenaApi {
   /** The workers this host can run matches on, so the arena can offer a worker to
-   * pick. The desktop host resolves a controller of kind `"run"` against its local
-   * worker's output dir; the web host has none of those (its single arena-service
-   * host resolves only baselines and pushed controllers). Pushed and baseline
-   * controllers resolve the same on any host. */
+   * pick. The web console's single arena-service host resolves baselines and
+   * pushed controllers. */
   listWorkers(): ArenaWorkerOption[];
   /** The controllers available to pit for a case: the committed baselines, the
-   * chosen worker's produced adversarial runs (kind `"run"`, desktop only), and the
-   * case's pushed adversarial controllers (kind `"pushed"`). `workerId` selects which
-   * worker contributes its local runs (defaults to the active worker). */
+   * chosen worker's produced adversarial runs (kind `"run"`, when the worker can
+   * resolve them), and the case's pushed adversarial controllers (kind `"pushed"`).
+   * `workerId` selects which worker contributes its local runs (defaults to the
+   * active worker). */
   listControllers(
     slug: string,
     version: string,
@@ -252,72 +247,6 @@ export interface ArenaApi {
   /** The loadable URL of one match's replay, or null when this host cannot serve
    * it (so the match's Replay control is disabled). */
   tournamentReplayUrl(tournamentId: string, matchId: string): string | null;
-}
-
-/**
- * The harness-authentication capability, supplied only by a host that manages
- * harness credentials for the runs it launches — today the Tauri desktop app,
- * which stands up a local cluster and must give each run's harness an API key or
- * a subscription. The web console (which enqueues against a backend an operator
- * has already credentialed) and the static site omit it, so the Authentication
- * settings section is hidden there. The desktop host wires its implementation over
- * Tauri IPC to the embedded core; see the shell's `harness_auth` commands.
- */
-export type HarnessAuthMode = "auto" | "subscription" | "api-key";
-
-/** One subscription credential file's host status (whether the user is signed in
- * with the harness CLI), for the authentication settings UI. */
-export interface SubscriptionFile {
-  /** Where the file is expected on the host (resolved from the environment). */
-  hostPath: string;
-  /** The data key this file occupies in the cluster subscription Secret. */
-  secretKey: string;
-  /** Whether the file exists on the host right now. */
-  present: boolean;
-  /** Whether the subscription requires this file (versus an optional one). */
-  required: boolean;
-}
-
-/** One harness's authentication state. Never carries the API key value itself —
- * only whether one is set and where it came from. */
-export interface HarnessAuth {
-  /** The harness slug (for example `claude`). */
-  slug: string;
-  /** The human-readable harness name. */
-  name: string;
-  /** The host provider key variable (for example `ANTHROPIC_API_KEY`), or null for
-   * a subscription-only harness with no API-key mode. */
-  apiKeyEnv: string | null;
-  /** Whether the harness supports API-key authentication. */
-  supportsApiKey: boolean;
-  /** Whether the harness supports subscription authentication. */
-  supportsSubscription: boolean;
-  /** The selected authentication method. */
-  selectedMode: HarnessAuthMode;
-  /** Whether an API key is available (override or discovered from the host). */
-  apiKeySet: boolean;
-  /** Where the key comes from: `override`, `dotenv:<file>`, `env`, or `none`. */
-  apiKeySource: string;
-  /** The subscription credential files this harness reads, with host status. */
-  subscriptionFiles: SubscriptionFile[];
-  /** Whether every required subscription file is present on the host. */
-  subscriptionPresent: boolean;
-  /** Readiness for the selected mode: `ready`, `needs-key`, `needs-sign-in`,
-   * `needs-credentials`, or `unsupported`. */
-  readiness: string;
-}
-
-export interface HarnessAuthApi {
-  /** Every harness's current authentication state. */
-  list(): Promise<HarnessAuth[]>;
-  /** Lock (or reset to `auto`) a harness's method; resolves to the refreshed list. */
-  setAuthMode(slug: string, mode: HarnessAuthMode): Promise<HarnessAuth[]>;
-  /** Set (or clear, with `null`) a harness's API key; resolves to the refreshed
-   * list. The value is sent to the host and never held in the gallery state. */
-  setApiKey(slug: string, key: string | null): Promise<HarnessAuth[]>;
-  /** Re-read the host's signed-in subscription files into the cluster; resolves to
-   * the refreshed list. */
-  refreshSubscription(slug: string): Promise<HarnessAuth[]>;
 }
 
 /**
@@ -510,7 +439,7 @@ export interface GalleryDataInput {
   readComparison?: (id: string) => Comparison | null;
   /**
    * Whether this UI can launch, monitor, review, and publish runs. False on the
-   * static gallery site; true in the web and desktop consoles. Gates the
+   * static gallery site; true in the web console. Gates the
    * run-execution UI (new-run button, live monitor, editable review, the
    * connections drawer).
    */
@@ -710,13 +639,6 @@ export interface GalleryDataInput {
    * site, which hides the arena UI entirely. See {@link ArenaApi}.
    */
   arena?: ArenaApi;
-  /**
-   * The harness-authentication capability, present only on a host that manages
-   * harness credentials for the runs it launches (the Tauri desktop app). Omitted
-   * by the web console and the static site, which hide the Authentication settings
-   * section. See {@link HarnessAuthApi}.
-   */
-  harnessAuth?: HarnessAuthApi;
 }
 
 /**

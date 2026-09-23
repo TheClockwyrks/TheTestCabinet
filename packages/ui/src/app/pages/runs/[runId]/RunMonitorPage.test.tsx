@@ -90,8 +90,7 @@ function makeWorkers(deliver: (handlers: Handlers) => void) {
     active: {
       id: "w1",
       label: "Worker",
-      url: null,
-      local: true,
+      url: "https://worker.example",
       client,
       identity: null,
       backendMatch: "unknown",

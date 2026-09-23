@@ -78,7 +78,6 @@ COPY --chown=${USER_UID}:${USER_GID} \
 	./.devcontainer/languages/rust/rustup.sh \
 	./.devcontainer/languages/rust/targets.sh \
 	./.devcontainer/languages/rust/cargo-nextest.sh \
-	./.devcontainer/languages/rust/tauri.sh \
 	/tmp/scripts/languages/rust/
 
 RUN mkdir -p "$HOME/.local/bin" "/tmp/$USERNAME" && \
@@ -91,7 +90,6 @@ RUN mkdir -p "$HOME/.local/bin" "/tmp/$USERNAME" && \
 	bash /tmp/scripts/languages/node/install.sh && \
 	bash /tmp/scripts/wrangler.sh && \
 	bash /tmp/scripts/languages/rust/install.sh && \
-	bash /tmp/scripts/languages/rust/tauri.sh && \
 	bash /tmp/scripts/claude.sh && \
 	bash /tmp/scripts/codex.sh && \
 	bash /tmp/scripts/post-install.sh && \

@@ -102,9 +102,7 @@ per-harness cap composes with the dispatcher's global in-flight cap
 
 The setting is served at `GET /harness-config`, an open read enumerating every
 harness with its current config, and changed at `POST /harness-config/{slug}`,
-which requires a bearer token. Being backend-backed, it behaves identically in
-the web console and the desktop app, while authentication is configured in the
-desktop app alone.
+which requires a bearer token.
 
 ## Authentication
 
@@ -121,8 +119,8 @@ the harness requires. `codex exec` reads `CODEX_API_KEY` rather than
 A per-harness override `TCAB_API_KEY_<SLUG>`, for example `TCAB_API_KEY_KILO`,
 takes precedence over the shared provider variable, so harnesses that share a
 provider key, such as the OpenRouter harnesses all reading `OPENROUTER_API_KEY`,
-can be given independent keys. The override is read in both the host (CLI and
-desktop) and the driver-pod paths.
+can be given independent keys. The override is read in both the host (CLI) and the
+driver-pod paths.
 
 Subscription. The credential files a harness's CLI writes when the user signs in,
 for example `~/.codex/auth.json`, are copied into the run container at the paths
@@ -167,18 +165,13 @@ that refreshed copy is discarded when the ephemeral container is torn down.
 Mode selection is the same everywhere. Only where the credential bytes are read
 from differs by run path, behind a single seam:
 
-- CLI and desktop, in process. The run executes on the trusted host that signed
+- CLI, in process. The run executes on the trusted host that signed
   in, so the credentials are read from the user's home directory.
 - Driver on a cluster. A driver pod is ephemeral and has no host home, so the
   credentials come from an operator-provided Secret the dispatcher mounts into
   the pod. The Secret holds the same files the adapter's credential spec names,
   keyed by basename, giving one shared subscription per deployment. See [Set Up
   Authentication](/quickstarts/setup/set-up-authentication/).
-
-The [desktop app](/components/tauri/overview/) is one such cluster deployment. It
-builds this Secret itself from the host's signed-in credential files, so the
-desktop user manages keys, methods, and subscriptions through the app rather
-than environment variables.
 
 ## Usage reporting
 

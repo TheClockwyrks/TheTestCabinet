@@ -115,7 +115,7 @@ export function ComparisonDetailPage() {
     setLoading(false);
   }, [backend, token, id, readComparison]);
 
-  const canTrigger = Boolean(worker && (worker.local || token));
+  const canTrigger = Boolean(worker && token);
 
   const triggerMissing = useCallback(async () => {
     if (!comparison || !worker || !canTrigger) return;

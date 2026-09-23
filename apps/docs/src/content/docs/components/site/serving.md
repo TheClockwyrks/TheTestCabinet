@@ -10,8 +10,8 @@ visitors without a rebuild.
 ## The origin
 
 `tcab-gallery` is a Node service that serves [testcabinet.ai](https://testcabinet.ai).
-It mounts the same routed application the [web](/components/web/overview/) and
-Tauri consoles mount, shared through the [UI library](/components/ui/overview/),
+It mounts the same routed application the [web console](/components/web/overview/)
+mounts, shared through the [UI library](/components/ui/overview/),
 with execution disabled so it presents the published gallery alone. It resolves
 routes from that application's own route table, so the routes the origin
 resolves and the routes the application renders are one definition.

@@ -539,8 +539,7 @@ function workersContext(): WorkersContextValue {
   const handle = {
     id: "local",
     label: "Local",
-    url: null,
-    local: true,
+    url: "https://worker.example",
     client: workerClient(),
     identity: { id: "fixture", url: "http://worker.test" },
     backendMatch: "match",

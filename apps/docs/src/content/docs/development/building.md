@@ -104,8 +104,6 @@ The repository is both a Cargo workspace (Rust) and an npm workspace
 - `crates/auth-service`: `test-cabinet-auth-service` (binary
   `tcab-auth-service`). The [auth service](/components/auth/overview/), which
   holds accounts and mints the bearer tokens the backend verifies.
-- `crates/desktop`: `test-cabinet-desktop`. The
-  [Tauri v2 desktop application](/components/tauri/overview/).
 - `crates/telemetry`: `test-cabinet-telemetry`. The shared
   [OpenTelemetry](/development/observability/) wiring every long-lived binary
   initializes at startup.
@@ -152,8 +150,8 @@ under `[workspace.dependencies]` and inherited with `{ workspace = true }`.
   items name.
 - `packages/ui`: `@clockwyrks/ui`. The shared
   [UI library](/components/ui/overview/) hosting the routed gallery application
-  and the presentational primitives; the site, web console, and desktop UI are
-  thin hosts over it.
+  and the presentational primitives; the site and web console are thin hosts
+  over it.
 - `packages/voxel-runtime` and `packages/particle-runtime`. The runtimes that
   pose and render a produced voxel rig and simulate a produced particle system.
 - `packages/simple-2d`: `@clockwyrks/simple-2d`. The Simple 2D
@@ -170,8 +168,6 @@ under `[workspace.dependencies]` and inherited with `{ workspace = true }`.
   version recorded on the run.
 - `packages/gg-sandbox`: the TypeScript and JavaScript arm of gg's
   responses-as-code sandbox.
-- `apps/desktop`: `@clockwyrks/desktop`. The React + Vite UI the Tauri
-  desktop app loads.
 - `apps/site`: `@clockwyrks/site`. The static
   [gallery site](/components/site/overview/) that displays published run
   records.
@@ -222,14 +218,11 @@ every checkout builds with that release. Format, lint, and test with:
 
 ```sh
 cargo fmt --all
-cargo clippy --workspace --exclude test-cabinet-desktop --all-targets -- -D warnings
-cargo doc --workspace --exclude test-cabinet-desktop --no-deps --document-private-items
-cargo nextest run --workspace --exclude test-cabinet-desktop
-cargo test --workspace --exclude test-cabinet-desktop --doc
+cargo clippy --workspace --all-targets -- -D warnings
+cargo doc --workspace --no-deps --document-private-items
+cargo nextest run --workspace
+cargo test --workspace --doc
 ```
-
-Only the Tauri desktop shell is excluded, so per-change CI runners need none of
-the desktop app's GUI system libraries.
 
 Tests run under `cargo-nextest`, configured by `.config/nextest.toml`; install
 it with `scripts/ci/install-nextest.sh`. nextest does not execute doctests, so
@@ -305,8 +298,8 @@ Anything that compiles `crates/gg` needs those toolchains present. That is
 `cargo build --workspace`, `cargo clippy --workspace`, `cargo doc --workspace`,
 `scripts/build-gg-static.sh`, and
 `scripts/gg-reference.sh`. Nothing else in the workspace depends on
-`test-cabinet-gg`, so a package-scoped build such as `-p test-cabinet-cli`, the
-release binaries, or the desktop app needs none of it.
+`test-cabinet-gg`, so a package-scoped build such as `-p test-cabinet-cli` and the
+release binaries need none of it.
 
 Install them once, before the first build:
 
@@ -409,11 +402,6 @@ Rust over rustls. Under its `cli` runtime the driver still shells out to a host
 container runtime, so that host needs Podman or Docker on `PATH` and the harness
 API keys for the harnesses it runs; see the
 [driver configuration](/components/driver/overview/).
-
-The Tauri desktop shell links the system WebKitGTK and GTK shared libraries,
-which have no musl-static build, so it is built against glibc. To run it on a
-non-FHS host, wrap the glibc build in an FHS environment (`nix-ld`,
-`buildFHSEnv`/`steam-run`, or a derivation providing `webkitgtk`).
 
 #### Building `gg` for the run container
 
@@ -664,26 +652,3 @@ variables:
 
 The secret variables must be set on the pipeline before `master` or `staging`
 builds can complete their images and deploy stages.
-
-## Desktop app (Tauri)
-
-The Tauri CLI drives the [desktop app](/components/tauri/overview/), building the
-Rust shell (`crates/desktop`) and the `apps/desktop` UI together. It requires the
-Rust toolchain and Node.js.
-
-The desktop application is a headless core plus a graphical shell. `crates/desktop`
-is the Tauri shell and serves the web UI built from `apps/desktop`; all
-orchestration logic lives in `test-cabinet-core`, which is what makes batch runs
-and unattended sweeps possible. During development the shell loads the Vite dev
-server for `apps/desktop`; a release build loads the static assets that app's
-build produces.
-
-`crates/desktop/tauri.conf.json` bundles `test-cases/` as a resource so the app
-can stage an offline checkout, and it names the directory rather than a set of
-files. Every path beneath it therefore has to resolve for the shell to compile,
-including the untracked `node_modules/` of any reference implementation installed
-there. A reference installed against an engine dependency that has since moved
-keeps a symlink to the old location, and `cargo build -p test-cabinet-desktop`
-fails with `resource path ... doesn't exist` naming that symlink. Running
-`npm install` in the reference's own directory relinks it against the current
-dependency and clears the failure.

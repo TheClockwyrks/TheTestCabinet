@@ -188,8 +188,8 @@ piece in-engine with its own instruments.
 
 ## Live preview
 
-When a run is watched, driven by a [driver](/components/driver/overview/) or the
-[Tauri app](/components/tauri/overview/) rather than a plain `tcab run`, the
+When a run is watched, driven by a [driver](/components/driver/overview/)
+rather than a plain `tcab run`, the
 model's authoring streams to the viewer in real time. The orchestrator adds a
 `live` block to the seeded config carrying a `host.docker.internal:host-gateway`
 endpoint and an opaque per-run token. When the model runs `render`, the binary

@@ -117,8 +117,8 @@ frontend's three.js rendering of the emitted per-part `.glb`. See
 
 ## Live preview
 
-A run driven by a [driver](/components/driver/overview/) or the
-[Tauri app](/components/tauri/overview/) is watched, and the model's sculpting is
+A run driven by a [driver](/components/driver/overview/) is watched, and the
+model's sculpting is
 streamed to the viewer in real time exactly as for the
 [drawing binaries](/testing/asset-generation/sprite-binaries/#live-preview). The
 orchestrator adds a `live` block to the seeded config. When the model runs

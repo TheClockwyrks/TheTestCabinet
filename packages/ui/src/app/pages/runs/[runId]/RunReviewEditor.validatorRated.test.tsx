@@ -19,7 +19,6 @@ const fixture = vi.hoisted(() => {
     // it, so a fresh object per render would re-seed (and wipe an in-progress
     // override) after every interaction.
     backend: { client: { readReviewItems } },
-    local: false,
     // Stable identities, as the real hooks return state: the editor's seeding
     // effects key on the case's domain list, so a fresh object per render would
     // re-seed forever.
@@ -51,7 +50,6 @@ vi.mock("../../../../client/context", () => ({
   useBackend: () => ({ client: fixture.backend.client }),
   useWorkers: () => ({
     active: {
-      local: fixture.local,
       client: {
         submitReview: fixture.submitReview,
         publish: fixture.publish,

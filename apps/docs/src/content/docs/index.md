@@ -23,8 +23,8 @@ completes a small task inside an existing codebase.
 ## Audience
 
 This documentation serves developers working on The Test Cabinet and users who
-run it themselves. Runs are launched from the command line, from the desktop
-app, or from the web console. Every path enqueues the run at the backend, and a
+run it themselves. Runs are launched from the command line or
+from the web console. Every path enqueues the run at the backend, and a
 dispatcher creates a per-run driver `Job` to execute it.
 
 Developers should start with the [Components](/components/architecture/)

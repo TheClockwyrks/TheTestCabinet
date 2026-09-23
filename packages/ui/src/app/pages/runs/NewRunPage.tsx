@@ -339,12 +339,9 @@ export function NewRunPage() {
     ...(sel.cases.find((c) => c.slug === sel.slug)?.versions ?? []),
   ].reverse();
   const mismatched = worker?.backendMatch === "mismatch";
-  // A remote (service-driven) worker enqueues on the backend's `POST /jobs`,
-  // which is gated on the launching account — so a sign-in is required before a
-  // run can be submitted. The built-in local (Tauri) worker runs in-process and
-  // needs no token.
-  const needsAuth = Boolean(worker && !worker.local);
-  const signedOut = needsAuth && !token;
+  // A run is enqueued on the backend's `POST /jobs`, which is gated on the
+  // launching account — so a sign-in is required before a run can be submitted.
+  const signedOut = Boolean(worker) && !token;
   // Every combination must name a harness and a model — or, in the gg run mode, a
   // configuration plus a model for every slot that configuration asks for. A
   // partially-filled row would otherwise be silently skipped (or, for gg, rejected by

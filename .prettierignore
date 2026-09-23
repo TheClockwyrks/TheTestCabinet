@@ -8,7 +8,6 @@
 **/.spago/
 **/.vendor/
 **/vendor/
-crates/desktop/gen/
 apps/docs/.astro/
 packages/gg-sandbox-purescript/output/
 

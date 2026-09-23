@@ -6,9 +6,8 @@ A comparison is a saved, named experiment. It fixes the test every arm runs,
 pits two or more configurations against each other as its arms, runs each arm
 `N` times to smooth out variance, and gathers the arms' outcome distributions
 and [diagnostics](/comparisons/diagnostics/). A comparison belongs to the
-account that created it and is created and run from the internal console and the
-Tauri app. It is [published](/comparisons/publishing/) read-only to the public
-site.
+account that created it and is created and run from the web console. It is
+[published](/comparisons/publishing/) read-only to the public site.
 
 ## The experiment model
 

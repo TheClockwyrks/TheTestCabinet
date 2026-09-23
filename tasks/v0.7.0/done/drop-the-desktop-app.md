@@ -46,17 +46,17 @@ flag in `packages/ui` stays, because the gallery mounts the shared application
 with it false.
 
 The changelog entry for the removal is written by
-[the release issue](cut-v0-7-0-through-the-azure-release-route.md).
+[the release issue](../cut-v0-7-0-through-the-azure-release-route.md).
 
 ## Done when
 
-- [ ] `crates/desktop`, `apps/desktop`, `deployments/k8s/overlays/app`, and the
+- [x] `crates/desktop`, `apps/desktop`, `deployments/k8s/overlays/app`, and the
       desktop build scripts are gone.
-- [ ] `cargo build --workspace` and `npm run build` succeed with no desktop
+- [x] `cargo build --workspace` and `npm run build` succeed with no desktop
       member or workspace.
-- [ ] `git grep -i tauri` and `git grep TCAB_DESKTOP_IMAGE_TAG` match nothing
+- [x] `git grep -i tauri` and `git grep TCAB_DESKTOP_IMAGE_TAG` match nothing
       outside `apps/docs/src/content/docs/changelogs/`.
-- [ ] The docs site builds with no `components/tauri` section and no page that
+- [x] The docs site builds with no `components/tauri` section and no page that
       describes a desktop console.
-- [ ] `CLAUDE.md` lists no desktop component.
-- [ ] Gates green.
+- [x] `CLAUDE.md` lists no desktop component.
+- [x] Gates green.

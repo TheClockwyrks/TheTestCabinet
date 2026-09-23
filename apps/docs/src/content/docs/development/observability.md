@@ -43,12 +43,11 @@ observability requires no code change and no rebuild.
 | [Arena service](/components/arena/overview/)                    | `tcab-arena`          | Axum server spans and inbound trace-context extraction.                                                                                                                                                                    |
 | [CLI](/components/cli/overview/) (`tcab`)                       | `tcab-cli`            | Init plus a span per command, driving the core's run spans.                                                                                                                                                                |
 | [Agent harness](/harnesses/overview/) (in the run container)    | `tcab-harness-<slug>` | Per harness, where the vendor supports it; see [harness telemetry](#harness-telemetry).                                                                                                                                    |
-| [Tauri app](/components/tauri/overview/)                        | `tcab-desktop`        | Init plus command spans, driving the core's run spans.                                                                                                                                                                     |
 | [Web console](/components/web/overview/)                        | `tcab-web`            | Browser traces only: a span per `fetch`, with a `traceparent` header injected on every outbound request.                                                                                                                   |
 
 The core has no service name of its own. It is a library that runs in-process
 inside whichever runner launched it, so its spans are emitted under that host's
-service name: the CLI, the desktop app, or the driver.
+service name: the CLI or the driver.
 
 ## Cluster resource metrics
 
@@ -133,9 +132,9 @@ A single user action produces one distributed trace threading through every
 process it touches. Spans nest from the surface that initiated the work down into
 the core and out to the backend.
 
-### CLI and desktop runs
+### CLI runs
 
-The command span, under `tcab-cli` or `tcab-desktop`, is the root. The core's
+The command span, under `tcab-cli`, is the root. The core's
 orchestration spans nest beneath it: seeding the repository, executing the
 container, invoking the harness, validation, and the publisher spans for a
 published run. The core's outbound HTTP calls to the
@@ -246,17 +245,17 @@ The local Grafana LGTM stack runs in the k3d cluster, so the right value for
 `OTEL_EXPORTER_OTLP_ENDPOINT` depends on whether the process runs inside that
 cluster:
 
-| Process                                                                         | Runs                | Local endpoint                                                                                                    |
-| ------------------------------------------------------------------------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| Backend, auth, dispatcher, driver, artifacts, arena                             | in the cluster      | `http://tcab-lgtm:4318` (in-cluster Service DNS), set by the [observability component](#local-stack-grafana-lgtm) |
-| `cargo run` binary in the devcontainer, host `tcab` CLI or desktop app, browser | outside the cluster | `http://localhost:4318`, via `make -C deployments/local local-grafana`                                            |
+| Process                                                          | Runs                | Local endpoint                                                                                                    |
+| ---------------------------------------------------------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Backend, auth, dispatcher, driver, artifacts, arena              | in the cluster      | `http://tcab-lgtm:4318` (in-cluster Service DNS), set by the [observability component](#local-stack-grafana-lgtm) |
+| `cargo run` binary in the devcontainer, host `tcab` CLI, browser | outside the cluster | `http://localhost:4318`, via `make -C deployments/local local-grafana`                                            |
 
 The in-cluster services need no env-file change: the local overlay points each at
 `tcab-lgtm`. For a binary run outside the cluster, run
 `make -C deployments/local local-grafana`, which forwards the in-cluster
 collector to `localhost:4318`, and point the process there. Each per-process
 example env file at the repo root (`.env.backend.example`, `.env.auth.example`,
-`.env.dispatcher.example`, `.env.runner.example` for the CLI and desktop, and
+`.env.dispatcher.example`, `.env.runner.example` for the CLI, and
 `apps/web/.env.example`) ships that `http://localhost:4318` default commented
 out. Copy the relevant file to its real `.env.*` and uncomment the endpoint to
 enable export.

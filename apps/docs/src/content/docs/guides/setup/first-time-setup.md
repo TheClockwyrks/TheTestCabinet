@@ -37,7 +37,7 @@ The repository is both a Cargo (Rust) and an npm (TypeScript) workspace. Build
 both once:
 
 ```sh
-cargo build --workspace          # Rust: core, CLI, services, desktop shell
+cargo build --workspace          # Rust: core, CLI, services
 npm install                      # TypeScript: installs every workspace
 ```
 

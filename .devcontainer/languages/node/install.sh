@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Installs Node + NPM. The TypeScript workspaces (run-record, desktop UI, site)
+# Installs Node + NPM. The TypeScript workspaces (run-record, ui, web console, site)
 # and the validator's static build all rely on it.
 set -euo pipefail
 

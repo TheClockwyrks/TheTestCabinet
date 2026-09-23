@@ -5,7 +5,7 @@ gates a commit, mirrors it to GitHub, builds its images into an Azure Container
 Registry, and rolls it onto the staging or production cluster according to the
 branch it landed on.
 
-This issue depends on [`drop-the-desktop-app.md`](../drop-the-desktop-app.md) and
+This issue depends on [`drop-the-desktop-app.md`](drop-the-desktop-app.md) and
 [`address-submodules-by-relative-url-and-mirror-them-to-github.md`](address-submodules-by-relative-url-and-mirror-them-to-github.md),
 and runs after
 [`rewrite-the-repository-history-without-baselines-and-wasm-blobs.md`](../rewrite-the-repository-history-without-baselines-and-wasm-blobs.md)
@@ -14,7 +14,7 @@ so the first mirror push carries the rewritten history.
 ## Current state
 
 `azure-pipelines.yml` triggers on `master` and `staging` and runs CI only. Its
-jobs are `rust`, `binary`, `web`, `webtest`, `desktop`, `specs`, `format`,
+jobs are `rust`, `binary`, `web`, `webtest`, `specs`, `format`,
 `validators`, `frozen`, `audiopacks`, `specvocabulary`, `buildcontext` and
 `contract`, and each delegates to a script under `scripts/ci/`. Nothing in it
 deploys.
@@ -46,7 +46,7 @@ branch runs the gates and nothing else.
 
 ### Gates
 
-The gates are the existing jobs with `desktop` removed. Each check is one step,
+The gates are the existing jobs. Each check is one step,
 named after the check, so Azure times and reports it on its own. The gg version
 gate from `release.yml` moves here: on a tag build, `gg --version` must equal the
 tag with its `v` stripped, and the build fails naming the crates to bump when it

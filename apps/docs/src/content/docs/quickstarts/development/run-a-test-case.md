@@ -6,8 +6,7 @@ title: Run a Test Case
 
 Launch one test case variant through an agent harness and watch it to completion.
 This page uses the [CLI](/components/cli/overview/); the
-[desktop app](/components/tauri/overview/) and the
-[web console](/components/web/overview/) launch the same run. Every launcher
+[web console](/components/web/overview/) launches the same run. Every launcher
 enqueues the run at the backend, which executes it as a per-run
 [driver](/components/driver/overview/) Job.
 

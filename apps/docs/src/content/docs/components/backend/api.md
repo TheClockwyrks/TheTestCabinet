@@ -284,8 +284,8 @@ A representative response:
           "mediaUrl": "/test-cases/carom/versions/v1.0.0/references/base/title.png",
         },
       ],
-      // Variant-specific reviewer checklist items, for the consoles' guided
-      // review. Empty when the variant declares none. On an engine-format
+      // Variant-specific reviewer checklist items, for the web console's
+      // guided review. Empty when the variant declares none. On an engine-format
       // version each graded point carries its `domains` and `failureCap`.
       "reviewItems": [],
       // The variant's authored showcase, or null when it declares none. Each
@@ -592,8 +592,8 @@ List stored runs, newest first. A `state` query parameter selects which runs:
   a reviewed legacy completed run, or one of the publishable failure tiers.
   Every listed run is one the publish endpoint will accept.
 - `state=any` — the union of the published and unpublished slices: every
-  recorded run, with no lifecycle predicate at all. This is what the consoles'
-  run listings draw from.
+  recorded run, with no lifecycle predicate at all. This is what the web
+  console's run listings draw from.
 
 `any` and `publishable` are offered only on the summary-plus-offset path below,
 since the cursor listings walk one lifecycle slice at a time.

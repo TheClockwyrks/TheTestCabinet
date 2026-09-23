@@ -5,17 +5,14 @@
 //! A *published* run deploys that build to its own Cloudflare Pages host, where it
 //! lives at the host root and its absolute asset references (`/assets/…`) resolve
 //! (see [`crate::publish`]). But a reviewer must be able to play an *unpublished*
-//! run too — that is the entire point of reviewing before publishing — so a runner
-//! serves the same on-disk build locally: the worker over HTTP, the desktop core
-//! over a custom URI scheme. Both reach for the helpers here so the build is
-//! discovered and served identically.
+//! run too — that is the entire point of reviewing before publishing — so the
+//! artifact service serves the same on-disk build over HTTP, discovering and
+//! serving it through the helpers here.
 //!
-//! The same dual-serving story applies to a run's proof-of-implementation media —
-//! the screenshots and clips the agent wrote as evidence (see
-//! [`serve_proof_file`]). A published run's proofs are uploaded to the backend, but
-//! an unpublished run's sit in its collected tree, so the worker serves them over
-//! HTTP and the desktop core over its proof URI scheme — again from one shared
-//! resolver here.
+//! The same applies to a run's proof-of-implementation media — the screenshots and
+//! clips the agent wrote as evidence (see [`serve_proof_file`]). A published run's
+//! proofs are uploaded to the backend, but an unpublished run's sit in its collected
+//! tree, so the artifact service serves them over HTTP from the resolver here.
 //!
 //! Serving under a per-run sub-path (rather than a host root) is the one wrinkle.
 //! A Vite build emitted with the default `base: "/"` references its assets
@@ -320,9 +317,7 @@ pub struct ServedAssetFile {
 /// it routes through the one-segment `/asset/{file}` endpoints unchanged.
 ///
 /// Returns `None` when the run record, its asset result, the named frame, the
-/// artifact, or the file is missing — the caller maps that to a 404. The desktop
-/// core serves the same artifacts over its `tcab-asset://` scheme from this
-/// resolver.
+/// artifact, or the file is missing — the caller maps that to a 404.
 pub fn serve_asset_file(run_dir: &Path, file: &str) -> Option<ServedAssetFile> {
     let (kind, frame) = parse_asset_request(file)?;
 

@@ -5,7 +5,7 @@
 use super::*;
 
 /// A collector that implements only the required half of the trait, standing in for
-/// any host (a desktop shell, a future runtime) that can hand back a collected tree
+/// any host (a future runtime, say) that can hand back a collected tree
 /// but has no per-file channel into a container.
 struct TreeOnlyCollector;
 

@@ -1,9 +1,7 @@
-// The two service-client interfaces the console is written against. Each has a
-// transport implementation per app:
-//   - HTTP  (apps/web): `fetch` against the backend / worker REST APIs.
-//   - Tauri (apps/desktop, a later item): `invoke` + Tauri events.
-// The console never imports a transport; it only depends on these interfaces and
-// reads them from context (see context.tsx).
+// The two service-client interfaces the console is written against. The HTTP
+// transport (`@clockwyrks/ui/transport`, mounted by apps/web) implements them with
+// `fetch` against the backend REST API. The console never imports a transport; it
+// only depends on these interfaces and reads them from context (see context.tsx).
 import type {
   Account,
   AssetPreview,
@@ -926,8 +924,7 @@ export interface BatchLaunchResult {
 
 // A worker: a runner that executes a test case and produces a run record. It
 // owns run jobs and publishing; it does NOT serve the catalog. Mirrors the
-// worker HTTP API (components/worker/overview.md). In Tauri the "local worker"
-// is the embedded core behind this same interface.
+// worker HTTP API (components/worker/overview.md).
 export interface WorkerClient {
   /**
    * The worker's identity, including the backend it is bound to, for the
@@ -939,8 +936,7 @@ export interface WorkerClient {
   /**
    * Submit a run; resolves to the job id (`POST /jobs`, Bearer). The backend
    * attributes the enqueued run to the launching account, so a signed-in
-   * account's `token` is required on the service-driven path (the embedded
-   * in-process worker ignores it). A missing/invalid token is rejected `401`.
+   * account's `token` is required. A missing/invalid token is rejected `401`.
    *
    * `origin` names the coverage plan or ladder this run is being launched *on behalf
    * of* ({@link LaunchOrigin}). It is what puts the run inside that plan's or
@@ -1219,18 +1215,16 @@ export interface WorkerClient {
   /**
    * The URL to load one of a produced run's proof-of-implementation media files
    * (`<proof-id>.<ext>`) from, or null when this worker cannot serve it. Optional:
-   * a worker reachable over HTTP needs no override — the gallery resolves the file
-   * against the worker's base URL — but the built-in Tauri worker has no HTTP base,
-   * so it implements this to return its custom proof URI scheme.
+   * without it the gallery resolves the file against the worker's base URL. The
+   * HTTP transport implements it to point at the artifact service, which serves a
+   * pre-publish run's media apart from the control-plane backend.
    */
   proofMediaUrl?(runId: string, file: string): string | null;
   /**
    * The URL to load one of an asset-generation run's media files — a single
    * sprite's `regenerated.png`/`preview.png`/`target.png`/`actions.json` or a
    * sprite sheet's per-frame `regenerated-<index>.png` (etc.) — or null when this
-   * worker cannot serve it. Optional, mirroring
-   * {@link proofMediaUrl}: the Tauri worker implements it to return its custom
-   * `tcab-asset://` scheme.
+   * worker cannot serve it. Optional, mirroring {@link proofMediaUrl}.
    */
   assetMediaUrl?(runId: string, file: string): string | null;
   /**

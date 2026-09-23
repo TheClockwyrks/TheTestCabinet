@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "license": "MIT",
-  "description": "The Test Cabinet's runner/reporter console running in a browser. Shares the console UI with the Tauri app via @clockwyrks/ui; talks to a backend (catalog + published data) and a set of worker servers (execution) over HTTP.",
+  "description": "The Test Cabinet's runner/reporter console running in a browser. Shares the gallery UI with the static site via @clockwyrks/ui; talks to a backend (catalog, published data, and run execution) over HTTP.",
   "scripts": {
     "predev": "tsc -b ../../packages/run-record",
     "dev": "vite --host",

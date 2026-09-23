@@ -4,8 +4,7 @@ title: "Publishing"
 
 Publishing puts a comparison, and optionally the runs behind it, on the public
 site, so a reader can drill from the comparison into an individual run.
-Comparisons are created and run from the internal console and the Tauri app; the
-public site renders them read-only.
+Comparisons are created and run from the web console; the public site renders them read-only.
 
 ## Published objects
 
@@ -87,9 +86,8 @@ exactly as it reads runs and cases. An empty list renders as no comparisons.
 
 The pages under `packages/ui/src/app/pages/comparisons/` render for both hosts.
 Create, edit, trigger, and publish affordances are gated on `canExecute`
-(`GalleryDataInput`), which is true in the console and the Tauri app and false
-on the gallery, so the same page is interactive internally and read-only
-publicly.
+(`GalleryDataInput`), which is true in the web console and false on the gallery,
+so the same page is interactive internally and read-only publicly.
 
 ## Publish flow
 

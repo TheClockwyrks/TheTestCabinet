@@ -13,8 +13,8 @@ publish.workspace = true
 #
 # The dependency on core is deliberately **one-way**. Core owns the contract types; this
 # crate produces them; core must never depend back. That is not stylistic — it is what
-# keeps `oxc` and `syn` out of every binary that links core, the desktop shell included,
-# and it is why the analyzer reaches the run pipeline through core's `PostRunStage` trait
+# keeps `oxc` and `syn` out of every binary that links core without running the analyzer
+# (the dispatcher, the arena, the artifact service), and it is why the analyzer reaches the run pipeline through core's `PostRunStage` trait
 # rather than by a direct call. `cargo tree -p test-cabinet-core` must never mention this
 # crate or either parser.
 [lib]

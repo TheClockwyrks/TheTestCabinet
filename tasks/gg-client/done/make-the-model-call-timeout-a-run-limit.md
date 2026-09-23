@@ -13,7 +13,7 @@ it as an idle cap on the response head and between chunks.
 
 A model that reasons at length before answering routinely runs past five
 minutes on the buffering transport. In a run of `xiaomi/mimo-v2.6-pro` against
-[`drop-the-desktop-app.md`](../v0.7.0/drop-the-desktop-app.md) on 2026-09-22,
+[`drop-the-desktop-app.md`](../../v0.7.0/done/drop-the-desktop-app.md) on 2026-09-22,
 turns carrying 4,500 to 6,200 reasoning tokens took 200 to 280 seconds, and
 three agents each lost turns to the ceiling while the provider was still
 generating. Each timed-out turn is retried byte-identical, so the retry tends

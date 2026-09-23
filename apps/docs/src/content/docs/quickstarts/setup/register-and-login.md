@@ -6,7 +6,7 @@ title: Register and Log In
 
 Launching a run, reviewing, and publishing are attributed to an account. Accounts
 live in the [auth service](/components/auth/overview/), which the CLI and the
-consoles reach through `TCAB_AUTH_URL`. Reading the gallery or the catalog needs
+web console reach through `TCAB_AUTH_URL`. Reading the gallery or the catalog needs
 no account.
 
 This is user authentication. The provider credential a run's harness uses is
@@ -42,9 +42,9 @@ tcab logout
 
 This revokes the token at the auth service and deletes the local copy.
 
-## Sign in to a console
+## Sign in to the web console
 
-The desktop app and the web console sign in from the top bar's account control,
+The web console signs in from the top bar's account control,
 which links to a sign-in and registration page. Once signed in, the same control
 opens your account page.
 

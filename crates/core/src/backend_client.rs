@@ -1,7 +1,7 @@
 //! Backend client: resolve test-case versions and container definitions from the
 //! v0.2.0 backend, and publish finished runs to it.
 //!
-//! See `design/v0.2.0-contracts.md` §4. Runners (CLI, worker, Tauri) resolve
+//! See `design/v0.2.0-contracts.md` §4. Runners (the CLI and the driver) resolve
 //! definitions through this trait instead of assuming a local `test-cases/`
 //! checkout. The existing [`crate::TestCaseCatalog`] (filesystem) stays for local
 //! dev; this trait is the remote source of record.

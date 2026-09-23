@@ -114,7 +114,7 @@ the body has begun. A failure raised part-way through the walk is logged and
 aborts the response body, so a truncated download reaches the client as a failed
 transfer.
 
-The consoles offer this download to a reviewer, gated so the public gallery
+The web console offers this download to a reviewer, gated so the public gallery
 never exposes it.
 
 This is the fast path for pulling a run's produced assets onto a machine, for

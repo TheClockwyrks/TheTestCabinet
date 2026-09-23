@@ -3,7 +3,7 @@
 //
 // The shared gallery app (`@clockwyrks/ui`) draws a performance run's factory on
 // a <canvas> with its own copy of the playback engine + sprite atlas, so the web
-// console and desktop app replay a run identically without each fetching the case
+// console and the public site replay a run identically without each fetching the case
 // bundle. Only run-specific data (the scenario) is fetched per run; the engine and
 // art ship with the bundle. That copy must stay in lockstep with the case's bundle,
 // or the UI silently renders with a stale engine/atlas — and because the playback

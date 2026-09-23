@@ -36,8 +36,8 @@ whose record is stored on the backend and whose build is playable off the
 [artifact service](/components/artifacts/overview/). Either path requires being
 [signed in](/quickstarts/setup/register-and-login/).
 
-- From a console. Open the run in the [web console](/components/web/overview/) or
-  the [desktop app](/components/tauri/overview/) and submit a review. The console
+- From the web console. Open the run in the
+  [web console](/components/web/overview/) and submit a review. The console
   plays the build, shows the validation media side by side with the case's
   baselines, and writes the review file for you.
 - From the CLI. `tcab review <run-id> --writeup writeup.md` submits a review
@@ -196,7 +196,7 @@ Single player feels right. Versus has a serve bug that resets the score, so it's
 playable but scuffed.
 ```
 
-The consoles write this file for you. The format is documented here because the
+The web console writes this file for you. The format is documented here because the
 file is also hand-editable, and because the CLI paths read it from disk:
 `tcab review` reads `writeup.md` (or the `--writeup` path), and `tcab publish`
 reads `<run-id>.md` from the working directory.

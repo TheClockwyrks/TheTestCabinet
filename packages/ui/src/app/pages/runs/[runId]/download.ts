@@ -1,8 +1,7 @@
 /**
  * Save a blob to disk under `filename` by clicking a synthetic, object-URL-backed
  * download link. This is the shared path for every "download …" affordance in the
- * gallery: it works identically in the web console and inside the desktop app's
- * webview, so the Tauri shell needs no fs/dialog plugin for it.
+ * gallery, needing no file-system access beyond the browser's own download.
  */
 export function downloadBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);

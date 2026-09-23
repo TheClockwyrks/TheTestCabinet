@@ -335,11 +335,6 @@ export default defineConfig({
               items: ["components/arena/overview"],
             },
             {
-              label: "Tauri",
-              collapsed: true,
-              items: ["components/tauri/overview"],
-            },
-            {
               label: "Web",
               collapsed: true,
               items: ["components/web/overview"],

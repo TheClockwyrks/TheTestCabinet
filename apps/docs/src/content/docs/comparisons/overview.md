@@ -37,8 +37,8 @@ The capability is built in three layers, each with its own page.
 
 3. [Publishing](/comparisons/publishing/). A comparison, and optionally the runs
    behind it, is published to the public site so a reader can drill into an
-   individual run. Comparisons are created and run from the internal console and
-   the Tauri app; the public site renders them read-only.
+   individual run. Comparisons are created and run from the web console; the
+   public site renders them read-only.
 
 ## Design principles
 

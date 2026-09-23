@@ -28,7 +28,7 @@ import { GgAgentEditPage } from "./GgAgentEditPage";
 // operator's saved gg configurations (named capability sets the new-run form
 // launches once `gg` is picked as the orchestrator). They drive the
 // auth context the static site does not provide, so they mount only when the host
-// can execute runs (the web + desktop consoles). Static segments like
+// can execute runs (the web console). Static segments like
 // `/account/coverage/new` outrank the dynamic `:planId`, so route order does not
 // matter. Returned as a fragment so the app's single <Routes> stitches every
 // section's routes together.

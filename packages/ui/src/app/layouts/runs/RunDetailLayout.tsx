@@ -470,7 +470,7 @@ export function RunDetailLayout({
             — without this gate `useWorkers` throws and blanks the run page. */}
           {/* Download the run's whole produced tree — source, build, media, and logs
             — as one gzip tar from the artifact service. Gated on `canExecute`: this
-            is an internal affordance for the consoles (web + Tauri), not something
+            is an internal affordance for the web console, not something
             the public gallery offers, and the static site supplies no resolver
             anyway. A run whose tree the host cannot serve resolves to null and the
             link is simply absent.

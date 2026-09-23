@@ -40,12 +40,12 @@ automatically:
 
 ## Curating a model in the app
 
-Curated configuration is edited in the Models section of the web console or the
-desktop app. It is a write, so it requires sign-in.
+Curated configuration is edited in the Models section of the web console. It is
+a write, so it requires sign-in.
 
 A model record has these fields:
 
-- Display name, the Test-Cabinet name shown across the site and consoles. It is
+- Display name, the Test-Cabinet name shown across the site and the web console. It is
   required and never auto-generated.
 - Aliases, one or more run-record model ids this entry covers, each paired with
   the harness family it is usable with. An alias is globally unique: an id

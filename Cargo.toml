@@ -68,7 +68,6 @@ members = [
 	"crates/lattice-sdk",
 	"crates/lattice-ref-naive",
 	"crates/lattice-ref-transport",
-	"crates/desktop",
 	"crates/backend",
 	"crates/driver",
 	"crates/dispatcher",
@@ -149,19 +148,6 @@ opt-level = 3
 codegen-units = 1
 
 [profile.dev.package.lattice-ref-transport]
-codegen-units = 1
-
-# The desktop shell's library target is built as a `cdylib`/`staticlib` (the Tauri
-# v2 convention — see `crates/desktop/Cargo.toml`) in addition to the plain `lib`.
-# On the NATIVE host `cargo test` compiles this library (incrementally, split
-# across the dev profile's many codegen units), and rustc intermittently drops one
-# of the `*.rcgu.o` objects on a second incremental build, so assembling the rlib
-# fails with "failed to build archive … failed to open object file: No such file or
-# directory". This is the same incremental-codegen race already pinned away for
-# `foray-core` above. Forcing a single codegen unit makes codegen emit one object
-# and removes the race; it is dev-profile only and does not affect the release
-# bundle Tauri ships.
-[profile.dev.package.test-cabinet-desktop]
 codegen-units = 1
 
 # Cranelift compiles gg's responses-as-code sandbox components (`crates/gg/src/sandbox`)
@@ -308,11 +294,11 @@ glam = "0.29"
 bytemuck = { version = "1", features = ["derive"] }
 pollster = "0.4"
 # Base64 for inlining a live asset-generation preview frame into the JSON event the
-# driver streams (or the desktop shell emits) to the run monitor: the run host
+# driver streams to the run monitor: the run host
 # receives the rendered PNG bytes from the drawing binary and base64-encodes them
 # so the frame travels in the same JSON transport as every other live update.
 base64 = "0.22"
-# JSON Schema generation. Two uses, both feature-gated so normal/CLI/desktop/wasm
+# JSON Schema generation. Two uses, both feature-gated so normal/CLI/wasm
 # builds never compile it: the `schema` feature of `foray-core`/`lattice-core`
 # emits the per-tick contract schemas each adversarial/performance test case seeds
 # verbatim (a drift test asserts the on-disk copies never diverge from the engine
@@ -321,7 +307,7 @@ base64 = "0.22"
 schemars = "1"
 # TypeScript binding generation from Rust types. Pulled in only behind the
 # `contract` feature of `core`/`backend` (and the `contract-codegen`
-# generator that drives them), so normal/CLI/desktop/wasm builds never compile it.
+# generator that drives them), so normal/CLI/wasm builds never compile it.
 # Paired with `schemars` on the same types so the TS bindings and the JSON Schemas
 # are generated from one source of truth and can never drift apart.
 #
@@ -430,10 +416,6 @@ wit-parser = "0.248"
 # source carrying its own map and gg reads the map with the library the ecosystem reads them with
 # rather than with a VLQ decoder of its own.
 sourcemap = "9"
-
-# Desktop shell. Pinned to Tauri v2 so the desktop crate can inherit them.
-tauri = { version = "2", features = [] }
-tauri-build = { version = "2", features = [] }
 
 # Backend HTTP server. Axum is the settled web framework; `tower-http` supplies
 # the request-tracing/limit middleware, the CORS layer the browser UIs need to

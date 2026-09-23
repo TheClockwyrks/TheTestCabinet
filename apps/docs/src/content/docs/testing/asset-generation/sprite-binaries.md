@@ -199,8 +199,8 @@ draw render ... --no-layers    # the log alone, with nothing composited
 
 ## Live preview
 
-A run driven by a [driver](/components/driver/overview/) or the
-[Tauri app](/components/tauri/overview/) is watched, and the model's drawing is
+A run driven by a [driver](/components/driver/overview/) is watched, and the
+model's drawing is
 streamed to the viewer in real time so a person sees the sprite take shape
 operation by operation.
 

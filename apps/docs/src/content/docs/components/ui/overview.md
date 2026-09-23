@@ -3,14 +3,14 @@ title: Overview
 ---
 
 The UI library (`@clockwyrks/ui`, in `packages/ui`) is the shared frontend code
-for The Test Cabinet's three GUIs: the [public
-site](/components/site/overview/), the [web console](/components/web/overview/),
-and the [Tauri app](/components/tauri/overview/). It hosts the entire routed
-gallery application plus the primitives those GUIs render, so all three are thin
-hosts over one application.
+for The Test Cabinet's two GUIs: the [public
+site](/components/site/overview/) and the [web
+console](/components/web/overview/). It hosts the entire routed gallery
+application plus the primitives those GUIs render, so both are thin hosts over
+one application.
 
 It ships no service and runs in no process of its own. Each GUI mounts the
-shared app inside its own router and supplies it a data source, and the three
+shared app inside its own router and supplies it a data source, and the two
 hosts differ only in where that data comes from and which capabilities they
 enable.
 
@@ -23,7 +23,7 @@ A host imports only the entries it needs.
 | `@clockwyrks/ui`            | Presentational primitives, the rating model, and model-id helpers. |
 | `@clockwyrks/ui/app`        | The full routed gallery application and its data context.          |
 | `@clockwyrks/ui/client`     | The transport-agnostic client interfaces and their React contexts. |
-| `@clockwyrks/ui/transport`  | The HTTP transports the live consoles mount.                       |
+| `@clockwyrks/ui/transport`  | The HTTP transports the web console mounts.                        |
 | `@clockwyrks/ui/tokens.css` | The `--tcab-*` theme token defaults.                               |
 
 ## The gallery application
@@ -38,14 +38,13 @@ so each path is defined in one place.
 ## The data and capability context
 
 Each host builds the gallery data value from its own source. The static site
-builds it from the build-time public snapshot. The web and desktop consoles
-build it live from a backend.
+builds it from the build-time public snapshot. The web console builds it live
+from a backend.
 
 A `canExecute` flag on that value gates the run-execution surface, including
 authentication and notifications. Optional capability members gate the rest.
 `arena` is present on a host that can run adversarial matches and tournaments.
-`harnessAuth` is present only on the Tauri app, and carries the harness
-credential controls. A host that omits one hides the corresponding surface.
+A host that omits one hides the corresponding surface.
 
 The value also resolves a run's media to loadable URLs, whichever host is
 asking: proof-of-implementation media, an asset-generation run's regenerated,
@@ -138,8 +137,7 @@ authentication context. The app depends only on these interfaces.
 `./transport` is the single implementation of the backend wire protocol: the
 HTTP backend and execution clients, the HTTP arena client, and the helpers that
 read the artifact, arena, snapshot, and Grafana URLs the backend reports from
-`GET /config`. Both consoles mount these transports. The desktop app supplies
-its own arena transport, because its arena runs in-process.
+`GET /config`. The web console mounts these transports.
 
 ## Immutable asset caching
 

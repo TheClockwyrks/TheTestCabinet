@@ -172,13 +172,11 @@ function GradeChoice({
 // drive it through the review -> publish lifecycle. A produced run's record is
 // already stored privately on the backend (the driver submits it when the run
 // finishes), so a run is reviewable as soon as it is produced and can be published
-// once it carries at least one review. On the web flow these are two distinct
-// actions (Submit review / Publish). The desktop's local core folds review +
-// publish into one *solo* command, so there the editor offers a single
-// "Publish run" that saves the review and publishes in one step.
+// once it carries at least one review. These are two distinct actions (Submit
+// review / Publish).
 //
 // Publishing is a one-way door: once the run is public the editor drops the
-// Publish action on both paths and keeps only the review controls, so a reviewer
+// Publish action and keeps only the review controls, so a reviewer
 // revising their own published review is never offered a second publish the
 // backend would refuse. This lifecycle is identical for every test type — a game
 // jam is reviewed and published exactly the way a test run is; only the shape of
@@ -235,9 +233,6 @@ export function RunReviewEditor({
   const subject = run.subject;
   const { active: worker } = useWorkers();
   const client = worker?.client ?? null;
-  // The desktop's local worker collapses review/publish into one solo command, so
-  // the editor offers a single Publish action there.
-  const solo = worker?.local ?? false;
   const { account, token } = useAuth();
   const { confirm } = useConfirm();
   // The checklist items are catalog data: read them from the backend, keyed by
@@ -618,13 +613,6 @@ export function RunReviewEditor({
     return out;
   }, [validatorRated, items, auto, verdicts]);
 
-  // Whether the reviewer has started a review at all — a tier picked, prose, or
-  // any verdict override. On the solo path this decides whether Publish saves a
-  // review first or publishes the run bare.
-  const reviewTouched =
-    validatorRated &&
-    (writeup.trim() !== "" || aesthetic !== "" || draftOverrides.length > 0);
-
   // Restore every overridden point at once, from the rail. Confirmed first because
   // it discards the reviewer's own calls wholesale — the mirror image of "Mark
   // unplayable", which overwrites them wholesale.
@@ -976,8 +964,7 @@ export function RunReviewEditor({
 
   // --- Lifecycle actions ---
 
-  // Submit review: attribute this account's review to the run (web flow). On the
-  // solo desktop path this saves the local draft.
+  // Submit review: attribute this account's review to the run.
   const onSubmitReview = () => {
     // Editing a submitted review requires a note explaining the change; catch it
     // client-side for an immediate message rather than a round-trip rejection.
@@ -1004,17 +991,9 @@ export function RunReviewEditor({
     });
   };
 
-  // Publish: clear the gate (web flow). On the solo desktop path this saves the
-  // review and runs review + publish in one step.
+  // Publish: clear the gate.
   const onPublish = () =>
     runAction("Published.", async () => {
-      // The solo path saves the review on the way. A validator-rated run needs
-      // none: it saves one only when the reviewer wrote one (the button is
-      // disabled while a started review is incomplete, so a half-rated form is
-      // never silently dropped).
-      if (solo && (!validatorRated || reviewTouched)) {
-        await client!.submitReview(runId, buildReview(), token!);
-      }
       // Publishing is asynchronous: enqueue and observe the release over its live
       // stream, surfacing each progress line, then confirm on the terminal result.
       setMessage("Publishing…");
@@ -1043,7 +1022,7 @@ export function RunReviewEditor({
   // functional rating and score stand on their own with zero reviews. The backend
   // is the real gate.
   const canPublish =
-    validatorRated || reviews.length > 0 || submittedThisSession || solo;
+    validatorRated || reviews.length > 0 || submittedThisSession;
   // A run published this session (the enqueued publish reported success) reads as
   // published straight away, without waiting for the detail record to be refetched
   // — so the action disappears the moment it succeeds rather than lingering as a
@@ -1875,20 +1854,18 @@ export function RunReviewEditor({
             )}
           </div>
         ) : null;
-        // The solo desktop path offers a single Publish that saves the review and
-        // publishes in one step. The web flow splits into submit review and publish
-        // (the latter gated on the run having a review). A produced run's record is
-        // already stored on the backend (the driver pushes it on completion), so
-        // neither flow has a separate push step. The reviewer identity is left-aligned;
-        // the buttons are pushed to the right of the row.
+        // Submit review and Publish are separate actions (the latter gated on the
+        // run having a review). A produced run's record is already stored on the
+        // backend (the driver pushes it on completion), so there is no separate
+        // push step. The reviewer identity is left-aligned; the buttons are pushed
+        // to the right of the row.
         //
-        // An ALREADY-PUBLISHED run offers no Publish action on either path — it is
-        // public, the backend refuses a second publish, and a revised review
-        // refreshes the public snapshot by itself. What remains is the review
-        // control: the solo path, which has no separate submit button, gets the
-        // web flow's "Update review" so a desktop reviewer can still correct a
-        // published review. Every type behaves the same here — a game jam runs the
-        // identical submit -> publish lifecycle a test run does.
+        // An ALREADY-PUBLISHED run offers no Publish action — it is public, the
+        // backend refuses a second publish, and a revised review refreshes the
+        // public snapshot by itself. What remains is the "Update review" control,
+        // so a reviewer can still correct a published review. Every type behaves
+        // the same here — a game jam runs the identical submit -> publish
+        // lifecycle a test run does.
         const submitButton = (
           <button
             className={isPublished ? styles.primary : styles.secondary}
@@ -1899,41 +1876,6 @@ export function RunReviewEditor({
             {ownReview ? "Update review" : "Submit review"}
           </button>
         );
-        if (solo && !isPublished) {
-          // A validator-rated run publishes with no review; a started-but-
-          // incomplete aesthetic review holds it (so nothing half-rated is
-          // dropped), and a complete one is saved on the way.
-          const soloReady = validatorRated
-            ? !reviewTouched || reviewReady
-            : reviewReady;
-          const soloTitle = needAccount
-            ? "Sign in to publish"
-            : soloReady
-              ? validatorRated && !reviewTouched
-                ? "Publish without an aesthetic review; one can be added later"
-                : undefined
-              : validatorRated
-                ? "Finish the review (an aesthetic tier and a writeup), or clear it to publish without one"
-                : reviewTitle;
-          return (
-            <div className={styles.actions}>
-              {reviewingAs}
-              <div className={styles.actionsEnd}>
-                <button
-                  className={styles.primary}
-                  onClick={onPublish}
-                  disabled={busy || needAccount || !soloReady}
-                  title={soloTitle}
-                >
-                  {validatorRated && !reviewTouched
-                    ? "Publish without review"
-                    : "Publish run"}
-                </button>
-                {cancelButton}
-              </div>
-            </div>
-          );
-        }
         const publishButton = isPublished ? null : (
           <button
             className={styles.primary}

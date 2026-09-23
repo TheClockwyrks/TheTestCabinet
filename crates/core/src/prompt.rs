@@ -169,7 +169,7 @@ pub(crate) const ENGINE_DOCS_DIR: &str = "engine";
 /// A run that selected no engine still renders an `engine` context (see
 /// [`TemplateEngine`]), and it renders this name rather than resolving the
 /// catalogue for it. Rendering is pure and infallible, and its callers include
-/// ones that hold no engine at all — the backend and desktop catalog APIs render
+/// ones that hold no engine at all — the backend catalog API renders
 /// a case's prompt for the gallery from stored manifest fields — so making them
 /// carry an [`EngineCatalog`](crate::engine::EngineCatalog) just to name the
 /// absence of an engine would be a resolution step with exactly one possible
@@ -473,8 +473,8 @@ fn game_jam_distinctness_section(count: usize) -> String {
 /// This is the rendering core that [`render_prompt`] delegates to once it has
 /// read the template and resolved the seeded specs off a [`TestCaseVersion`]. It
 /// is exposed for callers that hold those pieces directly — notably the backend
-/// and desktop catalog APIs, which render a variant's prompt for the gallery's
-/// Specifications tab from stored manifest fields rather than a disk checkout.
+/// catalog API, which renders a variant's prompt for the gallery's Specifications
+/// tab from stored manifest fields rather than a disk checkout.
 /// `spec_dests` are the seeded specs' workspace-relative destination paths in
 /// seed order (the common specs first, then the variant's own), exactly as
 /// [`TestCaseVersion::seeded_specs`] orders them. `test_type` selects which shared

@@ -1564,7 +1564,7 @@ interface ClientConfigResponse {
   // when adversarial execution is not served (a single-box dev setup).
   arenaUrl?: string | null;
   // Grafana's base URL — non-null when the deployment runs the observability
-  // stack — or null when it does not (local/desktop, or any overlay without the
+  // stack — or null when it does not (a local stack, or any overlay without the
   // observability component). Used to link a run to the traces it emitted.
   grafanaUrl?: string | null;
   // The public **read** base URL of the snapshot bucket (the R2 bucket the backend

@@ -2,8 +2,8 @@
 // truth, the foray case's replay bundle.
 //
 // The shared gallery app (`@clockwyrks/ui`) draws match replays on a <canvas>
-// with its own copy of the renderer + sprite assets, so the public site, web
-// console and desktop app all play a match identically without each fetching the
+// with its own copy of the renderer + sprite assets, so the public site and web
+// console both play a match identically without each fetching the
 // case bundle. That copy must stay in lockstep with the case's bundle, or the UI
 // silently renders with a stale engine/atlas (e.g. the interpolation rework that
 // teleported agents because only the bundle was updated). This script copies the

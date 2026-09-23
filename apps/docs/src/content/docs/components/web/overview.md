@@ -3,10 +3,9 @@ title: Overview
 ---
 
 The web console is The Test Cabinet's runner and reporter GUI, delivered as a
-static browser bundle. It is the same console as the [Tauri
-app](/components/tauri/overview/), built from the same [UI
-library](/components/ui/overview/) app and differing only in how it is delivered
-and in where its service URLs come from.
+static browser bundle. It mounts the routed application from the [UI
+library](/components/ui/overview/) with the run-execution surface enabled, and
+reads its service URLs from the deployment's runtime config.
 
 From the console a person signs in, configures and launches a run, watches its
 live [event](/components/core/events/) stream, returns to a run still in

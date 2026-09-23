@@ -17,19 +17,19 @@ playable builds are static and are covered by
 
 ## Deployed components
 
-| Thing                                                                               | Deployed as                                                                                           |
-| ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| [Backend](/components/backend/overview/) (`tcab-backend`)                           | `StatefulSet` (1 replica) + `ClusterIP` `Service` + `PersistentVolumeClaim`; owns the run queue       |
-| [Auth service](/components/auth/overview/) (`tcab-auth`)                            | `StatefulSet` (1 replica) + `Service` + its own `PersistentVolumeClaim`                               |
-| [Dispatcher](/components/dispatcher/overview/) (`tcab-dispatcher`)                  | `Deployment` (1 replica), no `Service`; creates one driver `Job` per claimed run                      |
-| [Driver](/components/driver/overview/) (`tcab-driver`)                              | One `Job` per run, created by the dispatcher; each creates a sandbox pod through the API and exits    |
-| Publisher (`tcab-publisher`)                                                        | One `Job` per publish, created by the dispatcher                                                      |
-| [Artifact service](/components/artifacts/overview/) (`tcab-artifacts`)              | `StatefulSet` (1 replica) + `Service` + `PersistentVolumeClaim`; serves produced run trees            |
-| [Arena](/components/arena/overview/) (`tcab-arena`)                                 | `Deployment` (1 replica) + `Service`; runs adversarial matches and tournaments                        |
-| [Web console](/components/web/overview/) (`tcab-web`)                               | `Deployment` + `Service` serving a static bundle, reached over the VPN through the internal `Ingress` |
-| [Gallery](/components/site/serving/) (`tcab-gallery`)                               | A Container App on the public plane; see [Public Gallery](/deployment/public-gallery/)                |
-| Docs, per-run builds                                                                | Static Cloudflare Pages sites; see [Releasing](/development/releasing/)                               |
-| [CLI](/components/cli/overview/) (`tcab`), [Tauri app](/components/tauri/overview/) | Local tools an operator installs; see [Building](/development/building/)                              |
+| Thing                                                                  | Deployed as                                                                                           |
+| ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| [Backend](/components/backend/overview/) (`tcab-backend`)              | `StatefulSet` (1 replica) + `ClusterIP` `Service` + `PersistentVolumeClaim`; owns the run queue       |
+| [Auth service](/components/auth/overview/) (`tcab-auth`)               | `StatefulSet` (1 replica) + `Service` + its own `PersistentVolumeClaim`                               |
+| [Dispatcher](/components/dispatcher/overview/) (`tcab-dispatcher`)     | `Deployment` (1 replica), no `Service`; creates one driver `Job` per claimed run                      |
+| [Driver](/components/driver/overview/) (`tcab-driver`)                 | One `Job` per run, created by the dispatcher; each creates a sandbox pod through the API and exits    |
+| Publisher (`tcab-publisher`)                                           | One `Job` per publish, created by the dispatcher                                                      |
+| [Artifact service](/components/artifacts/overview/) (`tcab-artifacts`) | `StatefulSet` (1 replica) + `Service` + `PersistentVolumeClaim`; serves produced run trees            |
+| [Arena](/components/arena/overview/) (`tcab-arena`)                    | `Deployment` (1 replica) + `Service`; runs adversarial matches and tournaments                        |
+| [Web console](/components/web/overview/) (`tcab-web`)                  | `Deployment` + `Service` serving a static bundle, reached over the VPN through the internal `Ingress` |
+| [Gallery](/components/site/serving/) (`tcab-gallery`)                  | A Container App on the public plane; see [Public Gallery](/deployment/public-gallery/)                |
+| Docs, per-run builds                                                   | Static Cloudflare Pages sites; see [Releasing](/development/releasing/)                               |
+| [CLI](/components/cli/overview/) (`tcab`)                              | A local tool an operator installs; see [Building](/development/building/)                             |
 
 ## The control plane and the run plane
 

@@ -45,7 +45,7 @@
 //! the engine. For code analysis this is not stylistic. The analyzer crate depends
 //! on core for the contract types, so core cannot depend back on it without a
 //! cycle; and injecting it keeps heavyweight parser dependencies out of every
-//! binary that links core, the desktop shell included. A host that wires no stages
+//! binary that links core, including those that never run a stage. A host that wires no stages
 //! (the default, and every test) simply runs none.
 
 use std::path::{Path, PathBuf};

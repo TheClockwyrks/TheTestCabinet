@@ -87,7 +87,7 @@ validation media:
   longer holds is fetched through the artifact service, so a description-only
   image survives a store loss the same way a carousel entry does.
 
-The consoles and the public gallery present a run's showcase when the record
+The web console and the public gallery present a run's showcase when the record
 carries one, with the description's image references resolved to the served
 files.
 

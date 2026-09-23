@@ -815,7 +815,7 @@ fn model_to_rig(model: &crate::test_case::ModelSpec) -> test_cabinet_voxel::Rig 
 }
 
 /// Attach the live-preview `live` block to a seeded tool config when a viewer is
-/// observing the run (a driver or the Tauri app), so the binary streams each
+/// observing the run (a driver), so the binary streams each
 /// re-rendered preview back to the host. A no-op for an unobserved run.
 fn add_live(config: &mut serde_json::Value, live: Option<&crate::preview::LivePreviewEndpoint>) {
     if let Some(live) = live {

@@ -171,7 +171,7 @@ function backendValue(
   } as unknown as BackendContextValue;
 }
 
-// A single local worker: `local: true` means no sign-in gates the launch itself.
+// A single worker; the mocked account's token clears the sign-in gate.
 function workersValue(
   launchGgRun: WorkerClient["launchGgRun"],
 ): WorkersContextValue {
@@ -182,8 +182,7 @@ function workersValue(
     active: {
       id: "local",
       label: "Local",
-      url: null,
-      local: true,
+      url: "https://worker.example",
       client,
       identity: null,
       backendMatch: "unknown",

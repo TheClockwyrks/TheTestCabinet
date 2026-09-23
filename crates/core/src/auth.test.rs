@@ -430,15 +430,3 @@ fn api_key_falls_back_to_the_provider_variable_without_an_override() {
         Some(("OPENROUTER_API_KEY".to_string(), "shared".to_string()))
     );
 }
-
-#[test]
-fn subscription_files_lists_declared_files_only_for_subscription_harnesses() {
-    let registry = DefaultHarnessRegistry::new();
-    // Antigravity is subscription-only with a single required credential.
-    let files = subscription_files(registry.get(HarnessSlug::Antigravity).unwrap());
-    assert_eq!(files.len(), 1);
-    assert!(files[0].required);
-    assert!(files[0].host_path.ends_with("antigravity-oauth-token"));
-    // An API-key-only harness (OpenRouter) declares none.
-    assert!(subscription_files(registry.get(HarnessSlug::Kilo).unwrap()).is_empty());
-}

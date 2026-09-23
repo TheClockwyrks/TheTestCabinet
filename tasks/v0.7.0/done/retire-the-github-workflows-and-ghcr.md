@@ -4,9 +4,9 @@ Delete every GitHub Actions workflow and every reference to GHCR, so the GitHub
 repository is a source mirror of Azure and nothing else.
 
 This issue depends on
-[`build-ci-cd-on-azure-pipelines-with-deploys-to-staging-and-prod.md`](done/build-ci-cd-on-azure-pipelines-with-deploys-to-staging-and-prod.md)
+[`build-ci-cd-on-azure-pipelines-with-deploys-to-staging-and-prod.md`](build-ci-cd-on-azure-pipelines-with-deploys-to-staging-and-prod.md)
 and
-[`publish-gg-release-binaries-to-azure-blob-storage.md`](done/publish-gg-release-binaries-to-azure-blob-storage.md),
+[`publish-gg-release-binaries-to-azure-blob-storage.md`](publish-gg-release-binaries-to-azure-blob-storage.md),
 which take over everything the workflows did that still matters.
 
 ## Current state
@@ -39,8 +39,7 @@ committed on GitHub directly is lost.
 
 `scripts/ci/README.md` and the CI section of `development/building.md` describe
 Azure Pipelines as the only CI, with the gates, the mirror, the images and the
-deploys it owns. The macOS validation and the desktop jobs leave with the
-desktop app.
+deploys it owns. The macOS validation leaves with the GitHub workflows.
 
 ### Registries
 
@@ -60,7 +59,7 @@ deleted with the others.
 - [x] `.github/` holds the mirror README and nothing else.
 - [x] `scripts/ci/README.md` and `development/building.md` name Azure Pipelines
       as the only CI.
-- [ ] A search of the checkout for `ghcr.io` and `gh workflow` finds nothing.
+- [x] A search of the checkout for `ghcr.io` and `gh workflow` finds nothing.
 - [x] A run launched on a cluster deployed from the ACR pulls its run-container
       image from the ACR by default.
-- [ ] Gates green.
+- [x] Gates green.

@@ -12,9 +12,9 @@
 //! It is deliberately **out_dir-agnostic**: a caller resolves controller wasm bytes
 //! however it likes (a baseline from the case's `references/`, a prior run's module
 //! from the host's run output dir) and hands them in as [`ResolvedController`]s.
-//! The two persistence-owning callers — the worker and the desktop shell — own the
-//! disk writes, progress reporting, and backend publish; this module only plays
-//! matches and tallies results.
+//! The persistence-owning caller — the arena service — owns the disk writes,
+//! progress reporting, and backend publish; this module only plays matches and
+//! tallies results.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -81,7 +81,7 @@ pub const AUTO_REPLAY_OPPONENTS: &[(&str, bool)] = &[
 /// The run-root-relative filename of the replay at `index` in an adversarial run's
 /// `replays` list. Index 0 is the canonical [`REPLAY_JSON`] (`replay.json`); the
 /// rest are `replay-<index>.json`, a single path segment so they route through the
-/// one-segment `/asset/{file}` endpoint (and `tcab-asset://`) unchanged.
+/// one-segment `/asset/{file}` endpoint unchanged.
 pub fn replay_filename(index: usize) -> String {
     if index == 0 {
         REPLAY_JSON.to_string()

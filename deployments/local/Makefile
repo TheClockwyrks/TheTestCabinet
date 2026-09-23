@@ -968,7 +968,7 @@ local-ingest:
 # Hold the data-plane services open on localhost until interrupted (Ctrl-C). The web
 # console is NOT forwarded here — it runs from source (`npm run -w apps/web dev` on
 # 127.0.0.1:1430), reaching these same forwarded addresses. The backend + auth are
-# forwarded so the console (and the CLI/desktop app) can reach them; auth is separate
+# forwarded so the console (and the CLI) can reach them; auth is separate
 # because the backend no longer proxies it. The artifact + arena services are
 # forwarded because the console loads a pre-publish run's build and its proof/asset
 # media directly from them (as browser `<img>`/`<iframe>` requests) and POSTs
@@ -996,7 +996,7 @@ local-forward:
 # Hold the in-cluster Grafana LGTM stack open on localhost until interrupted
 # (Ctrl-C). Grafana's UI lands on http://127.0.0.1:3000 (anonymous admin — no
 # login). The OTLP ports are forwarded too so a binary run OUTSIDE the cluster — a
-# `cargo run` in the devcontainer, a host-side `tcab` CLI or desktop app, or the
+# `cargo run` in the devcontainer, a host-side `tcab` CLI, or the
 # browser web console — can export to the same stack by pointing its
 # OTEL_EXPORTER_OTLP_ENDPOINT at http://localhost:4318 (HTTP/protobuf; the browser
 # must use this :4318 port). In-cluster services need none of this — they already

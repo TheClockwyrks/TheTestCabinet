@@ -63,7 +63,7 @@ pipeline. Checkouts leave submodules off.
 | `install-nextest.sh`             | Install cargo-nextest pinned to `NEXTEST_VERSION`                                                                                                                                                                                                                                                                                                                                                              | —        |
 | `install-gg-toolchains.sh`       | Install every toolchain a gg **run** and gg's reflectors execute                                                                                                                                                                                                                                                                                                                                               | —        |
 | `install-gg-build-toolchains.sh` | Install the full .NET + wasi-sdk only the C# guest's **link** needs                                                                                                                                                                                                                                                                                                                                            | —        |
-| `rust-test.sh`                   | `cargo build` + `cargo nextest run` + doctests (headless crates)                                                                                                                                                                                                                                                                                                                                               | yes      |
+| `rust-test.sh`                   | `cargo build` + `cargo nextest run` + doctests (whole workspace)                                                                                                                                                                                                                                                                                                                                               | yes      |
 | `binary-smoke.sh`                | release-build, `cargo nextest run --release` + doctests, run binary                                                                                                                                                                                                                                                                                                                                            | yes      |
 | `smoke-binary.sh`                | run a built binary (`--version`/`--help`/commands)                                                                                                                                                                                                                                                                                                                                                             | yes      |
 | `web-build.sh`                   | `npm ci`, type-check + `vite build` of the front ends                                                                                                                                                                                                                                                                                                                                                          | yes      |
@@ -294,12 +294,10 @@ Pages project for `master` or `staging`, with `CLOUDFLARE_API_TOKEN` and
 ## Scope
 
 These cover every component the project ships. On the Rust side that is the
-whole Cargo workspace apart from the Tauri desktop shell (`crates/desktop`): the
-`tcab` CLI (`crates/cli`), the `tcab-backend` (`crates/backend`) server, the
-run-topology services (`tcab-dispatcher`, `tcab-driver`, `tcab-artifacts`), and
-the `crates/core`/`crates/telemetry` libraries they share. The Rust scripts pass
-`--workspace --exclude test-cabinet-desktop`, because that crate alone needs GUI
-system libraries. On the TypeScript side it is the front ends built by
+whole Cargo workspace: the `tcab` CLI (`crates/cli`), the `tcab-backend`
+(`crates/backend`) server, the run-topology services (`tcab-dispatcher`,
+`tcab-driver`, `tcab-artifacts`), and the `crates/core`/`crates/telemetry`
+libraries they share. On the TypeScript side it is the front ends built by
 `web-build.sh` (the gallery `apps/site`, the operator web console `apps/web`,
 and these docs `apps/docs`) on top of `packages/run-record` and the
 source-consumed `packages/ui`, plus, through `web-test.sh`, every workspace's

@@ -487,8 +487,8 @@ fn stream_event_names_are_the_ones_clients_listen_for() {
 fn the_stream_heartbeat_stays_under_the_usual_idle_timeouts() {
     // The heartbeat is what lets a client tell a healthy idle stream from a dead
     // one, so it has to arrive well inside the ~60s idle timeouts proxies and
-    // WKWebView impose — otherwise the connection is torn down between beats and
-    // the signal never lands. It must also stay comfortably under the client's own
+    // Safari's WebKit networking impose — otherwise the connection is torn down
+    // between beats and the signal never lands. It must also stay comfortably under the client's own
     // staleness window, or a healthy stream would be reopened for no reason.
     assert!(STREAM_HEARTBEAT <= std::time::Duration::from_secs(30));
 }

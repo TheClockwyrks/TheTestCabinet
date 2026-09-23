@@ -20,7 +20,7 @@
 //!   shapes. The backend constructs them on its server side (re-exporting them
 //!   from here so its handlers and the `contract-codegen` generator keep naming
 //!   them under `backend::api` / `backend::relay`); a Rust client of the queue
-//!   (the CLI / Tauri shell, mirroring the web console's TypeScript transport)
+//!   (the CLI and the driver, mirroring the web console's TypeScript transport)
 //!   deserializes them. They live here so both sides share one definition.
 //!
 //! The contract `cfg_attr` derives are preserved so the `contract-codegen`

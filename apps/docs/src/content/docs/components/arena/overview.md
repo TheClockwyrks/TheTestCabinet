@@ -43,8 +43,7 @@ replays back to the backend.
 Two controller kinds are resolvable in this topology: committed baselines,
 checked against the arena's opponent allowlist, and pushed-run controllers. A
 run-local controller is resolved from a host's own run output directory, which a
-stateless service does not have, so the arena rejects one with a `400`. The
-desktop app runs the same engine in-process and is where those resolve.
+stateless service does not have, so the arena rejects one with a `400`.
 
 The in-flight tournament registry and its live progress channel are in-memory
 and per-pod, so the arena runs as a single replica. Scale its throughput with

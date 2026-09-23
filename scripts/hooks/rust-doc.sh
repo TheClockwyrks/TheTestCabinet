@@ -34,10 +34,7 @@
 # part to trust: no-op 1s → 2s, and 38s → 61s after touching test-cabinet-core
 # (the crate with the most dependents); touching crates/gg, the crate the flag
 # actually unlocks, costs 13s. Still comparable to the clippy gate beside it, and
-# it reuses the same `cargo check` artifacts clippy just built. Like clippy, it
-# excludes only the Tauri desktop shell (crates/desktop) so committing does not
-# require the desktop app's heavy GUI system libraries; rustdoc has to compile a
-# crate before it can document it.
+# it reuses the same `cargo check` artifacts clippy just built.
 #
 # Invoked by pre-commit (see .pre-commit-config.yaml); also runnable by hand.
 set -euo pipefail
@@ -46,7 +43,7 @@ set -euo pipefail
 # working directory.
 cd "$(git rev-parse --show-toplevel)"
 
-if ! cargo doc --locked --workspace --exclude test-cabinet-desktop --no-deps --document-private-items; then
+if ! cargo doc --locked --workspace --no-deps --document-private-items; then
 	echo >&2
 	echo "rustdoc found issues. Fix them, then commit again." >&2
 	echo "(If a commit is genuinely fine, 'git commit --no-verify' bypasses the hook; CI remains the backstop.)" >&2

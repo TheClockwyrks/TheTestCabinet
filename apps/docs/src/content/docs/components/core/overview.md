@@ -47,5 +47,3 @@ requires. The behavior of a run lives in the core.
 - The [CLI](/components/cli/overview/) exposes the core as the `tcab` binary.
 - The [driver](/components/driver/overview/) exposes the same run functionality
   as a per-run executor that the dispatcher creates a Kubernetes `Job` for.
-- The [Tauri app](/components/tauri/overview/) exposes it as an interactive
-  desktop GUI.

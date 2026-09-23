@@ -5,9 +5,9 @@
 //! executing the run in a container, invoking the agent harness, collecting
 //! metrics, running validation, writing the run record, and publishing.
 //!
-//! See `docs/application.md`. The command line interface and the desktop shell
-//! are thin layers on top of this core; keeping orchestration here is what makes
-//! batch runs and unattended sweeps possible.
+//! See `docs/application.md`. The command line interface and the services are
+//! thin layers on top of this core; keeping orchestration here is what makes batch
+//! runs and unattended sweeps possible.
 
 pub mod accounts;
 pub mod adversarial_validator;
@@ -82,9 +82,7 @@ mod tests;
 /// not determine it (for example, a build with no git repository).
 ///
 /// This is the single source of the build's provenance commit: the run record's
-/// tooling stamp reads it, and the desktop shell uses it to tag the catalog it
-/// ingests (the bundled `test-cases/` are baked at this same build, so this commit
-/// identifies that catalog snapshot).
+/// tooling stamp reads it.
 pub const COMMIT: Option<&str> = option_env!("TEST_CABINET_COMMIT");
 
 use std::collections::BTreeMap;
@@ -101,8 +99,7 @@ pub use accounts::{Account, AccountsClient, AuthnResponse, LoginRequest, Registe
 pub use adversarial_validator::AdversarialValidator;
 pub use auth::{
     AuthPlan, CredBytesSource, CredFile, CredSource, HostCreds, MapCreds, RequestedAuthMode,
-    SubscriptionFileStatus, SubscriptionSpec, api_key_override_var, auth_readiness, resolve_auth,
-    resolve_auth_with, select_mode, subscription_files,
+    SubscriptionSpec, api_key_override_var, auth_readiness, resolve_auth, resolve_auth_with,
 };
 pub use backend_client::{
     BackendClient, HttpBackendClient, PrerenderedReferenceRenderer, PublishAck, PublishedReview,
@@ -629,7 +626,7 @@ where
     pub output_dir: PathBuf,
     /// An optional source of subscription credential bytes for the run.
     ///
-    /// `None` (the CLI/desktop in-process path) reads any subscription
+    /// `None` (the CLI in-process path) reads any subscription
     /// credentials from the host filesystem, unchanged. The driver, which runs in
     /// an ephemeral pod with no such files, sets this to a [`MapCreds`] built from
     /// an operator-provided Secret mounted into the pod, so a subscription harness
@@ -646,8 +643,8 @@ where
     /// surfaced in the prompt's distinctness section; see [`RunEngine::run_resolved`].
     ///
     /// The engine does not fetch these itself — the caller supplies them. The driver
-    /// populates them from the backend for a game-jam run; the in-process CLI/desktop
-    /// path (and every non-game-jam run) leaves this empty, which simply seeds no
+    /// populates them from the backend for a game-jam run; the in-process CLI path
+    /// (and every non-game-jam run) leaves this empty, which simply seeds no
     /// prior entries and adds no distinctness section.
     pub prior_game_jam_entries: Vec<PriorGameJamEntry>,
     /// The monotonic clock every recorded stage duration is read from.

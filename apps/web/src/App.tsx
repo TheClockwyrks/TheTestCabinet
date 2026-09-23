@@ -22,8 +22,7 @@ import {
 // against live data. It talks to a single backend URL — for the catalog and
 // published runs, and (since the per-run-Job refactor) for executing runs via the
 // backend's `/jobs` queue. That run-execution capability is the only difference
-// from the static site. The Tauri app mounts the same app with its own transport
-// and a built-in local worker.
+// from the static site.
 export function App() {
   const backend = useBackendConnection();
   // The execution target is the same backend; presented through the shared

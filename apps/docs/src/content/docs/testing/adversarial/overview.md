@@ -71,9 +71,8 @@ In a deployment, both quick matches and whole tournaments run on the dedicated
 [arena service](/components/arena/overview/), which keeps this CPU-bound work off
 the single-replica control-plane backend. The arena fetches each controller's
 wasm from the backend, runs the field, and persists the finished tournament and
-its per-match replays back to the backend, which serves arena reads. A console
-reaches the arena at the URL the backend reports from `GET /config`. The desktop
-app runs the same engine in process.
+its per-match replays back to the backend, which serves arena reads. The web console
+reaches the arena at the URL the backend reports from `GET /config`.
 
 ## Lockstep simulation and replays
 

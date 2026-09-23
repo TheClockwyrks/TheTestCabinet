@@ -687,8 +687,8 @@ pub fn router(state: AppState) -> Router {
         // records request metrics. Both degrade to no-ops when telemetry is off.
         .layer(axum::middleware::from_fn(trace_and_measure))
         .layer(TraceLayer::new_for_http())
-        // The browser UIs (gallery web app, Tauri dev server) run on a different
-        // localhost origin than this backend, so every request is cross-origin.
+        // The browser UIs (the web console and the gallery) are served from a
+        // different origin than this backend, so every request is cross-origin.
         // The backend already trusts every caller that can reach it (the
         // private-network, no-auth model in this module's docs); a permissive CORS
         // policy keeps the browser from blocking those callers without narrowing

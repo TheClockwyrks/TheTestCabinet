@@ -27,7 +27,6 @@ import type {
   CaseVariantRef,
   CatalogStatus,
   GalleryDataInput,
-  HarnessAuthApi,
   RunDetail,
 } from "../data/galleryContext";
 import { DEFAULT_ENGINE_SLUG } from "../data/engines";
@@ -45,9 +44,9 @@ import type {
 import type { CabinetStats } from "../data/cabinetStats";
 import { useRunsRuntime } from "./runsRuntime";
 
-// The shared live gallery data source for the consoles (web and desktop). It is
-// written against the BackendClient/WorkerClient interfaces alone, so the two
-// apps differ only in the transports behind those contexts. The published gallery
+// The live gallery data source for the web console. It is written against the
+// BackendClient/WorkerClient interfaces alone, so it depends only on the
+// transports behind those contexts, never on a concrete one. The published gallery
 // is no longer drained whole: pages fetch a page at a time through
 // {@link queryRunSummaries} (the backend's numbered offset endpoint), so this only
 // reads the small produced-but-unpublished worklist from the active worker (flagged
@@ -410,22 +409,17 @@ async function fetchTestCase(
   );
 }
 
-// The host supplies its own arena capability (the consoles wire one when a worker
-// is connected; the static site never calls this hook). It is threaded through
-// unchanged so the arena UI resolves it off the shared gallery data. `harnessAuth`
-// is the same: only the desktop host (which manages the local cluster's harness
-// credentials) supplies it, so it gates the Tauri-only Authentication settings.
-export function useLiveGallery(
-  arena?: ArenaApi,
-  harnessAuth?: HarnessAuthApi,
-): GalleryDataInput {
+// The host supplies its own arena capability (the web console wires one when a
+// backend is connected; the static site never calls this hook). It is threaded
+// through unchanged so the arena UI resolves it off the shared gallery data.
+export function useLiveGallery(arena?: ArenaApi): GalleryDataInput {
   const { client: backend, url: backendUrl } = useBackend();
   const { active: worker } = useWorkers();
   const { refreshToken } = useRunsRuntime();
 
   // Grafana's base URL, reported by the backend's `GET /config`. Resolved here
-  // rather than in the app shells so the web and desktop consoles both pick it up
-  // without each wiring its own fetch. Best-effort by construction: a backend that
+  // rather than in the app shell so the console picks it up without wiring its
+  // own fetch. Best-effort by construction: a backend that
   // is unreachable, or one whose deployment runs no observability stack, leaves
   // this null and the run view simply omits its link to the run's traces.
   const [grafanaUrl, setGrafanaUrl] = useState<string | null>(null);
@@ -442,8 +436,8 @@ export function useLiveGallery(
   }, [backendUrl]);
 
   // The public snapshot bucket's read base URL, reported by the same
-  // `GET /config`. Resolved here for the same reason Grafana's is — both consoles
-  // pick it up without wiring their own fetch — and kept separate from the artifact
+  // `GET /config`. Resolved here for the same reason Grafana's is — the console
+  // picks it up without wiring its own fetch — and kept separate from the artifact
   // service's base because a case's published asset-reference frames live in the
   // bucket, not in any run tree. Best-effort: an unreachable backend (or one with no
   // bucket) leaves this null and the asset Reference tab degrades to a placeholder.
@@ -495,12 +489,11 @@ export function useLiveGallery(
   localIdsRef.current = localIds;
 
   // Resolve a run's proof media URL: a produced (local) run is served by its
-  // worker, any other (published) run by the backend. A worker reachable over HTTP
-  // serves proofs under its base URL; a worker with no HTTP base (the built-in
-  // Tauri worker) instead supplies its own resolver — `proofMediaUrl` — returning a
-  // custom-scheme URL the desktop shell serves. When neither is available the proof
-  // is not URL-loadable here and resolves to null (the UI then shows presence
-  // without media).
+  // worker, any other (published) run by the backend. A worker that supplies its
+  // own resolver — `proofMediaUrl`, which the HTTP transport points at the
+  // artifact service — is asked first; otherwise the proof resolves under the
+  // worker's base URL. When the resolver declines the proof is not URL-loadable
+  // here and resolves to null (the UI then shows presence without media).
   const proofMediaUrl = useCallback(
     (runId: string, file: string): string | null => {
       const path = `/runs/${encodeURIComponent(runId)}/proof/${encodeURIComponent(file)}`;
@@ -516,8 +509,8 @@ export function useLiveGallery(
   );
 
   // Asset-generation run media (regenerated/preview/target/actions) resolves the
-  // same way proof media does: the desktop transport supplies a custom-scheme
-  // resolver, the web worker/backend an HTTP endpoint.
+  // same way proof media does: the worker's own resolver when it has one, else an
+  // HTTP endpoint on the worker or backend.
   const assetMediaUrl = useCallback(
     (runId: string, file: string): string | null => {
       const path = `/runs/${encodeURIComponent(runId)}/asset/${encodeURIComponent(file)}`;
@@ -533,9 +526,9 @@ export function useLiveGallery(
   );
 
   // A run's automated-validation media (a debug script's synthesized actual/baseline
-  // clips and stills) resolves exactly the way proof and asset media do: the desktop
-  // transport may supply a custom-scheme resolver, the web worker/backend an HTTP
-  // endpoint under `/runs/{id}/validation/{file}`.
+  // clips and stills) resolves exactly the way proof and asset media do: the
+  // worker's own resolver when it has one, else an HTTP endpoint under
+  // `/runs/{id}/validation/{file}`.
   const validationMediaUrl = useCallback(
     (runId: string, file: string): string | null => {
       const path = `/runs/${encodeURIComponent(runId)}/validation/${encodeURIComponent(file)}`;
@@ -552,8 +545,8 @@ export function useLiveGallery(
 
   // A run's showcase files (the carousel media, plus any image the description
   // references by bare relative path) resolve exactly the way proof and asset
-  // media do: the desktop transport may supply a custom-scheme resolver, the web
-  // worker/backend an HTTP endpoint under `/runs/{id}/showcase/{file}`.
+  // media do: the worker's own resolver when it has one, else an HTTP endpoint
+  // under `/runs/{id}/showcase/{file}`.
   const showcaseMediaUrl = useCallback(
     (runId: string, file: string): string | null => {
       const path = `/runs/${encodeURIComponent(runId)}/showcase/${encodeURIComponent(file)}`;
@@ -597,8 +590,7 @@ export function useLiveGallery(
   // publishing a run copies its media to the backend but does not move (or remove)
   // the tree. So there is no published-vs-local split and no backend fallback; the
   // transport's own resolver is the single source, and a transport that has none
-  // (the built-in Tauri worker, whose runs are already on the user's disk) resolves
-  // null and the console simply offers no download.
+  // resolves null and the console simply offers no download.
   const runArchiveUrl = useCallback(
     (runId: string): string | null =>
       workerClient?.runArchiveUrl?.(runId) ?? null,
@@ -1040,7 +1032,6 @@ export function useLiveGallery(
       referenceMediaUrl,
       runArchiveUrl,
       arena,
-      harnessAuth,
     }),
     [
       producedSummaries,
@@ -1070,7 +1061,6 @@ export function useLiveGallery(
       referenceMediaUrl,
       runArchiveUrl,
       arena,
-      harnessAuth,
     ],
   );
 }

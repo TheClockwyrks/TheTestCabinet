@@ -19,7 +19,7 @@ import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
 import styles from "./ReviewingPage.module.scss";
 
-// The Reviewing settings tab (`/settings/reviewing`, web/desktop only): the
+// The Reviewing settings tab (`/settings/reviewing`, web console only): the
 // account-wide preferences that govern how much reviewing work the cabinet puts in
 // front of you. Today that is the review buffer — how many runs the reviewer is
 // willing to have outstanding (in flight, or finished and waiting on their review)

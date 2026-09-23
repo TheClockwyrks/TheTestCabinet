@@ -21,10 +21,9 @@ validator-rated run can be reviewed before or after it is published. The full
 workflow is
 [Reviewing Test Run Results](/guides/development/reviewing-test-run-results/).
 
-## Review in a console
+## Review in the web console
 
-The [desktop app](/components/tauri/overview/) and the
-[web console](/components/web/overview/) are the primary way to review.
+The [web console](/components/web/overview/) is the primary way to review.
 [Sign in](/quickstarts/setup/register-and-login/), open the finished run, play
 its build, and fill in the review editor:
 
@@ -41,9 +40,9 @@ its build, and fill in the review editor:
   write the prose writeup. Saving the review requires the rating, and on a
   legacy run every domain rated and every item answered.
 
-The web console submits the review and publishes as two actions; the desktop app
-offers a single action that does both. A run's Proof tab lists every proof the
-build submitted, browsable independent of the checklist.
+The web console submits the review and publishes as two separate actions. A
+run's Proof tab lists every proof the build submitted, browsable independent of
+the checklist.
 
 ## Edit a review
 

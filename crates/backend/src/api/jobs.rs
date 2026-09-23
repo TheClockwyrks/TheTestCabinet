@@ -1899,7 +1899,7 @@ pub(super) fn now_rfc3339() -> Result<String, ApiError> {
 /// How often the live NDJSON stream emits a heartbeat newline while idle, so a
 /// client whose streaming `fetch()` aborts on idle reads keeps the connection
 /// alive through event-free gaps. Matches axum's default SSE keep-alive period
-/// and stays well under WKWebView/NSURLSession's ~60s request idle timeout.
+/// and stays well under the ~60s request idle timeout of Safari's WebKit networking.
 const LIVE_HEARTBEAT: std::time::Duration = std::time::Duration::from_secs(15);
 
 /// Build the NDJSON byte stream for a job: the replayed backlog and latest
@@ -1921,11 +1921,10 @@ fn event_stream(
     // A periodic newline heartbeat keeps bytes flowing while the run is idle
     // between events — most notably the long gap after "Preparing the test case
     // workspace" while the driver clones the case and pulls the run-container
-    // image. A streaming `fetch()` reader that aborts on idle reads (WKWebView /
-    // NSURLSession, which backs the Tauri desktop app, times an idle request out
-    // after ~60s and surfaces it as `TypeError: Load failed`) would otherwise
-    // tear the live monitor down mid-run; Chromium has no such idle timeout,
-    // which is why the web console never saw it. A bare `\n` is a no-op to the
+    // image. A streaming `fetch()` reader that aborts on idle reads (Safari's
+    // WebKit networking times an idle request out after ~60s and surfaces it as
+    // `TypeError: Load failed`, and proxies impose similar idle timeouts) would
+    // otherwise tear the live monitor down mid-run. A bare `\n` is a no-op to the
     // NDJSON client, which skips empty lines. Mirrors the keep-alive the
     // `/notifications` SSE stream already applies. `interval_at` starts one period
     // out so a freshly subscribed client isn't sent a redundant immediate tick.
@@ -2069,7 +2068,7 @@ pub const STREAM_EVENT_HEARTBEAT: &str = "heartbeat";
 /// interval sets how fast a dead stream is noticed — and, with the client's
 /// tolerance factor, how long a run's row can be stale in the worst case. Matches
 /// the per-job stream's heartbeat and axum's default keep-alive period, and stays
-/// well under the 60s idle timeouts proxies and WKWebView impose.
+/// well under the 60s idle timeouts proxies and Safari's WebKit networking impose.
 const STREAM_HEARTBEAT: std::time::Duration = std::time::Duration::from_secs(15);
 
 /// The console stream's first frame: the id this client quotes back to

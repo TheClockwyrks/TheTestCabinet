@@ -153,7 +153,7 @@ stages:
           # JDK, the Kotlin compiler, the wasm32 std, Swift, wasi-sdk and .NET.
           #
           # This job compiles it TWICE, and the first time is the lint: rust-lint.sh runs
-          # clippy and rustdoc over `--workspace --exclude test-cabinet-desktop`, which
+          # clippy and rustdoc over `--workspace`, which
           # includes test-cabinet-gg, and both fully compile it (build scripts run under
           # clippy like any other build). rust-test.sh installs the same toolchains itself,
           # idempotently, but it runs after — so without this step the job would die in its
