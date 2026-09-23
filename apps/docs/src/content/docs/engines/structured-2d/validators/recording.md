@@ -162,9 +162,9 @@ leaves the picture that shows why.
 
 The same suites are run against the variant's reference implementation for the
 same engine by [`tcab capture-baselines`](/components/cli/overview/#commands),
-which produces the baseline recording under the same name in the case's version
-folder, at `validation-baseline/<engine>/<variant>/`. The reviewer sees the two
-beside each other.
+which produces the baseline recording under the same name in the version's
+`validation-baseline/<engine>/<variant>/` in cold storage. The reviewer sees the
+two beside each other.
 
 The engine is in that path because a variant has one reference implementation
 per engine, and the two are different builds. A run recorded under one engine

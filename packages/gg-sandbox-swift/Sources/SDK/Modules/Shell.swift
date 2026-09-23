@@ -23,7 +23,7 @@ public enum shell {
     /// - Parameters:
     ///   - command: The command line, run by `sh -c` with the workspace as its working directory.
     ///   - timeout: How long to let it run, in seconds, before killing it. Left out, it takes gg's
-    ///     default of 600, clamped to whatever is left of the run's wall-clock budget.
+    ///     default of 3600, clamped to whatever is left of the run's wall-clock budget.
     /// - Returns: what the process printed, and how it exited.
     /// - Throws: `core.ApiError` with `.limitExceeded` when the timeout killed the process, and
     ///   `.ioError` when it could not be launched.

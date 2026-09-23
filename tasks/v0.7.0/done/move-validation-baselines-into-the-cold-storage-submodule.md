@@ -5,7 +5,7 @@ serve it from a `cold-storage` submodule, so a default clone is small and the
 full media set is an opt-in download.
 
 This issue runs before
-[`rewrite-the-repository-history-without-baselines-and-wasm-blobs.md`](rewrite-the-repository-history-without-baselines-and-wasm-blobs.md),
+[`rewrite-the-repository-history-without-baselines-and-wasm-blobs.md`](../rewrite-the-repository-history-without-baselines-and-wasm-blobs.md),
 which removes the same files from history once they have left the tree.
 
 ## Current state
@@ -14,10 +14,10 @@ Every test-case version folder holds `validation-baseline/<engine>/<variant>/`,
 the media `tcab capture-baselines` synthesizes from the variant's reference
 implementation. It is the bulk of the repository.
 
-| What                                          | Size                     |
-| --------------------------------------------- | ------------------------ |
-| Baselines tracked at HEAD                     | 1.85 GiB, about 31k files |
-| The same, compressed                          | 1.53 GiB                 |
+| What                                          | Size                        |
+| --------------------------------------------- | --------------------------- |
+| Baselines tracked at HEAD                     | 1.85 GiB, about 31k files   |
+| The same, compressed                          | 1.53 GiB                    |
 | Baseline blobs across all history, compressed | 4.61 GiB of a 5.37 GiB pack |
 
 Two commands write the directory. `crates/cli/src/commands/capture_baselines.rs`
@@ -65,7 +65,7 @@ yields versions with no baseline media, and ingest proceeds.
 The ingest sidecar adds a shallow submodule update to its refresh step, so the
 persistent checkout carries the baselines the store copies. The checkout stays on
 the GitHub mirror, which holds the submodule per
-[`address-submodules-by-relative-url-and-mirror-them-to-github.md`](address-submodules-by-relative-url-and-mirror-them-to-github.md).
+[`address-submodules-by-relative-url-and-mirror-them-to-github.md`](../address-submodules-by-relative-url-and-mirror-them-to-github.md).
 CI keeps submodules off, since no gate reads baselines.
 
 ### Frozen versions
@@ -94,16 +94,16 @@ review a run), and the map in `CLAUDE.md`.
 
 ## Done when
 
-- [ ] `cold-storage` is a submodule at the root and holds every baseline that was
+- [x] `cold-storage` is a submodule at the root and holds every baseline that was
       tracked, at the mirrored path.
-- [ ] `test-cases/` tracks no `validation-baseline/` directory.
-- [ ] `tcab capture-baselines` and `tcab publish-reference` write beneath the
+- [x] `test-cases/` tracks no `validation-baseline/` directory.
+- [x] `tcab capture-baselines` and `tcab publish-reference` write beneath the
       cold-storage root, and `TCAB_COLD_STORAGE_DIR` redirects them.
-- [ ] Ingesting a checkout with the submodule serves and snapshots each version's
+- [x] Ingesting a checkout with the submodule serves and snapshots each version's
       baselines exactly as before; ingesting one without it succeeds with empty
       baselines.
-- [ ] The deployed ingest sidecar fetches the submodule shallowly on every refresh.
-- [ ] Every frozen marker verifies after the move, and the frozen check passes on
+- [x] The deployed ingest sidecar fetches the submodule shallowly on every refresh.
+- [x] Every frozen marker verifies after the move, and the frozen check passes on
       a recapture of a frozen version.
-- [ ] The listed docs and `CLAUDE.md` describe the submodule.
-- [ ] Gates green.
+- [x] The listed docs and `CLAUDE.md` describe the submodule.
+- [x] Gates green.

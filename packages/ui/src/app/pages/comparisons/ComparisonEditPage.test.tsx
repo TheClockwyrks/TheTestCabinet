@@ -70,6 +70,8 @@ const MODEL = {
   price: null,
   priceHistory: [],
   contextLength: null,
+  providerPin: null,
+  providerPinSetByHand: false,
   releasedAt: null,
 } as unknown as Model;
 

@@ -122,6 +122,24 @@ under `[workspace.dependencies]` and inherited with `{ workspace = true }`.
   [web console](/components/web/overview/) that enqueues runs at the backend.
 - `apps/docs`: `@clockwyrks/docs`. This Astro Starlight documentation site.
 
+### Cold storage
+
+`cold-storage/` at the root is a git submodule holding the captured baseline
+validation media, the bulk of the repository's bytes. Its tree mirrors this
+one's, so a test-case version's baselines live at
+`cold-storage/test-cases/<type>/<difficulty>/<slug>/<version>/validation-baseline/<engine>/<variant>/`
+(see [where baselines live](/components/core/validation/#where-baselines-live)).
+`.gitmodules` names it by the relative URL `../cold-storage`, so it resolves to
+the sibling repository on whichever host the superproject was cloned from.
+
+Nothing in the build, the tests, or CI reads it, so a clone without it builds
+and passes every gate. Fetch it only to capture or review baselines, or to
+ingest a catalog that serves them:
+
+```sh
+git submodule update --init --depth 1 cold-storage
+```
+
 ### Reference implementations
 
 A [reference implementation](/guides/devops/publishing-a-reference-implementation/)

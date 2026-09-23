@@ -73,21 +73,20 @@ is asked to build, and those are what one build already contains.
 
 ## Contents
 
-| Path                   | Seeded to run? | Purpose                                                                   |
-| ---------------------- | -------------- | ------------------------------------------------------------------------- |
-| `specs/`               | Yes            | The spec handed to the model, by concern.                                 |
-| `assets/`              | Yes            | The four sprites and the drone-burst particle system the game draws from. |
-| `workspaces/`          | Yes            | The starter TypeScript project, seeded at the run root.                   |
-| `prompt.hbs`           | No             | Rendered into the model's prompt; not seeded.                             |
-| `references/`          | No             | The authored, correct build, per engine and variant. Never seeded.        |
-| `validation/`          | No             | The validator suites deciding every review point, `<engine>/`.            |
-| `validation-baseline/` | No             | The baseline media, captured from each reference build.                   |
-| `showcase/`            | No             | Each variant's demo media and description for the catalog.                |
-| `test-case.toml`       | No             | Manifest: workspaces, engines, toolchain, specs, domains, review items.   |
-| `variants/`            | No             | One TOML file per variant (listed in `variants`).                         |
-| `description.md`       | No             | The site-facing introduction on the case's detail page.                   |
-| `changelog.md`         | No             | This version's entry in the case's changelog.                             |
-| `README.md`            | No             | This overview.                                                            |
+| Path             | Seeded to run? | Purpose                                                                   |
+| ---------------- | -------------- | ------------------------------------------------------------------------- |
+| `specs/`         | Yes            | The spec handed to the model, by concern.                                 |
+| `assets/`        | Yes            | The four sprites and the drone-burst particle system the game draws from. |
+| `workspaces/`    | Yes            | The starter TypeScript project, seeded at the run root.                   |
+| `prompt.hbs`     | No             | Rendered into the model's prompt; not seeded.                             |
+| `references/`    | No             | The authored, correct build, per engine and variant. Never seeded.        |
+| `validation/`    | No             | The validator suites deciding every review point, `<engine>/`.            |
+| `showcase/`      | No             | Each variant's demo media and description for the catalog.                |
+| `test-case.toml` | No             | Manifest: workspaces, engines, toolchain, specs, domains, review items.   |
+| `variants/`      | No             | One TOML file per variant (listed in `variants`).                         |
+| `description.md` | No             | The site-facing introduction on the case's detail page.                   |
+| `changelog.md`   | No             | This version's entry in the case's changelog.                             |
+| `README.md`      | No             | This overview.                                                            |
 
 ## The specification
 
@@ -220,9 +219,10 @@ posing the wave's own dive clock either side of the window. Neither sample is a
 measurement of the ramp: a draw is held to the stated window and nothing is
 inferred from the spread of a few dozen of them.
 
-`validation-baseline/<engine>/<variant>/` holds the media the same suites captured
-from that engine's reference build of that variant, so a reviewer sees the run's
-evidence and the reference's side by side.
+This version's `validation-baseline/<engine>/<variant>/` in the `cold-storage`
+submodule holds the media the same suites captured from that engine's reference
+build of that variant, so a reviewer sees the run's evidence and the reference's
+side by side.
 
 ### One suite tree, two variants
 

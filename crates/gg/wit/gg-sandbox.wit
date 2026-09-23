@@ -118,7 +118,7 @@ interface shell {
     /// thing a program does, so throwing on it would make `shell` unusable inside an expression.
     /// Only a failure to launch the process, or the timeout killing it, is an error.
     ///
-    /// `timeout-secs` defaults to gg's 600 s and is CLAMPED to whatever is left of the run's
+    /// `timeout-secs` defaults to gg's 3600 s and is CLAMPED to whatever is left of the run's
     /// wall-clock budget, so one call cannot outlive the run it belongs to.
     shell: func(command: string, timeout-secs: option<f64>) -> result<shell-output, api-error>;
 }

@@ -226,6 +226,17 @@ export type ModelOut = {
    */
   contextLength: number | null;
   /**
+   * The OpenRouter provider this model's requests are pinned to: the hand-set
+   * override when one is set, otherwise the official endpoint observed on the listing.
+   * Null means no official endpoint is known, and a launch of the model is refused.
+   */
+  providerPin: string | null;
+  /**
+   * Whether [`provider_pin`](Self::provider_pin) is the curated override rather than
+   * the observed official endpoint.
+   */
+  providerPinSetByHand: boolean;
+  /**
    * The latest observed release date (RFC 3339), or null.
    */
   releasedAt: string | null;
@@ -289,6 +300,12 @@ export type ModelConfigInput = {
    */
   aliases: Array<AliasInput>;
   openrouterSlug: string | null;
+  /**
+   * The OpenRouter provider this model's requests are pinned to, set by hand where
+   * the endpoints listing's name does not match the model id's author segment. Absent
+   * means the observed listing name is the pin.
+   */
+  providerPin?: string;
   description: string | null;
   /**
    * The stored provider-logo SVG (already fetched via `POST /models/logo`).

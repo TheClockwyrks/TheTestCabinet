@@ -430,6 +430,7 @@ fn seed_line(prompt: &str) -> GgJournalLine {
             baseline_commit: Some("abc123".to_string()),
             prompt: prompt.to_string(),
             model_windows: BTreeMap::from([("some/model".to_string(), 128_000)]),
+            model_providers: BTreeMap::from([("some/model".to_string(), "some".to_string())]),
             model_modalities: BTreeMap::from([(
                 "some/model".to_string(),
                 GgSessionModalities { vision: true },
@@ -860,6 +861,7 @@ fn request(harness: crate::HarnessSlug) -> crate::RunRequest {
         container_image: None,
         gg_capability_set: None,
         gg_model_windows: std::collections::BTreeMap::new(),
+        gg_model_providers: std::collections::BTreeMap::new(),
         gg_model_modalities: std::collections::BTreeMap::new(),
     }
 }

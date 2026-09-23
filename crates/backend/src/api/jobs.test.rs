@@ -130,6 +130,7 @@ fn launch_models_covers_the_run_model_and_every_bound_agent_model() {
         retry_count: None,
         gg_capability_set: Some(set),
         gg_model_windows: Default::default(),
+        gg_model_providers: Default::default(),
         gg_model_modalities: Default::default(),
     };
 
@@ -158,6 +159,7 @@ fn launch_models_of_a_third_party_harness_run_is_its_one_model() {
         retry_count: None,
         gg_capability_set: None,
         gg_model_windows: Default::default(),
+        gg_model_providers: Default::default(),
         gg_model_modalities: Default::default(),
     };
 

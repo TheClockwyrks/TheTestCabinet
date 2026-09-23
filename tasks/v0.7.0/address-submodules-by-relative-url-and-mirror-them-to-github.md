@@ -10,7 +10,7 @@ superproject on pins that the mirror already holds.
 `git@ssh.dev.azure.com:v3/genyume/the-test-cabinet/test-suites`. Development
 stays on Azure and the Azure repositories stay private, so a clone from the
 GitHub mirror cannot fetch that submodule. The cold-storage submodule added by
-[`move-validation-baselines-into-the-cold-storage-submodule.md`](move-validation-baselines-into-the-cold-storage-submodule.md)
+[`move-validation-baselines-into-the-cold-storage-submodule.md`](done/move-validation-baselines-into-the-cold-storage-submodule.md)
 has the same problem.
 
 Nyxsis already mirrors to GitHub: `scripts/ci/mirror.sh` force-pushes the gated

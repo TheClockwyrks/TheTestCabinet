@@ -129,11 +129,11 @@ A superseded version is typically [frozen](/development/frozen-versions/): it
 carries a `.frozen` marker, and both the pre-commit hook and CI reject any change
 under a frozen directory, including a new `errata.toml`.
 
-Re-baseline the directory's digest, then commit:
+Stage the erratum, re-baseline the directory's digest over it, then commit:
 
 ```sh
-scripts/freeze.sh test-cases/<type>/<difficulty>/<slug>/<version>
 git add test-cases/<type>/<difficulty>/<slug>/<version>/errata.toml
+scripts/freeze.sh test-cases/<type>/<difficulty>/<slug>/<version>
 git commit -m "docs(errata): note <slug> <erratum-id>"
 ```
 

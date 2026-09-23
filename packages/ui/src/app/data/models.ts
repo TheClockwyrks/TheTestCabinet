@@ -41,6 +41,12 @@ export interface ModelSummary {
   priceHistory: PriceObservation[];
   /** Maximum context window in tokens, or null. */
   contextLength: number | null;
+  /** The OpenRouter provider this model is pinned to, or null when no
+   * official endpoint is known. */
+  providerPin: string | null;
+  /** Whether `providerPin` is the hand-set override rather than the observed
+   * official endpoint. */
+  providerPinSetByHand: boolean;
   /** Release date as an RFC 3339 UTC timestamp, or null. */
   releasedAt: string | null;
   /** The input modalities the model accepts (`text`, `image`, …), lowercased.
@@ -64,6 +70,8 @@ export function toModelSummary(model: Model): ModelSummary {
     prices: model.price,
     priceHistory: model.priceHistory,
     contextLength: model.contextLength,
+    providerPin: model.providerPin,
+    providerPinSetByHand: model.providerPinSetByHand,
     releasedAt: model.releasedAt,
     inputModalities: model.inputModalities ?? [],
   };

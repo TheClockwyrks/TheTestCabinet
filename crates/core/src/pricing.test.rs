@@ -117,3 +117,37 @@ fn one_endpoints_payload_carries_both_the_listing_and_the_launch_facts() {
     assert_eq!(listing.name, "Claude Sonnet 4.5");
     assert_eq!(listing.provider, "Anthropic");
 }
+
+/// One provider's spellings agree however OpenRouter wrote them: the listing's
+/// `provider_name`, the model id's author segment, and the route tag.
+#[test]
+fn a_provider_agrees_with_every_spelling_of_itself() {
+    assert!(same_provider("OpenAI", "openai"));
+    assert!(same_provider("Z.AI", "z-ai"));
+    assert!(same_provider("xAI", "x-ai"));
+    assert!(same_provider("Moonshot AI", "moonshotai"));
+    assert!(same_provider("Google AI Studio", "google-ai-studio"));
+    assert!(!same_provider("Azure", "openai"));
+    assert!(!same_provider("Google AI Studio", "Google"));
+    assert!(!same_provider("", ""));
+}
+
+/// The official provider is the listed one that is the id's author, spelled as the listing
+/// spells it; a model its developer does not serve has none.
+#[test]
+fn the_official_provider_is_the_one_named_for_the_models_author() {
+    assert_eq!(
+        official_provider("openai/gpt-5.6-sol", ["Azure", "OpenAI"]),
+        Some("OpenAI".to_string())
+    );
+    assert_eq!(
+        official_provider("z-ai/glm-4.6", ["Venice", "DeepInfra", " Z.AI "]),
+        Some("Z.AI".to_string())
+    );
+    assert_eq!(
+        official_provider("google/gemini-2.5-pro", ["Google AI Studio", "Google"]),
+        Some("Google".to_string())
+    );
+    assert_eq!(official_provider("moonshotai/kimi-k2", ["Novita"]), None);
+    assert_eq!(official_provider("qwen/qwen3-coder", ["Alibaba"]), None);
+}

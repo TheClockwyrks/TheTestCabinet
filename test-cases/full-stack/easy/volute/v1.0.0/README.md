@@ -164,7 +164,8 @@ so nothing of either is committed under a reference.
   resolution requires every declared script to be a file in the validator
   project of each engine its validation covers, and no item here narrows itself
   with `engines`.
-- Baselines from `tcab capture-baselines` once the suites exist, committed under
+- Baselines from `tcab capture-baselines` once the suites exist, committed to the
+  `cold-storage` submodule under this version's
   `validation-baseline/<engine>/base/`.
 - Curated showcase media captured from the reference builds, and a `showcase` key
   in `variants/base.toml` naming it.

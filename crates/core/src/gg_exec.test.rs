@@ -623,6 +623,10 @@ fn gg_request(model: &str) -> RunRequest {
         gg_capability_set: Some(GgCapabilitySet::minimal(model)),
         // What a launch pushes in: a context window per bound model.
         gg_model_windows: std::collections::BTreeMap::from([(model.to_string(), 200_000)]),
+        gg_model_providers: std::collections::BTreeMap::from([(
+            model.to_string(),
+            model.split(['/', ':']).next().unwrap_or(model).to_string(),
+        )]),
         // And the input modalities the catalog observed for it.
         gg_model_modalities: std::collections::BTreeMap::from([(
             model.to_string(),

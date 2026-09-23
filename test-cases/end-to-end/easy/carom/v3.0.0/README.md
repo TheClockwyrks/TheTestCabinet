@@ -36,20 +36,23 @@ runtime there, so both are scoped to `none`, where the model writes that runtime
 
 ## Contents
 
-| Path                   | Seeded to run? | Purpose                                                                                            |
-| ---------------------- | -------------- | -------------------------------------------------------------------------------------------------- |
-| `workspaces/`          | Yes            | The starter TypeScript project, `<variant>/<engine>/`, seeded at the run root.                     |
-| `specs/`               | Yes            | The spec handed to the model, by concern.                                                          |
-| `prompt.hbs`           | No             | Rendered into the model's prompt; not seeded.                                                      |
-| `validation/`          | No             | The case's Vitest validators, one project per engine (`<engine>/`).                                |
-| `references/`          | No             | The authored, correct build, `<engine>/<variant>/`. Never seeded.                                  |
-| `showcase/`            | No             | The case's own presentation, `<variant>/`, captured from a reference and shown on the case page.   |
-| `validation-baseline/` | No             | The validators' media captured against the reference, `<engine>/<variant>/`, shown beside a run's. |
-| `test-case.toml`       | No             | Manifest: workspaces, engines, toolchain, specs, domains, review items.                            |
-| `variants/`            | No             | One TOML file per variant (listed in `variants`).                                                  |
-| `description.md`       | No             | The site-facing introduction on the case's detail page.                                            |
-| `changelog.md`         | No             | What changed from `v2.1.0`.                                                                        |
-| `README.md`            | No             | This overview.                                                                                     |
+| Path             | Seeded to run? | Purpose                                                                                          |
+| ---------------- | -------------- | ------------------------------------------------------------------------------------------------ |
+| `workspaces/`    | Yes            | The starter TypeScript project, `<variant>/<engine>/`, seeded at the run root.                   |
+| `specs/`         | Yes            | The spec handed to the model, by concern.                                                        |
+| `prompt.hbs`     | No             | Rendered into the model's prompt; not seeded.                                                    |
+| `validation/`    | No             | The case's Vitest validators, one project per engine (`<engine>/`).                              |
+| `references/`    | No             | The authored, correct build, `<engine>/<variant>/`. Never seeded.                                |
+| `showcase/`      | No             | The case's own presentation, `<variant>/`, captured from a reference and shown on the case page. |
+| `test-case.toml` | No             | Manifest: workspaces, engines, toolchain, specs, domains, review items.                          |
+| `variants/`      | No             | One TOML file per variant (listed in `variants`).                                                |
+| `description.md` | No             | The site-facing introduction on the case's detail page.                                          |
+| `changelog.md`   | No             | What changed from `v2.1.0`.                                                                      |
+| `README.md`      | No             | This overview.                                                                                   |
+
+The media the validators capture from each reference build, shown beside a
+run's, lives in the `cold-storage` submodule under this version's path, in
+`validation-baseline/<engine>/<variant>/`.
 
 The specification is split across `specs/` by concern, and every file is seeded
 for every variant:

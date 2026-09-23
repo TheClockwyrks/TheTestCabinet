@@ -93,6 +93,7 @@ fn every_request_asks_for_the_stream_and_its_usage() {
         &[Message::user("build it")],
         &[],
         None,
+        None,
         CacheTtl::Standard,
     );
 
@@ -115,6 +116,7 @@ fn build_request_body_always_carries_the_streaming_keys() {
         &[Message::user("build it")],
         &[],
         None,
+        None,
         CacheTtl::Standard,
     );
 
@@ -131,6 +133,7 @@ fn a_required_tool_request_streams_like_any_other() {
         "openai/gpt-5.6",
         &[Message::user("summarize")],
         &tool,
+        None,
         None,
         CacheTtl::Standard,
     );

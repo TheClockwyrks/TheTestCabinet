@@ -133,12 +133,18 @@ works in is the variant/engine pair. For each targeted pair it runs the case's
 `[build]` install then build in that reference-implementation directory,
 produces every [scripted review
 item](/testing/end-to-end/manifests/#automated-validation)'s declared outputs
-from it, and writes them under the version folder's
-`validation-baseline/<engine>/<variant>/`, together with the [shared image
+from it, and writes them under the version's
+`validation-baseline/<engine>/<variant>/` in the `cold-storage` submodule,
+together with the [shared image
 store](/components/core/validation/#the-shared-image-store) the recordings among
 them draw from. That directory is regenerated wholesale, so a renamed or removed
 output never lingers. The media is the expected-behavior half of the comparison
 a reviewer makes and is a fixed property of the case version.
+
+The cold-storage root defaults to `cold-storage/` beside the catalog's
+`test-cases/`, and `TCAB_COLD_STORAGE_DIR` overrides it (see [where baselines
+live](/components/core/validation/#where-baselines-live)). A capture into the
+default root refuses to run until the submodule is checked out.
 
 How the outputs are produced follows the case, exactly as it does per run: a
 case shipping a validator project for the engine has its baseline recorded by
