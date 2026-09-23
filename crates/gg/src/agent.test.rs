@@ -820,6 +820,7 @@ async fn run_drives_the_mock_end_to_end_and_writes_the_file() {
         &events.first().unwrap().kind,
         GgTelemetryKind::SessionStarted {
             capability_set: set,
+            ..
         } if **set == inv.capability_set
     ));
     assert!(matches!(
@@ -1053,6 +1054,7 @@ async fn run_reports_launch_failure_when_no_slot_is_bound() {
         &events.first().unwrap().kind,
         GgTelemetryKind::SessionStarted {
             capability_set: set,
+            ..
         } if **set == inv.capability_set
     ));
     assert!(
@@ -9921,4 +9923,64 @@ async fn every_agent_binds_its_client_under_its_provenance() {
         anonymous.lock().expect("anonymous lock").is_empty(),
         "every resolution in an ordinary session states whose it is"
     );
+}
+
+/// `session_started` announces the routing key the run minted, and the session record's journal
+/// header keeps the same key beside the session id. The key is a cuid2 whatever the session id is:
+/// a caller-supplied id far past OpenAI's 64-character cap on `prompt_cache_key` reaches neither.
+#[tokio::test]
+async fn session_started_and_the_journal_record_the_minted_routing_key() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let session_id = format!(
+        "gg-{}",
+        "an-over-long-caller-supplied-session-id-".repeat(4)
+    );
+    let emitter = Emitter::with_sink(Some(session_id.clone()), Box::new(sink.clone()));
+    let mut inv = invocation(dir.path(), GgCapabilitySet::minimal("mock/echo"));
+    inv.session_id = session_id.clone();
+
+    assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
+
+    let events = sink.events();
+    let GgTelemetryKind::SessionStarted {
+        routing_key: Some(announced),
+        ..
+    } = &events.first().expect("an event").kind
+    else {
+        panic!("the first event is a `session_started` naming the routing key");
+    };
+    assert!(cuid2::is_cuid2(announced.as_str()), "a cuid2: {announced}");
+    assert_eq!(announced.len(), 24);
+    assert_ne!(announced, &session_id);
+
+    let journal = std::fs::read_to_string(dir.path().join(GG_SESSION_JOURNAL_PATH))
+        .expect("the journal was written");
+    let header: GgJournalLine =
+        serde_json::from_str(journal.lines().next().expect("a header line"))
+            .expect("the header parses");
+    let GgJournalLine::Header {
+        session_id: recorded_session,
+        routing_key: recorded_key,
+        ..
+    } = header
+    else {
+        panic!("the first journal line is the header");
+    };
+    assert_eq!(recorded_session, session_id);
+    assert_eq!(recorded_key.as_deref(), Some(announced.as_str()));
+}
+
+/// Each launch mints its own key, so two runs are never pinned to one provider endpoint's cache
+/// by accident, and the seams a run is built from carry the key they minted.
+#[test]
+fn every_launch_mints_its_own_routing_key() {
+    let first = SessionSeams::live(
+        crate::client::DEFAULT_MODEL_CALL_TIMEOUT,
+        crate::client::RetryPolicy::default(),
+    );
+    let second = SessionSeams::substituted(first.factory.clone(), real_shell());
+    assert!(cuid2::is_cuid2(first.routing_key.as_str()));
+    assert!(cuid2::is_cuid2(second.routing_key.as_str()));
+    assert_ne!(first.routing_key, second.routing_key);
 }

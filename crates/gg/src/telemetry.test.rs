@@ -52,6 +52,7 @@ fn emits_ndjson_lines_to_the_injected_sink() {
 
     emitter.emit(GgTelemetryKind::SessionStarted {
         capability_set: Box::new(GgCapabilitySet::minimal("mock/echo")),
+        routing_key: None,
     });
     emitter.emit(GgTelemetryKind::AssistantMessage {
         text: "hello".to_string(),
@@ -95,6 +96,7 @@ fn for_agent_stamps_the_agent_and_parent_ids() {
     // The base (unscoped) emitter carries no agent id.
     base.emit(GgTelemetryKind::SessionStarted {
         capability_set: Box::new(GgCapabilitySet::minimal("mock/echo")),
+        routing_key: None,
     });
 
     // A root-scoped emitter: its own id, no parent.

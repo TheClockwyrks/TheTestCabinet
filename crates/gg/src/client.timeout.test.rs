@@ -38,7 +38,7 @@ fn stalled_client(first: &'static str) -> (OpenRouterClient, Arc<AtomicUsize>) {
         None,
     )
     .with_model_call_timeout(CONFIGURED)
-    .answered_by(move || {
+    .answered_by(move |_| {
         seen.fetch_add(1, Ordering::SeqCst);
         let chunks = futures_util::stream::iter(
             (!first.is_empty()).then_some(Ok::<_, std::io::Error>(first)),
@@ -111,7 +111,7 @@ async fn the_buffered_ceiling_bounds_each_attempt_and_leaves_the_backoff_outside
         None,
     )
     .with_model_call_timeout(CONFIGURED)
-    .answered_by(move || {
+    .answered_by(move |_| {
         let attempt = seen.fetch_add(1, Ordering::SeqCst);
         let builder = http::Response::builder();
         match attempt {
