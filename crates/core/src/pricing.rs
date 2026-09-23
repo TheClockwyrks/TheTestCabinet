@@ -31,6 +31,12 @@ pub struct ModelDetails {
     /// `file`, `audio`, …), normalized to lowercase. Empty when OpenRouter
     /// reports none, which is "unknown" rather than "text only".
     pub input_modalities: Vec<String>,
+    /// The [official provider](official_provider) a run of the model is pinned to, or
+    /// `None` when none is known. The models listing names no providers, so this is
+    /// `None` as read from it and filled from the model's endpoints listing
+    /// ([`ModelLaunchFacts::provider_pin`]) by the catalog before it records the
+    /// observation.
+    pub provider_pin: Option<String>,
 }
 
 /// The modality token OpenRouter uses for image input — the one gg checks before
@@ -52,6 +58,10 @@ pub struct ModelLaunchFacts {
     /// The input modalities the model accepts, normalized to lowercase. Empty means
     /// OpenRouter reported none — unknown, not "text only".
     pub input_modalities: Vec<String>,
+    /// The [official provider](official_provider) among the model's endpoints, as the
+    /// listing spells its `provider_name`, or `None` when no endpoint belongs to the
+    /// model's developer.
+    pub provider_pin: Option<String>,
 }
 
 /// The descriptive facts OpenRouter publishes about one model — the display name,
@@ -186,6 +196,12 @@ impl OpenRouterPrices {
                 .filter_map(|endpoint| endpoint.context_length)
                 .max(),
             input_modalities: modalities_of(data.architecture.as_ref()),
+            provider_pin: official_provider(
+                model_id,
+                data.endpoints
+                    .iter()
+                    .filter_map(|endpoint| endpoint.provider_name.as_deref()),
+            ),
         })
     }
 
@@ -265,16 +281,6 @@ impl OpenRouterPrices {
     }
 }
 
-/// Map one model's endpoints response onto the [`ModelListing`] the config form
-/// fills itself in from.
-///
-/// OpenRouter writes the display name as `Provider: Model`, which is the only
-/// place a provider's *presentational* spelling appears (`Anthropic`, not the
-/// slug's `anthropic`), so that prefix is preferred as the provider. A name with
-/// no prefix falls back to the slug's author segment (`anthropic/claude-...` →
-/// `anthropic`, empty when the slug has no segment) and keeps the whole name as
-/// the display name. A blank description is normalized to `None` so the form sees
-/// "nothing published" rather than an empty field it must trim itself.
 /// One provider route of a model, as [`OpenRouterPrices::provider_routes`]
 /// reports it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -283,6 +289,44 @@ pub struct ProviderRoute {
     pub name: String,
     /// The route's context window in tokens, when reported.
     pub context_length: Option<u64>,
+}
+
+/// Whether `a` and `b` name the same OpenRouter provider.
+///
+/// OpenRouter spells one provider several ways: `Z.AI` in the endpoints listing and on a
+/// response, `z-ai` in the model id and the route tag, and it accepts either in a request's
+/// `provider` object. Two spellings agree when they are equal after lowercasing and dropping
+/// everything but letters and digits. A blank spelling agrees with nothing.
+pub fn same_provider(a: &str, b: &str) -> bool {
+    let a = provider_key(a);
+    !a.is_empty() && a == provider_key(b)
+}
+
+/// A provider spelling reduced to the characters [`same_provider`] compares.
+fn provider_key(name: &str) -> String {
+    name.chars()
+        .filter(|ch| ch.is_alphanumeric())
+        .flat_map(char::to_lowercase)
+        .collect()
+}
+
+/// The provider, of those named in `providers`, that is the developer of `model_id`: the first
+/// one that is the [same provider](same_provider) as the id's author segment
+/// (`openai/gpt-5.6-sol` → `openai`), returned as the listing spells it.
+///
+/// `None` when no listed provider is the developer. That model is not testable unless its
+/// catalog entry names the pin by hand, which covers a developer the listing names differently
+/// from the id (`qwen/…` served by `Alibaba`).
+pub fn official_provider<'a>(
+    model_id: &str,
+    providers: impl IntoIterator<Item = &'a str>,
+) -> Option<String> {
+    let author = model_id.split(['/', ':']).next().unwrap_or(model_id);
+    providers
+        .into_iter()
+        .map(str::trim)
+        .find(|name| same_provider(name, author))
+        .map(str::to_string)
 }
 
 /// Reduce one model's endpoints body to its deduplicated provider routes.
@@ -307,6 +351,16 @@ fn routes_of(data: ModelEndpoints) -> Vec<ProviderRoute> {
     routes
 }
 
+/// Map one model's endpoints response onto the [`ModelListing`] the config form
+/// fills itself in from.
+///
+/// OpenRouter writes the display name as `Provider: Model`, which is the only
+/// place a provider's *presentational* spelling appears (`Anthropic`, not the
+/// slug's `anthropic`), so that prefix is preferred as the provider. A name with
+/// no prefix falls back to the slug's author segment (`anthropic/claude-...` →
+/// `anthropic`, empty when the slug has no segment) and keeps the whole name as
+/// the display name. A blank description is normalized to `None` so the form sees
+/// "nothing published" rather than an empty field it must trim itself.
 fn listing_of(model_id: &str, data: ModelEndpoints) -> ModelListing {
     let (provider, name) = match data.name.split_once(": ") {
         Some((provider, name)) => (provider.trim().to_string(), name.trim().to_string()),
@@ -335,6 +389,8 @@ fn details_of(model: Model) -> ModelDetails {
         context_length: model.context_length,
         released_at: model.created.and_then(release_date),
         input_modalities: modalities_of(model.architecture.as_ref()),
+        // The listing names no providers; the catalog fills the pin from the endpoints read.
+        provider_pin: None,
     }
 }
 

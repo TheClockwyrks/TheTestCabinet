@@ -3,6 +3,7 @@
   "workspaceDir": "<filled>",
   "prompt": "<filled>",
   "modelWindows": {},
+  "modelProviders": {},
   "modelModalities": {},
   "capabilitySet": {
     "preset": "issue-study",

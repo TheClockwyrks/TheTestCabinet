@@ -77,7 +77,7 @@ use test_cabinet_core::gg::{
 use crate::context::{ContextModel, Retention, ShownLines, item_heading};
 use crate::docs::DocsRuntime;
 use crate::memories::MemoryCalls;
-use crate::model::{ImageContent, Message, ModelClient, Role};
+use crate::model::{ImageContent, Message, ModelClient, ModelError, Role};
 use crate::prompts::{self, CompactionPromptContext};
 use crate::sandbox::{CONTEXT_COMPACT, ProgramLanguage, spell};
 use crate::tools::{COMPACT_TOOL, CompactTool, Tool, parse_compact_request};
@@ -508,9 +508,12 @@ pub struct CompactionRequest {
 #[async_trait]
 pub trait Summarizer: Send + Sync {
     /// Condense `request.history` into the working state the agent continues from.
-    /// Implementations must not fail the run: on trouble they return a best-effort result
-    /// (see [`fallback_summary`]) rather than an error.
-    async fn summarize(&self, request: SummaryRequest<'_>) -> CompactionRequest;
+    ///
+    /// On trouble an implementation returns a best-effort result (see [`fallback_summary`]),
+    /// with one exception: a [provider mismatch](ModelError::ProviderMismatch) is returned as
+    /// the error, because a reply from another provider ends the run wherever it is received.
+    async fn summarize(&self, request: SummaryRequest<'_>)
+    -> Result<CompactionRequest, ModelError>;
 }
 
 /// The [`Summarizer`] selected by `handoff-summarization`: one focused call to the **separate**
@@ -527,7 +530,10 @@ pub struct HandoffSummarizer;
 
 #[async_trait]
 impl Summarizer for HandoffSummarizer {
-    async fn summarize(&self, request: SummaryRequest<'_>) -> CompactionRequest {
+    async fn summarize(
+        &self,
+        request: SummaryRequest<'_>,
+    ) -> Result<CompactionRequest, ModelError> {
         summarize_with_prompt(
             handoff_summary_system_prompt(),
             render_history(request.history),
@@ -550,21 +556,23 @@ pub struct HandoffCompactor;
 
 #[async_trait]
 impl Summarizer for HandoffCompactor {
-    async fn summarize(&self, request: SummaryRequest<'_>) -> CompactionRequest {
+    async fn summarize(
+        &self,
+        request: SummaryRequest<'_>,
+    ) -> Result<CompactionRequest, ModelError> {
         let messages = vec![
             Message::system(handoff_compact_system_prompt()),
             Message::user(render_history(request.history)),
         ];
         let definition = CompactTool.definition();
-        let Ok(response) = request
+        let response = match request
             .client
             .complete_requiring(&messages, &definition)
             .await
-        else {
-            return CompactionRequest {
-                summary: fallback_summary().to_string(),
-                files: Vec::new(),
-            };
+        {
+            Ok(response) => response,
+            Err(err @ ModelError::ProviderMismatch { .. }) => return Err(err),
+            Err(_) => return Ok(fallback_request()),
         };
         // The call is what was asked for; its arguments are parsed by the same parser the tool's
         // own validation uses, so a handoff compaction and a self compaction cannot disagree about
@@ -575,19 +583,19 @@ impl Summarizer for HandoffCompactor {
             .find(|call| call.name == COMPACT_TOOL)
             .and_then(|call| parse_compact_request(&call.arguments).ok());
         if let Some(request) = called {
-            return request;
+            return Ok(request);
         }
         // No usable call. Prose the model wrote anyway is still a summary — better than gg's
         // fixed note — so it is preferred over the fallback, exactly as it would be if the
         // strategy had asked for prose in the first place.
-        CompactionRequest {
+        Ok(CompactionRequest {
             summary: response
                 .text
                 .map(|text| text.trim().to_string())
                 .filter(|text| !text.is_empty())
                 .unwrap_or_else(|| fallback_summary().to_string()),
             files: Vec::new(),
-        }
+        })
     }
 }
 
@@ -599,7 +607,7 @@ async fn summarize_with_prompt(
     system_prompt: &str,
     transcript: String,
     request: SummaryRequest<'_>,
-) -> CompactionRequest {
+) -> Result<CompactionRequest, ModelError> {
     let messages = vec![Message::system(system_prompt), Message::user(transcript)];
     // No tools are offered for a prose summary turn; the summarizer wants prose, not a tool call.
     let summary = match request.client.complete(&messages, &[]).await {
@@ -608,12 +616,13 @@ async fn summarize_with_prompt(
             .map(|text| text.trim().to_string())
             .filter(|text| !text.is_empty())
             .unwrap_or_else(|| fallback_summary().to_string()),
+        Err(err @ ModelError::ProviderMismatch { .. }) => return Err(err),
         Err(_) => fallback_summary().to_string(),
     };
-    CompactionRequest {
+    Ok(CompactionRequest {
         summary,
         files: Vec::new(),
-    }
+    })
 }
 
 /// Render a slice of [`Message`]s into a single plain-text transcript for the summarizer,
@@ -1426,13 +1435,16 @@ pub fn apply_compaction(
 /// through the agent's own turn and never routes here; reaching this with one is a bug, so it
 /// degrades to the same [fallback](fallback_summary) a failed call does rather than compacting to
 /// nothing.
+///
+/// The one error is the summarizer's: a [provider mismatch](ModelError::ProviderMismatch) on its
+/// call, which ends the run.
 pub async fn condense_out_of_band(
     context: &ContextModel,
     client: &dyn ModelClient,
     setup: &CompactionSetup,
-) -> (CompactionRequest, bool) {
+) -> Result<(CompactionRequest, bool), ModelError> {
     let Some(summarizer) = &setup.summarizer else {
-        return (fallback_request(), true);
+        return Ok((fallback_request(), true));
     };
     let history = handoff_messages(context);
     let request = summarizer
@@ -1440,11 +1452,11 @@ pub async fn condense_out_of_band(
             history: &history,
             client: setup.client(client),
         })
-        .await;
+        .await?;
     // A summary equal to the fixed fallback note means the condensation failed and degraded;
     // recorded explicitly so a study reads it as a failure, not a real recap.
     let fallback = request.summary == fallback_summary();
-    (request, fallback)
+    Ok((request, fallback))
 }
 
 /// The summary a [memory compaction](CompactionStrategy::Memory) restarts the thread from — a note

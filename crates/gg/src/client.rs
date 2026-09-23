@@ -451,6 +451,13 @@ pub struct OpenRouterClient {
     /// sending both means no intermediary that filters one of them can quietly cost the run its
     /// cache). `None` leaves the key off the wire entirely.
     routing_key: Option<RoutingKey>,
+    /// The OpenRouter provider this client's requests are pinned to — the model's own
+    /// developer, resolved at enqueue and pushed in as
+    /// [`GgInvocation::model_providers`](test_cabinet_core::gg::GgInvocation::model_providers).
+    /// Sent as `provider.only` with fallbacks refused, so a run cannot be moved onto another
+    /// provider's price basis. `None` sends no pin, which a launched run never does: the launch
+    /// refuses a bound model with none.
+    provider: Option<String>,
     /// The [lifetime](CacheTtl) this client's requests ask for on their **stable** cache markers —
     /// the [choice](GgPromptCacheTtl) the agent profile this client was resolved for made. Per
     /// client rather than per run: a client serves one agent, and that is the granularity at which
@@ -511,6 +518,7 @@ impl OpenRouterClient {
             retry,
             tool_choice: ToolChoiceMemory::default(),
             routing_key,
+            provider: None,
             stable_ttl: CacheTtl::Standard,
             loop_guard: None,
             model_call_timeout: DEFAULT_MODEL_CALL_TIMEOUT,
@@ -584,6 +592,14 @@ impl OpenRouterClient {
         self
     }
 
+    /// This client pinning every request to `provider` — the OpenRouter slug the launch resolved
+    /// for its model, sent as `provider.only` with fallbacks refused. A blank slug is no pin.
+    pub fn with_provider(mut self, provider: impl Into<String>) -> Self {
+        let provider = provider.into();
+        self.provider = (!provider.trim().is_empty()).then_some(provider);
+        self
+    }
+
     /// This client retrying on `policy` — the run's resolved
     /// [retry schedule](crate::limits::RunLimits::retry_policy), which [`client_for_slot`]
     /// carries in from the launch beside the [per-call ceiling](Self::with_model_call_timeout).
@@ -653,6 +669,33 @@ impl OpenRouterClient {
         format!("{}/chat/completions", self.base_url.trim_end_matches('/'))
     }
 
+    /// Reject a reply the pinned provider did not serve.
+    ///
+    /// OpenRouter names the serving provider on every response, and [`usage`](crate::model)
+    /// records it. A response from any other provider ends the call as
+    /// [`ProviderMismatch`](ModelError::ProviderMismatch): the cost recorded from that point
+    /// would be on a different price basis than the pin. The two are compared as
+    /// [the same provider](test_cabinet_core::pricing::same_provider), since a response spells
+    /// the provider as the endpoints listing does and a hand-set pin may use the tag's spelling.
+    /// A reply that names no provider has nothing to disagree with and passes.
+    fn pinned(
+        &self,
+        parsed: Result<ModelResponse, ModelError>,
+    ) -> Result<ModelResponse, ModelError> {
+        let (Some(pinned), Ok(response)) = (self.provider.as_deref(), &parsed) else {
+            return parsed;
+        };
+        match response.provider.as_deref() {
+            Some(served) if !test_cabinet_core::pricing::same_provider(served, pinned) => {
+                Err(ModelError::ProviderMismatch {
+                    pinned: pinned.to_string(),
+                    served: served.to_string(),
+                })
+            }
+            _ => parsed,
+        }
+    }
+
     /// Whether this client asks the provider to stream — true exactly when
     /// [loop detection](Self::loop_guard) is armed. One predicate rather than two `is_some()`
     /// checks, so the request body and the transport can never disagree about which shape of reply
@@ -712,6 +755,7 @@ impl ModelClient for OpenRouterClient {
             messages,
             tools,
             self.routing_key.as_ref(),
+            self.provider.as_deref(),
             self.stable_ttl,
             self.streams(),
         );
@@ -738,6 +782,7 @@ impl ModelClient for OpenRouterClient {
             messages,
             tool,
             self.routing_key.as_ref(),
+            self.provider.as_deref(),
             self.stable_ttl,
             self.streams(),
         );
@@ -870,7 +915,7 @@ impl OpenRouterClient {
         let status = resp.status().as_u16();
         match classify_status(status) {
             StatusClass::Success => BufferedAttempt::Done(match resp.text().await {
-                Ok(text) => parse_response(&text),
+                Ok(text) => self.pinned(parse_response(&text)),
                 Err(err) => Err(ModelError::Parse(format!("reading response body: {err}"))),
             }),
             StatusClass::Fatal => {
@@ -966,10 +1011,13 @@ impl OpenRouterClient {
                                 StreamOutcome::Reply(response) => {
                                     // The tally of thrown-away attempts rides out on the reply that
                                     // worked; nothing else the turn loop is handed could carry it.
-                                    return Ok(ModelResponse {
+                                    let response = ModelResponse {
                                         loop_aborts,
                                         ..response
-                                    });
+                                    };
+                                    // A reply from a provider other than the pin is not a reply this
+                                    // run can use: its cost would be on a different basis.
+                                    return self.pinned(Ok(response));
                                 }
                                 StreamOutcome::Looping { detail, generated } => {
                                     // The size is recorded here rather than only rendered into the
@@ -1350,6 +1398,7 @@ pub fn build_request_body(
     messages: &[Message],
     tools: &[ToolDefinition],
     routing_key: Option<&RoutingKey>,
+    provider: Option<&str>,
     stable_ttl: CacheTtl,
     stream: bool,
 ) -> Value {
@@ -1397,6 +1446,15 @@ pub fn build_request_body(
         body["prompt_cache_key"] = json!(key);
     }
 
+    // The pin. `only` names the one provider this model's requests may be served by, and
+    // `allow_fallbacks: false` makes an outage of that provider the error it is rather than a
+    // silent move onto another provider's price basis. The sticky key stays: it still keeps a
+    // run on one endpoint *within* the pinned provider. Absent only for a caller that has no
+    // pin to send — a unit test of the body, never a launched run.
+    if let Some(provider) = provider.filter(|provider| !provider.is_empty()) {
+        body["provider"] = json!({ "only": [provider], "allow_fallbacks": false });
+    }
+
     if !tools.is_empty() {
         let tools: Vec<Value> = tools
             .iter()
@@ -1435,6 +1493,7 @@ pub fn build_required_tool_request_body(
     messages: &[Message],
     tool: &ToolDefinition,
     routing_key: Option<&RoutingKey>,
+    provider: Option<&str>,
     stable_ttl: CacheTtl,
     stream: bool,
 ) -> Value {
@@ -1443,6 +1502,7 @@ pub fn build_required_tool_request_body(
         messages,
         std::slice::from_ref(tool),
         routing_key,
+        provider,
         stable_ttl,
         stream,
     );
@@ -4033,6 +4093,9 @@ pub fn provider_for(binding: &GgSlotBinding) -> ProviderKind {
 /// the second client a [handoff compaction](crate::compaction) resolves, calls under the one
 /// ceiling and retries on the one schedule the launch recorded.
 ///
+/// `provider` is the OpenRouter provider the launch [pinned](OpenRouterClient::with_provider) the
+/// binding's model to; `None` sends no pin.
+///
 /// `tool_choice` is the run's [record of refused tool-choice pins](ToolChoiceMemory), shared by
 /// every client built for the run so a refusal is taken once per model rather than once per
 /// client.
@@ -4041,16 +4104,21 @@ pub fn client_for_slot(
     routing_key: &RoutingKey,
     model_call_timeout: Duration,
     retry_policy: RetryPolicy,
+    provider: Option<&str>,
     tool_choice: &ToolChoiceMemory,
 ) -> Result<Box<dyn ModelClient>, ModelError> {
     match provider_for(binding) {
         ProviderKind::Mock => Ok(Box::new(mock_client_for(&binding.model_id))),
-        ProviderKind::OpenRouter => Ok(Box::new(
-            OpenRouterClient::from_binding(binding, routing_key)?
+        ProviderKind::OpenRouter => {
+            let mut client = OpenRouterClient::from_binding(binding, routing_key)?
                 .with_model_call_timeout(model_call_timeout)
                 .with_retry_policy(retry_policy)
-                .with_tool_choice_memory(tool_choice.clone()),
-        )),
+                .with_tool_choice_memory(tool_choice.clone());
+            if let Some(provider) = provider {
+                client = client.with_provider(provider);
+            }
+            Ok(Box::new(client))
+        }
     }
 }
 
@@ -4212,6 +4280,9 @@ pub struct DefaultClientFactory {
     /// The run's resolved [retry schedule](crate::limits::RunLimits::retry_policy), stamped on
     /// every live client this factory builds beside the ceiling.
     retry_policy: RetryPolicy,
+    /// The pinned OpenRouter provider of each model this run binds, keyed by model id. A
+    /// live client is stamped with its model's entry, so every request carries `provider.only`.
+    model_providers: BTreeMap<String, String>,
     /// The run's [record of refused tool-choice pins](ToolChoiceMemory), shared by every live
     /// client this factory builds.
     tool_choice: ToolChoiceMemory,
@@ -4227,13 +4298,20 @@ impl DefaultClientFactory {
         routing_key: RoutingKey,
         model_call_timeout: Duration,
         retry_policy: RetryPolicy,
+        model_providers: BTreeMap<String, String>,
     ) -> Self {
         Self {
             routing_key,
             model_call_timeout,
             retry_policy,
+            model_providers,
             tool_choice: ToolChoiceMemory::default(),
         }
+    }
+
+    /// The provider the launch pinned `model_id` to, stamped on every live client built for it.
+    fn pin_for(&self, model_id: &str) -> Option<&str> {
+        self.model_providers.get(model_id).map(String::as_str)
     }
 }
 
@@ -4244,6 +4322,7 @@ impl ClientFactory for DefaultClientFactory {
             &self.routing_key,
             self.model_call_timeout,
             self.retry_policy,
+            self.pin_for(&binding.model_id),
             &self.tool_choice,
         )
     }
@@ -4264,6 +4343,10 @@ mod timeout_tests;
 #[cfg(test)]
 #[path = "client.retry.test.rs"]
 mod retry_tests;
+
+#[cfg(test)]
+#[path = "client.pin.test.rs"]
+mod pin_tests;
 
 #[cfg(test)]
 #[path = "client.routing.test.rs"]

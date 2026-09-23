@@ -33,11 +33,13 @@ through them, not a replacement.
    worktree: `git worktree add ~/gg-worktrees/<model> -b gg/<model>`. One
    worktree per model also makes the comparison a `git diff` between branches.
 4. **Resolve model windows.** gg keeps no model table and refuses to launch
-   without a `modelWindows` entry for every bound model. Run
-   `scripts/model-windows.sh <id>...` to print the `modelWindows` and
-   `modelModalities` objects from OpenRouter's public models endpoint.
+   without a `modelWindows` entry and a `modelProviders` pin for every bound
+   model. Run `scripts/model-windows.sh <id>...` to print the `modelWindows`,
+   `modelModalities` and `modelProviders` objects. The pin is the endpoint whose
+   provider is the model's developer; the script fails naming a model that has
+   none, and that model is not testable.
 5. **Write the invocation** from a template in `templates/`. Fill `sessionId`,
-   `workspaceDir`, `prompt`, `modelId`, and paste the two objects from step 4.
+   `workspaceDir`, `prompt`, `modelId`, and paste the three objects from step 4.
 6. **Launch.**
 
    ```sh

@@ -678,6 +678,7 @@ fn request_with_override(max_runtime_override: Option<u64>) -> RunRequest {
         container_image: None,
         gg_capability_set: None,
         gg_model_windows: Default::default(),
+        gg_model_providers: Default::default(),
         gg_model_modalities: Default::default(),
     }
 }
@@ -725,6 +726,7 @@ fn a_gg_run_with_a_capability_set_is_gg_and_yields_its_set() {
         // The launch resolves a context window for every bound model; a gg run
         // carrying none is refused (see the test below).
         gg_model_windows: BTreeMap::from([("mock/primary".to_string(), 200_000)]),
+        gg_model_providers: BTreeMap::from([("mock/primary".to_string(), "mock".to_string())]),
         gg_model_modalities: Default::default(),
         ..request_with_override(None)
     };
@@ -770,6 +772,10 @@ fn a_gg_run_without_a_model_window_is_a_configuration_error() {
         gg_capability_set: Some(set),
         // Only the primary is covered; the subagent's model is not.
         gg_model_windows: BTreeMap::from([("mock/primary".to_string(), 200_000)]),
+        gg_model_providers: BTreeMap::from([
+            ("mock/primary".to_string(), "mock".to_string()),
+            ("openai/gpt-5.4-mini".to_string(), "openai".to_string()),
+        ]),
         gg_model_modalities: Default::default(),
         ..request_with_override(None)
     };
@@ -779,6 +785,36 @@ fn a_gg_run_without_a_model_window_is_a_configuration_error() {
     assert!(
         matches!(&err, Error::GgConfiguration(msg) if msg.contains("openai/gpt-5.4-mini")),
         "the error names the uncovered model: {err}",
+    );
+}
+
+/// A gg run whose bound model carries no provider pin is refused on the same terms as a
+/// missing window: the model is not testable on another provider.
+#[test]
+fn a_gg_run_without_a_provider_pin_is_a_configuration_error() {
+    let mut set = crate::gg::GgCapabilitySet::minimal("mock/primary");
+    set.agents.push(crate::gg::GgAgentConfig {
+        name: "subagent".to_string(),
+        model_id: "openai/gpt-5.4-mini".to_string(),
+        ..crate::gg::GgAgentConfig::root()
+    });
+    let request = RunRequest {
+        harness: HarnessSlug::Gg,
+        gg_capability_set: Some(set),
+        gg_model_windows: BTreeMap::from([
+            ("mock/primary".to_string(), 200_000),
+            ("openai/gpt-5.4-mini".to_string(), 400_000),
+        ]),
+        gg_model_providers: BTreeMap::from([("mock/primary".to_string(), "mock".to_string())]),
+        gg_model_modalities: Default::default(),
+        ..request_with_override(None)
+    };
+    let err = request
+        .validate()
+        .expect_err("a bound model with no provider pin is refused");
+    assert!(
+        matches!(&err, Error::GgConfiguration(msg) if msg.contains("openai/gpt-5.4-mini")),
+        "the error names the unpinned model: {err}",
     );
 }
 

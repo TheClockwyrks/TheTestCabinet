@@ -137,12 +137,21 @@ fn the_body_carries_the_routing_key_as_both_fields() {
     let messages = [Message::user("hi")];
     for stream in [false, true] {
         for body in [
-            build_request_body("m", &messages, &[], Some(&key), CacheTtl::Standard, stream),
+            build_request_body(
+                "m",
+                &messages,
+                &[],
+                Some(&key),
+                None,
+                CacheTtl::Standard,
+                stream,
+            ),
             build_required_tool_request_body(
                 "m",
                 &messages,
                 &submit_tool(),
                 Some(&key),
+                None,
                 CacheTtl::Standard,
                 stream,
             ),
@@ -160,6 +169,7 @@ fn the_body_omits_both_fields_without_a_key() {
         "m",
         &[Message::user("hi")],
         &[],
+        None,
         None,
         CacheTtl::Standard,
         false,

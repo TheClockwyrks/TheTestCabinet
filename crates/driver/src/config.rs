@@ -206,6 +206,10 @@ impl Config {
             // never resolves them itself: the catalog lives on the backend, and this
             // is the pushed answer.
             gg_model_windows: launch.gg_model_windows.clone(),
+            // The per-model provider pins resolved alongside the windows. The driver never
+            // resolves them itself: the catalog lives on the backend, and this is the pushed
+            // answer gg stamps onto every request.
+            gg_model_providers: launch.gg_model_providers.clone(),
             // The per-model input modalities resolved alongside the windows, which tell
             // gg which of its models may be shown a reference image.
             gg_model_modalities: launch.gg_model_modalities.clone(),

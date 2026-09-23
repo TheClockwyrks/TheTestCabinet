@@ -5009,6 +5009,11 @@ pub enum GgTurnErrorType {
     /// A `2xx` response could not be parsed into a reply. Retrying an already-successful-but-
     /// malformed response would not help, so the turn ends on it.
     ModelParse,
+    /// The gateway served the call from a provider other than the one the launch pinned. The
+    /// request was well-formed and the provider answered it; the answer is unusable because the
+    /// cost recorded from it on would be on a different price basis. gg ends the run as a harness
+    /// failure rather than scoring it against the model.
+    ModelProviderMismatch,
     /// The model call ran into the run's
     /// [**per-call ceiling**](GgRunLimits::model_call_timeout_secs) without producing a reply — a
     /// stalled provider, not a refusal. Unlike every other `model_` type this one does **not**
@@ -5099,13 +5104,14 @@ impl GgTurnErrorType {
     ///
     /// The grouping is the reading order a console ranks and labels from, and it is what makes
     /// "every type has a base, and every base has at least one type" checkable rather than asserted.
-    pub const ALL: [Self; 20] = [
+    pub const ALL: [Self; 21] = [
         Self::ModelAuth,
         Self::ModelRejected,
         Self::ModelRetryExhausted,
         Self::ModelResponseLoop,
         Self::ModelVisionUnsupported,
         Self::ModelParse,
+        Self::ModelProviderMismatch,
         Self::ModelTimeout,
         Self::ModelLengthCapped,
         Self::TranspileSyntax,
@@ -5136,6 +5142,7 @@ impl GgTurnErrorType {
             | Self::ModelResponseLoop
             | Self::ModelVisionUnsupported
             | Self::ModelParse
+            | Self::ModelProviderMismatch
             | Self::ModelTimeout
             | Self::ModelLengthCapped => GgTurnErrorKind::ModelApi,
             Self::TranspileSyntax | Self::TranspileCompile | Self::TranspileUnsupported => {
@@ -5167,6 +5174,7 @@ impl GgTurnErrorType {
             Self::ModelResponseLoop => "model_response_loop",
             Self::ModelVisionUnsupported => "model_vision_unsupported",
             Self::ModelParse => "model_parse",
+            Self::ModelProviderMismatch => "model_provider_mismatch",
             Self::ModelTimeout => "model_timeout",
             Self::ModelLengthCapped => "model_length_capped",
             Self::TranspileSyntax => "transpile_syntax",
@@ -5197,6 +5205,7 @@ impl GgTurnErrorType {
             Self::ModelResponseLoop => "model looped every attempt",
             Self::ModelVisionUnsupported => "model cannot see images",
             Self::ModelParse => "unparseable model response",
+            Self::ModelProviderMismatch => "served by another provider",
             Self::ModelTimeout => "model call timed out",
             Self::ModelLengthCapped => "length-capped reply rejected",
             Self::TranspileSyntax => "syntax error",
@@ -5374,6 +5383,18 @@ pub struct GgInvocation {
     /// and has nothing to invent one from.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub model_windows: BTreeMap<String, u64>,
+    /// The OpenRouter **provider** each model this run may bind is pinned to — the model's
+    /// own developer, resolved from the catalog when the run was triggered and pushed in here on
+    /// the same terms as [`model_windows`](Self::model_windows). Keyed by the model id the
+    /// [binding](GgSlotBinding::model_id) names.
+    ///
+    /// Every request for a model carries this slug as `provider.only` with fallbacks refused, so
+    /// a run stays on one provider and one price basis. A bound model with no entry refuses the
+    /// launch, together with every other missing one: a model whose official endpoint is not
+    /// listed is not testable, and running it on another provider would put the run's cost on a
+    /// basis the record does not name.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub model_providers: BTreeMap<String, String>,
     /// The **input modalities** each model this run may bind accepts (`text`, `image`,
     /// `file`, …), from the same model catalog and pushed in on the same terms as
     /// [`model_windows`](Self::model_windows). Keyed by the model id the
@@ -7210,6 +7231,11 @@ pub enum GgTelemetryKind {
         /// Without it a live view can only guess what a run is capable of and must
         /// offer every surface, including the ones this run's configuration disabled.
         capability_set: Box<GgCapabilitySet>,
+        /// The OpenRouter provider each bound model is pinned to, beside the routing
+        /// key. A run's cost is recorded against this pin; a response from any other
+        /// provider ends the run.
+        #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+        model_providers: BTreeMap<String, String>,
         /// The **routing key** gg minted at launch: a cuid2 sent on every request of the run
         /// as both `session_id` and `prompt_cache_key`, so a provider dashboard row can be
         /// matched to the run it belongs to. Minted rather than derived from the session id,

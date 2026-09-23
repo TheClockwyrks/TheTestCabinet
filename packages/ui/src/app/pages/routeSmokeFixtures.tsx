@@ -234,6 +234,8 @@ function models(): ModelSummary[] {
       prices: null,
       priceHistory: [],
       contextLength: null,
+      providerPin: null,
+      providerPinSetByHand: false,
       releasedAt: null,
       inputModalities: ["text"],
     },

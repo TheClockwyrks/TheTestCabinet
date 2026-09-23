@@ -48,6 +48,8 @@ const MODEL = {
   prices: null,
   priceHistory: [],
   contextLength: null,
+  providerPin: null,
+  providerPinSetByHand: false,
   releasedAt: null,
   inputModalities: [],
 } as unknown as ModelSummary;

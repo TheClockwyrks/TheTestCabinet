@@ -345,10 +345,10 @@ run on are not all baked into it. Each model binding either:
 An agent's own model is one such binding, and so is every capability param that
 names a model, today [compaction](/gg/compaction/)'s handoff model. Both offer
 the same Model from selector and are resolved by the same launch step. gg routes
-every live model through OpenRouter and infers the provider from the model id,
-so a slot never pins a provider. Because each agent carries its own model, a run
-can span several models across several providers, which is why gg accounts usage
-and cost per agent profile rather than as one figure for one model.
+every live model through OpenRouter. A slot names a model, and the launch pins
+that model to its developer's own provider. Because each agent carries its own
+model, a run can span several models, which is why gg accounts usage and cost
+per agent profile rather than as one figure for one model.
 
 ### Agent slots
 
@@ -484,6 +484,14 @@ leaves out:
 
 Each capability page states which of its params are required and what an optional
 one's absence turns off.
+
+The invocation also carries `modelProviders`, keyed by model id on the same terms
+as `modelWindows`. Each entry names the one OpenRouter provider that model's
+requests go to, spelled as OpenRouter's endpoints listing spells its
+`provider_name` (`OpenAI`, `Z.AI`). A bound model missing from the map refuses
+the launch, and the refusal names every missing pin together. A `mock/…` model
+sends no request and needs no pin. The backend stamps the map at enqueue, and a
+model with no official endpoint is refused there.
 
 The check runs at the top of gg's own session frame, inside the run container and
 before the first turn, so a refusal costs no model spend. It lives there and
