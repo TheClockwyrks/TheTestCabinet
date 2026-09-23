@@ -25,7 +25,7 @@ stated, and keep the per-call `timeoutSecs` and its clamps as they are.
 
 ## Done when
 
-- [ ] A call naming no timeout runs under 3600 seconds.
-- [ ] The tool description, the SDK documentation of every arm, the WIT
+- [x] A call naming no timeout runs under 3600 seconds.
+- [x] The tool description, the SDK documentation of every arm, the WIT
       document and the shell page name 3600.
-- [ ] Gates green.
+- [x] Gates green.

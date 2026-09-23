@@ -95,11 +95,11 @@ async fn non_positive_timeout_is_rejected() {
     assert!(outcome.output.contains("timeout_secs"));
 }
 
-/// A call naming no timeout runs under ten minutes, long enough for a build or a test suite to
+/// A call naming no timeout runs under an hour, long enough for a build or a test suite to
 /// finish on the first call.
 #[test]
-fn an_absent_timeout_is_ten_minutes() {
-    let expected = Duration::from_secs(600);
+fn an_absent_timeout_is_an_hour() {
+    let expected = Duration::from_secs(3600);
 
     assert_eq!(
         parse_timeout(&json!({ "command": "ls" })).ok(),
@@ -118,7 +118,7 @@ fn the_timeout_parameter_names_the_default() {
 
     assert_eq!(
         definition.parameters["properties"]["timeout_secs"]["description"],
-        "Timeout in seconds (default 600)."
+        "Timeout in seconds (default 3600)."
     );
 }
 
