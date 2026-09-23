@@ -115,8 +115,8 @@ reads any of it, and no source gg compiles contains it.
 A program reaches `std` plus five crates: `regex`, `serde_json`, `base64`,
 `itertools` and `indexmap`, declared under machine-readable headings in
 `packages/gg-sandbox-rust/Cargo.toml`. Both `build.sh` and the catalogue's
-library list derive from that one declaration, so what a model is told it may
-`use` and what the compile lets it name stay the same list. Only those crates
+library list derive from that one declaration, so the recorded set and what the
+compile lets a program name stay the same list. Only those crates
 and the SDK are named on `--extern`; the closure under them is present for
 linking and is not a name a program may write.
 
