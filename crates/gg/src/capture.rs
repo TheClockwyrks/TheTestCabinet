@@ -302,7 +302,7 @@ fn session_model_error(error: &ModelError) -> GgSessionModelError {
             attempts: None,
             model_id: Some(model_id.clone()),
         },
-        ModelError::Parse(_) => GgSessionModelError {
+        ModelError::Parse { .. } => GgSessionModelError {
             kind: GgSessionModelErrorKind::Parse,
             message,
             status: None,

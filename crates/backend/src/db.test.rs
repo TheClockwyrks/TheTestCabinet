@@ -149,7 +149,19 @@ fn gg_record(id: &str) -> RunRecord {
                 comparable: Some(0.0063),
                 actual: Some(0.0063),
             }),
+            work_cost: Some(Cost {
+                comparable: Some(0.0063),
+                actual: Some(0.0063),
+            }),
         }],
+        cost: Some(Cost {
+            comparable: Some(0.0063),
+            actual: Some(0.0063),
+        }),
+        work_cost: Some(Cost {
+            comparable: Some(0.0063),
+            actual: Some(0.0063),
+        }),
         effective_tools: vec![
             "shell".to_string(),
             "read_file".to_string(),

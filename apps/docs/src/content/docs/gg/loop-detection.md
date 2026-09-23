@@ -6,8 +6,7 @@ Some models, on some turns, stop answering and start cycling: the reply is a
 program for a few hundred tokens and then it is `void 0;`, over and over, until
 the provider's own output cap ends it. Loop detection watches a reply as it
 arrives and abandons one that has become a repetition. It is armed per agent,
-because arming it also moves that agent onto a
-[streaming transport](#the-transport-it-implies).
+and reads the [stream](#the-transport) every reply arrives on.
 
 A loop costs four things at once, and only the last of them can be recovered
 after the fact.
@@ -23,8 +22,8 @@ after the fact.
   more likely to do the same thing.
 
 A harness that reads completed replies can refuse to push the last one into the
-context. The first three are already paid by the time a buffering transport has
-the reply in hand, which is why the detector reads the stream.
+context. The first three are already paid by the time a completed reply is in
+hand, which is why the detector reads the stream.
 
 ## The rule
 
@@ -120,17 +119,16 @@ mod 6 is 2, so successive slices cycle through three distinct recurring strings.
 128 is comfortably above any identifier, URL or base64 line a model writes as
 one run, so an ordinary reply is tokenised lexically and this path never fires.
 
-## The transport it implies
+## The transport
 
-gg's ordinary model transport buffers: it posts the request, awaits the whole
-response body, and parses it. A detector on that path could only judge a reply
-whose every cost had already been paid. Arming loop detection for an agent
-therefore switches that agent onto a streaming transport.
+Every gg model request streams, whether or not the agent armed loop detection.
+Arming the detector decides only whether it watches the stream; the request and
+the way the reply is read are the same either way.
 
 - The request carries `"stream": true` and
   `"stream_options": { "include_usage": true }`. The second is what makes
   OpenRouter attach a usage block to the final chunk, and therefore what lets a
-  streamed turn account its tokens and cost.
+  turn account its tokens and cost.
 - Server-sent events are assembled by a pure accumulator. `data:` lines are
   parsed as `chat.completion.chunk` objects, `delta.content` is concatenated
   into the reply text, `delta.tool_calls[]` are assembled by their `index` with
@@ -138,16 +136,14 @@ therefore switches that agent onto a streaming transport.
   wins, and the `data: [DONE]` sentinel ends the read. Keep-alive comments
   (OpenRouter sends `: OPENROUTER PROCESSING`) and blank lines are ignored, and
   a `data:` line that is neither the sentinel nor parseable JSON is an error.
-- The two transports produce the same `ModelResponse`, held there by a test that
-  feeds the accumulator an SSE transcript one byte at a time and asserts
-  equality against the buffered fixture it was split from.
 - Status classification happens on the response head, before a single chunk is
   read, so a `4xx` refusal (including the recoverable image-unsupported one), a
-  `5xx` and a transport failure are handled by the same rules on both paths.
-
-An agent that leaves loop detection disarmed keeps the buffered read and the
-same request body. This is a per-agent lever so that a run whose root runs on a
-model that loops does not pay the streaming path for a reviewer that does not.
+  `5xx` and a transport failure are handled by the client's ordinary rules.
+- The stream is bounded by the run's
+  [`modelStreamIdleSecs`](/gg/execution-limits/#modelstreamidlesecs), measured
+  from the last chunk carrying a delta, and by
+  [`modelCallTimeoutSecs`](/gg/execution-limits/#modelcalltimeoutsecs) over the
+  whole attempt.
 
 The detector is fed `delta.content` and nothing else: not the SSE framing, not
 the JSON escaping, and not tool-call arguments. A model that loops inside a tool
@@ -187,18 +183,22 @@ generic exhausted retry, because "retries exhausted" would send an operator
 looking at the provider for an outage that never happened:
 
 ```text
-model turn 14 failed — model looped every attempt: model looped: 2 words repeated
+model turn 14 — model looped every attempt: model looped: 2 words repeated
 across 3000 consecutive words, 3065 words into the reply (3065 words, 12261
 characters read before it was abandoned); discarded 4 response(s) totalling 49044
 characters of generated output
 ```
 
-That ends the agent with the terminal status `model_error`, on the terms
-[a failed model call](/gg/execution-limits/#model-api-errors) has. The failure
-is the model's rather than the provider's, so a root that ends on it exits `0`
-and the run is scored. The turn is recorded with the base error kind
-`model_api` and the error type `model_response_loop`. What is worth acting on
-beyond that is how many replies were discarded and how much they generated.
+That is answered as an error turn. None of the discarded replies entered the
+context, the [error ceilings](/gg/execution-limits/#model-api-errors) spend as
+they do for any other failed turn, and the same request goes out again, so a
+model that loops once loses a turn rather than the run. An armed ceiling is what
+stops a model that keeps looping, under `limit_exceeded`. The turn is recorded
+with the base error kind `model_api` and the error type `model_response_loop`,
+together with how many replies were discarded and how much they generated.
+Their cost is in neither of the run's
+[cost figures](/gg/execution-limits/#maxcost), because an abandoned stream never
+delivers its usage.
 
 The [session record](/gg/analysis/session-records/) keeps the failure as a
 recorded model error of kind `response_loop` carrying how many replies were
@@ -239,7 +239,7 @@ the model.
 
 | Key                | What it does                                               |
 | ------------------ | ---------------------------------------------------------- |
-| `enabled`          | Whether the detector runs, and whether the agent streams.  |
+| `enabled`          | Whether the detector runs.                                 |
 | `windowWords`      | `N`, the lookback the frequency rule is measured over.     |
 | `repeatThreshold`  | `P`, occurrences in the window above which a word offends. |
 | `minOffenders`     | `M`, distinct offenders that make the window saturated.    |
@@ -278,7 +278,7 @@ judged as written whether or not the detector is armed.
 
 | Declaration                                                 | Result                                                           |
 | ----------------------------------------------------------- | ---------------------------------------------------------------- |
-| `loopDetection` absent, or `enabled: false`                 | detector off, transport buffered                                 |
+| `loopDetection` absent, or `enabled: false`                 | detector off                                                     |
 | `enabled: true` missing any of the five knobs               | refused                                                          |
 | `minSaturatedRun: 0`                                        | `0`, the plain frequency rule                                    |
 | `maxResponseChars: 0`                                       | the backstop is off                                              |

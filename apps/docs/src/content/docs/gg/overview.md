@@ -110,10 +110,11 @@ decides where it is declared: the run's two session events
 belong to the capability set, and the other eight fire because a particular
 agent wrote, ran, compacted, started, or stopped, so they belong to that agent.
 
-Each agent profile carries two more settings that are not capabilities either.
-Both are properties of the model a profile is bound to rather than of the work
-it does, and both come out differently for each model in the same run: its
-[prompt-cache lifetime](/gg/configurations/#prompt-cache-lifetime), and [loop
+Each agent profile carries three more settings that are not capabilities
+either. Each shapes how the profile's requests are made rather than what they
+say, and each comes out differently for each model in the same run: its
+[prompt-cache lifetime](/gg/configurations/#prompt-cache-lifetime), its
+[reasoning effort](/gg/configurations/#reasoning-effort), and [loop
 detection](/gg/loop-detection/), which reads that agent's replies as they stream
 and abandons one that has stopped answering and started repeating itself.
 
@@ -165,10 +166,9 @@ and `Z.AI` are one provider.
 Within that provider, the request has to reach the endpoint that holds the
 cache. gg mints one routing key per run at launch, a cuid2, and every client in
 the run stamps it on every request as `session_id`. That covers the root agent,
-every [subagent](/gg/subagents/) and the client a compaction resolves, on both
-the buffered and the streaming transport. A run's turns therefore stay on one
-endpoint of the pinned provider, and agents that open on the same prefix reuse
-each other's warmed cache.
+every [subagent](/gg/subagents/) and the client a compaction resolves. A run's
+turns therefore stay on one endpoint of the pinned provider, and agents that
+open on the same prefix reuse each other's warmed cache.
 
 `session_id` is OpenRouter's sticky-routing key, and gg sends the same key as
 `prompt_cache_key` for the providers that read the OpenAI-style field.

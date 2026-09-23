@@ -172,6 +172,7 @@ fn no_limits(max_turns: usize) -> LimitsSetup {
             max_turns: Some(max_turns),
             max_runtime: None,
             model_call_timeout: crate::client::DEFAULT_MODEL_CALL_TIMEOUT,
+            model_stream_idle: crate::client::DEFAULT_MODEL_STREAM_IDLE,
             max_consecutive_errors: None,
             error_rate: None,
             max_cost: None,
@@ -316,6 +317,8 @@ fn code_reply(text: &str) -> ModelResponse {
         cost: None,
         provider: None,
         loop_aborts: LoopAborts::none(),
+        usage_wire: None,
+        usage_reconciled: false,
     }
 }
 
@@ -478,17 +481,46 @@ struct RecordingClient {
     turn: AtomicUsize,
     /// The scripted responses, one per turn.
     script: Vec<ModelResponse>,
-    /// Every request's messages, in turn order.
+    /// Every request's messages, in turn order — the failing ones too, since "the retry's request
+    /// is byte-identical to the failed attempt's" is read off exactly this list.
     seen: Mutex<Vec<Vec<Message>>>,
+    /// How many calls still fail before the script is read — the leading failures
+    /// [`blame`](Self::blame) invents. `0` for an ordinary scripted run.
+    failing: AtomicUsize,
+    /// The failure those leading calls return, fresh per call ([`ModelError`] is not `Clone`).
+    blame: Option<Box<dyn Fn() -> ModelError + Send + Sync>>,
 }
 
 impl RecordingClient {
     fn new(model_id: &str, script: Vec<ModelResponse>) -> Arc<Self> {
+        Self::build(model_id, script, 0, None)
+    }
+
+    /// The same client whose first `failures` calls fail with `blame`'s error before the script is
+    /// read — a reply the loop must answer as an error turn and ask again about, recorded on the
+    /// same terms as any other request so the retry can be compared against the attempt.
+    fn failing(
+        model_id: &str,
+        failures: usize,
+        blame: impl Fn() -> ModelError + Send + Sync + 'static,
+        script: Vec<ModelResponse>,
+    ) -> Arc<Self> {
+        Self::build(model_id, script, failures, Some(Box::new(blame)))
+    }
+
+    fn build(
+        model_id: &str,
+        script: Vec<ModelResponse>,
+        failures: usize,
+        blame: Option<Box<dyn Fn() -> ModelError + Send + Sync>>,
+    ) -> Arc<Self> {
         Arc::new(Self {
             model_id: model_id.to_string(),
             turn: AtomicUsize::new(0),
             script,
             seen: Mutex::new(Vec::new()),
+            failing: AtomicUsize::new(failures),
+            blame,
         })
     }
 
@@ -506,6 +538,18 @@ impl ModelClient for RecordingClient {
         _tools: &[ToolDefinition],
     ) -> Result<ModelResponse, ModelError> {
         self.seen.lock().unwrap().push(messages.to_vec());
+        // Fail the leading calls before the script is read — and only when there is a failure to
+        // invent, so an ordinary scripted run never decrements the counter.
+        if let Some(blame) = &self.blame
+            && self
+                .failing
+                .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |left| {
+                    left.checked_sub(1)
+                })
+                .is_ok()
+        {
+            return Err(blame());
+        }
         let turn = self.turn.fetch_add(1, Ordering::SeqCst);
         Ok(self
             .script
@@ -544,10 +588,19 @@ async fn drive_recorded_code_run(
     set: GgCapabilitySet,
     script: Vec<ModelResponse>,
 ) -> (SessionOutcome, Vec<GgTelemetryEvent>, Vec<Vec<Message>>) {
+    drive_recorded_client(dir, set, RecordingClient::new("mock/primary", script)).await
+}
+
+/// [`drive_recorded_code_run`]'s over a caller-built client — the run whose leading calls fail is
+/// assembled by the test that needs it, so the failing shape and the script stay in one place.
+async fn drive_recorded_client(
+    dir: &TempDir,
+    set: GgCapabilitySet,
+    client: Arc<RecordingClient>,
+) -> (SessionOutcome, Vec<GgTelemetryEvent>, Vec<Vec<Message>>) {
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-code".to_string()), Box::new(sink.clone()));
     let inv = invocation(dir.path(), set);
-    let client = RecordingClient::new("mock/primary", script);
     let shared = Arc::clone(&client);
     let factory = ScriptedFactory::new().slot(ROOT_PROFILE_ID, move |_| {
         Box::new(SharedRecordingClient(Arc::clone(&shared)))
@@ -680,6 +733,8 @@ fn looping_response() -> ModelResponse {
         cost: None,
         provider: None,
         loop_aborts: LoopAborts::none(),
+        usage_wire: None,
+        usage_reconciled: false,
     }
 }
 
@@ -693,9 +748,11 @@ enum FailureMode {
     /// A refused credential — the class that must not be scored against the model.
     Auth,
     /// Every attempt degenerated into a [generation loop](crate::loopguard) and was discarded, so
-    /// the client ran out of attempts with nothing to show for them. Retryable-exhausted like
-    /// [`Retryable`](Self::Retryable), and deliberately reported under its own name: "retries
-    /// exhausted" would send an operator looking for a provider outage that never happened.
+    /// the client ran out of attempts with nothing to show for them. Deliberately reported under
+    /// its own name rather than as [`Retryable`](Self::Retryable)'s exhaustion: "retries
+    /// exhausted" would send an operator looking for a provider outage that never happened. The
+    /// turn loop answers it as an error turn — the discarded replies never enter the context, the
+    /// consecutive count spends, and an armed ceiling is what ends the run.
     Looping,
     /// The gateway answered from a provider other than the pin.
     ProviderMismatch,
@@ -748,6 +805,27 @@ impl ModelClient for FailingClient {
     }
 }
 
+/// A [`ModelClient`] that answers every turn with one fixed [`ModelResponse`] — the helper for a
+/// test whose subject is what the loop does with one reply rather than how it advances a script.
+struct SingleReplyClient {
+    reply: ModelResponse,
+}
+
+#[async_trait::async_trait]
+impl ModelClient for SingleReplyClient {
+    async fn complete(
+        &self,
+        _messages: &[Message],
+        _tools: &[ToolDefinition],
+    ) -> Result<ModelResponse, ModelError> {
+        Ok(self.reply.clone())
+    }
+
+    fn model_id(&self) -> &str {
+        "mock/echo"
+    }
+}
+
 /// A [`ModelClient`] that returns a single `write_file` tool call on its first turn, then fails
 /// every subsequent turn with a fatal model error — so an agent driving it writes one file and then
 /// ends in `model_error` (a non-clean completion).
@@ -790,6 +868,8 @@ impl ModelClient for WriteThenFailClient {
                 cost: None,
                 provider: None,
                 loop_aborts: LoopAborts::none(),
+                usage_wire: None,
+                usage_reconciled: false,
             })
         } else {
             Err(ModelError::Fatal {
@@ -1327,6 +1407,8 @@ fn ending_call(id: &str, name: &str, arguments: serde_json::Value) -> ModelRespo
         cost: None,
         provider: None,
         loop_aborts: LoopAborts::none(),
+        usage_wire: None,
+        usage_reconciled: false,
     }
 }
 
@@ -3185,6 +3267,8 @@ fn read_skill_call(id: &str, name: &str) -> ModelResponse {
         cost: None,
         provider: None,
         loop_aborts: LoopAborts::none(),
+        usage_wire: None,
+        usage_reconciled: false,
     }
 }
 
@@ -3205,6 +3289,8 @@ fn text_only_response() -> ModelResponse {
         cost: None,
         provider: None,
         loop_aborts: LoopAborts::none(),
+        usage_wire: None,
+        usage_reconciled: false,
     }
 }
 
@@ -3386,6 +3472,8 @@ fn write_memory_call(id: &str, name: &str, body: &str) -> ModelResponse {
         cost: None,
         provider: None,
         loop_aborts: LoopAborts::none(),
+        usage_wire: None,
+        usage_reconciled: false,
     }
 }
 
@@ -3606,6 +3694,8 @@ fn create_memory_call(id: &str, name: &str, contents: &str) -> ModelResponse {
         cost: None,
         provider: None,
         loop_aborts: LoopAborts::none(),
+        usage_wire: None,
+        usage_reconciled: false,
     }
 }
 
@@ -3927,6 +4017,8 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
         cost: None,
         provider: None,
         loop_aborts: LoopAborts::none(),
+        usage_wire: None,
+        usage_reconciled: false,
     };
     let client = MockClient::new(
         "mock/echo",
@@ -4077,6 +4169,8 @@ async fn drive_always_carries_the_task_list_in_the_window() {
                 cost: None,
                 provider: None,
                 loop_aborts: LoopAborts::none(),
+                usage_wire: None,
+                usage_reconciled: false,
             },
             stop_response(),
         ],
@@ -4301,6 +4395,8 @@ fn balloon_turn(id: &str) -> ModelResponse {
         cost: None,
         provider: None,
         loop_aborts: LoopAborts::none(),
+        usage_wire: None,
+        usage_reconciled: false,
     }
 }
 
@@ -4322,6 +4418,8 @@ fn compaction_script() -> Vec<ModelResponse> {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         },
         balloon_turn("c_ls"),
         stop_response(),
@@ -5287,14 +5385,121 @@ async fn run_reports_a_fatal_response_as_a_harness_error() {
     );
 }
 
-/// A root whose every attempt looped ends `model_error` too, but the failure is the model's rather
-/// than the provider's: the session exits `0` and the run is collected and scored.
+/// A turn whose provider reported a reasoning figure that leaves the reply no room is recorded
+/// with the reply's size as output, the remainder as reasoning, and the `reconciled` mark — and
+/// the provider's own object rides beside them, so the disagreement is checkable from the row.
 #[tokio::test]
-async fn run_scores_a_root_that_looped_every_attempt() {
+async fn usage_records_a_reconciled_row_beside_the_providers_object() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-usage".to_string()), Box::new(sink.clone()));
+    let inv = invocation(dir.path(), GgCapabilitySet::minimal("mock/primary"));
+
+    // The shape Sail Research's serving of Kimi produced: reasoning_tokens reported equal to
+    // completion_tokens on every turn, over a reply gg can measure in its own hand. The reply
+    // ends the session, so the run takes exactly one turn.
+    let no_room_for_the_reply = || -> Box<dyn ModelClient> {
+        Box::new(SingleReplyClient {
+            reply: ModelResponse {
+                text: Some("ending".to_string()),
+                tool_calls: vec![ToolCall {
+                    id: "call_finish".to_string(),
+                    name: "finish".to_string(),
+                    arguments: json!({ "summary": "done" }),
+                }],
+                finish_reason: FinishReason::ToolCalls,
+                // The bounded split the client transport recorded: the reply's own estimated
+                // size as output (34 — its text, the call and its arguments, over the framing
+                // allowance), and what remains of the provider's 230 as reasoning. The fixture
+                // carries the figures *after* the bound because this test's subject is what the
+                // loop and the emitter do with a reconciled row; the bound itself is proven in
+                // `client.test.rs`.
+                usage: TokenCounts {
+                    uncached_input: Some(1200),
+                    cached_input: None,
+                    output: Some(34),
+                    reasoning: Some(196),
+                },
+                cost: Some(Cost {
+                    comparable: Some(0.0123),
+                    actual: Some(0.0123),
+                }),
+                provider: Some("Sail Research".to_string()),
+                loop_aborts: LoopAborts::none(),
+                usage_wire: Some(json!({
+                    "prompt_tokens": 1200,
+                    "completion_tokens": 230,
+                    "total_tokens": 1430,
+                    "completion_tokens_details": { "reasoning_tokens": 230 },
+                })),
+                usage_reconciled: true,
+            },
+        })
+    };
+    let factory = ScriptedFactory::new().slot(ROOT_PROFILE_ID, move |_| no_room_for_the_reply());
+
+    assert_eq!(
+        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
+        SessionOutcome::Ran,
+    );
+
+    let events = sink.events();
+    let deltas: Vec<&GgTelemetryKind> = events
+        .iter()
+        .filter_map(|e| matches!(&e.kind, GgTelemetryKind::Usage { .. }).then_some(&e.kind))
+        .collect();
+    assert!(!deltas.is_empty(), "the turn's spend is on the stream");
+
+    for delta in deltas {
+        let GgTelemetryKind::Usage {
+            tokens,
+            wire,
+            reconciled,
+            ..
+        } = delta
+        else {
+            unreachable!("filtered above")
+        };
+        // The client's bounded split reaches the row unchanged.
+        assert_eq!((tokens.output, tokens.reasoning), (Some(34), Some(196)));
+        assert!(*reconciled, "the row says the split is gg's");
+        // The provider's object rides beside it, verbatim.
+        assert_eq!(
+            wire.as_ref(),
+            Some(&json!({
+                "prompt_tokens": 1200,
+                "completion_tokens": 230,
+                "total_tokens": 1430,
+                "completion_tokens_details": { "reasoning_tokens": 230 },
+            }))
+        );
+    }
+
+    // ...and the mark survives serialization, so a consumer of the NDJSON sees it too.
+    assert!(
+        sink.lines()
+            .iter()
+            .any(|line| line.contains("\"reconciled\":true")),
+        "the reconciled mark reaches the wire"
+    );
+}
+
+/// A root whose every attempt looped is the model's failure, and the run stops on its **error
+/// ceilings** rather than ending under `model_error` — so it is collected and scored exactly as
+/// any run a ceiling stopped is, and never mistaken for the provider outage "retries exhausted"
+/// would have implied.
+#[tokio::test]
+async fn run_stops_a_root_that_looped_every_attempt_on_the_error_ceilings() {
     let dir = TempDir::new().unwrap();
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-loop".to_string()), Box::new(sink.clone()));
-    let inv = invocation(dir.path(), GgCapabilitySet::minimal("mock/primary"));
+    let mut set = GgCapabilitySet::minimal("mock/primary");
+    set.limits = GgRunLimits {
+        max_turns: Some(5),
+        max_consecutive_errors: Some(2),
+        ..GgRunLimits::authored()
+    };
+    let inv = invocation(dir.path(), set);
     let factory = ScriptedFactory::new().slot(ROOT_PROFILE_ID, |_| {
         Box::new(FailingClient {
             mode: FailureMode::Looping,
@@ -5303,14 +5508,22 @@ async fn run_scores_a_root_that_looped_every_attempt() {
 
     assert_eq!(
         run_with_factory(&inv, &emitter, Arc::new(factory)).await,
-        SessionOutcome::Ran,
+        SessionOutcome::LimitExceeded,
+    );
+    let events = sink.events();
+    assert!(
+        events.iter().any(|e| matches!(
+            &e.kind,
+            GgTelemetryKind::SessionEnded { status } if status == "limit_exceeded"
+        )),
+        "the ceiling — not the first loop — ends the session"
     );
     assert!(
-        sink.events().iter().any(|e| matches!(
+        !events.iter().any(|e| matches!(
             &e.kind,
             GgTelemetryKind::SessionEnded { status } if status == "model_error"
         )),
-        "the session still ends `model_error`"
+        "a looped reply is an error turn, not a session-ending model error"
     );
 }
 
@@ -6395,6 +6608,8 @@ async fn spawn_is_refused_at_the_max_depth() {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         Box::new(MockClient::new(
             "mock/subagent",
@@ -6460,6 +6675,8 @@ async fn subagents_recurse_within_the_depth_cap() {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let wait = ModelResponse {
             text: Some("Waiting for the worker.".to_string()),
@@ -6473,6 +6690,8 @@ async fn subagents_recurse_within_the_depth_cap() {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         Box::new(MockClient::new(
             "mock/subagent",
@@ -6557,6 +6776,8 @@ impl ModelClient for InboxProbeClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         })
     }
 
@@ -6589,6 +6810,8 @@ async fn send_message_reaches_a_running_subagent_and_affects_it() {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let message = ModelResponse {
             text: Some("Guiding the child.".to_string()),
@@ -6602,6 +6825,8 @@ async fn send_message_reaches_a_running_subagent_and_affects_it() {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let wait = ModelResponse {
             text: Some("Waiting for the child.".to_string()),
@@ -6615,6 +6840,8 @@ async fn send_message_reaches_a_running_subagent_and_affects_it() {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         Box::new(MockClient::new(
             "mock/primary",
@@ -6688,6 +6915,8 @@ async fn send_message_refuses_unknown_and_finished_targets() {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let wait = ModelResponse {
             text: Some("wait".to_string()),
@@ -6701,6 +6930,8 @@ async fn send_message_refuses_unknown_and_finished_targets() {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let msg_finished = ModelResponse {
             text: Some("message the finished child".to_string()),
@@ -6714,6 +6945,8 @@ async fn send_message_refuses_unknown_and_finished_targets() {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let msg_unknown = ModelResponse {
             text: Some("message a stranger".to_string()),
@@ -6727,6 +6960,8 @@ async fn send_message_refuses_unknown_and_finished_targets() {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         Box::new(MockClient::new(
             "mock/primary",
@@ -6821,6 +7056,8 @@ fn tool_call_response(id: &str, name: &str, args: serde_json::Value) -> ModelRes
         cost: None,
         provider: None,
         loop_aborts: LoopAborts::none(),
+        usage_wire: None,
+        usage_reconciled: false,
     }
 }
 
@@ -9391,6 +9628,8 @@ impl ModelClient for VisionRefusingClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         })
     }
 
@@ -9543,6 +9782,8 @@ impl ModelClient for ImageReadingClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         })
     }
 
@@ -10086,12 +10327,63 @@ async fn session_started_and_the_journal_record_the_minted_routing_key() {
     assert_eq!(recorded_key.as_deref(), Some(announced.as_str()));
 }
 
+/// `session_started` records each agent profile's reasoning setting, in the resolved capability
+/// set it announces — the run's record of the effort every request of that profile was held to,
+/// per profile rather than as one figure for the run.
+#[tokio::test]
+async fn session_started_records_each_profile_s_reasoning_setting() {
+    use test_cabinet_core::gg::{GgReasoning, GgReasoningEffort};
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("gg-reasoning".to_string()), Box::new(sink.clone()));
+    let mut set = GgCapabilitySet::minimal("mock/echo");
+    set.agents[0].reasoning = Some(GgReasoning {
+        effort: Some(GgReasoningEffort::Low),
+        max_tokens: None,
+    });
+    set.agents.push(GgAgentConfig {
+        slug: "scout".to_string(),
+        name: "Scout".to_string(),
+        model_id: "mock/echo".to_string(),
+        reasoning: Some(GgReasoning {
+            effort: None,
+            max_tokens: Some(512),
+        }),
+        ..GgAgentConfig::root()
+    });
+    let inv = invocation(dir.path(), set);
+
+    assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
+
+    let events = sink.events();
+    let GgTelemetryKind::SessionStarted { capability_set, .. } =
+        &events.first().expect("an event").kind
+    else {
+        panic!("the first event is the `session_started` announcement");
+    };
+    assert_eq!(
+        capability_set.agents[0].reasoning,
+        Some(GgReasoning {
+            effort: Some(GgReasoningEffort::Low),
+            max_tokens: None,
+        })
+    );
+    assert_eq!(
+        capability_set.agents[1].reasoning,
+        Some(GgReasoning {
+            effort: None,
+            max_tokens: Some(512),
+        })
+    );
+}
+
 /// Each launch mints its own key, so two runs are never pinned to one provider endpoint's cache
 /// by accident, and the seams a run is built from carry the key they minted.
 #[test]
 fn every_launch_mints_its_own_routing_key() {
     let first = SessionSeams::live(
         crate::client::DEFAULT_MODEL_CALL_TIMEOUT,
+        crate::client::DEFAULT_MODEL_STREAM_IDLE,
         crate::client::RetryPolicy::default(),
         BTreeMap::new(),
     );

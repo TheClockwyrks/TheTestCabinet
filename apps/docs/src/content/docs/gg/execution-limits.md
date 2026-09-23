@@ -23,11 +23,12 @@ breaches any of them, in any agent of its tree, stops early and gg exits `3`. Th
 host records such a run as
 [`limit_exceeded`](/components/core/run-records/#status) and never retries it.
 
-Three further bounds are declared, resolved and recorded with those five.
+Four further bounds are declared, resolved and recorded with those five.
 [`maxParallel`](#parallelism) queues agents rather than stopping them,
 `replayMaxBytes` bounds the [session capture journal](/gg/session-record/)
-rather than the run, and [`modelCallTimeoutSecs`](#modelcalltimeoutsecs) bounds
-one model request rather than the run that made it. [Cancellation](#cancellation)
+rather than the run, and [`modelCallTimeoutSecs`](#modelcalltimeoutsecs) and
+[`modelStreamIdleSecs`](#modelstreamidlesecs) bound one model request rather
+than the run that made it. [Cancellation](#cancellation)
 stops a run on an operator's instruction, with no threshold declared anywhere.
 
 [Loop detection](/gg/loop-detection/) bounds a single reply rather than a run. A
@@ -105,12 +106,13 @@ The rollup carries `turns`, `errors`, `maxConsecutive`, the per-kind split, and
 the replies loop detection discarded on the way with the size of the output they
 threw away, for every run rather than only for the runs a ceiling stopped. A
 discarded reply counts towards neither the errors nor the turns, because the
-request was retried and the turn was judged on whatever the retry produced, and
-its output is absent from the cost the `maxCost` ceiling reads. A
-[rejected length-capped reply](#model-api-errors) differs on exactly one of
-those terms: it does count as an error, so the ceilings bound a model that keeps
-capping out, while its usage stays out of the run's cost and turn count and is
-summed on the summary's `rejectedResponses` rollup instead.
+request was retried and the turn was judged on whatever the retry produced. Its
+output has no price, because an abandoned stream never delivers its usage, so it
+is in neither of the run's two [cost figures](#maxcost). A
+[rejected length-capped reply](#model-api-errors) does count as an error, so the
+ceilings bound a model that keeps capping out. Its usage is in the run's total
+cost and outside its work cost and its turn count, and the summary's
+`rejectedResponses` rollup sums the rejections.
 
 ## What is required and what is armed
 
@@ -122,13 +124,13 @@ neither has an off it could take instead.
 - `replayMaxBytes` bounds the [session capture journal](/gg/session-record/),
   which gg writes on every run.
 
-`modelCallTimeoutSecs` is one of three keys an absence answers with a figure
-rather than with "off": every model call is made under a ceiling, so a
-configuration that leaves it out is conducted under 900 seconds and one that
-writes `0` is refused. `maxModelRetries` and `modelRetryMaxDelaySecs` are the
-other two: every failed model request is retried on a schedule, so a
-configuration that leaves them out retries ten times against a 60-second delay
-ceiling. See [model API errors](#model-api-errors).
+`modelCallTimeoutSecs` and `modelStreamIdleSecs` are two of four keys an absence
+answers with a figure rather than with "off": every model call is made under
+both, so a configuration that leaves them out is conducted under 900 and 60
+seconds, and one that writes `0` for either is refused. `maxModelRetries` and
+`modelRetryMaxDelaySecs` are the other two: every failed model request is
+retried on a schedule, so a configuration that leaves them out retries ten times
+against a 60-second delay ceiling. See [model API errors](#model-api-errors).
 
 The other five are ceilings, and a ceiling is armed by writing it. `maxTurns`,
 `maxRuntimeSecs`, `maxCost`, `maxConsecutiveErrors`, and `maxErrorRate` with its
@@ -205,10 +207,24 @@ ceiling gg has no threshold to judge against.
 
 ### `maxCost`
 
-Compared against the run's accumulated cost, which is the USD figure the run's
+Compared against the run's **total cost**, which is the USD figure the run's
 closing summary prints and the one that lands in the run record's per-profile
 costs. It is checked at each agent's turn boundary, before the next model call,
 exactly as the wall-clock deadline is.
+
+The session summary records the run's spend as two figures, per model slot on
+`slotCosts` and summed run-wide as `cost` and `workCost`:
+
+- The total cost (`cost`) is the sum over every request that reported a price.
+  It includes the [error turns](#model-api-errors) and the rejected replies.
+- The work cost (`workCost`) is the sum over the turns that produced a program
+  (responses as code) or a tool call gg ran (tool calling).
+
+The difference between the two is what the run's faults cost. Every `usage`
+event names the figure its turn fed in its `figure` field, so a consumer sums the
+deltas marked `work` for the work cost and every delta for the total. This
+ceiling reads the total, because a model that caps out or sends
+unparseable arguments spends real money whether or not any of it did work.
 
 1. The turn that crosses the line completes in full, because gg has already paid
    for that response.
@@ -224,32 +240,49 @@ ceiling measures exactly what the run record reports.
 
 ### `modelCallTimeoutSecs`
 
-The ceiling on **one model request**, in seconds, and the one bound on this page
-a breach of does not stop anything: a request that hits it is recorded as a
-`model_timeout` error turn and the agent asks the same question again. A
-configuration that leaves the key out is conducted under 900 seconds, because
-there is no run whose calls may hang forever, and `0` refuses the launch.
+The ceiling on one attempt at a model request, in seconds, from sending the
+request to the last chunk of its reply. A breach does not stop anything: the
+attempt is recorded as a `model_timeout` error turn and the agent asks the same
+question again. A configuration that leaves the key out is conducted under 900
+seconds, because there is no run whose calls may hang forever, and `0` refuses
+the launch.
 
-How it is applied follows the transport the agent's
-[loop detection](/gg/loop-detection/) selects.
+A reply that goes quiet is cut sooner by
+[`modelStreamIdleSecs`](#modelstreamidlesecs), so the ceiling is what bounds a
+reply whose deltas keep arriving for longer than it. The backoff between the
+client's retries sits outside it, so a long retry schedule runs to its end under
+any ceiling. A timeout surfaces immediately, without spending the retry
+schedule, since each retry would cost the full ceiling again. A `model_timeout`
+turn names the figure that fired.
 
-- Buffering, which every agent without loop detection runs, receives its reply
-  all at once or not at all. The ceiling is a total-duration cap on each
-  attempt, from sending the request to reading the last byte of the reply. The
-  backoff between the client's retries sits outside it, so a long retry
-  schedule runs to its end under any ceiling.
-- Streaming receives the reply incrementally, and a stream still producing bytes
-  is not stalled however long it runs. The ceiling is an idle cap on the wait
-  for the response head and on the gap between chunks, so a long reply is never
-  cut for being long.
+### `modelStreamIdleSecs`
 
-Both report the figure that fired, so a `model_timeout` turn names the ceiling
-the run was conducted under rather than one a reader has to look up.
+How long a model request may go without a delta from the model, in seconds,
+before the attempt is cancelled. Every reply is read as a
+[stream](/gg/loop-detection/#the-transport), and the clock restarts on each
+chunk whose `delta` carries content, reasoning or tool-call arguments. It starts
+when the request is sent, so a provider that never sends a response head is
+cut by it too. Keep-alive comments and blank lines leave it running, which is
+what separates a provider that has stopped answering from a model that is still
+thinking: a model that reasons for minutes streams reasoning deltas for the
+whole of that time.
+
+A configuration that leaves the key out is conducted under 60 seconds, and `0`
+refuses the launch. A provider that sends nothing until its reply is complete
+needs a figure above its longest reply, at which point
+[`modelCallTimeoutSecs`](#modelcalltimeoutsecs) is the bound that fires first.
+
+A cancelled attempt is a transport failure. It is retried on the client's
+[schedule](#maxmodelretries-and-modelretrymaxdelaysecs) and logged like any
+other retry, with a cause that names the stall and the provider the stream had
+named, if any, such as `the stream stalled: no delta from the model for 60s
+(provider: Z.AI)`.
 
 ### `maxModelRetries` and `modelRetryMaxDelaySecs`
 
 The schedule the model client retries a failed request on. A request answered
-`429` or `5xx`, or one that failed in transport, is retried; any other status is
+`429` or `5xx`, one that failed in transport, or one whose stream
+[stalled](#modelstreamidlesecs) is retried; any other status is
 [fatal](#model-api-errors) on its first response.
 
 - `maxModelRetries` is the number of retries after the first attempt. It
@@ -277,10 +310,10 @@ model request attempt 3 of 11 failed (HTTP 502: bad gateway); retrying in 4.0s
 
 Like the model-call timeout, the schedule never stops a run by being reached.
 Spending it is what turns a provider's failure into a
-[failed model call](#model-api-errors). A timed-out call bypasses the schedule,
-because each retry of a stall would cost the
-[`modelCallTimeoutSecs`](#modelcalltimeoutsecs) ceiling again, and the
-turn-level retry is the bounded one.
+[failed model call](#model-api-errors). A call that hits
+[`modelCallTimeoutSecs`](#modelcalltimeoutsecs) bypasses the schedule, because
+each retry would cost the ceiling again, and the turn-level retry is the bounded
+one.
 
 ## Per agent, or run-wide
 
@@ -600,8 +633,9 @@ ceiling that produced it:
   "capabilities": [ /* … */ ],
   "slots": [{ "slot": "primary", "modelId": "anthropic/claude-opus-5" }],
   "limits": { "maxParallel": 16, "maxTurns": 60, "maxRuntimeSecs": 5400,
-              "modelCallTimeoutSecs": 900, "maxModelRetries": 10,
-              "modelRetryMaxDelaySecs": 60, "maxConsecutiveErrors": 5,
+              "modelCallTimeoutSecs": 900, "modelStreamIdleSecs": 60,
+              "maxModelRetries": 10, "modelRetryMaxDelaySecs": 60,
+              "maxConsecutiveErrors": 5,
               "maxErrorRate": 0.5, "errorRateWindow": 10,
               "maxCost": 25.0, "replayMaxBytes": 268435456 }
 }
@@ -610,13 +644,14 @@ ceiling that produced it:
 In the console the limits are a Run limits fieldset above the capability groups
 in the [configuration](/gg/configurations/) editor, one field per key. A fresh
 configuration is seeded with the parallelism and journal figures, a model-call
-timeout of 900 seconds, the retry schedule's 10 retries against a 60-second
-delay ceiling, a consecutive-error ceiling of 5, and an error rate of 0.2 over
-a window of 50 turns; the turn, runtime and cost fields start empty. Each
-seeded error figure is a guardrail the operator keeps, changes, or clears. An
-empty ceiling field is an unarmed ceiling, except the model-call timeout and
-the retry schedule, which an empty field conducts under their defaults; a
-stored configuration that omitted a ceiling opens with that field empty.
+timeout of 900 seconds, a stream idle bound of 60 seconds, the retry schedule's
+10 retries against a 60-second delay ceiling, a consecutive-error ceiling of 5,
+and an error rate of 0.2 over a window of 50 turns; the turn, runtime and cost
+fields start empty. Each seeded error figure is a guardrail the operator keeps,
+changes, or clears. An empty ceiling field is an unarmed ceiling, except the
+model-call timeout, the stream idle bound and the retry schedule, which an empty
+field conducts under their defaults; a stored configuration that omitted a
+ceiling opens with that field empty.
 
 A key that is present is armed exactly as written, and one gg cannot arm that way
 refuses the launch. So does an absent `maxParallel` or `replayMaxBytes`. The
@@ -629,6 +664,7 @@ that integer, so `60` and `60.0` are one declaration.
 | `maxParallel` or `replayMaxBytes` absent, `limits` absent altogether      | refused                                                            |
 | any of the five ceilings absent                                           | that ceiling unarmed                                               |
 | `modelCallTimeoutSecs` absent                                             | every model call bounded at 900 seconds                            |
+| `modelStreamIdleSecs` absent                                              | every model call cancelled after 60 seconds without a delta        |
 | `maxModelRetries` or `modelRetryMaxDelaySecs` absent                      | failed requests retried 10 times against a 60-second delay ceiling |
 | `maxModelRetries: 0`                                                      | honoured: the first failure ends the session                       |
 | one error-rate half declared, the other not                               | refused                                                            |
@@ -644,54 +680,59 @@ per-capability bound gg reads.
 
 ### Model API errors
 
-A failed model call ends the agent on its first occurrence. The client has
+Most model-call failures end the agent on their first occurrence. The client has
 already retried `429`, `5xx` and transport failures on the run's
 [schedule](#maxmodelretries-and-modelretrymaxdelaysecs), so one reaching the
 loop means the provider failed every attempt within a single turn. Counting it
 against a ceiling would be a second retry layer with a worse backoff.
 
-The agent ends under `model_error`. When it is the root, a spent schedule or a
-fatal status on the first attempt exits the process `1`, so the host records a
+Such an agent ends under `model_error`. When it is the root, a spent schedule or
+a fatal status on the first attempt exits the process `1`, so the host records a
 retryable harness error rather than scoring a run the provider cut short. A
 refused credential ends under `auth_error` and exits `1` on the same terms, so
 it is never scored against a model that never ran.
 
-A reply that [looped](/gg/loop-detection/) on every one of the client's attempts
-arrives here too and ends the agent under `model_error`, but the failure is the
-model's, so the process exits `0` and the run is collected and scored. It is
-named separately in the log (_"model looped every attempt"_), because "retries
-exhausted" would send an operator looking at the provider for an outage that
-never happened. The recorded base error kind is `model_api` and the recorded
-type is `model_response_loop`.
+Four model-call failures are answered as error turns instead: a timed-out call,
+a length-capped reply, an unparseable reply, and a reply that
+[looped](/gg/loop-detection/) on every one of the client's attempts. Each spends
+the consecutive-error count and the error-rate window exactly as a failed call
+does, and the same request is then asked again on the same turn. Nothing enters
+the context between the attempts, so the retry is byte-identical. Only the error
+ceilings, the run's wall clock and an operator's kill (both re-checked between
+attempts) decide when to stop asking, so a model that loops once or emits
+arguments gg cannot read loses a turn rather than the run. Whatever usage one of
+these attempts reported is charged to the run's [total cost](#maxcost) and kept
+out of its work cost.
 
-Two model-call failures are recoverable rather than fatal. Each is recorded as
-an error turn — it spends the consecutive-error count and the error-rate window
-exactly as a failed call does — and the same request is then asked again on the
-same turn. Nothing enters the context between the attempts, so the retry is
-byte-identical, and only the error ceilings, the run's wall clock and an
-operator's kill (both re-checked between attempts) decide when to stop asking.
-
-- A timed-out call. Every model call runs under the run's
-  [`modelCallTimeoutSecs`](#modelcalltimeoutsecs) ceiling: a total-duration cap
-  on each attempt of the buffered transport, whose reply arrives all at once or
-  not at all, and
-  an idle cap on the [streaming](/gg/loop-detection/) one, which measures the
-  wait for the response head and the gap between chunks, so a stream that is
-  still producing is never cut however long it runs. A timeout
-  surfaces immediately, without spending the client's internal retry budget:
-  each internal retry of a stall would cost the full ceiling again, and the
-  turn-level retry is the bounded one. Recorded as `model_timeout`.
+- A timed-out call. Every attempt runs under the run's
+  [`modelCallTimeoutSecs`](#modelcalltimeoutsecs) ceiling over its whole
+  duration. A timeout surfaces immediately, without spending the client's
+  retry schedule, since each retry would cost the full ceiling again.
+  Recorded as `model_timeout`. A stream that stalls within the ceiling is not
+  this failure: it is retried by the client under
+  [`modelStreamIdleSecs`](#modelstreamidlesecs).
 - A length-capped reply. A reply whose finish reason is `length` hit the
   provider's own output cap, and gg presumes it is a degenerate generation
-  rather than work. It is rejected whole: it never enters the context, and its
-  usage is excluded from the run's cost and turn count so one looping turn
-  cannot taint the run's data. The spend is not lost — a `response_rejected`
-  event carries the reply's size, usage, cost and serving provider, and the
-  session summary's `rejectedResponses` rollup sums them. Recorded as
-  `model_length_capped`.
+  rather than work. It is rejected whole, and the turn count shows only the
+  turn that eventually answered. A `response_rejected` event carries the
+  reply's size, usage, cost and serving provider, and the session summary's
+  `rejectedResponses` rollup sums them. Recorded as `model_length_capped`.
+- An unparseable reply. A `2xx` stream gg could not read into a reply: an
+  unreadable event, a provider error object, or tool call arguments that are
+  not JSON, which is what a provider that cuts arguments off produces. A reply
+  that made no tool call at all is readable and is answered as a
+  `missing_completion` error. Recorded as `model_parse`.
+- A reply that looped on every one of the client's attempts. The failure is the
+  model's rather than the provider's, and it is named separately in the log
+  (_"model looped every attempt"_), because "retries exhausted" would send an
+  operator looking at the provider for an outage that never happened. The size
+  of the discarded replies rides the error turn's `loopAborts` figures. They
+  have no price, since an abandoned stream never delivers its usage. The
+  recorded base error kind is `model_api` and the recorded type is
+  `model_response_loop`.
 
-A run that ends on these two does so under `limit_exceeded`, on whichever
-error ceiling the repeated failures breached, and never under `model_error`.
+A run that ends on these does so under `limit_exceeded`, on whichever error
+ceiling the repeated failures breached, and never under `model_error`.
 
 ## Breach records
 

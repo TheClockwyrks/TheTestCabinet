@@ -65,6 +65,8 @@ fn stop_response(text: &str) -> ModelResponse {
         cost: None,
         provider: None,
         loop_aborts: LoopAborts::none(),
+        usage_wire: None,
+        usage_reconciled: false,
     }
 }
 
@@ -1279,7 +1281,7 @@ fn every_model_error_class_is_recorded_as_the_class_the_loop_branched_on() {
             GgSessionModelErrorKind::RetryExhausted,
         ),
         (
-            ModelError::Parse("not json".to_string()),
+            ModelError::parse("not json".to_string()),
             GgSessionModelErrorKind::Parse,
         ),
         (

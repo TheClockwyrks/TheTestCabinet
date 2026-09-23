@@ -3,7 +3,7 @@ use crate::model::{
     FinishReason, ImageContent, Message, ModelClient, ModelError, ToolCall, ToolDefinition,
 };
 use serde_json::json;
-use test_cabinet_core::gg::{GgSlotBinding, PRIMARY_SLOT};
+use test_cabinet_core::gg::{GgReasoning, GgReasoningEffort, GgSlotBinding, PRIMARY_SLOT};
 
 // ---------------------------------------------------------------------------
 // Request building
@@ -31,7 +31,7 @@ fn build_request_body_uses_openai_tools_shape() {
         None,
         None,
         CacheTtl::Standard,
-        false,
+        None,
     );
 
     assert_eq!(body["model"], json!("openai/gpt-5.6"));
@@ -65,7 +65,7 @@ fn build_request_body_encodes_tool_call_arguments_as_string() {
         Message::tool_result("call_1", "wrote 13 bytes"),
     ];
 
-    let body = build_request_body("m", &messages, &[], None, None, CacheTtl::Standard, false);
+    let body = build_request_body("m", &messages, &[], None, None, CacheTtl::Standard, None);
 
     let wire_call = &body["messages"][0]["tool_calls"][0];
     assert_eq!(wire_call["id"], json!("call_1"));
@@ -99,7 +99,7 @@ fn build_request_body_omits_tools_when_none() {
         None,
         None,
         CacheTtl::Standard,
-        false,
+        None,
     );
     assert!(body.get("tools").is_none());
     assert!(body.get("tool_choice").is_none());
@@ -118,7 +118,7 @@ fn build_request_body_pins_the_provider_and_refuses_fallbacks() {
         Some(&key),
         Some("openai"),
         CacheTtl::Standard,
-        false,
+        None,
     );
     assert_eq!(body["provider"]["only"], json!(["openai"]));
     assert_eq!(body["provider"]["allow_fallbacks"], json!(false));
@@ -131,9 +131,76 @@ fn build_request_body_pins_the_provider_and_refuses_fallbacks() {
         None,
         None,
         CacheTtl::Standard,
-        false,
+        None,
     );
     assert!(unpinned.get("provider").is_none());
+}
+
+// ---------------------------------------------------------------------------
+// Reasoning effort
+// ---------------------------------------------------------------------------
+
+/// The agent's [reasoning setting](GgReasoning) rides every request as the unified `reasoning`
+/// object, one key wide: the effort level or the token budget the profile named, in the unified
+/// vocabulary's own spellings. An agent that named none sends no `reasoning` parameter at all and
+/// runs at its provider's default.
+#[test]
+fn build_request_body_sends_the_reasoning_object_and_only_what_it_names() {
+    let messages = [Message::user("build it")];
+    let body = |reasoning| {
+        build_request_body(
+            "deepseek/deepseek-v4.1-flash",
+            &messages,
+            &[],
+            None,
+            None,
+            CacheTtl::Standard,
+            reasoning,
+        )
+    };
+
+    let effort = body(Some(GgReasoning {
+        effort: Some(GgReasoningEffort::Low),
+        max_tokens: None,
+    }));
+    assert_eq!(effort["reasoning"], json!({ "effort": "low" }));
+
+    let budget = body(Some(GgReasoning {
+        effort: None,
+        max_tokens: Some(512),
+    }));
+    assert_eq!(budget["reasoning"], json!({ "max_tokens": 512 }));
+
+    let unnamed = body(None);
+    assert!(
+        unnamed.get("reasoning").is_none(),
+        "an agent without the setting sends none: {unnamed}"
+    );
+}
+
+/// A compaction summary written on the agent's own model is a request of the agent too, so the
+/// required-tool body a summary is requested with carries the same object the turns do.
+#[test]
+fn build_required_tool_request_body_sends_the_reasoning_object() {
+    let tool = ToolDefinition {
+        name: "compact".to_string(),
+        description: "Compact.".to_string(),
+        parameters: json!({ "type": "object", "properties": {} }),
+    };
+    let body = build_required_tool_request_body(
+        "z-ai/glm-5.3-flash",
+        &[Message::user("summarize")],
+        &tool,
+        None,
+        None,
+        CacheTtl::Standard,
+        Some(GgReasoning {
+            effort: Some(GgReasoningEffort::Minimal),
+            max_tokens: None,
+        }),
+    );
+    assert_eq!(body["reasoning"], json!({ "effort": "minimal" }));
+    assert_eq!(body["tool_choice"]["function"]["name"], json!("compact"));
 }
 
 // ---------------------------------------------------------------------------
@@ -154,7 +221,7 @@ fn build_request_body_sends_an_attached_image_as_a_content_part() {
         None,
         None,
         CacheTtl::Standard,
-        false,
+        None,
     );
 
     let tool_msg = &body["messages"][1];
@@ -197,7 +264,7 @@ fn a_marker_model_sends_every_content_message_as_parts() {
         None,
         None,
         CacheTtl::Standard,
-        false,
+        None,
     );
 
     // Every message — breakpoint or not — carries the same one-element array shape…
@@ -240,7 +307,7 @@ fn build_request_body_sends_no_markers_to_an_implicitly_caching_model() {
             None,
             None,
             CacheTtl::Standard,
-            false,
+            None,
         );
         assert!(
             markers(&body).is_empty(),
@@ -326,7 +393,7 @@ fn build_request_body_marks_the_opening_context_and_the_tail() {
         None,
         None,
         CacheTtl::Standard,
-        false,
+        None,
     );
 
     // The anchor is the last message before the first assistant turn (the fixed preamble), and
@@ -481,7 +548,7 @@ fn build_request_body_marks_the_last_part_of_an_image_message() {
         None,
         None,
         CacheTtl::Extended,
-        false,
+        None,
     );
 
     let parts = body["messages"][1]["content"]
@@ -544,7 +611,7 @@ fn build_request_body_extends_the_ttl_of_the_stable_breakpoints() {
         None,
         None,
         CacheTtl::Extended,
-        false,
+        None,
     );
 
     let extended = json!({ "type": "ephemeral", "ttl": "1h" });
@@ -584,7 +651,7 @@ fn build_request_body_qualifies_no_marker_at_the_standard_lifetime() {
         None,
         None,
         CacheTtl::Standard,
-        false,
+        None,
     );
 
     let standard = json!({ "type": "ephemeral" });
@@ -618,7 +685,7 @@ fn build_request_body_extends_a_lone_anchor() {
         None,
         None,
         CacheTtl::Extended,
-        false,
+        None,
     );
 
     assert_eq!(
@@ -644,7 +711,7 @@ fn build_request_body_orders_extended_markers_before_the_rolling_one() {
             None,
             None,
             CacheTtl::Extended,
-            false,
+            None,
         );
         let sent = markers(&body);
         let rolling = sent
@@ -847,6 +914,218 @@ fn parse_response_rejects_empty_and_error_bodies() {
     assert!(parse_response("not json at all").is_err());
 }
 
+/// The provider's usage object rides verbatim on the response, exactly as the gateway returned
+/// it — its own snake_case keys, and every field gg maps nothing onto included.
+#[test]
+fn parse_response_keeps_the_providers_usage_object_verbatim() {
+    let body = r#"{
+        "choices": [{ "message": { "role": "assistant", "content": "done" }, "finish_reason": "stop" }],
+        "usage": {
+            "prompt_tokens": 1000,
+            "completion_tokens": 300,
+            "total_tokens": 1300,
+            "cost": 0.0123,
+            "prompt_tokens_details": { "cached_tokens": 400 },
+            "completion_tokens_details": { "reasoning_tokens": 120 },
+            "next_cursor": "ignored-by-everyone"
+        }
+    }"#;
+
+    let response = parse_response(body).expect("parse");
+
+    assert_eq!(
+        response.usage_wire,
+        Some(json!({
+            "prompt_tokens": 1000,
+            "completion_tokens": 300,
+            "total_tokens": 1300,
+            "cost": 0.0123,
+            "prompt_tokens_details": { "cached_tokens": 400 },
+            "completion_tokens_details": { "reasoning_tokens": 120 },
+            "next_cursor": "ignored-by-everyone"
+        }))
+    );
+    // A provider whose split agrees with the reply is recorded as given, so the row is
+    // not marked.
+    assert!(!response.usage_reconciled);
+}
+
+/// A call that reported no usage carries neither the provider's object nor a mark.
+#[test]
+fn parse_response_without_usage_carries_no_wire_and_no_mark() {
+    let body = r#"{ "choices": [{ "message": { "content": "hi" }, "finish_reason": "stop" }] }"#;
+    let response = parse_response(body).expect("parse");
+    assert_eq!(response.usage_wire, None);
+    assert!(!response.usage_reconciled);
+}
+
+/// The reply's size as the bound measures it, computed independently of the client: the default
+/// estimator over the assistant message the reply becomes.
+fn estimated_reply(text: Option<&str>, tool_calls: Vec<ToolCall>) -> u64 {
+    let reply = Message::assistant(text.map(str::to_string), tool_calls);
+    crate::context::BpeTokenEstimator::new().estimate_message(&reply) as u64
+}
+
+/// A provider whose reasoning figure leaves the reply no room is bounded by the reply: output is
+/// the reply's own estimated size, reasoning is the remainder of the completion total, and the
+/// row is marked reconciled.
+#[test]
+fn parse_response_bounds_a_split_that_leaves_the_reply_no_room() {
+    let text = "Creating the file now, writing it out.";
+    let body = r#"{
+        "choices": [{ "message": { "role": "assistant", "content": "Creating the file now, writing it out." }, "finish_reason": "stop" }],
+        "usage": {
+            "prompt_tokens": 1200,
+            "completion_tokens": 230,
+            "total_tokens": 1430,
+            "completion_tokens_details": { "reasoning_tokens": 230 }
+        }
+    }"#;
+
+    let response = parse_response(body).expect("parse");
+
+    let reply = estimated_reply(Some(text), Vec::new());
+    assert!(
+        reply > 0 && reply < 230,
+        "the fixture's reply fits the total"
+    );
+    assert_eq!(response.usage.output, Some(reply));
+    assert_eq!(response.usage.reasoning, Some(230 - reply));
+    assert!(response.usage_reconciled);
+}
+
+/// A reasoning figure that leaves the reply some room, but less than its size, is bounded too:
+/// the floor is the reply's whole size, not merely a non-zero output.
+#[test]
+fn parse_response_bounds_a_split_that_leaves_the_reply_too_little_room() {
+    let text = "Creating the file now, writing it out.";
+    let body = r#"{
+        "choices": [{ "message": { "role": "assistant", "content": "Creating the file now, writing it out." }, "finish_reason": "stop" }],
+        "usage": {
+            "prompt_tokens": 1200,
+            "completion_tokens": 230,
+            "completion_tokens_details": { "reasoning_tokens": 229 }
+        }
+    }"#;
+
+    let response = parse_response(body).expect("parse");
+
+    let reply = estimated_reply(Some(text), Vec::new());
+    assert!(
+        reply > 1,
+        "the provider's split would record less than the reply"
+    );
+    assert_eq!(response.usage.output, Some(reply));
+    assert_eq!(response.usage.reasoning, Some(230 - reply));
+    assert!(response.usage_reconciled);
+}
+
+/// A responses-as-code reply carries its output in a tool call's arguments, and the bound
+/// measures them: a reply with no text is still never recorded below its program's size.
+#[test]
+fn parse_response_bounds_a_tool_call_reply_by_its_arguments() {
+    let program =
+        "const files = gg.files.list('.'); for (const f of files) { gg.files.readFile(f); }";
+    let body = format!(
+        r#"{{
+        "choices": [{{ "message": {{ "role": "assistant", "content": null, "tool_calls": [
+            {{ "id": "call_1", "type": "function", "function": {{ "name": "submit_program", "arguments": "{{\"program\": \"{program}\"}}" }} }}
+        ] }}, "finish_reason": "tool_calls" }}],
+        "usage": {{
+            "prompt_tokens": 1200,
+            "completion_tokens": 500,
+            "completion_tokens_details": {{ "reasoning_tokens": 500 }}
+        }}
+    }}"#
+    );
+
+    let response = parse_response(&body).expect("parse");
+
+    let reply = estimated_reply(None, response.tool_calls.clone());
+    assert!(reply > 20, "the program's tokens are counted");
+    assert_eq!(response.usage.output, Some(reply));
+    assert_eq!(response.usage.reasoning, Some(500 - reply));
+    assert!(response.usage_reconciled);
+}
+
+/// The split sums to the provider's completion total on every arm, and a split is kept as given
+/// exactly up to the point where it leaves the reply its whole size.
+#[test]
+fn the_split_is_bounded_at_exactly_the_replys_size() {
+    // Reasoning leaves exactly the reply's size: the provider's split stands.
+    assert_eq!(
+        split_completion(Some(100), Some(60), Some(40)),
+        (Some(40), Some(60), false)
+    );
+    // One token less room than the reply: bounded.
+    assert_eq!(
+        split_completion(Some(100), Some(61), Some(40)),
+        (Some(40), Some(60), true)
+    );
+    // A reply estimated above the whole total takes the total, and reasoning is zero.
+    assert_eq!(
+        split_completion(Some(100), Some(10), Some(150)),
+        (Some(100), Some(0), true)
+    );
+    // No reasoning reported: the total is output and reasoning stays unreported.
+    assert_eq!(
+        split_completion(Some(100), None, Some(40)),
+        (Some(100), None, false)
+    );
+    // No reply to bound by: the provider's figures stand, however they fall.
+    assert_eq!(
+        split_completion(Some(100), Some(100), None),
+        (Some(0), Some(100), false)
+    );
+}
+
+/// The bound never moves the completion total: a provider whose reasoning leaves the reply
+/// room is recorded exactly as it reported, mark and all off.
+#[test]
+fn parse_response_keeps_a_consistent_split_as_given() {
+    let body = r#"{
+        "choices": [{ "message": { "role": "assistant", "content": "Creating the file now, writing it out." }, "finish_reason": "stop" }],
+        "usage": {
+            "prompt_tokens": 1200,
+            "completion_tokens": 230,
+            "total_tokens": 1430,
+            "completion_tokens_details": { "reasoning_tokens": 90 }
+        }
+    }"#;
+
+    let response = parse_response(body).expect("parse");
+
+    assert_eq!(
+        response.usage,
+        TokenCounts {
+            uncached_input: Some(1200),
+            cached_input: None,
+            output: Some(140), // 230 - 90 reasoning
+            reasoning: Some(90),
+        }
+    );
+    assert!(!response.usage_reconciled);
+}
+
+/// A call with no completion total is mapped as reported: there is no total to bound a split
+/// against, so the provider's reasoning figure stands and the reply's size is not imposed.
+#[test]
+fn parse_response_without_a_completion_total_does_not_impose_the_reply_size() {
+    let body = r#"{
+        "choices": [{ "message": { "role": "assistant", "content": "hi" }, "finish_reason": "stop" }],
+        "usage": {
+            "prompt_tokens": 1000,
+            "completion_tokens_details": { "reasoning_tokens": 55 }
+        }
+    }"#;
+
+    let response = parse_response(body).expect("parse");
+
+    assert_eq!(response.usage.output, None);
+    assert_eq!(response.usage.reasoning, Some(55));
+    assert!(!response.usage_reconciled);
+}
+
 // ---------------------------------------------------------------------------
 // Provider selection
 // ---------------------------------------------------------------------------
@@ -890,6 +1169,7 @@ fn client_for_slot_builds_mock_for_mock_binding() {
         &binding("mock/echo"),
         &RoutingKey::mint(),
         DEFAULT_MODEL_CALL_TIMEOUT,
+        DEFAULT_MODEL_STREAM_IDLE,
         RetryPolicy::default(),
         None,
         &ToolChoiceMemory::default(),
@@ -970,6 +1250,8 @@ async fn mock_client_advances_through_script_then_terminates() {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         },
         ModelResponse {
             text: Some("turn 2".to_string()),
@@ -979,6 +1261,8 @@ async fn mock_client_advances_through_script_then_terminates() {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         },
     ];
     let client = MockClient::new("mock/test", script);

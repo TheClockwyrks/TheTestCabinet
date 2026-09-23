@@ -435,7 +435,8 @@ fn main() -> Result<()> {
             decls: ts_decls![&cfg;
                 gg::GgAgentConfig, gg::GgOpeningTurn, gg::GgOpeningTree, gg::GgSubagentRef,
                 gg::GgSubagentScope,
-                gg::GgPromptCacheTtl, gg::GgLoopDetection, gg::GgModelSlot,
+                gg::GgPromptCacheTtl, gg::GgReasoning, gg::GgReasoningEffort,
+                gg::GgLoopDetection, gg::GgModelSlot,
                 gg::GgConfigSlot, gg::GgSlotTarget,
                 gg::GgCapabilityConfig, gg::GgCapabilitySet,
                 gg::GgModuleKind, gg::GgModuleOrigin,
@@ -462,7 +463,7 @@ fn main() -> Result<()> {
                 gg::GgErrorSummary, gg::GgUndocumentedCalls,
                 gg::GgRejectedResponses,
                 gg::GgSlotCost, gg::GgProviderStat, gg::GgSessionSummary,
-                gg::GgTelemetryKind, gg::GgTelemetryEvent,
+                gg::GgTelemetryKind, gg::GgTelemetryEvent, gg::GgUsageFigure,
                 bapi::GgConfig, bapi::GgConfigInput, bapi::GgAgentSource,
                 bapi::GgSavedAgent, bapi::GgSavedAgentInput,
             ],
@@ -804,6 +805,8 @@ fn main() -> Result<()> {
                 "GgSubagentRef",
                 "GgSubagentScope",
                 "GgPromptCacheTtl",
+                "GgReasoning",
+                "GgReasoningEffort",
                 "GgCapabilityConfig",
                 "GgModelSlot",
                 "GgConfigSlot",
@@ -879,6 +882,9 @@ fn main() -> Result<()> {
                 // session summary's, but a telemetry reader must be able to resolve the
                 // reference without loading a second document.
                 "GgProgramLanguage",
+                // Which of the session's two cost figures a `Usage` delta fed — the
+                // event's own vocabulary, appearing nowhere else in the contract.
+                "GgUsageFigure",
             ],
             schema: root_schema::<gg::GgTelemetryEvent>(),
         },

@@ -25,7 +25,7 @@
           "type": "integer"
         },
         "loopAbortWords": {
-          "description": "Words of generated output across every reply [`loop_aborts`](Self::loop_aborts) counts, and\nthe characters of the same output beside it — the **size** of what was thrown away, where\nthe count beside them is only how often.\n\nThe units are the ones gg measured itself, as the replies streamed. There is deliberately no\ntoken count and no price: gg's [cost](crate::metrics::Cost) and\n[tokens](crate::metrics::TokenCounts) come from the provider's usage payload, which arrives\nat the end of a stream an abandoned reply never reached, so any figure in those units would\nbe an estimate published where every neighbouring figure is a measurement.\n\nThis output is charged to the provider bill and is absent from the run's recorded cost, by\ndesign: a looping reply is a model defect, and a run must not be made to look expensive for\none. The figures here are what makes that omission visible rather than silent.",
+          "description": "Words of generated output across every reply [`loop_aborts`](Self::loop_aborts) counts, and\nthe characters of the same output beside it — the **size** of what was thrown away, where\nthe count beside them is only how often.\n\nThe units are the ones gg measured itself, as the replies streamed. There is deliberately no\ntoken count and no price: gg's [cost](crate::metrics::Cost) and\n[tokens](crate::metrics::TokenCounts) come from the provider's usage payload, which arrives\nat the end of a stream an abandoned reply never reached, so any figure in those units would\nbe an estimate published where every neighbouring figure is a measurement.\n\nThis output is charged to the provider bill, and it reaches neither of the run's cost\nfigures — the [work](GgSessionSummary::work_cost) nor the\n[total](GgSessionSummary::cost) — because gg has no price for it: a looping reply is\ndropped before the stream's usage trailer, so unlike every other spend in this summary it\nis a measurement gg never received rather than one it set aside. The figures here are what\nmakes that omission visible rather than silent.",
           "format": "uint64",
           "minimum": 0,
           "type": "integer"
@@ -234,7 +234,7 @@
       "type": "object"
     },
     "GgRejectedResponses": {
-      "description": "The run's **rejected-reply** rollup: how many model replies gg refused to use (today, exactly\nthe length-capped ones — see [`GgTelemetryKind::ResponseRejected`]), and the spend they burned.\n\nThis bucket exists so the exclusion is visible rather than silent. A rejected reply's usage is\ndeliberately kept **out** of the run's cost and turn metrics — a degenerate generation must not\nmake a run look expensive or long — but the money was still spent, and \"how often does this\nmodel cap out, and what does it cost?\" is a question the owner asks of the durable record.\nFolded from the [`ResponseRejected`](GgTelemetryKind::ResponseRejected) events the run emitted.",
+      "description": "The run's **rejected-reply** rollup: how many model replies gg refused to use (today, exactly\nthe length-capped ones — see [`GgTelemetryKind::ResponseRejected`]), and the spend they burned.\n\nThis bucket exists so the exclusion is visible rather than silent. A rejected reply's usage\nnever counts as the run's **work** — a degenerate generation must not make a run's work look\nexpensive or long — but it is in the run's [total cost](GgSessionSummary::cost) like every\nother request's, and \"how often does this model cap out, and what did those attempts cost?\" is\na question the owner asks of the durable record. Folded from the\n[`ResponseRejected`](GgTelemetryKind::ResponseRejected) events the run emitted.",
       "properties": {
         "cost": {
           "anyOf": [
@@ -245,7 +245,7 @@
               "type": "null"
             }
           ],
-          "description": "Their cost, summed, when the provider reported any — spend absent from the run's recorded\ncost by design."
+          "description": "Their cost, summed, when the provider reported any — in the run's\n[total cost](GgSessionSummary::cost), never its\n[work cost](GgSessionSummary::work_cost)."
         },
         "count": {
           "description": "How many replies were rejected.",
@@ -255,14 +255,14 @@
         },
         "tokens": {
           "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/TokenMetrics",
-          "description": "The tokens the provider billed for them, summed — spend absent from the run's own\n[token totals](crate::metrics::TokenCounts) by design."
+          "description": "The tokens the provider billed for them, summed — absent from the run's\n[work](GgSessionSummary::work_cost) figures by design, and inside its\n[total](GgSessionSummary::cost) ones like every other request's."
         }
       },
       "required": ["count", "tokens"],
       "type": "object"
     },
     "GgSlotCost": {
-      "description": "One `(slot, model)` token+cost rollup in a [`GgSessionSummary`] — the aggregatable\ntail of the [`SlotUsage`](GgTelemetryKind::SlotUsage) rollups, folded onto the run so a\nquery can total or slice a gg run's spend per model without replaying the stream.\n\nA gg run spans several models (subagents can run on different, possibly cross-provider,\n[slots](GgSlotBinding) than the parent), so cost is accumulated **per slot** rather than\nas one figure for one model. This is the same shape a `SlotUsage` telemetry event carries,\ncaptured once per `(slot, model)` the run touched, so [result aggregation] can answer\n\"does a cheaper subagent slot cost accuracy?\" from the durable record.\n\n[result aggregation]: https://docs.testcabinet.ai/gg/result-aggregation/",
+      "description": "One `(slot, model)` token+cost rollup in a [`GgSessionSummary`] — the aggregatable\ntail of the [`SlotUsage`](GgTelemetryKind::SlotUsage) rollups, folded onto the run so a\nquery can total or slice a gg run's spend per model without replaying the stream — carrying\nthe run's spend as the [two figures](GgSessionSummary::cost) it records: the total over every\nrequest, and the work cost over the turns that produced a program or a tool call gg ran.\n\nA gg run spans several models (subagents can run on different, possibly cross-provider,\n[slots](GgSlotBinding) than the parent), so cost is accumulated **per slot** rather than\nas one figure for one model. This is the same shape a `SlotUsage` telemetry event carries,\ncaptured once per `(slot, model)` the run touched and joined by the work figure folded from\nthe run's [`Usage`](GgTelemetryKind::Usage) deltas, so [result aggregation] can answer\n\"does a cheaper subagent slot cost accuracy?\" from the durable record.\n\n[result aggregation]: https://docs.testcabinet.ai/gg/result-aggregation/",
       "properties": {
         "cost": {
           "anyOf": [
@@ -273,7 +273,7 @@
               "type": "null"
             }
           ],
-          "description": "The cost accumulated on this slot/model, when any turn on it reported one."
+          "description": "The slot's **total cost**: the sum over every request it made that reported a price, the\nturns answered as error turns and the rejected replies among them. `None` when nothing on\nthe slot reported one."
         },
         "modelId": {
           "description": "The model id (within the profile) this rollup accounts for. A profile normally resolves to\none model, but the accounting keys on the model too so a re-pointed binding stays\nattributable.",
@@ -285,7 +285,18 @@
         },
         "tokens": {
           "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/TokenMetrics",
-          "description": "The tokens accumulated on this slot/model across the run, in the shared [`TokenCounts`]\nunits."
+          "description": "The tokens accumulated on this slot/model across the run, in the shared [`TokenCounts`]\nunits — every request of the slot that reported usage, the errored and rejected ones\nincluded, so this is the **total** side of the account."
+        },
+        "workCost": {
+          "anyOf": [
+            {
+              "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/CostMetrics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The slot's **work cost**: the sum over the requests whose turns\n[produced a program or a tool call gg ran](GgUsageFigure::Work) only. A fault's spend is\ntherefore absent here and present in [`cost`](Self::cost), and the difference between the\ntwo figures is what the run's faults cost on this slot. `None` when the slot's priced\nturns were all non-work, and omitted from the wire then."
         }
       },
       "required": ["profileId", "modelId", "tokens"],
@@ -347,6 +358,17 @@
       "format": "uint64",
       "minimum": 0,
       "type": "integer"
+    },
+    "cost": {
+      "anyOf": [
+        {
+          "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/CostMetrics"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The run's **total cost**, rolled up across every model slot: the sum over every request\nthe run made that reported a price — the turns answered as error turns, the rejected\nreplies and every other non-work spend among them, beside the work turns. This is the\nfigure a run's `maxCost` ceiling reads, and it equals the sum of the\n[`slot_costs`](Self::slot_costs) entries' [`cost`](GgSlotCost::cost). `None` for a run that\nreported no price at all, and omitted from the wire then."
     },
     "effectiveTools": {
       "description": "The **effective toolset**: the exact set of tool names offered to the run's agent,\nin the order they were presented to the model. This is what the run's\n[capability set](GgCapabilitySet) *actually resolved to* — a capability contributes\nits tools only when enabled (and, for the stateful ones, only when its store is\nnon-empty), narrowed to what the agent's [allowlist](GgAgentConfig::tools) grants —\nso recording it durably makes the toolset a first-class experimental variable a query\ncan slice by (\"group by whether `edit_file` was offered\", \"runs with only\n`write_file`\"). Because switching a capability on/off *is* offering/withholding its\ntools, this is the ground truth a comparison of two configurations reads rather than\nre-deriving the toolset from the capability set. Empty for a run whose agent was offered no\ntools at all — including every run whose root answers with programs rather than tool calls,\nwhich is offered no tools by construction and whose surface is its\n[operations](GgAgentConfig::operations). Recorded from the root agent, whose profile is the\nrun's headline configuration.",
@@ -449,7 +471,7 @@
     },
     "rejectedResponses": {
       "$ref": "#/$defs/GgRejectedResponses",
-      "description": "How many model replies gg **rejected whole** — the length-capped ones — and the spend they\nburned; see [`GgRejectedResponses`]. Their usage is excluded from the run's cost and turn\nmetrics by design, so this rollup is where it lives instead. Omitted from the wire for the\nordinary run that rejected nothing."
+      "description": "How many model replies gg **rejected whole** — the length-capped ones — and the spend they\nburned; see [`GgRejectedResponses`]. Their usage stays out of the run's\n[work cost](GgSessionSummary::work_cost) by design while it is inside the\n[total](GgSessionSummary::cost), so this rollup is where the spend is *also* answerable as\nrejections rather than only as cost. Omitted from the wire for the ordinary run that\nrejected nothing."
     },
     "reviewCycles": {
       "description": "The total number of review **verdicts** the run's reviewers rendered — every\n[`ChangesRequested`](GgIssueReviewPhase::ChangesRequested) plus every\n[`Approved`](GgIssueReviewPhase::Approved) phase — so a single issue that took several\nfix rounds counts each round. The correlate for \"which reviewer produced fewer\nrework cycles?\".",
@@ -458,7 +480,7 @@
       "type": "integer"
     },
     "slotCosts": {
-      "description": "The per-`(slot, model)` token+cost rollup for the run — the durable tail of the\n[`SlotUsage`](GgTelemetryKind::SlotUsage) rollups, one entry per slot/model the run touched,\nin first-seen order. Empty only for a run that recorded no usage (a launch that never ran a\nturn).",
+      "description": "The per-`(slot, model)` token+cost rollup for the run — the durable tail of the\n[`SlotUsage`](GgTelemetryKind::SlotUsage) rollups, one entry per slot/model the run touched,\nin first-seen order. Empty only for a run that recorded no usage (a launch that never ran a\nturn). Each entry carries both cost figures: its\n[`cost`](GgSlotCost::cost) over every request and its [`work_cost`](GgSlotCost::work_cost)\nover the turns that did work.",
       "items": {
         "$ref": "#/$defs/GgSlotCost"
       },
@@ -483,6 +505,17 @@
     "undocumentedCalls": {
       "$ref": "#/$defs/GgUndocumentedCalls",
       "description": "How many calls the run's models wrote **without ever having read the call's documentation**\n— the run's [discovery rollup](GgUndocumentedCalls), folded from the same\n[`CodeExecution`](GgTelemetryKind::CodeExecution) events\n[`code_executions`](Self::code_executions) counts.\n\nAll zeroes for a tool-calling run, which has no documentation surface to open a view of and\nno discipline to break, and all zeroes for the well-behaved code run — which is the point:\nthis is the field that separates a model that discovers its surface from one that writes\nsignatures from memory, and a study comparing two models on\n[responses-as-code](CAPABILITY_RESPONSES_AS_CODE) reads it before it reads anything else.\n\nRead against [`code_executions`](Self::code_executions) for a per-turn rate and against the\nrun's API calls for a per-call one; neither ratio is stored, for the reason\n[`GgErrorSummary`] stores no percentage."
+    },
+    "workCost": {
+      "anyOf": [
+        {
+          "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/CostMetrics"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The run's **work cost**, rolled up across every model slot: the sum over the turns that\n[produced a program or a tool call gg ran](GgUsageFigure::Work) only. The difference\nbetween this and [`cost`](Self::cost) is what the run's faults cost apart from what its\nwork cost. `None` for a run whose priced turns were all non-work, and omitted then."
     }
   },
   "required": [

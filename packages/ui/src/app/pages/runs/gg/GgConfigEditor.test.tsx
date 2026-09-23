@@ -342,18 +342,22 @@ describe("an agent's type", () => {
     ).toBeInTheDocument();
   });
 
-  // A machine takes no turns, so it runs no model, keeps no cache, renders no prompt and
-  // spawns from no roster. None of those controls is shown under one — a field an
-  // operator can set and gg would never read is worse than no field, because it invites
-  // them to configure a run that does not exist.
+  // A machine takes no turns, so it runs no model, keeps no cache, is never asked how
+  // hard to think, renders no prompt and spawns from no roster. None of those controls is
+  // shown under one — a field an operator can set and gg would never read is worse than
+  // no field, because it invites them to configure a run that does not exist.
   it("asks a machine for no model, prompt or roster", () => {
     render(<Harness initial={emptyDraft()} />);
     expect(screen.getByLabelText("Model from")).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Reasoning/)).toBeInTheDocument();
 
     fireEvent.click(typeSegment("FSM"));
     for (const label of ["Model from", "Model slot", "Prompt cache"]) {
       expect(screen.queryByLabelText(label)).toBeNull();
     }
+    // The reasoning lever is labelled with its help tip, so it is matched on the label's
+    // opening words like every other tipped label here.
+    expect(screen.queryByLabelText(/^Reasoning/)).toBeNull();
     expect(screen.queryByText("Custom instructions")).toBeNull();
     expect(screen.queryByText("System Prompt")).toBeNull();
     // Nobody to spawn, and no lifecycle of its own to gate.
