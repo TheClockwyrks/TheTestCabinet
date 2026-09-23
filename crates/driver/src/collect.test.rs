@@ -396,39 +396,51 @@ fn the_encoded_length_charges_three_bytes_for_every_reserved_byte() {
     );
 }
 
+/// The idle bound the two stall tests configure: short, and far from the production default, so a
+/// listener that applied the default instead would read differently on the paused clock.
+const IDLE: Duration = Duration::from_millis(200);
+
 /// Nobody connects, so the idle bound on the accept is the only way `receive` can return. On
-/// tokio's paused clock the bound elapses as soon as the runtime has nothing else to do.
+/// tokio's paused clock the bound elapses as soon as the runtime has nothing else to do, and the
+/// clock reads exactly the bound this listener was configured with when it has — which is what
+/// shows it is that bound, rather than some other one, that applied.
 #[tokio::test(start_paused = true)]
 async fn an_uploader_that_never_connects_fails_the_attempt_on_the_idle_bound() {
     let scratch = tempfile::tempdir().expect("scratch");
     let archive = scratch.path().join("collected.tar");
-    let listener = CollectListener::bind()
-        .await
-        .expect("bind")
-        .with_idle(Duration::from_millis(200));
+    let listener = CollectListener::bind().await.expect("bind").with_idle(IDLE);
 
+    let started = tokio::time::Instant::now();
     let err = listener
         .receive(&archive)
         .await
         .expect_err("nobody connected");
     assert!(err.to_string().contains("no uploader connected"), "{err}");
     assert!(!archive.exists());
+    assert_eq!(
+        started.elapsed(),
+        IDLE,
+        "the attempt was cut by another bound"
+    );
 }
 
 /// A peer that sends its header and some data and then hangs with the connection open fails the
 /// attempt on the idle bound, naming how far it got.
 ///
 /// The peer's bytes are all written before `receive` starts, so every read up to the stall is
-/// satisfied from what is already buffered and the only read that waits is the one after the data.
-/// On tokio's paused clock that wait is the one the idle bound cuts.
+/// satisfied from what is already buffered, and the only read that waits out a whole bound is the
+/// one after the data. On tokio's paused clock that wait is the one the idle bound cuts.
+///
+/// The clock is read to show it was the configured bound that cut it rather than the production
+/// default: at least the configured bound has passed, and nothing near the default has. It is not
+/// read for equality, because the reads before the stall are on a real socket, and one that found
+/// its bytes not yet delivered lets the paused clock move part of the way towards its bound before
+/// they arrive.
 #[tokio::test(start_paused = true)]
 async fn a_stream_that_stalls_fails_the_attempt_on_the_idle_bound() {
     let scratch = tempfile::tempdir().expect("scratch");
     let archive = scratch.path().join("collected.tar");
-    let listener = CollectListener::bind()
-        .await
-        .expect("bind")
-        .with_idle(Duration::from_millis(200));
+    let listener = CollectListener::bind().await.expect("bind").with_idle(IDLE);
 
     let mut stream = connect(&listener).await;
     send_header(&mut stream, listener.token()).await;
@@ -439,7 +451,13 @@ async fn a_stream_that_stalls_fails_the_attempt_on_the_idle_bound() {
 
     // Then nothing, with the connection held open until the attempt has failed: a peer that has
     // hung.
+    let started = tokio::time::Instant::now();
     let err = listener.receive(&archive).await.expect_err("stalled");
+    let waited = started.elapsed();
+    assert!(
+        waited >= IDLE && waited < IDLE_TIMEOUT,
+        "the attempt was cut after {waited:?}, which is not the configured {IDLE:?} bound"
+    );
     drop(stream);
     let message = err.to_string();
     assert!(message.contains("upload stalled for"), "{message}");
