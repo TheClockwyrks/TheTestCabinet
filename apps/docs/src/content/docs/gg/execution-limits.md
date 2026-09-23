@@ -109,8 +109,8 @@ the replies loop detection discarded on the way with the size of the output they
 threw away, for every run rather than only for the runs a ceiling stopped. A
 discarded reply counts towards neither the errors nor the turns, because the
 request was retried and the turn was judged on whatever the retry produced. Its
-output has no price, because an abandoned stream never delivers its usage, so it
-is in neither of the run's two [cost figures](#maxcost). A
+output is priced into the run's total cost at session end, as
+[abandoned replies](#abandoned-replies) describes. A
 [rejected length-capped reply](#model-api-errors) does count as an error, so the
 ceilings bound a model that keeps capping out. Its usage is in the run's total
 cost and outside its work cost and its turn count, and the summary's
@@ -241,6 +241,30 @@ unparseable arguments spends real money whether or not any of it did work.
 
 The compaction summarizer's own model calls sit outside gg's run totals, so this
 ceiling measures exactly what the run record reports.
+
+#### Abandoned replies
+
+A reply [loop detection](/gg/loop-detection/) abandoned is billed like any other
+output, but a stream gg dropped never delivers its usage, so its price is read
+back at session end. The client keeps the generation id of every reply it
+abandons, taken from the first streamed chunk, beside the size the detector
+counted. Before the `session_summary` is written, gg looks each one up on
+OpenRouter's generation endpoint (`GET /api/v1/generation?id=…`) and adds the
+returned `total_cost` and token counts to the slot that generated the reply.
+
+The endpoint answers `404` for about ten seconds after a cancel, so the lookups
+run concurrently and each retries a `404` on a short schedule bounded at 30
+seconds in total. The lookup runs once at session end and never on the turn, so
+a looping model does not add the delay to its own retry and `maxCost` never
+reads these prices.
+
+An answered price lands on the slot's `slotCosts` entry and in `cost` alone,
+since the reply produced no program and no tool call. It joins the stream as a
+`usage` delta marked `total`, so summing every delta still reproduces the total.
+A reply the lookup could not price stays unpriced, and the summary's
+`loopAbortUnpriced` counts those replies, so the recorded total can be compared
+against the key's billing. A lookup that fails leaves the run's terminal status
+and exit code as they were.
 
 ### `modelCallTimeoutSecs`
 
@@ -754,10 +778,10 @@ out of its work cost.
   model's rather than the provider's, and it is named separately in the log
   (_"model looped every attempt"_), because "retries exhausted" would send an
   operator looking at the provider for an outage that never happened. The size
-  of the discarded replies rides the error turn's `loopAborts` figures. They
-  have no price, since an abandoned stream never delivers its usage. The
-  recorded base error kind is `model_api` and the recorded type is
-  `model_response_loop`.
+  of the discarded replies rides the error turn's `loopAborts` figures, and their
+  price is read back at session end as [abandoned replies](#abandoned-replies)
+  describes. The recorded base error kind is `model_api` and the recorded type
+  is `model_response_loop`.
 
 A run that ends on these does so under `limit_exceeded`, on whichever error
 ceiling the repeated failures breached, and never under `model_error`.

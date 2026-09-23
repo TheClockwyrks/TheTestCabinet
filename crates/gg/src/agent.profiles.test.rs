@@ -111,7 +111,7 @@ async fn drive_profile(
             ..Agent::root(ROOT_PROFILE_ID)
         },
         AgentRole::Root,
-        client,
+        client.into(),
         inbox_rx,
         GgSessionAgentOrigin::Root,
     )

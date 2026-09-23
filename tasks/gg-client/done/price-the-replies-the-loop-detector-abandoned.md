@@ -45,9 +45,9 @@ abandoned reply's cost is in neither figure.
 
 ## Done when
 
-- [ ] An abandoned reply's cost is in the run's total cost when the generation
+- [x] An abandoned reply's cost is in the run's total cost when the generation
       endpoint answers for it.
-- [ ] The session summary says how many abandoned replies stayed unpriced.
-- [ ] The lookup runs at session end and never on the turn.
-- [ ] The execution limits and loop detection pages describe the lookup.
-- [ ] Gates green.
+- [x] The session summary says how many abandoned replies stayed unpriced.
+- [x] The lookup runs at session end and never on the turn.
+- [x] The execution limits and loop detection pages describe the lookup.
+- [x] Gates green.

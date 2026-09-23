@@ -2573,17 +2573,16 @@ export type GgErrorSummary = {
    * the count beside them is only how often.
    *
    * The units are the ones gg measured itself, as the replies streamed. There is deliberately no
-   * token count and no price: gg's [cost](crate::metrics::Cost) and
+   * token count and no price here: gg's [cost](crate::metrics::Cost) and
    * [tokens](crate::metrics::TokenCounts) come from the provider's usage payload, which arrives
    * at the end of a stream an abandoned reply never reached, so any figure in those units would
    * be an estimate published where every neighbouring figure is a measurement.
    *
-   * This output is charged to the provider bill, and it reaches neither of the run's cost
-   * figures — the [work](GgSessionSummary::work_cost) nor the
-   * [total](GgSessionSummary::cost) — because gg has no price for it: a looping reply is
-   * dropped before the stream's usage trailer, so unlike every other spend in this summary it
-   * is a measurement gg never received rather than one it set aside. The figures here are what
-   * makes that omission visible rather than silent.
+   * This output is charged to the provider bill. Its price is read back at session end from
+   * OpenRouter's generation endpoint into the run's [total](GgSessionSummary::cost) and never
+   * its [work](GgSessionSummary::work_cost), since the reply produced no program and no tool
+   * call. A reply the lookup could not price is counted in
+   * [`GgSessionSummary::loop_abort_unpriced`].
    */
   loopAbortWords: number;
   /**
@@ -3132,6 +3131,18 @@ export type GgSessionSummary = {
    * work cost. `None` for a run whose priced turns were all non-work, and omitted then.
    */
   workCost?: CostMetrics;
+  /**
+   * How many replies [loop detection](GgLoopDetection) abandoned stayed **unpriced**: the
+   * session-end lookup that reads an abandoned reply's price off OpenRouter's generation
+   * endpoint never answered for them, or the reply's stream named no generation id to look up.
+   * Their output is in neither [cost figure](Self::cost), so the recorded total falls short of
+   * the key's billing by exactly what these replies cost.
+   *
+   * Recorded once at session end, where the lookup runs, rather than folded from any turn.
+   * Omitted when zero, which is every run whose lookups all answered and every run that
+   * abandoned no reply.
+   */
+  loopAbortUnpriced?: number;
   /**
    * The per-`(provider, model)` health rollup for the run — which upstream providers served its
    * model calls and how the calls each one served went; see [`GgProviderStat`]. One slice per

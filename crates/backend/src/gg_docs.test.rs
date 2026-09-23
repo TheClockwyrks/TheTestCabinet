@@ -60,6 +60,7 @@ fn gg_record(id: &str, model: &str) -> RunRecord {
                 compile_ms: 0,
                 errors: Default::default(),
                 tool_calls: 0,
+                loop_abort_unpriced: 0,
                 provider_stats: Vec::new(),
                 issues_created: 0,
                 issues_completed: 0,

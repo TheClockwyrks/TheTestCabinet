@@ -696,8 +696,9 @@ async fn an_unparseable_reply_is_an_error_turn_and_only_the_total_pays_for_it() 
 
 /// A reply the loop detector abandoned on every client attempt is one error turn on the same
 /// terms: the discarded replies never enter the context, their size rides the turn's outcome
-/// event, and their (unreportable) spend costs the run's totals nothing because a dropped stream
-/// never delivered a price. The run carries on; only the error ceilings can end it.
+/// event, and their spend costs the run's totals nothing here — a dropped stream never delivered a
+/// price and this client keeps no generation ledger to read one back from. The run carries on;
+/// only the error ceilings can end it.
 #[tokio::test]
 async fn a_reply_that_looped_on_every_attempt_is_an_error_turn_and_the_run_carries_on() {
     let dir = TempDir::new().unwrap();

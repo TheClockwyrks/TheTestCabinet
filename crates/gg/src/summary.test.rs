@@ -762,6 +762,18 @@ fn a_subagents_breach_is_not_reported_as_the_runs_outcome() {
     assert_eq!(summary.limit_hit, Some(breach(GgLimitKind::Cost, "root")));
 }
 
+/// The unpriced-abandoned-reply count is **recorded** on the same terms the run's own breach is:
+/// the pricing pass runs once at session end, after every agent has finished, so no turn's event
+/// carries the figure. It lands beside the two cost figures so a reader can bound what the
+/// recorded total is missing against the key's billing.
+#[test]
+fn the_unpriced_abandoned_reply_count_is_recorded_at_session_end() {
+    let tracker = SessionSummaryTracker::new();
+    assert_eq!(tracker.finalize("completed").loop_abort_unpriced, 0);
+    tracker.record_loop_abort_unpriced(3);
+    assert_eq!(tracker.finalize("completed").loop_abort_unpriced, 3);
+}
+
 // ---------------------------------------------------------------------------
 // The error rollup
 // ---------------------------------------------------------------------------
