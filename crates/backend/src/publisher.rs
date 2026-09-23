@@ -71,6 +71,10 @@ struct PublisherInner {
     snapshot_retention: Duration,
     /// Pinged when a publish marks the store dirty, waking the debounce loop.
     wake: Notify,
+    /// How many refreshes the background loop has finished, so a test can wait for the loop to
+    /// act rather than poll the database on a timer.
+    #[cfg(test)]
+    refreshes: tokio::sync::watch::Sender<u64>,
 }
 
 /// The timing knobs a publisher is built with, grouped so the two `Duration`s
@@ -126,6 +130,8 @@ impl Publisher {
                 coalesce: timing.coalesce,
                 snapshot_retention: timing.snapshot_retention,
                 wake: Notify::new(),
+                #[cfg(test)]
+                refreshes: tokio::sync::watch::channel(0).0,
             }),
         }
     }
@@ -171,6 +177,8 @@ impl Publisher {
                             if let Err(err) = run_refresh(&inner).await {
                                 tracing::error!("coalesced snapshot refresh failed: {err}");
                             }
+                            #[cfg(test)]
+                            inner.refreshes.send_modify(|finished| *finished += 1);
                         }
                         _ = shutdown_rx.recv() => break,
                     }
@@ -182,6 +190,12 @@ impl Publisher {
             _shutdown: shutdown_tx,
             handle,
         }
+    }
+
+    /// A receiver that changes each time the background loop finishes a coalesced refresh.
+    #[cfg(test)]
+    pub(crate) fn refreshes(&self) -> tokio::sync::watch::Receiver<u64> {
+        self.inner.refreshes.subscribe()
     }
 
     /// Force an immediate refresh, bypassing the debounce (operator recovery via

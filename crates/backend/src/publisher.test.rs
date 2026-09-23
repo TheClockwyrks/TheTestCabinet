@@ -129,13 +129,10 @@ async fn forced_refresh_regenerates_and_clears_dirty_in_dev_mode() {
     assert_eq!(state.last_run_count, Some(1));
 }
 
-// Real time (not the paused clock): the async SQLite pool the refresher drives
-// does its work on a blocking thread, which a paused clock cannot advance through
-// deterministically. The coalescing window is only 10ms (see `dev_publisher`), so
-// a generous real-time poll for the cleared flag is both reliable and fast.
 #[tokio::test]
 async fn coalesced_refresher_folds_a_burst_into_one_clear() {
     let (_dir, publisher, db) = dev_publisher().await;
+    let mut refreshes = publisher.refreshes();
     let handle = publisher.spawn();
 
     // A burst of three publishes, each waking the debounce loop.
@@ -145,16 +142,17 @@ async fn coalesced_refresher_folds_a_burst_into_one_clear() {
     }
 
     // The debounce loop coalesces the burst, converging on a clean snapshot over
-    // the full three-run set. Poll up to ~2s (far longer than the 10ms window) for
-    // that terminal state. Waiting on the converged count, rather than the first
-    // cleared flag, tolerates an early refresh that snapshots a row mid-burst —
-    // the loop always runs a final refresh once the last publish has landed.
+    // the full three-run set. Each check follows a refresh the loop finished, and
+    // waiting on the converged count rather than the first cleared flag tolerates
+    // an early refresh that snapshots a row mid-burst — the loop always runs a
+    // final refresh once the last publish has landed. A loop that never got there
+    // would leave this waiting, and nextest would stop the test.
     let mut state = db.snapshot_state().await.unwrap();
-    for _ in 0..100 {
-        if !state.dirty && state.last_run_count == Some(3) {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(20)).await;
+    while state.dirty || state.last_run_count != Some(3) {
+        refreshes
+            .changed()
+            .await
+            .expect("the refresher is still running");
         state = db.snapshot_state().await.unwrap();
     }
     assert!(!state.dirty, "the coalesced refresh cleared the dirty flag");
