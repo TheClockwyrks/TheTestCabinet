@@ -233,28 +233,41 @@ fn a_symlink_is_not_followed() {
 // The size bounds
 // ---------------------------------------------------------------------------
 
-/// The entry ceiling cuts the rendering and says so in the same prose the tree came back as.
+/// The entry ceiling cuts the rendering and says so in the same prose the tree came back as. The
+/// ceiling is set to ten so fifteen files cross it; the production call renders under
+/// [`TREE_MAX_ENTRIES`] through the same path.
 #[test]
 fn the_entry_ceiling_cuts_and_says_so() {
     let (dir, ctx) = workspace();
-    for index in 0..(TREE_MAX_ENTRIES + 50) {
-        write(dir.path(), &format!("f{index:05}.txt"), "");
+    for index in 0..15 {
+        write(dir.path(), &format!("f{index:02}.txt"), "");
     }
 
-    let outcome = tree(&ctx, Some(1));
+    let outcome = TreeTool.tree_within(&ctx, None, Some(1), 10);
     let out = rendered(&outcome).to_string();
+    let shown: Vec<&str> = out.lines().filter(|line| line.ends_with(".txt")).collect();
+    assert_eq!(shown.len(), 10, "{out}");
     assert_eq!(
-        out.lines().filter(|line| line.ends_with(".txt")).count(),
-        TREE_MAX_ENTRIES
+        shown.last(),
+        Some(&"f09.txt"),
+        "the first ten in path order"
     );
-    assert!(
-        out.contains(&format!("[showing the first {TREE_MAX_ENTRIES} entries;")),
-        "{out}"
-    );
-    assert_eq!(
-        outcome.summary.as_deref(),
-        Some(format!("{TREE_MAX_ENTRIES} entries (cut at {TREE_MAX_ENTRIES})").as_str())
-    );
+    assert!(out.contains("[showing the first 10 entries;"), "{out}");
+    assert_eq!(outcome.summary.as_deref(), Some("10 entries (cut at 10)"));
+}
+
+/// A directory that exactly fills the entry ceiling is shown whole, with no line claiming a cut.
+#[test]
+fn a_tree_that_exactly_fills_the_entry_ceiling_is_not_cut() {
+    let (dir, ctx) = workspace();
+    for index in 0..10 {
+        write(dir.path(), &format!("f{index:02}.txt"), "");
+    }
+
+    let outcome = TreeTool.tree_within(&ctx, None, Some(1), 10);
+    let out = rendered(&outcome).to_string();
+    assert!(!out.contains("[showing the first"), "{out}");
+    assert_eq!(outcome.summary.as_deref(), Some("10 entries"));
 }
 
 /// The byte ceiling binds before the entry ceiling when the names are long, and the rendering

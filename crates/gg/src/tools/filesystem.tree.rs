@@ -129,6 +129,19 @@ impl TreeTool {
         path: Option<String>,
         depth: Option<u32>,
     ) -> ToolOutcome {
+        self.tree_within(ctx, path, depth, TREE_MAX_ENTRIES)
+    }
+
+    /// [`tree`](Self::tree), rendering at most `max_entries` lines rather than
+    /// [`TREE_MAX_ENTRIES`], so the entry ceiling can be exercised on a directory of a dozen
+    /// entries.
+    fn tree_within(
+        &self,
+        ctx: &ToolContext,
+        path: Option<String>,
+        depth: Option<u32>,
+        max_entries: usize,
+    ) -> ToolOutcome {
         let depth = match depth {
             None => TREE_DEFAULT_DEPTH,
             Some(0) => {
@@ -156,7 +169,7 @@ impl TreeTool {
         }
 
         let rows = walk_rows(&root, depth);
-        let (output, shown, cut) = render(&rows);
+        let (output, shown, cut) = render(&rows, max_entries);
         let summary = match (shown, cut) {
             (0, _) => "empty".to_string(),
             (shown, false) => format!("{shown} entries"),
@@ -232,12 +245,12 @@ fn walk_rows(root: &Path, depth: u32) -> Vec<Row> {
     rows
 }
 
-/// The rows as the model reads them, plus how many were shown and whether the size bounds cut the
-/// rest.
+/// The rows as the model reads them, plus how many were shown and whether the size bounds —
+/// `max_entries` lines and [`TREE_MAX_BYTES`] bytes — cut the rest.
 ///
 /// An empty tree is `(empty directory)` rather than an empty string, so a view of one is never
 /// blank.
-fn render(rows: &[Row]) -> (String, usize, bool) {
+fn render(rows: &[Row], max_entries: usize) -> (String, usize, bool) {
     if rows.is_empty() {
         return ("(empty directory)".to_string(), 0, false);
     }
@@ -245,7 +258,7 @@ fn render(rows: &[Row]) -> (String, usize, bool) {
     let mut bytes = 0usize;
     let mut cut = false;
     for row in rows {
-        if lines.len() == TREE_MAX_ENTRIES {
+        if lines.len() == max_entries {
             cut = true;
             break;
         }
