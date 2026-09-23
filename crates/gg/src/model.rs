@@ -14,6 +14,7 @@
 //! second provider is an addition in [`crate::client`], not a change here.
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
 use crate::limits::TurnErrorType;
@@ -287,6 +288,33 @@ pub struct ModelResponse {
     /// a required field would be a silent trap for the first thing that does.
     #[serde(default)]
     pub loop_aborts: LoopAborts,
+    /// The provider's **usage object verbatim** — exactly the JSON the gateway returned in the
+    /// response's `usage` block — beside the [mapped counts](Self::usage).
+    ///
+    /// A usage figure gg publishes is a claim about what the provider said, and the claim is
+    /// checkable only while the record holds what the provider said. The reasoning/output split in
+    /// particular is [bounded](Self::usage_reconciled) by the reply's own measured size, so a row
+    /// can carry gg's figure rather than the provider's; without the original beside it, a
+    /// dashboard total and a published per-turn figure could disagree with nothing on the record
+    /// to say which was right.
+    ///
+    /// `None` when the call reported no usage at all. `#[serde(default)]` on the same terms as
+    /// [`loop_aborts`](Self::loop_aborts) — nothing stores a `ModelResponse` today.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage_wire: Option<Value>,
+    /// Whether the recorded output/reasoning split is **gg's bound** rather than the provider's.
+    ///
+    /// A reply is never recorded with fewer output tokens than its own estimated size: a provider
+    /// whose `reasoning_tokens` leaves the reply no room under its own `completion_tokens` is
+    /// recorded with the reply's size as output and the remainder as reasoning, and this flag set.
+    /// The billed total is the provider's either way — both halves are priced as output — but every
+    /// per-turn and per-run output figure a study publishes is read off this split, which is what
+    /// the flag marks as gg's rather than the provider's.
+    ///
+    /// `false` — the provider's own split — for every call whose details were consistent with the
+    /// reply.
+    #[serde(default)]
+    pub usage_reconciled: bool,
 }
 
 /// What one model call's abandoned attempts amounted to: the count, and the size of the generation

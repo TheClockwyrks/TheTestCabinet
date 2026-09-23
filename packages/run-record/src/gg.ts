@@ -3278,6 +3278,32 @@ export type GgTelemetryKind =
        * only blacklistable — if every call's spend names who served it.
        */
       provider?: string;
+      /**
+       * The provider's **usage object, verbatim** as the gateway returned it, beside the
+       * [mapped counts](Self::Usage::tokens) — the record a disagreement between the two is
+       * read off. A provider reports its completion total and, in its details, how much of
+       * that total was reasoning; gg records
+       * [output as the remainder](Self::Usage::reconciled), and a provider whose details leave
+       * the reply no room is visible here for exactly what it said rather than only as gg's
+       * corrected split of it.
+       *
+       * Present on every row that reported usage: an unmapped call is a call whose spend
+       * cannot be checked, which is the condition this field exists to end. Held as
+       * free-form JSON rather than a typed shape because it is the provider's, not ours —
+       * every field it carries is a fact about the gateway's own vocabulary, and the event's
+       * typed fields above are already the normalized form of the parts gg maps.
+       */
+      wire?: Record<string, unknown>;
+      /**
+       * Whether the output/reasoning split above is **gg's bound** rather than the provider's
+       * own. A reply is never recorded with fewer output tokens than its own estimated size —
+       * the figure the [message log](Self::Prompt) charges it — so a provider whose
+       * reasoning figure leaves the reply no room is recorded with the reply's size as output,
+       * the remainder of `completion_tokens` as reasoning, and this flag set: the mark that
+       * says the output figure is gg's rather than the provider's. Absent on a row recorded
+       * exactly as the provider reported it, which is the ordinary one.
+       */
+      reconciled?: boolean;
     }
   | {
       type: "response_rejected";
@@ -4525,6 +4551,32 @@ export type GgTelemetryEvent = {
        * only blacklistable — if every call's spend names who served it.
        */
       provider?: string;
+      /**
+       * The provider's **usage object, verbatim** as the gateway returned it, beside the
+       * [mapped counts](Self::Usage::tokens) — the record a disagreement between the two is
+       * read off. A provider reports its completion total and, in its details, how much of
+       * that total was reasoning; gg records
+       * [output as the remainder](Self::Usage::reconciled), and a provider whose details leave
+       * the reply no room is visible here for exactly what it said rather than only as gg's
+       * corrected split of it.
+       *
+       * Present on every row that reported usage: an unmapped call is a call whose spend
+       * cannot be checked, which is the condition this field exists to end. Held as
+       * free-form JSON rather than a typed shape because it is the provider's, not ours —
+       * every field it carries is a fact about the gateway's own vocabulary, and the event's
+       * typed fields above are already the normalized form of the parts gg maps.
+       */
+      wire?: Record<string, unknown>;
+      /**
+       * Whether the output/reasoning split above is **gg's bound** rather than the provider's
+       * own. A reply is never recorded with fewer output tokens than its own estimated size —
+       * the figure the [message log](Self::Prompt) charges it — so a provider whose
+       * reasoning figure leaves the reply no room is recorded with the reply's size as output,
+       * the remainder of `completion_tokens` as reasoning, and this flag set: the mark that
+       * says the output figure is gg's rather than the provider's. Absent on a row recorded
+       * exactly as the provider reported it, which is the ordinary one.
+       */
+      reconciled?: boolean;
     }
   | {
       type: "response_rejected";

@@ -12563,6 +12563,13 @@ fn record_usage(response: &ModelResponse, emitter: &Emitter, profile_id: &str, m
         tokens: response.usage,
         cost: response.cost,
         provider: response.provider.clone(),
+        // The provider's own object, verbatim, beside the counts mapped off it, and the mark
+        // saying when the output/reasoning split is the [bound](ModelResponse::usage_reconciled)
+        // rather than what the provider reported. Both ride through unchanged: what gg mapped and
+        // what gg corrected are exactly the two things a reader of this row checks against the
+        // original.
+        wire: response.usage_wire.clone(),
+        reconciled: response.usage_reconciled,
     });
 }
 

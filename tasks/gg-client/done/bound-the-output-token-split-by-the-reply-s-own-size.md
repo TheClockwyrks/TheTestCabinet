@@ -38,8 +38,8 @@ for the `usage` event.
 
 ## Done when
 
-- [ ] The `usage` event carries the provider's usage object verbatim.
-- [ ] A reply is never recorded with fewer output tokens than its own size, and
+- [x] The `usage` event carries the provider's usage object verbatim.
+- [x] A reply is never recorded with fewer output tokens than its own size, and
       a reconciled row is marked.
-- [ ] The telemetry page describes the bound and the fields.
-- [ ] Gates green.
+- [x] The telemetry page describes the bound and the fields.
+- [x] Gates green.

@@ -7596,6 +7596,32 @@ pub enum GgTelemetryKind {
         /// only blacklistable — if every call's spend names who served it.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         provider: Option<String>,
+        /// The provider's **usage object, verbatim** as the gateway returned it, beside the
+        /// [mapped counts](Self::Usage::tokens) — the record a disagreement between the two is
+        /// read off. A provider reports its completion total and, in its details, how much of
+        /// that total was reasoning; gg records
+        /// [output as the remainder](Self::Usage::reconciled), and a provider whose details leave
+        /// the reply no room is visible here for exactly what it said rather than only as gg's
+        /// corrected split of it.
+        ///
+        /// Present on every row that reported usage: an unmapped call is a call whose spend
+        /// cannot be checked, which is the condition this field exists to end. Held as
+        /// free-form JSON rather than a typed shape because it is the provider's, not ours —
+        /// every field it carries is a fact about the gateway's own vocabulary, and the event's
+        /// typed fields above are already the normalized form of the parts gg maps.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "contract", ts(type = "Record<string, unknown>"))]
+        wire: Option<Value>,
+        /// Whether the output/reasoning split above is **gg's bound** rather than the provider's
+        /// own. A reply is never recorded with fewer output tokens than its own estimated size —
+        /// the figure the [message log](Self::Prompt) charges it — so a provider whose
+        /// reasoning figure leaves the reply no room is recorded with the reply's size as output,
+        /// the remainder of `completion_tokens` as reasoning, and this flag set: the mark that
+        /// says the output figure is gg's rather than the provider's. Absent on a row recorded
+        /// exactly as the provider reported it, which is the ordinary one.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        #[cfg_attr(feature = "contract", ts(optional = nullable))]
+        reconciled: bool,
     },
     /// A model reply gg **rejected whole** instead of using: today, exactly the replies that hit
     /// the provider's output cap (`finish_reason: length`), which are presumed degenerate.
