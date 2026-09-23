@@ -152,44 +152,77 @@ fn the_official_provider_is_the_one_named_for_the_models_author() {
     assert_eq!(official_provider("qwen/qwen3-coder", ["Alibaba"]), None);
 }
 
-/// The endpoints payload `official_prices` reads, with every route's provider and
-/// pricing spelled out. A bare `ModelEndpoints` can only be built through
-/// deserialization, which is also what makes the test exercise the wire shape.
-fn priced_endpoints(routes: serde_json::Value) -> Vec<ModelEndpoint> {
-    endpoints(serde_json::json!({
-        "data": { "name": "Provider: Model", "endpoints": routes },
-    }))
-    .endpoints
+/// The launch facts of an endpoints payload listing `routes`, as `model_launch_facts`
+/// derives them. A bare `ModelEndpoints` can only be built through deserialization,
+/// which is also what makes the test exercise the wire shape.
+fn facts_with_routes(model_id: &str, routes: serde_json::Value) -> ModelLaunchFacts {
+    launch_facts_of(
+        model_id,
+        endpoints(serde_json::json!({
+            "data": { "name": "Provider: Model", "endpoints": routes },
+        })),
+    )
 }
 
-/// The official price is the developer's own route's pricing block — never another
+/// The official price is the developer's own route's pricing block, never another
 /// provider's, however it is priced. The mapping is the listing block's, cache-read
 /// fallback included.
 #[test]
 fn the_official_prices_are_the_developers_routes_prices() {
-    let endpoints = priced_endpoints(serde_json::json!([
-        {
-            "provider_name": "Azure",
-            "pricing": { "prompt": "0.00001", "completion": "0.00004" },
-        },
-        {
-            "provider_name": "OpenAI",
-            "pricing": {
-                "prompt": "0.000002",
-                "completion": "0.000008",
-                "input_cache_read": "0.0000002",
+    let facts = facts_with_routes(
+        "openai/gpt-5.6-sol",
+        serde_json::json!([
+            {
+                "provider_name": "Azure",
+                "pricing": { "prompt": "0.00001", "completion": "0.00004" },
             },
-        },
-    ]));
+            {
+                "provider_name": "OpenAI",
+                "pricing": {
+                    "prompt": "0.000002",
+                    "completion": "0.000008",
+                    "input_cache_read": "0.0000002",
+                },
+            },
+        ]),
+    );
 
-    let pricing = official_pricing("openai/gpt-5.6-sol", &endpoints).expect("an official route");
     assert_eq!(
-        token_prices_of(pricing),
-        TokenPrices {
+        facts.official_prices(None),
+        Some(TokenPrices {
             uncached_input: Some(0.000_002),
             cached_input: Some(0.000_000_2),
             output: Some(0.000_008),
-        }
+        })
+    );
+}
+
+/// A hand-set pin names the official route where the listing spells the developer
+/// differently from the model id (`qwen/…` served by `Alibaba`).
+#[test]
+fn a_hand_set_pin_selects_the_official_route() {
+    let facts = facts_with_routes(
+        "qwen/qwen3-coder",
+        serde_json::json!([
+            {
+                "provider_name": "Novita",
+                "pricing": { "prompt": "0.000001", "completion": "0.000002" },
+            },
+            {
+                "provider_name": "Alibaba",
+                "pricing": { "prompt": "0.000003", "completion": "0.000006" },
+            },
+        ]),
+    );
+
+    assert_eq!(facts.official_prices(None), None);
+    assert_eq!(
+        facts.official_prices(Some("alibaba")),
+        Some(TokenPrices {
+            uncached_input: Some(0.000_003),
+            cached_input: Some(0.000_003),
+            output: Some(0.000_006),
+        })
     );
 }
 
@@ -197,21 +230,23 @@ fn the_official_prices_are_the_developers_routes_prices() {
 /// own prompt price, exactly as the listing's headline block does.
 #[test]
 fn an_official_route_without_a_cache_read_price_falls_back_to_its_prompt_price() {
-    let endpoints = priced_endpoints(serde_json::json!([
-        {
-            "provider_name": "Anthropic",
-            "pricing": { "prompt": "0.000003", "completion": "0.000015" },
-        },
-    ]));
+    let facts = facts_with_routes(
+        "anthropic/claude-sonnet-4.5",
+        serde_json::json!([
+            {
+                "provider_name": "Anthropic",
+                "pricing": { "prompt": "0.000003", "completion": "0.000015" },
+            },
+        ]),
+    );
 
-    let pricing = official_pricing("anthropic/claude-sonnet-4.5", &endpoints).unwrap();
     assert_eq!(
-        token_prices_of(pricing),
-        TokenPrices {
+        facts.official_prices(None),
+        Some(TokenPrices {
             uncached_input: Some(0.000_003),
             cached_input: Some(0.000_003),
             output: Some(0.000_015),
-        }
+        })
     );
 }
 
@@ -219,101 +254,58 @@ fn an_official_route_without_a_cache_read_price_falls_back_to_its_prompt_price()
 /// routes charge.
 #[test]
 fn a_model_the_developer_does_not_serve_has_no_official_price() {
-    let endpoints = priced_endpoints(serde_json::json!([
-        {
-            "provider_name": "Novita",
-            "pricing": { "prompt": "0.000001", "completion": "0.000002" },
-        },
-    ]));
+    let facts = facts_with_routes(
+        "moonshotai/kimi-k2",
+        serde_json::json!([
+            {
+                "provider_name": "Novita",
+                "pricing": { "prompt": "0.000001", "completion": "0.000002" },
+            },
+        ]),
+    );
 
-    assert!(official_pricing("moonshotai/kimi-k2", &endpoints).is_none());
+    assert_eq!(facts.official_prices(None), None);
 }
 
 /// A route that reports no pricing block yields no official price rather than an
 /// invented one.
 #[test]
 fn an_official_route_without_a_pricing_block_yields_none() {
-    let endpoints = priced_endpoints(serde_json::json!([
-        { "provider_name": "OpenAI" },
-    ]));
+    let facts = facts_with_routes(
+        "openai/gpt-5.6-sol",
+        serde_json::json!([{ "provider_name": "OpenAI" }]),
+    );
 
-    assert!(official_pricing("openai/gpt-5.6-sol", &endpoints).is_none());
+    assert_eq!(facts.provider_pin.as_deref(), Some("OpenAI"));
+    assert_eq!(facts.official_prices(None), None);
 }
 
 /// An unparseable or negative price on the official route reads as unknown, exactly
-/// as it does on the listing path — and a genuine `"0"` stays a real zero.
+/// as it does on the listing path, and a genuine `"0"` stays a real zero.
 #[test]
 fn an_unparseable_official_price_is_unknown_like_the_listings() {
-    let endpoints = priced_endpoints(serde_json::json!([
-        {
-            "provider_name": "OpenAI",
-            "pricing": {
-                "prompt": "-1",
-                "completion": "not-a-price",
-                "input_cache_read": "0",
+    let facts = facts_with_routes(
+        "openai/gpt-5.6-sol",
+        serde_json::json!([
+            {
+                "provider_name": "OpenAI",
+                "pricing": {
+                    "prompt": "-1",
+                    "completion": "not-a-price",
+                    "input_cache_read": "0",
+                },
             },
-        },
-    ]));
+        ]),
+    );
 
-    let pricing = official_pricing("openai/gpt-5.6-sol", &endpoints).unwrap();
     assert_eq!(
-        token_prices_of(pricing),
-        TokenPrices {
+        facts.official_prices(None),
+        Some(TokenPrices {
             uncached_input: None,
             // An explicit free cache-read rate wins over the prompt-price fallback.
             cached_input: Some(0.0),
             output: None,
-        }
-    );
-}
-
-/// A catalog entry's stored prices are its official route's when one exists, and the
-/// listing's own headline block when no route belongs to the developer.
-#[test]
-fn the_stored_prices_prefer_the_official_route_and_fall_back_to_the_listing() {
-    let listing = serde_json::json!({
-        "id": "openai/gpt-5.6-sol",
-        "pricing": { "prompt": "0.00001", "completion": "0.00004" },
-    });
-
-    let official = priced_endpoints(serde_json::json!([
-        {
-            "provider_name": "OpenAI",
-            "pricing": { "prompt": "0.000002", "completion": "0.000008" },
-        },
-    ]));
-    let with_official: Model = serde_json::from_value(listing.clone()).unwrap();
-    assert_eq!(
-        details_of(
-            with_official,
-            official_pricing("openai/gpt-5.6-sol", &official)
-        )
-        .prices,
-        TokenPrices {
-            uncached_input: Some(0.000_002),
-            cached_input: Some(0.000_002),
-            output: Some(0.000_008),
-        }
-    );
-
-    let third_party_only = priced_endpoints(serde_json::json!([
-        {
-            "provider_name": "Azure",
-            "pricing": { "prompt": "0.000007", "completion": "0.000028" },
-        },
-    ]));
-    let without_official: Model = serde_json::from_value(listing).unwrap();
-    assert_eq!(
-        details_of(
-            without_official,
-            official_pricing("openai/gpt-5.6-sol", &third_party_only)
-        )
-        .prices,
-        TokenPrices {
-            uncached_input: Some(0.000_01),
-            cached_input: Some(0.000_01),
-            output: Some(0.000_04),
-        }
+        })
     );
 }
 

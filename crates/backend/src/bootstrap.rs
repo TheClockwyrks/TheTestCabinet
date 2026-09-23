@@ -289,7 +289,7 @@ async fn try_observe_completion(
         // unlisted model) simply records no price.
         Err(_) => return Ok(()),
     };
-    let details = with_observed_pin(db, prices, &canonical, &lookup, &details).await?;
+    let details = with_official_endpoint(db, prices, &canonical, &lookup, &details).await?;
     let now = OffsetDateTime::now_utc().format(&Rfc3339)?;
     insert_if_changed(db, &canonical, &details, &now).await?;
     Ok(())
@@ -344,7 +344,7 @@ async fn seed_missing_prices(
         let Some(details) = catalog.get(&lookup) else {
             continue;
         };
-        let details = with_observed_pin(db, prices, &storage_key, &lookup, details).await?;
+        let details = with_official_endpoint(db, prices, &storage_key, &lookup, details).await?;
         if insert_if_changed(db, &storage_key, &details, &now).await? {
             seeded += 1;
         }
@@ -446,12 +446,13 @@ pub async fn seed_catalog_prices(db: &Db, prices: &OpenRouterPrices) -> Result<u
     seed_missing_prices(db, prices, targets).await
 }
 
-/// Re-observe the **billed rate** of every known model from a single OpenRouter
-/// catalog fetch: each curated model against its configured slug, and each model a
-/// run references against its canonical lookup id. Appends an observation only
-/// where the billed rate (or a fact riding along on it) changed. The refresh
-/// records the billed rate beside the curated list price — it never rewrites what
-/// a run is scored at. Returns how many models got a new observation.
+/// Re-observe the **billed rate** of every known model: each curated model against its
+/// configured slug, and each model a run references against its canonical lookup id. The
+/// catalog facts come from a single OpenRouter catalog fetch and the billed rate from each
+/// model's endpoints listing, as the price of its official endpoint. Appends an observation
+/// only where the billed rate (or a fact riding along on it) changed. The observation sits
+/// beside the curated list price and never changes what a run is scored at. Returns how many
+/// models got a new observation.
 pub async fn refresh_all_prices(db: &Db, prices: &OpenRouterPrices) -> Result<usize> {
     let catalog = match prices.all_model_details().await {
         Ok(catalog) => catalog,
@@ -483,7 +484,7 @@ pub async fn refresh_all_prices(db: &Db, prices: &OpenRouterPrices) -> Result<us
         let Some(details) = catalog.get(&lookup) else {
             continue;
         };
-        let details = with_observed_pin(db, prices, &storage_key, &lookup, details).await?;
+        let details = with_official_endpoint(db, prices, &storage_key, &lookup, details).await?;
         if insert_if_changed(db, &storage_key, &details, &now).await? {
             changed += 1;
         }
@@ -491,31 +492,51 @@ pub async fn refresh_all_prices(db: &Db, prices: &OpenRouterPrices) -> Result<us
     Ok(changed)
 }
 
-/// `details` with its [provider pin](ModelDetails::provider_pin) observed from `lookup`'s
-/// endpoints listing, which the models listing `details` came from does not carry.
+/// `details` with its [provider pin](ModelDetails::provider_pin) and billed rate read from
+/// `lookup`'s endpoints listing, which the models listing `details` came from does not
+/// carry.
 ///
-/// A listing that cannot be read keeps the pin last recorded under `storage_key`, so an
-/// unreachable endpoint never records a model as having lost its official provider.
-async fn with_observed_pin(
+/// The billed rate is the official endpoint's price: the route of the catalog entry's
+/// hand-set pin when it has one, else of the observed pin. A model with no priced official
+/// route keeps the listing's headline price. A listing that cannot be read keeps the pin and
+/// the prices last recorded under `storage_key`, so an unreachable endpoint never records a
+/// model as having lost its official provider or swapped to the headline price.
+async fn with_official_endpoint(
     db: &Db,
     prices: &OpenRouterPrices,
     storage_key: &str,
     lookup: &str,
     details: &ModelDetails,
 ) -> Result<ModelDetails> {
-    let provider_pin = match prices.model_launch_facts(lookup).await {
-        Ok(facts) => facts.provider_pin,
+    match prices.model_launch_facts(lookup).await {
+        Ok(facts) => {
+            let hand_pin = db.provider_pin_for_alias(storage_key).await?;
+            let billed = facts
+                .official_prices(hand_pin.as_deref())
+                .unwrap_or(details.prices);
+            Ok(ModelDetails {
+                prices: billed,
+                provider_pin: facts.provider_pin,
+                ..details.clone()
+            })
+        }
         Err(err) => {
             tracing::debug!(lookup, error = %err, "could not read a model's endpoints listing");
-            db.latest_price(storage_key)
-                .await?
-                .and_then(|latest| latest.provider_pin)
+            let latest = db.latest_price(storage_key).await?;
+            Ok(ModelDetails {
+                prices: latest
+                    .as_ref()
+                    .map(|row| TokenPrices {
+                        uncached_input: row.uncached_input,
+                        cached_input: row.cached_input,
+                        output: row.output,
+                    })
+                    .unwrap_or(details.prices),
+                provider_pin: latest.and_then(|row| row.provider_pin),
+                ..details.clone()
+            })
         }
-    };
-    Ok(ModelDetails {
-        provider_pin,
-        ..details.clone()
-    })
+    }
 }
 
 /// Spawn the periodic price refresher, returning its task handle (kept alive for
