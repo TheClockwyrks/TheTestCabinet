@@ -24,10 +24,7 @@ inv["modelWindows"] = w["modelWindows"]
 inv["modelModalities"] = w["modelModalities"]
 slug = lambda s: re.sub(r"[^a-z0-9]+", "-", s.lower()).strip("-")
 issue_slug = slug(re.sub(r"\.md$", "", issue.rsplit("/", 1)[-1]))
-# OpenAI caps prompt_cache_key at 64 characters and gg sends the session id as that key,
-# so the issue slug is cut to whatever room the model and mode leave.
-tail = f"-{slug(model)}-{mode}"
-inv["sessionId"] = ("gg-" + issue_slug[: max(8, 64 - 3 - len(tail))]).rstrip("-") + tail
+inv["sessionId"] = f"gg-{issue_slug}-{slug(model)}-{mode}"
 inv["workspaceDir"] = workspace
 inv["prompt"] = (
     "The workspace is the repository this issue describes. Implement the issue below. "
