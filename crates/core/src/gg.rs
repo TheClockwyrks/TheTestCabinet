@@ -6857,12 +6857,11 @@ pub struct GgErrorSummary {
     /// at the end of a stream an abandoned reply never reached, so any figure in those units would
     /// be an estimate published where every neighbouring figure is a measurement.
     ///
-    /// This output is charged to the provider bill, and its price is read back at session end from
-    /// OpenRouter's generation ledger — into the run's [total](GgSessionSummary::cost) and never
+    /// This output is charged to the provider bill. Its price is read back at session end from
+    /// OpenRouter's generation endpoint into the run's [total](GgSessionSummary::cost) and never
     /// its [work](GgSessionSummary::work_cost), since the reply produced no program and no tool
-    /// call. A reply whose lookup never answered stays unpriced and is counted in
-    /// [`GgSessionSummary::loop_abort_unpriced`], which is what makes the gap between the recorded
-    /// total and the key's billing visible rather than silent.
+    /// call. A reply the lookup could not price is counted in
+    /// [`GgSessionSummary::loop_abort_unpriced`].
     pub loop_abort_words: u64,
     /// Characters of generated output across every reply [`loop_aborts`](Self::loop_aborts) counts
     /// — the companion of [`loop_abort_words`](Self::loop_abort_words), and the finer of the two
@@ -7485,18 +7484,17 @@ pub struct GgSessionSummary {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub work_cost: Option<Cost>,
-    /// How many replies [loop detection](GgLoopDetection) abandoned stayed **unpriced** — the
-    /// session-end lookup that reads an abandoned reply's price back off OpenRouter's generation
-    /// ledger never answered for these, so their output is in neither [cost figure](Self::cost)
-    /// above. Read beside them: what the recorded total is missing against the key's billing is
-    /// exactly the output [`GgErrorSummary::loop_abort_chars`] sizes over the replies this counts
-    /// and the ones the lookup did price.
+    /// How many replies [loop detection](GgLoopDetection) abandoned stayed **unpriced**: the
+    /// session-end lookup that reads an abandoned reply's price off OpenRouter's generation
+    /// endpoint never answered for them, or the reply's stream named no generation id to look up.
+    /// Their output is in neither [cost figure](Self::cost), so the recorded total falls short of
+    /// the key's billing by exactly what these replies cost.
     ///
-    /// Recorded once at session end, where the lookup runs — the figure is a property of the whole
-    /// session's lookups rather than of any turn — and `0` for every run whose agents left loop
-    /// detection disarmed and for one whose lookups all answered. `#[serde(default)]` so a summary
-    /// recorded before this figure existed still reads back.
-    #[serde(default)]
+    /// Recorded once at session end, where the lookup runs, rather than folded from any turn.
+    /// Omitted when zero, which is every run whose lookups all answered and every run that
+    /// abandoned no reply.
+    #[serde(default, skip_serializing_if = "is_zero_u64")]
+    #[cfg_attr(feature = "contract", ts(optional = nullable))]
     pub loop_abort_unpriced: u64,
     /// The per-`(provider, model)` health rollup for the run — which upstream providers served its
     /// model calls and how the calls each one served went; see [`GgProviderStat`]. One slice per

@@ -549,9 +549,7 @@ impl SessionSummaryTracker {
     /// The caller is the session's pricing pass, which runs once at session end and reads the whole
     /// run's [record of abandoned replies](crate::client::AbandonedReplies) — which is why this is
     /// recorded like [`record_limit_hit`](Self::record_limit_hit) rather than folded: a property of
-    /// the session's lookups as a whole is no turn's figure. Recorded even when the answer is zero,
-    /// so "were every abandoned reply's prices read back?" is answered by the field's presence
-    /// rather than by its absence.
+    /// the session's lookups as a whole is no turn's figure.
     pub fn record_loop_abort_unpriced(&self, unpriced: u64) {
         let mut state = self.inner.lock().expect("summary tracker lock");
         state.loop_abort_unpriced = unpriced;
