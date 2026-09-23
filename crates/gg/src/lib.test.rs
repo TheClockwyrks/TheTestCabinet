@@ -501,7 +501,7 @@ fn a_subcommand_and_a_bare_config_conflict() {
 /// `gg reference --out <DIR>` parses to the directory it was given.
 ///
 /// The flag is the whole interface between this binary and every consumer of the reference — two
-/// image builds and the release workflow spell it on a `RUN` line, where a rename would surface as
+/// image builds and `scripts/ci/gg-dist.sh` spell it on a command line, where a rename would surface as
 /// a clap error inside a container build and nowhere else. It is asserted here for the same reason
 /// the bare `--config` form above is: a shell is not a type system.
 #[test]
@@ -577,7 +577,7 @@ fn writing_the_reference_leaves_the_documents_the_backend_reads() {
 
 /// A write that fails says **which path** failed.
 ///
-/// The failure lands in a `RUN` line of two image builds and of the release workflow, where an
+/// The failure lands in a `RUN` line of two image builds and in `scripts/ci/gg-dist.sh`, where an
 /// operator sees the message and nothing else. `std::io::Error` carries no path, so this asserts the
 /// wrapper that adds one has not been quietly unwrapped back to a bare errno.
 #[test]

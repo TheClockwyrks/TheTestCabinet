@@ -37,7 +37,7 @@ spec:
     spec:
       containers:
         - name: backend
-          image: REPLACE_REGISTRY/tcab-backend:latest # CI publishes ghcr.io/<owner>/tcab-backend; pin a :<git-sha> tag
+          image: REPLACE_REGISTRY/tcab-backend:latest # the Azure pipeline publishes testcabinet.azurecr.io/tcab-backend:<git-sha>
           ports:
             - containerPort: 8787
           env:

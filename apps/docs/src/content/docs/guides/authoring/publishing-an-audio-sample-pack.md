@@ -248,30 +248,33 @@ runs wherever the store ends up. [Staging a
 run](/components/core/execution/#staged-audio) verifies every clip it copies into
 a container against it.
 
-`./containers/build.sh audio-store`, and the `Build containers` CI workflow, run
-the stager and build the data-only `audio-store` image over its output. Run the
-stager on its own to materialize the tree without building.
+`./containers/build.sh audio-store` and the Azure pipeline both run the stager
+and build the data-only `audio-store` image over its output. Run the stager on
+its own to materialize the tree without building.
 
 ```sh
 node scripts/stage-audio-store.mjs                 # every published pack
 node scripts/stage-audio-store.mjs gm-lite@0.1.0   # only the refs you name
 
-PUSH=1 IMAGE_REGISTRY=ghcr.io/theclockwyrks ./containers/build.sh audio-store
+./containers/build.sh audio-store                  # the image, locally
 ```
 
-The `audio-store` image is what carries the store to a machine with no checkout
-and no credentials. The driver image copies it in at `/opt/tcab-audio`, and a
-local checkout fetches it with `scripts/fetch-audio-store.sh`, which pulls the
-published image and extracts the tree. The `Build containers` CI workflow
-publishes it on every push to `master`.
+The `audio-store` image is what carries the store to a machine with no audio
+credentials. The pipeline publishes it on every push to `master` and `staging`
+as `testcabinet.azurecr.io/test-cabinet-audio-store:<sha>`. The driver image
+copies it in at `/opt/tcab-audio`, and a local checkout fetches it with
+`scripts/fetch-audio-store.sh`, which pulls the image and extracts the tree.
+Pulling it needs `az acr login --name testcabinet` and `TCAB_CONTAINER_TAG` set
+to the commit whose store you want.
 
 A newly published pack version is reachable by a run as soon as a test case names
 it in `[audio] packs`. Run images are not rebuilt for it.
 
 ### Trying it before any image is pushed
 
-Publishing the image is a release step, not a step between changing audio and
-hearing it. Both consumers can take the bytes straight from the object store:
+The pipeline publishes the image once the change reaches `staging` or `master`,
+so it is not a step between changing audio and hearing it. Both consumers can
+take the bytes straight from the object store:
 
 ```sh
 # a local stack: builds the store from this checkout and hands the driver

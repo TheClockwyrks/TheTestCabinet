@@ -41,8 +41,7 @@
 # the desktop crate costs nothing here). Clippy and rustdoc cover every headless
 # crate via `--workspace --exclude test-cabinet-desktop`; only the Tauri desktop shell
 # (`crates/desktop`) is left out so the per-change CI runners do not need the
-# desktop app's heavy GUI system libraries. It gets the same clippy and rustdoc
-# passes from `desktop-build.sh`, whose runner installs them.
+# desktop app's heavy GUI system libraries.
 set -euo pipefail
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"

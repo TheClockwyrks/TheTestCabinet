@@ -30,8 +30,8 @@
 # `csharp-version.sh` resolve them: the build prefix
 # `scripts/ci/install-gg-build-toolchains.sh` populates if it is there, and this package's own
 # `.build/` otherwise — which is where this script used to fetch them itself, so a developer with
-# neither prefix is in exactly the state they were in before, and one who ran that installer (or is
-# on the `build-toolchains` stage of `containers/gg-ci/Dockerfile`) reaches nothing at all.
+# neither prefix is in exactly the state they were in before, and one who ran that installer
+# reaches nothing at all.
 #
 # Usage:
 #   scripts/ci/install-gg-build-toolchains.sh   # once, unless you want the ~1.4 GB fetched below

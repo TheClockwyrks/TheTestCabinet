@@ -6,8 +6,8 @@
 # WHY THIS IS A SEPARATE SCRIPT FROM `install-gg-toolchains.sh`, AND MUST STAY ONE.
 #
 # That script's list is the ELEVEN ARMS — every toolchain a gg run and gg's own reflectors execute,
-# ~1.9 GB, run by the devcontainer image, both CI systems, the release workflow, the driver image's
-# gg stage and `containers/gg-ci/Dockerfile`. Every one of those surfaces would pay for anything
+# ~1.9 GB, run by the devcontainer image, the Azure pipeline's rust and gg jobs and the driver
+# image's gg stage. Every one of those surfaces would pay for anything
 # added to it. What is here is ~1.4 GB more, needed by exactly one build of exactly one arm, and
 # needed by no run at all — so it is its own list, called by the one stage and the one developer that
 # want it, and the eleven-arm list keeps its meaning.

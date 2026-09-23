@@ -37,8 +37,8 @@
 # `packages/gg-sandbox-swift/.build/vendor` and in `~/.cache/spago-nodejs`. A cache in a gitignored
 # directory looks exactly like a warm machine right up until the machine is a fresh CI checkout, at
 # which point it is three GitHub fetches and two `git clone`s in the middle of `cargo build`. They
-# live under `$HOME/.local/share/tcab` now, which is where `scripts/ci/hydrate-gg-toolchains.sh`
-# looks and what the CI image bakes; `scripts/gg-downloads.sh` resolves both.
+# live under `$HOME/.local/share/tcab` now, beside every other pinned download of gg's;
+# `scripts/gg-downloads.sh` resolves both.
 #
 # WHY NOT THE REPOSITORY'S npm WORKSPACE, for the three npm entries. Because a repo-root `npm ci` is
 # run by every job here — the web console's build, the docs site's, the linters — and none of them
@@ -63,8 +63,7 @@ source "$REPO_ROOT/scripts/ci/fetch.sh"
 # script that installed a JavaScript runtime would be installing a toolchain, which is what the
 # eleven installers beside this one are for. Named here rather than left to `npm: command not
 # found` four lines later, because that message says nothing about which of the eleven surfaces is
-# missing it. (`containers/gg-ci/Dockerfile` copies node and npm out of the official image for
-# exactly this line; the devcontainer and the driver image already had one.)
+# missing it. (The devcontainer, the pipeline's agents and the driver image each have one.)
 if ! command -v npm >/dev/null 2>&1; then
 	echo "error: no \`npm\` on PATH." >&2
 	echo "       Three of gg's build tools — componentize-js, opal-compiler and spago — are" >&2

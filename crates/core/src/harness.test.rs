@@ -77,23 +77,23 @@ fn usage_carries_normalized_token_classes() {
 }
 
 #[test]
-fn image_defaults_to_published_namespace_on_latest() {
-    // Nothing set: the published GHCR image for the run, on the latest tag.
+fn image_defaults_to_the_test_cabinet_acr_on_latest() {
+    // Nothing set: the run's image in the Test Cabinet ACR, on the latest tag.
     // End-to-end runs resolve the base-wasm image (the base plus the shared Rust/wasm
     // toolchain); single-sprite runs resolve the sprite image (the base plus baked-in
     // `draw`); sprite-sheet runs resolve the sprite-sheet image (the base plus baked-in
     // `draw-sheet`).
     assert_eq!(
         compose_run_image(BASE_WASM_IMAGE_NAME, None, None, None),
-        "ghcr.io/theclockwyrks/test-cabinet-base-wasm:latest"
+        "testcabinet.azurecr.io/test-cabinet-base-wasm:latest"
     );
     assert_eq!(
         compose_run_image(SPRITE_IMAGE_NAME, None, None, None),
-        "ghcr.io/theclockwyrks/test-cabinet-sprite:latest"
+        "testcabinet.azurecr.io/test-cabinet-sprite:latest"
     );
     assert_eq!(
         compose_run_image(SPRITE_SHEET_IMAGE_NAME, None, None, None),
-        "ghcr.io/theclockwyrks/test-cabinet-sprite-sheet:latest"
+        "testcabinet.azurecr.io/test-cabinet-sprite-sheet:latest"
     );
 }
 
@@ -260,16 +260,16 @@ fn explicit_image_override_wins_verbatim() {
     assert_eq!(
         compose_run_image(
             BASE_WASM_IMAGE_NAME,
-            Some("  ghcr.io/me/custom-base@sha256:abc  ".to_string()),
+            Some("  registry.example.com/me/custom-base@sha256:abc  ".to_string()),
             Some("registry.example.com".to_string()),
             Some("v9".to_string()),
         ),
-        "ghcr.io/me/custom-base@sha256:abc"
+        "registry.example.com/me/custom-base@sha256:abc"
     );
     // A blank explicit value is ignored, falling through to the defaults.
     assert_eq!(
         compose_run_image(SPRITE_SHEET_IMAGE_NAME, Some("   ".to_string()), None, None),
-        "ghcr.io/theclockwyrks/test-cabinet-sprite-sheet:latest"
+        "testcabinet.azurecr.io/test-cabinet-sprite-sheet:latest"
     );
 }
 

@@ -70,7 +70,7 @@ container so it reflects what the harness actually built in:
   when it could not be probed.
 - The run-container image the run executed in, resolved to its registry digest
   reference where it has one (for example
-  `ghcr.io/<org>/test-cabinet-base-wasm@sha256:…`) so the record pins the exact
+  `testcabinet.azurecr.io/test-cabinet-base-wasm@sha256:…`) so the record pins the exact
   image bytes even when the image was launched by a mutable tag. A purely local
   image with no registry digest records the reference it was launched by.
 - The Node.js version reported by `node --version`, where it could be determined.

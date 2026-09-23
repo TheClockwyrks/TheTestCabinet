@@ -13,7 +13,7 @@
 # WHY IT IS A DELEGATOR AND NOT AN INSTALLER. `scripts/ci/install-gg-toolchains.sh`
 # is the ONE pinned list, and it is deliberately shared: the devcontainer image (via
 # this file), `scripts/ci/rust-test.sh`, `scripts/ci/contract-drift.sh`, the Azure
-# rust job, the GitHub release workflow and the driver service image's gg stage all
+# rust and gg jobs and the driver service image's gg stage all
 # provision from it. Writing a `.devcontainer/languages/<arm>/install.sh` per arm —
 # the shape the `rust` sibling uses, and the obvious thing to reach for — would
 # create the second source of truth this arrangement exists to abolish, and it would
