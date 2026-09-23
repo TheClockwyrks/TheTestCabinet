@@ -198,7 +198,6 @@ All eight support tools and reasoning on OpenRouter. Re-run
 
 | Model id                       | Window    | Input modalities          |
 | ------------------------------ | --------- | ------------------------- |
-| `xiaomi/mimo-v2.6-pro`         | 1,048,576 | text, image, video, audio |
 | `x-ai/grok-4.7`                | 500,000   | text, image, file         |
 | `z-ai/glm-5.3-flash`           | 1,310,720 | text, image, video        |
 | `z-ai/glm-5.3`                 | 1,310,720 | text                      |
