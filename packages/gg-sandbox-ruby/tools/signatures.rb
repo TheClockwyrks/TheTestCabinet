@@ -7,7 +7,7 @@
 # gg answers every documentation search and every documentation view out of that file, so it is the
 # whole of what a model can *learn* about this arm's surface — the responses-as-code system prompt
 # takes only the module paths and their one-line briefs from it and names no function at all, and
-# the `libraries` section is quoted back on a compile failure rather than rendered anywhere. Every
+# the `libraries` section is the record of the library set rather than anything rendered. Every
 # word of it is reflected out of the declaration it describes rather than written anywhere else. A
 # description kept in a table, a template or a `const` in gg's Rust is a description that drifts
 # from its subject with nothing to catch it.
@@ -711,7 +711,8 @@ end
 # --------------------------------------------------------------------------------------------------
 
 # The libraries, read out of the manifest that decides them — the same file `tools/guest.mjs`
-# compiles the set from, so what a model is told it may require is what the artifact carries.
+# compiles the set from, so what the catalogue records a program may require is what the artifact
+# carries.
 libraries = []
 File.read(File.join(PACKAGE, "src", "library.rb"), encoding: "UTF-8").each_line do |line|
   if (heading = line[/\A#\s*---\s*(.+?)\s*---\s*\z/, 1])

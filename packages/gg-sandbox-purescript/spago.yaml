@@ -18,12 +18,9 @@
 #
 # Every dependency sits under a `# --- Heading ---` line, and `tools/signatures.mjs` reads them: the
 # catalogue's `libraries` section is the modules of the packages declared here, grouped by these
-# headings, so what a model is TOLD it may import is reflected out of the file that decides the set
-# rather than written into a prompt that would drift from it. That section is not in any prompt —
-# no prompt carries a package inventory. It is what gg quotes back on a COMPILE FAILURE, which is
-# where the one mistake it prevents is standing: a program that imported a module this arm does not
-# carry has just been refused by `purs`, and the set arrives beside that diagnostic. Add a package
-# under a heading, rebuild, and the next such refusal says so.
+# headings, so the record of what a program may import is reflected out of the file that decides
+# the set rather than written somewhere it would drift from it. A program that imports a module
+# this arm does not carry is refused by `purs`, in `purs`'s own words.
 #
 # Versions are resolved against the pinned registry package set at the bottom of this file, and
 # recorded package by package in the committed `spago.lock`.

@@ -917,8 +917,8 @@ def libraries_of(manifest):
 
     Two sources, one file. The third-party crates are the dependencies declared under a
     ``# --- heading ---`` in ``[dependencies]``, which is the same marker ``build.sh`` reads to decide
-    which crates get an ``--extern`` — so what a model is told it may use and what the compile lets it
-    name are one declaration. The standard library's group is the ``standard-library`` list under
+    which crates get an ``--extern`` — so what the catalogue records a program may use and what the
+    compile lets it name are one declaration. The standard library's group is the ``standard-library`` list under
     ``[package.metadata.gg]``, which is a pointer list rather than a set: ``std`` is not a dependency
     and nothing in this repository decides what is in it.
     """

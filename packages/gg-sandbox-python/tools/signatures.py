@@ -50,10 +50,9 @@ reflector's whole job is to fail the build rather than emit a gap. Concretely:
 
 The catalogue carries one thing that is not a signature, on the same rule: the LIBRARY SET a program
 may import, read off the module-scope imports of `src/library.py` — the file that decides it, because
-`componentize-py` bakes that module's import closure and nothing else. gg quotes that list back on a
-COMPILE FAILURE rather than putting it in a prompt — the mistake it prevents is one the compile
-detects — so what a model is told it may import is what the artifact was built with rather than a
-sentence somebody wrote once. See `libraries`.
+`componentize-py` bakes that module's import closure and nothing else, so the record of what a
+program may import is what the artifact was built with rather than a sentence somebody wrote once.
+See `libraries`.
 
 Usage:
     python tools/signatures.py --out-dir <dir>
@@ -843,7 +842,7 @@ def libraries() -> list[dict[str, Any]]:
         if title is None:
             raise SystemExit(
                 f"{LIBRARY_SOURCE}:{number} imports `{name}` before any `# --- <group> ---` header, "
-                "so a model would be told about a library under no heading."
+                "so the catalogue would record a library under no heading."
             )
         if name in seen:
             raise SystemExit(

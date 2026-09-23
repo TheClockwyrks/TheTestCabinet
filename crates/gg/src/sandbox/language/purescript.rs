@@ -201,8 +201,6 @@ impl ProgramLanguage for PureScript {
         Some("purs")
     }
 
-    }
-
     /// Unpack the embedded library tree — 1.4 MB into 1,430 files, once per machine — so the first
     /// code turn is not charged for it.
     ///

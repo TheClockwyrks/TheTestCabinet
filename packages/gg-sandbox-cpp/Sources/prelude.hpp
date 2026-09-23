@@ -12,7 +12,7 @@
 //
 //   * `build.sh` reads the `#include` lines below into `cpp.toolchain.json`'s `headers` list;
 //   * `tools/signatures.py` reads the `// == Heading ==` groups into the catalogue's `libraries`
-//     section, which is what a compile failure quotes back to a model group by group;
+//     section, the record of this arm's set;
 //   * a reader of this arm, for what the set is and why.
 //
 // One declaration, several readers — the rule every other arm's library manifest follows, and the
@@ -41,11 +41,8 @@
 // events and able to put what they read in front of the model, and a directory walk done behind
 // them is none of those things. It is not a compiler problem — a program that writes
 // `#include <filesystem>` compiles and links on this target, measured — so this is the seam's
-// answer about which route the workspace has, stated once here and reaching a model only as an
-// absence from the set
-// this arm's catalogue declares, which gg quotes back on a compile failure rather than in the
-// system prompt: a program that reached for it reads the set beside the diagnostic that made it
-// relevant.
+// answer about which route the workspace has, stated once here as an absence from the set this
+// arm's catalogue declares.
 //
 // WHAT THIS SET IS NOT: AN ALLOWLIST. This file declares what a program is TOLD it may reach, not
 // what it CAN reach. The whole of libc++ is on clang's default include path, so a reply
@@ -53,9 +50,8 @@
 // Measured, not assumed: a `std::thread` program compiles, links and throws `system_error: thread
 // constructor failed: Not supported` at run time. Making the list an allowlist would mean
 // `-nostdinc++` and an explicit include tree, which buys a refusal in place of a run-time
-// exception a model can read — so what gg does instead is TELL the model the truth: the set is
-// reflected into this arm's catalogue and quoted back on a compile failure, where the mistake it
-// prevents is the one the compiler just detected. `cpp.surface.test.rs` asserts both directions —
+// exception a model can read — so the set is instead the record of what this arm offers,
+// reflected into its catalogue. `cpp.surface.test.rs` asserts both directions —
 // that every header on the list is reachable, and that one off it is reachable too.
 
 #pragma once

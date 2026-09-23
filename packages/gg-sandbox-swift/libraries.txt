@@ -1,4 +1,4 @@
-# The modules a Swift program may `import`, and the whole of what the model is told it has.
+# The modules a Swift program may `import`, as this arm records them.
 #
 # WHAT DECIDES THE SET. Two things, and they are in different places.
 #
@@ -26,11 +26,9 @@
 # module below through the real production prepare step and requires it to build. A module listed
 # here that the archive does not carry fails that test rather than reaching a model.
 #
-# The `# --- heading ---` lines are the groups the catalogue's `libraries` section renders, and
-# that section is what gg quotes back to a model on a COMPILE FAILURE. No system prompt carries a
-# package inventory any more: the one mistake this set prevents — a program that `import`s a module
-# this arm does not carry — is a mistake the compile DETECTS, so the set is delivered on the turn
-# that made it rather than read on every turn by a program that imports nothing.
+# The `# --- heading ---` lines are the groups of the catalogue's `libraries` section, which is the
+# record of this arm's set. A program that `import`s a module this arm does not carry is refused by
+# `swiftc`, in its own words.
 # `packages/gg-sandbox-swift/tools/signatures.py` reads this file and refuses a module under no
 # heading.
 

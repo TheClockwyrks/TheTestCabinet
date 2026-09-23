@@ -185,8 +185,6 @@ impl ProgramLanguage for Rust {
         Some("rustc")
     }
 
-    }
-
     /// Unpack the embedded library set now, so the first code turn does not.
     ///
     /// The whole of this arm's warm-up, and the smallest of any compiled arm's: there is no daemon

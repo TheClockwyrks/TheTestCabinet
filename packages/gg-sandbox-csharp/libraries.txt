@@ -1,4 +1,4 @@
-# The libraries a C# program may reach, and the whole of what the model is told it has.
+# The libraries a C# program may reach, as this arm records them.
 #
 # WHAT DECIDES THE SET. Two artifacts have to agree, and both of them are this arm's:
 #
@@ -14,12 +14,9 @@
 # carry fails that test rather than reaching a model.
 #
 # THE `# --- heading ---` LINES ARE MACHINE-READABLE. `tools/Signatures.cs` reads this file and emits
-# the catalogue's `libraries` section out of it, group by group, and that section is what gg quotes
-# back to a model on a COMPILE FAILURE. No system prompt carries a package inventory any more: the
-# one mistake this set prevents — a `using` of something neither artifact above carries — is a
-# mistake `csc` DETECTS, so the set arrives beside the diagnostic that made it relevant rather than
-# on every turn of every run. A namespace under no heading is an error rather than an ungrouped
-# entry.
+# the catalogue's `libraries` section out of it, group by group, as the record of this arm's set. A
+# `using` of something neither artifact above carries is refused by `csc`, in its own words. A
+# namespace under no heading is an error rather than an ungrouped entry.
 #
 # WHAT IS NOT HERE, AND WHY THERE IS NO CURATED THIRD-PARTY SET. Nothing off nuget. The argument is
 # the one the C++ arm makes about its own standard library, and it is stronger here: what a C#

@@ -151,21 +151,19 @@ pub(crate) struct SignatureCatalogue {
     /// The **libraries** a program of this language may reach for, grouped as the artifact that
     /// decides the set groups them — the one entry here that is not a signature.
     ///
-    /// It belongs in the catalogue for the reason every signature does: it is **model-facing text
-    /// about this arm's surface**, so the rule that nothing a model reads may be authored anywhere
-    /// but on the code that decides it applies word for word. Prose listing a language's libraries
-    /// would drift from the artifact with nothing to catch it — and on the
-    /// [Python](super::language::python) arm it did, claiming a whole standard library where
-    /// `componentize-py` had baked a curated subset of it.
+    /// It is the record of this arm's library set, reflected rather than authored for the reason
+    /// every signature is: prose listing a language's libraries would drift from the artifact with
+    /// nothing to catch it — and on the [Python](super::language::python) arm it did, claiming a
+    /// whole standard library where `componentize-py` had baked a curated subset of it. Each arm's
+    /// tests hold the record to the artifact by driving every name it declares through the arm's
+    /// real toolchain.
     ///
-    /// What a model reads it through is a **compile failure**
-    /// ([`supporting`](super::supporting)): the set is what the compiler measured the program
-    /// against, and a program that reached outside it is answered on the turn that did, with the
-    /// modules matching what it could not import.
+    /// Nothing model-facing renders it. A program that reaches outside the set is answered by its
+    /// compiler's own diagnostic, and everything after the `Compiler error` heading is that output.
     ///
     /// Empty for a language whose programs get their runtime's own standard library and nothing
     /// else: `#[serde(default)]`, so an arm with nothing to declare emits a catalogue without the
-    /// key and a compile failure on it carries the diagnostic alone.
+    /// key.
     #[serde(default)]
     pub libraries: Vec<LibraryGroup>,
     /// The **modules** the surface is divided into, in the order it is presented in.
@@ -450,16 +448,20 @@ pub struct MemberFunction {
     pub brief: String,
 }
 
-/// One group of [libraries](SignatureCatalogue::libraries), as a compile failure lists them.
+/// One group of [libraries](SignatureCatalogue::libraries), under the heading the artifact files it
+/// under.
 ///
-/// Grouped rather than flat because ninety names in one paragraph is a wall a model skims. The
-/// grouping is the *artifact's* — the headings the file that decides the set files them under — so
-/// it is one more thing gg quotes rather than authors.
+/// The grouping is the *artifact's*, the headings the file that decides the set files them under,
+/// so it is recorded rather than authored.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LibraryGroup {
     /// What this group is for, in the words the source that groups them uses (`Time`,
     /// `Curated third-party libraries`).
+    #[allow(
+        dead_code,
+        reason = "required of every catalogue's library record, not something gg renders"
+    )]
     pub group: String,
     /// The names a program imports, exactly as it must write them: `urllib.parse` rather than
     /// `urllib`, because a dotted module is importable and its siblings may not be.

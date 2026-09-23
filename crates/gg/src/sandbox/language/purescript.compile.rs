@@ -1170,13 +1170,6 @@ fn link_tree(from: &Path, to: &Path) -> Result<(), String> {
     Ok(())
 }
 
-        .lines()
-        .flat_map(|line| {
-            crate::sandbox::language::diagnostics::named(line, "Module ", " was not found")
-        })
-        .collect()
-}
-
 #[cfg(test)]
 #[path = "purescript.compile.test.rs"]
 mod tests;

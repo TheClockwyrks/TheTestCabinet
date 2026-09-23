@@ -310,12 +310,11 @@ fn a_block_is_a_second_signature_rather_than_a_second_function() {
     );
 }
 
-/// **Ruby's libraries are declared in its catalogue**, which is what a compile failure quotes back.
+/// **Ruby's libraries are declared in its catalogue.**
 ///
 /// The set is a bake-time fact about the prebuilt component — `require "json"` works because the
-/// build compiled `json` out of the pinned Opal's own sources — so what a model reads on a compile
-/// failure is reflected from the file that decides the set rather than authored. That every group
-/// reaches the model is asserted where the failure is built; what is asserted here is that this arm
+/// build compiled `json` out of the pinned Opal's own sources — so the catalogue's set is reflected
+/// from the file that decides it rather than authored. What is asserted here is that this arm
 /// declares one at all.
 #[test]
 fn this_arm_declares_the_libraries_a_program_may_require() {

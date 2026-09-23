@@ -150,7 +150,7 @@ console.log(view);
         None,
         api,
     );
-    let read = crate::agent::code::model_facing(GgProgramLanguage::TypeScript, &outcome);
+    let read = crate::agent::code::model_facing(&outcome);
     assert_eq!(
         read.error,
         Some(TurnErrorType::ProgramApiError),

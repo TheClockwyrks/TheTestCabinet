@@ -42,8 +42,8 @@
 //! `packages/gg-sandbox-cpp/Sources/prelude.hpp` is 53 `#include` lines under `// == Heading ==`
 //! groups, and **nothing puts it in front of anything**. It is where this arm *declares* which
 //! libraries it makes available: `build.sh` reads its include lines into the manifest's
-//! [header list](Manifest::headers), the reflector reads its groups into the catalogue's `libraries`
-//! section, and a [compile failure](crate::agent) quotes that set back to the model group by group.
+//! [header list](Manifest::headers), and the reflector reads its groups into the catalogue's
+//! `libraries` section.
 //! A program that wants `std::vector` writes `#include <vector>`, exactly as it writes
 //! `#include <gg/files.hpp>` for gg's own surface.
 //!
@@ -1261,16 +1261,6 @@ fn fingerprint(archive: &[u8]) -> u64 {
     let mut hasher = std::hash::DefaultHasher::new();
     archive.hash(&mut hasher);
     hasher.finish()
-}
-
-        .lines()
-        .filter(|line| line.contains("file not found"))
-        .filter_map(|line| {
-            crate::sandbox::language::diagnostics::named(line, "'", "'")
-                .into_iter()
-                .next()
-        })
-        .collect()
 }
 
 #[cfg(test)]

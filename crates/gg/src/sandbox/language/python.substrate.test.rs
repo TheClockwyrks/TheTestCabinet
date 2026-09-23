@@ -743,10 +743,7 @@ fn the_embedded_guest_carries_every_library_its_catalogue_declares() {
     // What makes it checkable is that nothing hand-writes the set twice: `src/library.py` imports
     // what the arm offers, and the catalogue is reflected out of those imports. So the list driven
     // in here is **the list gg claims this arm carries**, read out of the generated catalogue rather
-    // than typed out again — and nothing tells a model that list up front. It reaches one only as
-    // the tail of a compile failure (`agent.code.rs`'s compiler-error body, which appends what
-    // `supporting` drew from the set), which this interpreted arm never renders; here the whole of
-    // what a model ever
+    // than typed out again — and nothing tells a model that list. The whole of what a model ever
     // learns about a missing module is the guest's own `ModuleNotFoundError`, on the turn its
     // program imported one. So a curated import quietly dropped in a rebuild fails here rather than
     // months later inside a run, on the turn a model spends discovering that a module the catalogue

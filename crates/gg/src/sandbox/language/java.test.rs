@@ -311,14 +311,13 @@ fn a_name_is_qualified_by_its_module_and_a_member_names_its_receiver() {
     );
 }
 
-/// **Java's libraries are declared in its catalogue**, which is what a compile failure quotes back.
+/// **Java's libraries are declared in its catalogue.**
 ///
-/// The set is a fact about what TeaVM can translate rather than about anything gg installs, so the
-/// sentence a model reads is reflected from `packages/gg-sandbox-java/libraries.txt` — the file the
-/// arm's own gate drives through the real compilers — rather than written in a template. That the
-/// prompt carries every group is a [prompt gate](crate::prompts); what is asserted here is that this
-/// arm declares one at all, and that the packages an ordinary Java program cannot do without are in
-/// it.
+/// The set is a fact about what TeaVM can translate rather than about anything gg installs, so it
+/// is reflected from `packages/gg-sandbox-java/libraries.txt`, the file the arm's own gate drives
+/// through the real compilers, rather than written in a template. What is asserted here is that
+/// this arm declares one at all, and that the packages an ordinary Java program cannot do without
+/// are in it.
 #[test]
 fn this_arm_declares_the_libraries_a_program_may_reach() {
     let libraries = &java().catalogue().libraries;

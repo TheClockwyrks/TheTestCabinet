@@ -1194,13 +1194,6 @@ fn materialise_libraries() -> Result<PathBuf, String> {
     Ok(tree)
 }
 
-        .lines()
-        .flat_map(|line| {
-            crate::sandbox::language::diagnostics::named(line, "no such module '", "'")
-        })
-        .collect()
-}
-
 #[cfg(test)]
 #[path = "swift.compile.test.rs"]
 mod tests;

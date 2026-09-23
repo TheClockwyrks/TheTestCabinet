@@ -906,13 +906,6 @@ pub(super) fn placed() -> Result<&'static Placed, String> {
         .map_err(Clone::clone)
 }
 
-        .lines()
-        .flat_map(|line| {
-            crate::sandbox::language::diagnostics::named(line, "package ", " does not exist")
-        })
-        .collect()
-}
-
 #[cfg(test)]
 #[path = "java.compile.test.rs"]
 mod tests;

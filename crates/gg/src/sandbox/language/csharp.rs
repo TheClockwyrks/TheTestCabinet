@@ -261,8 +261,6 @@ impl ProgramLanguage for CSharp {
         Some("csc")
     }
 
-    }
-
     /// The module's own `csc`, run over the class body gg wrapped it in — and the names that class
     /// offers, read from the author's own source.
     ///

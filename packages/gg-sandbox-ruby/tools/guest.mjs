@@ -22,8 +22,8 @@
 // guest: what a program can `require` is what was compiled into `libraries.js` here, and nothing
 // else. `src/library.rb` is the one file that says which, and it says it as ordinary `require`
 // lines under `# --- Heading ---` comments — which `tools/signatures.rb` reads back out as the
-// catalogue's `libraries` section, so what a model is told it may require is read off the file
-// that decides it.
+// catalogue's `libraries` section, so the record of what a program may require is read off the
+// file that decides it.
 //
 // A library's own dependencies are resolved by **running** the require rather than by scanning for
 // one: each declared module is compiled, then loaded into a clean Opal in a fresh `vm` context, and

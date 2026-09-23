@@ -235,8 +235,6 @@ impl ProgramLanguage for Cpp {
         Some("clang++")
     }
 
-    }
-
     /// Unpack the embedded guest archive now, so the first code turn does not.
     ///
     /// The whole of this arm's warm-up, and the whole of what it could be: 32 KB decompressed, once

@@ -934,22 +934,6 @@ fn jar(classpath: &str, prefix: &str) -> Result<String, String> {
         .ok_or_else(|| format!("gg found no {prefix}*.jar; run scripts/ci/install-kotlin.sh"))
 }
 
-        .lines()
-        .flat_map(|line| {
-            let quoted = ["Unresolved reference '", "unresolved reference '"]
-                .into_iter()
-                .flat_map(|opens| crate::sandbox::language::diagnostics::named(line, opens, "'"));
-            let bare = ["Unresolved reference: ", "unresolved reference: "]
-                .into_iter()
-                .flat_map(|opens| line.split(opens).skip(1))
-                .filter_map(|rest| rest.split_whitespace().next())
-                .map(|name| name.trim_end_matches('.').to_string())
-                .filter(|name| !name.is_empty());
-            quoted.chain(bare).collect::<Vec<String>>()
-        })
-        .collect()
-}
-
 #[cfg(test)]
 #[path = "kotlin.compile.test.rs"]
 mod tests;

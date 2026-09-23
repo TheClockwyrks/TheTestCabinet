@@ -313,13 +313,13 @@ fn every_name_is_written_under_the_module_a_program_imports() {
     }
 }
 
-/// **PureScript's libraries are declared in its catalogue**, which is what a compile failure quotes back.
+/// **PureScript's libraries are declared in its catalogue.**
 ///
 /// The set is a build-time fact about the compiled tree — `import Data.Map` works because
-/// `build.sh` compiled `ordered-collections` into the tarball gg carries — so the sentence a model
-/// reads is reflected from the file that decides the set rather than written in a template. That the
-/// prompt carries every group is a [prompt gate](crate::prompts); what is asserted here is that this
-/// arm declares one at all, and that the three the owner named specifically are really in it.
+/// `build.sh` compiled `ordered-collections` into the tarball gg carries — so the catalogue's set is
+/// reflected from the file that decides it rather than written in a template. What is asserted
+/// here is that this arm declares one at all, and that the three the owner named specifically are
+/// really in it.
 #[test]
 fn this_arm_declares_the_libraries_a_program_may_import() {
     let libraries = &purescript().catalogue().libraries;

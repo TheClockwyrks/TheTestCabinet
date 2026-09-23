@@ -367,7 +367,7 @@ fn the_generated_catalogue_is_this_languages() {
     }
 }
 
-/// **This arm declares the libraries a program may reach**, which is what a compile failure quotes back.
+/// **This arm declares the libraries a program may reach**, in its catalogue.
 ///
 /// The five curated crates and the standard library, grouped exactly as
 /// `packages/gg-sandbox-rust/Cargo.toml` heads them — the manifest is the one declaration and both

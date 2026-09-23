@@ -177,8 +177,6 @@ impl ProgramLanguage for Kotlin {
         Some("kotlinc")
     }
 
-    }
-
     /// Start one JVM and place the compiler driver and the SDK jar now, so the first code turn pays
     /// for neither.
     ///

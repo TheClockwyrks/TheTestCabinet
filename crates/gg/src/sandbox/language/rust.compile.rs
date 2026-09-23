@@ -906,12 +906,6 @@ fn fingerprint() -> u64 {
     hasher.finish()
 }
 
-        .lines()
-        .filter(|line| line.contains("error[E0432]") || line.contains("error[E0433]"))
-        .flat_map(|line| crate::sandbox::language::diagnostics::named(line, "`", "`"))
-        .collect()
-}
-
 #[cfg(test)]
 #[path = "rust.compile.test.rs"]
 mod tests;

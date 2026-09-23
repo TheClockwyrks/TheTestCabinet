@@ -284,14 +284,13 @@ fn the_generated_catalogue_is_this_languages() {
     );
 }
 
-/// **Kotlin's libraries are declared in its catalogue**, which is what a compile failure quotes back.
+/// **Kotlin's libraries are declared in its catalogue.**
 ///
-/// The set is a fact about what TeaVM can translate rather than about anything gg installs, so the
-/// sentence a model reads is reflected from `packages/gg-sandbox-kotlin/libraries.txt` — the file the
-/// arm's own gate drives through the real compilers — rather than written in a template. That the
-/// prompt carries every group is a [prompt gate](crate::prompts); what is asserted here is that this
-/// arm declares one at all, and that the packages an ordinary Kotlin program cannot do without are in
-/// it.
+/// The set is a fact about what TeaVM can translate rather than about anything gg installs, so it
+/// is reflected from `packages/gg-sandbox-kotlin/libraries.txt`, the file the arm's own gate drives
+/// through the real compilers, rather than written in a template. What is asserted here is that
+/// this arm declares one at all, and that the packages an ordinary Kotlin program cannot do without
+/// are in it.
 #[test]
 fn this_arm_declares_the_libraries_a_program_may_reach() {
     let libraries = &kotlin().catalogue().libraries;

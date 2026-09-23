@@ -214,8 +214,6 @@ impl ProgramLanguage for Swift {
         Some("swiftc")
     }
 
-    }
-
     /// Unpack the embedded guest archive and library set now, so the first code turn does not.
     ///
     /// The whole of this arm's warm-up: 185 KB and 3.4 MB decompressed, once per machine. There is

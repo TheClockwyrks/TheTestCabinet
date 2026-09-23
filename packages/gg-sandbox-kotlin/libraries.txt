@@ -1,4 +1,4 @@
-# The libraries a Kotlin program may reach, and the whole of what the model is told it has.
+# The libraries a Kotlin program may reach, as this arm records them.
 #
 # WHAT DECIDES THE SET. The Kotlin standard library, translated by TeaVM. A program on this arm is
 # compiled against exactly two jars — `kotlin-stdlib` and the script runtime its script class extends
@@ -20,11 +20,9 @@
 # package listed here that does not translate fails that test rather than reaching a model, and the
 # absences worth knowing about are recorded there as absences.
 #
-# The `# --- heading ---` lines are the groups the catalogue's `libraries` section renders, and that
-# section is what gg quotes back to a model on a COMPILE FAILURE. No system prompt carries a package
-# inventory any more: the one mistake this set prevents — a program written against a package this
-# arm does not carry — is a mistake the compiler DETECTS, so the set is delivered on the turn that
-# made it rather than read on every turn by a model that never writes an import.
+# The `# --- heading ---` lines are the groups of the catalogue's `libraries` section, which is the
+# record of this arm's set. A program written against a package this arm does not carry is refused
+# by the compiler, in its own words.
 # `packages/gg-sandbox-kotlin/tools/GgSignatures.kt` reads this file and refuses a package under no
 # heading.
 #

@@ -1388,24 +1388,6 @@ fn is_arrangement(line: &str) -> bool {
     error_code(line).is_some_and(|code| ARRANGEMENT_CODES.contains(&code))
 }
 
-        .lines()
-        .filter_map(|line| {
-            let names = crate::sandbox::language::diagnostics::named(line, "'", "'");
-            if line.contains("CS0246") {
-                return names.into_iter().next();
-            }
-            if line.contains("CS0234") {
-                return match names.as_slice() {
-                    [name, owner, ..] => Some(format!("{owner}.{name}")),
-                    [name] => Some(name.clone()),
-                    [] => None,
-                };
-            }
-            None
-        })
-        .collect()
-}
-
 #[cfg(test)]
 #[path = "csharp.compile.test.rs"]
 mod tests;
