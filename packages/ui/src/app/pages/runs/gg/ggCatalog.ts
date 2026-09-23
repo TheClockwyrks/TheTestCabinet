@@ -2247,6 +2247,14 @@ export const AUTHORED_MODEL_CALL_TIMEOUT_SECS = 900;
 export const AUTHORED_MAX_MODEL_RETRIES = 10;
 export const AUTHORED_MODEL_RETRY_MAX_DELAY_SECS = 60;
 
+// The stream-idle bound every reply is cancelled on: the seconds a streamed reply may go
+// without a delta from the model before the attempt is cancelled and retried on the
+// schedule above. Like the call ceiling it has no unarmed setting — every reply is read
+// as a stream, and a silent provider is never a thing an operator can ask a run to wait
+// the whole call ceiling out on — so a fresh configuration states it. A cleared field is
+// conducted under this figure, and 0 is refused.
+export const AUTHORED_MODEL_STREAM_IDLE_SECS = 60;
+
 // The guardrails, in the order they read as a sentence: how much of the run happens
 // at once, then how long it may go on for, then how badly it may go, then how much it
 // may cost — and last, the one that bounds not the run but the record kept of it.

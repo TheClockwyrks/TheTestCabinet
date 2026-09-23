@@ -193,7 +193,8 @@ use crate::git;
 use crate::hooks::{HookAgent, HookFailure, HookRuntime};
 use crate::limits::{
     AgentLimits, CeilingLatch, FatalFault, RunLimits, RunSpend, TurnErrorType, TurnOutcome,
-    declared_model_call_timeout, declared_retry_policy, resolve_run_limits,
+    declared_model_call_timeout, declared_model_stream_idle, declared_retry_policy,
+    resolve_run_limits,
 };
 use crate::loopguard::LoopGuardConfig;
 use crate::memories::{MemoriesRuntime, MemoryRegistry, MemoryScope, MemoryStrategy};
@@ -845,6 +846,7 @@ pub async fn run(invocation: &GgInvocation, emitter: &Emitter) -> SessionOutcome
         emitter,
         SessionSeams::live(
             declared_model_call_timeout(&invocation.capability_set.limits),
+            declared_model_stream_idle(&invocation.capability_set.limits),
             declared_retry_policy(&invocation.capability_set.limits),
         ),
     )
@@ -891,14 +893,20 @@ impl SessionSeams {
     /// `model_call_timeout` is the run's [per-call model ceiling](declared_model_call_timeout),
     /// read from the declared limits rather than from the resolved ones because the factory is
     /// built before there is an agent to resolve them for. Resolution is pure, so the two
-    /// readings cannot disagree. `retry_policy` is the same reading of the retry schedule
+    /// readings cannot disagree. `model_stream_idle` is the same reading of the
+    /// [stream-idle bound](declared_model_stream_idle), and `retry_policy` of the retry schedule
     /// ([`declared_retry_policy`]).
-    pub fn live(model_call_timeout: Duration, retry_policy: crate::client::RetryPolicy) -> Self {
+    pub fn live(
+        model_call_timeout: Duration,
+        model_stream_idle: Duration,
+        retry_policy: crate::client::RetryPolicy,
+    ) -> Self {
         let routing_key = RoutingKey::mint();
         Self {
             factory: Arc::new(DefaultClientFactory::new(
                 routing_key.clone(),
                 model_call_timeout,
+                model_stream_idle,
                 retry_policy,
             )),
             shell: real_shell(),
@@ -9218,6 +9226,10 @@ fn recorded_limits(limits: &RunLimits, max_parallel: usize) -> GgRunLimits {
         max_turns: limits.max_turns.map(|turns| turns as u64),
         max_runtime_secs: limits.max_runtime.map(|budget| budget.as_secs()),
         model_call_timeout_secs: Some(limits.model_call_timeout.as_secs()),
+        // The idle bound a stalled stream is cancelled on, recorded on the same terms as the
+        // model-call ceiling beside it: both are always in force, and an absent one resolves to
+        // the default rather than to "off", so the figure recorded is the one the run ran under.
+        model_stream_idle_secs: Some(limits.model_stream_idle.as_secs()),
         // The retries after the first attempt the schedule allowed: the resolved figure, which
         // for a set that wrote nothing is the default — recorded on the same terms as the
         // model-call ceiling, which is always in force too.

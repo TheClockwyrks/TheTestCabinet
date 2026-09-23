@@ -1764,12 +1764,15 @@ export type GgReviewer = {
  * produced it — where limits on the invocation would let a run record *which* ceiling was hit
  * while making *what the ceiling was* unrecoverable.
  *
- * **Two are required, one defaults, and five are armed by being written.**
+ * **Two are required, three default, and five are armed by being written.**
  * [`max_parallel`](Self::max_parallel) and [`replay_max_bytes`](Self::replay_max_bytes) bound
  * every run gg conducts — the pool it runs agents in and the journal it writes as it goes — and
  * neither has a figure that means "no cap", so an absent one refuses the launch.
  * [`model_call_timeout_secs`](Self::model_call_timeout_secs) bounds every model request and
- * defaults to fifteen minutes when absent. [`max_turns`](Self::max_turns),
+ * defaults to fifteen minutes when absent;
+ * [`model_stream_idle_secs`](Self::model_stream_idle_secs) bounds how long a streamed reply may
+ * go without a delta and defaults to sixty; the [retry schedule](Self::max_model_retries) is
+ * conducted on its defaults when neither of its keys is written. [`max_turns`](Self::max_turns),
  * [`max_runtime_secs`](Self::max_runtime_secs),
  * [`max_cost`](Self::max_cost), [`max_consecutive_errors`](Self::max_consecutive_errors) and
  * [`max_error_rate`](Self::max_error_rate) with its [window](Self::error_rate_window) are each
@@ -1835,14 +1838,20 @@ export type GgRunLimits = {
    * The ceiling, in seconds, on **one model request** — the bound that turns a provider which
    * has stopped answering into an error turn the agent asks again from.
    *
-   * One of the three keys on this type an absence answers with a **figure** rather than with
-   * "off", beside the [retry schedule](Self::max_model_retries): **absent is fifteen minutes**
+   * One of the four keys on this type an absence answers with a **figure** rather than with
+   * "off", beside the [stream-idle bound](Self::model_stream_idle_secs) and the
+   * [retry schedule](Self::max_model_retries): **absent is fifteen minutes**
    * (900 seconds), because there is no run whose calls may hang forever, and `0` is refused on
-   * the same terms as every other unhonourable figure. How it is applied follows the transport
-   * the agent's [loop detection](GgLoopDetection) selects: the buffering one bounds each
-   * attempt, with the backoff between attempts outside it, and the streaming one bounds the
-   * wait for the response head and the gap between chunks, so a reply still arriving is never
-   * cut.
+   * the same terms as every other unhonourable figure.
+   *
+   * Every reply is read as a stream, and the ceiling caps one attempt's **whole duration** —
+   * the wait for the response head, the gaps between its chunks, and the time the last chunk
+   * takes to arrive — so it keeps its meaning for a provider that streams nothing until the
+   * reply is complete: such a reply is one long silence, and the ceiling is what bounds it. A
+   * stream that stays quiet for that long is bounded sooner by
+   * [`model_stream_idle_secs`](Self::model_stream_idle_secs), which is the figure a stalled
+   * stream is answered with; this one is the ceiling the whole attempt runs under, and the
+   * backoff between attempts sits outside it.
    *
    * Unlike the ceilings above it, breaching this one does not stop the run. The turn is
    * recorded as a [`ModelTimeout`](GgTurnErrorType::ModelTimeout) error and the agent asks
@@ -1851,14 +1860,37 @@ export type GgRunLimits = {
    */
   modelCallTimeoutSecs?: number;
   /**
+   * The bound, in seconds, on **how long a streamed reply may go without a delta** — the idle
+   * clock that turns a provider which has stopped mid-reply into a transport failure the
+   * client retries on its own [schedule](Self::max_model_retries), rather than a stall the run
+   * waits the whole [call ceiling](Self::model_call_timeout_secs) out on.
+   *
+   * One of the four keys an absence answers with a **figure**: **absent is sixty seconds**, on
+   * the terms the call ceiling is, because a reply that stops arriving is never a setting an
+   * operator can ask for — a run that had no idle bound would be one a silent provider could
+   * hold for the whole of every call ceiling. `0` is refused on the same terms as every other
+   * unhonourable figure.
+   *
+   * The clock measures time since the last chunk carrying a `delta` with content, reasoning or
+   * tool-call arguments. A model that reasons for minutes produces reasoning deltas for the
+   * whole of that time when the provider streams them, so on a streamed reply a provider's
+   * silence and a model's thinking are distinguishable within seconds; keep-alive comments
+   * (OpenRouter sends `: OPENROUTER PROCESSING`) and blank lines carry no delta and leave the
+   * clock running. A stream whose clock expires is cancelled and retried as a transport error
+   * is, and the retry's `log` line names the stall — so a stall and an outage are answered the
+   * same way.
+   */
+  modelStreamIdleSecs?: number;
+  /**
    * How many times the model client **retries** a failed request after its first attempt: one
    * answered `429` or `5xx`, or one that failed in transport.
    *
    * Absent is **ten**, on the terms the [model-call ceiling](Self::model_call_timeout_secs)
    * takes a figure: every failed request is retried on some schedule. `0` is honoured as
    * written, a run that gives up on the first failure. The retries are the client's own, and a
-   * timed-out call bypasses them, since each retry of a stall would cost the per-call ceiling
-   * again.
+   * stalled stream is one of the transient failures they cover — a cancelled stall costs the
+   * idle bound rather than the call ceiling, so retrying one inside the client is worth the
+   * wait.
    */
   maxModelRetries?: number;
   /**

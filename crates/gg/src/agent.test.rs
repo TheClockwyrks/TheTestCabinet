@@ -159,6 +159,7 @@ fn no_limits(max_turns: usize) -> LimitsSetup {
             max_turns: Some(max_turns),
             max_runtime: None,
             model_call_timeout: crate::client::DEFAULT_MODEL_CALL_TIMEOUT,
+            model_stream_idle: crate::client::DEFAULT_MODEL_STREAM_IDLE,
             max_consecutive_errors: None,
             error_rate: None,
             max_cost: None,
@@ -9977,6 +9978,7 @@ async fn session_started_and_the_journal_record_the_minted_routing_key() {
 fn every_launch_mints_its_own_routing_key() {
     let first = SessionSeams::live(
         crate::client::DEFAULT_MODEL_CALL_TIMEOUT,
+        crate::client::DEFAULT_MODEL_STREAM_IDLE,
         crate::client::RetryPolicy::default(),
     );
     let second = SessionSeams::substituted(first.factory.clone(), real_shell());

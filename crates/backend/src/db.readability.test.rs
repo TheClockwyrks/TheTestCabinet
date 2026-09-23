@@ -367,6 +367,10 @@ const SCHEMA_BASE_URL: &str = "https://docs.testcabinet.ai/schema/";
 /// an `Option` that is `None` on older records. Generation 1's digest last moved
 /// when `DebugScriptResult` gained
 /// [`inconclusive`](tcab_core::validation::Inconclusive), for the same reason.
+///
+/// Generation 3's digest last moved when the gg run limits gained
+/// `modelStreamIdleSecs` — a change stored records survive for the same reason: the
+/// new key is an `Option` that is absent on older records.
 const RECORD_SHAPES: &[(u32, &str)] = &[
     (
         1,
@@ -378,7 +382,7 @@ const RECORD_SHAPES: &[(u32, &str)] = &[
     ),
     (
         3,
-        "e16abf8a7f85c84be497a921ede27447af6e2c00413e6c1400ac471d872901b0",
+        "9e7fbe9ac4371af1dd29621acfc916658b2c3a3a817050e9662b2fa39f6af567",
     ),
 ];
 
