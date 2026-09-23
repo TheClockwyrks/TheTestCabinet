@@ -39,7 +39,7 @@ of this project.
 The gg repository gets its own Azure pipeline running its gates, and on a tag
 it publishes the static-musl binaries for both architectures and the
 `gg-reference` tarball to the blob container described in
-[`publish-gg-release-binaries-to-azure-blob-storage.md`](publish-gg-release-binaries-to-azure-blob-storage.md).
+[`publish-gg-release-binaries-to-azure-blob-storage.md`](done/publish-gg-release-binaries-to-azure-blob-storage.md).
 It mirrors to GitHub as a plain source mirror after its gates.
 
 ### Consuming gg as a binary

@@ -57,14 +57,14 @@ with the new variable.
 
 ## Done when
 
-- [ ] A tag build uploads `gg-x86_64-unknown-linux-musl`,
+- [x] A tag build uploads `gg-x86_64-unknown-linux-musl`,
       `gg-aarch64-unknown-linux-musl` and `gg-reference.tar.gz` under the tag's
       version prefix, readable without credentials.
-- [ ] A tag build whose `gg --version` differs from the tag uploads nothing and
+- [x] A tag build whose `gg --version` differs from the tag uploads nothing and
       fails naming the crates to bump.
-- [ ] A run outside the cluster with no `TCAB_GG_BINARY` downloads gg from the
+- [x] A run outside the cluster with no `TCAB_GG_BINARY` downloads gg from the
       container and executes it.
-- [ ] `TCAB_GG_RELEASE_URL` redirects the download and `TCAB_GG_RELEASE_REPO`
+- [x] `TCAB_GG_RELEASE_URL` redirects the download and `TCAB_GG_RELEASE_REPO`
       is gone from the code and the docs.
-- [ ] The listed pages describe the container as gg's release host.
-- [ ] Gates green.
+- [x] The listed pages describe the container as gg's release host.
+- [x] Gates green.

@@ -9,7 +9,7 @@ This issue runs after
 and
 [`port-the-gg-and-tooling-changes-from-the-spec-cabinet-branch-onto-feat-gg.md`](port-the-gg-and-tooling-changes-from-the-spec-cabinet-branch-onto-feat-gg.md),
 and before the mirror job in
-[`build-ci-cd-on-azure-pipelines-with-deploys-to-staging-and-prod.md`](build-ci-cd-on-azure-pipelines-with-deploys-to-staging-and-prod.md)
+[`build-ci-cd-on-azure-pipelines-with-deploys-to-staging-and-prod.md`](done/build-ci-cd-on-azure-pipelines-with-deploys-to-staging-and-prod.md)
 is enabled and before
 [`cut-v0-7-0-through-the-azure-release-route.md`](cut-v0-7-0-through-the-azure-release-route.md).
 

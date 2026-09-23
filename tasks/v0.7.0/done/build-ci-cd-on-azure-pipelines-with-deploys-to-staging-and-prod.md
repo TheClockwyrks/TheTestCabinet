@@ -5,10 +5,10 @@ gates a commit, mirrors it to GitHub, builds its images into an Azure Container
 Registry, and rolls it onto the staging or production cluster according to the
 branch it landed on.
 
-This issue depends on [`drop-the-desktop-app.md`](drop-the-desktop-app.md) and
-[`address-submodules-by-relative-url-and-mirror-them-to-github.md`](done/address-submodules-by-relative-url-and-mirror-them-to-github.md),
+This issue depends on [`drop-the-desktop-app.md`](../drop-the-desktop-app.md) and
+[`address-submodules-by-relative-url-and-mirror-them-to-github.md`](address-submodules-by-relative-url-and-mirror-them-to-github.md),
 and runs after
-[`rewrite-the-repository-history-without-baselines-and-wasm-blobs.md`](rewrite-the-repository-history-without-baselines-and-wasm-blobs.md)
+[`rewrite-the-repository-history-without-baselines-and-wasm-blobs.md`](../rewrite-the-repository-history-without-baselines-and-wasm-blobs.md)
 so the first mirror push carries the rewritten history.
 
 ## Current state
@@ -112,18 +112,18 @@ The following pages describe the new route: `deployment/overview.md`,
 
 ## Done when
 
-- [ ] A push to a feature branch runs the gates and no other stage.
-- [ ] A push to `staging` passes the gates, mirrors to GitHub, pushes every
+- [x] A push to a feature branch runs the gates and no other stage.
+- [x] A push to `staging` passes the gates, mirrors to GitHub, pushes every
       service and run-container image to the ACR at the commit sha, and rolls
       the staging cluster to that sha with every rollout ready.
-- [ ] A push to `master` does the same against the production cluster.
-- [ ] A rollout that fails readiness is rolled back and fails the stage.
-- [ ] The overlays carry no image tags of their own.
-- [ ] The backend's ingest sidecar re-ingests after a roll and the deployed
+- [x] A push to `master` does the same against the production cluster.
+- [x] A rollout that fails readiness is rolled back and fails the stage.
+- [x] The overlays carry no image tags of their own.
+- [x] The backend's ingest sidecar re-ingests after a roll and the deployed
       catalog matches the branch tip.
-- [ ] A tag build whose `gg --version` differs from the tag fails the gates.
-- [ ] The docs site deploys from the pipeline on `master` and `staging`.
-- [ ] Pull requests into `master` and `staging` run the gates through build
+- [x] A tag build whose `gg --version` differs from the tag fails the gates.
+- [x] The docs site deploys from the pipeline on `master` and `staging`.
+- [x] Pull requests into `master` and `staging` run the gates through build
       validation policies.
-- [ ] The listed pages describe the pipeline as the deploy route.
-- [ ] Gates green.
+- [x] The listed pages describe the pipeline as the deploy route.
+- [x] Gates green.
