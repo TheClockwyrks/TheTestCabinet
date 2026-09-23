@@ -202,10 +202,14 @@ getrandom = { workspace = true }
 # the local filesystem rooted at the invocation's workspace, so the tests exercise
 # them against a real temporary directory.
 tempfile = { workspace = true }
-# `start_paused` for the per-model-call timeout tests: the stalled-gateway sockets are
-# real, but the five-minute ceiling elapses the moment the runtime idles on one, so a
-# timeout test costs milliseconds instead of minutes.
+# `start_paused` for the per-model-call timeout tests: a ceiling elapses the moment the
+# runtime has nothing left to do, so a timeout test costs milliseconds instead of minutes
+# and reads the ceiling exactly off the paused clock.
 tokio = { workspace = true, features = ["test-util"] }
+# The response a timeout test's stand-in gateway hands the client (`src/client.timeout.test.rs`):
+# reqwest builds its `Response` from an `http::Response`, which is how a test supplies one
+# without a socket. Already in the graph through reqwest.
+http = { workspace = true }
 # The content key of the test suite's on-disk cache of compiled components
 # (`src/sandbox/engine.cache.rs`, `#[cfg(test)]` only): an entry is mapped in and run on the
 # strength of its name, so the name is a collision-resistant digest of the bytes it was compiled from.

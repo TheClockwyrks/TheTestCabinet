@@ -7211,6 +7211,7 @@ dependencies = [
  "gg-artifact-swift",
  "gg-artifact-typescript",
  "handlebars",
+ "http",
  "ignore",
  "regex",
  "reqwest 0.12.28",

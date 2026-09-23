@@ -368,6 +368,11 @@ pub struct OpenRouterClient {
     /// [transport](Self) the client is on. [`DEFAULT_MODEL_CALL_TIMEOUT`] describes what the
     /// ceiling means on each of the two.
     model_call_timeout: Duration,
+    /// Test-only: where each attempt's response comes from instead of the network, so a test can
+    /// hand the client a reply whose body is exactly the chunks it chooses, ready or pending, and
+    /// drive the whole call on a paused clock with no socket whose readiness could race it.
+    #[cfg(test)]
+    gateway: Option<std::sync::Arc<dyn Fn() -> reqwest::Response + Send + Sync>>,
 }
 
 impl OpenRouterClient {
@@ -400,7 +405,29 @@ impl OpenRouterClient {
             stable_ttl: CacheTtl::Standard,
             loop_guard: None,
             model_call_timeout: DEFAULT_MODEL_CALL_TIMEOUT,
+            #[cfg(test)]
+            gateway: None,
         }
+    }
+
+    /// This client answered by `gateway` rather than by the network: every attempt's response is
+    /// what it returns. Test-only — see [`gateway`](Self::gateway).
+    #[cfg(test)]
+    pub(crate) fn answered_by(
+        mut self,
+        gateway: impl Fn() -> reqwest::Response + Send + Sync + 'static,
+    ) -> Self {
+        self.gateway = Some(std::sync::Arc::new(gateway));
+        self
+    }
+
+    /// Post `body` to `url` — one attempt's request, on whichever transport the caller is.
+    async fn post(&self, url: &str, body: &Value) -> reqwest::Result<reqwest::Response> {
+        #[cfg(test)]
+        if let Some(gateway) = &self.gateway {
+            return Ok(gateway());
+        }
+        self.attempt(url).json(body).send().await
     }
 
     /// This client bounding each of its calls by `timeout` — the run's resolved
@@ -616,7 +643,7 @@ impl OpenRouterClient {
         let carries_images = messages.iter().any(|message| !message.images.is_empty());
 
         for attempt in 1..=self.retry.max_attempts {
-            let sent = self.attempt(&url).json(&body).send().await;
+            let sent = self.post(&url, &body).await;
 
             match sent {
                 // Transport-level failure (connect/timeout/etc.): always retryable.
@@ -700,20 +727,16 @@ impl OpenRouterClient {
             // within the ceiling is a stall, and it surfaces immediately rather than spending the
             // retry budget — each internal retry of a stall would cost the full ceiling again, and
             // the turn-level retry is the bounded one.
-            let sent = match tokio::time::timeout(
-                self.model_call_timeout,
-                self.attempt(&url).json(&body).send(),
-            )
-            .await
-            {
-                Ok(sent) => sent,
-                Err(_) => {
-                    return Err(ModelError::Timeout {
-                        after: self.model_call_timeout,
-                        provider: None,
-                    });
-                }
-            };
+            let sent =
+                match tokio::time::timeout(self.model_call_timeout, self.post(&url, &body)).await {
+                    Ok(sent) => sent,
+                    Err(_) => {
+                        return Err(ModelError::Timeout {
+                            after: self.model_call_timeout,
+                            provider: None,
+                        });
+                    }
+                };
 
             match sent {
                 // Transport-level failure (connect/timeout/etc.): always retryable.

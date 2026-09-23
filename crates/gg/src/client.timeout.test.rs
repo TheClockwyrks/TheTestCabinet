@@ -1,107 +1,87 @@
-//! The [per-model-call ceiling](DEFAULT_MODEL_CALL_TIMEOUT) against a **stalled gateway** — a live
-//! socket that accepts the request and never answers it, which is exactly the failure that once
+//! The [per-model-call ceiling](DEFAULT_MODEL_CALL_TIMEOUT) against a **stalled gateway** — one
+//! that accepts the request and never finishes answering it, which is exactly the failure that once
 //! held a run twenty minutes inside one call with nothing able to interrupt it.
 //!
 //! Each test states the ceiling its client was built with, so what is asserted is the figure the
 //! run configured rather than one gg picked.
 //!
 //! Every test here runs under `start_paused` time, so a ceiling elapses the moment the runtime has
-//! nothing left to do rather than after the ceiling's figure in real seconds:
+//! nothing left to do rather than after the ceiling's figure in real seconds, and the paused clock
+//! reads exactly the ceiling that cut the call — which is what shows it was the configured one.
 //!
-//! - The socket tests hold the contract the turn loop is built on: a stall surfaces as
-//!   [`ModelError::Timeout`] at the configured figure, without spending the client's internal retry
-//!   budget on more full-ceiling waits. They are real loopback sockets, so they do not assert which
-//!   half of the ceiling cut the call — under paused time the wait for the response head is itself
-//!   an idle runtime.
-//! - Which half cut it, and what it names, is asserted on [`read_stream`] directly: a chunk that is
-//!   ready without any I/O and then a stream that never yields again, so the only way the read can
-//!   end is the idle half of the ceiling, after the chunk has named its provider.
+//! The gateway is a stand-in the client is [answered by](OpenRouterClient::answered_by) rather than
+//! a socket: a response whose body is exactly the chunks the test chooses, ready at once, and then
+//! a stream that never yields again. A real loopback socket cannot be combined with a paused clock
+//! deterministically — whether the client has read what the gateway wrote before the runtime next
+//! idles is up to the scheduler, and when it has not, the clock jumps. What the stand-in replaces is
+//! reqwest's socket; everything from the response onward is gg's own path, the one a real reply
+//! takes.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpListener;
-
 use super::*;
 use crate::model::Message;
 
-/// A gateway that accepts connections, reads the request, and never answers. Returns its base URL
-/// and the count of connections it accepted — the direct evidence of how many attempts the client
-/// spent.
-async fn stalled_gateway() -> (String, Arc<AtomicUsize>) {
-    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
-    let port = listener.local_addr().expect("addr").port();
-    let connections = Arc::new(AtomicUsize::new(0));
-    let seen = Arc::clone(&connections);
-    tokio::spawn(async move {
-        loop {
-            let Ok((mut socket, _)) = listener.accept().await else {
-                return;
-            };
-            seen.fetch_add(1, Ordering::SeqCst);
-            tokio::spawn(async move {
-                // Drain the request and then hold the connection open forever, answering nothing.
-                let mut sink = [0u8; 4096];
-                while matches!(socket.read(&mut sink).await, Ok(read) if read > 0) {}
-            });
-        }
-    });
-    (format!("http://127.0.0.1:{port}/api/v1"), connections)
-}
-
-/// A gateway that serves the response head and the first SSE chunk — naming its provider — and
-/// then stalls mid-stream forever.
-async fn mid_stream_stalled_gateway() -> String {
-    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
-    let port = listener.local_addr().expect("addr").port();
-    tokio::spawn(async move {
-        let Ok((mut socket, _)) = listener.accept().await else {
-            return;
-        };
-        // Read the request head; the body length does not matter to a server that will stall.
-        let mut sink = [0u8; 8192];
-        let _ = socket.read(&mut sink).await;
-        let head = "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\n\
-                    transfer-encoding: chunked\r\n\r\n";
-        let chunk = format!("{:x}\r\n{FIRST_EVENT}\r\n", FIRST_EVENT.len());
-        let _ = socket.write_all(head.as_bytes()).await;
-        let _ = socket.write_all(chunk.as_bytes()).await;
-        let _ = socket.flush().await;
-        // Never send another chunk and never close: the idle half of the ceiling's job.
-        std::future::pending::<()>().await;
-    });
-    format!("http://127.0.0.1:{port}/api/v1")
-}
-
-/// The one SSE event a stalling stream sends before it goes quiet, naming the provider serving it.
-const FIRST_EVENT: &str = "data: {\"provider\":\"slowco\",\"choices\":[{\"index\":0,\
-                           \"delta\":{\"content\":\"working\"}}]}\n\n";
-
-/// The buffered transport under a gateway that never answers: the whole call — retries included —
-/// is cut at the total-duration ceiling the run configured, surfaces as
-/// [`ModelError::Timeout`], and spends exactly **one** connection: a stall is never retried
-/// inside the client, because each internal retry would cost the full ceiling again and the
-/// turn-level retry is the bounded one.
-#[tokio::test(start_paused = true)]
-async fn a_stalled_gateway_times_out_the_buffered_call_without_spending_retries() {
-    let (base_url, connections) = stalled_gateway().await;
-    let configured_timeout = DEFAULT_MODEL_CALL_TIMEOUT;
+/// A gateway that answers `200` with `first` as the whole of what its body ever delivers, and then
+/// never delivers another byte nor ends. Returns the client answered by it and the count of the
+/// requests it was sent — the direct evidence of how many attempts the client spent.
+fn stalled_client(first: &'static str) -> (OpenRouterClient, Arc<AtomicUsize>) {
+    let requests = Arc::new(AtomicUsize::new(0));
+    let seen = Arc::clone(&requests);
     let client = OpenRouterClient::new(
-        base_url,
+        "http://gateway.invalid/api/v1",
         reqwest::Client::new(),
         "openai/gpt-5.6",
         "sk-test",
         RetryPolicy::default(),
         None,
     )
-    .with_model_call_timeout(configured_timeout);
+    .with_model_call_timeout(CONFIGURED)
+    .answered_by(move || {
+        seen.fetch_add(1, Ordering::SeqCst);
+        let chunks = futures_util::stream::iter(
+            (!first.is_empty()).then_some(Ok::<_, std::io::Error>(first)),
+        )
+        .chain(futures_util::stream::pending());
+        http::Response::builder()
+            .status(200)
+            .header("content-type", "text/event-stream")
+            .body(reqwest::Body::wrap_stream(chunks))
+            .expect("a well-formed response")
+            .into()
+    });
+    (client, requests)
+}
 
+/// The ceiling the tests configure: unlike [`DEFAULT_MODEL_CALL_TIMEOUT`], so a call cut by the
+/// default instead reads differently on the paused clock.
+const CONFIGURED: Duration = Duration::from_secs(37);
+
+/// The one SSE event a stalling stream sends before it goes quiet, naming the provider serving it.
+const FIRST_EVENT: &str = "data: {\"provider\":\"slowco\",\"choices\":[{\"index\":0,\
+                           \"delta\":{\"content\":\"working\"}}]}\n\n";
+
+/// The buffered transport under a gateway whose reply never finishes: the whole call — retries
+/// included — is cut at the total-duration ceiling the run configured, surfaces as
+/// [`ModelError::Timeout`], and spends exactly **one** request: a stall is never retried inside the
+/// client, because each internal retry would cost the full ceiling again and the turn-level retry
+/// is the bounded one.
+#[tokio::test(start_paused = true)]
+async fn a_stalled_gateway_times_out_the_buffered_call_without_spending_retries() {
+    let (client, requests) = stalled_client("");
+
+    let started = tokio::time::Instant::now();
     let outcome = client.complete(&[Message::user("build it")], &[]).await;
+    assert_eq!(
+        started.elapsed(),
+        CONFIGURED,
+        "the call was cut by a bound other than the configured ceiling"
+    );
 
     match outcome {
         Err(ModelError::Timeout { after, provider }) => {
-            assert_eq!(after, configured_timeout);
+            assert_eq!(after, CONFIGURED);
             assert!(
                 provider.is_none(),
                 "a buffered stall read nothing that could name a provider"
@@ -110,36 +90,47 @@ async fn a_stalled_gateway_times_out_the_buffered_call_without_spending_retries(
         other => panic!("a stalled call must time out, got {other:?}"),
     }
     assert_eq!(
-        connections.load(Ordering::SeqCst),
+        requests.load(Ordering::SeqCst),
         1,
         "the ceiling covers the whole call — a stall is not retried internally"
     );
 }
 
 /// The streaming transport under a gateway that stalls **mid-reply**: the call is cut at the
-/// configured ceiling and surfaces as [`ModelError::Timeout`], never as a retry-exhausted transport
-/// failure.
+/// configured ceiling and surfaces as [`ModelError::Timeout`] naming the provider the chunk that did
+/// arrive named, never as a retry-exhausted transport failure.
+///
+/// The provider is what shows the reply's own stream reached [`read_stream`] and that its verdict
+/// reached the error: a call cut anywhere before the body has read nothing that could name one.
 #[tokio::test(start_paused = true)]
 async fn a_mid_stream_stall_times_out_at_the_configured_ceiling() {
-    let base_url = mid_stream_stalled_gateway().await;
-    let configured_timeout = DEFAULT_MODEL_CALL_TIMEOUT;
-    let client = OpenRouterClient::new(
-        base_url,
-        reqwest::Client::new(),
-        "openai/gpt-5.6",
-        "sk-test",
-        RetryPolicy::default(),
-        None,
-    )
-    .with_model_call_timeout(configured_timeout)
-    .with_loop_detection(armed_loop_detection());
+    let (client, requests) = stalled_client(FIRST_EVENT);
+    let client = client.with_loop_detection(armed_loop_detection());
 
+    let started = tokio::time::Instant::now();
     let outcome = client.complete(&[Message::user("build it")], &[]).await;
+    assert_eq!(
+        started.elapsed(),
+        CONFIGURED,
+        "the call was cut by a bound other than the configured ceiling"
+    );
 
     match outcome {
-        Err(ModelError::Timeout { after, .. }) => assert_eq!(after, configured_timeout),
+        Err(ModelError::Timeout { after, provider }) => {
+            assert_eq!(after, CONFIGURED);
+            assert_eq!(
+                provider.as_deref(),
+                Some("slowco"),
+                "the stalled stream's first chunk named who was serving it"
+            );
+        }
         other => panic!("a stalled stream must time out, got {other:?}"),
     }
+    assert_eq!(
+        requests.load(Ordering::SeqCst),
+        1,
+        "a stall is not retried internally"
+    );
 }
 
 /// A stream that stalls after its first chunk is cut on **idleness** — a total cap would kill
@@ -152,7 +143,10 @@ async fn a_stream_that_goes_quiet_after_a_chunk_is_a_stall_naming_its_provider()
             .chain(futures_util::stream::pending());
     let config = resolved_config();
 
-    match read_stream(stream, config, DEFAULT_MODEL_CALL_TIMEOUT).await {
+    let started = tokio::time::Instant::now();
+    let outcome = read_stream(stream, config, DEFAULT_MODEL_CALL_TIMEOUT).await;
+    assert_eq!(started.elapsed(), DEFAULT_MODEL_CALL_TIMEOUT);
+    match outcome {
         StreamOutcome::Stalled { provider } => assert_eq!(
             provider.as_deref(),
             Some("slowco"),
