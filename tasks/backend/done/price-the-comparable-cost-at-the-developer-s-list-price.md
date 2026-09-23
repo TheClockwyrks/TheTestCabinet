@@ -45,11 +45,11 @@ defines the comparable cost, and the model form onto the list price.
 
 ## Done when
 
-- [ ] The catalog entry carries a dated list price, and the model form edits it
+- [x] The catalog entry carries a dated list price, and the model form edits it
       with Fill from OpenRouter seeding it from the official endpoint.
-- [ ] A run's comparable cost is computed from the list price alone.
-- [ ] A model without a list price is refused at enqueue.
-- [ ] The refresh records the official endpoint's price as the billed rate and
+- [x] A run's comparable cost is computed from the list price alone.
+- [x] A model without a list price is refused at enqueue.
+- [x] The refresh records the official endpoint's price as the billed rate and
       the Stats tab shows both.
-- [ ] The quickstart, guide and metrics page describe the list price.
-- [ ] Gates green.
+- [x] The quickstart, guide and metrics page describe the list price.
+- [x] Gates green.
