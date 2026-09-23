@@ -95,6 +95,33 @@ async fn non_positive_timeout_is_rejected() {
     assert!(outcome.output.contains("timeout_secs"));
 }
 
+/// A call naming no timeout runs under ten minutes, long enough for a build or a test suite to
+/// finish on the first call.
+#[test]
+fn an_absent_timeout_is_ten_minutes() {
+    let expected = Duration::from_secs(600);
+
+    assert_eq!(
+        parse_timeout(&json!({ "command": "ls" })).ok(),
+        Some(expected)
+    );
+    assert_eq!(
+        parse_timeout(&json!({ "command": "ls", "timeout_secs": null })).ok(),
+        Some(expected)
+    );
+}
+
+/// The model is told the same default the tool applies.
+#[test]
+fn the_timeout_parameter_names_the_default() {
+    let definition = ShellTool::new(OffloadPolicy::Inline).definition();
+
+    assert_eq!(
+        definition.parameters["properties"]["timeout_secs"]["description"],
+        "Timeout in seconds (default 600)."
+    );
+}
+
 /// Output beyond the cap is truncated with a note; the tail (which holds the useful
 /// final lines) is kept.
 #[tokio::test]

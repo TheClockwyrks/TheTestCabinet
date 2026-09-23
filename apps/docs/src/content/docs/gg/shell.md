@@ -12,7 +12,7 @@ in the Models & tools group of the [configuration](/gg/configurations/) editor.
 A command runs with its working directory set to the workspace root, or to the
 agent's own worktree when it has one. It runs in its own process group, so a
 timeout kill reaches the whole tree rather than `sh` alone, under a per-call
-timeout of 600 seconds (ten minutes), which the caller may raise or lower per call.
+timeout of 600 seconds, which the caller may raise or lower per call.
 
 A non-zero exit is a result rather than a failed call. The exit code and the
 output both come back so the agent can branch on them, because deciding whether

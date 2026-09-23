@@ -25,12 +25,10 @@ use crate::sandbox::operations::{
     FILES_EDIT_FILE, FILES_LIST_DIR, FILES_READ_FILE, FILES_SEARCH, FILES_TREE, FILES_WRITE_FILE,
     SHELL_SHELL,
 };
-use crate::tools::{ApiData, DirEntryData, DirEntryKind, SearchMatchData};
-
-/// gg's own default `shell` timeout, restated here because the membrane must clamp a value *before*
-/// the tool sees it — and a call that arrived at the tool with no timeout at all would be clamped
-/// by nothing.
-const DEFAULT_TIMEOUT_SECS: f64 = 600.0;
+use crate::tools::{
+    ApiData, DirEntryData, DirEntryKind, SHELL_DEFAULT_TIMEOUT_SECS as DEFAULT_TIMEOUT_SECS,
+    SearchMatchData,
+};
 
 /// The longest `shell` timeout the membrane will forward: a day, which no command in a run
 /// container has any business exceeding.

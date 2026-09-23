@@ -48,7 +48,7 @@ def shell(command: str, *, timeout_secs: float | None = None) -> ShellOutput:
     Args:
         command: The command line, run by `sh -c` with the workspace as its working directory.
         timeout_secs: How long to let it run, in seconds, before killing it. The default is gg's own
-            120, clamped to whatever is left of the run's wall-clock budget.
+            600, clamped to whatever is left of the run's wall-clock budget.
 
     Returns:
         The command's merged stdout and stderr, its `exit_code` — `None` when a signal killed the
