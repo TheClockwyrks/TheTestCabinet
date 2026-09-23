@@ -928,6 +928,12 @@ export type GgSessionRecord = {
    */
   sessionId: string;
   /**
+   * The run's [routing key](crate::gg::GgTelemetryKind::SessionStarted::routing_key): the
+   * value every request of the run sent as `session_id` and `prompt_cache_key`, which is what
+   * a provider dashboard shows for them.
+   */
+  routingKey?: string;
+  /**
    * The [capability set](GgCapabilitySet) the run was configured with, so a
    * reader has the configuration the run was launched with rather than one assembled to
    * suit the record.

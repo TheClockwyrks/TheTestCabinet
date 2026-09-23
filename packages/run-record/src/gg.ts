@@ -3003,11 +3003,19 @@ export type GgTelemetryKind =
        */
       capabilitySet: GgCapabilitySet;
       /**
-       * The OpenRouter provider each bound model is pinned to, beside the session
-       * id. A run's cost is recorded against this pin; a response from any other
+       * The OpenRouter provider each bound model is pinned to, beside the routing
+       * key. A run's cost is recorded against this pin; a response from any other
        * provider ends the run.
        */
       modelProviders: { [key in string]: string };
+      /**
+       * The **routing key** gg minted at launch: a cuid2 sent on every request of the run
+       * as both `session_id` and `prompt_cache_key`, so a provider dashboard row can be
+       * matched to the run it belongs to. Minted rather than derived from the session id,
+       * which is caller-supplied text of any length, so it is always inside every
+       * provider's cap on either field.
+       */
+      routingKey?: string;
     }
   | { type: "turn_started" }
   | {
@@ -4242,11 +4250,19 @@ export type GgTelemetryEvent = {
        */
       capabilitySet: GgCapabilitySet;
       /**
-       * The OpenRouter provider each bound model is pinned to, beside the session
-       * id. A run's cost is recorded against this pin; a response from any other
+       * The OpenRouter provider each bound model is pinned to, beside the routing
+       * key. A run's cost is recorded against this pin; a response from any other
        * provider ends the run.
        */
       modelProviders: { [key in string]: string };
+      /**
+       * The **routing key** gg minted at launch: a cuid2 sent on every request of the run
+       * as both `session_id` and `prompt_cache_key`, so a provider dashboard row can be
+       * matched to the run it belongs to. Minted rather than derived from the session id,
+       * which is caller-supplied text of any length, so it is always inside every
+       * provider's cap on either field.
+       */
+      routingKey?: string;
     }
   | { type: "turn_started" }
   | {

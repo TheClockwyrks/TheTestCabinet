@@ -27,11 +27,15 @@ fn message(role: &str, content: &str) -> Value {
     json!({ "role": role, "content": content })
 }
 
+/// The routing key the recording session in [`header`] minted.
+const ROUTING_KEY: &str = "tz4a98xxat96iws9zmbrgj3a";
+
 /// The header a recording session writes first.
 fn header() -> GgJournalLine {
     GgJournalLine::Header {
         format_version: GG_SESSION_FORMAT_VERSION,
         session_id: "run-1".to_string(),
+        routing_key: Some(ROUTING_KEY.to_string()),
         capability_set: Box::new(GgCapabilitySet::minimal("some/model")),
         recorder: GgSessionRecorder {
             gg_version: Some("0.7.0".to_string()),
@@ -164,6 +168,11 @@ fn a_complete_journal_assembles_into_the_record_it_captured() {
     assert_eq!(record.format_version, GG_SESSION_FORMAT_VERSION);
     assert_eq!(record.session_id, "run-1");
     assert_eq!(
+        record.routing_key.as_deref(),
+        Some(ROUTING_KEY),
+        "the routing key rides beside the session id",
+    );
+    assert_eq!(
         record.capability_set,
         GgCapabilitySet::minimal("some/model"),
         "the record runs under the configuration the session was captured with",
@@ -218,11 +227,9 @@ fn the_document_carries_every_field_the_record_serializes() {
         .expect("decompress");
     let assembled: serde_json::Map<String, Value> =
         serde_json::from_str(&json).expect("the document is a JSON object");
-    let serialized = serde_json::to_value(GgSessionRecord::new(
-        "run-1",
-        GgCapabilitySet::minimal("some/model"),
-    ))
-    .expect("serialize an empty record");
+    let mut record = GgSessionRecord::new("run-1", GgCapabilitySet::minimal("some/model"));
+    record.routing_key = Some(ROUTING_KEY.to_string());
+    let serialized = serde_json::to_value(record).expect("serialize an empty record");
     let expected = serialized.as_object().expect("an object");
 
     assert_eq!(
@@ -230,6 +237,26 @@ fn the_document_carries_every_field_the_record_serializes() {
         expected.keys().collect::<Vec<_>>(),
         "the hand-written document and the record type must carry the same fields",
     );
+}
+
+/// A header that names no routing key assembles into a record without one, rather than being
+/// refused: the key is optional on both the journal line and the record.
+#[test]
+fn a_header_without_a_routing_key_assembles_into_a_record_without_one() {
+    let dir = tempfile::tempdir().expect("scratch");
+    let mut lines = session();
+    if let GgJournalLine::Header { routing_key, .. } = &mut lines[0] {
+        *routing_key = None;
+    }
+    lines.push(end(2));
+    let journal = write_journal(dir.path(), &lines);
+    let output = output_in(dir.path());
+
+    assemble_journal_to_gz(&journal, &output).expect("assemble");
+
+    let record = read_record(&output);
+    assert_eq!(record.session_id, "run-1");
+    assert_eq!(record.routing_key, None);
 }
 
 /// Deterministic filler of `bytes` characters, seeded on `seed`.
@@ -743,6 +770,7 @@ fn a_journal_from_a_newer_gg_is_refused() {
     let lines = vec![GgJournalLine::Header {
         format_version: GG_SESSION_FORMAT_VERSION + 1,
         session_id: "run-1".to_string(),
+        routing_key: None,
         capability_set: Box::new(GgCapabilitySet::default()),
         recorder: GgSessionRecorder::default(),
     }];

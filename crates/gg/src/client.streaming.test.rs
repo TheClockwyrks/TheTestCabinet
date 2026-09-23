@@ -233,14 +233,14 @@ fn a_binding_carries_its_agents_loop_detection_into_the_client() {
 
     let quiet = OpenRouterClient::from_binding(
         &GgSlotBinding::new(PRIMARY_SLOT, "openai/gpt-5.6"),
-        Some("session"),
+        &RoutingKey::mint(),
     );
     let watched = OpenRouterClient::from_binding(
         &GgSlotBinding::new(PRIMARY_SLOT, "openai/gpt-5.6").with_loop_detection(GgLoopDetection {
             window_words: Some(64),
             ..armed_declaration()
         }),
-        Some("session"),
+        &RoutingKey::mint(),
     );
 
     // Restore before asserting so a failure does not leave the process holding a fake credential.

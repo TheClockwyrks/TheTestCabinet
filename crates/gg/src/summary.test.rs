@@ -434,6 +434,7 @@ fn observing_the_terminal_events_is_a_no_op() {
         &GgTelemetryKind::SessionStarted {
             capability_set: Box::new(GgCapabilitySet::minimal("mock/echo")),
             model_providers: Default::default(),
+            routing_key: None,
         },
     );
     tracker.observe(

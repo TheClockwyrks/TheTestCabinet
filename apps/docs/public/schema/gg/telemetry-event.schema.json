@@ -1409,8 +1409,12 @@
           "additionalProperties": {
             "type": "string"
           },
-          "description": "The OpenRouter provider each bound model is pinned to, beside the session\nid. A run's cost is recorded against this pin; a response from any other\nprovider ends the run.",
+          "description": "The OpenRouter provider each bound model is pinned to, beside the routing\nkey. A run's cost is recorded against this pin; a response from any other\nprovider ends the run.",
           "type": "object"
+        },
+        "routingKey": {
+          "description": "The **routing key** gg minted at launch: a cuid2 sent on every request of the run\nas both `session_id` and `prompt_cache_key`, so a provider dashboard row can be\nmatched to the run it belongs to. Minted rather than derived from the session id,\nwhich is caller-supplied text of any length, so it is always inside every\nprovider's cap on either field.",
+          "type": ["string", "null"]
         },
         "type": {
           "const": "session_started",

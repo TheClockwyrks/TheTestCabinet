@@ -76,8 +76,7 @@ fn orchestrator_with(
         Orchestrator::build(
             &invocation(dir, set),
             emitter,
-            factory,
-            crate::tools::real_shell(),
+            SessionSeams::substituted(factory, crate::tools::real_shell()),
             // No git isolation: none of these tests reaches a worktree, and every one of them
             // fails before an agent could ask for one.
             WorktreesSetup {

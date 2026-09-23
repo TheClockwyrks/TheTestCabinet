@@ -44,9 +44,9 @@ on `auto` where it does not, and describe the downgrade beside the
 
 ## Done when
 
-- [ ] A provider rejection naming `tool_choice` is answered with the same
+- [x] A provider rejection naming `tool_choice` is answered with the same
       request on `auto`, once per run, and logged.
-- [ ] A responses-as-code run of a model whose provider refuses the pin runs to
+- [x] A responses-as-code run of a model whose provider refuses the pin runs to
       its own end.
-- [ ] The overview and programs pages describe the pin and the downgrade.
-- [ ] Gates green.
+- [x] The overview and programs pages describe the pin and the downgrade.
+- [x] Gates green.

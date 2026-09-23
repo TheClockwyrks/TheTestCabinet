@@ -57,9 +57,9 @@
 //! test that constructs the invocation itself (supplying the windows a launch would
 //! have), which is exactly the intended blast radius.
 
-use std::collections::BTreeMap;
-use std::sync::Mutex;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use futures_util::StreamExt;
@@ -90,12 +90,12 @@ const FAKE_MODEL_ENV: &str = "TCAB_GG_FAKE_MODEL";
 /// The provider token that selects the mock (as `provider` or a `model_id` prefix).
 const MOCK_PROVIDER: &str = "mock";
 /// `X-Title` sent to OpenRouter to identify the app on its dashboards.
-const GG_X_TITLE: &str = "The Test Cabinet gg";
+const GG_X_TITLE: &str = "gg";
 /// `HTTP-Referer` sent to OpenRouter — an app-identity hint used for its rankings,
 /// not a navigational URL.
-const GG_HTTP_REFERER: &str = "https://github.com/the-test-cabinet/gg";
-/// The header form of the [session key](build_request_body), which OpenRouter accepts
-/// interchangeably with the `session_id` body field.
+const GG_HTTP_REFERER: &str = "https://testcabinet.ai/";
+/// The header form of the [routing key](RoutingKey), which OpenRouter accepts interchangeably
+/// with the `session_id` body field.
 const SESSION_ID_HEADER: &str = "x-session-id";
 /// Maximum length of a provider error body copied into a [`ModelError`].
 const ERROR_BODY_CAP: usize = 2000;
@@ -150,10 +150,43 @@ const CACHE_BREAKPOINT_STRIDE: usize = 8;
 /// realistic gap.
 const CACHE_EXTENDED_TTL: &str = "1h";
 
-/// The longest [session key](build_request_body) OpenRouter accepts (it documents a 256-character
-/// cap). A run's session id is a UUID and nowhere near it, but the key is caller-supplied, and a
-/// key silently rejected for length would take the whole run's cache with it.
-const MAX_SESSION_KEY_CHARS: usize = 256;
+/// Test-only: what answers an [`OpenRouterClient`] in place of the network, given the request the
+/// attempt would have sent — see [`OpenRouterClient::answered_by`].
+#[cfg(test)]
+type Gateway = std::sync::Arc<dyn Fn(&reqwest::Request) -> reqwest::Response + Send + Sync>;
+
+/// The run's **routing key**: the one value every request of a run carries as both `session_id`
+/// and `prompt_cache_key` (see [`build_request_body`]).
+///
+/// gg mints it once, at launch, rather than deriving it from the run's session id. The session id
+/// is caller-supplied text of any length, and the two fields are capped by the providers that read
+/// them — OpenRouter caps `session_id` at 256 characters and OpenAI rejects a whole request whose
+/// `prompt_cache_key` passes 64. A cuid2 is 24 characters, inside both, and the only property
+/// routing needs is that every request of the run carries the same value.
+///
+/// A distinct type rather than a `String` so that nothing but a minted key can reach the wire in
+/// its place: a client is built from a `RoutingKey`, never from whatever text was to hand.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RoutingKey(String);
+
+impl RoutingKey {
+    /// Mint a fresh key: a 24-character cuid2. Called once per run, at launch; every client of the
+    /// run carries a clone of the one it returns.
+    pub fn mint() -> Self {
+        Self(cuid2::create_id())
+    }
+
+    /// The key as it goes on the wire.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for RoutingKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
 
 /// The skill name the [default mock script](MockClient::with_default_script) reads, so an
 /// offline run can seed `.gg/skills/<name>.md` and demonstrate the skills capability.
@@ -404,14 +437,20 @@ pub struct OpenRouterClient {
     model_id: String,
     api_key: String,
     retry: RetryPolicy,
-    /// The session-wide [sticky-session key](build_request_body) — the run's session id, the same
-    /// value on every agent's client. It pins the whole run's requests to one provider endpoint,
-    /// so an agent's successive turns reuse the prefix the last turn cached and sibling agents
-    /// that open on the same prefix reuse each other's. Sent both as the `session_id` body field
-    /// and as the `x-session-id` header (OpenRouter accepts either; sending both means no
-    /// intermediary that filters one of them can quietly cost the run its cache). `None` leaves
-    /// the key off the wire entirely.
-    session_key: Option<String>,
+    /// The run's record of which models' providers refused a pinned `tool_choice`, read by every
+    /// [required-tool request](ModelClient::complete_requiring) this client sends. Shared with
+    /// every other client the run's [factory](DefaultClientFactory) builds, so the pin is tried
+    /// once per model per run: an agent's successor, its subagents and its handoff compaction all
+    /// ask on `auto` once any of them has been refused. See [`ToolChoiceMemory`].
+    tool_choice: ToolChoiceMemory,
+    /// The run's [routing key](RoutingKey), the same value on every agent's client. It pins the
+    /// whole run's requests to one provider endpoint, so an agent's successive turns reuse the
+    /// prefix the last turn cached and sibling agents that open on the same prefix reuse each
+    /// other's. Sent as the `session_id` and `prompt_cache_key` body fields and as the
+    /// `x-session-id` header (OpenRouter accepts the header and `session_id` interchangeably;
+    /// sending both means no intermediary that filters one of them can quietly cost the run its
+    /// cache). `None` leaves the key off the wire entirely.
+    routing_key: Option<RoutingKey>,
     /// The OpenRouter provider this client's requests are pinned to — the model's own
     /// developer, resolved at enqueue and pushed in as
     /// [`GgInvocation::model_providers`](test_cabinet_core::gg::GgInvocation::model_providers).
@@ -448,14 +487,14 @@ pub struct OpenRouterClient {
     /// hand the client a reply whose body is exactly the chunks it chooses, ready or pending, and
     /// drive the whole call on a paused clock with no socket whose readiness could race it.
     #[cfg(test)]
-    gateway: Option<std::sync::Arc<dyn Fn() -> reqwest::Response + Send + Sync>>,
+    gateway: Option<Gateway>,
 }
 
 impl OpenRouterClient {
     /// Construct a client from its parts. `base_url` is the API root (no trailing
     /// `/chat/completions`); pass an injected `http` and a test `base_url` to exercise
-    /// it offline. `session_key` is the stable [sticky-session key](build_request_body) this
-    /// client stamps on every request; `None` sends none.
+    /// it offline. `routing_key` is the run's [routing key](RoutingKey) this client stamps on every
+    /// request; `None` sends none.
     ///
     /// The prompt cache takes the [standard lifetime](CacheTtl::Standard); a client for an agent
     /// configured for the extended one is built through
@@ -469,7 +508,7 @@ impl OpenRouterClient {
         model_id: impl Into<String>,
         api_key: impl Into<String>,
         retry: RetryPolicy,
-        session_key: Option<String>,
+        routing_key: Option<RoutingKey>,
     ) -> Self {
         Self {
             http,
@@ -477,7 +516,8 @@ impl OpenRouterClient {
             model_id: model_id.into(),
             api_key: api_key.into(),
             retry,
-            session_key,
+            tool_choice: ToolChoiceMemory::default(),
+            routing_key,
             provider: None,
             stable_ttl: CacheTtl::Standard,
             loop_guard: None,
@@ -489,13 +529,22 @@ impl OpenRouterClient {
     }
 
     /// This client answered by `gateway` rather than by the network: every attempt's response is
-    /// what it returns. Test-only — see [`gateway`](Self::gateway).
+    /// what it returns, given the request the attempt would have sent, headers and body alike.
+    /// Test-only — see [`gateway`](Self::gateway).
     #[cfg(test)]
     pub(crate) fn answered_by(
         mut self,
-        gateway: impl Fn() -> reqwest::Response + Send + Sync + 'static,
+        gateway: impl Fn(&reqwest::Request) -> reqwest::Response + Send + Sync + 'static,
     ) -> Self {
         self.gateway = Some(std::sync::Arc::new(gateway));
+        self
+    }
+
+    /// This client reading and recording [tool-choice refusals](ToolChoiceMemory) in `memory`,
+    /// the run-wide record its [factory](DefaultClientFactory) shares between every client it
+    /// builds. A client built without it keeps a record of its own.
+    pub fn with_tool_choice_memory(mut self, memory: ToolChoiceMemory) -> Self {
+        self.tool_choice = memory;
         self
     }
 
@@ -503,7 +552,7 @@ impl OpenRouterClient {
     async fn post(&self, url: &str, body: &Value) -> reqwest::Result<reqwest::Response> {
         #[cfg(test)]
         if let Some(gateway) = &self.gateway {
-            return Ok(gateway());
+            return Ok(gateway(&self.attempt(url).json(body).build()?));
         }
         self.attempt(url).json(body).send().await
     }
@@ -590,15 +639,14 @@ impl OpenRouterClient {
     /// environment. Returns [`ModelError::MissingApiKey`] when the credential is
     /// absent or empty.
     ///
-    /// `session_key` is the session-wide [sticky-session key](build_request_body) stamped on every
-    /// request — the whole run's session id, shared by the root and every subagent. Sharing it is
-    /// deliberate: agents that open on the same prefix (same calling convention, the same
-    /// autoloaded specs) then route to the same provider endpoint and reuse one another's cached
-    /// prefix, and an agent's own successive turns stay on that endpoint so each turn reads the
-    /// prefix the last one cached. `None` sends no key.
+    /// `routing_key` is the run's [routing key](RoutingKey), stamped on every request and shared by
+    /// the root and every subagent. Sharing it is deliberate: agents that open on the same prefix
+    /// (same calling convention, the same autoloaded specs) then route to the same provider
+    /// endpoint and reuse one another's cached prefix, and an agent's own successive turns stay on
+    /// that endpoint so each turn reads the prefix the last one cached.
     pub fn from_binding(
         binding: &GgSlotBinding,
-        session_key: Option<&str>,
+        routing_key: &RoutingKey,
     ) -> Result<Self, ModelError> {
         let api_key = std::env::var(API_KEY_ENV)
             .ok()
@@ -610,7 +658,7 @@ impl OpenRouterClient {
             binding.model_id.clone(),
             api_key,
             RetryPolicy::default(),
-            session_key.map(str::to_string),
+            Some(routing_key.clone()),
         )
         .with_prompt_cache_ttl(binding.prompt_cache_ttl)
         .with_loop_detection(binding.loop_detection))
@@ -656,10 +704,25 @@ impl OpenRouterClient {
         self.loop_guard.is_some()
     }
 
+    /// The one `warn` a [tool-choice downgrade](ToolChoiceMemory) is logged with, on the stream
+    /// [retries](Self::announce_retry) are announced on: the model and the provider's message.
+    fn announce_tool_choice_downgrade(&self, message: &str) {
+        let stream = self
+            .retry_stream
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(emitter) = stream.as_ref() {
+            emitter.emit(GgTelemetryKind::Log {
+                level: "warn".to_string(),
+                message: tool_choice_downgrade_message(&self.model_id, message),
+            });
+        }
+    }
+
     /// One attempt's request, headers and all, before its body is attached.
     ///
     /// Shared by [both transports](Self) rather than written out twice: the headers are the run's
-    /// identity and its [sticky-session key](build_request_body), and a streamed request that
+    /// identity and its [routing key](RoutingKey), and a streamed request that
     /// quietly stopped sending one of them would cost the agent its prompt cache in a way no test
     /// of either transport alone would catch.
     fn attempt(&self, url: &str) -> reqwest::RequestBuilder {
@@ -672,9 +735,9 @@ impl OpenRouterClient {
             )
             .header("HTTP-Referer", GG_HTTP_REFERER)
             .header("X-Title", GG_X_TITLE);
-        // The header form of the `session_id` the body already carries — see `session_key`.
-        if let Some(key) = self.session_key.as_deref().filter(|key| !key.is_empty()) {
-            request = request.header(SESSION_ID_HEADER, session_key_on_the_wire(key));
+        // The header form of the `session_id` the body already carries — see `routing_key`.
+        if let Some(key) = &self.routing_key {
+            request = request.header(SESSION_ID_HEADER, key.as_str());
         }
         request
     }
@@ -691,7 +754,7 @@ impl ModelClient for OpenRouterClient {
             &self.model_id,
             messages,
             tools,
-            self.session_key.as_deref(),
+            self.routing_key.as_ref(),
             self.provider.as_deref(),
             self.stable_ttl,
             self.streams(),
@@ -702,21 +765,43 @@ impl ModelClient for OpenRouterClient {
     /// Offer `tool` and pin `tool_choice` to it, so the reply is the call rather than the model's
     /// judgement about whether to make one — the wire form of the default's intent, which cannot
     /// express the requirement.
+    ///
+    /// The pin is sent where the provider takes it. A [`400` naming
+    /// `tool_choice`](is_tool_choice_refusal) is answered by re-sending the same request with
+    /// `tool_choice` set to `auto`, at once and outside the retry schedule, and the refusal is
+    /// recorded in the run's [`ToolChoiceMemory`] so every later required-tool request for this
+    /// model, a turn's and a handoff compaction's alike, is sent on `auto` from the start. The
+    /// run that recorded it logs it once.
     async fn complete_requiring(
         &self,
         messages: &[Message],
         tool: &ToolDefinition,
     ) -> Result<ModelResponse, ModelError> {
-        let body = build_required_tool_request_body(
+        let mut body = build_required_tool_request_body(
             &self.model_id,
             messages,
             tool,
-            self.session_key.as_deref(),
+            self.routing_key.as_ref(),
             self.provider.as_deref(),
             self.stable_ttl,
             self.streams(),
         );
-        self.send(body, messages).await
+        if self.tool_choice.refused(&self.model_id) {
+            body["tool_choice"] = json!("auto");
+            return self.send(body, messages).await;
+        }
+        match self.send(body.clone(), messages).await {
+            Err(ModelError::Fatal { status, message })
+                if is_tool_choice_refusal(status, &message) =>
+            {
+                if self.tool_choice.record_refusal(&self.model_id) {
+                    self.announce_tool_choice_downgrade(&message);
+                }
+                body["tool_choice"] = json!("auto");
+                self.send(body, messages).await
+            }
+            outcome => outcome,
+        }
     }
 
     fn model_id(&self) -> &str {
@@ -1195,6 +1280,60 @@ pub fn is_image_unsupported(status: u16, body: &str) -> bool {
     PHRASES.iter().any(|phrase| body.contains(phrase))
 }
 
+/// Whether a fatal response refuses the request's pinned tool choice: a `400` whose body names
+/// `tool_choice`.
+///
+/// The match is on the parameter rather than on one provider's wording of why it was refused,
+/// because the reason varies (a model served in a thinking mode, a provider that never took the
+/// object form) while the parameter does not. A thinking-mode refusal reads *"The tool_choice
+/// parameter does not support being set to required or object in thinking mode"*.
+pub fn is_tool_choice_refusal(status: u16, body: &str) -> bool {
+    status == 400 && body.contains("tool_choice")
+}
+
+/// The `warn` line a [tool-choice downgrade](ToolChoiceMemory) is logged with: the model whose
+/// provider refused the pin, and the provider's own message.
+pub fn tool_choice_downgrade_message(model_id: &str, provider_message: &str) -> String {
+    format!(
+        "the provider refused a pinned tool choice for `{model_id}` ({provider_message}); \
+         required-tool requests for it are sent with `tool_choice` set to `auto` for the rest of \
+         the run",
+    )
+}
+
+/// The run's record of the models whose provider refused a pinned `tool_choice`.
+///
+/// A [required-tool request](ModelClient::complete_requiring) is pinned to its one tool until
+/// the model's provider [refuses the pin](is_tool_choice_refusal). The refusal is recorded here
+/// and every later required-tool request for that model is sent on `auto`, so the pin is tried
+/// once per model per run rather than once per request. A reply on `auto` that makes no call is
+/// the caller's ordinary missing-completion handling.
+///
+/// Cloning shares the record. The run's [factory](DefaultClientFactory) holds one and hands it to
+/// every client it builds, so an agent's successor, its subagents and its handoff compaction
+/// client all read the same record.
+#[derive(Debug, Clone, Default)]
+pub struct ToolChoiceMemory(Arc<Mutex<BTreeSet<String>>>);
+
+impl ToolChoiceMemory {
+    /// Whether `model_id`'s provider has refused a pinned tool choice this run.
+    pub fn refused(&self, model_id: &str) -> bool {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .contains(model_id)
+    }
+
+    /// Record that `model_id`'s provider refused a pinned tool choice. `true` when this call is
+    /// the one that recorded it, which is the call that logs the downgrade.
+    pub fn record_refusal(&self, model_id: &str) -> bool {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(model_id.to_string())
+    }
+}
+
 /// Truncate a provider error body to [`ERROR_BODY_CAP`] so a huge HTML error page
 /// never floods a [`ModelError`].
 fn truncate(body: &str) -> String {
@@ -1218,7 +1357,7 @@ fn truncate(body: &str) -> String {
 /// client serializes exactly this. `tool_choice` is set to `"auto"` only when tools
 /// are offered; `usage: { include: true }` asks OpenRouter to return cost.
 ///
-/// When `session_key` is `Some` (and non-empty) it is sent as **`session_id`** — OpenRouter's
+/// When `routing_key` is `Some` it is sent as **`session_id`** — OpenRouter's
 /// sticky-routing key, the field that keeps a conversation's requests on one provider *endpoint*
 /// so each turn reuses the prefix the previous turn cached. A run's turns share one key (see
 /// [`OpenRouterClient::from_binding`]); without a sticky key OpenRouter is free to balance
@@ -1228,10 +1367,11 @@ fn truncate(body: &str) -> String {
 /// The same value also rides as `prompt_cache_key`. That field is the *OpenAI-style* key:
 /// OpenRouter consults it for sticky routing only as a fallback when no `session_id` (or
 /// `x-session-id` header) is present, and OpenAI-native endpoints use it to scope their own cache
-/// lookups. Sending only `prompt_cache_key` — which is what gg did — left routing on that fallback
-/// path and produced runs whose requests hit a fresh endpoint, and so a 0% cache rate, turn after
-/// turn even when the provider *name* on the dashboard never changed. `None` (or an empty key)
-/// omits both fields entirely.
+/// lookups. Sending only `prompt_cache_key` leaves routing on that fallback path and produces runs
+/// whose requests hit a fresh endpoint, and so a 0% cache rate, turn after turn even when the
+/// provider *name* on the dashboard never changed. The key is a [minted](RoutingKey::mint) cuid2,
+/// so it is inside both fields' caps whatever the run's session id is. `None` omits both fields
+/// entirely.
 ///
 /// On a model that [needs them](requires_cache_markers), the messages the
 /// [breakpoint policy](cache_breakpoints) selects are additionally stamped with an explicit
@@ -1257,7 +1397,7 @@ pub fn build_request_body(
     model_id: &str,
     messages: &[Message],
     tools: &[ToolDefinition],
-    session_key: Option<&str>,
+    routing_key: Option<&RoutingKey>,
     provider: Option<&str>,
     stable_ttl: CacheTtl,
     stream: bool,
@@ -1299,8 +1439,7 @@ pub fn build_request_body(
         body["stream_options"] = json!({ "include_usage": true });
     }
 
-    if let Some(key) = session_key.filter(|key| !key.is_empty()) {
-        let key = session_key_on_the_wire(key);
+    if let Some(key) = routing_key.map(RoutingKey::as_str) {
         // The sticky-routing key, and the OpenAI-style fallback for the providers that read that
         // one instead. Same value: they name the same conversation.
         body["session_id"] = json!(key);
@@ -1353,7 +1492,7 @@ pub fn build_required_tool_request_body(
     model_id: &str,
     messages: &[Message],
     tool: &ToolDefinition,
-    session_key: Option<&str>,
+    routing_key: Option<&RoutingKey>,
     provider: Option<&str>,
     stable_ttl: CacheTtl,
     stream: bool,
@@ -1362,7 +1501,7 @@ pub fn build_required_tool_request_body(
         model_id,
         messages,
         std::slice::from_ref(tool),
-        session_key,
+        routing_key,
         provider,
         stable_ttl,
         stream,
@@ -1372,19 +1511,6 @@ pub fn build_required_tool_request_body(
         "function": { "name": tool.name },
     });
     body
-}
-
-/// The [session key](build_request_body) as it goes on the wire: truncated to
-/// [`MAX_SESSION_KEY_CHARS`] on a character boundary.
-///
-/// Truncation rather than rejection is deliberate — the leading characters of an over-long key are
-/// still a *stable* key, which is the only property sticky routing needs, whereas dropping the
-/// field would cost the run its cache.
-fn session_key_on_the_wire(key: &str) -> &str {
-    match key.char_indices().nth(MAX_SESSION_KEY_CHARS) {
-        Some((cut, _)) => &key[..cut],
-        None => key,
-    }
 }
 
 /// Whether `model_id` names a model that caches **only** what a request explicitly marks, and so
@@ -1469,7 +1595,7 @@ impl From<GgPromptCacheTtl> for CacheTtl {
 /// Choose which messages carry an explicit `cache_control` breakpoint — the markers that turn a
 /// provider's prompt cache **on**.
 ///
-/// A [session key](build_request_body) only decides *which backend* a request lands on. It
+/// A [routing key](RoutingKey) only decides *which backend* a request lands on. It
 /// does not ask for anything to be cached. Some providers (OpenAI, Gemini) cache long prefixes
 /// implicitly and need nothing more, but Anthropic caches **only** what a request explicitly marks:
 /// an unmarked request is billed at full input rate every turn no matter how much of it is
@@ -3956,29 +4082,38 @@ pub fn provider_for(binding: &GgSlotBinding) -> ProviderKind {
 /// Build the [`ModelClient`] a slot binds to, per the [selection rule](self). Returns
 /// [`ModelError::MissingApiKey`] for a live OpenRouter binding with no credential.
 ///
-/// `session_key` is the session-wide [sticky-session key](build_request_body) a live client stamps
-/// on every request (the mock client ignores it). It is the run's session id, so every agent's
-/// client carries the same value — see [`OpenRouterClient::from_binding`]. The binding's
+/// `routing_key` is the run's [routing key](RoutingKey) a live client stamps on every request (the
+/// mock client ignores it). Every agent's client carries the same key — see
+/// [`OpenRouterClient::from_binding`]. The binding's
 /// [prompt-cache lifetime](GgSlotBinding::prompt_cache_ttl), by contrast, is the *agent's* own
 /// choice and differs from one profile to the next.
 ///
 /// `model_call_timeout` and `retry_policy` are the run's resolved
-/// [limits](crate::limits::RunLimits), run-wide like the session key: every agent's client, and
+/// [limits](crate::limits::RunLimits), run-wide like the routing key: every agent's client, and
 /// the second client a [handoff compaction](crate::compaction) resolves, calls under the one
 /// ceiling and retries on the one schedule the launch recorded.
+///
+/// `provider` is the OpenRouter provider the launch [pinned](OpenRouterClient::with_provider) the
+/// binding's model to; `None` sends no pin.
+///
+/// `tool_choice` is the run's [record of refused tool-choice pins](ToolChoiceMemory), shared by
+/// every client built for the run so a refusal is taken once per model rather than once per
+/// client.
 pub fn client_for_slot(
     binding: &GgSlotBinding,
-    session_key: Option<&str>,
+    routing_key: &RoutingKey,
     model_call_timeout: Duration,
     retry_policy: RetryPolicy,
     provider: Option<&str>,
+    tool_choice: &ToolChoiceMemory,
 ) -> Result<Box<dyn ModelClient>, ModelError> {
     match provider_for(binding) {
         ProviderKind::Mock => Ok(Box::new(mock_client_for(&binding.model_id))),
         ProviderKind::OpenRouter => {
-            let mut client = OpenRouterClient::from_binding(binding, session_key)?
+            let mut client = OpenRouterClient::from_binding(binding, routing_key)?
                 .with_model_call_timeout(model_call_timeout)
-                .with_retry_policy(retry_policy);
+                .with_retry_policy(retry_policy)
+                .with_tool_choice_memory(tool_choice.clone());
             if let Some(provider) = provider {
                 client = client.with_provider(provider);
             }
@@ -4133,12 +4268,13 @@ impl AgentIdentity {
 /// The production [`ClientFactory`]: resolves each binding through [`client_for_slot`], honoring
 /// the `TCAB_GG_FAKE_MODEL` / `mock` selection rules.
 ///
-/// It carries the run's session-wide [sticky-session key](build_request_body) (the session id) and
-/// stamps it on every live client it builds, so all of a run's agents — the root and every
-/// subagent the factory resolves — share one key. That is what lets a subagent reuse the cached
-/// opening prefix a sibling already warmed, instead of each agent paying for it uncached.
+/// It carries the run's [routing key](RoutingKey) and stamps it on every live client it builds, so
+/// all of a run's agents — the root, every subagent the factory resolves, and the second client a
+/// [handoff compaction](crate::compaction) resolves — share one key. That is what lets a subagent
+/// reuse the cached opening prefix a sibling already warmed, instead of each agent paying for it
+/// uncached.
 pub struct DefaultClientFactory {
-    session_key: Option<String>,
+    routing_key: RoutingKey,
     /// The run's resolved per-call ceiling, stamped on every live client this factory builds.
     model_call_timeout: Duration,
     /// The run's resolved [retry schedule](crate::limits::RunLimits::retry_policy), stamped on
@@ -4147,26 +4283,29 @@ pub struct DefaultClientFactory {
     /// The pinned OpenRouter provider of each model this run binds, keyed by model id. A
     /// live client is stamped with its model's entry, so every request carries `provider.only`.
     model_providers: BTreeMap<String, String>,
+    /// The run's [record of refused tool-choice pins](ToolChoiceMemory), shared by every live
+    /// client this factory builds.
+    tool_choice: ToolChoiceMemory,
 }
 
 impl DefaultClientFactory {
-    /// A factory that stamps `session_key` (the run's session id) on every live client it builds.
-    /// `None` builds clients that send no session key at all (the pre-caching behavior).
+    /// A factory that stamps `routing_key` on every live client it builds.
     ///
     /// `model_call_timeout` and `retry_policy` are the run's resolved
     /// [limits](crate::limits::RunLimits): the ceiling every call every client it builds makes
     /// runs under, and the schedule each retries on before giving up.
     pub fn new(
-        session_key: Option<String>,
+        routing_key: RoutingKey,
         model_call_timeout: Duration,
         retry_policy: RetryPolicy,
         model_providers: BTreeMap<String, String>,
     ) -> Self {
         Self {
-            session_key,
+            routing_key,
             model_call_timeout,
             retry_policy,
             model_providers,
+            tool_choice: ToolChoiceMemory::default(),
         }
     }
 
@@ -4180,10 +4319,11 @@ impl ClientFactory for DefaultClientFactory {
     fn client_for(&self, binding: &GgSlotBinding) -> Result<Box<dyn ModelClient>, ModelError> {
         client_for_slot(
             binding,
-            self.session_key.as_deref(),
+            &self.routing_key,
             self.model_call_timeout,
             self.retry_policy,
             self.pin_for(&binding.model_id),
+            &self.tool_choice,
         )
     }
 }
@@ -4207,3 +4347,11 @@ mod retry_tests;
 #[cfg(test)]
 #[path = "client.pin.test.rs"]
 mod pin_tests;
+
+#[cfg(test)]
+#[path = "client.routing.test.rs"]
+mod routing_tests;
+
+#[cfg(test)]
+#[path = "client.tool-choice.test.rs"]
+mod tool_choice_tests;

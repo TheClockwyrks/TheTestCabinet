@@ -248,6 +248,7 @@ fn killed_session_journal() -> Vec<u8> {
     let header = GgJournalLine::Header {
         format_version: GG_SESSION_FORMAT_VERSION,
         session_id: "salvaged".to_string(),
+        routing_key: Some("tz4a98xxat96iws9zmbrgj3a".to_string()),
         capability_set: Box::new(test_cabinet_core::gg::GgCapabilitySet::default()),
         recorder: test_cabinet_core::gg_session_record::GgSessionRecorder {
             gg_version: Some("0.7.0".to_string()),

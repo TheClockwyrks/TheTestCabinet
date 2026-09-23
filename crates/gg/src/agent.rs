@@ -175,7 +175,7 @@ use crate::board::{BoardCaps, BoardRuntime, IssuePolicy, IssueStatus};
 use crate::cancel::CancelWatch;
 use crate::capture::{GgRecorder, RecordedSeed, RecordingClient};
 use crate::client::{
-    AgentIdentity, ClientFactory, DefaultClientFactory, ProviderKind, provider_for,
+    AgentIdentity, ClientFactory, DefaultClientFactory, ProviderKind, RoutingKey, provider_for,
 };
 use crate::compaction::{
     self, CompactionRequest, CompactionSetup, CompactionVerdict, PendingCompaction, RestoredFile,
@@ -846,7 +846,6 @@ pub async fn run(invocation: &GgInvocation, emitter: &Emitter) -> SessionOutcome
         invocation,
         emitter,
         SessionSeams::live(
-            Some(invocation.session_id.clone()),
             declared_model_call_timeout(&invocation.capability_set.limits),
             declared_retry_policy(&invocation.capability_set.limits),
             invocation.model_providers.clone(),
@@ -863,9 +862,13 @@ pub async fn run(invocation: &GgInvocation, emitter: &Emitter) -> SessionOutcome
 ///
 /// **They travel together, in one parameter, on purpose.** A suite that scripted the model while
 /// running the shell for real would run real installs against a scratch tree, and there must be no
-/// way to assemble that by forgetting an argument. Hence one constructor taking
-/// [both](Self::substituted) and no field-by-field builder — [`live`](Self::live) is a name for one
+/// way to assemble that by forgetting an argument. Hence one test-only constructor taking both
+/// (`substituted`) and no field-by-field builder — [`live`](Self::live) is a name for one
 /// particular pair, not a way to fill in half.
+///
+/// The seams also carry the run's [routing key](RoutingKey), because the live factory has to stamp
+/// the very key the run announces and records: both constructors mint it, and the live one hands
+/// the factory the key it keeps.
 pub struct SessionSeams {
     /// Where every agent's model client comes from.
     pub factory: Arc<dyn ClientFactory>,
@@ -873,14 +876,19 @@ pub struct SessionSeams {
     /// [responses-as-code](crate::sandbox) program's `system.shell(…)`, and a
     /// [hook's](crate::hooks) commands alike.
     pub shell: Arc<dyn ShellRunner>,
+    /// The run's [routing key](RoutingKey), minted once when the seams are built — which is at
+    /// launch. A live factory stamps this same key on every client it builds, `session_started`
+    /// announces it, and the session record keeps it beside the session id.
+    pub routing_key: RoutingKey,
 }
 
 impl SessionSeams {
     /// Both seams live: real clients (the `TCAB_GG_FAKE_MODEL`/`mock` rules, else live OpenRouter)
     /// and real commands. What [`run`] uses, and the only shape a paid run has ever had.
     ///
-    /// `session_key` is the run's session id, stamped on every live client the factory builds, so
-    /// all of a run's agents share one sticky-session key and a subagent reuses the cached opening
+    /// Mints the run's [routing key](RoutingKey) and hands the factory the same key it keeps, so
+    /// every live client the factory builds stamps the key the run announces. All of a run's
+    /// agents therefore share one sticky-routing key, and a subagent reuses the cached opening
     /// prefix a sibling already warmed instead of paying for it uncached.
     ///
     /// `model_call_timeout` is the run's [per-call model ceiling](declared_model_call_timeout),
@@ -889,30 +897,40 @@ impl SessionSeams {
     /// readings cannot disagree. `retry_policy` is the same reading of the retry schedule
     /// ([`declared_retry_policy`]).
     pub fn live(
-        session_key: Option<String>,
         model_call_timeout: Duration,
         retry_policy: crate::client::RetryPolicy,
         model_providers: BTreeMap<String, String>,
     ) -> Self {
-        Self::substituted(
-            Arc::new(DefaultClientFactory::new(
-                session_key,
+        let routing_key = RoutingKey::mint();
+        Self {
+            factory: Arc::new(DefaultClientFactory::new(
+                routing_key.clone(),
                 model_call_timeout,
                 retry_policy,
                 model_providers,
             )),
-            real_shell(),
-        )
+            shell: real_shell(),
+            routing_key,
+        }
     }
 
-    /// Both seams named explicitly. The **only** constructor, so a recorded model can never be
-    /// paired with a real shell by omission — the pairing has to be written down.
+    /// Both seams named explicitly, so a recorded model can never be paired with a real shell by
+    /// omission — the pairing has to be written down.
     ///
     /// gg's own suite uses it with a scripted factory and [`real_shell`], which is a deliberate
     /// pairing rather than an accidental one: a scripted model answering real commands in a
     /// `TempDir` is what the loop tests have always been.
+    ///
+    /// The run's [routing key](RoutingKey) is minted here too, so a substituted run announces and
+    /// records one exactly as a live run does. A substituted factory sends nothing to a provider,
+    /// so it is not handed the key.
+    #[cfg(test)]
     pub fn substituted(factory: Arc<dyn ClientFactory>, shell: Arc<dyn ShellRunner>) -> Self {
-        Self { factory, shell }
+        Self {
+            factory,
+            shell,
+            routing_key: RoutingKey::mint(),
+        }
     }
 }
 
@@ -946,7 +964,6 @@ pub(crate) async fn run_with_seams(
     emitter: &Emitter,
     seams: SessionSeams,
 ) -> SessionOutcome {
-    let SessionSeams { factory, shell } = seams;
     let set = &invocation.capability_set;
 
     // Scope the stream to the root up front, so every event (launch diagnostics included) is
@@ -958,6 +975,7 @@ pub(crate) async fn run_with_seams(
     root_emitter.emit(GgTelemetryKind::SessionStarted {
         capability_set: Box::new(set.clone()),
         model_providers: invocation.model_providers.clone(),
+        routing_key: Some(seams.routing_key.to_string()),
     });
 
     // Launch check 1: **the refusal** — every configured value this run declares must be one gg can
@@ -1024,7 +1042,8 @@ pub(crate) async fn run_with_seams(
     // Launch check 4: the root's model client must resolve (a missing credential fails here). A
     // subagent's client is resolved at spawn time instead, where a failure is reported to its
     // spawner rather than failing the whole process.
-    let client = match factory
+    let client = match seams
+        .factory
         .client_for_agent(&binding, &AgentIdentity::agent(GgSessionAgentOrigin::Root))
     {
         Ok(client) => client,
@@ -1064,8 +1083,7 @@ pub(crate) async fn run_with_seams(
     let orch = match Orchestrator::build(
         invocation,
         emitter,
-        factory,
-        shell,
+        seams,
         worktrees,
         &mut launch_warnings,
         &mut launch_report,
@@ -1450,6 +1468,7 @@ async fn join_spawned_agents(orch: &Orchestrator) {
 /// capture, because a debugging artifact must never be the reason a paid run does not happen.
 fn start_session_capture(
     invocation: &GgInvocation,
+    routing_key: &RoutingKey,
     limits: &RunLimits,
     warnings: &mut Vec<String>,
 ) -> Option<Arc<GgRecorder>> {
@@ -1457,6 +1476,7 @@ fn start_session_capture(
     match GgRecorder::start(
         &path,
         &invocation.session_id,
+        routing_key.as_str(),
         &invocation.capability_set,
         limits.replay_max_bytes,
     ) {
@@ -2002,8 +2022,7 @@ impl Orchestrator {
     fn build(
         invocation: &GgInvocation,
         emitter: &Emitter,
-        factory: Arc<dyn ClientFactory>,
-        shell: Arc<dyn ShellRunner>,
+        seams: SessionSeams,
         worktrees: WorktreesSetup,
         warnings: &mut Vec<String>,
         report: &mut crate::validate::LaunchReport,
@@ -2125,8 +2144,8 @@ impl Orchestrator {
             persistence: AgentPersistence::new(),
             accounting: Mutex::new(SlotAccounting::default()),
             base_emitter: emitter.clone(),
-            factory,
-            shell,
+            factory: seams.factory,
+            shell: seams.shell,
             skills,
             estimator: Arc::new(BpeTokenEstimator::new()),
             model_windows: invocation.model_windows.clone(),
@@ -2149,7 +2168,7 @@ impl Orchestrator {
             ordinals: Mutex::new(BTreeMap::new()),
             // Capture is always on. `None` here means the journal could not be opened, never that
             // the run declined to be recorded.
-            replay: start_session_capture(invocation, &limits, warnings),
+            replay: start_session_capture(invocation, &seams.routing_key, &limits, warnings),
         })
     }
 

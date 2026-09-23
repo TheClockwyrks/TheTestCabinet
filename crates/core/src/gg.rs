@@ -7231,11 +7231,18 @@ pub enum GgTelemetryKind {
         /// Without it a live view can only guess what a run is capable of and must
         /// offer every surface, including the ones this run's configuration disabled.
         capability_set: Box<GgCapabilitySet>,
-        /// The OpenRouter provider each bound model is pinned to, beside the session
-        /// id. A run's cost is recorded against this pin; a response from any other
+        /// The OpenRouter provider each bound model is pinned to, beside the routing
+        /// key. A run's cost is recorded against this pin; a response from any other
         /// provider ends the run.
         #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
         model_providers: BTreeMap<String, String>,
+        /// The **routing key** gg minted at launch: a cuid2 sent on every request of the run
+        /// as both `session_id` and `prompt_cache_key`, so a provider dashboard row can be
+        /// matched to the run it belongs to. Minted rather than derived from the session id,
+        /// which is caller-supplied text of any length, so it is always inside every
+        /// provider's cap on either field.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        routing_key: Option<String>,
     },
     /// An agent turn began (one model request/response cycle).
     TurnStarted {},

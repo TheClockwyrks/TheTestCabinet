@@ -1048,6 +1048,10 @@
       "$ref": "#/$defs/GgSessionRecorder",
       "description": "Which build captured it. Explanatory; never a gate."
     },
+    "routingKey": {
+      "description": "The run's [routing key](crate::gg::GgTelemetryKind::SessionStarted::routing_key): the\nvalue every request of the run sent as `session_id` and `prompt_cache_key`, which is what\na provider dashboard shows for them.",
+      "type": ["string", "null"]
+    },
     "seed": {
       "$ref": "#/$defs/GgSessionSeed",
       "description": "The fixed identity the session started from."
