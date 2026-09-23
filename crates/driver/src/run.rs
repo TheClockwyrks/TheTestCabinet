@@ -369,6 +369,7 @@ where
         // for a non-game-jam run or a jam's first run. The engine seeds them and adds
         // the prompt's distinctness section.
         prior_game_jam_entries,
+        clock: std::sync::Arc::new(test_cabinet_core::SystemClock),
     };
 
     let mut events = BackendEventSink::new(outbound.clone());

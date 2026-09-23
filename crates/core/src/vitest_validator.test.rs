@@ -889,11 +889,12 @@ fn a_case_declaring_no_validators_reports_nothing() {
 
 #[test]
 fn a_command_that_outlives_its_cap_is_stopped_and_reported_as_timed_out() {
+    // The command never finishes on its own, so the cap is the only way this call can return: a
+    // cap that did not fire would hang the test rather than pass it.
     let scratch = tempfile::tempdir().expect("a scratch directory");
-    let started = std::time::Instant::now();
     let error = run_bounded(
         scratch.path(),
-        "sleep 30",
+        "while :; do sleep 1; done",
         Duration::from_millis(300),
         scratch.path(),
         "hung",
@@ -901,10 +902,6 @@ fn a_command_that_outlives_its_cap_is_stopped_and_reported_as_timed_out() {
     )
     .expect_err("a command that never finishes cannot succeed");
 
-    assert!(
-        started.elapsed() < Duration::from_secs(10),
-        "the cap returns rather than waiting the command out",
-    );
     assert!(
         error.reason.contains("cap"),
         "the reason says the cap was reached: {}",
@@ -917,19 +914,41 @@ fn a_command_that_outlives_its_cap_is_stopped_and_reported_as_timed_out() {
     );
 }
 
+/// The claim the cap makes is that a suite costs the run its budget and nothing more. A `sh -c`
+/// line is a process tree, so killing the shell alone would leave node and its workers loading the
+/// host afterwards; the group kill is what makes the claim true. The background child here stands
+/// in for those workers.
+///
+/// The worker holds the write end of a FIFO open for as long as it lives, and a read of a FIFO
+/// reaches end-of-file exactly when its last writer is gone — so reading it to the end after the cap
+/// returns completes if the worker died with the command and blocks if it survived. There is no
+/// window to watch and nothing to time. Linux-only because it relies on Linux opening a FIFO
+/// read-write without blocking, which is how the test holds the FIFO open while the worker starts.
+#[cfg(target_os = "linux")]
 #[test]
 fn a_stopped_command_takes_the_workers_it_started_with_it() {
-    // The claim the cap makes is that a suite costs the run its budget and nothing
-    // more. A `sh -c` line is a process tree, so killing the shell alone would leave
-    // node and its workers loading the host afterwards; the group kill is what makes
-    // the claim true. The background child here stands in for those workers.
-    let scratch = tempfile::tempdir().expect("a scratch directory");
-    let marker = scratch.path().join("worker-survived");
-    let command = format!(
-        "(sleep 1; touch {}) & wait",
-        marker.to_string_lossy().replace('\'', ""),
-    );
+    use std::io::Read;
 
+    let scratch = tempfile::tempdir().expect("a scratch directory");
+    let fifo = scratch.path().join("worker");
+    let made = std::process::Command::new("mkfifo")
+        .arg(&fifo)
+        .status()
+        .expect("mkfifo runs");
+    assert!(made.success(), "mkfifo made the FIFO");
+    // Held read-write so the worker's open for writing finds a reader and does not block, and so
+    // the test's own read-only open below finds a writer.
+    let keeper = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(&fifo)
+        .expect("the FIFO opens");
+
+    // The worker opens the FIFO for writing and then waits forever with it open.
+    let command = format!(
+        "(exec 3>'{}'; exec sleep infinity) & wait",
+        fifo.to_string_lossy().replace('\'', ""),
+    );
     run_bounded(
         scratch.path(),
         &command,
@@ -940,15 +959,15 @@ fn a_stopped_command_takes_the_workers_it_started_with_it() {
     )
     .expect_err("the command outlives its cap");
 
-    // Past when the survivor would have written, had it survived.
-    let watch = std::time::Instant::now();
-    while watch.elapsed() < Duration::from_secs(3) {
-        assert!(
-            !marker.exists(),
-            "a worker outlived the run that stopped waiting for it",
-        );
-        std::thread::sleep(Duration::from_millis(50));
-    }
+    let mut reader = std::fs::File::open(&fifo).expect("the FIFO opens for reading");
+    drop(keeper);
+    // End-of-file once every writer is gone. A worker that outlived the cap still holds its write
+    // end, and this read then blocks until nextest stops the test.
+    let mut rest = Vec::new();
+    reader
+        .read_to_end(&mut rest)
+        .expect("the FIFO reads to its end");
+    assert!(rest.is_empty(), "the worker wrote nothing");
 }
 
 #[test]

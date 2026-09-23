@@ -323,6 +323,7 @@ async fn a_hung_gg_run_keeps_the_capture_journal_it_had_written() {
             .collect(),
         ))),
         prior_game_jam_entries: Vec::new(),
+        clock: std::sync::Arc::new(test_cabinet_core::SystemClock),
     };
 
     let request = RunRequest {

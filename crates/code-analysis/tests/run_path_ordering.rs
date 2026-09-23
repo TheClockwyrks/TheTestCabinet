@@ -396,6 +396,7 @@ async fn drive(cancel: &RunCancellation) -> Ran {
         output_dir: out_dir.path().to_path_buf(),
         creds: None,
         prior_game_jam_entries: Vec::new(),
+        clock: std::sync::Arc::new(test_cabinet_core::SystemClock),
     };
 
     let request = RunRequest {

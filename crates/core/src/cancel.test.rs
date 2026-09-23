@@ -33,9 +33,12 @@ async fn canceled_resolves_immediately_when_already_raised() {
     // that has already been sent.
     let cancel = RunCancellation::new();
     cancel.cancel();
-    tokio::time::timeout(std::time::Duration::from_secs(5), cancel.canceled())
-        .await
-        .expect("an already-raised latch resolves at once");
+    let mut canceled = std::pin::pin!(cancel.canceled());
+    let mut context = std::task::Context::from_waker(std::task::Waker::noop());
+    assert!(
+        std::future::Future::poll(canceled.as_mut(), &mut context).is_ready(),
+        "an already-raised latch resolves on its first poll"
+    );
 }
 
 #[tokio::test]
@@ -46,10 +49,8 @@ async fn canceled_resolves_when_raised_afterwards() {
     // Let the waiter register, then raise the latch from here.
     tokio::task::yield_now().await;
     cancel.cancel();
-    tokio::time::timeout(std::time::Duration::from_secs(5), task)
-        .await
-        .expect("the waiter wakes on the raise")
-        .expect("the waiter task did not panic");
+    // A waiter the raise did not wake would hang here, and nextest would stop the test.
+    task.await.expect("the waiter task did not panic");
 }
 
 #[tokio::test]
@@ -57,6 +58,10 @@ async fn canceled_does_not_resolve_while_the_run_is_live() {
     // The engine races this against the session itself, so a latch that resolved early
     // would kill every run at its first await.
     let cancel = RunCancellation::new();
-    let raced = tokio::time::timeout(std::time::Duration::from_millis(50), cancel.canceled()).await;
-    assert!(raced.is_err(), "an un-raised latch must never resolve");
+    let mut canceled = std::pin::pin!(cancel.canceled());
+    let mut context = std::task::Context::from_waker(std::task::Waker::noop());
+    assert!(
+        std::future::Future::poll(canceled.as_mut(), &mut context).is_pending(),
+        "an un-raised latch must never resolve"
+    );
 }

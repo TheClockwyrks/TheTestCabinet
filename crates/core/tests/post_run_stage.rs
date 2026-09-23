@@ -10,10 +10,14 @@
 //! run through the engine with every external seam faked, and a stage that takes
 //! **longer than the run's entire runtime cap** to finish.
 //!
-//! If the stage were ever moved inside the cap, the run below would fail with
-//! `RunTimedOut` instead of returning a record: the cap is one second and the
-//! stage takes two. If it were moved after validation, or before collection, the
-//! recorded call order would say so.
+//! The test runs on tokio's paused clock, so the cap and the stage's wait are
+//! virtual: the cap is one second, the stage waits two, and neither costs real
+//! time. Timers fire in deadline order, so if the stage were ever moved inside the
+//! cap the cap would fire first and the run below would fail with `RunTimedOut`
+//! instead of returning a record. If it were moved after validation, or before
+//! collection, the recorded call order would say so. And the engine reads a
+//! [`ManualClock`] that only the stage advances, so a stage whose time reached the
+//! recorded run time would put exactly its duration there.
 //!
 //! Only the container, the harness, the collector and the validator are faked; the
 //! catalog, the seeder, the prompt renderer, the orchestrator and the record
@@ -21,13 +25,13 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use test_cabinet_core::{
-    AgentHarness, ArtifactCollection, ArtifactCollector, Availability, ContainerHandle,
+    AgentHarness, ArtifactCollection, ArtifactCollector, Availability, Clock, ContainerHandle,
     ContainerRuntime, ContainerSpec, ContainerStart, CredFile, CredSource, EngineCatalog,
     EngineSelection, EventFormat, EventSink, ExecOutput, FsRepoSeeder, HarnessInvocation,
-    HarnessOutcome, HarnessRegistry, HarnessSlug, MapCreds, MediaKind, NoopEventSink,
+    HarnessOutcome, HarnessRegistry, HarnessSlug, ManualClock, MapCreds, MediaKind, NoopEventSink,
     OpenRouterPrices, OrchestratorCatalog, OrchestratorSelection, OutputSink, OutputStream,
     PostRunContext, PostRunReport, PostRunStage, PrerenderedReferenceRenderer, ProofFile,
     RenderedReference, Result as CoreResult, RunCancellation, RunEngine, RunRequest,
@@ -47,7 +51,8 @@ fn catalog_root() -> PathBuf {
 const STAGE_DURATION: Duration = Duration::from_secs(2);
 
 /// The run's entire runtime cap, in seconds. The faked harness session finishes
-/// instantly, so this only ever bites something that is *inside* the cap.
+/// without waiting, so on the paused clock this only ever bites something that is
+/// *inside* the cap and waits.
 const RUNTIME_CAP: u64 = 1;
 
 /// The lifecycle steps the fakes record, in the order they happened. Proving the
@@ -74,6 +79,7 @@ struct Observed {
 struct SlowStage {
     steps: Steps,
     observed: Arc<Mutex<Observed>>,
+    clock: ManualClock,
 }
 
 #[async_trait::async_trait]
@@ -91,9 +97,12 @@ impl PostRunStage for SlowStage {
             observed.tree_present = context.artifacts.repo_path.is_dir();
             observed.run_dir_present = context.run_dir.is_dir();
         }
-        // Sleep rather than spin: an analysis stage is IO- and CPU-bound work of
-        // unbounded duration, and what is under test is that nothing bounds it.
+        // An analysis stage is work of unbounded duration, and what is under test
+        // is that nothing bounds it: a wait on the runtime's (paused) clock, which a
+        // cap around the stage would cut, and a span of the engine's clock, which a
+        // measurement around the stage would record.
         tokio::time::sleep(STAGE_DURATION).await;
+        self.clock.advance(STAGE_DURATION);
         let artifact = context.run_dir.join("test-stage.json");
         std::fs::write(&artifact, b"{}").expect("write the stage's artifact");
         Ok(PostRunReport::artifact(artifact))
@@ -283,7 +292,7 @@ fn references(test_case: &TestCaseVersion, variant: &Variant) -> Vec<RenderedRef
 
 /// Drive a complete run whose post-run stage takes longer than the run's entire
 /// runtime cap, and assert the three placement properties the seam exists for.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn the_post_run_stage_runs_after_collection_before_validation_and_outside_the_runtime_cap() {
     let catalog = TestCaseCatalog::new(catalog_root());
     let test_case = catalog
@@ -306,6 +315,7 @@ async fn the_post_run_stage_runs_after_collection_before_validation_and_outside_
     let observed = Arc::new(Mutex::new(Observed::default()));
     let seed_dir = tempfile::tempdir().expect("seed dir");
     let out_dir = tempfile::tempdir().expect("output dir");
+    let clock = ManualClock::new();
 
     let engine = RunEngine {
         catalog: TestCaseCatalog::new(catalog_root()),
@@ -326,6 +336,7 @@ async fn the_post_run_stage_runs_after_collection_before_validation_and_outside_
         session_assembler: Some(Box::new(SlowStage {
             steps: Arc::clone(&steps),
             observed: Arc::clone(&observed),
+            clock: clock.clone(),
         })),
         analyzer: None,
         toolchain: None,
@@ -343,6 +354,7 @@ async fn the_post_run_stage_runs_after_collection_before_validation_and_outside_
             .collect(),
         ))),
         prior_game_jam_entries: Vec::new(),
+        clock: Arc::new(clock.clone()),
     };
 
     let request = RunRequest {
@@ -361,7 +373,6 @@ async fn the_post_run_stage_runs_after_collection_before_validation_and_outside_
         gg_model_modalities: Default::default(),
     };
 
-    let wall_clock = Instant::now();
     let record = engine
         .run_resolved(
             &test_cabinet_core::mint_run_id(),
@@ -376,7 +387,6 @@ async fn the_post_run_stage_runs_after_collection_before_validation_and_outside_
         // runtime cap must not turn the run into a timeout. Moving the seam inside
         // `with_runtime_cap` fails here with `RunTimedOut`.
         .expect("the run should finish despite a stage that outlasts the runtime cap");
-    let wall_clock = wall_clock.elapsed();
 
     let observed = observed.lock().expect("observed");
     assert!(observed.ran, "the stage should have been invoked");
@@ -388,15 +398,16 @@ async fn the_post_run_stage_runs_after_collection_before_validation_and_outside_
     );
 
     // The run's measured duration is frozen before the seam, so a stage cannot
-    // inflate what the run is judged on. Comparing against the wall clock rather
-    // than a constant keeps this honest on a slow machine: whatever the run itself
-    // took, the stage's time is not part of it.
-    let unmeasured = wall_clock.as_secs_f64() - record.metrics.run_time_seconds;
-    assert!(
-        unmeasured >= STAGE_DURATION.as_secs_f64(),
-        "the stage's {STAGE_DURATION:?} should sit outside the recorded run time \
-         (wall clock {wall_clock:?}, recorded {}s)",
-        record.metrics.run_time_seconds,
+    // inflate what the run is judged on. The stage is the only thing that moves
+    // the engine's clock, so the run time is exactly none of it.
+    assert_eq!(
+        clock.now(),
+        STAGE_DURATION,
+        "the stage ran and advanced the engine's clock",
+    );
+    assert_eq!(
+        record.metrics.run_time_seconds, 0.0,
+        "the stage's {STAGE_DURATION:?} should sit outside the recorded run time",
     );
 
     // The context the seam builds: the seeded boundary the analysis measures

@@ -17,6 +17,7 @@ pub mod auth;
 pub mod backend_client;
 pub mod browser;
 pub mod cancel;
+pub mod clock;
 pub mod code_analysis;
 pub mod comparison;
 pub mod comparison_aggregate;
@@ -89,7 +90,7 @@ use std::collections::BTreeMap;
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
@@ -107,6 +108,7 @@ pub use backend_client::{
     PublishedRun, ResolvedArtifact, ResolvedReference, RunPage, materialize_version,
 };
 pub use cancel::RunCancellation;
+pub use clock::{Clock, ManualClock, SystemClock};
 pub use code_analysis::{
     CODE_ANALYSIS_ARTIFACT, CODE_ANALYSIS_TREE_ARTIFACT, CODE_ANALYZER_VERSION, CODE_METRICS,
     CodeAnalysisDocument, CodeAnalysisNotes, CodeAnalysisSummary, CodeApiSummary,
@@ -572,6 +574,12 @@ where
     /// path (and every non-game-jam run) leaves this empty, which simply seeds no
     /// prior entries and adds no distinctness section.
     pub prior_game_jam_entries: Vec<PriorGameJamEntry>,
+    /// The monotonic clock every recorded stage duration is read from.
+    ///
+    /// Every host passes [`SystemClock`]. It is a field so a test can pass a [`ManualClock`] that
+    /// its faked stages advance by known amounts, which makes where each timer is read an exact
+    /// assertion rather than a reading of the machine.
+    pub clock: Arc<dyn Clock>,
 }
 
 /// What one call to [`RunEngine::execute`] produced: the running container, the
@@ -1230,7 +1238,7 @@ where
         // behalf, and everything below it is teardown; folding either into the
         // session would make one model's recorded working time a function of how
         // long a registry pull, an `npm install` or a harness download took.
-        let session_timer = Instant::now();
+        let session_started = self.clock.now();
         let outcome = if let Some(prepared) = prepared_gg {
             let drive = gg_exec::run_gg_session(&self.runtime, &handle, prepared, events, cancel);
             with_runtime_cap(drive, max_runtime, slug).await
@@ -1257,7 +1265,7 @@ where
                     outcome
                 })
         };
-        let session_elapsed = session_timer.elapsed();
+        let session_elapsed = self.clock.now().saturating_sub(session_started);
         match outcome {
             Ok(outcome) => Ok(ExecutedSession {
                 handle,
@@ -1632,7 +1640,7 @@ where
         cancel: &RunCancellation,
     ) -> Result<RunRecord> {
         let started_at = OffsetDateTime::now_utc();
-        let timer = Instant::now();
+        let run_started = self.clock.now();
 
         // The run's identity is known before anything is executed rather than when the
         // record is built at the end. Nothing here depends on the run's outcome, and
@@ -1790,7 +1798,7 @@ where
         // before this point is setup and everything after it is teardown, so this
         // read plus `session_elapsed` is what separates the model's own working time
         // from the fleet's (see [`RunDurations::partition`]).
-        let before_teardown = timer.elapsed();
+        let before_teardown = self.clock.now().saturating_sub(run_started);
 
         // Collect the working tree, then always tear the container down. The
         // teardown is bracketed by system events so the feed shows the run
@@ -1814,7 +1822,7 @@ where
         // turn, not running, so counting it would unfairly inflate a run's time
         // whenever the cluster was busy. `scheduling_wait` is zero for runtimes (a
         // local Docker/Podman) that admit the container immediately.
-        let measured = timer.elapsed();
+        let measured = self.clock.now().saturating_sub(run_started);
         // A harness that reports its own exact cost needs no OpenRouter lookup;
         // its native model ID may not even appear in OpenRouter's catalog.
         let prices = if outcome.reported_cost.is_some() {
@@ -1924,10 +1932,13 @@ where
         let (validation, validation_elapsed) = if outcome.canceled {
             (ValidationSummary::default(), None)
         } else {
-            let validation_timer = Instant::now();
+            let validation_started = self.clock.now();
             let validation =
                 self.validate(test_case, &variant, &artifacts, &references, &proofs)?;
-            (validation, Some(validation_timer.elapsed()))
+            (
+                validation,
+                Some(self.clock.now().saturating_sub(validation_started)),
+            )
         };
         let finished_at = OffsetDateTime::now_utc();
 

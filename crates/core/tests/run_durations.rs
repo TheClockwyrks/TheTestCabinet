@@ -14,8 +14,12 @@
 //! lifecycle made to take a *different, known* amount of time: a slow container
 //! start stands in for setup, a slow session for the model's own work, a slow
 //! container stop for teardown, and a slow validator for validation. A boundary
-//! that moves reattributes one of those sleeps to a neighbouring stage, and the
+//! that moves reattributes one of those spans to a neighbouring stage, and the
 //! assertions below say so.
+//!
+//! The time is not slept. The engine reads a [`ManualClock`] that only the fakes
+//! advance, each by its own stage's span, so every recorded figure is exactly the
+//! sum of the spans its boundaries enclose and the assertions are equalities.
 //!
 //! Only the container, the harness, the collector and the validator are faked;
 //! the catalog, the seeder, the prompt renderer, the orchestrator and the record
@@ -28,13 +32,14 @@
 //! install belongs to setup, so each branch has a test of its own.
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 
 use test_cabinet_core::{
     AgentHarness, ArtifactCollection, ArtifactCollector, Availability, ContainerHandle,
     ContainerRuntime, ContainerSpec, ContainerStart, CredFile, CredSource, EngineCatalog,
     EngineSelection, EventFormat, EventSink, ExecOutput, FsRepoSeeder, HarnessInvocation,
-    HarnessOutcome, HarnessRegistry, HarnessSlug, MapCreds, MediaKind, NoopEventSink,
+    HarnessOutcome, HarnessRegistry, HarnessSlug, ManualClock, MapCreds, MediaKind, NoopEventSink,
     OpenRouterPrices, OrchestratorCatalog, OrchestratorSelection, OutputSink, OutputStream,
     PrerenderedReferenceRenderer, ProofFile, RenderedReference, Result as CoreResult,
     RunCancellation, RunEngine, RunRequest, SubscriptionSpec, TestCaseCatalog, TestCaseVersion,
@@ -50,10 +55,9 @@ fn catalog_root() -> PathBuf {
 /// How long the container takes to start. Stands in for the shared setup a run
 /// spends before the model works at all.
 ///
-/// Every span here is far longer than the real work the engine does around it —
-/// resolving the case, seeding the workspace, rendering the prompt, writing the
-/// record — so that a boundary drawn in the wrong place is visible in the recorded
-/// figure while the machine's load never is.
+/// Every span differs from every other and from every sum of the others, so a
+/// boundary drawn in the wrong place moves a recognisable amount into the wrong
+/// figure.
 const SETUP: Duration = Duration::from_millis(1200);
 /// How long the harness session takes — the model's own working time.
 const SESSION: Duration = Duration::from_millis(3000);
@@ -63,20 +67,22 @@ const TEARDOWN: Duration = Duration::from_millis(500);
 /// frozen, so none of it may reach any of the three stages or their sum.
 const VALIDATION: Duration = Duration::from_millis(1500);
 
-/// The run's runtime cap, comfortably above every sleep above so nothing here is
-/// a timeout test.
+/// The run's runtime cap. Nothing here waits in real time, so the cap is never
+/// approached; it is set because a run request carries one.
 const RUNTIME_CAP: u64 = 60;
 
 /// A container runtime whose start, session and stop each take a known, distinct
-/// amount of time. Its `exec` (the environment probe, the harness install and the
-/// case's `init` step) is instant, so every millisecond of setup this test
+/// amount of the engine's clock. Its `exec` (the environment probe, the harness
+/// install and the case's `init` step) takes none, so all of the setup this test
 /// measures came from `start`.
-struct SlowRuntime;
+struct SlowRuntime {
+    clock: ManualClock,
+}
 
 #[async_trait::async_trait]
 impl ContainerRuntime for SlowRuntime {
     async fn start(&self, _spec: &ContainerSpec) -> CoreResult<ContainerStart> {
-        tokio::time::sleep(SETUP).await;
+        self.clock.advance(SETUP);
         Ok(ContainerStart::ready(ContainerHandle {
             id: "fake-container".to_string(),
         }))
@@ -106,7 +112,7 @@ impl ContainerRuntime for SlowRuntime {
         // wrapper is, so the orchestrator segments one session out of the stream
         // and reads its usage — including the reported cost, which is what keeps
         // this test off the network.
-        tokio::time::sleep(SESSION).await;
+        self.clock.advance(SESSION);
         for line in ["__TCAB_SESSION_BEGIN__", "{}", "__TCAB_SESSION_END__"] {
             sink.on_line(OutputStream::Stdout, line);
         }
@@ -119,7 +125,7 @@ impl ContainerRuntime for SlowRuntime {
     }
 
     async fn stop(&self, _container: &ContainerHandle) -> CoreResult<()> {
-        tokio::time::sleep(TEARDOWN).await;
+        self.clock.advance(TEARDOWN);
         Ok(())
     }
 }
@@ -134,7 +140,11 @@ const GG_SETUP_CALL: Duration = Duration::from_millis(800);
 /// and each of gg's own setup calls — takes [`GG_SETUP_CALL`], and the streamed
 /// session takes [`SESSION`], so a session figure that has swallowed any part of
 /// gg's install reads at least [`GG_SETUP_CALL`] too large.
-struct GgRuntime;
+struct GgRuntime {
+    clock: ManualClock,
+    /// How many `exec` calls the run made, each of which took [`GG_SETUP_CALL`].
+    execs: Arc<std::sync::atomic::AtomicU32>,
+}
 
 /// One telemetry line a gg session emits: a billed turn carrying its own cost, so
 /// the run needs no OpenRouter price lookup and this test needs no network.
@@ -153,7 +163,8 @@ impl ContainerRuntime for GgRuntime {
         _container: &ContainerHandle,
         _command: &[String],
     ) -> CoreResult<ExecOutput> {
-        tokio::time::sleep(GG_SETUP_CALL).await;
+        self.clock.advance(GG_SETUP_CALL);
+        self.execs.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         Ok(ExecOutput {
             exit_code: 0,
             stdout: "gg 0.0.0-fake".to_string(),
@@ -169,7 +180,7 @@ impl ContainerRuntime for GgRuntime {
         _idle_timeout: Option<Duration>,
         sink: &mut dyn OutputSink,
     ) -> CoreResult<ExecOutput> {
-        tokio::time::sleep(SESSION).await;
+        self.clock.advance(SESSION);
         sink.on_line(OutputStream::Stdout, GG_USAGE_LINE);
         Ok(ExecOutput {
             exit_code: 0,
@@ -180,7 +191,7 @@ impl ContainerRuntime for GgRuntime {
     }
 
     async fn stop(&self, _container: &ContainerHandle) -> CoreResult<()> {
-        tokio::time::sleep(TEARDOWN).await;
+        self.clock.advance(TEARDOWN);
         Ok(())
     }
 }
@@ -276,7 +287,9 @@ impl ArtifactCollector for FakeCollector {
 }
 
 /// A validator that checks nothing but takes [`VALIDATION`] to do it.
-struct SlowValidator;
+struct SlowValidator {
+    clock: ManualClock,
+}
 
 impl Validator for SlowValidator {
     fn validate(
@@ -287,7 +300,7 @@ impl Validator for SlowValidator {
         _references: &[RenderedReference],
         _proofs: &[ProofFile],
     ) -> CoreResult<ValidationSummary> {
-        std::thread::sleep(VALIDATION);
+        self.clock.advance(VALIDATION);
         Ok(ValidationSummary::default())
     }
 }
@@ -308,8 +321,9 @@ fn references(test_case: &TestCaseVersion, variant: &Variant) -> Vec<RenderedRef
 
 /// The engine every test here drives: the real catalog, seeder, prompt renderer,
 /// orchestrator and record writer, with `runtime` supplying the stage timings and
-/// the collector and validator faked around it.
+/// the collector and validator faked around it, all reading and advancing `clock`.
 fn engine<R: ContainerRuntime>(
+    clock: &ManualClock,
     runtime: R,
     produced: &Path,
     seed_dir: &Path,
@@ -335,7 +349,9 @@ fn engine<R: ContainerRuntime>(
         session_assembler: None,
         analyzer: None,
         toolchain: None,
-        validator: SlowValidator,
+        validator: SlowValidator {
+            clock: clock.clone(),
+        },
         prices: OpenRouterPrices::new(),
         output_dir: out_dir.to_path_buf(),
         creds: Some(Box::new(MapCreds::new(
@@ -347,6 +363,7 @@ fn engine<R: ContainerRuntime>(
             .collect(),
         ))),
         prior_game_jam_entries: Vec::new(),
+        clock: Arc::new(clock.clone()),
     }
 }
 
@@ -389,8 +406,12 @@ async fn each_recorded_duration_measures_the_stage_it_names() {
     let seed_dir = tempfile::tempdir().expect("seed dir");
     let out_dir = tempfile::tempdir().expect("output dir");
 
+    let clock = ManualClock::new();
     let engine = engine(
-        SlowRuntime,
+        &clock,
+        SlowRuntime {
+            clock: clock.clone(),
+        },
         produced.path(),
         seed_dir.path(),
         out_dir.path(),
@@ -418,58 +439,38 @@ async fn each_recorded_duration_measures_the_stage_it_names() {
     let validation = metrics.validation_seconds.expect("a validation duration");
 
     // The load-bearing assertion, and the reason the issue exists: the session
-    // duration is the session's own sleep. The container start is twice as long
-    // and sits immediately before it, so a boundary drawn anywhere earlier — at
-    // the run timer, at the container handle, at the harness install — reports a
-    // figure at least `SETUP` too large.
-    assert!(
-        session >= SESSION.as_secs_f64(),
-        "the session duration ({session}s) must cover the session's own work",
-    );
-    assert!(
-        session < (SESSION + SETUP).as_secs_f64(),
-        "the session duration ({session}s) must exclude the {SETUP:?} container start",
-    );
+    // duration is the session's own span. The container start sits immediately
+    // before it, so a boundary drawn anywhere earlier — at the run timer, at the
+    // container handle, at the harness install — reports `SETUP` more.
+    assert_seconds(session, SESSION, "the session duration");
 
-    // Setup is the mirror image: it covers the container start and stops before
-    // the session begins.
-    assert!(
-        setup >= SETUP.as_secs_f64(),
-        "the setup duration ({setup}s) must cover the container start",
-    );
-    assert!(
-        setup < (SETUP + SESSION).as_secs_f64(),
-        "the setup duration ({setup}s) must exclude the {SESSION:?} session",
-    );
+    // Setup is the mirror image: exactly the container start, and none of the
+    // session.
+    assert_seconds(setup, SETUP, "the setup duration");
 
     // Teardown is the run's remainder, and the container stop is what is in it.
-    assert!(
-        teardown >= TEARDOWN.as_secs_f64(),
-        "the teardown duration ({teardown}s) must cover the container stop",
-    );
+    // Validation runs after the run's wall clock is frozen, so a teardown that
+    // read `TEARDOWN + VALIDATION` would be the clock running on past it.
+    assert_seconds(teardown, TEARDOWN, "the teardown duration");
 
     // The three partition the run's measured duration exactly, so no reader has
     // to reconcile them.
-    let summed = setup + session + teardown;
-    assert!(
-        (summed - metrics.run_time_seconds).abs() < 1e-9,
-        "setup + session + teardown ({summed}s) must equal the run time ({}s)",
+    assert_seconds(
         metrics.run_time_seconds,
+        SETUP + SESSION + TEARDOWN,
+        "the run time",
     );
 
-    // Validation is measured, and measured *outside* the run: the run's wall
-    // clock is frozen before the post-run seam, so a slow validator can never
-    // inflate what the run is judged on. Teardown is where it would land if the
-    // clock ran on, since teardown is the run's remainder and the three stages
-    // sum to the run time exactly.
+    // Validation is measured, and measured on its own.
+    assert_seconds(validation, VALIDATION, "the validation duration");
+}
+
+/// Assert a recorded figure is exactly `expected`, allowing only for the
+/// floating-point subtraction the partition does.
+fn assert_seconds(recorded: f64, expected: Duration, what: &str) {
     assert!(
-        validation >= VALIDATION.as_secs_f64(),
-        "the validation duration ({validation}s) must cover the validation pass",
-    );
-    assert!(
-        teardown < (TEARDOWN + VALIDATION).as_secs_f64(),
-        "the teardown duration ({teardown}s), and so the run time, must exclude the \
-         {VALIDATION:?} validation pass",
+        (recorded - expected.as_secs_f64()).abs() < 1e-9,
+        "{what} was {recorded}s where the stage it names took {expected:?}",
     );
 }
 
@@ -494,8 +495,14 @@ async fn a_gg_run_measures_its_own_install_as_setup() {
     let seed_dir = tempfile::tempdir().expect("seed dir");
     let out_dir = tempfile::tempdir().expect("output dir");
 
+    let clock = ManualClock::new();
+    let execs = Arc::new(std::sync::atomic::AtomicU32::new(0));
     let engine = engine(
-        GgRuntime,
+        &clock,
+        GgRuntime {
+            clock: clock.clone(),
+            execs: Arc::clone(&execs),
+        },
         produced.path(),
         seed_dir.path(),
         out_dir.path(),
@@ -519,25 +526,20 @@ async fn a_gg_run_measures_its_own_install_as_setup() {
     let setup = metrics.setup_seconds.expect("a setup duration");
     let session = metrics.session_seconds.expect("a session duration");
 
-    // The load-bearing assertion. gg's setup takes at least two container calls —
-    // the invocation-file write and the version probe, plus the release download
-    // when the binary is not built locally — so a session window that starts before
-    // any of them reads at least one `GG_SETUP_CALL` too large.
-    assert!(
-        session >= SESSION.as_secs_f64(),
-        "the session duration ({session}s) must cover the session's own work",
-    );
-    assert!(
-        session < (SESSION + GG_SETUP_CALL).as_secs_f64(),
-        "the session duration ({session}s) must exclude gg's install, its invocation \
-         file and its version probe",
-    );
+    // The load-bearing assertion: the session is the streamed session and nothing
+    // else. gg's setup is container calls of its own — the invocation-file write
+    // and the version probe, plus the release download when the binary is not
+    // built locally — so a session window that starts before any of them reads at
+    // least one `GG_SETUP_CALL` more.
+    assert_seconds(session, SESSION, "the session duration");
 
-    // Setup is where that work landed: two calls for the environment probe and at
-    // least two more for gg's own setup stage.
+    // Setup is where that work landed: every container call the run made — the
+    // environment probe and gg's own setup stage — and nothing else.
+    let execs = execs.load(std::sync::atomic::Ordering::SeqCst);
     assert!(
-        setup >= (4 * GG_SETUP_CALL).as_secs_f64(),
-        "the setup duration ({setup}s) must cover the environment probe and gg's \
-         install, invocation file and version probe",
+        execs >= 4,
+        "the environment probe and gg's install, invocation file and version probe are \
+         container calls, and only {execs} were made",
     );
+    assert_seconds(setup, GG_SETUP_CALL * execs, "the setup duration");
 }
