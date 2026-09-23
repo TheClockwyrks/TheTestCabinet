@@ -568,8 +568,8 @@ async fn teardown_sandbox(config: &Config) -> bool {
 /// run produced a static build to serve, mirroring what the worker set at list
 /// time. An upload failure is logged but never fatal: the record itself still
 /// reaches the backend (only its servable artifacts are missing), and the run
-/// outcome is unchanged. When `TCAB_ARTIFACTS_URL` is unset (the local
-/// CLI/desktop path) this is a no-op and the record carries no playable link.
+/// outcome is unchanged. When `TCAB_ARTIFACTS_URL` is unset (a local setup with no
+/// artifact service) this is a no-op and the record carries no playable link.
 async fn finalize_artifacts(config: &Config, record: &mut test_cabinet_core::RunRecord) {
     let Some(artifacts_url) = config.artifacts_url.as_deref() else {
         return;

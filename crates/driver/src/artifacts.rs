@@ -14,9 +14,8 @@
 //! is posted, so by the time the console sees the run finish its artifacts are
 //! already servable.
 //!
-//! When `TCAB_ARTIFACTS_URL` is unset (the local CLI/desktop path), nothing here
-//! runs and behavior is unchanged — there is no separate artifact service in that
-//! topology.
+//! When `TCAB_ARTIFACTS_URL` is unset (a local setup), nothing here runs — there
+//! is no separate artifact service in that topology.
 
 use std::fs::File;
 use std::io::Seek;
@@ -142,7 +141,7 @@ pub async fn upload_run_tree(
 }
 
 /// Upload an adversarial run's controller wasm and proof replays to the **backend
-/// store**, keyed by run id — the backend-driven mirror of the CLI/desktop push
+/// store**, keyed by run id — the backend-driven mirror of the CLI push
 /// (`BackendPublisher::upload_adversarial`).
 ///
 /// The backend store is a different place from the artifact service. The arena

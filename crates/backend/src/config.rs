@@ -193,8 +193,8 @@ pub struct Config {
     /// The base URL of the deployment's **Grafana** (`TCAB_GRAFANA_PUBLIC_URL`),
     /// reported to the console via `GET /config` so a run can link out to the traces
     /// it emitted. `None` when the deployment runs no observability stack (the local
-    /// and desktop setups, and any overlay that omits the observability component) —
-    /// the console then simply hides the link.
+    /// setup, and any overlay that omits the observability component) — the console
+    /// then simply hides the link.
     ///
     /// Unlike `artifacts_public_url` and `arena_url` this is not a data-plane URL: the
     /// backend never calls Grafana, and Grafana never calls the backend. It is
@@ -330,7 +330,7 @@ impl Config {
 
     /// Whether this backend runs single-box: the control plane, the dispatcher,
     /// and every driver share one machine's lifecycle. Inferred from a SQLite
-    /// database URL — the local/desktop deployment — as opposed to the
+    /// database URL — the local deployment — as opposed to the
     /// `postgres://` of a remote deployment whose backend can restart
     /// independently while drivers keep running.
     ///

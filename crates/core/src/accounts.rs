@@ -105,9 +105,8 @@ pub struct ReviewerPicture {
 /// An HTTP client for the standalone auth service.
 ///
 /// The base URL is the auth service's address (for example
-/// `http://127.0.0.1:8789`). Used by the CLI/desktop/web to register and log in,
-/// and by the backend to [verify](Self::verify) the bearer token on each
-/// mutating request.
+/// `http://127.0.0.1:8789`). Used by the CLI to register and log in, and by the
+/// backend to [verify](Self::verify) the bearer token on each mutating request.
 #[derive(Debug, Clone)]
 pub struct AccountsClient {
     /// The auth service base URL, without a trailing slash.

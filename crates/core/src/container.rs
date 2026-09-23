@@ -55,9 +55,9 @@ pub struct CliContainerRuntime {
     /// The runtime binary (for example `podman` or `docker`).
     binary: String,
     /// The id of the job whose run this runtime starts containers for, stamped onto
-    /// each of them as [`JOB_ID_LABEL`]. `None` outside a job-driven run (the CLI and
-    /// desktop paths, which hold the handle for the whole run and stop it themselves),
-    /// in which case no label is written and
+    /// each of them as [`JOB_ID_LABEL`]. `None` outside a job-driven run (the CLI path,
+    /// which holds the handle for the whole run and stops it itself), in which case no
+    /// label is written and
     /// [`delete_run_containers_for_job`](Self::delete_run_containers_for_job) is a
     /// no-op.
     job_id: Option<String>,

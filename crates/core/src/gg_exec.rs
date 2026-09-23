@@ -354,9 +354,9 @@ fn release_target_with(env: &dyn Fn(&str) -> Option<String>, default_arch: &str)
 /// run that installs gg from a release dies at the download step:
 ///
 /// - **the tag is `v{version}`**, the single tag a release is cut under (the `tcab`
-///   CLI, the services, the desktop installers and gg all hang off it). An earlier
-///   `gg-v{version}` scheme named a tag the workflow has never created, so no URL this
-///   function produced had ever resolved.
+///   CLI, the services and gg all hang off it). An earlier `gg-v{version}` scheme
+///   named a tag the workflow has never created, so no URL this function produced had
+///   ever resolved.
 /// - **the asset is a bare executable named `gg-{target}`**, not an archive like the
 ///   other binaries. The container-side install is one `curl` with no unpack step, in
 ///   an image that is not guaranteed to have `tar` — and the target triple in the name

@@ -5,7 +5,7 @@
 //! a run in a container, invoking the agent harness, collecting metrics, running
 //! validation, writing the run record, and publishing). The CLI exists so those
 //! capabilities can be scripted and so benchmark sweeps can be run in batch
-//! without a person driving the desktop interface. See `docs/application.md`.
+//! without a person driving the web console. See `docs/application.md`.
 //!
 //! Every subcommand here is a buildable stub: it parses its arguments faithfully
 //! and routes to a handler that calls into the core where the surface already

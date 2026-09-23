@@ -2039,9 +2039,9 @@ async fn touch_run<C: ConnectionTrait>(conn: &C, run_id: &str) -> Result<()> {
     Ok(())
 }
 
-/// The publish gate, factored out so both [`Db::publish`] (the legacy/desktop
-/// flip) and [`Db::ensure_publishable`] (the publish-queue's at-enqueue check)
-/// enforce it identically.
+/// The publish gate, factored out so both [`Db::publish`] (the direct flip) and
+/// [`Db::ensure_publishable`] (the publish-queue's at-enqueue check) enforce it
+/// identically.
 ///
 /// Publishability is decided by the run's terminal state. Infrastructure failures
 /// are the Test Cabinet's fault, not a model result, and canceled runs were stopped

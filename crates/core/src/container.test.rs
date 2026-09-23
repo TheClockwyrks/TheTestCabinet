@@ -111,8 +111,8 @@ fn a_job_driven_run_labels_its_container_with_the_job_id() {
 
 #[test]
 fn a_run_outside_a_job_is_labelled_with_nothing() {
-    // The CLI and desktop paths hold the container handle for the whole run and stop it
-    // themselves, so they have nothing to look a container up by later.
+    // The CLI path holds the container handle for the whole run and stops it itself,
+    // so it has nothing to look a container up by later.
     assert!(!run_args(&spec(), None).iter().any(|arg| arg == "--label"));
 }
 
