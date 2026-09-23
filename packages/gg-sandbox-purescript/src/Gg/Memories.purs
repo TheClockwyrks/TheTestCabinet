@@ -135,7 +135,8 @@ writeMemory written =
 -- |
 -- | # Throws
 -- |
--- | `NotFound` when no memory has that name.
+-- | `NotFound` when no memory has that name, and `LimitExceeded` when the replacement body would
+-- | breach the run's caps.
 updateMemory
   :: forall given rest
    . Union given rest MemoryCodeOptions

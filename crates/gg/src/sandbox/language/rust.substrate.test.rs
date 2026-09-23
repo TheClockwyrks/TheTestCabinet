@@ -149,6 +149,26 @@ pub(super) fn evaluate_with_program(
     )
 }
 
+/// [`evaluate`] for an agent whose next view-opening or documentation-search call is refused.
+///
+/// The seam the [view](crate::sandbox::membrane::views) and [documentation](crate::sandbox::membrane::docs)
+/// failure cases need and cannot get any other way: those two families are refused by the api
+/// *behind* the membrane rather than by a tool, so no responder can fail them — see
+/// [`refusing_view`](FakeOperationApi::refusing_view).
+pub(super) fn evaluate_refusing_view(
+    component: &[u8],
+    refusal: crate::sandbox::invoker::ViewRefusal,
+) -> (SandboxOutcome, CallLog) {
+    evaluate_granting(
+        component,
+        &all_operations(),
+        &[],
+        RunEnding::None,
+        false,
+        |log| FakeOperationApi::with(log, canned_outcome).refusing_view(refusal),
+    )
+}
+
 /// What all of the above are: one evaluation, with everything the scope carries stated.
 ///
 /// The double is BUILT here rather than passed in, because the log it writes to is created here and
@@ -210,7 +230,7 @@ fn evaluate_granting(
 }
 
 /// Compile and run one Rust program with no gg tool offered — the shape most cases here want.
-fn run(source: &str) -> SandboxOutcome {
+pub(super) fn run(source: &str) -> SandboxOutcome {
     evaluate(
         &prepare(source),
         &[],

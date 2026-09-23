@@ -265,3 +265,116 @@ async fn argument_diagnostics_are_classified_as_invalid_arguments() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// compact
+// ---------------------------------------------------------------------------
+
+/// The [`ToolFailure`] an outcome carries, or a failure naming what it carried instead.
+fn failure(outcome: &ToolOutcome) -> ToolFailure {
+    match outcome.failure {
+        Some(failure) => failure,
+        None => panic!("expected a failure, got {:?}", outcome.output),
+    }
+}
+
+#[tokio::test]
+async fn a_well_formed_compact_is_accepted_by_the_tool() {
+    let outcome = CompactTool
+        .invoke(
+            json!({ "summary": "building the level loader", "files": ["src/a.ts"] }),
+            &ctx(),
+        )
+        .await;
+    assert!(outcome.ok, "{}", outcome.output);
+    assert_eq!(outcome.summary.as_deref(), Some("compact context"));
+    // The loop rewrites the window and replaces this result with what it actually compacted, so
+    // the tool reports no sidecar of its own.
+    assert_eq!(outcome.data, None);
+}
+
+#[tokio::test]
+async fn a_compact_missing_its_summary_is_an_argument_error() {
+    let outcome = CompactTool.invoke(json!({ "files": [] }), &ctx()).await;
+    assert!(!outcome.ok);
+    assert_eq!(failure(&outcome), ToolFailure::InvalidArgument);
+    assert!(outcome.output.contains("summary"), "{}", outcome.output);
+}
+
+#[tokio::test]
+async fn a_blank_compact_summary_is_an_argument_error() {
+    let outcome = CompactTool
+        .invoke(json!({ "summary": "   " }), &ctx())
+        .await;
+    assert!(!outcome.ok);
+    assert_eq!(failure(&outcome), ToolFailure::InvalidArgument);
+}
+
+#[tokio::test]
+async fn a_compact_summary_that_is_not_a_string_is_an_argument_error() {
+    let outcome = CompactTool.invoke(json!({ "summary": 7 }), &ctx()).await;
+    assert!(!outcome.ok);
+    assert_eq!(failure(&outcome), ToolFailure::InvalidArgument);
+}
+
+#[tokio::test]
+async fn a_compact_files_value_that_is_not_a_list_is_an_argument_error() {
+    let outcome = CompactTool
+        .invoke(json!({ "summary": "state", "files": "src/a.ts" }), &ctx())
+        .await;
+    assert!(!outcome.ok);
+    assert_eq!(failure(&outcome), ToolFailure::InvalidArgument);
+    assert!(outcome.output.contains("files"), "{}", outcome.output);
+}
+
+#[tokio::test]
+async fn a_compact_file_entry_that_is_not_a_string_is_an_argument_error() {
+    let outcome = CompactTool
+        .invoke(json!({ "summary": "state", "files": [7] }), &ctx())
+        .await;
+    assert!(!outcome.ok);
+    assert_eq!(failure(&outcome), ToolFailure::InvalidArgument);
+    assert!(outcome.output.contains("files"), "{}", outcome.output);
+}
+
+/// `files` is optional: a compaction that continues from the summary alone is a normal call.
+#[tokio::test]
+async fn a_compact_with_no_files_is_accepted() {
+    let absent = CompactTool
+        .invoke(json!({ "summary": "state" }), &ctx())
+        .await;
+    assert!(absent.ok, "{}", absent.output);
+    let null = CompactTool
+        .invoke(json!({ "summary": "state", "files": null }), &ctx())
+        .await;
+    assert!(null.ok, "{}", null.output);
+}
+
+#[test]
+fn compact_file_paths_are_trimmed_and_blanks_dropped() {
+    let request =
+        parse_compact_request(&json!({ "summary": "state", "files": ["  src/a.ts  ", "", "   "] }))
+            .expect("a well-formed compact");
+    assert_eq!(request.summary, "state");
+    assert_eq!(request.files, vec!["src/a.ts".to_string()]);
+}
+
+/// Re-reading the same file twice would simply spend the window twice.
+#[test]
+fn a_repeated_compact_file_is_named_once() {
+    let request = parse_compact_request(
+        &json!({ "summary": "state", "files": ["src/a.ts", "  src/a.ts  ", "src/a.ts"] }),
+    )
+    .expect("a well-formed compact");
+    assert_eq!(request.files, vec!["src/a.ts".to_string()]);
+}
+
+#[test]
+fn the_compact_file_list_is_cut_at_the_ceiling() {
+    let named: Vec<String> = (0..MAX_COMPACT_FILES + 3)
+        .map(|n| format!("src/f{n}.ts"))
+        .collect();
+    let request = parse_compact_request(&json!({ "summary": "state", "files": named.clone() }))
+        .expect("a well-formed compact");
+    assert_eq!(request.files, named[..MAX_COMPACT_FILES]);
+}

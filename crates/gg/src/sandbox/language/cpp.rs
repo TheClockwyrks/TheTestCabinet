@@ -729,6 +729,13 @@ mod tests;
 #[path = "cpp.substrate.test.rs"]
 mod substrate;
 
+/// **The [`feedback`](crate::sandbox::membrane::capture) channel, driven from C++ programs** — what
+/// the capture keeps of what a program logs, what a program's end hands gg, and what a code module
+/// that fails tells the model.
+#[cfg(test)]
+#[path = "cpp.feedback.test.rs"]
+mod feedback;
+
 /// **Every C++ example a model is shown, put through `clang++`** — the prompt's, the notice's and
 /// the catalogue's.
 ///

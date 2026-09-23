@@ -49,7 +49,9 @@ public final class Shell {
      *     whatever is left of the run's wall-clock budget.
      * @return what the command printed, and how it exited
      * @throws ApiError {@link ApiErrorCode#LIMIT_EXCEEDED} when the timeout killed the process,
-     *     and {@link ApiErrorCode#IO_ERROR} when it could not be launched.
+     *     {@link ApiErrorCode#IO_ERROR} when it could not be launched, and
+     *     {@link ApiErrorCode#INVALID_ARGUMENT} when {@code timeoutSecs} is not a positive number
+     *     of seconds.
      * @ggop shell.shell
      */
     public static ShellOutput shell(String command, int timeoutSecs) {

@@ -188,6 +188,23 @@ pub(super) fn evaluate_closing_docviews(
     evaluate_granting(component, &granted, &[], RunEnding::None, false, responder)
 }
 
+/// [`evaluate_as`] over an **already-prepared** double rather than a responder.
+///
+/// The knobs a case needs are on the [api](FakeOperationApi) itself — a seeded program library, a
+/// bounded retention, a standing refusal for the view or documentation families — and none of them
+/// is reachable through a responder, because none of those calls dispatches a tool for one to
+/// answer. The [`CallLog`] the api was built with belongs to the caller, so this hands back the
+/// outcome alone.
+pub(super) fn evaluate_with_api(
+    component: &[u8],
+    operations: &[crate::sandbox::operations::OperationId],
+    ending: RunEnding,
+    library: bool,
+    api: FakeOperationApi,
+) -> SandboxOutcome {
+    evaluated(component, operations, &[], ending, library, api)
+}
+
 /// What all of the above are: one evaluation, with everything the scope carries stated.
 fn evaluate_granting(
     component: &[u8],
@@ -197,9 +214,22 @@ fn evaluate_granting(
     library: bool,
     responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
-    let limits = SandboxLimits::AMPLE;
     let log = CallLog::default();
     let api = FakeOperationApi::with(&log, responder);
+    let outcome = evaluated(component, operations, modules, ending, library, api);
+    (outcome, log)
+}
+
+/// The evaluation itself, over the double both entry points above have already built.
+fn evaluated(
+    component: &[u8],
+    operations: &[crate::sandbox::operations::OperationId],
+    modules: &[CodeModule],
+    ending: RunEnding,
+    library: bool,
+    api: FakeOperationApi,
+) -> SandboxOutcome {
+    let limits = SandboxLimits::AMPLE;
     let linker = linker::<FakeOperationApi>().expect("the production linker builds");
     let compiled =
         engine::compile_bytes(component).expect("a freshly compiled Java program is a component");
@@ -240,11 +270,11 @@ fn evaluate_granting(
     }
     let returned = keep_reported_error(returned, &store);
     let (outcome, _api) = reclaim(store, returned, None, None);
-    (outcome, log)
+    outcome
 }
 
 /// Compile and run one Java program with no gg tool offered — the shape most cases here want.
-fn run(source: &str) -> SandboxOutcome {
+pub(super) fn run(source: &str) -> SandboxOutcome {
     evaluate(&prepare(source), &[], &[], canned_outcome).0
 }
 

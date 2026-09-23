@@ -60,7 +60,7 @@ use crate::sandbox::{
     CodeModule, PrepareContext, PrepareError, PrepareFailure, ProgramScope, SandboxLimits,
     bounded_store, capability_operations, engine, keep_reported_error, linker, reclaim,
 };
-use crate::tools::ToolOutcome;
+use crate::tools::{ToolFailure, ToolOutcome};
 
 // ---------------------------------------------------------------------------------------------
 // Writing a program the way a model writes one
@@ -180,6 +180,64 @@ pub(super) fn evaluate_with_program(
     })
 }
 
+/// [`evaluate_as`] for a run whose double **refuses** `operation` with `failure` and `message`,
+/// answering every other call as usual.
+///
+/// The seam for a refusal the *production* api raises out of state the double does not hold — a
+/// window cap, a catalogue, a library the loop could not read. Those families dispatch no gg tool,
+/// so no responder can fail them, and without this every refusal their SDKs document would be
+/// unreachable from a Kotlin program. What the case states is the class and the sentence; what is
+/// under test is that gg's own words reach the program under the operation the model wrote.
+pub(super) fn evaluate_refusing(
+    component: &[u8],
+    operations: &[crate::sandbox::operations::OperationId],
+    operation: crate::sandbox::operations::OperationId,
+    failure: ToolFailure,
+    message: &str,
+) -> (SandboxOutcome, CallLog) {
+    let message = message.to_string();
+    evaluate_seeding(
+        component,
+        operations,
+        &[],
+        RunEnding::None,
+        false,
+        move |log| {
+            FakeOperationApi::with(log, canned_outcome).refusing(operation, failure, &message)
+        },
+    )
+}
+
+/// [`evaluate_as`] for a run whose double knows exactly `entries` of documentation, each said to be
+/// bound by this agent or not.
+///
+/// The double opens a view for every name it is not told about, so a documentation lookup's two
+/// `not-found` causes — a name no catalogue holds, and a name this agent does not bind — reach a
+/// program only through this.
+pub(super) fn evaluate_cataloguing(
+    component: &[u8],
+    entries: &[(&str, bool)],
+) -> (SandboxOutcome, CallLog) {
+    let entries: Vec<(String, bool)> = entries
+        .iter()
+        .map(|(name, bound)| ((*name).to_string(), *bound))
+        .collect();
+    evaluate_seeding(
+        component,
+        &all_operations(),
+        &[],
+        RunEnding::None,
+        false,
+        move |log| {
+            let named: Vec<(&str, bool)> = entries
+                .iter()
+                .map(|(name, bound)| (name.as_str(), *bound))
+                .collect();
+            FakeOperationApi::with(log, canned_outcome).cataloguing(&named)
+        },
+    )
+}
+
 /// What all of the above are: one evaluation, with everything the scope carries stated.
 fn evaluate_granting(
     component: &[u8],
@@ -244,7 +302,7 @@ fn evaluate_seeding(
 }
 
 /// Compile and run one Kotlin program with no gg tool offered — the shape most cases here want.
-fn run(source: &str) -> SandboxOutcome {
+pub(super) fn run(source: &str) -> SandboxOutcome {
     evaluate(&prepare(source), &[], &[], canned_outcome).0
 }
 
@@ -1321,4 +1379,95 @@ fn an_agents_ending_group_decides_what_its_program_may_call() {
         "the ending the program declared: {:?}",
         outcome.completion
     );
+}
+
+/// **A reviewer has no `gg.session.finish` to call**, and is told which endings it does have.
+///
+/// The one gate no configuration reaches: a role is what an agent was *dispatched* as, and a
+/// compiled arm cannot withhold a name from a program that links its SDK as an ordinary library —
+/// so the refusal has to arrive at the call. It names the alternatives in **this arm's own
+/// spelling**, because the sentence is an instruction and an instruction naming a call this SDK does
+/// not spell that way is one the model cannot follow.
+#[test]
+fn a_reviewer_has_no_finish_to_call() {
+    let (outcome, log) = evaluate_as(
+        &prepare(&whole(
+            "",
+            "    try {\n\
+             \x20       gg.session.finish(\"the work is done\")\n\
+             \x20   } catch (failure: gg.core.ApiError) {\n\
+             \x20       gg.log(\"${failure.code} on ${failure.operation}: ${failure.detail}\")\n\
+             \x20   }\n",
+        )),
+        &all_operations(),
+        &[],
+        RunEnding::Role(EndingRole::Review),
+        false,
+        canned_outcome,
+    );
+    let line = &logs(&outcome)[0];
+    assert!(line.starts_with("UNAVAILABLE on finish: "), "{line}");
+    assert!(
+        line.contains("`gg.session.approve`") && line.contains("`gg.session.requestChanges`"),
+        "the two endings a reviewer does have, written the way this arm writes them: {line}"
+    );
+    assert!(log.names().is_empty(), "{:?}", log.names());
+    assert!(
+        outcome.completion.is_none(),
+        "the session is still open: {:?}",
+        outcome.completion
+    );
+}
+
+/// **A standard agent has no `gg.session.approve` to call**, and is pointed at the ending it does
+/// have.
+#[test]
+fn a_standard_agent_has_no_approve_to_call() {
+    let (outcome, _log) = evaluate_as(
+        &prepare(&whole(
+            "",
+            "    try {\n\
+             \x20       gg.session.approve()\n\
+             \x20   } catch (failure: gg.core.ApiError) {\n\
+             \x20       gg.log(\"${failure.code} on ${failure.operation}: ${failure.detail}\")\n\
+             \x20   }\n",
+        )),
+        &all_operations(),
+        &[],
+        RunEnding::Role(EndingRole::Standard),
+        false,
+        canned_outcome,
+    );
+    let line = &logs(&outcome)[0];
+    assert!(line.starts_with("UNAVAILABLE on approve: "), "{line}");
+    assert!(line.contains("`gg.session.finish`"), "{line}");
+    assert!(outcome.completion.is_none(), "{:?}", outcome.completion);
+}
+
+/// **A standard agent has no `gg.session.requestChanges` to call** — the other half of a reviewer's
+/// verdict, withheld on the same terms.
+#[test]
+fn a_standard_agent_has_no_request_changes_to_call() {
+    let (outcome, _log) = evaluate_as(
+        &prepare(&whole(
+            "",
+            "    try {\n\
+             \x20       gg.session.requestChanges(\"widen the test\")\n\
+             \x20   } catch (failure: gg.core.ApiError) {\n\
+             \x20       gg.log(\"${failure.code} on ${failure.operation}: ${failure.detail}\")\n\
+             \x20   }\n",
+        )),
+        &all_operations(),
+        &[],
+        RunEnding::Role(EndingRole::Standard),
+        false,
+        canned_outcome,
+    );
+    let line = &logs(&outcome)[0];
+    assert!(
+        line.starts_with("UNAVAILABLE on request_changes: "),
+        "{line}"
+    );
+    assert!(line.contains("`gg.session.finish`"), "{line}");
+    assert!(outcome.completion.is_none(), "{:?}", outcome.completion);
 }

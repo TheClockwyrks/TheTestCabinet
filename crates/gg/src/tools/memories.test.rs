@@ -135,13 +135,31 @@ async fn write_memory_surfaces_a_cap_breach_as_a_revise_or_evict_error() {
 #[tokio::test]
 async fn write_memory_validates_missing_arguments() {
     let (store, ctx, _dir) = fixture(MemoryCaps::UNBOUNDED);
-    let tool = WriteMemoryTool::new(store);
+    let tool = WriteMemoryTool::new(store.clone());
 
     let outcome = tool
         .invoke(json!({ "name": "m", "description": "d" }), &ctx)
         .await;
-    assert!(!outcome.ok);
-    assert!(outcome.output.contains("body"));
+    assert_eq!(outcome.failure, Some(ToolFailure::InvalidArgument));
+    assert!(outcome.output.contains("body"), "{}", outcome.output);
+    assert_eq!(store.lock().count(), 0);
+}
+
+#[tokio::test]
+async fn a_write_with_an_ill_typed_argument_is_an_argument_error() {
+    let (store, ctx, _dir) = fixture(MemoryCaps::UNBOUNDED);
+    let tool = WriteMemoryTool::new(store.clone());
+
+    let outcome = tool
+        .invoke(json!({ "name": 7, "description": "d", "body": "b" }), &ctx)
+        .await;
+    assert_eq!(outcome.failure, Some(ToolFailure::InvalidArgument));
+    assert!(
+        outcome.output.contains("`name` must be a string"),
+        "{}",
+        outcome.output
+    );
+    assert_eq!(store.lock().count(), 0);
 }
 
 #[tokio::test]
@@ -322,4 +340,211 @@ fn is_memory_tool_recognizes_every_mutating_memory_tool() {
     assert!(!is_memory_tool("search_memories"));
     assert!(!is_memory_tool("read_skill"));
     assert!(!is_memory_tool("write_file"));
+}
+
+// ---------------------------------------------------------------------------
+// The limits a scratchpad write or update can breach
+// ---------------------------------------------------------------------------
+
+/// The aggregate budget is a separate ceiling from the per-memory one, and a model that has just
+/// been refused needs to know *which* it ran out of: rewriting the body shorter fixes one of them
+/// and evicting a memory fixes the other.
+#[tokio::test]
+async fn a_write_past_the_total_character_cap_is_a_limit() {
+    // 10 characters each, 15 in total: two bodies that each fit individually cannot both be held.
+    let (store, ctx, _dir) = fixture(MemoryCaps {
+        max_count: None,
+        max_len_per_memory: Some(10),
+        max_total_len: Some(15),
+        ..MemoryCaps::UNBOUNDED
+    });
+    let tool = WriteMemoryTool::new(store.clone());
+
+    let first = tool
+        .invoke(
+            json!({ "name": "a", "description": "d", "body": "aaaaaaaaaa" }),
+            &ctx,
+        )
+        .await;
+    assert!(first.ok, "{}", first.output);
+
+    let second = tool
+        .invoke(
+            json!({ "name": "b", "description": "d", "body": "bbbbbbbbbb" }),
+            &ctx,
+        )
+        .await;
+    assert_eq!(second.failure, Some(ToolFailure::LimitExceeded));
+    // The diagnostic names the aggregate budget and its ceiling, not the per-memory one — the
+    // body it just refused is exactly the size of a body it accepted a moment ago.
+    assert!(
+        second
+            .output
+            .contains("total memory would be 20 characters"),
+        "{}",
+        second.output
+    );
+    assert!(second.output.contains("(max 15)"), "{}", second.output);
+    assert_eq!(store.lock().count(), 1);
+}
+
+/// The description is measured against its own ceiling, so an over-long one-liner is refused even
+/// when the body it summarizes is well within every other limit.
+#[tokio::test]
+async fn a_write_with_an_over_long_description_is_a_limit() {
+    let (store, ctx, _dir) = fixture(MemoryCaps {
+        max_len_description: Some(8),
+        ..MemoryCaps::UNBOUNDED
+    });
+    let tool = WriteMemoryTool::new(store.clone());
+
+    let outcome = tool
+        .invoke(
+            json!({
+                "name": "m",
+                "description": "a summary far longer than the ceiling allows",
+                "body": "b",
+            }),
+            &ctx,
+        )
+        .await;
+    assert_eq!(outcome.failure, Some(ToolFailure::LimitExceeded));
+    assert!(
+        outcome.output.contains("the description for memory `m`"),
+        "{}",
+        outcome.output
+    );
+    assert!(outcome.output.contains("(max 8)"), "{}", outcome.output);
+    assert_eq!(store.lock().count(), 0);
+}
+
+/// A revision is bounded by the same per-memory ceiling a write is: growing a memory past it is
+/// refused rather than truncated, and the memory keeps the body it had.
+#[tokio::test]
+async fn an_update_past_the_per_memory_cap_is_a_limit() {
+    let (store, ctx, _dir) = fixture(tiny_caps());
+    let write = WriteMemoryTool::new(store.clone());
+    let update = UpdateMemoryTool::new(store.clone());
+
+    assert!(
+        write
+            .invoke(
+                json!({ "name": "m", "description": "d", "body": "short" }),
+                &ctx
+            )
+            .await
+            .ok
+    );
+
+    let outcome = update
+        .invoke(
+            json!({ "name": "m", "description": "d", "body": "way too long a body" }),
+            &ctx,
+        )
+        .await;
+    assert_eq!(outcome.failure, Some(ToolFailure::LimitExceeded));
+    assert!(outcome.output.contains("(max 10)"), "{}", outcome.output);
+    assert_eq!(store.lock().memories()[0].body(), "short");
+}
+
+/// The same for the description half of a revision.
+#[tokio::test]
+async fn an_update_with_an_over_long_description_is_a_limit() {
+    let (store, ctx, _dir) = fixture(MemoryCaps {
+        max_len_description: Some(8),
+        ..MemoryCaps::UNBOUNDED
+    });
+    let write = WriteMemoryTool::new(store.clone());
+    let update = UpdateMemoryTool::new(store.clone());
+
+    assert!(
+        write
+            .invoke(
+                json!({ "name": "m", "description": "short", "body": "b" }),
+                &ctx
+            )
+            .await
+            .ok
+    );
+
+    let outcome = update
+        .invoke(
+            json!({
+                "name": "m",
+                "description": "a summary far longer than the ceiling allows",
+                "body": "b2",
+            }),
+            &ctx,
+        )
+        .await;
+    assert_eq!(outcome.failure, Some(ToolFailure::LimitExceeded));
+    assert!(
+        outcome.output.contains("the description for memory `m`"),
+        "{}",
+        outcome.output
+    );
+    assert_eq!(store.lock().memories()[0].description(), "short");
+}
+
+// ---------------------------------------------------------------------------
+// The argument diagnostics update_memory and delete_memory raise
+// ---------------------------------------------------------------------------
+
+/// Every field `update_memory` declares required is read as required, and the diagnostic names the
+/// one that is missing rather than saying the call was malformed.
+#[tokio::test]
+async fn an_update_missing_a_required_argument_is_an_argument_error() {
+    let (store, ctx, _dir) = fixture(MemoryCaps::UNBOUNDED);
+    let tool = UpdateMemoryTool::new(store);
+
+    for (args, field) in [
+        (json!({ "description": "d", "body": "b" }), "name"),
+        (json!({ "name": "m", "body": "b" }), "description"),
+        (json!({ "name": "m", "description": "d" }), "body"),
+    ] {
+        let outcome = tool.invoke(args, &ctx).await;
+        assert_eq!(outcome.failure, Some(ToolFailure::InvalidArgument));
+        assert!(outcome.output.contains(field), "{}", outcome.output);
+    }
+}
+
+/// A field of the wrong JSON type is the model's mistake too, and is told apart from an absent one.
+#[tokio::test]
+async fn an_update_with_an_ill_typed_argument_is_an_argument_error() {
+    let (store, ctx, _dir) = fixture(MemoryCaps::UNBOUNDED);
+    let tool = UpdateMemoryTool::new(store);
+
+    let outcome = tool
+        .invoke(json!({ "name": 7, "description": "d", "body": "b" }), &ctx)
+        .await;
+    assert_eq!(outcome.failure, Some(ToolFailure::InvalidArgument));
+    assert!(
+        outcome.output.contains("`name` must be a string"),
+        "{}",
+        outcome.output
+    );
+}
+
+#[tokio::test]
+async fn a_delete_missing_its_name_is_an_argument_error() {
+    let (store, ctx, _dir) = fixture(MemoryCaps::UNBOUNDED);
+    let tool = DeleteMemoryTool::new(store);
+
+    let outcome = tool.invoke(json!({}), &ctx).await;
+    assert_eq!(outcome.failure, Some(ToolFailure::InvalidArgument));
+    assert!(outcome.output.contains("name"), "{}", outcome.output);
+}
+
+#[tokio::test]
+async fn a_delete_with_an_ill_typed_name_is_an_argument_error() {
+    let (store, ctx, _dir) = fixture(MemoryCaps::UNBOUNDED);
+    let tool = DeleteMemoryTool::new(store);
+
+    let outcome = tool.invoke(json!({ "name": [] }), &ctx).await;
+    assert_eq!(outcome.failure, Some(ToolFailure::InvalidArgument));
+    assert!(
+        outcome.output.contains("`name` must be a string"),
+        "{}",
+        outcome.output
+    );
 }

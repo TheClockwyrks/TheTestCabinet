@@ -328,3 +328,116 @@ async fn the_json_adapter_reads_path_and_depth() {
     assert!(!refused.ok);
     assert_eq!(refused.failure, Some(ToolFailure::InvalidArgument));
 }
+
+// ---------------------------------------------------------------------------
+// Every refusal, through the tool-calling adapter
+// ---------------------------------------------------------------------------
+//
+// A tool-calling model reaches `tree` through `invoke` and nothing else, so each failure mode is
+// driven here by the ill-typed or ill-formed JSON that enters it: the adapter's own branches and
+// the typed call's refusals alike, each asserting the argument at fault is named.
+
+/// A refusal from `invoke`, asserted to carry `failure` and to name `argument` in its prose.
+fn refusal(outcome: &ToolOutcome, failure: ToolFailure, argument: &str) {
+    assert!(!outcome.ok, "{}", outcome.output);
+    assert_eq!(outcome.failure, Some(failure), "{}", outcome.output);
+    assert!(
+        outcome.output.contains(argument),
+        "expected `{argument}` to be named: {}",
+        outcome.output
+    );
+}
+
+/// `path` is a string or it is absent; a number is neither.
+#[tokio::test]
+async fn a_tree_path_that_is_not_a_string_is_an_argument_error() {
+    let (_dir, ctx) = workspace();
+
+    let outcome = TreeTool.invoke(json!({ "path": 7 }), &ctx).await;
+    refusal(&outcome, ToolFailure::InvalidArgument, "`path`");
+    assert!(
+        outcome.output.contains("must be a string"),
+        "{}",
+        outcome.output
+    );
+}
+
+/// A negative `depth` is not a count, and is refused before the walk rather than saturated into
+/// one.
+#[tokio::test]
+async fn a_tree_depth_that_is_not_a_whole_number_is_an_argument_error() {
+    let (_dir, ctx) = workspace();
+
+    let outcome = TreeTool.invoke(json!({ "depth": -1 }), &ctx).await;
+    refusal(&outcome, ToolFailure::InvalidArgument, "`depth`");
+    assert!(
+        outcome.output.contains("must be a positive integer"),
+        "{}",
+        outcome.output
+    );
+}
+
+/// Zero reads as a whole number, so it crosses the adapter and is refused by the typed call — and
+/// the model still sees the refusal.
+#[tokio::test]
+async fn a_tree_depth_of_zero_is_an_argument_error_through_the_adapter() {
+    let (_dir, ctx) = workspace();
+
+    let outcome = TreeTool.invoke(json!({ "depth": 0 }), &ctx).await;
+    refusal(&outcome, ToolFailure::InvalidArgument, "`depth`");
+    assert!(
+        outcome
+            .output
+            .contains("must be a positive number of levels"),
+        "{}",
+        outcome.output
+    );
+}
+
+/// A path of nothing but whitespace names the working directory by accident rather than on
+/// purpose, so it is a mistake in the call.
+#[tokio::test]
+async fn an_empty_tree_path_is_an_argument_error() {
+    let (_dir, ctx) = workspace();
+
+    let outcome = TreeTool.invoke(json!({ "path": "  " }), &ctx).await;
+    refusal(&outcome, ToolFailure::InvalidArgument, "path");
+    assert!(
+        outcome.output.contains("must not be empty"),
+        "{}",
+        outcome.output
+    );
+}
+
+/// A path nothing occupies is `not-found`, and the prose names the path that was asked for.
+#[tokio::test]
+async fn a_tree_of_a_missing_path_is_not_found() {
+    let (dir, ctx) = workspace();
+    write(dir.path(), "src/main.js", "");
+
+    let outcome = TreeTool.invoke(json!({ "path": "nowhere" }), &ctx).await;
+    refusal(&outcome, ToolFailure::NotFound, "nowhere");
+    assert!(
+        outcome.output.contains("does not exist"),
+        "{}",
+        outcome.output
+    );
+}
+
+/// A tree of a file is a different question from a tree of a directory, and the refusal says which
+/// one was asked.
+#[tokio::test]
+async fn a_tree_of_a_file_is_an_argument_error() {
+    let (dir, ctx) = workspace();
+    write(dir.path(), "src/main.js", "");
+
+    let outcome = TreeTool
+        .invoke(json!({ "path": "src/main.js" }), &ctx)
+        .await;
+    refusal(&outcome, ToolFailure::InvalidArgument, "src/main.js");
+    assert!(
+        outcome.output.contains("is not a directory"),
+        "{}",
+        outcome.output
+    );
+}

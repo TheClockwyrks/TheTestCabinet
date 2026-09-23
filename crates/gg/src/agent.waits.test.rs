@@ -18,9 +18,14 @@
 //!   issue behind a failed blocker stays open forever: never done, never failed, never dispatchable.
 //!   A wait on it is refused with the blocker named, and the run carries on.
 //!
-//! The third section is the mirror image of both, and the reason a wait is answered from the board
-//! rather than from whatever woke it: a wait that *was* released for one of those reasons, on a run
-//! that had repaired itself by the time the agent got a slot to resume on. Reporting a wake-up as an
+//! The third section is the one set of answers that never suspends anybody: the calls gg refuses
+//! outright — a `wait_for_issue` whose `issueId` it cannot read, an id the board does not hold, or
+//! the agent's own assigned issue — where the whole point is that the agent is answered on the call
+//! and carries on rather than being blocked on something no one will ever settle.
+//!
+//! The fourth section is the mirror image of the first two, and the reason a wait is answered from
+//! the board rather than from whatever woke it: a wait that *was* released for one of those reasons,
+//! on a run that had repaired itself by the time the agent got a slot to resume on. Reporting a wake-up as an
 //! answer tells an agent its wait completed on work nobody has done.
 //!
 //! The last section is what happens when the first two conditions arrive **together**, which is not
@@ -158,6 +163,16 @@ fn file_issue(call_id: &str, title: &str, blockers: &[&str]) -> ModelResponse {
 /// A `wait_for_issue` call on `issue_id`.
 fn wait_on(call_id: &str, issue_id: &str) -> ModelResponse {
     tool_call_response(call_id, WAIT_FOR_ISSUE_TOOL, json!({ "issueId": issue_id }))
+}
+
+/// A `wait_for_issue` call over an arbitrary `arguments` object.
+///
+/// The model decides what it passes, and half of what gg has to answer here is a call that never
+/// names an issue at all — a missing `issueId`, a number where a string belongs, a blank string. So
+/// the malformed calls are scripted through the same path as the well-formed ones rather than being
+/// reasoned about: [`wait_on`] is the shape a cooperative model sends, and this is everything else.
+fn wait_with(call_id: &str, arguments: Value) -> ModelResponse {
+    tool_call_response(call_id, WAIT_FOR_ISSUE_TOOL, arguments)
 }
 
 /// The two ids gg mints for the ungrouped issues these boards file, in filing order.
@@ -457,6 +472,263 @@ async fn a_wait_on_an_already_unreachable_issue_is_refused_on_the_call() {
     assert!(
         !waits[1].0 && waits[1].1.contains(FIRST_ISSUE),
         "the wait behind it is refused on the call, naming the blocker: {waits:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// A wait answered before the agent ever suspends
+// ---------------------------------------------------------------------------
+
+/// The one `wait_for_issue` answer a single-call script produced: the [class](GgCallFailure) gg
+/// refused it with, and what it told the model.
+///
+/// The class is read off the event rather than inferred from the prose, because that is what the
+/// model-facing result carries and what every reduction over the stream joins on — a refusal with
+/// the right words and the wrong class is still wrong. [`wait_results`] reads the same stream as
+/// `(ok, summary)` for the tests whose subject is the message.
+///
+/// Asserts on the way that the session made exactly one wait call and that gg refused it, so each
+/// test below can say what it is about rather than re-establishing that much first.
+fn refusal_of_the_only_wait(events: &[GgTelemetryEvent]) -> (GgCallFailure, String) {
+    let answers: Vec<(bool, Option<GgCallFailure>, String)> = events
+        .iter()
+        .filter_map(|event| match &event.kind {
+            GgTelemetryKind::ToolResult {
+                name,
+                ok,
+                summary,
+                failure,
+            } if name == WAIT_FOR_ISSUE_TOOL => {
+                Some((*ok, *failure, summary.clone().unwrap_or_default()))
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        answers.len(),
+        1,
+        "the script makes one wait call, and every one of them is answered: {answers:?}"
+    );
+    let (ok, failure, summary) = answers.into_iter().next().expect("one answer");
+    assert!(
+        !ok,
+        "a wait gg cannot serve is refused, never reported as a wait that completed: {summary}"
+    );
+    (
+        failure.expect("a failed result carries the class the tool raised"),
+        summary,
+    )
+}
+
+/// Run a one-call script through the root and return its events, having checked that the run ended
+/// of its own accord.
+///
+/// Every refusal in this section is answered *on the call* — the agent is never suspended — so the
+/// thing that proves the answer arrived is the run reaching its own ending rather than being left
+/// for a watchdog. That is the same property [`bounded`] enforces, stated once here because it is
+/// the shared subject of all five.
+async fn refused_on_the_call(run_id: &str, script: Vec<ModelResponse>) -> Vec<GgTelemetryEvent> {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some(run_id.to_string()), Box::new(sink.clone()));
+    let inv = invocation(dir.path(), one_slot_board());
+
+    let factory = ScriptedFactory::new().slot(ROOT_PROFILE_ID, move |b| {
+        Box::new(MockClient::new(&b.model_id, script.clone()))
+    });
+
+    assert_eq!(
+        bounded(&inv, &emitter, factory).await,
+        SessionOutcome::Ran,
+        "a call gg refuses is an answer to the model, not a condition on the run"
+    );
+    let events = sink.events();
+    assert_eq!(
+        terminal_status(&events).as_deref(),
+        Some(STATUS_COMPLETED),
+        "the session ends on its own: nothing was suspended waiting for an answer it had already \
+         been given"
+    );
+    assert_eq!(
+        times_blocked(&events, ROOT_AGENT_ID),
+        0,
+        "the refusal is made without ever freeing and re-taking the agent's slot"
+    );
+    events
+}
+
+/// **A wait that names no issue is refused on the call.**
+///
+/// The argument is required, so this is a model that fumbled the call rather than one asking for
+/// something gg will not do. Answering it as an invalid argument is what lets the model correct
+/// itself on the next turn; suspending on nothing, or returning a success with no issue in it, are
+/// both worse than the mistake.
+#[tokio::test]
+async fn a_wait_with_no_issue_id_is_refused_on_the_call() {
+    let events = refused_on_the_call(
+        "run-wait-no-id",
+        vec![wait_with("wait", json!({})), stop_response()],
+    )
+    .await;
+
+    let (failure, summary) = refusal_of_the_only_wait(&events);
+    assert_eq!(
+        failure,
+        GgCallFailure::InvalidArgument,
+        "a call gg could not read is a malformed call, not a missing issue: {summary}"
+    );
+    assert!(
+        summary.contains("issueId"),
+        "the refusal names the argument to supply: {summary}"
+    );
+}
+
+/// **A wait whose `issueId` is not a string is refused on the call.**
+///
+/// Issue ids are minted as strings (`ISSUE-1`), and a model that sends the number it saw in one is
+/// making the same mistake as one that sends nothing: there is no id here to look up. It is
+/// answered identically, and in particular it is not coerced — guessing that `7` meant `ISSUE-7`
+/// would wait on somebody else's work.
+#[tokio::test]
+async fn a_wait_whose_issue_id_is_not_a_string_is_refused_on_the_call() {
+    let events = refused_on_the_call(
+        "run-wait-typed-id",
+        vec![wait_with("wait", json!({ "issueId": 7 })), stop_response()],
+    )
+    .await;
+
+    let (failure, summary) = refusal_of_the_only_wait(&events);
+    assert_eq!(
+        failure,
+        GgCallFailure::InvalidArgument,
+        "an ill-typed id is refused as the malformed call it is: {summary}"
+    );
+    assert!(
+        summary.contains("issueId"),
+        "the refusal names the argument that was ill-typed: {summary}"
+    );
+}
+
+/// **A wait whose `issueId` is blank is refused on the call.**
+///
+/// Whitespace is not an id, and the board holds no issue under one. Refusing it here rather than
+/// letting it through to the lookup keeps the answer a model gets for a fumbled argument the same
+/// whichever way it fumbled it.
+#[tokio::test]
+async fn a_wait_with_a_blank_issue_id_is_refused_on_the_call() {
+    let events = refused_on_the_call(
+        "run-wait-blank-id",
+        vec![
+            wait_with("wait", json!({ "issueId": "   " })),
+            stop_response(),
+        ],
+    )
+    .await;
+
+    let (failure, summary) = refusal_of_the_only_wait(&events);
+    assert_eq!(
+        failure,
+        GgCallFailure::InvalidArgument,
+        "a blank id is a malformed call, not a board lookup that missed: {summary}"
+    );
+    assert!(
+        summary.contains("issueId"),
+        "the refusal names the argument to supply: {summary}"
+    );
+}
+
+/// **A wait on an issue the board does not hold is not found.**
+///
+/// The call is perfectly well-formed; there is simply no such issue. The class has to separate that
+/// from a malformed argument, because the corrections are different ones: this model needs to read
+/// the board, not to re-read the tool's schema. The board holds an issue throughout, so what is
+/// under test is the lookup missing rather than an empty board.
+#[tokio::test]
+async fn a_wait_on_an_issue_the_board_does_not_hold_is_not_found() {
+    const ABSENT_ISSUE: &str = "ISSUE-99";
+
+    let events = refused_on_the_call(
+        "run-wait-unknown-id",
+        vec![
+            file_issue("first", "groundwork", &[]),
+            wait_on("wait", ABSENT_ISSUE),
+            stop_response(),
+        ],
+    )
+    .await;
+
+    assert!(
+        last_issue_status(&events, FIRST_ISSUE).is_some(),
+        "the board really did hold an issue: the lookup missed, it was not empty"
+    );
+    let (failure, summary) = refusal_of_the_only_wait(&events);
+    assert_eq!(
+        failure,
+        GgCallFailure::NotFound,
+        "an id nobody filed is a missing issue, not a malformed call: {summary}"
+    );
+    assert!(
+        summary.contains(ABSENT_ISSUE),
+        "the refusal names the id that is not on the board: {summary}"
+    );
+}
+
+/// **An agent waiting on its own assigned issue is refused.**
+///
+/// Nothing else is going to complete the issue this agent was dispatched to implement, so the wait
+/// could only ever end when the run's wall clock did: the agent would be suspended on itself. It is
+/// refused as an invalid argument and told whose issue it is, which is the whole correction — do the
+/// work.
+///
+/// Driven through the implementer, because the guard is about the agent's *assignment* and the root
+/// has none: the root files one issue and stops, gg dispatches it, and the agent that picks it up
+/// waits on the id it was given.
+#[tokio::test]
+async fn a_wait_on_the_agents_own_assigned_issue_is_refused() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(
+        Some("run-wait-own-issue".to_string()),
+        Box::new(sink.clone()),
+    );
+    let inv = invocation(dir.path(), one_slot_board());
+
+    let factory = ScriptedFactory::new()
+        .slot(ROOT_PROFILE_ID, |b| {
+            Box::new(MockClient::new(
+                &b.model_id,
+                vec![file_issue("first", "the widget", &[]), stop_response()],
+            ))
+        })
+        // The agent dispatched to implement `FIRST_ISSUE`, waiting on the very issue it is holding.
+        .slot(IMPLEMENTER, |b| {
+            Box::new(MockClient::new(
+                &b.model_id,
+                vec![wait_on("wait", FIRST_ISSUE), stop_response()],
+            ))
+        });
+
+    assert_eq!(
+        bounded(&inv, &emitter, factory).await,
+        SessionOutcome::Ran,
+        "the agent is answered and carries on, so the run reaches its own ending"
+    );
+
+    let events = sink.events();
+    assert_eq!(
+        terminal_status(&events).as_deref(),
+        Some(STATUS_COMPLETED),
+        "an agent suspended on itself would have stranded this run instead"
+    );
+    let (failure, summary) = refusal_of_the_only_wait(&events);
+    assert_eq!(
+        failure,
+        GgCallFailure::InvalidArgument,
+        "waiting on your own issue is a call gg will not serve, whatever the board says: {summary}"
+    );
+    assert!(
+        summary.contains(FIRST_ISSUE) && summary.contains("own"),
+        "the refusal names the issue and says it is this agent's own: {summary}"
     );
 }
 

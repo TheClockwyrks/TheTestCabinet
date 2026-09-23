@@ -639,3 +639,17 @@ mod tests;
 #[cfg(test)]
 #[path = "purescript.substrate.test.rs"]
 mod substrate;
+
+/// **The session-side SDK, driven from PureScript programs** — one program per call in `Gg.Context`,
+/// `Gg.Delegation`, `Gg.Programs`, `Gg.Docs`, `Gg.Views` and `Gg.Session`, one per way each of them
+/// fails, and one per field of the `feedback` channel a program reaches.
+#[cfg(test)]
+#[path = "purescript.session.test.rs"]
+mod session;
+
+/// **The [`feedback`](crate::sandbox::membrane::capture) channel, driven from PureScript programs** — what
+/// the capture keeps of what a program logs, what a program's end hands gg, and what a code module
+/// that fails tells the model.
+#[cfg(test)]
+#[path = "purescript.feedback.test.rs"]
+mod feedback;

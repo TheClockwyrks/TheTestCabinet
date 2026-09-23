@@ -8,7 +8,21 @@
 //! against their own stores; one that grows into the slow end of the suite is split rather than
 //! extended.
 //!
-//! The submodules below follow the same rule and share these helpers.
+//! So write one `#[test]` per case, named as a sentence, driving one program. That is the rule for
+//! every case, new or old, and [`surface_tests`] is what it looks like carried out: one short
+//! function per operation and per documented failure mode, each named as the sentence it proves.
+//!
+//! # The consolidated functions, and what the note about them scopes
+//!
+//! A handful of the functions in *this file* still drive several programs each —
+//! [`a_program_runs_typed_calls_in_order`], [`a_program_ends_the_run_by_calling_finish`],
+//! [`the_view_object_is_always_bound_and_only_open_file_is_gated`] and their neighbours. They were
+//! written as one narrative apiece and read as one argument, which is reason enough to keep them,
+//! and a program **added to one of those particular functions** still belongs inside it rather than
+//! in a twelfth store beside it. That is the whole of what this note covers: it scopes the functions
+//! it names, and it is not a reason to append a new case to one of them instead of giving it a name.
+//!
+//! The submodules below share these helpers.
 
 use std::time::Duration;
 
@@ -32,13 +46,72 @@ mod fault_tests;
 #[path = "sandbox.compile.test.rs"]
 mod compile_tests;
 
+#[path = "sandbox.workspace.test.rs"]
+mod workspace_tests;
+
+#[path = "sandbox.knowledge.test.rs"]
+mod knowledge_tests;
+
+#[path = "sandbox.surface.test.rs"]
+mod surface_tests;
+
 /// Run `program` with every call granted, the canned invoker, and the default ceilings.
-fn run(program: &str) -> (SandboxOutcome, CallLog) {
+pub(crate) fn run(program: &str) -> (SandboxOutcome, CallLog) {
     run_with(
         program,
         &all_operations(),
         SandboxLimits::AMPLE,
         canned_outcome,
+    )
+}
+
+/// Run `program` with every call granted, answering `tool` with `failure` and `message` and every
+/// other call from the canned table.
+///
+/// This is how a **documented runtime failure** is synthesized: each `@throws` line on the SDK names
+/// a class and a cause, and the only honest way to drive one from a program is to have the tool
+/// answer with that class and let the membrane raise it. Nothing here reaches a model or a real
+/// tool — the message is the test's own, which is exactly what lets it assert that gg's words, not
+/// gg's paraphrase, reach the program.
+pub(crate) fn run_failing(
+    program: &str,
+    tool: &'static str,
+    failure: ToolFailure,
+    message: &'static str,
+) -> (SandboxOutcome, CallLog) {
+    run_with(
+        program,
+        &all_operations(),
+        SandboxLimits::AMPLE,
+        move |name, args| {
+            if name == tool {
+                ToolOutcome::failed(failure, message)
+            } else {
+                canned_outcome(name, args)
+            }
+        },
+    )
+}
+
+/// Run `program` with every call granted, answering `tool` with `outcome` and every other call from
+/// the canned table — the arm of [`run_failing`] for a call that **succeeded** with something the
+/// canned table does not offer, such as an empty listing.
+pub(crate) fn run_answering(
+    program: &str,
+    tool: &'static str,
+    outcome: ToolOutcome,
+) -> (SandboxOutcome, CallLog) {
+    run_with(
+        program,
+        &all_operations(),
+        SandboxLimits::AMPLE,
+        move |name, args| {
+            if name == tool {
+                outcome.clone()
+            } else {
+                canned_outcome(name, args)
+            }
+        },
     )
 }
 
@@ -85,6 +158,15 @@ fn run_with_library(program: &str, held: &[(&str, u64, &str)]) -> SandboxOutcome
     for (id, turn, source) in held {
         api = api.with_program(id, *turn, source);
     }
+    run_over_library(program, api)
+}
+
+/// [`run_with_library`]'s sibling for a case that built the double itself — a retention, a
+/// catalogue, an armed refusal — rather than only naming the programs it holds.
+///
+/// The scope is the same one `run_with_library` uses, library and all, because what these cases
+/// vary is the api's own state and not what the agent was granted.
+pub(crate) fn run_over_library(program: &str, api: FakeOperationApi) -> SandboxOutcome {
     let (outcome, _api) = run_program(
         typescript(),
         program,
@@ -127,7 +209,7 @@ fn run_as(program: &str, role: EndingRole) -> SandboxOutcome {
 ///
 /// `console.log` is a program's only channel — a return value is discarded — so this is the whole of
 /// what a program says, and every assertion about what one *produced* reads it.
-fn logs(outcome: &SandboxOutcome) -> &[String] {
+pub(crate) fn logs(outcome: &SandboxOutcome) -> &[String] {
     match &outcome.result {
         Ok(result) => {
             assert!(
@@ -171,6 +253,48 @@ fn logged_json(outcome: &SandboxOutcome) -> Value {
     })
 }
 
+/// The program a model writes to make one call and report the failure it caught: the `code` it can
+/// branch on, the `operation` that failed, and the message gg wrote.
+///
+/// `call` is the expression under test, spelled exactly as the catalogue tells a model to spell it.
+/// A call that does *not* throw logs a line saying so, which fails
+/// [`assert_caught`](assert_caught) loudly rather than silently passing.
+pub(crate) fn catching(call: &str) -> String {
+    format!(
+        r#"import * as gg from "gg";
+try {{
+  {call};
+  console.log(JSON.stringify({{ threw: false }}));
+}} catch (e) {{
+  const failure = e as gg.core.ApiError;
+  console.log(JSON.stringify({{ code: failure.code, operation: failure.operation, message: failure.message }}));
+}}
+"#
+    )
+}
+
+/// Assert what a [`catching`] program read off the `ApiError` it caught: the class, the operation
+/// spelled as the tool name, and that gg's own message survived to the program.
+pub(crate) fn assert_caught(outcome: &SandboxOutcome, code: &str, operation: &str, fragment: &str) {
+    let caught = logged_json(outcome);
+    assert_eq!(
+        caught["code"],
+        json!(code),
+        "the program should have caught a `{code}` failure: {caught}"
+    );
+    assert_eq!(
+        caught["operation"],
+        json!(operation),
+        "and the failure names the call that failed: {caught}"
+    );
+    assert!(
+        caught["message"]
+            .as_str()
+            .is_some_and(|message| message.contains(fragment)),
+        "gg's own words must reach the program, {fragment:?} among them: {caught}"
+    );
+}
+
 /// The ending a program declared, insisting that it declared one.
 fn completion(outcome: &SandboxOutcome) -> &ProgramCompletion {
     outcome
@@ -195,7 +319,7 @@ fn summary_of(completion: &ProgramCompletion) -> &str {
 /// and whatever the thrown object carries. So a program fault arrives as a
 /// [`ProgramError`](crate::sandbox::outcome::ProgramError) whose text is the engine's, the guest
 /// returns normally, and the assertions below read that text.
-fn program_failure(outcome: &SandboxOutcome) -> String {
+pub(crate) fn program_failure(outcome: &SandboxOutcome) -> String {
     match &outcome.result {
         Ok(result) => match &result.error {
             Some(error) => error.message.clone(),
@@ -1230,7 +1354,7 @@ fn the_program_library_is_bound_only_when_the_run_keeps_one() {
 
 /// Run `program` with `modules` bound, each already through the host's module transpile — the same
 /// path a read skill or memory takes.
-fn run_with_modules(program: &str, modules: &[(&str, &str)]) -> SandboxOutcome {
+pub(crate) fn run_with_modules(program: &str, modules: &[(&str, &str)]) -> SandboxOutcome {
     run_with_modules_logged(program, modules).0
 }
 

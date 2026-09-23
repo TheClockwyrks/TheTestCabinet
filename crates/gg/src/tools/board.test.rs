@@ -40,6 +40,23 @@ fn fixture() -> (Arc<Mutex<BoardStore>>, ToolContext, TempDir) {
     )
 }
 
+/// The same, on a board whose ceilings are the ones the case is about — the only way to reach
+/// [`BoardError::CountCap`](crate::board::BoardError::CountCap), since [`fixture`]'s ceilings are
+/// deliberately out of reach.
+fn bounded_fixture(
+    max_epics: usize,
+    max_issues: usize,
+) -> (Arc<Mutex<BoardStore>>, ToolContext, TempDir) {
+    let dir = TempDir::new().unwrap();
+    let ctx = ToolContext::new(dir.path());
+    let caps = BoardCaps {
+        max_epics,
+        max_issues,
+        max_retries: 1,
+    };
+    (Arc::new(Mutex::new(BoardStore::new(caps))), ctx, dir)
+}
+
 /// The **id** of the profile the fixture's filing agent may assign an issue to.
 const IMPLEMENTER: &str = "implementer";
 
@@ -519,4 +536,621 @@ fn is_board_tool_covers_every_mutator() {
     }
     assert!(!is_board_tool("add_task"));
     assert!(!is_board_tool("write_file"));
+}
+
+// ---------------------------------------------------------------------------
+// The ceilings, and every argument a creation reads
+// ---------------------------------------------------------------------------
+
+/// A board already holding its last epic refuses the next one as a limit, and says what the limit
+/// is — a model that is not told the ceiling can only retry the same call.
+#[tokio::test]
+async fn an_epic_past_the_epic_cap_is_a_limit() {
+    let (store, ctx, _dir) = bounded_fixture(1, 10);
+    let tool = CreateEpicTool::new(Arc::clone(&store));
+    assert!(tool.invoke(epic_args("core"), &ctx).await.ok);
+
+    let outcome = tool.invoke(epic_args("auth"), &ctx).await;
+    assert_eq!(
+        outcome.failure,
+        Some(ToolFailure::LimitExceeded),
+        "{}",
+        outcome.output
+    );
+    assert!(
+        outcome.output.contains('1') && outcome.output.contains("epic"),
+        "the refusal names the ceiling it hit: {}",
+        outcome.output
+    );
+    assert_eq!(store.lock().unwrap().epic_count(), 1);
+}
+
+/// Each of the three required strings is refused on its own, by name.
+#[tokio::test]
+async fn an_epic_missing_a_required_argument_is_an_argument_error() {
+    let (store, ctx, _dir) = fixture();
+    let tool = CreateEpicTool::new(Arc::clone(&store));
+    for field in ["prefix", "title", "description"] {
+        let mut args = epic_args("core");
+        args.as_object_mut().unwrap().remove(field);
+        let outcome = tool.invoke(args, &ctx).await;
+        assert_eq!(
+            outcome.failure,
+            Some(ToolFailure::InvalidArgument),
+            "`{field}` is required: {}",
+            outcome.output
+        );
+        assert!(
+            outcome.output.contains(field),
+            "the refusal names the missing field: {}",
+            outcome.output
+        );
+    }
+    assert_eq!(store.lock().unwrap().epic_count(), 0);
+}
+
+#[tokio::test]
+async fn an_epic_with_an_ill_typed_prefix_is_an_argument_error() {
+    let (store, ctx, _dir) = fixture();
+    let mut args = epic_args("core");
+    args["prefix"] = json!(7);
+    let outcome = CreateEpicTool::new(Arc::clone(&store))
+        .invoke(args, &ctx)
+        .await;
+    assert_eq!(
+        outcome.failure,
+        Some(ToolFailure::InvalidArgument),
+        "{}",
+        outcome.output
+    );
+    assert!(outcome.output.contains("prefix"), "{}", outcome.output);
+    assert_eq!(store.lock().unwrap().epic_count(), 0);
+}
+
+#[tokio::test]
+async fn an_issue_past_the_issue_cap_is_a_limit() {
+    let (store, ctx, _dir) = bounded_fixture(10, 1);
+    let tool = CreateIssueTool::new(Arc::clone(&store), policy());
+    assert!(tool.invoke(issue_args("a"), &ctx).await.ok);
+
+    let outcome = tool.invoke(issue_args("b"), &ctx).await;
+    assert_eq!(
+        outcome.failure,
+        Some(ToolFailure::LimitExceeded),
+        "{}",
+        outcome.output
+    );
+    assert!(
+        outcome.output.contains('1') && outcome.output.contains("issue"),
+        "the refusal names the ceiling it hit: {}",
+        outcome.output
+    );
+    assert_eq!(store.lock().unwrap().issue_count(), 1);
+}
+
+#[tokio::test]
+async fn an_issue_naming_an_unknown_epic_is_not_found() {
+    let (store, ctx, _dir) = fixture();
+    let mut args = issue_args("a");
+    args["epicId"] = json!("GHOST");
+    let outcome = CreateIssueTool::new(Arc::clone(&store), policy())
+        .invoke(args, &ctx)
+        .await;
+    assert_eq!(
+        outcome.failure,
+        Some(ToolFailure::NotFound),
+        "{}",
+        outcome.output
+    );
+    assert!(outcome.output.contains("GHOST"), "{}", outcome.output);
+    assert_eq!(store.lock().unwrap().issue_count(), 0);
+}
+
+#[tokio::test]
+async fn an_issue_naming_an_unknown_blocker_is_not_found() {
+    let (store, ctx, _dir) = fixture();
+    let mut args = issue_args("a");
+    args["blockedBy"] = json!(["ISSUE-9"]);
+    let outcome = CreateIssueTool::new(Arc::clone(&store), policy())
+        .invoke(args, &ctx)
+        .await;
+    assert_eq!(
+        outcome.failure,
+        Some(ToolFailure::NotFound),
+        "{}",
+        outcome.output
+    );
+    assert!(outcome.output.contains("ISSUE-9"), "{}", outcome.output);
+    assert_eq!(store.lock().unwrap().issue_count(), 0);
+}
+
+#[tokio::test]
+async fn an_issue_whose_blocked_by_is_not_a_list_is_an_argument_error() {
+    let (store, ctx, _dir) = fixture();
+    let mut args = issue_args("a");
+    args["blockedBy"] = json!("ISSUE-1");
+    let outcome = CreateIssueTool::new(Arc::clone(&store), policy())
+        .invoke(args, &ctx)
+        .await;
+    assert_eq!(
+        outcome.failure,
+        Some(ToolFailure::InvalidArgument),
+        "{}",
+        outcome.output
+    );
+    assert!(outcome.output.contains("blockedBy"), "{}", outcome.output);
+    assert_eq!(store.lock().unwrap().issue_count(), 0);
+}
+
+#[tokio::test]
+async fn an_issue_with_a_blocker_that_is_not_a_string_is_an_argument_error() {
+    let (store, ctx, _dir) = fixture();
+    let mut args = issue_args("a");
+    args["blockedBy"] = json!([7]);
+    let outcome = CreateIssueTool::new(Arc::clone(&store), policy())
+        .invoke(args, &ctx)
+        .await;
+    assert_eq!(
+        outcome.failure,
+        Some(ToolFailure::InvalidArgument),
+        "{}",
+        outcome.output
+    );
+    assert!(outcome.output.contains("blockedBy"), "{}", outcome.output);
+    assert_eq!(store.lock().unwrap().issue_count(), 0);
+}
+
+#[tokio::test]
+async fn an_issue_whose_reviewers_are_not_a_list_is_an_argument_error() {
+    let (store, ctx, _dir) = fixture();
+    let mut args = issue_args("a");
+    args["reviewers"] = json!("critic");
+    let outcome = CreateIssueTool::new(Arc::clone(&store), policy())
+        .invoke(args, &ctx)
+        .await;
+    assert_eq!(
+        outcome.failure,
+        Some(ToolFailure::InvalidArgument),
+        "{}",
+        outcome.output
+    );
+    assert!(outcome.output.contains("reviewers"), "{}", outcome.output);
+    assert_eq!(store.lock().unwrap().issue_count(), 0);
+}
+
+#[tokio::test]
+async fn an_issue_with_a_reviewer_that_is_not_a_string_is_an_argument_error() {
+    let (store, ctx, _dir) = fixture();
+    let mut args = issue_args("a");
+    args["reviewers"] = json!([{}]);
+    let outcome = CreateIssueTool::new(Arc::clone(&store), policy())
+        .invoke(args, &ctx)
+        .await;
+    assert_eq!(
+        outcome.failure,
+        Some(ToolFailure::InvalidArgument),
+        "{}",
+        outcome.output
+    );
+    assert!(outcome.output.contains("reviewers"), "{}", outcome.output);
+    assert_eq!(store.lock().unwrap().issue_count(), 0);
+}
+
+/// `epicId` is optional, so an absent one is fine — but a non-string one is still refused, by
+/// `optional_str`, rather than read as an epic named `4`.
+#[tokio::test]
+async fn an_issue_with_an_ill_typed_epic_id_is_an_argument_error() {
+    let (store, ctx, _dir) = fixture();
+    let mut args = issue_args("a");
+    args["epicId"] = json!(4);
+    let outcome = CreateIssueTool::new(Arc::clone(&store), policy())
+        .invoke(args, &ctx)
+        .await;
+    assert_eq!(
+        outcome.failure,
+        Some(ToolFailure::InvalidArgument),
+        "{}",
+        outcome.output
+    );
+    assert!(outcome.output.contains("epicId"), "{}", outcome.output);
+    assert_eq!(store.lock().unwrap().issue_count(), 0);
+}
+
+#[tokio::test]
+async fn an_issue_missing_its_agent_is_an_argument_error() {
+    let (store, ctx, _dir) = fixture();
+    let mut args = issue_args("a");
+    args.as_object_mut().unwrap().remove("agent");
+    let outcome = CreateIssueTool::new(Arc::clone(&store), policy())
+        .invoke(args, &ctx)
+        .await;
+    assert_eq!(
+        outcome.failure,
+        Some(ToolFailure::InvalidArgument),
+        "{}",
+        outcome.output
+    );
+    assert!(outcome.output.contains("agent"), "{}", outcome.output);
+    assert_eq!(store.lock().unwrap().issue_count(), 0);
+}
+
+/// `description` is the one argument a well-formed call may leave out, and an ill-typed one is
+/// still refused.
+#[tokio::test]
+async fn an_issue_with_an_ill_typed_description_is_an_argument_error() {
+    let (store, ctx, _dir) = fixture();
+    let mut args = issue_args("a");
+    args["description"] = json!(false);
+    let outcome = CreateIssueTool::new(Arc::clone(&store), policy())
+        .invoke(args, &ctx)
+        .await;
+    assert_eq!(
+        outcome.failure,
+        Some(ToolFailure::InvalidArgument),
+        "{}",
+        outcome.output
+    );
+    assert!(outcome.output.contains("description"), "{}", outcome.output);
+    assert_eq!(store.lock().unwrap().issue_count(), 0);
+}
+
+/// Each of the four required strings the tool reads before the roster check, ill-typed rather than
+/// absent.
+#[tokio::test]
+async fn an_issue_with_an_ill_typed_required_string_is_an_argument_error() {
+    let (store, ctx, _dir) = fixture();
+    let tool = CreateIssueTool::new(Arc::clone(&store), policy());
+    for field in [
+        "title",
+        "inScope",
+        "outOfScope",
+        "completionCriteria",
+        "agent",
+    ] {
+        let mut args = issue_args("a");
+        args[field] = json!(3);
+        let outcome = tool.invoke(args, &ctx).await;
+        assert_eq!(
+            outcome.failure,
+            Some(ToolFailure::InvalidArgument),
+            "`{field}` must be a string: {}",
+            outcome.output
+        );
+        assert!(outcome.output.contains(field), "{}", outcome.output);
+    }
+    assert_eq!(store.lock().unwrap().issue_count(), 0);
+}
+
+// ---------------------------------------------------------------------------
+// Every argument the mutators read, and what a removal leaves behind
+// ---------------------------------------------------------------------------
+
+/// A revision may clear an optional field, but a required one supplied as `""` is refused — by the
+/// store, before anything is written, so the issue keeps the text it had.
+#[tokio::test]
+async fn a_revision_that_empties_a_required_field_is_an_argument_error() {
+    let (store, ctx, _dir) = fixture();
+    let filed = CreateIssueTool::new(Arc::clone(&store), policy())
+        .invoke(issue_args("a"), &ctx)
+        .await;
+    let id = assigned_id(&filed).to_string();
+
+    let outcome = UpdateIssueTool::new(Arc::clone(&store))
+        .invoke(json!({ "id": id, "inScope": "" }), &ctx)
+        .await;
+    assert_eq!(
+        outcome.failure,
+        Some(ToolFailure::InvalidArgument),
+        "{}",
+        outcome.output
+    );
+    assert!(outcome.output.contains("inScope"), "{}", outcome.output);
+    assert_eq!(
+        store.lock().unwrap().issues()[0].in_scope(),
+        "the in-scope work",
+        "the refused revision left the issue as it was"
+    );
+}
+
+#[tokio::test]
+async fn a_revision_missing_its_id_is_an_argument_error() {
+    let (store, ctx, _dir) = fixture();
+    let outcome = UpdateIssueTool::new(Arc::clone(&store))
+        .invoke(json!({ "title": "T" }), &ctx)
+        .await;
+    assert_eq!(
+        outcome.failure,
+        Some(ToolFailure::InvalidArgument),
+        "{}",
+        outcome.output
+    );
+    assert!(outcome.output.contains("id"), "{}", outcome.output);
+}
+
+/// Every field the revision reads is typed, `id` included: a number where a string belongs is
+/// refused by name rather than coerced.
+#[tokio::test]
+async fn a_revision_with_an_ill_typed_field_is_an_argument_error() {
+    let (store, ctx, _dir) = fixture();
+    let filed = CreateIssueTool::new(Arc::clone(&store), policy())
+        .invoke(issue_args("a"), &ctx)
+        .await;
+    let id = assigned_id(&filed).to_string();
+    let tool = UpdateIssueTool::new(Arc::clone(&store));
+
+    let ill_typed_title = tool
+        .invoke(json!({ "id": id.clone(), "title": 7 }), &ctx)
+        .await;
+    assert_eq!(
+        ill_typed_title.failure,
+        Some(ToolFailure::InvalidArgument),
+        "{}",
+        ill_typed_title.output
+    );
+    assert!(
+        ill_typed_title.output.contains("title"),
+        "{}",
+        ill_typed_title.output
+    );
+
+    let ill_typed_epic = tool
+        .invoke(json!({ "id": id.clone(), "epicId": [] }), &ctx)
+        .await;
+    assert_eq!(
+        ill_typed_epic.failure,
+        Some(ToolFailure::InvalidArgument),
+        "{}",
+        ill_typed_epic.output
+    );
+    assert!(
+        ill_typed_epic.output.contains("epicId"),
+        "{}",
+        ill_typed_epic.output
+    );
+
+    let ill_typed_id = tool.invoke(json!({ "id": 7, "title": "T" }), &ctx).await;
+    assert_eq!(
+        ill_typed_id.failure,
+        Some(ToolFailure::InvalidArgument),
+        "{}",
+        ill_typed_id.output
+    );
+    assert!(
+        ill_typed_id.output.contains("id"),
+        "{}",
+        ill_typed_id.output
+    );
+
+    assert_eq!(
+        store.lock().unwrap().issues()[0].title(),
+        "Issue a",
+        "nothing the tool refused reached the board"
+    );
+}
+
+/// A self-block is the one-node case of a cycle, and is classified the same way.
+#[tokio::test]
+async fn an_issue_blocked_by_itself_is_a_conflict() {
+    let (store, ctx, _dir) = fixture();
+    let create = CreateIssueTool::new(Arc::clone(&store), policy());
+    let a = assigned_id(&create.invoke(issue_args("a"), &ctx).await).to_string();
+    let b = assigned_id(&create.invoke(issue_args("b"), &ctx).await).to_string();
+    let tool = SetIssueBlockedByTool::new(Arc::clone(&store));
+    assert!(
+        tool.invoke(json!({ "id": a.clone(), "blockedBy": [b.clone()] }), &ctx)
+            .await
+            .ok
+    );
+
+    let outcome = tool
+        .invoke(json!({ "id": a.clone(), "blockedBy": [a.clone()] }), &ctx)
+        .await;
+    assert_eq!(
+        outcome.failure,
+        Some(ToolFailure::Conflict),
+        "{}",
+        outcome.output
+    );
+    assert!(outcome.output.contains(&a), "{}", outcome.output);
+    assert_eq!(
+        store.lock().unwrap().issues()[0].blocked_by(),
+        &[b],
+        "the refused edge left the existing blockers alone"
+    );
+}
+
+/// The subject of the call is checked before its blockers: an id the board does not hold is
+/// not-found even when every blocker named exists.
+#[tokio::test]
+async fn blocking_an_unknown_issue_is_not_found() {
+    let (store, ctx, _dir) = fixture();
+    let existing = assigned_id(
+        &CreateIssueTool::new(Arc::clone(&store), policy())
+            .invoke(issue_args("a"), &ctx)
+            .await,
+    )
+    .to_string();
+
+    let outcome = SetIssueBlockedByTool::new(Arc::clone(&store))
+        .invoke(json!({ "id": "ghost", "blockedBy": [existing] }), &ctx)
+        .await;
+    assert_eq!(
+        outcome.failure,
+        Some(ToolFailure::NotFound),
+        "{}",
+        outcome.output
+    );
+    assert!(outcome.output.contains("ghost"), "{}", outcome.output);
+}
+
+#[tokio::test]
+async fn a_set_issue_blocked_by_missing_its_list_is_an_argument_error() {
+    let (store, ctx, _dir) = fixture();
+    let outcome = SetIssueBlockedByTool::new(Arc::clone(&store))
+        .invoke(json!({ "id": "ISSUE-1" }), &ctx)
+        .await;
+    assert_eq!(
+        outcome.failure,
+        Some(ToolFailure::InvalidArgument),
+        "{}",
+        outcome.output
+    );
+    assert!(outcome.output.contains("blockedBy"), "{}", outcome.output);
+}
+
+#[tokio::test]
+async fn a_set_issue_blocked_by_missing_its_id_is_an_argument_error() {
+    let (store, ctx, _dir) = fixture();
+    let tool = SetIssueBlockedByTool::new(Arc::clone(&store));
+
+    let absent = tool.invoke(json!({ "blockedBy": [] }), &ctx).await;
+    assert_eq!(
+        absent.failure,
+        Some(ToolFailure::InvalidArgument),
+        "{}",
+        absent.output
+    );
+    assert!(absent.output.contains("id"), "{}", absent.output);
+
+    let ill_typed = tool.invoke(json!({ "id": 7, "blockedBy": [] }), &ctx).await;
+    assert_eq!(
+        ill_typed.failure,
+        Some(ToolFailure::InvalidArgument),
+        "{}",
+        ill_typed.output
+    );
+    assert!(ill_typed.output.contains("id"), "{}", ill_typed.output);
+}
+
+#[tokio::test]
+async fn removing_an_unknown_epic_is_not_found() {
+    let (store, ctx, _dir) = fixture();
+    let outcome = RemoveEpicTool::new(Arc::clone(&store))
+        .invoke(json!({ "id": "GHOST" }), &ctx)
+        .await;
+    assert_eq!(
+        outcome.failure,
+        Some(ToolFailure::NotFound),
+        "{}",
+        outcome.output
+    );
+    assert!(outcome.output.contains("GHOST"), "{}", outcome.output);
+}
+
+#[tokio::test]
+async fn a_remove_epic_missing_its_id_is_an_argument_error() {
+    let (store, ctx, _dir) = fixture();
+    let tool = RemoveEpicTool::new(Arc::clone(&store));
+
+    let absent = tool.invoke(json!({}), &ctx).await;
+    assert_eq!(
+        absent.failure,
+        Some(ToolFailure::InvalidArgument),
+        "{}",
+        absent.output
+    );
+    assert!(absent.output.contains("id"), "{}", absent.output);
+
+    let ill_typed = tool.invoke(json!({ "id": 7 }), &ctx).await;
+    assert_eq!(
+        ill_typed.failure,
+        Some(ToolFailure::InvalidArgument),
+        "{}",
+        ill_typed.output
+    );
+    assert!(ill_typed.output.contains("id"), "{}", ill_typed.output);
+}
+
+/// Removing an epic keeps the work filed under it: the issue survives, ungrouped, rather than
+/// being removed with its epic or left pointing at one the board no longer holds.
+#[tokio::test]
+async fn removing_an_epic_ungroups_the_issues_it_held() {
+    let (store, ctx, _dir) = fixture();
+    assert!(
+        CreateEpicTool::new(Arc::clone(&store))
+            .invoke(epic_args("core"), &ctx)
+            .await
+            .ok
+    );
+    let mut args = issue_args("a");
+    args["epicId"] = json!("CORE");
+    let filed = CreateIssueTool::new(Arc::clone(&store), policy())
+        .invoke(args, &ctx)
+        .await;
+    assert!(filed.ok, "{}", filed.output);
+
+    let removed = RemoveEpicTool::new(Arc::clone(&store))
+        .invoke(json!({ "id": "CORE" }), &ctx)
+        .await;
+    assert!(removed.ok, "{}", removed.output);
+
+    let store = store.lock().unwrap();
+    assert_eq!(store.epic_count(), 0);
+    assert_eq!(store.issue_count(), 1);
+    assert_eq!(store.issues()[0].epic_id(), None);
+}
+
+#[tokio::test]
+async fn removing_an_unknown_issue_is_not_found() {
+    let (store, ctx, _dir) = fixture();
+    let outcome = RemoveIssueTool::new(Arc::clone(&store))
+        .invoke(json!({ "id": "ghost" }), &ctx)
+        .await;
+    assert_eq!(
+        outcome.failure,
+        Some(ToolFailure::NotFound),
+        "{}",
+        outcome.output
+    );
+    assert!(outcome.output.contains("ghost"), "{}", outcome.output);
+}
+
+#[tokio::test]
+async fn a_remove_issue_missing_its_id_is_an_argument_error() {
+    let (store, ctx, _dir) = fixture();
+    let tool = RemoveIssueTool::new(Arc::clone(&store));
+
+    let absent = tool.invoke(json!({}), &ctx).await;
+    assert_eq!(
+        absent.failure,
+        Some(ToolFailure::InvalidArgument),
+        "{}",
+        absent.output
+    );
+    assert!(absent.output.contains("id"), "{}", absent.output);
+
+    // A null `id` is an absent one, not the id `"null"`.
+    let null = tool.invoke(json!({ "id": null }), &ctx).await;
+    assert_eq!(
+        null.failure,
+        Some(ToolFailure::InvalidArgument),
+        "{}",
+        null.output
+    );
+    assert!(null.output.contains("id"), "{}", null.output);
+}
+
+/// Removing an issue strips it from every other issue's blockers, so the board is left with no
+/// edge pointing at an id it no longer holds.
+#[tokio::test]
+async fn removing_a_blocker_unblocks_the_issues_it_blocked() {
+    let (store, ctx, _dir) = fixture();
+    let create = CreateIssueTool::new(Arc::clone(&store), policy());
+    let blocker = assigned_id(&create.invoke(issue_args("a"), &ctx).await).to_string();
+    let mut args = issue_args("b");
+    args["blockedBy"] = json!([blocker.clone()]);
+    let dependent = create.invoke(args, &ctx).await;
+    assert!(dependent.ok, "{}", dependent.output);
+
+    let removed = RemoveIssueTool::new(Arc::clone(&store))
+        .invoke(json!({ "id": blocker }), &ctx)
+        .await;
+    assert!(removed.ok, "{}", removed.output);
+
+    let store = store.lock().unwrap();
+    assert_eq!(store.issue_count(), 1);
+    assert!(
+        store.issues()[0].blocked_by().is_empty(),
+        "the dependent survived with its dangling edge dropped"
+    );
 }

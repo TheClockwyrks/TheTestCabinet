@@ -570,6 +570,13 @@ mod tests;
 #[path = "swift.substrate.test.rs"]
 mod substrate;
 
+/// **The [`feedback`](crate::sandbox::membrane::capture) channel, driven from Swift programs** — what
+/// the capture keeps of what a program logs, what a program's end hands gg, and what a code module
+/// that fails tells the model.
+#[cfg(test)]
+#[path = "swift.feedback.test.rs"]
+mod feedback;
+
 /// **Every Swift example a model is shown, put through `swiftc`** — the prompt's, the notice's and
 /// the catalogue's.
 ///

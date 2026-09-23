@@ -33,12 +33,30 @@ public enum files {
     ///   - offset: The 1-based line to start at. Left out, the read starts at the first line.
     ///   - limit: How many lines to return from `offset`. Left out, the read runs to the end.
     /// - Returns: the file's text window, or the picture's description.
-    /// - Throws: `core.ApiError` with `.notFound` for a missing path.
+    /// - Throws: `core.ApiError` with `.notFound` for a missing path, and `.invalidArgument` for an
+    ///   `offset` or a `limit` below `1`.
     /// - ggop: files.read_file
     public static func readFile(
         _ path: String, offset: Int? = nil, limit: Int? = nil
     ) throws -> FileRead {
-        try withScratch { scratch in
+        // Both are signed here — Swift has no unsigned integer a model would write by hand — and
+        // the wire's are `u32`, so a value below `1` would lower to an enormous number and be
+        // answered rather than refused. Refused here instead, under gg's own name for the call,
+        // before anything reaches dispatch. The same guard `tree`'s `depth` has.
+        if let offset, offset < 1 {
+            throw core.ApiError(
+                code: .invalidArgument, operation: "read_file",
+                message:
+                    "offset must be at least 1 (\(offset) given); leave it out to read from the "
+                    + "first line")
+        }
+        if let limit, limit < 1 {
+            throw core.ApiError(
+                code: .invalidArgument, operation: "read_file",
+                message:
+                    "limit must be at least 1 (\(limit) given); leave it out to read to the end")
+        }
+        return try withScratch { scratch in
             var path = scratch.string(path)
             var ret = test_cabinet_gg_files_file_read_t()
             var err = test_cabinet_gg_types_api_error_t()
@@ -198,12 +216,21 @@ public enum files {
     /// - Returns: every matching line up to the limit, in path order and then line order; nothing
     ///   matching is an empty array, not a failure.
     /// - Throws: `core.ApiError` with `.invalidArgument` for a blank query, one that is not a valid
-    ///   pattern, or a limit of `0`, and `.notFound` for a path that is not there.
+    ///   pattern, or a limit below `1`, and `.notFound` for a path that is not there.
     /// - ggop: files.search
     public static func search(
         _ query: String, path: String? = nil, limit: Int? = nil
     ) throws -> [SearchMatch] {
-        try withScratch { scratch in
+        // Signed here and `u32` on the wire, so a limit below `1` is refused in the SDK rather than
+        // lowered into an enormous number gg would answer. See `readFile`.
+        if let limit, limit < 1 {
+            throw core.ApiError(
+                code: .invalidArgument, operation: "search",
+                message:
+                    "limit must be at least 1 (\(limit) given); leave it out for gg's default of 50"
+            )
+        }
+        return try withScratch { scratch in
             var query = scratch.string(query)
             var ret = test_cabinet_gg_files_list_search_match_t()
             var err = test_cabinet_gg_types_api_error_t()

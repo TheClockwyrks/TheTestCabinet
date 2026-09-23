@@ -52,8 +52,35 @@ export const callImpl =
     const name = written.slice(written.lastIndexOf(".") + 1);
     const fn = family === undefined ? undefined : family[name];
     if (typeof fn !== "function") throw notExported(operation, written);
-    return read(fn.apply(family, args));
+    let answer;
+    try {
+      answer = fn.apply(family, args);
+    } catch (failure) {
+      throw asKeyed(failure, name);
+    }
+    return read(answer);
   };
+
+// gg's own key for the function a family names `name`: `archiveThread` is `archive_thread`.
+const keyOf = (name) =>
+  name.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
+
+// A refusal gg's SDK raised before anything crossed names the call by that SDK's spelling of it —
+// `archiveThread` — where every failure the host raises names it by gg's own key. An `ApiError`
+// names the call by the key of the operation the program reached for, so the one spelling is
+// re-tagged as the other here, on the failure itself: the stack it carries is the one the model's
+// program is located from, and a new error would locate it at this file instead.
+const asKeyed = (failure, name) => {
+  if (failure instanceof ApiError && failure.operation === name) {
+    Object.defineProperty(failure, "operation", {
+      value: keyOf(name),
+      enumerable: true,
+      configurable: true,
+      writable: false,
+    });
+  }
+  return failure;
+};
 
 export const lowerImpl = (converters) => (record) => {
   const lowered = {};

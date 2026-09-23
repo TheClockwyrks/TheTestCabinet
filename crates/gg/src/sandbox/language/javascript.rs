@@ -213,3 +213,22 @@ impl ProgramLanguage for JavaScript {
 #[cfg(test)]
 #[path = "javascript.substrate.test.rs"]
 mod substrate;
+
+/// **The workspace SDK, driven from JavaScript programs** — one program per call in `shell`,
+/// `files`, `memories`, `tasks`, `board` and `skills`, and one per way each of them fails.
+#[cfg(test)]
+#[path = "javascript.workspace.test.rs"]
+mod workspace;
+
+/// **The session-side SDK, driven from JavaScript programs** — one program per call in `context`,
+/// `delegation`, `programs`, `docs`, `views` and `session`, and one per way each of them fails.
+#[cfg(test)]
+#[path = "javascript.surface.test.rs"]
+mod surface;
+
+/// **The [`feedback`](crate::sandbox::membrane::capture) channel, driven from JavaScript programs** — what
+/// the capture keeps of what a program logs, what a program's end hands gg, and what a code module
+/// that fails tells the model.
+#[cfg(test)]
+#[path = "javascript.feedback.test.rs"]
+mod feedback;

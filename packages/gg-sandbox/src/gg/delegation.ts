@@ -98,16 +98,19 @@ type BriefInput = { prompt: string } | { issueId: string };
  *
  * The check is explicit rather than delegated to the bindings because "neither" is the mistake that
  * actually happens — the native JSON schema declares both fields optional and enforces the choice
- * only at dispatch — and the message that comes back has to name both options.
+ * only at dispatch — and the message that comes back has to name both options. "Both" is refused
+ * with the same message rather than lowered as either, because a brief is never both.
  *
  * @internal
  */
 function brief(fn: string, request: BriefInput): SubagentBrief {
   const candidate = request as { prompt?: unknown; issueId?: unknown };
-  if (typeof candidate.prompt === "string")
-    return { tag: "prompt", val: candidate.prompt };
-  if (typeof candidate.issueId === "string")
-    return { tag: "issue", val: candidate.issueId };
+  const prompt = typeof candidate.prompt === "string";
+  const issue = typeof candidate.issueId === "string";
+  if (prompt && !issue)
+    return { tag: "prompt", val: candidate.prompt as string };
+  if (issue && !prompt)
+    return { tag: "issue", val: candidate.issueId as string };
   throw new ApiError(
     fn,
     "invalid-argument",

@@ -31,17 +31,26 @@
 //! for a tool says which parameter each of its fields was read from, and a swap lands a marker under
 //! a field named for the other one.
 //!
-//! What that reaches is every call gg dispatches to a tool. The docs, view, session and feedback
-//! families are answered inside the double with no tool behind them, so their arguments are not
-//! recorded and their order is not checked; [`UNATTRIBUTED`] names the ones that could be
-//! transposed and fails in both directions. A `bool` pair is not covered on any call, there being
-//! only two values to tell apart with.
+//! That reads **three records**, in order, because gg dispatches a call to three different places.
+//! A call that ran a tool is read out of the [tool record](CallLog) — the exact JSON the membrane
+//! composed. A call the double answers from its own state runs no tool, so it is read out of the
+//! [api record](crate::sandbox::fake::RecordedApiCall::arguments), which the answering method fills
+//! under the WIT's own parameter names: the docs family, the view family and the program library,
+//! plus `context.archive-thread`, whose tool record carries its ranges as positional pairs that
+//! name neither end. A call on the [feedback channel](super::wire::NON_OPERATIONS) is not an
+//! operation at all and reaches no api: it is read out of the **membrane state** it landed in —
+//! `report-module-error`'s pair in [`module_errors`](MembraneState::module_errors), and
+//! `report-error`'s message and location on the captured
+//! [`ProgramError`](crate::sandbox::ProgramError). [`UNATTRIBUTED`] is the record of the ids none of
+//! the three reaches, and is empty. A `bool` pair is not covered on any call, there being only two
+//! values to tell apart with.
 
 use serde_json::Value as JsonValue;
+use serde_json::json;
 
 use super::wire_coding::{Value, decode_response};
 use super::*;
-use crate::sandbox::fake::{CallLog, membrane};
+use crate::sandbox::fake::{ApiLog, CallLog, FakeOperationApi, membrane, membrane_from};
 use crate::sandbox::operations::OPERATIONS;
 
 /// gg's own WIT, the same text [the component encoder](crate::sandbox::language::jvm::component)
@@ -124,19 +133,59 @@ fn every_arm_decodes_the_arguments_its_wit_function_declares() {
 /// name. The WIT and the tool argument are compared with their separators and their case removed,
 /// because one is kebab-case and the other is what the loop's own api records.
 ///
-/// What this cannot reach is a call gg dispatches to something that records no tool: the docs
-/// family, the view family, the session family and the feedback family are answered inside the
-/// double itself. [`UNATTRIBUTED`] names every id with two markers or more that ends up there, and
-/// fails in both directions, so an operation that stops reaching a tool is visible here rather than
-/// quietly uncovered.
+/// A marker is attributed from whichever of the three records answered for the call: the tool
+/// record, then the api record, then the membrane state. The order matters only where a call left
+/// more than one — `context.archive-thread` runs a tool *and* fills an api record, and the tool's
+/// positional pair is tried first and attributes neither end, so the named copy beside it is what
+/// this reads. [`every_id_the_wire_dispatches_is_attributable`] is the other half of the walk: it
+/// asserts there is no id the three records miss.
 #[test]
 fn markers_land_where_their_parameter_names() {
+    let transposed = walk().transposed;
+    assert!(
+        transposed.is_empty(),
+        "these arms read an argument the WIT declares for another parameter: {transposed:#?}"
+    );
+}
+
+/// **Every id the wire dispatches has its arguments recorded somewhere**, which is what makes the
+/// gate above exhaustive rather than a check of whatever happened to reach a tool.
+///
+/// [`UNATTRIBUTED`] is empty and the assertion is an equality rather than an `is_empty`, so an
+/// operation that stops being attributable — a double that answers it from state without recording
+/// what it answered, a tool record that collapses two arguments into a positional pair — reappears
+/// here by name instead of going quietly uncovered.
+#[test]
+fn every_id_the_wire_dispatches_is_attributable() {
+    assert_eq!(
+        walk().unattributed,
+        UNATTRIBUTED,
+        "the ids whose arguments this gate cannot attribute have changed; \
+         `UNATTRIBUTED` is the record of them and is wrong"
+    );
+}
+
+/// What one walk of every id the wire dispatches found.
+struct Walk {
+    /// Every marker that landed under a field named for another parameter.
+    transposed: Vec<String>,
+    /// Every id with two markers or more that none of the three records attributes two of.
+    unattributed: Vec<String>,
+}
+
+/// Drive every id the wire dispatches with the arguments its own WIT function declares, and read
+/// each call's markers back out of the three records it could have left.
+fn walk() -> Walk {
     let resolve = resolve();
     let log = CallLog::default();
-    let mut state = membrane(&log);
+    let api = FakeOperationApi::new(&log);
+    let recorded: ApiLog = api.api_log();
+    let mut state = membrane_from(api);
 
-    let mut transposed: Vec<String> = Vec::new();
-    let mut unattributed: Vec<String> = Vec::new();
+    let mut found = Walk {
+        transposed: Vec::new(),
+        unattributed: Vec::new(),
+    };
     for id in OPERATIONS
         .iter()
         .map(|operation| operation.id.to_string())
@@ -145,45 +194,38 @@ fn markers_land_where_their_parameter_names() {
         let Some(call) = declared_call(&resolve, &id) else {
             continue;
         };
-        let before = log.calls().len();
+        let tools = log.calls().len();
+        let calls = recorded.calls().len();
+        let modules = state.module_errors.len();
+        let errored = state.program_error.is_some();
         let _ = WireHost::call(&mut state, id.clone(), request(&call.arguments));
         let _ = WireHost::take(&mut state);
 
-        // Every scalar the membrane composed, under the JSON key it sits below — a scalar inside a
-        // list keeps its list's key, which is where `blocked-by` arrives.
-        let mut composed: Vec<(String, JsonValue)> = Vec::new();
-        for recorded in &log.calls()[before..] {
-            scalars_by_key(&recorded.args, None, &mut composed);
+        // Every scalar the membrane composed for a tool, under the JSON key it sits below — a
+        // scalar inside a list keeps its list's key, which is where `blocked-by` arrives.
+        let mut tool: Vec<(String, JsonValue)> = Vec::new();
+        for call in &log.calls()[tools..] {
+            scalars_by_key(&call.args, None, &mut tool);
         }
+        // Every scalar the double recorded for the operation itself, under the WIT's own parameter
+        // names — what a call that runs no tool leaves behind.
+        let mut answered: Vec<(String, JsonValue)> = Vec::new();
+        for call in &recorded.calls()[calls..] {
+            scalars_by_key(&call.arguments, None, &mut answered);
+        }
+        let captured = captured(&state, modules, errored);
 
-        // Where each marker landed, when exactly one field of the composed JSON holds it.
-        let landings: Vec<(&Marker, Option<&str>)> = call
-            .markers
+        let sources = [tool, answered, captured];
+        let landings: Vec<Vec<Option<&str>>> = sources
             .iter()
-            .map(|marker| {
-                let mut keys = composed
-                    .iter()
-                    .filter(|(_, value)| *value == marker.value)
-                    .map(|(key, _)| key.as_str());
-                let first = keys.next();
-                (marker, keys.next().map_or(first, |_| None))
-            })
+            .map(|source| landings(source, &call.markers))
             .collect();
 
         let mut attributed = 0;
-        for (marker, landing) in &landings {
-            let Some(key) = landing else { continue };
-            // A key holding two markers is a positional argument rather than a named one — gg
-            // composes a `range` as `[start, end]` — and neither of them can be attributed to a
-            // parameter by name.
-            if landings
-                .iter()
-                .filter(|(_, other)| other.as_ref() == Some(key))
-                .count()
-                > 1
-            {
+        for (index, marker) in call.markers.iter().enumerate() {
+            let Some(key) = landings.iter().find_map(|source| source[index]) else {
                 continue;
-            }
+            };
             attributed += 1;
             let expected = RENAMED
                 .iter()
@@ -192,50 +234,235 @@ fn markers_land_where_their_parameter_names() {
                 })
                 .unwrap_or(&marker.name);
             if flattened(expected) != flattened(key) {
-                transposed.push(format!(
+                found.transposed.push(format!(
                     "`{id}` declares `{}` and read it as `{key}`",
                     marker.name
                 ));
             }
         }
         if call.markers.len() > 1 && attributed < 2 {
-            unattributed.push(id);
+            found.unattributed.push(id);
         }
     }
+    found
+}
 
-    assert!(
-        transposed.is_empty(),
-        "these arms read an argument the WIT declares for another parameter: {transposed:#?}"
+/// What the call just made left in the **membrane state**: the third record, and the only one the
+/// [feedback channel](NON_OPERATIONS) leaves anything in.
+///
+/// `modules` and `errored` are the state as it stood before the call, so a pair reported by an
+/// earlier id is not read again as this one's.
+fn captured<A: OperationApi>(
+    state: &MembraneState<A>,
+    modules: usize,
+    errored: bool,
+) -> Vec<(String, JsonValue)> {
+    let mut found = Vec::new();
+    for (name, message) in &state.module_errors[modules..] {
+        found.push(("name".to_string(), json!(name)));
+        found.push(("message".to_string(), json!(message)));
+    }
+    // The throw's `kind` and `code` cross as enum case names and carry no marker, so the two
+    // strings are the whole of what can be attributed here.
+    if !errored && let Some(error) = &state.program_error {
+        found.push(("message".to_string(), json!(error.message)));
+        if let Some(location) = &error.location {
+            found.push(("location".to_string(), json!(location)));
+        }
+    }
+    found
+}
+
+/// Where each marker landed in `composed`: the key of the one field holding that value, or `None`.
+///
+/// `None` twice over. A value found under two different keys says nothing — it could have come from
+/// either — and a key holding **two** markers is a positional argument rather than a named one (gg
+/// composes a `range` as `[start, end]`), so neither of them can be attributed to a parameter by
+/// name and the next record along is asked instead.
+fn landings<'a>(composed: &'a [(String, JsonValue)], markers: &[Marker]) -> Vec<Option<&'a str>> {
+    let found: Vec<Option<&str>> = markers
+        .iter()
+        .map(|marker| {
+            let mut keys = composed
+                .iter()
+                .filter(|(_, value)| *value == marker.value)
+                .map(|(key, _)| key.as_str());
+            let first = keys.next();
+            keys.next().map_or(first, |_| None)
+        })
+        .collect();
+    found
+        .iter()
+        .map(|landing| {
+            landing.filter(|key| found.iter().filter(|other| **other == Some(*key)).count() == 1)
+        })
+        .collect()
+}
+
+/// A membrane over a fresh double, with both of its records to hand — what a short test below
+/// drives one id through.
+fn driven() -> (MembraneState<FakeOperationApi>, ApiLog, CallLog) {
+    let log = CallLog::default();
+    let api = FakeOperationApi::new(&log);
+    let recorded = api.api_log();
+    (membrane_from(api), recorded, log)
+}
+
+/// Make one call over the wire, the way a guest makes one, and discard the answer.
+fn dispatch(state: &mut MembraneState<FakeOperationApi>, id: &str, arguments: &[Value]) {
+    let _ = WireHost::call(state, id.to_string(), request(arguments));
+    let _ = WireHost::take(state);
+}
+
+/// **A range's two ends stay apart.** The tool record carries them as `[start, end]`, which names
+/// neither, so the api record carries them again under `from` and `to` — and an arm that read the
+/// WIT's `end` into `from` puts `29` where `11` belongs and fails this.
+#[test]
+fn an_archived_range_keeps_its_ends_apart() {
+    let (mut state, recorded, _log) = driven();
+    dispatch(
+        &mut state,
+        "context.archive_thread",
+        &[Value::List(vec![Value::Record(vec![
+            ("start".to_string(), Value::Int(11)),
+            ("end".to_string(), Value::Int(29)),
+        ])])],
+    );
+
+    let arguments = recorded
+        .args("context.archive_thread")
+        .expect("the archive was bracketed as an api call");
+    assert_eq!(
+        arguments["ranges"][0]["from"],
+        json!(11),
+        "the range's `start` is its `from`: {arguments}"
     );
     assert_eq!(
-        unattributed, UNATTRIBUTED,
-        "the ids whose arguments this gate cannot attribute have changed; \
-         `UNATTRIBUTED` is the record of them and is wrong"
+        arguments["ranges"][0]["to"],
+        json!(29),
+        "the range's `end` is its `to`: {arguments}"
     );
 }
 
-/// The ids this gate cannot check the argument order of, because the double answers them without
-/// recording a tool call.
+/// **A search's query and its three filters stay apart.** Four strings in a row, which decode
+/// cleanly in any order, so nothing but their recorded names can tell a transposition.
+#[test]
+fn a_docs_search_reads_its_query_and_its_filter_apart() {
+    let (mut state, recorded, _log) = driven();
+    dispatch(
+        &mut state,
+        "docs.search",
+        &[
+            Value::Text("the-words".to_string()),
+            Value::List(vec![Value::Text("the-module".to_string())]),
+            Value::Text("the-declared-type".to_string()),
+            Value::Text("function".to_string()),
+            Value::Int(3),
+            Value::Int(7),
+        ],
+    );
+
+    let arguments = recorded
+        .args("docs.search")
+        .expect("the search was bracketed as an api call");
+    assert_eq!(arguments["query"], json!("the-words"), "{arguments}");
+    assert_eq!(arguments["modules"], json!(["the-module"]), "{arguments}");
+    assert_eq!(arguments["type"], json!("the-declared-type"), "{arguments}");
+    assert_eq!(arguments["kind"], json!("function"), "{arguments}");
+    assert_eq!(arguments["offset"], json!(3), "{arguments}");
+    assert_eq!(arguments["limit"], json!(7), "{arguments}");
+}
+
+/// **A text view's label and its body stay apart.** Two strings, and a swap opens a view titled
+/// with the value the model wanted shown.
+#[test]
+fn a_text_view_reads_its_label_and_its_body_apart() {
+    let (mut state, recorded, _log) = driven();
+    dispatch(
+        &mut state,
+        "views.open_text",
+        &[
+            Value::Text("the-label".to_string()),
+            Value::Text("the-body".to_string()),
+        ],
+    );
+
+    let arguments = recorded
+        .args("views.open_text")
+        .expect("the view was bracketed as an api call");
+    assert_eq!(arguments["label"], json!("the-label"), "{arguments}");
+    assert_eq!(arguments["body"], json!("the-body"), "{arguments}");
+}
+
+/// **A module error's key and its message stay apart.** It is no operation and reaches no api, so
+/// the record is the pair the capture host landed in the membrane's own state.
+#[test]
+fn a_reported_module_error_reads_its_name_and_its_message_apart() {
+    let (mut state, _recorded, _log) = driven();
+    dispatch(
+        &mut state,
+        "feedback.report_module_error",
+        &[
+            Value::Text("the-name".to_string()),
+            Value::Text("the-message".to_string()),
+        ],
+    );
+
+    assert_eq!(
+        state.module_errors,
+        vec![("the-name".to_string(), "the-message".to_string())],
+        "the module's key and its message are the pair, in that order"
+    );
+}
+
+/// **A program error's message and its location stay apart.** Two strings inside one record, kept
+/// in the state's error slot rather than in either log.
+#[test]
+fn a_reported_program_error_reads_its_message_and_its_location_apart() {
+    let (mut state, _recorded, _log) = driven();
+    dispatch(
+        &mut state,
+        "feedback.report_error",
+        &[Value::Record(vec![
+            ("kind".to_string(), Value::Text("other".to_string())),
+            ("code".to_string(), Value::None),
+            (
+                "message".to_string(),
+                Value::Text("the-message".to_string()),
+            ),
+            (
+                "location".to_string(),
+                Value::Text("the-location".to_string()),
+            ),
+        ])],
+    );
+
+    let error = state
+        .program_error
+        .as_ref()
+        .expect("the throw was captured in the membrane's state");
+    assert_eq!(error.message, "the-message");
+    assert_eq!(error.location.as_deref(), Some("the-location"));
+}
+
+/// The ids this gate cannot check the argument order of.
 ///
-/// Each declares two or more same-shaped arguments and is therefore transposable; what would close
-/// them is the fake recording the arguments of the calls **no** gg tool backs, which is a method per
-/// family on the double rather than one table here. Written out rather than skipped silently: an
-/// operation that stops reaching a tool joins this list, and the gate says so.
-const UNATTRIBUTED: &[&str] = &[
-    "context.archive_thread",
-    "docs.search",
-    "views.open_text",
-    "feedback.report_error",
-    "feedback.report_module_error",
-];
+/// Empty, and asserted for equality rather than emptiness by
+/// [`every_id_the_wire_dispatches_is_attributable`]: an id with two or more same-shaped arguments
+/// that none of the three records attributes two of lands here, and the gate reports it by name.
+const UNATTRIBUTED: &[&str] = &[];
 
 /// The parameters whose WIT name and whose tool-argument name are not one renaming of each other.
 ///
 /// gg's WIT and the JSON the loop's own api records are independent vocabularies, exactly as the
 /// operation ids and the WIT function names are, and these are where that is visible. Short on
-/// purpose: a sixth appears in this gate's own failure as an argument read under the wrong name,
+/// purpose: one more appears in this gate's own failure as an argument read under the wrong name,
 /// which is the report a wildcard would not give.
 const RENAMED: &[(&str, &str, &str)] = &[
+    // A `turn-range` is `start`/`end` in the WIT only because `from` is a WIT keyword; every SDK
+    // spells it `from`/`to`, as the model writes it, and so does the api the double records.
+    ("context.archive_thread", "start", "from"),
+    ("context.archive_thread", "end", "to"),
     ("memories.create_memory", "body", "contents"),
     ("memories.edit_memory", "search", "old_string"),
     ("memories.edit_memory", "replace", "new_string"),
