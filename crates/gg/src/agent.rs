@@ -157,10 +157,10 @@ use test_cabinet_core::gg::{
     CAPABILITY_SUBAGENTS, DEFAULT_SIGNAL_THRESHOLD_PERCENT, GG_WORKSPACE_SKILLS_DIR, GgAgentApi,
     GgAgentApiFunction, GgAgentConfig, GgAgentStatus, GgAgentTransitionKind, GgCallFailure,
     GgCapabilitySet, GgContextAction, GgContextSource, GgHookAgentKind, GgHookEvent,
-    GgIssueReviewPhase, GgLimitBreach, GgLimitKind, GgProgramLanguage, GgReviewer, GgRosterEntry,
-    GgRunLimits, GgSlotBinding, GgSubagentScope, GgTelemetryKind, GgUndocumentedCalls,
-    MAX_OPENING_TREE_DEPTH, PARAM_SIGNAL_THRESHOLD_PERCENT, PARAM_SKILLS_DIR, PARAM_TOP_FILE_VIEWS,
-    PARAM_WINDOW_LIMIT, PROJECT_MANAGEMENT_PARAM_MERGE_AGENT,
+    GgIssueReviewPhase, GgLimitBreach, GgLimitKind, GgProgramLanguage, GgReasoning, GgReviewer,
+    GgRosterEntry, GgRunLimits, GgSlotBinding, GgSubagentScope, GgTelemetryKind,
+    GgUndocumentedCalls, MAX_OPENING_TREE_DEPTH, PARAM_SIGNAL_THRESHOLD_PERCENT, PARAM_SKILLS_DIR,
+    PARAM_TOP_FILE_VIEWS, PARAM_WINDOW_LIMIT, PROJECT_MANAGEMENT_PARAM_MERGE_AGENT,
 };
 use test_cabinet_core::gg_session_journal::GG_SESSION_JOURNAL_PATH;
 use test_cabinet_core::gg_session_record::{
@@ -658,10 +658,13 @@ impl SlotAccounting {
 /// model id); its `slot` field carries the profile **id** so the resolved model is attributed to
 /// the right profile in telemetry — the display name is not unique, so keying attribution on it
 /// would fold two profiles that happen to share a name into one line of spend. Its
-/// [prompt-cache lifetime](GgAgentConfig::prompt_cache_ttl) and its
+/// [prompt-cache lifetime](GgAgentConfig::prompt_cache_ttl), its
+/// [reasoning setting](GgAgentConfig::reasoning) and its
 /// [loop-detection policy](GgAgentConfig::loop_detection) carry this profile's choices through to
-/// the client built for it — the second of which also decides that client's **transport**, since a
-/// detector can only watch a reply that arrives in pieces.
+/// the client built for it — the reasoning setting riding every request that client makes, turns
+/// and the compaction summaries written on the agent's own model alike, and the last of which also
+/// deciding that client's **transport**, since a detector can only watch a reply that arrives in
+/// pieces.
 ///
 /// Naming an [FSM shell](crate::fsm::is_shell) resolves the
 /// [entry state's](GgCapabilitySet::dispatched_agent) profile instead, model and per-agent levers
@@ -685,6 +688,7 @@ fn profile_binding(set: &GgCapabilitySet, profile: &str) -> Result<GgSlotBinding
         .ok_or_else(|| format!("the `{profile_id}` agent profile has no model bound"))?;
     Ok(GgSlotBinding::new(profile_id, model_id)
         .with_prompt_cache_ttl(agent.prompt_cache_ttl)
+        .with_reasoning(agent.reasoning)
         .with_loop_detection(agent.loop_detection))
 }
 
@@ -3985,9 +3989,13 @@ async fn drive_agent(
             );
         }
         // A handoff strategy condenses on a **second** model, resolved through the same factory
-        // every agent's own model is. This binding keeps the standard prompt-cache lifetime whatever
-        // the agent chose: a handoff is a one-shot summary request, so an extended entry would be
-        // paid for and never read.
+        // every agent's own model is. This binding keeps the standard prompt-cache lifetime, the
+        // disarmed loop detector and the provider's default reasoning whatever the agent chose: a
+        // handoff is a one-shot summary request, so an extended entry would be paid for and never
+        // read, and a reply abandoned mid-summary is a whole compaction lost to a retry. The
+        // agent's [reasoning setting](GgAgentConfig::reasoning) is tuned to the agent's own model
+        // — a token budget one provider accepts is one another refuses — so it rides the summaries
+        // that run on that model and not the ones a second model writes.
         //
         // A named model that will not resolve **ends the run**. gg used to warn and leave
         // `handoff_client` unset, after which `CompactionSetup::client` handed back the agent's own
@@ -10628,15 +10636,61 @@ pub(crate) fn window_ceiling_notes(
 /// The [window override](window_limit) is read here for its figure alone — an enabled one writing
 /// none, or `0`, refuses the launch. Whether the figure is above the model's window is not a
 /// launch question: the override is a ceiling, and [`resolve_window_limit`] clamps it to the model's
-/// own once the run's windows are in hand.
+/// own once the run's windows are in hand. The [reasoning setting](check_reasoning) is read here
+/// for the same reason: it is a whole lever of its own, and gg sends it exactly as written or not
+/// at all.
 pub(crate) fn check_launch(profile: &GgAgentConfig, report: &mut crate::validate::LaunchReport) {
     resolve_top_file_views(profile, report);
     resolve_signal_threshold(profile, report);
     AutoloadSetup::resolve(profile, report);
     check_allowlists(profile, report);
     check_opening_turn(profile, report);
+    check_reasoning(profile.reasoning.as_ref(), report);
     // The figure itself is not wanted here, only the refusal an unhonourable one reports.
     let _ = window_limit(profile, report);
+}
+
+/// A [reasoning setting](GgReasoning) that could not be sent as written — one naming both of its
+/// values, naming neither, or naming a budget of zero.
+///
+/// The setting is sent as one key of the unified `reasoning` request object, so a declaration has
+/// to say which: gg substitutes nothing between the two halves of a contradictory declaration, and
+/// a run that quietly picked one would record a setting its operator never chose. A zero budget is
+/// refused on the same terms as [`GgRunLimits`] refuses a zero
+/// ceiling — it names no tokens a reply could think in — and the demand it approximates has a
+/// spelling of its own, the `none` effort.
+fn check_reasoning(reasoning: Option<&GgReasoning>, report: &mut crate::validate::LaunchReport) {
+    let Some(reasoning) = reasoning else {
+        return;
+    };
+    match (reasoning.effort, reasoning.max_tokens) {
+        (Some(_), Some(_)) => report.report(
+            crate::validate::LaunchDefect::run_level(
+                "reasoning",
+                "effort + maxTokens",
+                "a reasoning setting names one thing — an effort level or a token budget — and \
+                 this one names both. Name the one this agent's model should be held to.",
+            )
+            .known(["effort", "maxTokens"]),
+        ),
+        (None, None) => report.report(
+            crate::validate::LaunchDefect::run_level(
+                "reasoning",
+                "",
+                "this reasoning setting names neither an effort level nor a token budget, so \
+                 there is nothing to send. Name one of the two, or leave the setting out to run \
+                 the model at its provider's default.",
+            )
+            .known(["effort", "maxTokens"]),
+        ),
+        (None, Some(0)) => report.report(crate::validate::LaunchDefect::run_level(
+            "reasoning.maxTokens",
+            "0",
+            "a budget of zero names no reasoning tokens a reply could think in. Name a count of \
+             one or more, or the `none` effort to turn reasoning off.",
+        )),
+        (Some(_), None) | (None, Some(_)) => {}
+    }
 }
 
 /// The run-wide half of this module's [launch pass](crate::validate::validate_launch)

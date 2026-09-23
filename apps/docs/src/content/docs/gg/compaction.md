@@ -128,7 +128,9 @@ never interrupted and never offered the `compact` tool; its next turn finds a
 smaller window. They condense on the model the capability's `model` parameter
 names, resolved through the same client factory every agent's model is. The
 parameter is optional, and a capability that names no summarizer condenses on the
-working agent's own model.
+working agent's own model. A named summarizer runs at its provider's default
+reasoning, while one that falls back to the working agent's model carries that
+agent's [reasoning setting](/gg/configurations/#reasoning-effort).
 
 - Handoff summarization (`handoff-summarization`). The compaction model is
   given no tools and answers with prose.
