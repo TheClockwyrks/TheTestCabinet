@@ -73,9 +73,10 @@ none.
    to point at a private build. Each image is pinned on its own.
 2. Otherwise the image is composed as `{registry}/{name}:{tag}`, where `name` is
    the run's image name, `registry` is `TCAB_CONTAINER_REGISTRY` (default
-   `ghcr.io/theclockwyrks`), and `tag` is `TCAB_CONTAINER_TAG` (default
-   `latest`). An explicitly empty registry drops the prefix and names a local
-   image for offline development.
+   `testcabinet.azurecr.io`, the Test Cabinet ACR the pipeline pushes every run
+   image to), and `tag` is `TCAB_CONTAINER_TAG` (default `latest`). An
+   explicitly empty registry drops the prefix and names a local image for
+   offline development.
 
 The image is pulled at run start when it is absent locally. Whatever image
 actually runs is resolved to its registry digest where it has one and recorded
