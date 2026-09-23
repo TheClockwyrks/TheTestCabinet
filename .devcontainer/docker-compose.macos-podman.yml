@@ -1,6 +1,7 @@
 # Host override for Podman on macOS (`podman machine`). Copy this to
-# docker-compose.local.yml (see README.md), paired with `.env.macos-podman`.
-# THE MACHINE MUST BE ROOTFUL — `setup-host.sh` checks, and README.md says why.
+# docker-compose.local.yml (see README.md), paired with `.env.macos-podman` —
+# or better, let `setup-host.sh` write both, because it reads the two facts
+# below off your machine rather than guessing them.
 #
 # Everything that differs from the Docker row (docker-compose.macos-docker.yml)
 # follows from one rule: A BIND MOUNT'S SOURCE IS A PATH ON YOUR MAC. It is not a
@@ -12,27 +13,55 @@
 # `os.makedirs` on the source, on the Mac, before podman ever sees it.)
 #
 # Two consequences: the checkout has to live under $HOME, and the host runtime
-# socket — which lives in the VM, at /run/podman/podman.sock — cannot be reached
-# by naming it. The volume at the bottom of this file is how it is reached
-# instead.
+# socket — which lives in the VM — cannot be reached by naming it. The volume at
+# the bottom of this file is how it is reached instead.
+#
+# ROOTLESS OR ROOTFUL, THIS FILE DOES NOT CARE — `.env` does. `podman machine
+# init` makes a rootless machine, and the VM runs BOTH podman services regardless
+# (root's at /run/podman, the `core` user's at /run/user/<uid>/podman); `podman
+# machine set --rootful` only changes which one the Mac's `podman` talks to by
+# default, and so which one compose creates this container on. Two things in this
+# file depend on that choice, and both are read from `.env` so that one copy of
+# this file serves either machine:
+#
+#   PODMAN_SOCKET_DIR  the directory in the VM holding the socket of the service
+#                      that runs this container — the only one this container's
+#                      user namespace can be granted access to
+#   PODMAN_USERNS      `keep-id:uid=1000,gid=1000` on a rootless machine, which
+#                      is what the Linux Podman row uses too; `host` on a rootful
+#                      one, where podman refuses keep-id (it is rootless-only)
+#                      and `host` is spelled-out for "no user namespace"
+#
+# The defaults are the rootless machine's, because that is the one `podman
+# machine init` creates. `setup-host.sh` reads the real values off the default
+# connection (`podman system connection list`) and writes them into `.env`.
 x-podman:
   # podman-compose otherwise places the project's containers in a pod. The Dev
   # Containers extension drives the container it created directly (`podman
   # inspect`, `podman exec`), and a pod's shared infra container is one more
-  # thing between it and them. Same reason the Linux Podman variant sets it.
+  # thing between it and them. Same reason the Linux Podman variant sets it —
+  # and on a rootless machine a pod also owns the user namespace for everything
+  # in it, which would make the `userns_mode` below an error.
   in_pod: false
 
 services:
   dev:
-    # NOTE WHAT IS NOT HERE: `userns_mode: keep-id`, which the Linux Podman row
-    # uses to map the host user onto the image's. keep-id is rootless-only —
-    # podman refuses it outright on a rootful machine — and a rootful machine is
-    # what this row requires. The equivalent is done by NUMBER instead: the
-    # workspace arrives over virtiofs owned by your Mac account's real UID/GID,
-    # and DEVCONTAINER_UID/DEVCONTAINER_GID in .env build the image's user with
-    # those same numbers. `setup-host.sh` reads them out of the machine rather
-    # than guessing, because virtiofs passes macOS's numbering through unchanged
-    # and a Mac's first account is 501:20, not 1000:1000.
+    # WHY THE CHECKOUT IS WRITABLE, and why neither this line nor the image's
+    # UID/GID has anything to do with it here: the checkout arrives over Apple's
+    # virtiofs, and that filesystem reports every file as owned by WHOEVER IS
+    # ASKING — `stat` from the `core` user in the VM says core's ids, `stat` from
+    # uid 4242 in a container says 4242:4242, and either can write, because the
+    # actual permission check happens on the Mac as your account. So the
+    # ownership problem the Linux Podman row solves with keep-id does not exist
+    # on this row, and DEVCONTAINER_UID/GID in .env can stay at the image's
+    # default 1000:1000 whatever your Mac account's numbers are.
+    #
+    # What keep-id IS for here is the runtime socket volume below: it is owned by
+    # the VM user that runs the rootless service, and keep-id puts that user on
+    # the image's `ttc` so the socket arrives owned by ttc rather than by root.
+    # (Without it, tools/docker-socket-access.sh would still get there, by
+    # `chmod`ing a root-owned socket at container start; this is just cleaner.)
+    userns_mode: ${PODMAN_USERNS:-keep-id:uid=1000,gid=1000}
 
     security_opt:
       # podman machine's VM is Fedora CoreOS with SELinux ENFORCING, which the
@@ -52,7 +81,7 @@ services:
     volumes:
       # DOCKER-OUTSIDE-OF-DOCKER, THE ONLY WAY IT CAN BE DONE HERE. The other
       # three host rows bind the runtime socket straight in. This one cannot: by
-      # the rule at the top of this file, /run/podman/podman.sock names a Mac path
+      # the rule at the top of this file, the socket's VM path names a Mac path
       # that does not exist, and the Mac-side socket `podman machine inspect`
       # prints is a live endpoint rather than a file — sharing its inode over
       # virtiofs shares nothing the guest can connect to.
@@ -60,8 +89,8 @@ services:
       # A NAMED VOLUME IS RESOLVED ON THE OTHER SIDE. Compose does not hand the
       # runtime a path here; it asks it to create a volume, and the bind-backed
       # local driver below (`type: none` + `o: bind`) does its own bind INSIDE the
-      # VM, where /run/podman is exactly what it looks like. Nothing is validated
-      # against the Mac, because nothing about it is a Mac path.
+      # VM, where the socket directory is exactly what it looks like. Nothing is
+      # validated against the Mac, because nothing about it is a Mac path.
       - host-podman-run:/run/host-podman
 
 volumes:
@@ -70,7 +99,14 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      # The rootful machine's runtime directory, holding podman.sock. Overridable
-      # from .env only because this file cannot be tested from the machine that
-      # writes it; `podman machine ssh 'ls /run/podman'` is the check.
-      device: ${PODMAN_SOCKET_DIR:-/run/podman}
+      # The runtime directory, in the VM, of the podman service that runs this
+      # container: /run/user/<uid>/podman on a rootless machine (where <uid> is
+      # the VM `core` user's, which `podman machine` sets to your Mac account's —
+      # 501 on a stock Mac), /run/podman on a rootful one. It has to be the SAME
+      # service. The rootless service cannot even read root's directory — that
+      # `up` ends with `reading contents of volume ...: permission denied` — and
+      # a rootful container given the rootless socket has a socket owned by a
+      # user it cannot become. `setup-host.sh` writes the right one into .env;
+      # `podman system connection list` shows it as the path in the default
+      # connection's URI.
+      device: ${PODMAN_SOCKET_DIR:-/run/user/501/podman}
