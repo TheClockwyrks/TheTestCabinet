@@ -412,11 +412,11 @@ export type GgPromptCacheTtl = "standard" | "extended";
  * of the two. Absent from a profile entirely, the model runs at its provider's default and gg
  * sends no `reasoning` parameter for that agent at all.
  *
- * It rides on **every request of the agent** — its turns and its compaction summaries alike,
- * since a summary runs on the agent's model at the agent's task — as OpenRouter's unified
- * `reasoning` request object, one key wide: `{"effort": "low"}` or `{"max_tokens": 8192}`. The
- * provider maps that object onto whatever the model's own parameter is, so the vocabulary here
- * is the unified one rather than any one provider's spelling.
+ * It rides on **every request of the agent's own model**, its turns and the compaction summaries
+ * written on that model alike, as OpenRouter's unified `reasoning` request object, one key wide:
+ * `{"effort": "low"}` or `{"max_tokens": 8192}`. The provider maps that object onto whatever the
+ * model's own parameter is, so the vocabulary here is the unified one rather than any one
+ * provider's spelling.
  *
  * The two are **exclusive**, and a declaration that names both, names neither, or names a
  * [`max_tokens`](Self::max_tokens) of zero is refused at launch rather than read as either one:
@@ -428,6 +428,9 @@ export type GgPromptCacheTtl = "standard" | "extended";
  * Per agent rather than per run because the effort is a property of the *task*: a run whose root
  * writes whole programs wants more of it than the reviewer reading their diff, and a study that
  * varies one against the other is one configuration with two profiles.
+ *
+ * A handoff summarizer bound to a second model is sent none: the setting is
+ * tuned to the agent's own model, and a budget one provider accepts is one another refuses.
  */
 export type GgReasoning = {
   /**

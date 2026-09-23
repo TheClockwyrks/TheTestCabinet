@@ -1407,8 +1407,9 @@ fn truncate(body: &str) -> String {
 ///
 /// `reasoning` is the running agent's [reasoning setting](GgReasoning), sent as the unified
 /// `reasoning` request object — one key wide, `{"effort": "low"}` or `{"max_tokens": 8192}` — on
-/// **every** request of the agent: the turns and the compaction summaries alike, since a summary
-/// runs on the agent's model at the agent's task. `None` sends no `reasoning` parameter at all,
+/// **every** request of the agent's own client: the turns and the compaction summaries written on
+/// the agent's model alike. A [handoff](crate::compaction) model's client is built without one,
+/// since the setting is tuned to the agent's model. `None` sends no `reasoning` parameter at all,
 /// and the model runs at its provider's default.
 ///
 /// `stream` asks the provider to deliver the reply as
@@ -1529,10 +1530,9 @@ pub fn build_request_body(
 /// structured answer and no next turn in which to ask again. Pure, like
 /// [`build_request_body`], so the wire shape is unit tested without network.
 ///
-/// `stream` and `reasoning` carry the same meaning they have on [`build_request_body`], so the
-/// agent's transport choice and its reasoning setting apply to a compaction summary as well as to
-/// its turns — the summarizer runs on the same model, and a model that loops on a turn loops on a
-/// summary.
+/// `stream` and `reasoning` carry the same meaning they have on [`build_request_body`], so a
+/// client's transport choice and its reasoning setting apply to a required call as well as to a
+/// free turn — a model that loops on a turn loops on a summary.
 pub fn build_required_tool_request_body(
     model_id: &str,
     messages: &[Message],

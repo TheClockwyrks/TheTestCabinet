@@ -714,7 +714,7 @@ export function GgAgentEditor({
                 <label className={`${runExec.field} ${gg.reasoningField}`}>
                   <FieldLabel
                     label="Reasoning"
-                    hint="How hard this agent's model is asked to think, sent as the `reasoning` request object on every request gg makes for this agent — its turns and its compaction summaries alike, since a summary runs on this agent's model at this agent's task. Left at the provider default, gg sends no reasoning parameter at all. An effort is one of six levels, `xhigh` down to `none`; a token budget is a whole count of one or more reasoning tokens. Whichever it names is held to every request, so `low` or `minimal` is what a fast small model wants, and `xhigh` is for the hardest work."
+                    hint="How hard this agent's model is asked to think, sent as the `reasoning` request object on every request gg makes for this agent — its turns and the compaction summaries written on this agent's model alike. A handoff summarizer on another model runs at its provider's default. Left at the provider default, gg sends no reasoning parameter at all. An effort is one of six levels, `xhigh` down to `none`; a token budget is a whole count of one or more reasoning tokens. Whichever it names is held to every request, so `low` or `minimal` is what a fast small model wants, and `xhigh` is for the hardest work."
                   />
                   <select
                     className={runExec.select}

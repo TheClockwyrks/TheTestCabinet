@@ -660,9 +660,10 @@ impl SlotAccounting {
 /// [prompt-cache lifetime](GgAgentConfig::prompt_cache_ttl), its
 /// [reasoning setting](GgAgentConfig::reasoning) and its
 /// [loop-detection policy](GgAgentConfig::loop_detection) carry this profile's choices through to
-/// the client built for it — the reasoning setting riding **every** request that client makes,
-/// turns and compaction summaries alike, and the last of which also deciding that client's
-/// **transport**, since a detector can only watch a reply that arrives in pieces.
+/// the client built for it — the reasoning setting riding every request that client makes, turns
+/// and the compaction summaries written on the agent's own model alike, and the last of which also
+/// deciding that client's **transport**, since a detector can only watch a reply that arrives in
+/// pieces.
 ///
 /// Naming an [FSM shell](crate::fsm::is_shell) resolves the
 /// [entry state's](GgCapabilitySet::dispatched_agent) profile instead, model and per-agent levers
@@ -3983,13 +3984,13 @@ async fn drive_agent(
             );
         }
         // A handoff strategy condenses on a **second** model, resolved through the same factory
-        // every agent's own model is. This binding keeps the standard prompt-cache lifetime and
-        // the disarmed loop detector whatever the agent chose: a handoff is a one-shot summary
-        // request, so an extended entry would be paid for and never read, and a reply abandoned
-        // mid-summary is a whole compaction lost to a retry. The agent's
-        // [reasoning setting](GgAgentConfig::reasoning) does ride it: every request of the agent
-        // carries the object, summaries included, and the summary is the agent's own work being
-        // done at the effort its task warrants.
+        // every agent's own model is. This binding keeps the standard prompt-cache lifetime, the
+        // disarmed loop detector and the provider's default reasoning whatever the agent chose: a
+        // handoff is a one-shot summary request, so an extended entry would be paid for and never
+        // read, and a reply abandoned mid-summary is a whole compaction lost to a retry. The
+        // agent's [reasoning setting](GgAgentConfig::reasoning) is tuned to the agent's own model
+        // — a token budget one provider accepts is one another refuses — so it rides the summaries
+        // that run on that model and not the ones a second model writes.
         //
         // A named model that will not resolve **ends the run**. gg used to warn and leave
         // `handoff_client` unset, after which `CompactionSetup::client` handed back the agent's own
@@ -4001,8 +4002,7 @@ async fn drive_agent(
         if let Some(model) =
             compaction::handoff_model_id(&profile, &mut crate::validate::LaunchReport::Discarding)
         {
-            let binding =
-                GgSlotBinding::new(COMPACTION_SLOT, &model).with_reasoning(profile.reasoning);
+            let binding = GgSlotBinding::new(COMPACTION_SLOT, &model);
             // Resolved under the **compaction** role of this agent's identity, not under a second
             // identity of its own: it is the same agent's second client. Without the role a
             // reconstruction would interleave the summarizer's calls and the agent's own next turn

@@ -110,10 +110,11 @@ decides where it is declared: the run's two session events
 belong to the capability set, and the other eight fire because a particular
 agent wrote, ran, compacted, started, or stopped, so they belong to that agent.
 
-Each agent profile carries two more settings that are not capabilities either.
-Both are properties of the model a profile is bound to rather than of the work
-it does, and both come out differently for each model in the same run: its
-[prompt-cache lifetime](/gg/configurations/#prompt-cache-lifetime), and [loop
+Each agent profile carries three more settings that are not capabilities
+either. Each shapes how the profile's requests are made rather than what they
+say, and each comes out differently for each model in the same run: its
+[prompt-cache lifetime](/gg/configurations/#prompt-cache-lifetime), its
+[reasoning effort](/gg/configurations/#reasoning-effort), and [loop
 detection](/gg/loop-detection/), which reads that agent's replies as they stream
 and abandons one that has stopped answering and started repeating itself.
 

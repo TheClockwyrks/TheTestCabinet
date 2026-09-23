@@ -322,11 +322,11 @@ override, and no roster. Its configuration is the machine. The rule the whole
 form follows is that a control exists only where gg would read what it sets,
 since a field the harness ignores invites an operator to configure a run that
 does not exist and then to read the recorded set as though it had. So a machine
-is never asked for a model, the save
-gate never demands one of it, and a launch collects no [model
-slot](#model-slots) on its behalf. What the machine runs on is each state's own
-profile, and when the machine is the root the run is recorded under the model
-its entry state runs, which is the model its first turn is charged to.
+is never asked for a model, the save gate never demands one of it, and a launch
+collects no [model slot](#model-slots) on its behalf. What the machine runs on
+is each state's own profile, and when the machine is the root the run is
+recorded under the model its entry state runs, which is the model its first turn
+is charged to.
 
 A saved agent carries the configuration of the type it was saved under, and none
 of any other. Switching type while an agent is open loses nothing, and flipping
@@ -434,15 +434,19 @@ The setting names one of two things:
 - A budget, `maxTokens`: a whole count of one or more reasoning tokens, for the
   providers that cap reasoning by tokens instead of naming a level.
 
-An agent that names neither runs at its provider's default, and gg sends no
-`reasoning` parameter for it at all. A setting that names both, or names
-neither, or a budget of zero, refuses the launch.
+An agent without the setting runs at its provider's default, and gg sends no
+`reasoning` parameter for it at all. A setting that names both values, names
+neither, or names a budget of zero refuses the launch.
 
-Every request gg sends for the agent carries the object, its compaction
-summaries included: a summary runs on the agent's model at the agent's task, so
-it reasons at the same setting. The form offers the field beside the
-prompt-cache lifetime, and the resolved capability set a run
-[records and announces](#watching-a-run) carries it per agent profile.
+Every request gg sends on the agent's own model carries the object, including
+the compaction summaries written on that model. A
+[handoff](/gg/compaction/#handoff-strategies) model named by the compaction
+capability runs at its provider's default, since the setting is tuned to the
+agent's model and a budget one provider accepts can be one another refuses.
+
+The form offers the field beside the prompt-cache lifetime. The resolved
+capability set a run records, and announces on `session_started`, carries the
+setting per agent profile.
 
 ## Storage
 
