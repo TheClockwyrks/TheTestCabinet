@@ -562,8 +562,7 @@ async fn a_faulted_run_claims_no_further_issue() {
         Orchestrator::build(
             &invocation(dir.path(), split_project_set()),
             &emitter,
-            Arc::new(ScriptedFactory::new()),
-            crate::tools::real_shell(),
+            SessionSeams::substituted(Arc::new(ScriptedFactory::new()), crate::tools::real_shell()),
             WorktreesSetup {
                 baseline_commit: None,
                 root: None,
@@ -964,8 +963,7 @@ async fn an_issue_whose_worktree_checkout_panicked_fails_rather_than_hanging() {
         Orchestrator::build(
             &invocation(dir.path(), split_project_set()),
             &emitter,
-            Arc::new(ScriptedFactory::new()),
-            crate::tools::real_shell(),
+            SessionSeams::substituted(Arc::new(ScriptedFactory::new()), crate::tools::real_shell()),
             WorktreesSetup {
                 baseline_commit: None,
                 root: None,
@@ -1064,8 +1062,7 @@ async fn a_task_that_panicked_outside_its_loop_is_caught_by_the_join() {
         Orchestrator::build(
             &invocation(dir.path(), subagent_set(2, 3, &["subagent"])),
             &emitter,
-            Arc::new(ScriptedFactory::new()),
-            crate::tools::real_shell(),
+            SessionSeams::substituted(Arc::new(ScriptedFactory::new()), crate::tools::real_shell()),
             WorktreesSetup {
                 baseline_commit: None,
                 root: None,
@@ -1144,8 +1141,7 @@ async fn a_panic_during_a_wait_gives_back_no_slot() {
         Orchestrator::build(
             &invocation(dir.path(), persistent_subagent_set()),
             &emitter,
-            Arc::new(ScriptedFactory::new()),
-            crate::tools::real_shell(),
+            SessionSeams::substituted(Arc::new(ScriptedFactory::new()), crate::tools::real_shell()),
             WorktreesSetup {
                 baseline_commit: None,
                 root: None,
@@ -1302,8 +1298,7 @@ async fn a_panic_during_an_issue_agents_wait_gives_back_no_slot() {
         Orchestrator::build(
             &invocation(dir.path(), persistent_issue_set()),
             &emitter,
-            Arc::new(ScriptedFactory::new()),
-            crate::tools::real_shell(),
+            SessionSeams::substituted(Arc::new(ScriptedFactory::new()), crate::tools::real_shell()),
             WorktreesSetup {
                 baseline_commit: None,
                 root: None,
@@ -1408,8 +1403,7 @@ async fn a_panic_after_an_agent_answered_its_spawner_gives_back_no_slot() {
         Orchestrator::build(
             &invocation(dir.path(), persistent_subagent_set()),
             &emitter,
-            Arc::new(ScriptedFactory::new()),
-            crate::tools::real_shell(),
+            SessionSeams::substituted(Arc::new(ScriptedFactory::new()), crate::tools::real_shell()),
             WorktreesSetup {
                 baseline_commit: None,
                 root: None,

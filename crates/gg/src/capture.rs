@@ -495,7 +495,8 @@ pub struct GgRecorder {
 
 impl GgRecorder {
     /// Open `journal_path` and start capturing `session_id`'s inputs into it, bounded by
-    /// `max_bytes`.
+    /// `max_bytes`. The header names the run's [routing key](crate::client::RoutingKey) beside the
+    /// session id.
     ///
     /// Writes the [header](GgJournalLine::Header) line before returning, so that even a journal
     /// with no entries at all identifies the session it belongs to and the build that wrote it.
@@ -507,6 +508,7 @@ impl GgRecorder {
     pub fn start(
         journal_path: &Path,
         session_id: &str,
+        routing_key: &str,
         capability_set: &GgCapabilitySet,
         max_bytes: Option<u64>,
     ) -> std::io::Result<Self> {
@@ -541,6 +543,7 @@ impl GgRecorder {
             .queue_batch(vec![GgJournalLine::Header {
                 format_version: GG_SESSION_FORMAT_VERSION,
                 session_id: session_id.to_string(),
+                routing_key: Some(routing_key.to_string()),
                 capability_set: Box::new(capability_set.clone()),
                 recorder: GgSessionRecorder {
                     // This binary's own version, not the release version `core` resolves a

@@ -81,7 +81,7 @@ variant_label() {
 	ubuntu) echo "Docker on Linux" ;;
 	nixos) echo "rootless Podman on Linux" ;;
 	macos-docker) echo "Docker Desktop or OrbStack on macOS" ;;
-	macos-podman) echo "rootless Podman on macOS (podman machine)" ;;
+	macos-podman) echo "Podman on macOS (podman machine)" ;;
 	*) return 1 ;;
 	esac
 }
@@ -176,56 +176,104 @@ fi
 cp "$COMPOSE_SRC" docker-compose.local.yml
 cp "$ENV_SRC" .env
 
-# The macOS + Podman row needs three things a copy cannot do: confirm the machine
-# is rootful, read your Mac account's real UID/GID out of it (see
-# .env.macos-podman), and check the machine is big enough to build in.
+# The macOS + Podman row needs two things a copy cannot do: find out which of the
+# machine's two podman services compose will create the container on, and write
+# that service's socket directory and user-namespace mode into .env (see
+# .env.macos-podman); and check the machine is big enough to build in.
 if [ "$VARIANT" = "macos-podman" ]; then
 	repo_root="$(cd .. && pwd)"
 
 	if ! command -v podman >/dev/null 2>&1; then
-		echo "warning: podman is not on PATH; .env keeps its default UID/GID and was not checked." >&2
+		echo "warning: podman is not on PATH; .env keeps its rootless defaults and was not checked." >&2
 	elif [ "$(podman machine inspect --format '{{.State}}' 2>/dev/null || true)" != "running" ]; then
-		echo "warning: no running podman machine; .env keeps its default UID/GID." >&2
+		echo "warning: no running podman machine; .env keeps its rootless defaults." >&2
 		echo "         Start one and re-run with --force:  podman machine start" >&2
 	else
-		# ROOTFUL IS A REQUIREMENT, not a preference. A rootless machine puts its
-		# runtime socket somewhere else (/run/user/<uid>/podman), and — the part
-		# that cannot be papered over — needs `userns_mode: keep-id` to make the
-		# checkout writable, which docker-compose.macos-podman.yml deliberately
-		# does not carry because podman rejects keep-id on a rootful machine. One
-		# of the two has to be chosen; this row chooses rootful, because it is
-		# also what gives the local service stack a socket to talk to.
-		if [ "$(podman machine inspect --format '{{.Rootful}}' 2>/dev/null || true)" != "true" ]; then
-			echo "error: this podman machine is rootless; this row requires a rootful one." >&2
-			echo "       Switch it and re-run with --force:" >&2
-			echo >&2
-			echo "         podman machine stop" >&2
-			echo "         podman machine set --rootful" >&2
-			echo "         podman machine start" >&2
-			exit 1
+		# ROOTLESS AND ROOTFUL ARE BOTH FINE; WHAT MATTERS IS WHICH ONE COMPOSE
+		# TALKS TO. The VM runs both podman services regardless of how the machine
+		# was set: root's, with its socket under /run/podman, and the `core` user's,
+		# under /run/user/<uid>/podman. `podman machine set --rootful` only changes
+		# which connection the Mac's `podman` uses by default — and that connection
+		# is the service this container is created on, so it is the one whose socket
+		# the container can be given (the other's is owned by a user its namespace
+		# cannot become; the rootless service cannot even read root's directory).
+		# So read the answer off the default connection rather than off `podman
+		# machine inspect --format '{{.Rootful}}'`, which says what the machine was
+		# set to and not what `podman` will do. Its URI ends in the socket's VM path.
+		socket_path="$(podman system connection list --format '{{.Default}} {{.URI}}' 2>/dev/null |
+			awk '$1 == "true" { print $2 }' | sed -e 's|^ssh://[^/]*||' | head -n 1)"
+		socket_dir="${socket_path%/*}"
+
+		# Whether that service is rootless is a fact about the SERVER, so ask it.
+		# Falls back to the socket path when the query fails: only root keeps its
+		# socket at /run/podman.
+		rootless="$(podman info --format '{{.Host.Security.Rootless}}' 2>/dev/null || true)"
+		if [ "$rootless" != "true" ] && [ "$rootless" != "false" ]; then
+			case "$socket_dir" in
+			/run/podman) rootless=false ;;
+			/run/user/*) rootless=true ;;
+			*) rootless="" ;;
+			esac
 		fi
 
-		# The UID/GID the VM sees on the checkout — which is what the image must
-		# build its user as. Asked of the machine rather than assumed, because
-		# virtiofs passes macOS's numbering straight through and a Mac's first
-		# account is 501:20 rather than 1000:1000.
-		ids="$(podman machine ssh "stat -c '%u %g' '$repo_root'" 2>/dev/null | tr -d '\r' | tail -n 1)"
-		host_uid="${ids%% *}"
-		host_gid="${ids##* }"
-
-		if [ -n "$ids" ] && [ "$host_uid" -ge 0 ] 2>/dev/null && [ "$host_gid" -ge 0 ] 2>/dev/null; then
+		if [ -z "$socket_dir" ] || [ -z "$rootless" ]; then
+			echo "warning: could not read the default podman connection, so .env keeps its" >&2
+			echo "         rootless defaults. If they are wrong the container will not start" >&2
+			echo "         ('reading contents of volume ...: permission denied' on the socket" >&2
+			echo "         volume). Check them by hand:  podman system connection list" >&2
+			echo "         PODMAN_SOCKET_DIR is the directory of the Default row's socket path;" >&2
+			echo "         PODMAN_USERNS is keep-id:uid=1000,gid=1000 if that row is core@'s," >&2
+			echo "         host if it is root@'s." >&2
+		else
+			# keep-id maps the VM user onto the image's ttc, so the rootless
+			# service's socket arrives owned by ttc. Podman refuses it on a rootful
+			# service (keep-id is rootless-only); `host` there means what a rootful
+			# container gets anyway — no user namespace. The image's UID/GID stay
+			# 1000:1000 on both: virtiofs reports every file as owned by whoever
+			# asks, so the checkout is writable for any container user here.
+			if [ "$rootless" = "true" ]; then
+				userns="keep-id:uid=1000,gid=1000"
+				label="rootless"
+			else
+				userns="host"
+				label="rootful"
+			fi
 			{
-				grep -v '^DEVCONTAINER_UID=\|^DEVCONTAINER_GID=' .env
-				echo "DEVCONTAINER_UID=$host_uid"
-				echo "DEVCONTAINER_GID=$host_gid"
+				grep -v '^PODMAN_SOCKET_DIR=\|^PODMAN_USERNS=' .env
+				echo "PODMAN_SOCKET_DIR=$socket_dir"
+				echo "PODMAN_USERNS=$userns"
 			} >.env.tmp
 			mv .env.tmp .env
-			echo "  DEVCONTAINER_UID/GID      ->  $host_uid:$host_gid  (the machine's view of this checkout)"
-		else
-			echo "warning: could not read this checkout's owner from the machine, so .env keeps" >&2
-			echo "         its default UID/GID. If the container cannot write to the workspace," >&2
-			echo "         set them by hand:  podman machine ssh \"stat -c '%u %g' '$repo_root'\"" >&2
-			echo "         A checkout the machine cannot see at all is the likelier cause — see below." >&2
+			echo "  PODMAN_SOCKET_DIR         ->  $socket_dir  (the $label service compose talks to)"
+			echo "  PODMAN_USERNS             ->  $userns"
+
+			# The socket directory names a volume whose options podman fixes at
+			# creation, so a copy that changed from one service's directory to the
+			# other's leaves a stale volume that the next `up` reuses — and fails
+			# on. Say so, since the symptom does not name this file.
+			stale="$(podman volume ls --format '{{.Name}}' 2>/dev/null | grep -x '.*_host-podman-run' || true)"
+			for v in $stale; do
+				device="$(podman volume inspect "$v" --format '{{index .Options "device"}}' 2>/dev/null || true)"
+				if [ -n "$device" ] && [ "$device" != "$socket_dir" ]; then
+					echo
+					echo "warning: volume $v is bound to $device, not $socket_dir."
+					echo "         Its options were fixed when it was created, so compose will"
+					echo "         reuse it as-is. Remove it (and any container created on it)"
+					echo "         before the next Reopen in Container:"
+					echo
+					echo "           podman rm \$(podman ps -aq --filter volume=$v)"
+					echo "           podman volume rm $v"
+				fi
+			done
+
+			if [ "$rootless" = "true" ]; then
+				echo
+				echo "note: this is the rootless service. The devcontainer is fine on it; the optional"
+				echo "      local service stack (make -C deployments/local local-up) is not, because k3d"
+				echo "      needs a rootful runtime. To have that too:  podman machine stop &&"
+				echo "      podman machine set --rootful && podman machine start, then re-run this"
+				echo "      script with --force and Rebuild Container."
+			fi
 		fi
 
 		# The image alone is ~1.9 GB of gg toolchains on top of a Rust/Node

@@ -148,15 +148,27 @@ build prompt, any [autoloaded specifications](/gg/autoload-specifications/), and
 the thread so far. gg asks for a provider prompt cache on every request. Two
 things have to hold for a cached read to happen, and gg does both.
 
-The request has to reach the endpoint that holds the cache. Every client in a
-run stamps the same `session_id`, the run's session id, shared by the root agent
-and every [subagent](/gg/subagents/), so a run's turns stay on one provider
-endpoint and agents that open on the same prefix reuse each other's warmed
-cache. `session_id` is OpenRouter's sticky-routing key, and gg sends the same
-value as `prompt_cache_key` for the providers that read the OpenAI-style field.
+The request has to reach the endpoint that holds the cache. gg mints one
+routing key per run at launch, a cuid2, and every client in the run stamps it on
+every request as `session_id`. That covers the root agent, every
+[subagent](/gg/subagents/) and the client a compaction resolves, on both the
+buffered and the streaming transport. A run's turns therefore stay on one
+provider endpoint, and agents that open on the same prefix reuse each other's
+warmed cache.
+
+`session_id` is OpenRouter's sticky-routing key, and gg sends the same key as
+`prompt_cache_key` for the providers that read the OpenAI-style field.
 `prompt_cache_key` alone leaves routing on OpenRouter's fallback, which is free
 to balance byte-identical requests across endpoints and reads as a 0% cache rate
 turn after turn.
+
+The key is minted rather than taken from the run's session id, which is
+caller-supplied text of any length. A cuid2 is 24 characters, inside both
+OpenRouter's 256-character cap on `session_id` and OpenAI's 64-character cap on
+`prompt_cache_key`, and the only property routing needs is that every request of
+the run carries the same value. The key is announced on `session_started` and
+kept in the [session record](/gg/session-record/), so a provider dashboard row
+can be matched to its run.
 
 The request has to say what to cache. OpenAI and Gemini cache long prefixes
 implicitly. Anthropic caches only what a request marks with `cache_control`, so

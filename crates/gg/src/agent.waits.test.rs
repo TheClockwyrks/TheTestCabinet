@@ -515,8 +515,7 @@ fn hand_driven_orchestrator(dir: &TempDir, emitter: &Emitter) -> Arc<Orchestrato
         Orchestrator::build(
             &invocation(dir.path(), one_slot_board()),
             emitter,
-            Arc::new(ScriptedFactory::new()),
-            crate::tools::real_shell(),
+            SessionSeams::substituted(Arc::new(ScriptedFactory::new()), crate::tools::real_shell()),
             WorktreesSetup {
                 baseline_commit: None,
                 root: None,

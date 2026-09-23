@@ -103,74 +103,6 @@ fn build_request_body_omits_tools_when_none() {
     assert!(body.get("tool_choice").is_none());
 }
 
-/// A supplied session key rides the request as **`session_id`** — OpenRouter's sticky-routing
-/// field, which is what actually keeps a run's requests on one provider *endpoint* so each turn
-/// (and each sibling agent) reuses a warmed prefix. It also rides as `prompt_cache_key` for the
-/// providers that read the OpenAI-style field instead. Sending only the latter — which gg did —
-/// left routing on a fallback path and cost whole runs their cache.
-#[test]
-fn build_request_body_sends_the_session_key_as_both_fields() {
-    let body = build_request_body(
-        "m",
-        &[Message::user("hi")],
-        &[],
-        Some("session-42"),
-        CacheTtl::Standard,
-        false,
-    );
-    assert_eq!(body["session_id"], json!("session-42"));
-    assert_eq!(body["prompt_cache_key"], json!("session-42"));
-}
-
-/// No key (or an empty one) leaves both fields off the wire entirely, so a caller that
-/// has no key to offer sends exactly what gg always did.
-#[test]
-fn build_request_body_omits_the_session_key_without_one() {
-    for body in [
-        build_request_body(
-            "m",
-            &[Message::user("hi")],
-            &[],
-            None,
-            CacheTtl::Standard,
-            false,
-        ),
-        build_request_body(
-            "m",
-            &[Message::user("hi")],
-            &[],
-            Some(""),
-            CacheTtl::Standard,
-            false,
-        ),
-    ] {
-        assert!(body.get("session_id").is_none());
-        assert!(body.get("prompt_cache_key").is_none());
-    }
-}
-
-/// An over-long key is truncated to the documented cap rather than dropped: the leading characters
-/// are still a *stable* key, which is all sticky routing needs, whereas omitting the field would
-/// cost the run its cache — the very failure the key exists to prevent.
-#[test]
-fn build_request_body_truncates_an_over_long_session_key() {
-    // A multi-byte character straddling the cap would panic a naive byte slice.
-    let key = "sesh-".to_string() + &"é".repeat(MAX_SESSION_KEY_CHARS);
-    let body = build_request_body(
-        "m",
-        &[Message::user("hi")],
-        &[],
-        Some(&key),
-        CacheTtl::Standard,
-        false,
-    );
-
-    let sent = body["session_id"].as_str().expect("a session id");
-    assert_eq!(sent.chars().count(), MAX_SESSION_KEY_CHARS);
-    assert!(key.starts_with(sent));
-    assert_eq!(body["prompt_cache_key"], body["session_id"]);
-}
-
 // ---------------------------------------------------------------------------
 // Images on the wire
 // ---------------------------------------------------------------------------
@@ -914,7 +846,7 @@ fn resolve_provider_kind_selects_mock_by_model_prefix_or_override() {
 fn client_for_slot_builds_mock_for_mock_binding() {
     let client = client_for_slot(
         &binding("mock/echo"),
-        None,
+        &RoutingKey::mint(),
         DEFAULT_MODEL_CALL_TIMEOUT,
         RetryPolicy::default(),
         &ToolChoiceMemory::default(),

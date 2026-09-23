@@ -632,8 +632,7 @@ fn a_machine_that_will_not_build_refuses_the_launch() {
     let Err(error) = Orchestrator::build(
         &invocation(dir.path(), set),
         &emitter,
-        Arc::new(ScriptedFactory::new()),
-        crate::tools::real_shell(),
+        SessionSeams::substituted(Arc::new(ScriptedFactory::new()), crate::tools::real_shell()),
         WorktreesSetup {
             baseline_commit: None,
             root: None,

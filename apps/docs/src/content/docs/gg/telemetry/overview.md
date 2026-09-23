@@ -68,6 +68,12 @@ itself to the run from the moment it starts watching, rather than once the run
 record lands. A stream that omits the field falls back to the set recorded on the
 run record.
 
+`session_started` also carries `routingKey`, the key gg minted at launch and
+sends on every request of the run as both `session_id` and `prompt_cache_key`
+(see [prompt caching](/gg/overview/#prompt-caching)). It is the value a provider
+dashboard shows for the run's requests, so it is how a dashboard row is matched
+to a run.
+
 ## The channel
 
 This telemetry is a purpose-built structured channel to The Test Cabinet. It

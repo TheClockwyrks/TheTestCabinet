@@ -75,6 +75,10 @@ pub enum GgJournalLine {
         format_version: u32,
         /// The gg session id — the run id, matching the telemetry stream's.
         session_id: String,
+        /// The run's [routing key](crate::gg::GgTelemetryKind::SessionStarted::routing_key),
+        /// matching the one `session_started` announces.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        routing_key: Option<String>,
         /// The capability set the run was configured with. Boxed because it dwarfs every
         /// other line and this enum is passed by value.
         capability_set: Box<GgCapabilitySet>,

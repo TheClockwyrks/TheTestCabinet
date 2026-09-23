@@ -153,9 +153,10 @@ unbounded memory growth inside the run container.
 The journal's vocabulary is a header, a seed, an agent row, one line per newly
 interned pool entry, one line per input entry, and a terminating marker. The
 header is the first line and carries the format version, the session id, the
-capability set and the recording build. The seed line may be written again, and
-assembly keeps the last one, which is how a streaming journal carries a value
-that is only resolved at the end.
+run's routing key, the capability set and the recording build. The assembled
+record keeps the routing key beside the session id as `routingKey`. The seed
+line may be written again, and assembly keeps the last one, which is how a
+streaming journal carries a value that is only resolved at the end.
 
 Every pool line names the index it occupies even though position implies it.
 That redundancy is the gap detector: a pool that skips would shift every later

@@ -3,7 +3,7 @@
 //! run-wide per model, and the downgrade is logged once.
 //!
 //! The transport tests run under `start_paused` time against a gateway the client is [answered
-//! by](OpenRouterClient::answered_by_request), which records every request body it is sent.
+//! by](OpenRouterClient::answered_by), which records the body of every request it is sent.
 
 use std::sync::{Arc, Mutex};
 
@@ -52,10 +52,15 @@ fn scripted(
         None,
     )
     .with_tool_choice_memory(memory.clone())
-    .answered_by_request(move |body| {
+    .answered_by(move |request| {
+        let body = request
+            .body()
+            .and_then(reqwest::Body::as_bytes)
+            .map(|bytes| serde_json::from_slice(bytes).expect("a JSON body"))
+            .expect("a buffered body");
         let mut seen = seen.lock().expect("the request log");
         let (status, reply) = replies[seen.len().min(replies.len() - 1)];
-        seen.push(body.clone());
+        seen.push(body);
         http::Response::builder()
             .status(status)
             .body(reqwest::Body::from(reply))
