@@ -400,10 +400,8 @@ impl RunRequest {
             .bound_model_ids()
             .into_iter()
             .filter(|id| {
-                self.gg_model_providers.get(*id).is_none_or(|candidates| {
-                    candidates
-                        .iter()
-                        .all(|candidate| candidate.provider.trim().is_empty())
+                !self.gg_model_providers.get(*id).is_some_and(|candidates| {
+                    crate::gg::GgProviderCandidate::usable_list(candidates)
                 })
             })
             .collect();

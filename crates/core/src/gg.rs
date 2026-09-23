@@ -4795,17 +4795,17 @@ pub struct GgRunLimits {
     )]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub model_retry_max_delay_secs: Option<u64>,
-    /// How many **unexpected cache misses** a provider may accumulate before the run leaves it
-    /// for the next candidate on its list.
+    /// How many **unexpected cache misses** a provider may produce in one run before the run
+    /// leaves it for the next [candidate](GgProviderCandidate) on its model's list.
     ///
-    /// One of the keys an absence answers with a **figure**: **absent is two**, because a provider
-    /// that keeps ignoring its own cache is never a setting an operator can ask for, and `0` is
-    /// honoured as written — a run that leaves a provider on its first unexpected miss.
+    /// One of the keys an absence answers with a **figure**: **absent is two**, because every
+    /// provider is held to it. `0` is refused rather than read as "off": a provider allowed no
+    /// misses would be left before it served a turn.
     ///
-    /// An unexpected miss is a reply whose cached-token count is below the shared prefix of the
-    /// previous request on the same provider, sent within that request's cache lifetime and above
-    /// the provider's minimum cacheable size. The reply stands, and the miss is counted; a
-    /// provider that reaches this limit is left at the next request.
+    /// An unexpected miss is a reply that read under half of the prefix the agent's previous
+    /// request on the same provider left in the cache, within the five-minute cache lifetime and
+    /// above the minimum cacheable size. The reply stands and the miss is counted; a provider that
+    /// reaches this limit is left at the next request, unless it is the model's last candidate.
     #[serde(
         deserialize_with = "count::option_u64",
         default,
@@ -7090,33 +7090,53 @@ pub struct GgProviderStat {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     #[cfg_attr(feature = "contract", ts(optional = nullable))]
     pub errors: BTreeMap<String, u64>,
-    /// Streams this provider served that went
-    /// [`modelStreamIdleSecs`](GgRunLimits::model_stream_idle_secs) without a delta — the stalls a
-    /// run of the model was retried out of. `0`, and omitted, for a provider that never stalled.
+    /// Requests sent to this provider whose stream went
+    /// [`modelStreamIdleSecs`](GgRunLimits::model_stream_idle_secs) without a delta, folded from
+    /// the [`Stall`](GgProviderFault::Stall) faults against it. `0`, and omitted, for a provider
+    /// that never stalled.
     #[serde(default, skip_serializing_if = "is_zero_u64")]
     #[cfg_attr(feature = "contract", ts(optional = nullable))]
     pub stalls: u64,
-    /// Replies this provider served that were an unexpected cache miss: `cached_tokens` below the
-    /// shared prefix of the previous request on the same provider, within that request's cache
-    /// lifetime and above the provider's minimum cacheable size. `0`, and omitted, for a provider
-    /// that never missed.
+    /// Replies this provider served that were an unexpected cache miss, folded from the
+    /// [`CacheMiss`](GgProviderFault::CacheMiss) faults against it. `0`, and omitted, for a
+    /// provider that never missed.
     #[serde(default, skip_serializing_if = "is_zero_u64")]
     #[cfg_attr(feature = "contract", ts(optional = nullable))]
     pub cache_misses: u64,
 }
 
+/// A fault gg holds against one provider within a run: what a
+/// [`ProviderFault`](GgTelemetryKind::ProviderFault) records and what a
+/// [`ProviderSwitch`](GgTelemetryKind::ProviderSwitch) names as its cause.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum GgProviderFault {
+    /// The retry schedule was spent on `429`, `5xx`, transport failures or stalls.
+    FailedCall,
+    /// OpenRouter answered `404`: the account's settings exclude the provider's endpoint, so no
+    /// retry can succeed.
+    Unavailable,
+    /// A stream went [`modelStreamIdleSecs`](GgRunLimits::model_stream_idle_secs) without a delta.
+    Stall,
+    /// A reply read far less from the cache than the agent's previous request left there.
+    CacheMiss,
+}
+
 /// One provider a model may run on, and the quantization that endpoint serves.
 ///
 /// A [`GgInvocation::model_providers`] entry is an ordered list of these: the order a run tries
-/// them in, and a one-entry list is a pin. The slug is spelled as OpenRouter's endpoints listing
-/// spells its `provider_name`.
+/// them in, and a one-entry list is a pin. Every request names one of them as OpenRouter's
+/// `provider.only` and `provider.quantizations`, with fallbacks refused.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct GgProviderCandidate {
-    /// The provider's slug, as the endpoints listing spells `provider_name`.
+    /// The provider, spelled as OpenRouter's endpoints listing spells its `provider_name`
+    /// (`Z.AI`, `DeepInfra`).
     pub provider: String,
-    /// The quantization that endpoint declares (`fp8`, `bf16`, …).
+    /// The quantization the provider's endpoint declares (`fp8`, `bf16`, or `unknown` for a
+    /// provider the catalog entry accepts despite it).
     pub quantization: String,
 }
 
@@ -7127,6 +7147,16 @@ impl GgProviderCandidate {
             provider: provider.into(),
             quantization: quantization.into(),
         }
+    }
+
+    /// Whether `candidates` is a list a launch can run a model on: at least one candidate, and
+    /// every candidate naming both a provider and a quantization. A blank either way is a request
+    /// that would name no provider, or no level, which is the choice left to OpenRouter.
+    pub fn usable_list(candidates: &[Self]) -> bool {
+        !candidates.is_empty()
+            && candidates.iter().all(|candidate| {
+                !candidate.provider.trim().is_empty() && !candidate.quantization.trim().is_empty()
+            })
     }
 }
 
@@ -8773,22 +8803,39 @@ pub enum GgTelemetryKind {
         /// one repeated string.
         breach: GgLimitBreach,
     },
-    /// The run left one candidate for the next on its model's list.
+    /// One stall or one unexpected cache miss, against the provider the request was sent to.
     ///
-    /// Emitted once per move, naming the provider left, the provider taken and the fault that
-    /// decided it. A spent retry schedule moves the run for the request that spent it and every
-    /// request after it; a provider that reaches
-    /// [`provider_cache_miss_limit`](GgRunLimits::provider_cache_miss_limit) unexpected cache
-    /// misses is left at the next request. A run whose last candidate is spent emits none of
-    /// these and ends as the harness failure an outage ends on.
+    /// The fact the run record's per-provider [`stalls`](GgProviderStat::stalls) and
+    /// [`cache_misses`](GgProviderStat::cache_misses) are folded from. A stall is also retried,
+    /// and logged as a retry; a miss's reply stands. Emitted on the stream of the agent whose
+    /// request saw it.
+    ProviderFault {
+        /// The model the request was for.
+        model_id: String,
+        /// The provider the request named, spelled as its [candidate](GgProviderCandidate) is.
+        provider: String,
+        /// [`Stall`](GgProviderFault::Stall) or [`CacheMiss`](GgProviderFault::CacheMiss).
+        fault: GgProviderFault,
+    },
+    /// The run left one [candidate](GgProviderCandidate) for the next on its model's list, for the
+    /// request that decided it and every request after it, in every agent of the run.
+    ///
+    /// Emitted once per move, on the stream of the agent whose request decided it. A run whose
+    /// model is on its last candidate never moves, so a failure there reaches the agent loop as
+    /// the failed model call an outage is.
     ProviderSwitch {
-        /// The provider the run left, spelled as the candidate named it.
+        /// The model whose candidate changed.
+        model_id: String,
+        /// The provider the run left, spelled as its candidate is.
         from: String,
         /// The provider the run moved to.
         to: String,
-        /// The fault that decided the move: `retry_exhausted` for a spent retry schedule,
-        /// `cache_miss` for a provider that reached the miss limit.
-        fault: String,
+        /// What decided the move: [`FailedCall`](GgProviderFault::FailedCall),
+        /// [`Unavailable`](GgProviderFault::Unavailable) or
+        /// [`CacheMiss`](GgProviderFault::CacheMiss).
+        fault: GgProviderFault,
+        /// The last failure's cause, or the miss count that reached the limit, for a reader.
+        detail: String,
     },
     /// A diagnostic log line from gg itself (not agent output).
     Log {

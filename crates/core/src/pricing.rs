@@ -100,6 +100,14 @@ impl ModelLaunchFacts {
     }
 }
 
+#[path = "pricing.candidates.rs"]
+mod candidates;
+pub use candidates::{
+    CandidateList, CandidatePolicy, CandidateRefusal, EndpointOffer, ProviderCandidate,
+    QUANTIZATION_UNKNOWN, native_quantization, provider_candidates, quantization_rank,
+    run_parameters,
+};
+
 /// Fetches model prices from OpenRouter.
 #[derive(Debug, Clone)]
 pub struct OpenRouterPrices {
@@ -231,6 +239,13 @@ impl OpenRouterPrices {
         Ok(routes_of(self.fetch_endpoints(model_id).await?))
     }
 
+    /// Every endpoint OpenRouter lists for one model, as the
+    /// [candidate filter](provider_candidates) reads it, in listing order. An unlisted model is an
+    /// `Err`; a listed model with no endpoints is an empty list.
+    pub async fn endpoint_offers(&self, model_id: &str) -> Result<Vec<EndpointOffer>> {
+        Ok(offers_of(&self.fetch_endpoints(model_id).await?))
+    }
+
     /// Fetch one model's `/models/{id}/endpoints` body — the cheap per-model read
     /// (a few KB) shared by the launch-facts and listing lookups.
     async fn fetch_endpoints(&self, model_id: &str) -> Result<ModelEndpoints> {
@@ -281,288 +296,14 @@ impl OpenRouterPrices {
     }
 }
 
-/// One endpoint a model may run on, as the endpoints listing declares it and the candidate
-/// filter reads it.
-///
-/// Prices are USD per token, the unit OpenRouter reports them in. A price that does not parse
-/// is `None`, which the filter reads as "not offered".
-#[derive(Debug, Clone, PartialEq)]
-pub struct EndpointOffer {
-    /// The provider's display name, as the listing spells `provider_name`.
-    pub provider: String,
-    /// The quantization the endpoint declares (`fp8`, `bf16`, `unknown`, …).
-    pub quantization: String,
-    /// The input price, USD per token.
-    pub input: Option<f64>,
-    /// The output price, USD per token.
-    pub output: Option<f64>,
-    /// The cache-read price, USD per token. `None` means the endpoint publishes none.
-    pub cache_read: Option<f64>,
-    /// The parameters the endpoint says it supports (`tools`, `tool_choice`, `reasoning`, …).
-    pub supported_parameters: Vec<String>,
-}
-
-/// The quantization levels OpenRouter declares, best first.
-///
-/// Native is the highest level any endpoint of a model declares. `unknown` is not a level: an
-/// endpoint declaring it is left out unless the catalog entry allows that provider by name.
-const QUANTIZATION_RANK: &[&str] = &["fp32", "fp16", "bf16", "fp8", "fp6", "fp4", "int8", "int4"];
-
-/// The rank of a declared quantization, lower being better. `None` for a blank, an `unknown`,
-/// or a level this table does not name — none of which is a native level.
-pub fn quantization_rank(level: &str) -> Option<usize> {
-    let level = level.trim().to_ascii_lowercase();
-    QUANTIZATION_RANK
-        .iter()
-        .position(|known| *known == level)
-}
-
-/// The model's native quantization: the best level any of `levels` declares, or `None` when
-/// none declares a known level.
-pub fn native_quantization<'a>(levels: impl IntoIterator<Item = &'a str>) -> Option<&'a str> {
-    levels
-        .into_iter()
-        .filter(|level| quantization_rank(level).is_some())
-        .min_by_key(|level| quantization_rank(level).unwrap_or(usize::MAX))
-}
-
-/// What a run of one model sends, which is what an endpoint has to support to be a candidate.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RunRequirements {
-    /// Whether the run's agents call tools, which needs `tools` and `tool_choice`.
-    pub tools: bool,
-    /// Whether an agent sets a reasoning effort, which needs `reasoning`.
-    pub reasoning: bool,
-}
-
-impl RunRequirements {
-    /// The parameters a request of this run sends, in the vocabulary the endpoints listing uses.
-    pub fn parameters(self) -> &'static [&'static str] {
-        match (self.tools, self.reasoning) {
-            (true, true) => &["tools", "tool_choice", "reasoning"],
-            (true, false) => &["tools", "tool_choice"],
-            (false, true) => &["reasoning"],
-            (false, false) => &[],
-        }
-    }
-}
-
-/// The catalog facts the candidate filter reads, all of them optional: a model with none takes
-/// every figure from the listing.
-#[derive(Debug, Clone, Default, PartialEq)]
-pub struct CandidatePolicy {
-    /// The native quantization, set by hand. `None` takes the highest level any endpoint declares.
-    pub native_quantization: Option<String>,
-    /// The input-price ceiling, USD per token, used when the developer endpoint is unavailable.
-    pub max_input: Option<f64>,
-    /// The output-price ceiling, USD per token, used when the developer endpoint is unavailable.
-    pub max_output: Option<f64>,
-    /// Providers a run of the model never tries.
-    pub banned: Vec<String>,
-    /// Providers whose `unknown` quantization is accepted by name.
-    pub allow_unknown: Vec<String>,
-}
-
-/// One candidate the filter kept: a provider, the quantization it serves, and the prices the
-/// order sorts the rest by.
-#[derive(Debug, Clone, PartialEq)]
-pub struct ProviderCandidate {
-    /// The provider's display name, as the listing spells it.
-    pub provider: String,
-    /// The quantization the endpoint serves.
-    pub quantization: String,
-    /// The input price, USD per token.
-    pub input: f64,
-    /// The output price, USD per token.
-    pub output: f64,
-}
-
-/// Why a model has no candidate.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CandidateRefusal {
-    /// The listing, and the catalog entry, name no native quantization to filter to.
-    NoNativeLevel,
-    /// Endpoints exist, and none of them passes every filter.
-    NonePassed,
-}
-
-impl std::fmt::Display for CandidateRefusal {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::NoNativeLevel => write!(
-                f,
-                "no endpoint declares a quantization, and the catalog entry sets none"
-            ),
-            Self::NonePassed => write!(
-                f,
-                "no endpoint serves it at its native quantization within the price ceiling"
-            ),
-        }
-    }
-}
-
-/// The ordered candidate list for one model, or why it has none.
-///
-/// An endpoint is kept when its quantization is the model's native level (an `unknown` only
-/// when [`CandidatePolicy::allow_unknown`] names that provider), its input and output prices
-/// are at or below the ceiling, it publishes a cache-read price, it supports every parameter
-/// the run sends, and it is absent from the ban list. The ceiling is the developer endpoint's
-/// own input and output rates when that endpoint is listed, and the catalog entry's ceiling
-/// when it is not.
-///
-/// The developer's own endpoint comes first when it passes. The rest follow by `faults` — the
-/// provider's fault rate across recorded runs, keyed by the [provider key](provider_key) — and
-/// then by price, input then output.
-pub fn provider_candidates(
-    model_id: &str,
-    endpoints: &[EndpointOffer],
-    policy: &CandidatePolicy,
-    requirements: RunRequirements,
-    faults: &std::collections::BTreeMap<String, f64>,
-) -> Result<Vec<ProviderCandidate>, CandidateRefusal> {
-    let native = policy
-        .native_quantization
-        .as_deref()
-        .filter(|level| !level.trim().is_empty())
-        .or_else(|| native_quantization(endpoints.iter().map(|endpoint| endpoint.quantization.as_str())))
-        .ok_or(CandidateRefusal::NoNativeLevel)?;
-    let developer = endpoints.iter().find(|endpoint| {
-        same_provider(&endpoint.provider, model_author(model_id))
-    });
-    let (max_input, max_output) = match developer {
-        Some(endpoint) => (endpoint.input, endpoint.output),
-        None => (policy.max_input, policy.max_output),
-    };
-
-    let mut kept: Vec<&EndpointOffer> = endpoints
-        .iter()
-        .filter(|endpoint| {
-            endpoint_passes(endpoint, native, max_input, max_output, policy, requirements)
-        })
-        .collect();
-    if kept.is_empty() {
-        return Err(CandidateRefusal::NonePassed);
-    }
-    let author = model_author(model_id);
-    kept.sort_by(|left, right| candidate_order(left, right, author, faults));
-    Ok(kept
-        .into_iter()
-        .map(|endpoint| ProviderCandidate {
-            provider: endpoint.provider.clone(),
-            quantization: endpoint.quantization.clone(),
-            input: endpoint.input.unwrap_or(0.0),
-            output: endpoint.output.unwrap_or(0.0),
-        })
-        .collect())
-}
-
-/// Whether one endpoint passes every filter. A missing price fails the price check: an endpoint
-/// that does not say what it charges cannot be shown to be at or below the ceiling.
-fn endpoint_passes(
-    endpoint: &EndpointOffer,
-    native: &str,
-    max_input: Option<f64>,
-    max_output: Option<f64>,
-    policy: &CandidatePolicy,
-    requirements: RunRequirements,
-) -> bool {
-    if policy
-        .banned
-        .iter()
-        .any(|banned| same_provider(banned, &endpoint.provider))
-    {
-        return false;
-    }
-    let level = endpoint.quantization.trim();
-    let at_native = quantization_rank(level)
-        .zip(quantization_rank(native))
-        .is_some_and(|(level, native)| level == native)
-        || (level.eq_ignore_ascii_case("unknown")
-            && policy
-                .allow_unknown
-                .iter()
-                .any(|allowed| same_provider(allowed, &endpoint.provider)));
-    if !at_native {
-        return false;
-    }
-    let within = |price: Option<f64>, ceiling: Option<f64>| match (price, ceiling) {
-        (Some(price), Some(ceiling)) => price <= ceiling,
-        // No ceiling means the developer endpoint is unpriced and the catalog sets none, so a
-        // stated price passes; an unstated price never does.
-        (Some(_), None) => true,
-        (None, _) => false,
-    };
-    if !within(endpoint.input, max_input) || !within(endpoint.output, max_output) {
-        return false;
-    }
-    if endpoint.cache_read.is_none() {
-        return false;
-    }
-    requirements.parameters().iter().all(|parameter| {
-        endpoint
-            .supported_parameters
-            .iter()
-            .any(|supported| supported.eq_ignore_ascii_case(parameter))
-    })
-}
-
-/// The candidate order: the developer's own endpoint first, then by fault rate, then by price.
-fn candidate_order(
-    left: &EndpointOffer,
-    right: &EndpointOffer,
-    author: &str,
-    faults: &std::collections::BTreeMap<String, f64>,
-) -> std::cmp::Ordering {
-    let official = |endpoint: &EndpointOffer| same_provider(&endpoint.provider, author);
-    official(right).cmp(&official(left)).then_with(|| {
-        fault_rate(&left.provider, faults)
-            .total_cmp(&fault_rate(&right.provider, faults))
-            .then_with(|| {
-                left.input
-                    .unwrap_or(f64::MAX)
-                    .total_cmp(&right.input.unwrap_or(f64::MAX))
-                    .then(
-                        left.output
-                            .unwrap_or(f64::MAX)
-                            .total_cmp(&right.output.unwrap_or(f64::MAX)),
-                    )
-                    .then_with(|| left.provider.cmp(&right.provider))
-            })
-    })
-}
-
-/// A provider's recorded fault rate, or zero for one the record has never seen.
-fn fault_rate(provider: &str, faults: &std::collections::BTreeMap<String, f64>) -> f64 {
-    faults
-        .get(&provider_key(provider))
-        .copied()
-        .unwrap_or(0.0)
-}
-
-/// The author segment of a model id: `openai/gpt-5.6-sol` and `openai:extended` both give
-/// `openai`.
-fn model_author(model_id: &str) -> &str {
-    model_id.split(['/', ':']).next().unwrap_or(model_id)
-}
-
 /// One provider route of a model, as [`OpenRouterPrices::provider_routes`]
 /// reports it.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProviderRoute {
-    /// The provider's display name — the value `provider.only` pins.
+    /// The provider's display name — the value `provider.only` names.
     pub name: String,
     /// The route's context window in tokens, when reported.
     pub context_length: Option<u64>,
-    /// The quantization the route declares.
-    pub quantization: String,
-    /// The input price, USD per token.
-    pub input: Option<f64>,
-    /// The output price, USD per token.
-    pub output: Option<f64>,
-    /// The cache-read price, USD per token.
-    pub cache_read: Option<f64>,
-    /// The parameters the route says it supports.
-    pub supported_parameters: Vec<String>,
 }
 
 /// Whether `a` and `b` name the same OpenRouter provider.
@@ -620,25 +361,40 @@ fn routes_of(data: ModelEndpoints) -> Vec<ProviderRoute> {
         routes.push(ProviderRoute {
             name,
             context_length: endpoint.context_length,
-            quantization: endpoint
-                .quantization
-                .unwrap_or_default()
-                .trim()
-                .to_string(),
-            input: endpoint.pricing.as_ref().and_then(|pricing| parse_price(&pricing.prompt)),
-            output: endpoint
-                .pricing
-                .as_ref()
-                .and_then(|pricing| parse_price(&pricing.completion)),
-            cache_read: endpoint
-                .pricing
-                .as_ref()
-                .and_then(|pricing| pricing.input_cache_read.as_deref().map(parse_price))
-                .flatten(),
-            supported_parameters: endpoint.supported_parameters,
         });
     }
     routes
+}
+
+/// Reduce one model's endpoints body to every named endpoint as the candidate filter reads it,
+/// in listing order. A provider listing several endpoints appears once per endpoint.
+fn offers_of(data: &ModelEndpoints) -> Vec<EndpointOffer> {
+    data.endpoints
+        .iter()
+        .filter_map(|endpoint| {
+            let provider = endpoint
+                .provider_name
+                .as_deref()
+                .map(str::trim)
+                .filter(|name| !name.is_empty())?;
+            let pricing = endpoint.pricing.as_ref();
+            Some(EndpointOffer {
+                provider: provider.to_string(),
+                quantization: endpoint
+                    .quantization
+                    .as_deref()
+                    .map(|level| level.trim().to_ascii_lowercase())
+                    .filter(|level| !level.is_empty())
+                    .unwrap_or_else(|| QUANTIZATION_UNKNOWN.to_string()),
+                input: pricing.and_then(|pricing| parse_price(&pricing.prompt)),
+                output: pricing.and_then(|pricing| parse_price(&pricing.completion)),
+                cache_read: pricing
+                    .and_then(|pricing| pricing.input_cache_read.as_deref())
+                    .and_then(parse_price),
+                supported_parameters: endpoint.supported_parameters.clone(),
+            })
+        })
+        .collect()
 }
 
 /// Map one model's endpoints response onto the [`ModelListing`] the config form
@@ -801,15 +557,15 @@ struct ModelEndpoints {
     endpoints: Vec<ModelEndpoint>,
 }
 
-/// One provider route for a model. A route may report no context length.
+/// One provider route for a model. A route may report no context length, and the fields beyond
+/// the name are what the [candidate filter](provider_candidates) reads.
 #[derive(Debug, Deserialize)]
 struct ModelEndpoint {
     #[serde(default)]
     provider_name: Option<String>,
     #[serde(default)]
     context_length: Option<u64>,
-    /// The quantization the route declares. Absent reads as `unknown`: a route that does not say
-    /// what it serves is not one the candidate filter can keep.
+    /// The quantization the route declares. Absent reads as `unknown`.
     #[serde(default)]
     quantization: Option<String>,
     #[serde(default)]
