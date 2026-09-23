@@ -57,9 +57,9 @@
 //! test that constructs the invocation itself (supplying the windows a launch would
 //! have), which is exactly the intended blast radius.
 
-use std::collections::BTreeMap;
-use std::sync::Mutex;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use futures_util::StreamExt;
@@ -437,6 +437,12 @@ pub struct OpenRouterClient {
     model_id: String,
     api_key: String,
     retry: RetryPolicy,
+    /// The run's record of which models' providers refused a pinned `tool_choice`, read by every
+    /// [required-tool request](ModelClient::complete_requiring) this client sends. Shared with
+    /// every other client the run's [factory](DefaultClientFactory) builds, so the pin is tried
+    /// once per model per run: an agent's successor, its subagents and its handoff compaction all
+    /// ask on `auto` once any of them has been refused. See [`ToolChoiceMemory`].
+    tool_choice: ToolChoiceMemory,
     /// The run's [routing key](RoutingKey), the same value on every agent's client. It pins the
     /// whole run's requests to one provider endpoint, so an agent's successive turns reuse the
     /// prefix the last turn cached and sibling agents that open on the same prefix reuse each
@@ -503,6 +509,7 @@ impl OpenRouterClient {
             model_id: model_id.into(),
             api_key: api_key.into(),
             retry,
+            tool_choice: ToolChoiceMemory::default(),
             routing_key,
             stable_ttl: CacheTtl::Standard,
             loop_guard: None,
@@ -522,6 +529,14 @@ impl OpenRouterClient {
         gateway: impl Fn(&reqwest::Request) -> reqwest::Response + Send + Sync + 'static,
     ) -> Self {
         self.gateway = Some(std::sync::Arc::new(gateway));
+        self
+    }
+
+    /// This client reading and recording [tool-choice refusals](ToolChoiceMemory) in `memory`,
+    /// the run-wide record its [factory](DefaultClientFactory) shares between every client it
+    /// builds. A client built without it keeps a record of its own.
+    pub fn with_tool_choice_memory(mut self, memory: ToolChoiceMemory) -> Self {
+        self.tool_choice = memory;
         self
     }
 
@@ -646,6 +661,21 @@ impl OpenRouterClient {
         self.loop_guard.is_some()
     }
 
+    /// The one `warn` a [tool-choice downgrade](ToolChoiceMemory) is logged with, on the stream
+    /// [retries](Self::announce_retry) are announced on: the model and the provider's message.
+    fn announce_tool_choice_downgrade(&self, message: &str) {
+        let stream = self
+            .retry_stream
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(emitter) = stream.as_ref() {
+            emitter.emit(GgTelemetryKind::Log {
+                level: "warn".to_string(),
+                message: tool_choice_downgrade_message(&self.model_id, message),
+            });
+        }
+    }
+
     /// One attempt's request, headers and all, before its body is attached.
     ///
     /// Shared by [both transports](Self) rather than written out twice: the headers are the run's
@@ -691,12 +721,19 @@ impl ModelClient for OpenRouterClient {
     /// Offer `tool` and pin `tool_choice` to it, so the reply is the call rather than the model's
     /// judgement about whether to make one — the wire form of the default's intent, which cannot
     /// express the requirement.
+    ///
+    /// The pin is sent where the provider takes it. A [`400` naming
+    /// `tool_choice`](is_tool_choice_refusal) is answered by re-sending the same request with
+    /// `tool_choice` set to `auto`, at once and outside the retry schedule, and the refusal is
+    /// recorded in the run's [`ToolChoiceMemory`] so every later required-tool request for this
+    /// model, a turn's and a handoff compaction's alike, is sent on `auto` from the start. The
+    /// run that recorded it logs it once.
     async fn complete_requiring(
         &self,
         messages: &[Message],
         tool: &ToolDefinition,
     ) -> Result<ModelResponse, ModelError> {
-        let body = build_required_tool_request_body(
+        let mut body = build_required_tool_request_body(
             &self.model_id,
             messages,
             tool,
@@ -704,7 +741,22 @@ impl ModelClient for OpenRouterClient {
             self.stable_ttl,
             self.streams(),
         );
-        self.send(body, messages).await
+        if self.tool_choice.refused(&self.model_id) {
+            body["tool_choice"] = json!("auto");
+            return self.send(body, messages).await;
+        }
+        match self.send(body.clone(), messages).await {
+            Err(ModelError::Fatal { status, message })
+                if is_tool_choice_refusal(status, &message) =>
+            {
+                if self.tool_choice.record_refusal(&self.model_id) {
+                    self.announce_tool_choice_downgrade(&message);
+                }
+                body["tool_choice"] = json!("auto");
+                self.send(body, messages).await
+            }
+            outcome => outcome,
+        }
     }
 
     fn model_id(&self) -> &str {
@@ -1178,6 +1230,60 @@ pub fn is_image_unsupported(status: u16, body: &str) -> bool {
         "invalid content type",
     ];
     PHRASES.iter().any(|phrase| body.contains(phrase))
+}
+
+/// Whether a fatal response refuses the request's pinned tool choice: a `400` whose body names
+/// `tool_choice`.
+///
+/// The match is on the parameter rather than on one provider's wording of why it was refused,
+/// because the reason varies (a model served in a thinking mode, a provider that never took the
+/// object form) while the parameter does not. A thinking-mode refusal reads *"The tool_choice
+/// parameter does not support being set to required or object in thinking mode"*.
+pub fn is_tool_choice_refusal(status: u16, body: &str) -> bool {
+    status == 400 && body.contains("tool_choice")
+}
+
+/// The `warn` line a [tool-choice downgrade](ToolChoiceMemory) is logged with: the model whose
+/// provider refused the pin, and the provider's own message.
+pub fn tool_choice_downgrade_message(model_id: &str, provider_message: &str) -> String {
+    format!(
+        "the provider refused a pinned tool choice for `{model_id}` ({provider_message}); \
+         required-tool requests for it are sent with `tool_choice` set to `auto` for the rest of \
+         the run",
+    )
+}
+
+/// The run's record of the models whose provider refused a pinned `tool_choice`.
+///
+/// A [required-tool request](ModelClient::complete_requiring) is pinned to its one tool until
+/// the model's provider [refuses the pin](is_tool_choice_refusal). The refusal is recorded here
+/// and every later required-tool request for that model is sent on `auto`, so the pin is tried
+/// once per model per run rather than once per request. A reply on `auto` that makes no call is
+/// the caller's ordinary missing-completion handling.
+///
+/// Cloning shares the record. The run's [factory](DefaultClientFactory) holds one and hands it to
+/// every client it builds, so an agent's successor, its subagents and its handoff compaction
+/// client all read the same record.
+#[derive(Debug, Clone, Default)]
+pub struct ToolChoiceMemory(Arc<Mutex<BTreeSet<String>>>);
+
+impl ToolChoiceMemory {
+    /// Whether `model_id`'s provider has refused a pinned tool choice this run.
+    pub fn refused(&self, model_id: &str) -> bool {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .contains(model_id)
+    }
+
+    /// Record that `model_id`'s provider refused a pinned tool choice. `true` when this call is
+    /// the one that recorded it, which is the call that logs the downgrade.
+    pub fn record_refusal(&self, model_id: &str) -> bool {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(model_id.to_string())
+    }
 }
 
 /// Truncate a provider error body to [`ERROR_BODY_CAP`] so a huge HTML error page
@@ -3926,18 +4032,24 @@ pub fn provider_for(binding: &GgSlotBinding) -> ProviderKind {
 /// [limits](crate::limits::RunLimits), run-wide like the routing key: every agent's client, and
 /// the second client a [handoff compaction](crate::compaction) resolves, calls under the one
 /// ceiling and retries on the one schedule the launch recorded.
+///
+/// `tool_choice` is the run's [record of refused tool-choice pins](ToolChoiceMemory), shared by
+/// every client built for the run so a refusal is taken once per model rather than once per
+/// client.
 pub fn client_for_slot(
     binding: &GgSlotBinding,
     routing_key: &RoutingKey,
     model_call_timeout: Duration,
     retry_policy: RetryPolicy,
+    tool_choice: &ToolChoiceMemory,
 ) -> Result<Box<dyn ModelClient>, ModelError> {
     match provider_for(binding) {
         ProviderKind::Mock => Ok(Box::new(mock_client_for(&binding.model_id))),
         ProviderKind::OpenRouter => Ok(Box::new(
             OpenRouterClient::from_binding(binding, routing_key)?
                 .with_model_call_timeout(model_call_timeout)
-                .with_retry_policy(retry_policy),
+                .with_retry_policy(retry_policy)
+                .with_tool_choice_memory(tool_choice.clone()),
         )),
     }
 }
@@ -4100,6 +4212,9 @@ pub struct DefaultClientFactory {
     /// The run's resolved [retry schedule](crate::limits::RunLimits::retry_policy), stamped on
     /// every live client this factory builds beside the ceiling.
     retry_policy: RetryPolicy,
+    /// The run's [record of refused tool-choice pins](ToolChoiceMemory), shared by every live
+    /// client this factory builds.
+    tool_choice: ToolChoiceMemory,
 }
 
 impl DefaultClientFactory {
@@ -4117,6 +4232,7 @@ impl DefaultClientFactory {
             routing_key,
             model_call_timeout,
             retry_policy,
+            tool_choice: ToolChoiceMemory::default(),
         }
     }
 }
@@ -4128,6 +4244,7 @@ impl ClientFactory for DefaultClientFactory {
             &self.routing_key,
             self.model_call_timeout,
             self.retry_policy,
+            &self.tool_choice,
         )
     }
 }
@@ -4151,3 +4268,7 @@ mod retry_tests;
 #[cfg(test)]
 #[path = "client.routing.test.rs"]
 mod routing_tests;
+
+#[cfg(test)]
+#[path = "client.tool-choice.test.rs"]
+mod tool_choice_tests;

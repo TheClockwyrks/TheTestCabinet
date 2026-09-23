@@ -849,6 +849,7 @@ fn client_for_slot_builds_mock_for_mock_binding() {
         &RoutingKey::mint(),
         DEFAULT_MODEL_CALL_TIMEOUT,
         RetryPolicy::default(),
+        &ToolChoiceMemory::default(),
     )
     .expect("mock client");
     assert_eq!(client.model_id(), "mock/echo");

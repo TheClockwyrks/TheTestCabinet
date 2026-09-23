@@ -16,7 +16,8 @@ two, so an A/B of the response shape is a comparison inside a single run.
 
 - The program is the `program` string of a `submit_program` call — bare code,
   with no fence and no prose inside it — and every request offers exactly that
-  one tool and **requires** a call to it (forced tool choice). gg runs no
+  one tool and asks for a call to it: pinned to the tool where the provider
+  takes a forced tool choice, on `auto` where it does not. gg runs no
   analysis of its own and repairs nothing: the string is prepared exactly as
   sent by the configured program language, and the language's compiler or
   parser is what accepts or refuses it. A submission that fails to compile is
