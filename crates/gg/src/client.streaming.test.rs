@@ -260,7 +260,9 @@ fn only_a_delta_from_the_model_counts_as_progress() {
         "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"\"}}]}\n\n",
         "data: {\"choices\":[{\"index\":0,\"delta\":{}}]}\n\n",
     );
-    let delta = accumulator.push_bytes(framing.as_bytes()).expect("readable");
+    let delta = accumulator
+        .push_bytes(framing.as_bytes())
+        .expect("readable");
     assert!(!delta.progressed, "framing is not progress: {framing:?}");
     assert_eq!(delta.text, "");
 
@@ -275,7 +277,9 @@ fn only_a_delta_from_the_model_counts_as_progress() {
         ] } }] })),
     ]
     .concat();
-    let delta = accumulator.push_bytes(working.as_bytes()).expect("readable");
+    let delta = accumulator
+        .push_bytes(working.as_bytes())
+        .expect("readable");
     assert!(delta.progressed, "the model's output is progress");
     // Only `content` reaches the detector — reasoning is the model's working, not its answer.
     assert_eq!(delta.text, "working");
@@ -285,7 +289,9 @@ fn only_a_delta_from_the_model_counts_as_progress() {
         "{}data: [DONE]\n\n",
         event(json!({ "choices": [], "usage": { "prompt_tokens": 10, "completion_tokens": 5 } })),
     );
-    let delta = accumulator.push_bytes(trailer.as_bytes()).expect("readable");
+    let delta = accumulator
+        .push_bytes(trailer.as_bytes())
+        .expect("readable");
     assert!(!delta.progressed, "the trailer is not progress");
     assert!(accumulator.done());
 }
@@ -306,7 +312,10 @@ fn reasoning_deltas_count_as_progress() {
                 .as_bytes(),
             )
             .expect("readable");
-        assert!(delta.progressed, "each reasoning delta restarts the idle clock");
+        assert!(
+            delta.progressed,
+            "each reasoning delta restarts the idle clock"
+        );
         assert_eq!(delta.text, "", "and none of it becomes the reply");
     }
 
@@ -846,7 +855,10 @@ impl StreamAccumulator {
             &mut delta,
         )
         .expect("a synthetic stop is readable");
-        assert!(!delta.progressed, "a synthetic stop is framing, not a delta");
+        assert!(
+            !delta.progressed,
+            "a synthetic stop is framing, not a delta"
+        );
         self.finish().expect("assembles")
     }
 }

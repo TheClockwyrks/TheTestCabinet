@@ -27,7 +27,10 @@ const ANSWER: &str = concat!(
 type Sent = (Option<String>, Value);
 
 /// `client` answered with `answer`, and the requests it sends as they went out.
-fn recorded(client: OpenRouterClient, answer: &'static str) -> (OpenRouterClient, Arc<Mutex<Vec<Sent>>>) {
+fn recorded(
+    client: OpenRouterClient,
+    answer: &'static str,
+) -> (OpenRouterClient, Arc<Mutex<Vec<Sent>>>) {
     let sent = Arc::new(Mutex::new(Vec::new()));
     let log = Arc::clone(&sent);
     let client = client.answered_by(move |request| {

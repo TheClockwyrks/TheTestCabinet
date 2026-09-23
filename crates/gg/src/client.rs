@@ -1202,10 +1202,13 @@ where
         if delta.progressed {
             last_delta = tokio::time::Instant::now();
         }
-        if let Some(trip) = guard.as_mut().and_then(|guard| match guard.push(&delta.text) {
-            LoopVerdict::Continue => None,
-            LoopVerdict::Looping(trip) => Some(trip),
-        }) {
+        if let Some(trip) = guard
+            .as_mut()
+            .and_then(|guard| match guard.push(&delta.text) {
+                LoopVerdict::Continue => None,
+                LoopVerdict::Looping(trip) => Some(trip),
+            })
+        {
             // The trip says which rule fired and in that rule's own units — words for a repetition,
             // characters for the backstop. The size of what is being thrown away is carried in
             // **both** units, because that is what the discarded reply cost: the operator reading
@@ -2408,15 +2411,15 @@ impl WireDelta {
     /// a stalled stream restart its clock forever.
     fn progressed(&self) -> bool {
         self.content.as_deref().is_some_and(|c| !c.is_empty())
-            || self
-                .reasoning
-                .as_deref()
-                .is_some_and(|c| !c.is_empty())
+            || self.reasoning.as_deref().is_some_and(|c| !c.is_empty())
             || self
                 .reasoning_content
                 .as_deref()
                 .is_some_and(|c| !c.is_empty())
-            || self.tool_calls.iter().any(WireDeltaToolCall::carries_a_delta)
+            || self
+                .tool_calls
+                .iter()
+                .any(WireDeltaToolCall::carries_a_delta)
     }
 }
 
@@ -2440,13 +2443,13 @@ impl WireDeltaToolCall {
     /// a fragment of a tool call is the model working, and a chunk that names an index and
     /// nothing else is framing that must leave the clock running.
     fn carries_a_delta(&self) -> bool {
-        let named = |value: &Option<String>| {
-            value.as_deref().is_some_and(|value| !value.is_empty())
-        };
+        let named =
+            |value: &Option<String>| value.as_deref().is_some_and(|value| !value.is_empty());
         named(&self.id)
-            || self.function.as_ref().is_some_and(|function| {
-                named(&function.name) || named(&function.arguments)
-            })
+            || self
+                .function
+                .as_ref()
+                .is_some_and(|function| named(&function.name) || named(&function.arguments))
     }
 }
 

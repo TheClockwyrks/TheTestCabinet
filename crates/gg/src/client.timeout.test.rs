@@ -106,10 +106,7 @@ async fn a_stalled_gateway_is_cancelled_at_the_idle_bound_and_retried() {
     );
     assert_eq!(requests.load(Ordering::SeqCst), 3);
     assert!(
-        matches!(
-            outcome,
-            Err(ModelError::RetryExhausted { attempts: 3, .. })
-        ),
+        matches!(outcome, Err(ModelError::RetryExhausted { attempts: 3, .. })),
         "a stall retried to the end of the schedule is a transport failure: {outcome:?}"
     );
 }
@@ -174,7 +171,8 @@ async fn the_ceiling_bounds_each_attempt_and_leaves_the_backoff_outside() {
 /// a stalled provider is blacklistable by name exactly as a failing one is.
 #[tokio::test(start_paused = true)]
 async fn a_mid_stream_stall_is_cancelled_at_the_idle_bound_naming_its_provider() {
-    let (client, requests) = stalled_client(FIRST_EVENT, two_retries(), CONFIGURED, CONFIGURED_IDLE);
+    let (client, requests) =
+        stalled_client(FIRST_EVENT, two_retries(), CONFIGURED, CONFIGURED_IDLE);
     let sink = CollectingSink::new();
     client.announce_retries_on(&Emitter::with_sink(None, Box::new(sink.clone())));
 
@@ -200,9 +198,8 @@ async fn a_mid_stream_stall_is_cancelled_at_the_idle_bound_naming_its_provider()
         .collect::<Vec<_>>();
     assert_eq!(warned.len(), 2, "one warn per retry: {warned:?}");
     assert!(
-        warned[0].contains(
-            "the stream stalled: no delta from the model for 11s (provider: slowco)"
-        ),
+        warned[0]
+            .contains("the stream stalled: no delta from the model for 11s (provider: slowco)"),
         "the retry is announced as a stall naming the provider: {warned:?}"
     );
 }
@@ -279,14 +276,13 @@ async fn a_stream_that_goes_quiet_after_a_chunk_is_a_stall_naming_its_provider()
 /// delta's gap plus the bound, not the keep-alive's arrival.
 #[tokio::test(start_paused = true)]
 async fn keep_alives_do_not_restart_the_idle_clock() {
-    let stream = futures_util::stream::iter([Ok::<_, std::convert::Infallible>(
-        FIRST_EVENT.as_bytes(),
-    )])
-    .chain(futures_util::stream::unfold((), |()| async move {
-        // A keep-alive comment every two seconds, forever, and never a delta again.
-        tokio::time::sleep(Duration::from_secs(2)).await;
-        Some((Ok(": OPENROUTER PROCESSING\n\n".as_bytes()), ()))
-    }));
+    let stream =
+        futures_util::stream::iter([Ok::<_, std::convert::Infallible>(FIRST_EVENT.as_bytes())])
+            .chain(futures_util::stream::unfold((), |()| async move {
+                // A keep-alive comment every two seconds, forever, and never a delta again.
+                tokio::time::sleep(Duration::from_secs(2)).await;
+                Some((Ok(": OPENROUTER PROCESSING\n\n".as_bytes()), ()))
+            }));
     let idle = Duration::from_secs(5);
     let started = tokio::time::Instant::now();
     let outcome = read_stream(
