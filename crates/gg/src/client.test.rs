@@ -3,7 +3,7 @@ use crate::model::{
     FinishReason, ImageContent, Message, ModelClient, ModelError, ToolCall, ToolDefinition,
 };
 use serde_json::json;
-use test_cabinet_core::gg::{GgSlotBinding, PRIMARY_SLOT};
+use test_cabinet_core::gg::{GgReasoning, GgReasoningEffort, GgSlotBinding, PRIMARY_SLOT};
 
 // ---------------------------------------------------------------------------
 // Request building
@@ -30,6 +30,7 @@ fn build_request_body_uses_openai_tools_shape() {
         &tools,
         None,
         CacheTtl::Standard,
+        None,
         false,
     );
 
@@ -64,7 +65,7 @@ fn build_request_body_encodes_tool_call_arguments_as_string() {
         Message::tool_result("call_1", "wrote 13 bytes"),
     ];
 
-    let body = build_request_body("m", &messages, &[], None, CacheTtl::Standard, false);
+    let body = build_request_body("m", &messages, &[], None, CacheTtl::Standard, None, false);
 
     let wire_call = &body["messages"][0]["tool_calls"][0];
     assert_eq!(wire_call["id"], json!("call_1"));
@@ -97,10 +98,79 @@ fn build_request_body_omits_tools_when_none() {
         &[],
         None,
         CacheTtl::Standard,
+        None,
         false,
     );
     assert!(body.get("tools").is_none());
     assert!(body.get("tool_choice").is_none());
+}
+
+// ---------------------------------------------------------------------------
+// Reasoning effort
+// ---------------------------------------------------------------------------
+
+/// The agent's [reasoning setting](GgReasoning) rides every request as the unified `reasoning`
+/// object, one key wide: the effort level or the token budget the profile named, in the unified
+/// vocabulary's own spellings. An agent that named none sends no `reasoning` parameter at all and
+/// runs at its provider's default.
+#[test]
+fn build_request_body_sends_the_reasoning_object_and_only_what_it_names() {
+    let messages = [Message::user("build it")];
+    let body = |reasoning| {
+        build_request_body(
+            "deepseek/deepseek-v4.1-flash",
+            &messages,
+            &[],
+            None,
+            CacheTtl::Standard,
+            reasoning,
+            false,
+        )
+    };
+
+    let effort = body(Some(GgReasoning {
+        effort: Some(GgReasoningEffort::Low),
+        max_tokens: None,
+    }));
+    assert_eq!(effort["reasoning"], json!({ "effort": "low" }));
+
+    let budget = body(Some(GgReasoning {
+        effort: None,
+        max_tokens: Some(512),
+    }));
+    assert_eq!(budget["reasoning"], json!({ "max_tokens": 512 }));
+
+    let unnamed = body(None);
+    assert!(
+        unnamed.get("reasoning").is_none(),
+        "an agent without the setting sends none: {unnamed}"
+    );
+}
+
+/// A compaction summary is a request of the agent too — it runs on the agent's model at the
+/// agent's task — so the required-tool body a summary is requested with carries the same object
+/// the turns do.
+#[test]
+fn build_required_tool_request_body_sends_the_reasoning_object() {
+    let tool = ToolDefinition {
+        name: "compact".to_string(),
+        description: "Compact.".to_string(),
+        parameters: json!({ "type": "object", "properties": {} }),
+    };
+    let body = build_required_tool_request_body(
+        "z-ai/glm-5.3-flash",
+        &[Message::user("summarize")],
+        &tool,
+        None,
+        CacheTtl::Standard,
+        Some(GgReasoning {
+            effort: Some(GgReasoningEffort::Minimal),
+            max_tokens: None,
+        }),
+        false,
+    );
+    assert_eq!(body["reasoning"], json!({ "effort": "minimal" }));
+    assert_eq!(body["tool_choice"]["function"]["name"], json!("compact"));
 }
 
 // ---------------------------------------------------------------------------
@@ -120,6 +190,7 @@ fn build_request_body_sends_an_attached_image_as_a_content_part() {
         &[],
         None,
         CacheTtl::Standard,
+        None,
         false,
     );
 
@@ -162,6 +233,7 @@ fn a_marker_model_sends_every_content_message_as_parts() {
         &[],
         None,
         CacheTtl::Standard,
+        None,
         false,
     );
 
@@ -204,6 +276,7 @@ fn build_request_body_sends_no_markers_to_an_implicitly_caching_model() {
             &[],
             None,
             CacheTtl::Standard,
+            None,
             false,
         );
         assert!(
@@ -289,6 +362,7 @@ fn build_request_body_marks_the_opening_context_and_the_tail() {
         &[],
         None,
         CacheTtl::Standard,
+        None,
         false,
     );
 
@@ -443,6 +517,7 @@ fn build_request_body_marks_the_last_part_of_an_image_message() {
         &[],
         None,
         CacheTtl::Extended,
+        None,
         false,
     );
 
@@ -505,6 +580,7 @@ fn build_request_body_extends_the_ttl_of_the_stable_breakpoints() {
         &[],
         None,
         CacheTtl::Extended,
+        None,
         false,
     );
 
@@ -544,6 +620,7 @@ fn build_request_body_qualifies_no_marker_at_the_standard_lifetime() {
         &[],
         None,
         CacheTtl::Standard,
+        None,
         false,
     );
 
@@ -577,6 +654,7 @@ fn build_request_body_extends_a_lone_anchor() {
         &[],
         None,
         CacheTtl::Extended,
+        None,
         false,
     );
 
@@ -602,6 +680,7 @@ fn build_request_body_orders_extended_markers_before_the_rolling_one() {
             &[],
             None,
             CacheTtl::Extended,
+            None,
             false,
         );
         let sent = markers(&body);

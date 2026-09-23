@@ -137,13 +137,22 @@ fn the_body_carries_the_routing_key_as_both_fields() {
     let messages = [Message::user("hi")];
     for stream in [false, true] {
         for body in [
-            build_request_body("m", &messages, &[], Some(&key), CacheTtl::Standard, stream),
+            build_request_body(
+                "m",
+                &messages,
+                &[],
+                Some(&key),
+                CacheTtl::Standard,
+                None,
+                stream,
+            ),
             build_required_tool_request_body(
                 "m",
                 &messages,
                 &submit_tool(),
                 Some(&key),
                 CacheTtl::Standard,
+                None,
                 stream,
             ),
         ] {
@@ -162,6 +171,7 @@ fn the_body_omits_both_fields_without_a_key() {
         &[],
         None,
         CacheTtl::Standard,
+        None,
         false,
     );
     assert!(body.get("session_id").is_none());

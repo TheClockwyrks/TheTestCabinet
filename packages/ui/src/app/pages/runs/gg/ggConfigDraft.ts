@@ -40,6 +40,8 @@ import type {
   GgModuleKind,
   GgOpeningTurn,
   GgPromptCacheTtl,
+  GgReasoning,
+  GgReasoningEffort,
   GgRunLimits,
   GgSubagentRef,
   GgSubagentScope,
@@ -317,6 +319,11 @@ export interface GgAgentDraft {
   // default, and the only one that costs no premium — is what an agent that never touched
   // the knob saves as: no key at all.
   promptCacheTtl: GgPromptCacheTtl;
+  // How hard this agent's model is asked to think: the provider default — no `reasoning`
+  // key at all — an effort level, or a budget of reasoning tokens. Exactly one of the
+  // last two, which is the one thing about the lever gg refuses a launch over
+  // ([reasoningError]).
+  reasoning: GgReasoningDraft;
   // Whether gg watches this agent's replies for a generation loop, and with what knobs.
   loopDetection: GgLoopDetectionDraft;
   subagents: GgSubagentDraft[];
@@ -359,6 +366,32 @@ export function defaultOpeningTurn(): GgOpeningTurnDraft {
     functions: [...DEFAULT_OPENING_TURN.functions],
     tree: { ...DEFAULT_OPENING_TURN.tree },
   };
+}
+
+// One agent's reasoning setting as the editor holds it: which of the three arms is
+// chosen, and the raw fields the two value arms are drawn from.
+//
+// Both value fields are held whichever arm is up, for the reason every capability draft
+// keeps the params of the implementations it is not running: a stored declaration naming
+// *both* an effort and a budget — one gg refuses to launch — has to keep both halves
+// visible for the operator to resolve ([reasoningDraft]), and switching arms must not
+// lose what was typed. `effort` holds the wire level itself; `maxTokens` is text for the
+// same reason the loop-detection knobs are ([GgLoopDetectionDraft]): a half-typed budget
+// has to survive a re-render without being read as a value.
+export interface GgReasoningDraft {
+  kind: "default" | "effort" | "maxTokens";
+  effort: GgReasoningEffort | "";
+  maxTokens: string;
+}
+
+/**
+ * A reasoning setting as an agent that has never touched the lever holds it: the provider
+ * default, naming neither an effort nor a budget. This is also what a stored
+ * configuration that declares none loads as, and what such an agent saves back as — no
+ * key at all.
+ */
+export function blankReasoning(): GgReasoningDraft {
+  return { kind: "default", effort: "", maxTokens: "" };
 }
 
 // One agent's loop detection as the editor holds it: the switch as a boolean, and one
@@ -692,6 +725,7 @@ export function resetAgentForMode(agent: GgAgentDraft): GgAgentDraft {
         modelSlotId: "",
         modelId: "",
         promptCacheTtl: "standard" as const,
+        reasoning: blankReasoning(),
         loopDetection: blankLoopDetection(),
         tools: [],
         operations: [],
@@ -794,6 +828,7 @@ export function blankAgentDraft(
     customInstructions: "",
     systemPromptTemplate: "",
     promptCacheTtl: "standard",
+    reasoning: blankReasoning(),
     loopDetection: blankLoopDetection(),
     subagents: [],
     hooks: [],
@@ -1585,6 +1620,7 @@ export function agentDraftFromConfig(agent: GgAgentConfig): GgAgentDraft {
     // A configuration that names no lifetime reads as the standard one, which is the
     // same reading gg gives it.
     promptCacheTtl: agent.promptCacheTtl ?? "standard",
+    reasoning: reasoningDraft(agent.reasoning),
     loopDetection: loopDetectionDraft(agent.loopDetection),
     // Keyed by the profile's id rather than its name: two profiles may share a name, and
     // the hook row ids have to be unique across the whole form.
@@ -2476,6 +2512,106 @@ export function loopDetectionWarning(
   return `The detector needs ${minOffenders} distinct repeated words in a window that only holds ${windowWords}, so it could never trip on repetition, and only the reply ceiling would ever fire.`;
 }
 
+// --- Reasoning -------------------------------------------------------------------
+//
+// A per-agent, non-capability lever (see [GgReasoningDraft]): how hard the agent's model
+// is asked to think. The two conversions below are the whole of its round-trip, driven by
+// the raw fields the way [loopDetectionKey] is driven by the knob fields — so a lever
+// nobody moved writes no key at all, and an agent that never touched it survives a save
+// byte for byte.
+
+/**
+ * A stored declaration as the editor holds it: the arm its one half implies, with both
+ * raw fields kept exactly as they were. `undefined`, an agent that left the lever alone,
+ * loads [blank](blankReasoning) — the provider default, which is exactly gg's own reading
+ * of an absent key.
+ *
+ * A declaration naming **both** an effort and a budget is one gg refuses to launch rather
+ * than read either half of, so it loads onto the default arm with both raw fields kept
+ * and no arm chosen: the save gate refuses it ([reasoningError]) and the operator picks
+ * which one to keep in the Reasoning control. Deciding that here — dropping one half on
+ * the way in — would resolve a contradiction the operator was never shown.
+ */
+export function reasoningDraft(
+  stored: GgReasoning | undefined,
+): GgReasoningDraft {
+  const draft = blankReasoning();
+  if (!stored) return draft;
+  // A budget of zero is refused rather than read as `none`, but it is still a figure the
+  // operator wrote — so the test is against `undefined` rather than falsiness, the same
+  // rule the loop-detection knobs load under.
+  draft.effort = stored.effort ?? "";
+  draft.maxTokens =
+    stored.maxTokens === undefined ? "" : String(stored.maxTokens);
+  if (draft.effort && draft.maxTokens) return draft;
+  if (draft.effort) draft.kind = "effort";
+  else if (draft.maxTokens) draft.kind = "maxTokens";
+  return draft;
+}
+
+/**
+ * The `reasoning` key an agent writes, spread into its wire config — or nothing at all
+ * when the lever names neither half, so a configuration that never touched it round-trips
+ * byte for byte.
+ *
+ * Written from the raw fields rather than from the chosen arm, the way
+ * [loopDetectionKey] writes from the knob fields: a field holding a value is a value to
+ * record whichever arm is up, one holding nothing is the absent key — "run at the
+ * provider's default", which is what gg sends no parameter for — and half-typed text is
+ * not a value to record at all.
+ */
+export function reasoningKey(draft: GgReasoningDraft): {
+  reasoning?: GgReasoning;
+} {
+  const reasoning: GgReasoning = {};
+  let named = false;
+  if (draft.effort) {
+    reasoning.effort = draft.effort;
+    named = true;
+  }
+  const raw = draft.maxTokens.trim();
+  if (raw) {
+    const value = Number(raw);
+    if (Number.isFinite(value)) {
+      reasoning.maxTokens = value;
+      named = true;
+    }
+  }
+  if (!named) return {};
+  return { reasoning };
+}
+
+/**
+ * Why an agent's reasoning setting cannot be saved, or `null` when it is well-formed —
+ * gg's own launch refusals, mirrored exactly, so a configuration the editor saves is one
+ * gg will start: a setting that names **both** an effort and a budget, names **neither**,
+ * or holds a budget of zero is refused at launch rather than read as either half, and is
+ * refused here where it is still one control to fix.
+ *
+ * Every one of these is resolved in the Reasoning control — by picking which one of the
+ * two to name — so the messages point there rather than at a figure gg would substitute a
+ * default for.
+ */
+export function reasoningError(draft: GgReasoningDraft): string | null {
+  const hasEffort = Boolean(draft.effort);
+  const raw = draft.maxTokens.trim();
+  if (hasEffort && raw) {
+    return "This reasoning setting names both an effort level and a token budget, and gg sends one. Pick which one to keep in the Reasoning control.";
+  }
+  if (draft.kind === "effort" && !hasEffort) {
+    return "This reasoning setting names neither an effort level nor a token budget, and gg sends one of the two. Pick one in the Reasoning control.";
+  }
+  if (draft.kind === "maxTokens") {
+    // An empty field, half-typed text, a fraction and zero are all no count of reasoning
+    // tokens — and zero is refused rather than read as `none`, which has a spelling of
+    // its own.
+    if (!raw || !Number.isInteger(Number(raw)) || Number(raw) < 1) {
+      return "A token budget needs a whole count of one or more reasoning tokens.";
+    }
+  }
+  return null;
+}
+
 /**
  * One agent's per-capability param errors, keyed by capability id (`null` = ok).
  *
@@ -2630,10 +2766,13 @@ export function agentSaveError(
   if (ownSlots.some((name) => !name)) return "Every model slot needs a name.";
   if (new Set(ownSlots).size !== ownSlots.length)
     return "Model slot names must be unique within an agent.";
-  // A machine takes no turns, so it runs no model and has no replies to watch: its
-  // loop-detection draft is reset on commit and shown by no control, and reporting a
-  // fault in a value nothing can see or read would be unfixable.
+  // A machine takes no turns, so it runs no model, is never asked how hard to think and
+  // has no replies to watch: its reasoning setting and loop-detection draft are reset on
+  // commit and shown by no control, and reporting a fault in a value nothing can see or
+  // read would be unfixable.
   if (!isFsmShell(agent)) {
+    const reasoning = reasoningError(agent.reasoning);
+    if (reasoning) return reasoning;
     const loop = loopDetectionError(agent.loopDetection);
     if (loop) return loop;
   }
@@ -2776,6 +2915,10 @@ export function draftSaveError(draft: GgConfigDraft): string | null {
         }
       } else if (!agent.modelId.trim()) {
         return `The \`${agent.name.trim()}\` agent pins no model. Choose one, or bind it to a model slot.`;
+      }
+      const reasoning = reasoningError(agent.reasoning);
+      if (reasoning) {
+        return `${reasoning.replace(/\.$/, "")} on the \`${agent.name.trim()}\` agent.`;
       }
       const loop = loopDetectionError(agent.loopDetection);
       if (loop) {
@@ -2940,6 +3083,7 @@ function agentConfigFromDraft(agent: GgAgentDraft): GgAgentConfig {
     ...(agent.promptCacheTtl !== "standard"
       ? { promptCacheTtl: agent.promptCacheTtl }
       : {}),
+    ...reasoningKey(agent.reasoning),
     ...loopDetectionKey(agent.loopDetection),
     ...(subagents.length ? { subagents } : {}),
     ...(agentHooks.length ? { hooks: agentHooks } : {}),

@@ -191,6 +191,21 @@ export type GgAgentConfig = {
    */
   promptCacheTtl?: GgPromptCacheTtl;
   /**
+   * How hard this agent asks its model to think, carried on every request of the agent as the
+   * unified `reasoning` request object — see [`GgReasoning`] for the two ways to name it and
+   * what each sends.
+   *
+   * `None`, and a configuration that never touched the lever omits the key entirely: no
+   * parameter is sent and the model runs at its provider's default. A declaration that is
+   * present must name exactly one of its two values, and one that does not is
+   * [refused at launch](GgReasoning::is_honourable) rather than read as either.
+   *
+   * Beside the [prompt-cache lifetime](Self::prompt_cache_ttl) because it is the other
+   * per-agent lever over how a request is made rather than what it says, and offered by the
+   * console's agent form beside it.
+   */
+  reasoning?: GgReasoning;
+  /**
    * Whether gg watches this agent's replies for a [generation loop](GgLoopDetection), and with
    * what knobs. Off unless an operator arms it, because arming it also moves this agent onto the
    * streaming transport — a per-agent choice, made for the profiles whose model is observed to
@@ -390,6 +405,61 @@ export type GgSubagentScope = "subagent" | "implementer" | "reviewer";
  * the extended lifetime where the run's shape justifies it.
  */
 export type GgPromptCacheTtl = "standard" | "extended";
+
+/**
+ * How hard one [agent](GgAgentConfig::reasoning) asks its model to think: an
+ * [effort](Self::effort) level or a [budget](Self::max_tokens) of reasoning tokens, exactly one
+ * of the two. Absent from a profile entirely, the model runs at its provider's default and gg
+ * sends no `reasoning` parameter for that agent at all.
+ *
+ * It rides on **every request of the agent** — its turns and its compaction summaries alike,
+ * since a summary runs on the agent's model at the agent's task — as OpenRouter's unified
+ * `reasoning` request object, one key wide: `{"effort": "low"}` or `{"max_tokens": 8192}`. The
+ * provider maps that object onto whatever the model's own parameter is, so the vocabulary here
+ * is the unified one rather than any one provider's spelling.
+ *
+ * The two are **exclusive**, and a declaration that names both, names neither, or names a
+ * [`max_tokens`](Self::max_tokens) of zero is refused at launch rather than read as either one:
+ * gg substitutes nothing, and a run that quietly picked one half of a contradictory declaration
+ * would record a setting its operator never chose. A budget of zero is refused rather than read
+ * as [`none`](GgReasoningEffort::None) for the same reason — that demand has a spelling of its
+ * own, and this one names no count of tokens a reply could think in.
+ *
+ * Per agent rather than per run because the effort is a property of the *task*: a run whose root
+ * writes whole programs wants more of it than the reviewer reading their diff, and a study that
+ * varies one against the other is one configuration with two profiles.
+ */
+export type GgReasoning = {
+  /**
+   * The effort level, one of [`GgReasoningEffort`]. Mutually exclusive with
+   * [`max_tokens`](Self::max_tokens).
+   */
+  effort?: GgReasoningEffort;
+  /**
+   * The reasoning-token budget, for the providers that cap reasoning by tokens rather than
+   * naming a level. A whole count of one or more (`60` and `60.0` are the same count), and
+   * mutually exclusive with [`effort`](Self::effort).
+   */
+  maxTokens?: number;
+};
+
+/**
+ * The [effort](GgReasoning::effort) levels a reasoning setting names — the vocabulary
+ * OpenRouter's unified `reasoning` request object speaks, which the provider maps onto whatever
+ * the model's own parameter is called.
+ *
+ * [`Low`](Self::Low) and below are what a run reaches for when a model's default effort is more
+ * than its task warrants: a small model reasoning at full effort on a two-hundred-token program
+ * spends thousands of reasoning tokens and minutes per request on work that needs neither.
+ * [`None`](Self::None) is the same demand stated absolutely.
+ */
+export type GgReasoningEffort =
+  | "xhigh"
+  | "high"
+  | "medium"
+  | "low"
+  | "minimal"
+  | "none";
 
 /**
  * Whether one [agent](GgAgentConfig::loop_detection) has gg watch its replies for a **generation

@@ -435,7 +435,8 @@ fn main() -> Result<()> {
             decls: ts_decls![&cfg;
                 gg::GgAgentConfig, gg::GgOpeningTurn, gg::GgOpeningTree, gg::GgSubagentRef,
                 gg::GgSubagentScope,
-                gg::GgPromptCacheTtl, gg::GgLoopDetection, gg::GgModelSlot,
+                gg::GgPromptCacheTtl, gg::GgReasoning, gg::GgReasoningEffort,
+                gg::GgLoopDetection, gg::GgModelSlot,
                 gg::GgConfigSlot, gg::GgSlotTarget,
                 gg::GgCapabilityConfig, gg::GgCapabilitySet,
                 gg::GgModuleKind, gg::GgModuleOrigin,
@@ -804,6 +805,8 @@ fn main() -> Result<()> {
                 "GgSubagentRef",
                 "GgSubagentScope",
                 "GgPromptCacheTtl",
+                "GgReasoning",
+                "GgReasoningEffort",
                 "GgCapabilityConfig",
                 "GgModelSlot",
                 "GgConfigSlot",

@@ -634,6 +634,58 @@ describe("GgConfigEditPage", () => {
     expect(agents[1].promptCacheTtl).toBeUndefined();
   });
 
+  it("names how hard one agent is asked to think and leaves the other at the default", async () => {
+    renderPage();
+    fireEvent.change(await screen.findByPlaceholderText("e.g. no-compaction"), {
+      target: { value: "delegating" },
+    });
+    // A second agent, so the setting is visibly per agent rather than run-wide.
+    openTab("Agents");
+    fireEvent.click(screen.getByRole("button", { name: "+ Add agent" }));
+    openFirstAgent();
+    fireEvent.change(screen.getByLabelText(/^Reasoning/), {
+      target: { value: "effort" },
+    });
+    // Choosing the arm opens on a figure to keep or change — the same philosophy as
+    // arming the loop detector.
+    const level = screen.getByLabelText("Effort level") as HTMLSelectElement;
+    expect(level.value).toBe("medium");
+    fireEvent.change(level, { target: { value: "low" } });
+    saveAgent();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Create configuration" }),
+    );
+
+    await waitFor(() => expect(createGgConfig).toHaveBeenCalledTimes(1));
+    const agents = createGgConfig.mock.calls[0]![0].capabilitySet.agents;
+    expect(agents[0].reasoning).toEqual({ effort: "low" });
+    // The untouched agent writes no key at all, and runs at its provider's default.
+    expect(agents[1].reasoning).toBeUndefined();
+  });
+
+  it("offers a token budget where the provider caps reasoning by tokens", async () => {
+    renderPage();
+    fireEvent.change(await screen.findByPlaceholderText("e.g. no-compaction"), {
+      target: { value: "budgeted" },
+    });
+    openFirstAgent();
+    fireEvent.change(screen.getByLabelText(/^Reasoning/), {
+      target: { value: "maxTokens" },
+    });
+    // gg lends no figure for a budget, so the field opens empty for the operator.
+    const budget = screen.getByLabelText("Token budget") as HTMLInputElement;
+    expect(budget.value).toBe("");
+    fireEvent.change(budget, { target: { value: "8000" } });
+    saveAgent();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Create configuration" }),
+    );
+
+    await waitFor(() => expect(createGgConfig).toHaveBeenCalledTimes(1));
+    const agents = createGgConfig.mock.calls[0]![0].capabilitySet.agents;
+    expect(agents[0].reasoning).toEqual({ maxTokens: 8000 });
+  });
+
   it("stores no system-prompt override unless it is edited", async () => {
     renderPage();
     fireEvent.change(await screen.findByPlaceholderText("e.g. no-compaction"), {

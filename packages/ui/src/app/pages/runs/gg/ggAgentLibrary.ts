@@ -64,6 +64,7 @@ export const AGENT_OVERRIDE_FIELDS: ReadonlyArray<AgentOverrideField> = [
   { path: "customInstructions", label: "Custom instructions" },
   { path: "systemPromptTemplate", label: "System prompt" },
   { path: "promptCacheTtl", label: "Prompt cache lifetime" },
+  { path: "reasoning", label: "Reasoning effort" },
   { path: "loopDetection", label: "Loop detection" },
   { path: "subagents", label: "Roster" },
   { path: "hooks", label: "Hooks" },

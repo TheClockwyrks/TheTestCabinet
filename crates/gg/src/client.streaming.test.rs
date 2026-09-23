@@ -92,6 +92,7 @@ fn build_request_body_asks_for_the_stream_and_its_usage() {
         &[],
         None,
         CacheTtl::Standard,
+        None,
         true,
     );
 
@@ -116,6 +117,7 @@ fn build_request_body_mentions_nothing_about_streaming_when_buffering() {
         &[],
         None,
         CacheTtl::Standard,
+        None,
         false,
     );
 
@@ -135,6 +137,7 @@ fn a_required_tool_request_streams_with_the_agent_that_asked_for_it() {
         &tool,
         None,
         CacheTtl::Standard,
+        None,
         true,
     );
     let buffered = build_required_tool_request_body(
@@ -143,6 +146,7 @@ fn a_required_tool_request_streams_with_the_agent_that_asked_for_it() {
         &tool,
         None,
         CacheTtl::Standard,
+        None,
         false,
     );
 
