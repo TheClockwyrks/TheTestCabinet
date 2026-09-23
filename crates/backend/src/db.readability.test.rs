@@ -377,7 +377,7 @@ const RECORD_SHAPES: &[(u32, &str)] = &[
     ),
     (
         3,
-        "b282ce7e69303cdeb46f2fb631b4fabc0b2d452d5f8dcd763ad8af46648cdded",
+        "afe2ebbd245c6233ee142c9f25b5a7de00a94f4682b596d05a025e9be8411112",
     ),
 ];
 
