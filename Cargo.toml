@@ -127,12 +127,11 @@ codegen-units = 1
 # **oracle**, and it is deliberately written for clarity rather than speed — the
 # per-tick advance walks explicit item lists, which is the whole point of the test
 # case (reproducing its outputs with far less work is what a submission is graded
-# on). Unoptimised, one 48x32 30,000-tick bus scenario takes 7.0s to solve and one
-# 72x40 takes 10.8s; `lattice-cli`'s three bus-invariant generate tests each solve
-# fourteen of those, so each took ~125s against nextest's 120s hard kill — they
-# were SIGKILLed mid-run and presented as hangs rather than as an engine that was
-# merely slow. Optimised, the same solves take 0.39s and 0.57s (~19x) and the whole
-# `lattice-cli` suite runs in 6.9s. This cannot move the oracle's answers: the
+# on). `lattice-cli`'s three bus-invariant generate tests each solve fourteen
+# 30,000-tick bus scenarios; unoptimised, one 48x32 scenario takes 7.0s and one
+# 72x40 takes 10.8s, so each test would take minutes. Optimised, the same solves
+# take 0.39s and 0.57s (~19x) and the whole `lattice-cli` suite runs in 6.9s.
+# This cannot move the oracle's answers: the
 # engine is pure integer fixed-point (the crate contains no float at all), and the
 # solved output is byte-identical either way. Nor does it cost build time — a
 # forced rebuild of the crate measures 2.15s at either level.
