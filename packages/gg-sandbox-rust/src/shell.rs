@@ -26,7 +26,7 @@ pub(crate) const OPERATIONS: &[&str] = &["shell"];
 ///
 /// * `command` — The command line, run by `sh -c` with the workspace as its working directory.
 /// * `timeout_secs` — How long to let it run, in seconds, before killing it. `None` takes gg's
-///   default of 600, clamped to whatever is left of the run's wall-clock budget.
+///   default of 3600, clamped to whatever is left of the run's wall-clock budget.
 ///
 /// # Returns
 ///
