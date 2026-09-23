@@ -68,6 +68,9 @@ fn stop_response(text: &str) -> ModelResponse {
     }
 }
 
+/// The routing key the recorders below are started with.
+const ROUTING_KEY: &str = "tz4a98xxat96iws9zmbrgj3a";
+
 fn capability_set() -> GgCapabilitySet {
     serde_json::from_value(json!({})).expect("an empty capability set deserializes")
 }
@@ -79,6 +82,7 @@ fn recorder_in(max_bytes: Option<u64>) -> (TempDir, GgRecorder) {
     let recorder = GgRecorder::start(
         &dir.path().join(GG_SESSION_JOURNAL_PATH),
         "run_1",
+        ROUTING_KEY,
         &capability_set(),
         max_bytes,
     )
@@ -165,6 +169,7 @@ fn the_journal_opens_with_a_header_naming_the_session_and_the_build() {
     let GgJournalLine::Header {
         format_version,
         session_id,
+        routing_key,
         recorder: identity,
         ..
     } = &lines[0]
@@ -173,6 +178,11 @@ fn the_journal_opens_with_a_header_naming_the_session_and_the_build() {
     };
     assert_eq!(*format_version, GG_SESSION_FORMAT_VERSION);
     assert_eq!(session_id, "run_1");
+    assert_eq!(
+        routing_key.as_deref(),
+        Some(ROUTING_KEY),
+        "the header keeps the routing key beside the session id",
+    );
     assert_eq!(
         identity.gg_version.as_deref(),
         Some(env!("CARGO_PKG_VERSION")),

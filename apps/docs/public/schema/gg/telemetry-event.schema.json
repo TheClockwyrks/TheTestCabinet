@@ -1400,6 +1400,10 @@
           "$ref": "https://docs.testcabinet.ai/schema/gg/capability-set.schema.json",
           "description": "The [capability set](GgCapabilitySet) the session is running — its exact,\nresolved configuration, announced up front so a console watching the stream\nknows which capabilities are live before any of them has produced an event.\nWithout it a live view can only guess what a run is capable of and must\noffer every surface, including the ones this run's configuration disabled."
         },
+        "routingKey": {
+          "description": "The **routing key** gg minted at launch: a cuid2 sent on every request of the run\nas both `session_id` and `prompt_cache_key`, so a provider dashboard row can be\nmatched to the run it belongs to. Minted rather than derived from the session id,\nwhich is caller-supplied text of any length, so it is always inside every\nprovider's cap on either field.",
+          "type": ["string", "null"]
+        },
         "type": {
           "const": "session_started",
           "type": "string"

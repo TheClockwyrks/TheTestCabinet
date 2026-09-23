@@ -36,7 +36,7 @@ fn scripted(policy: RetryPolicy, replies: Vec<Reply>) -> (OpenRouterClient, Arc<
         policy,
         None,
     )
-    .answered_by(move || {
+    .answered_by(move |_| {
         let n = seen.fetch_add(1, Ordering::SeqCst);
         let (status, retry_after, body) = replies[n.min(replies.len() - 1)];
         let mut builder = http::Response::builder().status(status);

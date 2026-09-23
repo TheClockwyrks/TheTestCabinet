@@ -179,6 +179,7 @@ fn every_line_round_trips_through_ndjson() {
         GgJournalLine::Header {
             format_version: GG_SESSION_FORMAT_VERSION,
             session_id: "run_1".to_string(),
+            routing_key: Some("tz4a98xxat96iws9zmbrgj3a".to_string()),
             capability_set: Box::new(capability_set),
             recorder: GgSessionRecorder {
                 gg_version: Some("0.7.0".to_string()),

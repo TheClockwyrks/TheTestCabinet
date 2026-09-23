@@ -161,6 +161,7 @@ pub fn assemble_journal_to_gz(journal: &Path, output: &Path) -> Result<GgSession
             GgJournalLine::Header {
                 format_version,
                 session_id,
+                routing_key,
                 capability_set,
                 recorder,
             } => {
@@ -182,6 +183,7 @@ pub fn assemble_journal_to_gz(journal: &Path, output: &Path) -> Result<GgSession
                 header = Some(JournalHeader {
                     format_version,
                     session_id,
+                    routing_key,
                     capability_set,
                     recorder,
                 });
@@ -327,6 +329,8 @@ struct JournalHeader {
     format_version: u32,
     /// The gg session id — the run id.
     session_id: String,
+    /// The run's routing key, when the journal's header carried one.
+    routing_key: Option<String>,
     /// The run's capability set, boxed exactly as the journal line carries it: assembly
     /// only copies it through to the record, never reads it.
     capability_set: Box<GgCapabilitySet>,
@@ -643,6 +647,10 @@ fn write_record(
     write_field(&mut out, "recorder", &header.recorder)?;
     out.write_all(b",")?;
     write_field(&mut out, "sessionId", &header.session_id)?;
+    if let Some(routing_key) = &header.routing_key {
+        out.write_all(b",")?;
+        write_field(&mut out, "routingKey", routing_key)?;
+    }
     out.write_all(b",")?;
     write_field(&mut out, "capabilitySet", &header.capability_set)?;
     // The provenance the walk folded out of the journal's `Seed`/`Agent` lines. Both are

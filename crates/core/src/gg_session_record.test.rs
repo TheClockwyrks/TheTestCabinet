@@ -70,6 +70,21 @@ fn the_record_serializes_camel_case_with_the_format_version_first_class() {
 }
 
 #[test]
+fn the_routing_key_rides_beside_the_session_id() {
+    let mut record = GgSessionRecord::new("run_1", capability_set());
+    record.routing_key = Some("tz4a98xxat96iws9zmbrgj3a".to_string());
+    let value = serde_json::to_value(&record).expect("serializes");
+    assert_eq!(value["routingKey"], json!("tz4a98xxat96iws9zmbrgj3a"));
+    assert_eq!(read(value).routing_key, record.routing_key);
+
+    // A record that names none reads as one without a key, and writes none back.
+    let bare =
+        serde_json::to_value(GgSessionRecord::new("run_1", capability_set())).expect("serializes");
+    assert!(bare.get("routingKey").is_none());
+    assert_eq!(read(bare).routing_key, None);
+}
+
+#[test]
 fn the_recorder_carries_the_other_two_identities() {
     let mut record = GgSessionRecord::new("run_1", capability_set());
     record.recorder = GgSessionRecorder {

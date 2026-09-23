@@ -39,8 +39,8 @@ Describe the key in the prompt caching section of
 
 ## Done when
 
-- [ ] Every request of a run carries one minted cuid2 as both fields, whatever
+- [x] Every request of a run carries one minted cuid2 as both fields, whatever
       the session id is.
-- [ ] `session_started` records the key.
-- [ ] The overview and telemetry pages describe it.
-- [ ] Gates green.
+- [x] `session_started` records the key.
+- [x] The overview and telemetry pages describe it.
+- [x] Gates green.

@@ -1030,6 +1030,12 @@ pub struct GgSessionRecord {
     /// The gg session this record is of — the run id, matching the
     /// [telemetry](crate::gg::GgTelemetryEvent::session_id) stream's.
     pub session_id: String,
+    /// The run's [routing key](crate::gg::GgTelemetryKind::SessionStarted::routing_key): the
+    /// value every request of the run sent as `session_id` and `prompt_cache_key`, which is what
+    /// a provider dashboard shows for them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub routing_key: Option<String>,
     /// The [capability set](GgCapabilitySet) the run was configured with, so a
     /// reader has the configuration the run was launched with rather than one assembled to
     /// suit the record.
@@ -1071,6 +1077,7 @@ impl GgSessionRecord {
             format_version: GG_SESSION_FORMAT_VERSION,
             recorder: GgSessionRecorder::default(),
             session_id: session_id.into(),
+            routing_key: None,
             capability_set,
             seed: GgSessionSeed::default(),
             agents: Vec::new(),
@@ -1346,6 +1353,8 @@ struct GgSessionRecordRaw {
     format_version: u32,
     recorder: GgSessionRecorder,
     session_id: String,
+    #[serde(default)]
+    routing_key: Option<String>,
     capability_set: GgCapabilitySet,
     seed: GgSessionSeed,
     agents: Vec<GgSessionAgent>,
@@ -1379,6 +1388,7 @@ impl<'de> Deserialize<'de> for GgSessionRecord {
             format_version: raw.format_version,
             recorder: raw.recorder,
             session_id: raw.session_id,
+            routing_key: raw.routing_key,
             capability_set: raw.capability_set,
             seed: raw.seed,
             agents: raw.agents,

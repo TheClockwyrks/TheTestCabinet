@@ -3001,6 +3001,14 @@ export type GgTelemetryKind =
        * offer every surface, including the ones this run's configuration disabled.
        */
       capabilitySet: GgCapabilitySet;
+      /**
+       * The **routing key** gg minted at launch: a cuid2 sent on every request of the run
+       * as both `session_id` and `prompt_cache_key`, so a provider dashboard row can be
+       * matched to the run it belongs to. Minted rather than derived from the session id,
+       * which is caller-supplied text of any length, so it is always inside every
+       * provider's cap on either field.
+       */
+      routingKey?: string;
     }
   | { type: "turn_started" }
   | {
@@ -4234,6 +4242,14 @@ export type GgTelemetryEvent = {
        * offer every surface, including the ones this run's configuration disabled.
        */
       capabilitySet: GgCapabilitySet;
+      /**
+       * The **routing key** gg minted at launch: a cuid2 sent on every request of the run
+       * as both `session_id` and `prompt_cache_key`, so a provider dashboard row can be
+       * matched to the run it belongs to. Minted rather than derived from the session id,
+       * which is caller-supplied text of any length, so it is always inside every
+       * provider's cap on either field.
+       */
+      routingKey?: string;
     }
   | { type: "turn_started" }
   | {
