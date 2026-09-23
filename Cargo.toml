@@ -168,10 +168,15 @@ codegen-units = 1
 # in test processes, and `cargo nextest` runs ONE PROCESS PER TEST. The test suite's
 # on-disk cache (`crates/gg/src/sandbox/engine.cache.rs`) spares most processes the
 # embedded guests' compile, but the first processes of a build still pay it and every
-# compiled arm (Swift above all) compiles a new artifact per program. These are the code
-# generator's own hot crates, not workspace members, so optimising them changes no
-# behaviour under test; the cost is one slower first build.
+# compiled arm (Swift above all) compiles a new artifact per program. These are the
+# crates that compile a component and read its debug information — Cranelift, wasmtime's
+# compile path, and the DWARF readers a Swift artifact's `.debug_*` sections go through —
+# none of them workspace members, so optimising them changes no behaviour under test and
+# roughly halves the CPU a component compile costs; the cost is one slower first build.
 [profile.dev.package.cranelift-codegen]
+opt-level = 3
+
+[profile.dev.package.cranelift-codegen-shared]
 opt-level = 3
 
 [profile.dev.package.cranelift-frontend]
@@ -180,10 +185,43 @@ opt-level = 3
 [profile.dev.package.cranelift-entity]
 opt-level = 3
 
+[profile.dev.package.cranelift-bforest]
+opt-level = 3
+
+[profile.dev.package.cranelift-bitset]
+opt-level = 3
+
+[profile.dev.package.cranelift-control]
+opt-level = 3
+
+[profile.dev.package.cranelift-native]
+opt-level = 3
+
 [profile.dev.package.regalloc2]
 opt-level = 3
 
 [profile.dev.package.wasmparser]
+opt-level = 3
+
+[profile.dev.package.wasmtime]
+opt-level = 3
+
+[profile.dev.package.wasmtime-environ]
+opt-level = 3
+
+[profile.dev.package.wasmtime-internal-core]
+opt-level = 3
+
+[profile.dev.package.wasmtime-internal-cranelift]
+opt-level = 3
+
+[profile.dev.package.gimli]
+opt-level = 3
+
+[profile.dev.package.addr2line]
+opt-level = 3
+
+[profile.dev.package.object]
 opt-level = 3
 
 # gg's test suite keys its on-disk cache of compiled components

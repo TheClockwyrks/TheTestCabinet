@@ -109,6 +109,16 @@ fn engine() -> &'static Engine {
         // timeout replaced fuel, and for what that exclusion costs a language that can block.
         config.epoch_interruption(true);
         config.cranelift_opt_level(OptLevel::None);
+        // Under test, one compile thread per process. Production compiles in parallel because it is
+        // one process per run with the machine to itself and the compile is latency it pays. A test
+        // run is the opposite shape: nextest runs a process per test and fills every core with them,
+        // so a compile fanned out across every core competes with the other tests for the same cores,
+        // and the fan-out's own overhead — a thread pool whose idle workers spin while they look for
+        // work — is paid on top. Measured on one Swift test compiling five programs, parallel
+        // compilation cost several times the CPU of compiling them one thread at a time, for the same
+        // artifacts. The thread count changes no compiled code.
+        #[cfg(test)]
+        config.parallel_compilation(false);
         // Symbolicate a trap's frames out of the artifact's own DWARF rather than reporting them as
         // addresses. It is off by default in wasmtime, and gg turns it on because on a compiled arm
         // with no exception mechanism a trap is how an ORDINARY program failure arrives — and for
