@@ -86,6 +86,8 @@ fn length_capped_reply() -> ModelResponse {
         }),
         provider: Some("cap-provider".to_string()),
         loop_aborts: LoopAborts::none(),
+        usage_wire: None,
+        usage_reconciled: false,
     }
 }
 

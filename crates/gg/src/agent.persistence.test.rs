@@ -157,6 +157,8 @@ fn read_with(id: &str, arguments: serde_json::Value) -> ModelResponse {
         cost: None,
         provider: None,
         loop_aborts: LoopAborts::none(),
+        usage_wire: None,
+        usage_reconciled: false,
     }
 }
 

@@ -1100,6 +1100,8 @@ fn usage(model: &str, provider: Option<&str>) -> GgTelemetryKind {
             actual: Some(0.01),
         }),
         provider: provider.map(str::to_string),
+        wire: None,
+        reconciled: false,
     }
 }
 

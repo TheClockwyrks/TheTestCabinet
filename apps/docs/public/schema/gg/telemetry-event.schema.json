@@ -1629,6 +1629,10 @@
           "description": "The upstream **provider** that served the call, when the gateway reported one\n(OpenRouter's `provider` response field). A model id is served by several providers\nbehind one name, and provider-shaped failures are only attributable — and a provider\nonly blacklistable — if every call's spend names who served it.",
           "type": ["string", "null"]
         },
+        "reconciled": {
+          "description": "Whether the output/reasoning split above is **gg's bound** rather than the provider's\nown. A reply is never recorded with fewer output tokens than its own estimated size —\nthe figure the [message log](Self::Prompt) charges it — so a provider whose\nreasoning figure leaves the reply no room is recorded with the reply's size as output,\nthe remainder of `completion_tokens` as reasoning, and this flag set: the mark that\nsays the output figure is gg's rather than the provider's. Absent on a row recorded\nexactly as the provider reported it, which is the ordinary one.",
+          "type": "boolean"
+        },
         "tokens": {
           "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/TokenMetrics",
           "description": "The normalized token counts for this accounting."
@@ -1636,6 +1640,9 @@
         "type": {
           "const": "usage",
           "type": "string"
+        },
+        "wire": {
+          "description": "The provider's **usage object, verbatim** as the gateway returned it, beside the\n[mapped counts](Self::Usage::tokens) — the record a disagreement between the two is\nread off. A provider reports its completion total and, in its details, how much of\nthat total was reasoning; gg records\n[output as the remainder](Self::Usage::reconciled), and a provider whose details leave\nthe reply no room is visible here for exactly what it said rather than only as gg's\ncorrected split of it.\n\nPresent on every row that reported usage: an unmapped call is a call whose spend\ncannot be checked, which is the condition this field exists to end. Held as\nfree-form JSON rather than a typed shape because it is the provider's, not ours —\nevery field it carries is a fact about the gateway's own vocabulary, and the event's\ntyped fields above are already the normalized form of the parts gg maps."
         }
       },
       "required": ["type", "profileId", "modelId", "tokens"],

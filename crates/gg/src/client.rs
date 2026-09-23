@@ -71,6 +71,7 @@ use test_cabinet_core::gg::{
 use test_cabinet_core::gg_session_record::{GgClientRole, GgSessionAgentOrigin};
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
+use crate::context::{BpeTokenEstimator, TokenEstimator};
 use crate::loopguard::{LoopGuard, LoopGuardConfig, LoopVerdict, resolve_loop_guard};
 use crate::model::{
     FinishReason, LoopAborts, Message, ModelClient, ModelError, ModelResponse, Role, ToolCall,
@@ -2214,7 +2215,10 @@ pub fn parse_response(body: &str) -> Result<ModelResponse, ModelError> {
         finish_reason = FinishReason::ToolCalls;
     }
 
-    let (usage, cost) = map_usage(parsed.usage.as_ref());
+    let (usage, cost, wire, reconciled) = map_usage(
+        parsed.usage.as_ref(),
+        reply_size(text.as_deref(), &tool_calls),
+    );
 
     Ok(ModelResponse {
         text,
@@ -2224,6 +2228,8 @@ pub fn parse_response(body: &str) -> Result<ModelResponse, ModelError> {
         cost,
         provider,
         loop_aborts: LoopAborts::none(),
+        usage_wire: wire,
+        usage_reconciled: reconciled,
     })
 }
 
@@ -2253,9 +2259,23 @@ fn map_finish_reason(reason: Option<&str>) -> FinishReason {
 /// subtracted from the input total and reasoning from the output total (per the
 /// metrics contract), using saturating subtraction so a provider's slightly
 /// inconsistent details can never underflow.
-fn map_usage(usage: Option<&WireUsage>) -> (TokenCounts, Option<Cost>) {
+///
+/// `reply_tokens` is the [reply's own estimated size](reply_size), which bounds the
+/// output/reasoning split (see [`split_completion`]): a provider's `reasoning_tokens` is
+/// kept only while it leaves the reply that much room under `completion_tokens`, and a
+/// split gg bounded is reported as
+/// [`reconciled`](test_cabinet_core::gg::GgTelemetryKind::Usage).
+///
+/// The return also carries the provider's usage object verbatim (as JSON) so the
+/// [`Usage`](test_cabinet_core::gg::GgTelemetryKind::Usage) event can publish it beside
+/// the mapped counts: a published per-turn output figure is checkable against what the
+/// provider actually said only if the record holds what it said.
+fn map_usage(
+    usage: Option<&WireUsage>,
+    reply_tokens: Option<u64>,
+) -> (TokenCounts, Option<Cost>, Option<Value>, bool) {
     let Some(usage) = usage else {
-        return (TokenCounts::default(), None);
+        return (TokenCounts::default(), None, None, false);
     };
 
     let cached_input = usage
@@ -2270,9 +2290,8 @@ fn map_usage(usage: Option<&WireUsage>) -> (TokenCounts, Option<Cost>) {
     let uncached_input = usage
         .prompt_tokens
         .map(|prompt| prompt.saturating_sub(cached_input.unwrap_or(0)));
-    let output = usage
-        .completion_tokens
-        .map(|completion| completion.saturating_sub(reasoning.unwrap_or(0)));
+    let (output, reasoning, reconciled) =
+        split_completion(usage.completion_tokens, reasoning, reply_tokens);
 
     let counts = TokenCounts {
         uncached_input,
@@ -2286,7 +2305,51 @@ fn map_usage(usage: Option<&WireUsage>) -> (TokenCounts, Option<Cost>) {
         actual: Some(cost),
     });
 
-    (counts, cost)
+    (counts, cost, Some(usage.to_wire()), reconciled)
+}
+
+/// Split one call's completion total into the output and reasoning classes, bounded by
+/// the size of the reply gg measured itself.
+///
+/// The provider's `reasoning_tokens` is kept as given when it is consistent with the
+/// reply — when the reply fits under the completion total beside it. When it does not
+/// (reasoning equal to or beyond the whole completion, or past what the reply leaves),
+/// the reply's own size is the output figure and what remains of the total is the
+/// reasoning figure, and the split is reported as reconciled: gg's, not the provider's.
+///
+/// Every arm preserves the two properties the split must hold: output plus reasoning is
+/// the provider's completion total wherever it reported one, and a class unreported by
+/// the provider stays unreported rather than being invented as a zero. A call with no
+/// completion total is mapped as reported — there is no total to bound a split against,
+/// so the provider's reasoning figure stands and the reply's size is not imposed.
+fn split_completion(
+    completion: Option<u64>,
+    reasoning: Option<u64>,
+    reply_tokens: Option<u64>,
+) -> (Option<u64>, Option<u64>, bool) {
+    let Some(reply) = reply_tokens else {
+        return (
+            completion.map(|c| c.saturating_sub(reasoning.unwrap_or(0))),
+            reasoning,
+            false,
+        );
+    };
+    let Some(completion) = completion else {
+        return (None, reasoning, false);
+    };
+
+    let floor = reply.min(completion);
+    if reasoning.unwrap_or(0) <= completion.saturating_sub(floor) {
+        // The provider's split leaves the reply room under the total: record it as given.
+        (
+            Some(completion.saturating_sub(reasoning.unwrap_or(0))),
+            reasoning,
+            false,
+        )
+    } else {
+        // It does not: the reply is the output, and the reasoning is what is left.
+        (Some(floor), Some(completion - floor), true)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -2351,8 +2414,33 @@ struct WireRespFunction {
     arguments: String,
 }
 
-#[derive(Debug, Deserialize)]
+/// The provider's usage object: the typed view gg maps onto, plus the object **verbatim**
+/// as it arrived.
+///
+/// The verbatim half is captured at parse time (see the `Deserialize` impl) rather than
+/// rebuilt from the mapped fields, so fields gg maps nothing onto — `total_tokens`, a
+/// vendor's own detail keys — survive into the record. An unmapped field in the record is
+/// a figure a reader can still check, where a dropped one is a silence that reads as
+/// agreement.
+#[derive(Debug)]
 struct WireUsage {
+    /// The mapped `prompt_tokens` total.
+    prompt_tokens: Option<u64>,
+    /// The mapped `completion_tokens` total.
+    completion_tokens: Option<u64>,
+    /// The mapped cost.
+    cost: Option<f64>,
+    /// The mapped prompt details.
+    prompt_tokens_details: Option<WirePromptDetails>,
+    /// The mapped completion details.
+    completion_tokens_details: Option<WireCompletionDetails>,
+    /// The object verbatim, exactly as parsed off the wire.
+    raw: Value,
+}
+
+/// The mapped fields of a [`WireUsage`], as the wire carries them.
+#[derive(Deserialize)]
+struct WireUsageFields {
     #[serde(default)]
     prompt_tokens: Option<u64>,
     #[serde(default)]
@@ -2363,6 +2451,34 @@ struct WireUsage {
     prompt_tokens_details: Option<WirePromptDetails>,
     #[serde(default)]
     completion_tokens_details: Option<WireCompletionDetails>,
+}
+
+impl<'de> Deserialize<'de> for WireUsage {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        // Read the whole object first — the verbatim record — and then map the fields off
+        // it. One read, so the two halves cannot describe different objects.
+        let raw = Value::deserialize(deserializer)?;
+        let fields = WireUsageFields::deserialize(&raw).map_err(serde::de::Error::custom)?;
+        Ok(Self {
+            prompt_tokens: fields.prompt_tokens,
+            completion_tokens: fields.completion_tokens,
+            cost: fields.cost,
+            prompt_tokens_details: fields.prompt_tokens_details,
+            completion_tokens_details: fields.completion_tokens_details,
+            raw,
+        })
+    }
+}
+
+impl WireUsage {
+    /// The provider's usage object, verbatim: exactly the JSON it arrived as, beside the
+    /// mapped counts on the [`Usage`](test_cabinet_core::gg::GgTelemetryKind::Usage) event.
+    fn to_wire(&self) -> Value {
+        self.raw.clone()
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -2665,7 +2781,7 @@ impl StreamAccumulator {
     /// a reply, whose text is `None`; a stream that ended without saying anything, on the other
     /// hand, was cut off, and reporting that as an empty reply would hand
     /// the turn loop a silence the model never produced.
-    pub fn finish(self) -> Result<ModelResponse, ModelError> {
+    pub fn finish(mut self) -> Result<ModelResponse, ModelError> {
         let has_calls = !self.tool_calls.is_empty();
         if self.text.is_empty() && !has_calls && self.finish_reason.is_none() {
             return Err(ModelError::Parse(
@@ -2674,7 +2790,7 @@ impl StreamAccumulator {
         }
 
         let mut tool_calls = Vec::with_capacity(self.tool_calls.len());
-        for (index, call) in self.tool_calls {
+        for (index, call) in std::mem::take(&mut self.tool_calls) {
             let arguments = parse_arguments(&call.arguments).map_err(|err| {
                 ModelError::Parse(format!(
                     "tool call #{index} ({}) had unparseable arguments: {err}",
@@ -2696,10 +2812,14 @@ impl StreamAccumulator {
             finish_reason = FinishReason::ToolCalls;
         }
 
-        let (usage, cost) = map_usage(self.usage.as_ref());
+        let text = (!self.text.is_empty()).then(|| std::mem::take(&mut self.text));
+        let (usage, cost, wire, reconciled) = map_usage(
+            self.usage.as_ref(),
+            reply_size(text.as_deref(), &tool_calls),
+        );
 
         Ok(ModelResponse {
-            text: (!self.text.is_empty()).then_some(self.text),
+            text,
             tool_calls,
             finish_reason,
             usage,
@@ -2708,8 +2828,24 @@ impl StreamAccumulator {
             // The transport fills this in: the accumulator assembles one attempt and has no idea
             // how many earlier ones were thrown away.
             loop_aborts: LoopAborts::none(),
+            usage_wire: wire,
+            usage_reconciled: reconciled,
         })
     }
+}
+
+/// The reply's own estimated size in tokens: the floor [`map_usage`] bounds the recorded output
+/// split by.
+///
+/// Measured with the default [`BpeTokenEstimator`] over the assistant message the reply becomes,
+/// which is the estimate gg's context accounting charges that message. `None` for a reply with
+/// neither text nor tool calls, which leaves the provider's split as reported.
+fn reply_size(text: Option<&str>, tool_calls: &[ToolCall]) -> Option<u64> {
+    if text.is_none() && tool_calls.is_empty() {
+        return None;
+    }
+    let reply = Message::assistant(text.map(str::to_string), tool_calls.to_vec());
+    Some(BpeTokenEstimator::new().estimate_message(&reply) as u64)
 }
 
 // ---------------------------------------------------------------------------
@@ -2950,6 +3086,8 @@ impl MockClient {
             }),
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let write_memory_call = ModelResponse {
             text: Some("Noting the game plan as a memory before building.".to_string()),
@@ -2976,6 +3114,8 @@ impl MockClient {
             }),
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let add_scaffold_task = ModelResponse {
             text: Some("Planning the work: first, scaffold the page.".to_string()),
@@ -3000,6 +3140,8 @@ impl MockClient {
             }),
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let add_movement_task = ModelResponse {
             text: Some("Then player movement, which is blocked by the scaffold.".to_string()),
@@ -3025,6 +3167,8 @@ impl MockClient {
             }),
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         // An intentionally cyclic edge: the movement task is already blocked by the scaffold
         // task, so also blocking the scaffold task on the movement task closes a loop. gg
@@ -3052,6 +3196,8 @@ impl MockClient {
             }),
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let complete_scaffold_task = ModelResponse {
             text: Some("Scaffolding done — marking it complete to unblock movement.".to_string()),
@@ -3073,6 +3219,8 @@ impl MockClient {
             }),
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let create_epic = ModelResponse {
             text: Some("Decomposing the build: opening an epic for the core loop.".to_string()),
@@ -3098,6 +3246,8 @@ impl MockClient {
             }),
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let create_render_issue = ModelResponse {
             text: Some("First issue: the render loop, with an explicit scope.".to_string()),
@@ -3126,6 +3276,8 @@ impl MockClient {
             }),
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let create_input_issue = ModelResponse {
             text: Some("Second issue: input handling, blocked by the render loop.".to_string()),
@@ -3155,6 +3307,8 @@ impl MockClient {
             }),
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         // An intentionally cyclic edge: the input issue is already blocked by the render issue,
         // so also blocking the render issue on the input issue closes a loop. gg refuses it (the
@@ -3182,6 +3336,8 @@ impl MockClient {
             }),
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let write_call = ModelResponse {
             text: Some("Creating a minimal playable game in index.html.".to_string()),
@@ -3206,6 +3362,8 @@ impl MockClient {
             }),
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let finish = ModelResponse {
             usage: TokenCounts {
@@ -3279,6 +3437,8 @@ impl MockClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let read_level = ModelResponse {
             text: Some("Reading level.json to check the layout.".to_string()),
@@ -3292,6 +3452,8 @@ impl MockClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let evict_level = ModelResponse {
             text: Some(
@@ -3307,6 +3469,8 @@ impl MockClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let reread_level = ModelResponse {
             text: Some("Pulling level.json back up to finish the layout pass.".to_string()),
@@ -3320,6 +3484,8 @@ impl MockClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let archive = ModelResponse {
             text: Some("Archiving the earlier thread to keep my window lean.".to_string()),
@@ -3335,6 +3501,8 @@ impl MockClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let search = ModelResponse {
             text: Some("Recovering the archived level reference.".to_string()),
@@ -3348,6 +3516,8 @@ impl MockClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let finish = ModelResponse {
             usage: usage(500, 40),
@@ -3402,6 +3572,8 @@ impl MockClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let wait = ModelResponse {
             text: Some("Waiting for the subagent to finish.".to_string()),
@@ -3415,6 +3587,8 @@ impl MockClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let finish = ModelResponse {
             usage: usage(1000, 50),
@@ -3510,6 +3684,8 @@ impl MockClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let spawn = ModelResponse {
             text: Some("Delegating the investigation.".to_string()),
@@ -3526,6 +3702,8 @@ impl MockClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let wait = ModelResponse {
             text: Some("Waiting for the subagent to finish.".to_string()),
@@ -3539,6 +3717,8 @@ impl MockClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let finish = ModelResponse {
             usage: usage(1000, 50),
@@ -3578,6 +3758,8 @@ impl MockClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let finish = ModelResponse {
             usage: usage(550, 40),
@@ -3616,6 +3798,8 @@ impl MockClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let advance = ModelResponse {
             text: Some("The plan is ready; handing it to the builder.".to_string()),
@@ -3632,6 +3816,8 @@ impl MockClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         Self::new(
             model_id,
@@ -3669,6 +3855,8 @@ impl MockClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let advance = ModelResponse {
             text: Some("Handing it to the verifier instead.".to_string()),
@@ -3682,6 +3870,8 @@ impl MockClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         Self::new(model_id, vec![illegal, advance])
     }
@@ -3732,6 +3922,8 @@ impl MockClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let succeed = ModelResponse {
             text: Some("This needs the other agent's toolset.".to_string()),
@@ -3745,6 +3937,8 @@ impl MockClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         Self::new(model_id, vec![plan, succeed])
     }
@@ -3778,6 +3972,8 @@ impl MockClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let condense_and_succeed = ModelResponse {
             text: Some("Summarizing, then handing over.".to_string()),
@@ -3798,6 +3994,8 @@ impl MockClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         Self::new(model_id, vec![plan, condense_and_succeed])
     }
@@ -3851,6 +4049,8 @@ impl MockClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let split = ModelResponse {
             text: Some("Trying both fixes at once.".to_string()),
@@ -3864,6 +4064,8 @@ impl MockClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         Self::new(
             model_id,
@@ -3906,6 +4108,8 @@ impl MockClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let finish = ModelResponse {
             usage: usage(550, 40),
@@ -3957,6 +4161,8 @@ impl MockClient {
             cost,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         }
     }
 
@@ -4177,6 +4383,8 @@ impl ModelClient for MockClient {
                 cost: None,
                 provider: None,
                 loop_aborts: LoopAborts::none(),
+                usage_wire: None,
+                usage_reconciled: false,
             });
         }
 
@@ -4197,6 +4405,8 @@ impl ModelClient for MockClient {
                 cost: None,
                 provider: None,
                 loop_aborts: LoopAborts::none(),
+                usage_wire: None,
+                usage_reconciled: false,
             });
         }
 
@@ -4346,6 +4556,8 @@ impl ModelClient for MockClient {
                     cost: None,
                     provider: None,
                     loop_aborts: LoopAborts::none(),
+                    usage_wire: None,
+                    usage_reconciled: false,
                 });
             }
             return Ok(done_turn("Done with this pass."));
@@ -4383,6 +4595,8 @@ fn ending_turn(name: &str, text: &str, arguments: Value) -> ModelResponse {
         cost: None,
         provider: None,
         loop_aborts: LoopAborts::none(),
+        usage_wire: None,
+        usage_reconciled: false,
     }
 }
 
@@ -4440,6 +4654,8 @@ fn issue_review_tool_turn(
         cost: None,
         provider: None,
         loop_aborts: LoopAborts::none(),
+        usage_wire: None,
+        usage_reconciled: false,
     }
 }
 
