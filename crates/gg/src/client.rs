@@ -404,6 +404,19 @@ pub struct OpenRouterClient {
     model_id: String,
     api_key: String,
     retry: RetryPolicy,
+    /// What this client sends as `tool_choice` on a [required-tool
+    /// request](build_required_tool_request_body).
+    ///
+    /// Every such request first goes out [pinned](ToolChoicePin::Pinned) to the one tool offered.
+    /// A provider that answers the pin with a [`400` refusal that names `tool_choice`]
+    /// (is_tool_choice_refusal) cannot serve the requirement at all — a model served only in a
+    /// thinking mode whose API forbids a forced choice is the known case — so the client re-sends
+    /// the same request on [`auto`](ToolChoicePin::Auto), stays there for the rest of the run,
+    /// and [announces](OpenRouterClient::announce_tool_choice_downgrade) the downgrade once. The
+    /// pin is a convenience rather than a requirement: a reply on `auto` that makes no call is
+    /// the turn loop's ordinary missing-completion error, whereas the refusal, unhandled, ends
+    /// the run on its first request.
+    tool_choice: Mutex<ToolChoicePin>,
     /// The session-wide [sticky-session key](build_request_body) — the run's session id, the same
     /// value on every agent's client. It pins the whole run's requests to one provider endpoint,
     /// so an agent's successive turns reuse the prefix the last turn cached and sibling agents
@@ -470,6 +483,7 @@ impl OpenRouterClient {
             model_id: model_id.into(),
             api_key: api_key.into(),
             retry,
+            tool_choice: Mutex::new(ToolChoicePin::Pinned),
             session_key,
             stable_ttl: CacheTtl::Standard,
             loop_guard: None,
@@ -613,6 +627,62 @@ impl OpenRouterClient {
         self.loop_guard.is_some()
     }
 
+    /// What a required-tool request this client is about to build pins its `tool_choice` to —
+    /// the [`body`](ToolChoicePin::body) the caller hands
+    /// [`build_required_tool_request_body`]. See the [`tool_choice`](Self) field.
+    fn tool_choice_pin(&self) -> ToolChoicePin {
+        *self
+            .tool_choice
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// A [`400` refusal that names `tool_choice`](is_tool_choice_refusal) answered a pinned
+    /// request: switch this client to [`auto`](ToolChoicePin::Auto), where it stays for the rest
+    /// of the run, and return whether this call is the one that took the pin. The caller's
+    /// re-sent request then runs through the transport's ordinary rules — its own retries, its
+    /// own classification of what comes back — exactly as if the provider had taken the pin.
+    ///
+    /// The announcement belongs to the caller rather than to this method for one reason: the
+    /// downgrade is the attempt's outcome, and an attempt's outcome is announced on the
+    /// [stream](Self::retry_stream) by the transport's one retry announcement, in place.
+    /// Announcing here as well would put two `warn` lines on one refusal. Returning the
+    /// transition instead keeps it to exactly one: the first caller takes the pin and announces,
+    /// and every later one already reads `Auto`.
+    fn downgrade_tool_choice(&self) -> bool {
+        let mut choice = self
+            .tool_choice
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let took = *choice == ToolChoicePin::Pinned;
+        *choice = ToolChoicePin::Auto;
+        took
+    }
+
+    /// The one `warn` a taken downgrade is announced with: the model this client is bound to and
+    /// the provider's own message, on the calling agent's [stream](Self::retry_stream) — the
+    /// same stream a retry is announced on, so an operator reads the run's recoveries in one
+    /// place.
+    fn announce_tool_choice_downgrade(&self, body: &str) {
+        let stream = self
+            .retry_stream
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(emitter) = stream.as_ref() {
+            emitter.emit(GgTelemetryKind::Log {
+                level: "warn".to_string(),
+                message: format!(
+                    "the provider refused `{}`'s pinned tool choice ({}); the request was \
+                     re-sent with `tool_choice` set to `auto`, where it stays for the rest of \
+                     the run, and a reply that makes no call is the turn's ordinary \
+                     missing-completion error",
+                    self.model_id,
+                    truncate(body)
+                ),
+            });
+        }
+    }
+
     /// One attempt's request, headers and all, before its body is attached.
     ///
     /// Shared by [both transports](Self) rather than written out twice: the headers are the run's
@@ -658,6 +728,11 @@ impl ModelClient for OpenRouterClient {
     /// Offer `tool` and pin `tool_choice` to it, so the reply is the call rather than the model's
     /// judgement about whether to make one — the wire form of the default's intent, which cannot
     /// express the requirement.
+    ///
+    /// The pin is tried where the provider takes it. A refusal of it — a
+    /// [`400` naming `tool_choice`](is_tool_choice_refusal) — [downgrades](ToolChoicePin) this
+    /// client to asking on `auto` instead, and every required-tool request it sends from then
+    /// on, a turn's and a handoff compaction's alike, asks rather than pins.
     async fn complete_requiring(
         &self,
         messages: &[Message],
@@ -670,6 +745,7 @@ impl ModelClient for OpenRouterClient {
             self.session_key.as_deref(),
             self.stable_ttl,
             self.streams(),
+            self.tool_choice_pin().body(tool),
         );
         self.send(body, messages).await
     }
@@ -726,6 +802,9 @@ impl OpenRouterClient {
         // refusal is only recoverable-by-dropping-images if there were images to drop;
         // without that check a coincidentally-similar error body would be misread as one.
         let carries_images = messages.iter().any(|message| !message.images.is_empty());
+        // Whether this call took the tool-choice downgrade on some attempt, so that attempt's
+        // announcement stands in for its retry line rather than doubling it.
+        let mut downgraded = false;
 
         for attempt in 1..=self.retry.max_attempts {
             let attempted = tokio::time::timeout(
@@ -744,16 +823,29 @@ impl OpenRouterClient {
                     });
                 }
                 Ok(BufferedAttempt::Done(outcome)) => return outcome,
-                Ok(BufferedAttempt::Retry { cause, retry_after }) => {
+                Ok(BufferedAttempt::Retry {
+                    cause,
+                    retry_after,
+                    tool_choice_downgrade,
+                }) => {
+                    // The downgrade's `warn` stands in for the retry announcement: both describe
+                    // this attempt's outcome on the one stream, and the refusal is one event,
+                    // not two.
+                    if let Some(body) = tool_choice_downgrade {
+                        self.announce_tool_choice_downgrade(&body);
+                        downgraded = true;
+                    }
                     last_err = cause;
                     retry_after
                 }
             };
 
-            if attempt < self.retry.max_attempts {
+            if attempt < self.retry.max_attempts && !downgraded {
                 let delay = retry_wait(attempt, &self.retry, retry_after);
                 self.announce_retry(attempt, &last_err, delay);
                 tokio::time::sleep(delay).await;
+            } else if attempt < self.retry.max_attempts {
+                tokio::time::sleep(retry_wait(attempt, &self.retry, retry_after)).await;
             }
         }
 
@@ -772,6 +864,10 @@ impl OpenRouterClient {
         body: &Value,
         carries_images: bool,
     ) -> BufferedAttempt {
+        // Whether this attempt is the one a tool-choice refusal can [downgrade](ToolChoicePin):
+        // it asked for the pin. A request already on `auto` is the answer the downgrade asks
+        // for, so a second refusal of it is an ordinary fatal 4xx.
+        let pinned = body["tool_choice"]["function"]["name"].is_string();
         let resp = match self.post(url, body).await {
             Ok(resp) => resp,
             // Transport-level failure (connect/reset/etc.): always retryable.
@@ -779,6 +875,7 @@ impl OpenRouterClient {
                 return BufferedAttempt::Retry {
                     cause: format!("transport error: {err}"),
                     retry_after: None,
+                    tool_choice_downgrade: None,
                 };
             }
         };
@@ -790,6 +887,21 @@ impl OpenRouterClient {
             }),
             StatusClass::Fatal => {
                 let body = resp.text().await.unwrap_or_default();
+                // A refusal of the *pin* rather than of the request: the same body, asked on
+                // `auto`, can be served, and the client stays on `auto` from here on. See
+                // `downgrade_tool_choice`.
+                if pinned && is_tool_choice_refusal(status, &body) {
+                    return BufferedAttempt::Retry {
+                        cause: "the provider refused the pinned tool choice; asking on `auto`"
+                            .to_string(),
+                        retry_after: None,
+                        tool_choice_downgrade: if self.downgrade_tool_choice() {
+                            Some(body)
+                        } else {
+                            None
+                        },
+                    };
+                }
                 // A refusal of the *images* rather than of the request: the loop can recover from
                 // this one by dropping them and retrying, so it is reported as its own error
                 // rather than ending the run as an ordinary fatal 4xx. See `refusal`.
@@ -805,6 +917,7 @@ impl OpenRouterClient {
                 BufferedAttempt::Retry {
                     cause: format!("HTTP {status}: {}", truncate(&body)),
                     retry_after,
+                    tool_choice_downgrade: None,
                 }
             }
         }
@@ -846,6 +959,12 @@ impl OpenRouterClient {
         let mut loop_aborts = LoopAborts::none();
         // See `send_buffered` — the same recoverability question, asked the same way.
         let carries_images = messages.iter().any(|message| !message.images.is_empty());
+        // And the same pin question, answered the same way (`buffered_attempt` derives it itself
+        // because there it lives beside the one classification arm that reads it).
+        let pinned = body["tool_choice"]["function"]["name"].is_string();
+        // Whether this call took the downgrade on some attempt, so the loop's announcement can
+        // stand in for that attempt's retry line rather than doubling it.
+        let mut tool_choice_downgrade = false;
 
         for attempt in 1..=self.retry.max_attempts {
             // The run's per-call ceiling on the wait for the response *head*. The body's own
@@ -907,6 +1026,18 @@ impl OpenRouterClient {
                         }
                         StatusClass::Fatal => {
                             let body = resp.text().await.unwrap_or_default();
+                            // See `buffered_attempt`: the pin this client sent is refused, so the
+                            // same body is asked again on `auto`, which the client stays on.
+                            if pinned && is_tool_choice_refusal(status, &body) {
+                                tool_choice_downgrade = true;
+                                if self.downgrade_tool_choice() {
+                                    self.announce_tool_choice_downgrade(&body);
+                                }
+                                last_err = "the provider refused the pinned tool choice; asking \
+                                    on `auto`"
+                                    .to_string();
+                                continue;
+                            }
                             return Err(self.refusal(status, &body, carries_images));
                         }
                         StatusClass::Retryable => {
@@ -920,10 +1051,14 @@ impl OpenRouterClient {
                 }
             }
 
-            if attempt < self.retry.max_attempts {
+            // The downgrade's `warn` stands in for the retry announcement: both describe this
+            // attempt's outcome on the one stream, and the refusal is one event, not two.
+            if attempt < self.retry.max_attempts && !tool_choice_downgrade {
                 let delay = retry_wait(attempt, &self.retry, retry_after);
                 self.announce_retry(attempt, &last_err, delay);
                 tokio::time::sleep(delay).await;
+            } else if attempt < self.retry.max_attempts {
+                tokio::time::sleep(retry_wait(attempt, &self.retry, retry_after)).await;
             }
         }
 
@@ -971,6 +1106,10 @@ enum BufferedAttempt {
     Retry {
         cause: String,
         retry_after: Option<Duration>,
+        /// The refusal body when this attempt [took the pin](ToolChoicePin): the attempt that
+        /// downgraded the client to `auto`, announced in place of the ordinary retry line so the
+        /// refusal is one `warn` rather than two. `None` on every other retryable failure.
+        tool_choice_downgrade: Option<String>,
     },
 }
 
@@ -1147,6 +1286,20 @@ pub fn is_image_unsupported(status: u16, body: &str) -> bool {
     PHRASES.iter().any(|phrase| body.contains(phrase))
 }
 
+/// Whether a fatal response refuses the request's **pinned tool choice** — a `400` whose body
+/// names `tool_choice`.
+///
+/// The refusal that ends a responses-as-code run of a model served only in a thinking mode,
+/// whose API forbids a forced choice: *"The tool_choice parameter does not support being set to
+/// required or object in thinking mode"*, answered `400`. The match is on the body naming the
+/// parameter rather than on one provider's wording of why, because the *why* varies (thinking
+/// modes, providers that never took the object form) while the parameter the refusal is about
+/// does not. Pure, like [`is_image_unsupported`], so the recognized bodies are unit tested with
+/// no network.
+pub fn is_tool_choice_refusal(status: u16, body: &str) -> bool {
+    status == 400 && body.contains("tool_choice")
+}
+
 /// Truncate a provider error body to [`ERROR_BODY_CAP`] so a huge HTML error page
 /// never floods a [`ModelError`].
 fn truncate(body: &str) -> String {
@@ -1280,7 +1433,9 @@ pub fn build_request_body(
 }
 
 /// Build the request body for a turn that **must** be answered with a call to `tool`: the one tool
-/// offered, and `tool_choice` naming it rather than `"auto"`.
+/// offered, and `tool_choice` set to what `tool_choice` carries — [pinned](ToolChoicePin::Pinned)
+/// to the tool where the provider takes the pin, or [`auto`](ToolChoicePin::Auto) where the
+/// provider has already refused one this run.
 ///
 /// Two callers require a call: every responses-as-code turn, whose reply must be a
 /// `submit_program` call ([`ModelClient::complete_requiring`]), and
@@ -1298,6 +1453,7 @@ pub fn build_required_tool_request_body(
     session_key: Option<&str>,
     stable_ttl: CacheTtl,
     stream: bool,
+    tool_choice: Value,
 ) -> Value {
     let mut body = build_request_body(
         model_id,
@@ -1307,11 +1463,36 @@ pub fn build_required_tool_request_body(
         stable_ttl,
         stream,
     );
-    body["tool_choice"] = json!({
-        "type": "function",
-        "function": { "name": tool.name },
-    });
+    body["tool_choice"] = tool_choice;
     body
+}
+
+/// What a client's required-tool requests pin `tool_choice` to — per client rather than per
+/// request, so the pin is tried once per run rather than once per request, and a handoff
+/// compaction on a client that took the downgrade runs on `auto` beside the agent's turns.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ToolChoicePin {
+    /// The provider has not refused a pin, so the request names the tool: `tool_choice` is the
+    /// `{"type": "function", "function": {"name": …}}` form, and the reply is the call.
+    Pinned,
+    /// The provider [refused the pin](is_tool_choice_refusal) on an earlier request, so the tool
+    /// is offered with `tool_choice` set to `"auto"` and the reply is asked for rather than
+    /// forced. A reply that makes no call is the caller's ordinary missing-completion handling,
+    /// which is exactly what a provider that cannot express the requirement leaves gg with.
+    Auto,
+}
+
+impl ToolChoicePin {
+    /// The `tool_choice` value this pin sends for `tool`.
+    fn body(self, tool: &ToolDefinition) -> Value {
+        match self {
+            Self::Pinned => json!({
+                "type": "function",
+                "function": { "name": tool.name },
+            }),
+            Self::Auto => json!("auto"),
+        }
+    }
 }
 
 /// The [session key](build_request_body) as it goes on the wire: truncated to
@@ -4127,3 +4308,7 @@ mod timeout_tests;
 #[cfg(test)]
 #[path = "client.retry.test.rs"]
 mod retry_tests;
+
+#[cfg(test)]
+#[path = "client.tool-choice.test.rs"]
+mod tool_choice_tests;
