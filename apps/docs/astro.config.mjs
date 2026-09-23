@@ -998,6 +998,7 @@ export default defineConfig({
                     "gg/telemetry/overview",
                     "gg/telemetry/turn-outcomes",
                     "gg/telemetry/turn-timing",
+                    "gg/telemetry/usage",
                     "gg/telemetry/context-spend",
                     "gg/telemetry/code-execution",
                     "gg/telemetry/shell-commands",

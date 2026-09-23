@@ -558,6 +558,52 @@ fn usage_arriving_only_on_the_final_chunk_is_still_accounted() {
     );
     // The trailing chunk carries no choice, so it must not disturb the finish reason.
     assert_eq!(response.finish_reason, FinishReason::Stop);
+    // The provider's object rides on, verbatim, beside the mapped counts — the same figure the
+    // buffering transport would have carried for the same call.
+    assert_eq!(
+        response.usage_wire,
+        Some(json!({
+            "prompt_tokens": 1000,
+            "completion_tokens": 300,
+            "total_tokens": 1300,
+            "cost": 0.0123,
+            "prompt_tokens_details": { "cached_tokens": 400 },
+            "completion_tokens_details": { "reasoning_tokens": 120 },
+        }))
+    );
+    assert!(!response.usage_reconciled);
+}
+
+/// The bound holds on the streamed transport too: a usage trailer whose reasoning figure leaves
+/// the assembled reply no room is reconciled against the reply the accumulator actually holds.
+#[test]
+fn a_trailer_that_leaves_the_reply_no_room_is_reconciled() {
+    let mut accumulator = StreamAccumulator::new();
+    let transcript = [
+        event(text_chunk("done, writing the file out now.")),
+        event(json!({ "choices": [{ "delta": {}, "finish_reason": "stop" }] })),
+        event(json!({
+            "choices": [],
+            "usage": {
+                "prompt_tokens": 1000,
+                "completion_tokens": 230,
+                "total_tokens": 1230,
+                "completion_tokens_details": { "reasoning_tokens": 230 }
+            }
+        })),
+        "data: [DONE]\n\n".to_string(),
+    ]
+    .concat();
+    feed(&mut accumulator, &transcript);
+
+    let response = accumulator.finish().expect("assembles");
+    let output = response.usage.output.expect("output is recorded");
+    assert!(
+        output > 0,
+        "a reply gg holds is never recorded as zero output"
+    );
+    assert_eq!(output + response.usage.reasoning.unwrap_or(0), 230);
+    assert!(response.usage_reconciled);
 }
 
 /// A stream with no usage chunk accounts nothing rather than guessing — the same all-unknown

@@ -18,6 +18,8 @@ Each page in this section documents one part of it.
   tokens to the material that occupied the window.
 - [Turn timing](/gg/telemetry/turn-timing/) — where a turn's wall-clock went, and
   the per-request metric graphs.
+- [Usage](/gg/telemetry/usage/) — how each call's spend is attributed, and how the
+  output/reasoning split is bounded by the reply gg holds.
 - [Turn outcomes](/gg/telemetry/turn-outcomes/) — how each turn ended, the error
   taxonomy, and the run-level error rollup.
 - [Code execution](/gg/telemetry/code-execution/) — what one code-shaped turn's
@@ -42,6 +44,9 @@ The telemetry must let a console display:
   incoming instance names the machine, the state, and the state it came from.
 - The [context-window breakdown](/gg/context-visibility/) over time.
 - Where each turn's time went: one `turn_timing` per turn.
+- What each call spent: one `usage` per model call that reported tokens or cost,
+  carrying the four token classes, the cost, and the provider's usage object
+  verbatim. See [usage](/gg/telemetry/usage/).
 - How each turn ended: one `turn_outcome` per turn, carrying gg's own judgement
   of whether the turn did what it declared, why it did not, and how long the
   agent's failing streak is. Without it, a run's error rate is observable only

@@ -303,6 +303,8 @@ fn code_reply(text: &str) -> ModelResponse {
         cost: None,
         provider: None,
         loop_aborts: LoopAborts::none(),
+        usage_wire: None,
+        usage_reconciled: false,
     }
 }
 
@@ -667,6 +669,8 @@ fn looping_response() -> ModelResponse {
         cost: None,
         provider: None,
         loop_aborts: LoopAborts::none(),
+        usage_wire: None,
+        usage_reconciled: false,
     }
 }
 
@@ -729,6 +733,26 @@ impl ModelClient for FailingClient {
     }
 }
 
+/// A [`ModelClient`] that answers every turn with one fixed [`ModelResponse`] — the helper for a
+/// test whose subject is what the loop does with one reply rather than how it advances a script.
+struct SingleReplyClient {
+    reply: ModelResponse,
+}
+
+#[async_trait::async_trait]
+impl ModelClient for SingleReplyClient {
+    async fn complete(
+        &self,
+        _messages: &[Message],
+        _tools: &[ToolDefinition],
+    ) -> Result<ModelResponse, ModelError> {
+        Ok(self.reply.clone())
+    }
+
+    fn model_id(&self) -> &str {
+        "mock/echo"
+    }
+}
 /// A [`ModelClient`] that returns a single `write_file` tool call on its first turn, then fails
 /// every subsequent turn with a fatal model error — so an agent driving it writes one file and then
 /// ends in `model_error` (a non-clean completion).
@@ -771,6 +795,8 @@ impl ModelClient for WriteThenFailClient {
                 cost: None,
                 provider: None,
                 loop_aborts: LoopAborts::none(),
+                usage_wire: None,
+                usage_reconciled: false,
             })
         } else {
             Err(ModelError::Fatal {
@@ -1308,6 +1334,8 @@ fn ending_call(id: &str, name: &str, arguments: serde_json::Value) -> ModelRespo
         cost: None,
         provider: None,
         loop_aborts: LoopAborts::none(),
+        usage_wire: None,
+        usage_reconciled: false,
     }
 }
 
@@ -3104,6 +3132,8 @@ fn read_skill_call(id: &str, name: &str) -> ModelResponse {
         cost: None,
         provider: None,
         loop_aborts: LoopAborts::none(),
+        usage_wire: None,
+        usage_reconciled: false,
     }
 }
 
@@ -3124,6 +3154,8 @@ fn text_only_response() -> ModelResponse {
         cost: None,
         provider: None,
         loop_aborts: LoopAborts::none(),
+        usage_wire: None,
+        usage_reconciled: false,
     }
 }
 
@@ -3305,6 +3337,8 @@ fn write_memory_call(id: &str, name: &str, body: &str) -> ModelResponse {
         cost: None,
         provider: None,
         loop_aborts: LoopAborts::none(),
+        usage_wire: None,
+        usage_reconciled: false,
     }
 }
 
@@ -3525,6 +3559,8 @@ fn create_memory_call(id: &str, name: &str, contents: &str) -> ModelResponse {
         cost: None,
         provider: None,
         loop_aborts: LoopAborts::none(),
+        usage_wire: None,
+        usage_reconciled: false,
     }
 }
 
@@ -3846,6 +3882,8 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
         cost: None,
         provider: None,
         loop_aborts: LoopAborts::none(),
+        usage_wire: None,
+        usage_reconciled: false,
     };
     let client = MockClient::new(
         "mock/echo",
@@ -3996,6 +4034,8 @@ async fn drive_always_carries_the_task_list_in_the_window() {
                 cost: None,
                 provider: None,
                 loop_aborts: LoopAborts::none(),
+                usage_wire: None,
+                usage_reconciled: false,
             },
             stop_response(),
         ],
@@ -4220,6 +4260,8 @@ fn balloon_turn(id: &str) -> ModelResponse {
         cost: None,
         provider: None,
         loop_aborts: LoopAborts::none(),
+        usage_wire: None,
+        usage_reconciled: false,
     }
 }
 
@@ -4241,6 +4283,8 @@ fn compaction_script() -> Vec<ModelResponse> {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         },
         balloon_turn("c_ls"),
         stop_response(),
@@ -5203,6 +5247,105 @@ async fn run_reports_a_fatal_response_as_a_harness_error() {
             GgTelemetryKind::SessionEnded { status } if status == "model_error"
         )),
         "the session ends `model_error`"
+    );
+}
+
+/// A turn whose provider reported a reasoning figure that leaves the reply no room is recorded
+/// with the reply's size as output, the remainder as reasoning, and the `reconciled` mark — and
+/// the provider's own object rides beside them, so the disagreement is checkable from the row.
+#[tokio::test]
+async fn usage_records_a_reconciled_row_beside_the_providers_object() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-usage".to_string()), Box::new(sink.clone()));
+    let inv = invocation(dir.path(), GgCapabilitySet::minimal("mock/primary"));
+
+    // The shape Sail Research's serving of Kimi produced: reasoning_tokens reported equal to
+    // completion_tokens on every turn, over a reply gg can measure in its own hand. The reply
+    // ends the session, so the run takes exactly one turn.
+    let no_room_for_the_reply = || -> Box<dyn ModelClient> {
+        Box::new(SingleReplyClient {
+            reply: ModelResponse {
+                text: Some("ending".to_string()),
+                tool_calls: vec![ToolCall {
+                    id: "call_finish".to_string(),
+                    name: "finish".to_string(),
+                    arguments: json!({ "summary": "done" }),
+                }],
+                finish_reason: FinishReason::ToolCalls,
+                // The bounded split the client transport recorded: the reply's own estimated
+                // size as output (34 — its text, the call and its arguments, over the framing
+                // allowance), and what remains of the provider's 230 as reasoning. The fixture
+                // carries the figures *after* the bound because this test's subject is what the
+                // loop and the emitter do with a reconciled row; the bound itself is proven in
+                // `client.test.rs`.
+                usage: TokenCounts {
+                    uncached_input: Some(1200),
+                    cached_input: None,
+                    output: Some(34),
+                    reasoning: Some(196),
+                },
+                cost: Some(Cost {
+                    comparable: Some(0.0123),
+                    actual: Some(0.0123),
+                }),
+                provider: Some("Sail Research".to_string()),
+                loop_aborts: LoopAborts::none(),
+                usage_wire: Some(json!({
+                    "prompt_tokens": 1200,
+                    "completion_tokens": 230,
+                    "total_tokens": 1430,
+                    "completion_tokens_details": { "reasoning_tokens": 230 },
+                })),
+                usage_reconciled: true,
+            },
+        })
+    };
+    let factory = ScriptedFactory::new().slot(ROOT_PROFILE_ID, move |_| no_room_for_the_reply());
+
+    assert_eq!(
+        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
+        SessionOutcome::Ran,
+    );
+
+    let events = sink.events();
+    let deltas: Vec<&GgTelemetryKind> = events
+        .iter()
+        .filter_map(|e| matches!(&e.kind, GgTelemetryKind::Usage { .. }).then_some(&e.kind))
+        .collect();
+    assert!(!deltas.is_empty(), "the turn's spend is on the stream");
+
+    for delta in deltas {
+        let GgTelemetryKind::Usage {
+            tokens,
+            wire,
+            reconciled,
+            ..
+        } = delta
+        else {
+            unreachable!("filtered above")
+        };
+        // The reply is never recorded with fewer output tokens than its own size.
+        assert!(
+            tokens.output.unwrap_or(0) > 0,
+            "a reply gg holds is never recorded as zero output"
+        );
+        assert!(*reconciled, "the row says the split is gg's");
+        // The provider's object is verbatim beside it — what the gateway said, not what gg made
+        // of it, so the disagreement is readable rather than invisible.
+        assert_eq!(
+            wire.as_ref().and_then(|wire| wire.get("completion_tokens")),
+            Some(&json!(230)),
+            "the provider's completion total is on the row"
+        );
+    }
+
+    // ...and the mark survives serialization, so a consumer of the NDJSON sees it too.
+    assert!(
+        sink.lines()
+            .iter()
+            .any(|line| line.contains("\"reconciled\":true")),
+        "the reconciled mark reaches the wire"
     );
 }
 
@@ -6280,6 +6423,8 @@ async fn spawn_is_refused_at_the_max_depth() {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         Box::new(MockClient::new(
             "mock/subagent",
@@ -6345,6 +6490,8 @@ async fn subagents_recurse_within_the_depth_cap() {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let wait = ModelResponse {
             text: Some("Waiting for the worker.".to_string()),
@@ -6358,6 +6505,8 @@ async fn subagents_recurse_within_the_depth_cap() {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         Box::new(MockClient::new(
             "mock/subagent",
@@ -6442,6 +6591,8 @@ impl ModelClient for InboxProbeClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         })
     }
 
@@ -6474,6 +6625,8 @@ async fn send_message_reaches_a_running_subagent_and_affects_it() {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let message = ModelResponse {
             text: Some("Guiding the child.".to_string()),
@@ -6487,6 +6640,8 @@ async fn send_message_reaches_a_running_subagent_and_affects_it() {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let wait = ModelResponse {
             text: Some("Waiting for the child.".to_string()),
@@ -6500,6 +6655,8 @@ async fn send_message_reaches_a_running_subagent_and_affects_it() {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         Box::new(MockClient::new(
             "mock/primary",
@@ -6573,6 +6730,8 @@ async fn send_message_refuses_unknown_and_finished_targets() {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let wait = ModelResponse {
             text: Some("wait".to_string()),
@@ -6586,6 +6745,8 @@ async fn send_message_refuses_unknown_and_finished_targets() {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let msg_finished = ModelResponse {
             text: Some("message the finished child".to_string()),
@@ -6599,6 +6760,8 @@ async fn send_message_refuses_unknown_and_finished_targets() {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         let msg_unknown = ModelResponse {
             text: Some("message a stranger".to_string()),
@@ -6612,6 +6775,8 @@ async fn send_message_refuses_unknown_and_finished_targets() {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         };
         Box::new(MockClient::new(
             "mock/primary",
@@ -6706,6 +6871,8 @@ fn tool_call_response(id: &str, name: &str, args: serde_json::Value) -> ModelRes
         cost: None,
         provider: None,
         loop_aborts: LoopAborts::none(),
+        usage_wire: None,
+        usage_reconciled: false,
     }
 }
 
@@ -9276,6 +9443,8 @@ impl ModelClient for VisionRefusingClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         })
     }
 
@@ -9428,6 +9597,8 @@ impl ModelClient for ImageReadingClient {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         })
     }
 

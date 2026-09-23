@@ -61,6 +61,13 @@ use crate::tools::{ARCHIVE_THREAD_TOOL, ApiData, EVICT_FILE_VIEW_TOOL};
 /// counted as ~zero. An approximation, like the rest of the accounting.
 const MESSAGE_FRAMING_TOKENS: usize = 4;
 
+/// [`MESSAGE_FRAMING_TOKENS`] exposed crate-wide: the [model clients](crate::client) bound a
+/// reply's recorded output split by its own estimated size, and the estimate a reply is charged in
+/// the [message log](crate::message_log) includes this framing allowance, so the bound has to too
+/// — a bound measured in different terms from the figure it guards would be a second accounting
+/// where one is already documented.
+pub(crate) const REPLY_FRAMING_TOKENS: usize = MESSAGE_FRAMING_TOKENS;
+
 /// The selector **a model's own** [search-results view](ContextModel::open_search_view) is keyed
 /// under — what its heading is qualified by, what a `view.close` naming it removes, and what makes a
 /// second search replace the first rather than pile up beside it.

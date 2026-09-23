@@ -114,6 +114,8 @@ fn prose_reply(text: &str) -> ModelResponse {
         cost: None,
         provider: None,
         loop_aborts: LoopAborts::none(),
+        usage_wire: None,
+        usage_reconciled: false,
     }
 }
 
@@ -173,6 +175,8 @@ async fn self_summarization_falls_back_when_the_reply_is_empty() {
         cost: None,
         provider: None,
         loop_aborts: LoopAborts::none(),
+        usage_wire: None,
+        usage_reconciled: false,
     });
     script.push(stop_response());
 

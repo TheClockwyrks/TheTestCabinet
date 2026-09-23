@@ -805,6 +805,131 @@ fn parse_response_rejects_empty_and_error_bodies() {
     assert!(parse_response("not json at all").is_err());
 }
 
+/// The provider's usage object rides verbatim on the response, exactly as the gateway returned
+/// it — its own snake_case keys, and every field gg maps nothing onto included.
+#[test]
+fn parse_response_keeps_the_providers_usage_object_verbatim() {
+    let body = r#"{
+        "choices": [{ "message": { "role": "assistant", "content": "done" }, "finish_reason": "stop" }],
+        "usage": {
+            "prompt_tokens": 1000,
+            "completion_tokens": 300,
+            "total_tokens": 1300,
+            "cost": 0.0123,
+            "prompt_tokens_details": { "cached_tokens": 400 },
+            "completion_tokens_details": { "reasoning_tokens": 120 },
+            "next_cursor": "ignored-by-everyone"
+        }
+    }"#;
+
+    let response = parse_response(body).expect("parse");
+
+    assert_eq!(
+        response.usage_wire,
+        Some(json!({
+            "prompt_tokens": 1000,
+            "completion_tokens": 300,
+            "total_tokens": 1300,
+            "cost": 0.0123,
+            "prompt_tokens_details": { "cached_tokens": 400 },
+            "completion_tokens_details": { "reasoning_tokens": 120 },
+            "next_cursor": "ignored-by-everyone"
+        }))
+    );
+    // A provider whose split agrees with the reply is recorded as given, so the row is
+    // not marked.
+    assert!(!response.usage_reconciled);
+}
+
+/// A call that reported no usage carries neither the provider's object nor a mark.
+#[test]
+fn parse_response_without_usage_carries_no_wire_and_no_mark() {
+    let body = r#"{ "choices": [{ "message": { "content": "hi" }, "finish_reason": "stop" }] }"#;
+    let response = parse_response(body).expect("parse");
+    assert_eq!(response.usage_wire, None);
+    assert!(!response.usage_reconciled);
+}
+
+/// A provider whose reasoning figure leaves the reply no room is bounded by the reply: its
+/// output is recorded at the reply's own estimated size, reasoning takes the remainder of the
+/// completion total, and the row is marked reconciled — the shape Sail Research's serving of
+/// Kimi produced, reporting `reasoning_tokens == completion_tokens` on every turn.
+#[test]
+fn parse_response_bounds_a_split_that_leaves_the_reply_no_room() {
+    let body = r#"{
+        "choices": [{ "message": { "role": "assistant", "content": "Creating the file now, writing it out." }, "finish_reason": "stop" }],
+        "usage": {
+            "prompt_tokens": 1200,
+            "completion_tokens": 230,
+            "total_tokens": 1430,
+            "completion_tokens_details": { "reasoning_tokens": 230 }
+        }
+    }"#;
+
+    let response = parse_response(body).expect("parse");
+
+    // The reply's own estimated size, not the zero the provider's arithmetic leaves.
+    let output = response.usage.output.expect("output is recorded");
+    assert!(
+        output > 0,
+        "a 230-token reply is never recorded as zero output"
+    );
+    assert_eq!(response.usage.reasoning, Some(230 - output));
+    // The billed total is the provider's either way: both halves sum to `completion_tokens`.
+    assert_eq!(output + response.usage.reasoning.unwrap_or(0), 230);
+    assert!(
+        response.usage_reconciled,
+        "the split is gg's, and the row says so"
+    );
+}
+
+/// The bound never moves the completion total: a provider whose reasoning leaves the reply
+/// room is recorded exactly as it reported, mark and all off.
+#[test]
+fn parse_response_keeps_a_consistent_split_as_given() {
+    let body = r#"{
+        "choices": [{ "message": { "role": "assistant", "content": "Creating the file now, writing it out." }, "finish_reason": "stop" }],
+        "usage": {
+            "prompt_tokens": 1200,
+            "completion_tokens": 230,
+            "total_tokens": 1430,
+            "completion_tokens_details": { "reasoning_tokens": 90 }
+        }
+    }"#;
+
+    let response = parse_response(body).expect("parse");
+
+    assert_eq!(
+        response.usage,
+        TokenCounts {
+            uncached_input: Some(1200),
+            cached_input: None,
+            output: Some(140), // 230 - 90 reasoning
+            reasoning: Some(90),
+        }
+    );
+    assert!(!response.usage_reconciled);
+}
+
+/// A call with no completion total is mapped as reported: there is no total to bound a split
+/// against, so the provider's reasoning figure stands and the reply's size is not imposed.
+#[test]
+fn parse_response_without_a_completion_total_does_not_impose_the_reply_size() {
+    let body = r#"{
+        "choices": [{ "message": { "role": "assistant", "content": "hi" }, "finish_reason": "stop" }],
+        "usage": {
+            "prompt_tokens": 1000,
+            "completion_tokens_details": { "reasoning_tokens": 55 }
+        }
+    }"#;
+
+    let response = parse_response(body).expect("parse");
+
+    assert_eq!(response.usage.output, None);
+    assert_eq!(response.usage.reasoning, Some(55));
+    assert!(!response.usage_reconciled);
+}
+
 // ---------------------------------------------------------------------------
 // Provider selection
 // ---------------------------------------------------------------------------
@@ -926,6 +1051,8 @@ async fn mock_client_advances_through_script_then_terminates() {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         },
         ModelResponse {
             text: Some("turn 2".to_string()),
@@ -935,6 +1062,8 @@ async fn mock_client_advances_through_script_then_terminates() {
             cost: None,
             provider: None,
             loop_aborts: LoopAborts::none(),
+            usage_wire: None,
+            usage_reconciled: false,
         },
     ];
     let client = MockClient::new("mock/test", script);
