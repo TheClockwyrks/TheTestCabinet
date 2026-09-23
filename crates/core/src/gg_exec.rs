@@ -10,8 +10,8 @@
 //! install / probe / `drive_orchestrator` span, it:
 //!
 //! 1. **installs the `gg` binary** into the container ([`GgInstall`]): a locally-built
-//!    binary copied in for offline/CLI runs, or a versioned GitHub release downloaded
-//!    at run time for the cluster — the same two-mode shape gg's
+//!    binary copied in for offline/CLI runs, or a versioned release downloaded from
+//!    the gg release blob container at run time for the cluster — the same two-mode shape gg's
 //!    [distribution](https://docs.testcabinet.ai/gg/overview/#installation--distribution)
 //!    describes;
 //! 2. **writes the [`GgInvocation`]** JSON the binary reads via `--config` (the
@@ -87,7 +87,7 @@ const GG_CANCEL_GRACE: std::time::Duration = std::time::Duration::from_secs(600)
 const ENV_BINARY: &str = "TCAB_GG_BINARY";
 
 /// Env override: force the install strategy — `"local"` (require a local binary) or
-/// `"release"` (download a GitHub release). Unset auto-detects (local if a build is
+/// `"release"` (download a published release from the blob container). Unset auto-detects (local if a build is
 /// found, else release). This is how the cluster path pins release installs, matching
 /// how the driver already selects its container runtime by configuration.
 ///
@@ -109,14 +109,19 @@ const INSTALL_MODES: &[&str] = &["local", "release"];
 /// it here (`TCAB_GG_RELEASE_VERSION=0.7.0-rc1`).
 const ENV_RELEASE_VERSION: &str = "TCAB_GG_RELEASE_VERSION";
 
-/// Env override: the `owner/repo` the gg release is published under.
-const ENV_RELEASE_REPO: &str = "TCAB_GG_RELEASE_REPO";
+/// Env override: the base URL gg releases are downloaded from. Defaults to
+/// [`DEFAULT_RELEASE_BASE_URL`].
+const ENV_RELEASE_URL: &str = "TCAB_GG_RELEASE_URL";
 
 /// Env override: the release asset's target triple (defaults to the run host's).
 const ENV_RELEASE_TARGET: &str = "TCAB_GG_RELEASE_TARGET";
 
-/// The default `owner/repo` gg releases are published under.
-const DEFAULT_RELEASE_REPO: &str = "TheClockwyrks/test-cabinet";
+/// The base URL gg releases are downloaded from by default: the `gg-releases` container
+/// of the `testcabinetartifacts` Azure Blob Storage account, which the Azure pipeline's gg
+/// upload (`scripts/ci/publish-gg.sh`) publishes to. The container is anonymously
+/// readable, so the download needs no credential.
+pub const DEFAULT_RELEASE_BASE_URL: &str =
+    "https://testcabinetartifacts.blob.core.windows.net/gg-releases";
 
 /// The `gg` release version a [`GgInstall::Release`] defaults to — this crate's own
 /// package version.
@@ -127,7 +132,7 @@ const DEFAULT_RELEASE_REPO: &str = "TheClockwyrks/test-cabinet";
 /// version is what `gg --version` reports and what is recorded as a run's
 /// [`harness_version`](crate::run_record::RunSubject::harness_version). If the two
 /// package versions drift the failure is silent in the worst way — the driver requests
-/// a tag that does not exist (a run that dies at the install step), or one that does
+/// a release that was never published (a run that dies at the install step), or one that does
 /// and holds a *different* build than the corpus is about to be labelled with. So they
 /// are pinned to the same string, and `crates/gg`'s
 /// `the_default_release_version_matches_this_binary` test asserts it.
@@ -137,8 +142,9 @@ pub const DEFAULT_RELEASE_VERSION: &str = env!("CARGO_PKG_VERSION");
 ///
 /// Two modes, matching gg's distribution story: a locally-built binary (offline, no
 /// external resources — the fast local iteration path) copied in as bytes, or a
-/// versioned GitHub release downloaded at run time (the cluster path, the same shape
-/// as a third-party harness's install step but pulling our own release).
+/// versioned release downloaded from the gg release blob container at run time (the
+/// cluster path, the same shape as a third-party harness's install step but pulling our
+/// own release).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GgInstall {
     /// Copy a host-built binary into the container. The bytes are materialized as a
@@ -152,10 +158,11 @@ pub enum GgInstall {
         /// The absolute in-container path it is installed to.
         container_path: String,
     },
-    /// Download a published GitHub release into the container at run time.
+    /// Download a published release into the container at run time.
     Release {
-        /// The `owner/repo` the release lives under.
-        repo: String,
+        /// The base URL releases are downloaded from, without a trailing slash (see
+        /// [`release_asset_url`]).
+        base_url: String,
         /// The release version to fetch.
         version: String,
         /// The asset's target triple.
@@ -220,7 +227,7 @@ fn resolve_install_with(
             .filter(|v| !v.trim().is_empty())
             .unwrap_or_else(|| default_version.to_string());
         GgInstall::Release {
-            repo: release_repo_with(env),
+            base_url: release_base_url_with(env),
             version,
             target: release_target_with(env, default_target_arch),
             container_path: GG_BINARY_PATH.to_string(),
@@ -297,7 +304,7 @@ fn default_local_candidates() -> Vec<PathBuf> {
         // into. The driver image places it here (see
         // `deployments/images/driver.Dockerfile`), so a Kubernetes run installs gg
         // LOCALLY — core, running in the driver pod, reads it from here and copies it
-        // into the sandbox run pod — with no GitHub release or network egress. The
+        // into the sandbox run pod — with no release download or network egress. The
         // driver image also points `TCAB_GG_BINARY` at this path, so this candidate is
         // the belt-and-suspenders fallback that keeps the convention discoverable in code.
         "/usr/local/lib/tcab/gg",
@@ -312,27 +319,30 @@ fn default_local_candidates() -> Vec<PathBuf> {
     .collect()
 }
 
-/// The `owner/repo` a `gg` release is fetched from: `TCAB_GG_RELEASE_REPO` when set,
-/// otherwise `TheClockwyrks/test-cabinet`.
+/// The base URL a `gg` release is fetched from: `TCAB_GG_RELEASE_URL` when set (surrounding
+/// whitespace and any trailing slash removed), otherwise [`DEFAULT_RELEASE_BASE_URL`].
 ///
 /// Public because the run path is not the only thing that resolves a release, and every caller has
-/// to look in the same place a run would. Two independent copies of "which repo" is precisely the
-/// drift that makes one of them fetch from a repository nothing is published to.
-pub fn release_repo() -> String {
-    release_repo_with(&|key| std::env::var(key).ok())
+/// to look in the same place a run would. Two independent copies of "where releases live" is
+/// precisely the drift that makes one of them fetch from a location nothing is published to.
+pub fn release_base_url() -> String {
+    release_base_url_with(&|key| std::env::var(key).ok())
 }
 
 /// The release asset's target triple: `TCAB_GG_RELEASE_TARGET` when set, otherwise the
-/// static-musl triple for the host architecture. Public for the same reason as [`release_repo`].
+/// static-musl triple for the host architecture. Public for the same reason as
+/// [`release_base_url`].
 pub fn release_target() -> String {
     release_target_with(&|key| std::env::var(key).ok(), std::env::consts::ARCH)
 }
 
-/// [`release_repo`] with the environment injected, so the pure install resolution can share it.
-fn release_repo_with(env: &dyn Fn(&str) -> Option<String>) -> String {
-    env(ENV_RELEASE_REPO)
-        .filter(|r| !r.trim().is_empty())
-        .unwrap_or_else(|| DEFAULT_RELEASE_REPO.to_string())
+/// [`release_base_url`] with the environment injected, so the pure install resolution can share
+/// it. An empty or whitespace-only value counts as unset, like the other release variables.
+fn release_base_url_with(env: &dyn Fn(&str) -> Option<String>) -> String {
+    env(ENV_RELEASE_URL)
+        .map(|url| url.trim().trim_end_matches('/').to_string())
+        .filter(|url| !url.is_empty())
+        .unwrap_or_else(|| DEFAULT_RELEASE_BASE_URL.to_string())
 }
 
 /// [`release_target`] with the environment and host architecture injected.
@@ -347,32 +357,35 @@ fn release_target_with(env: &dyn Fn(&str) -> Option<String>, default_arch: &str)
         .unwrap_or_else(|| format!("{default_arch}-unknown-linux-musl"))
 }
 
-/// The URL a published `gg` release asset lives at.
+/// The URL a published `gg` release asset lives at: `{base_url}/v{version}/gg-{target}`.
 ///
-/// Two conventions are encoded here, and both are owned by
-/// `.github/workflows/release.yml` — change one without the other and every cluster
-/// run that installs gg from a release dies at the download step:
+/// The layout is the contract with the Azure pipeline's gg upload
+/// (`scripts/ci/publish-gg.sh`), which publishes each release under a `v{version}/` prefix
+/// as `gg-{target}` (one per target triple) plus `gg-reference.tar.gz`. Change one side
+/// without the other and every cluster run that installs gg from a release dies at the
+/// download step:
 ///
-/// - **the tag is `v{version}`**, the single tag a release is cut under (the `tcab`
-///   CLI, the services, the desktop installers and gg all hang off it). An earlier
-///   `gg-v{version}` scheme named a tag the workflow has never created, so no URL this
-///   function produced had ever resolved.
-/// - **the asset is a bare executable named `gg-{target}`**, not an archive like the
-///   other binaries. The container-side install is one `curl` with no unpack step, in
-///   an image that is not guaranteed to have `tar` — and the target triple in the name
-///   is what lets one release serve both the `x86_64` and `aarch64` musl builds.
+/// - **the prefix is `v{version}`**, the same `v`-prefixed version a release is tagged
+///   under, so a prerelease like `0.7.0-rc1` lives at `v0.7.0-rc1/`.
+/// - **the object is a bare executable named `gg-{target}`**, not an archive. The
+///   container-side install is one `curl` with no unpack step, in an image that is not
+///   guaranteed to have `tar` — and the target triple in the name is what lets one
+///   release serve both the `x86_64` and `aarch64` musl builds.
+///
+/// A trailing slash on `base_url` is ignored, so an operator-supplied base joins cleanly.
 ///
 /// Public so `crates/gg` can assert that the URL resolved for a default install names
 /// the version that binary actually reports.
-pub fn release_asset_url(repo: &str, version: &str, target: &str) -> String {
-    format!("https://github.com/{repo}/releases/download/v{version}/gg-{target}")
+pub fn release_asset_url(base_url: &str, version: &str, target: &str) -> String {
+    let base_url = base_url.trim_end_matches('/');
+    format!("{base_url}/v{version}/gg-{target}")
 }
 
 /// Build the shell script that downloads a release binary into the container and marks
 /// it executable. Pure and unit-tested so the URL and command shape are verified
 /// without a published release.
-fn release_download_command(repo: &str, version: &str, target: &str, dest: &str) -> String {
-    let url = release_asset_url(repo, version, target);
+fn release_download_command(base_url: &str, version: &str, target: &str, dest: &str) -> String {
+    let url = release_asset_url(base_url, version, target);
     format!(
         "set -e\ncurl --fail --silent --show-error --location {url} --output {dest}\nchmod 0755 {dest}\n"
     )
@@ -429,13 +442,13 @@ pub(crate) async fn prepare_gg(
         SystemStatus::Started,
     ));
     if let GgInstall::Release {
-        repo,
+        base_url,
         version,
         target,
         container_path,
     } = install
     {
-        let script = release_download_command(repo, version, target, container_path);
+        let script = release_download_command(base_url, version, target, container_path);
         let command = vec!["sh".to_string(), "-c".to_string(), script];
         let download = runtime.exec(handle, &command);
         match tokio::time::timeout(std::time::Duration::from_secs(max_runtime), download).await {
