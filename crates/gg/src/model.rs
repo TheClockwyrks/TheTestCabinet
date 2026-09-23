@@ -323,11 +323,11 @@ pub struct ModelResponse {
 /// Three figures rather than the bare count, because the count alone answers "how often" and never
 /// "how much". A discarded attempt is charged to the run's provider bill exactly like any other
 /// output — the tokens were generated, and abandoning the stream mid-flight does not refund them —
-/// yet it is deliberately absent from the run's [cost](test_cabinet_core::metrics::Cost) and token
-/// totals, because those are read off the provider's usage payload and a stream nobody finished
-/// carries none. So the size is reported in the units gg can actually vouch for, measured by the
-/// [guard](crate::loopguard::LoopGuard) as the reply streamed: **words and characters of generated
-/// output**, never a token count and never a price.
+/// while its price never reaches the stream at all, because a stream nobody finished carries no
+/// usage payload. The run reads each price back at session end off the gateway's generation
+/// ledger (see [`AbandonedReply`]); this tally stays in the units gg can actually vouch for,
+/// measured by the [guard](crate::loopguard::LoopGuard) as the reply streamed: **words and
+/// characters of generated output**, never a token count and never a price.
 ///
 /// The three move together, through [`record`](Self::record), which is the only place gg adds to
 /// one: a size that could be added without an attempt is a size no reader could say what it was a
@@ -372,6 +372,39 @@ impl LoopAborts {
     pub fn any(&self) -> bool {
         self.attempts > 0
     }
+}
+
+/// One reply [loop detection](crate::loopguard) abandoned mid-stream: the record that carries the
+/// discarded reply's **size**, and the **generation id** its price is read back under at session
+/// end.
+///
+/// The size is what the [guard](crate::loopguard::LoopGuard) counted itself as the reply streamed,
+/// in the only units an abandoned stream can be vouched for. The generation id is the `id` the
+/// stream's first chunk named — read by the time the reply is abandoned, and the handle the
+/// session's pricing pass looks the price up under on OpenRouter's generation ledger
+/// (`GET /api/v1/generation?id=…`), since a stream gg dropped never delivers its usage. Both ride
+/// on one record because they describe one discarded reply and the lookup answers for exactly this
+/// one.
+///
+/// The slot fields say which `(profile, model)` generated it, so a price read back lands on the
+/// [right slot](test_cabinet_core::gg::GgSlotCost) — a run spans several models and an abandoned
+/// reply's price belongs to the model that generated it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AbandonedReply {
+    /// The gateway's generation id for the reply, from the `id` on the stream's first chunk. `None`
+    /// when no chunk named one, which leaves the reply unpriceable: there is no ledger entry to
+    /// look up.
+    pub generation_id: Option<String>,
+    /// Completed words of generated output the reply had produced when its stream was dropped. A
+    /// reply's final partial word is never counted.
+    pub words: u64,
+    /// Characters of the same output, counted as characters rather than bytes.
+    pub chars: u64,
+    /// The [agent profile](test_cabinet_core::gg::GgAgentConfig::id) (slot) whose request generated
+    /// it — what a price read back is booked to.
+    pub profile_id: String,
+    /// The model that generated it, within that slot.
+    pub model_id: String,
 }
 
 /// A failure running a model turn.
@@ -470,7 +503,8 @@ pub enum ModelError {
     /// the discarded replies never entered the context, the turn spends the error ceilings, and
     /// the same request goes out again, so a model that loops once loses a turn rather than the
     /// run. The replies' spend cannot follow them here — a stream gg dropped never delivered its
-    /// usage — so the error carries their [size](LoopAborts) and nothing it cannot measure.
+    /// usage — so the error carries their [size](LoopAborts) and nothing it cannot measure; their
+    /// price is read back at session end, like every abandoned reply's.
     ///
     /// It exists as its own variant rather than folding into `RetryExhausted` because the two say
     /// completely different things to an operator reading the run's log. `RetryExhausted` means
@@ -490,8 +524,9 @@ pub enum ModelError {
         /// [`attempts`](LoopAborts::attempts) is the [retry policy's](crate::client::RetryPolicy)
         /// full attempt count, since a loop that left any attempt unused would have returned that
         /// attempt's answer instead, and the sizes beside it are what those attempts generated —
-        /// the whole of what this turn spent, since no reply was ever read to the end and so the
-        /// provider reported no usage for any of them.
+        /// the whole of what this turn generated, since no reply was ever read to the end and so
+        /// no usage arrived with any of them. Their price is read back at session end, like every
+        /// abandoned reply's.
         discarded: LoopAborts,
         /// What tripped the detector on the final attempt, in the detector's own words (a
         /// [`LoopTrip`](crate::loopguard::LoopTrip)'s `Display`), so the failure and the `warn`
@@ -708,6 +743,31 @@ pub trait ModelClient: Send + Sync {
     /// announce, which is the default; a decorator forwards it to the client it wraps.
     fn announce_retries_on(&self, emitter: &Emitter) {
         let _ = emitter;
+    }
+
+    /// The replies [loop detection](crate::loopguard) abandoned on this run's streams — one
+    /// [record](AbandonedReply) per abandoned reply, kept so the session can price them at its end.
+    ///
+    /// The run's model clients share one record (the
+    /// [factory](crate::client::DefaultClientFactory) hands every client it builds the same one),
+    /// so this answers for the whole run rather than for one agent. A client built with no shared
+    /// record keeps one of its own, and one that abandoned nothing — a scripted mock, a detector
+    /// left disarmed — answers empty.
+    fn abandoned_replies(&self) -> Vec<AbandonedReply> {
+        Vec::new()
+    }
+
+    /// Look one abandoned reply's generation up on the gateway's generation ledger and answer what
+    /// it was billed, or `None` when the ledger never answered.
+    ///
+    /// The session's pricing pass calls this once at session end — never on the turn, so a looping
+    /// model does not add the lookup's delay to its own retry. A gateway settles a cancelled
+    /// stream's ledger entry only after a delay, so an implementation retries the lookup's `404`
+    /// on a short schedule bounded by a few tens of seconds in total before giving up. A client
+    /// that can look nothing up (a scripted mock) answers `None`, which leaves the reply unpriced.
+    async fn price_generation(&self, generation_id: &str) -> Option<ReplySpend> {
+        let _ = generation_id;
+        None
     }
 }
 

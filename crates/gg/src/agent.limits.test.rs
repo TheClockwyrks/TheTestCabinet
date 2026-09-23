@@ -1716,9 +1716,9 @@ async fn a_reply_that_looped_on_every_attempt_spends_the_ceilings_on_its_own_mes
 /// Loop detection discarding two replies and the third one working is a *successful* turn — the
 /// outcome is `progressed`, no ceiling counts it, and nothing about the run's error rate changes.
 /// The generation is still gone and still billed, so the tally rides on the turn that eventually
-/// produced a reply, and the operator log says so out loud in the units gg measured: words and
-/// characters, never tokens and never dollars, because the provider reports usage at the end of a
-/// stream neither abandoned reply ever reached.
+/// produced a reply, and the operator log says so out loud in the units gg measured on the stream:
+/// words and characters. The prices of those replies are read back at session end and land in the
+/// run's [total cost](GgSessionSummary::cost) — see `agent.pricing.test.rs`.
 #[tokio::test]
 async fn a_turn_that_survived_a_loop_reports_the_replies_that_were_discarded() {
     let dir = TempDir::new().unwrap();
@@ -1775,19 +1775,20 @@ async fn a_turn_that_survived_a_loop_reports_the_replies_that_were_discarded() {
     );
 }
 
-/// **A discarded looping reply changes nothing about what the run cost.**
+/// **A discarded looping reply costs the turn nothing it can record.**
 ///
-/// The ruling this whole measure exists under: a looping reply is a model defect, so its generation
-/// must not be charged to the configuration under test. Two runs, identical in every respect except
-/// that one of them threw two replies away, must therefore record the same tokens, the same cost,
-/// and the same run-wide spend — the figure the cost ceiling is measured against.
+/// The turn's own totals and the run-wide spend the cost ceiling is measured against never see
+/// abandoned output: gg's cost and tokens per turn come from the provider's usage payload, which
+/// arrives at the *end* of a stream an abandoned reply never reached. Two runs, identical in every
+/// respect except that one of them threw two replies away, therefore record the same tokens, the
+/// same cost, and the same run-wide spend.
 ///
-/// That holds for a reason worth stating rather than merely observing: gg's cost and tokens come
-/// from the provider's usage payload, which arrives at the *end* of a stream an abandoned reply
-/// never reached. There is no figure to fold in even if gg wanted to, and inventing one would put an
-/// estimate where every neighbouring number is a measurement.
+/// The output is billed all the same, and its price is read back at session end on the generation
+/// ledger — into the run's [total cost](GgSessionSummary::cost) and out of its
+/// [work cost](GgSessionSummary::work_cost). That pass is pinned by `agent.pricing.test.rs`; what
+/// is pinned here is that nothing on the turn's own figures moves first.
 #[tokio::test]
-async fn a_discarded_looping_reply_costs_the_run_nothing_it_can_record() {
+async fn a_discarded_looping_reply_costs_the_turn_nothing_it_can_record() {
     async fn run(discarded: LoopAborts) -> (LoopEnd, Option<f64>) {
         let dir = TempDir::new().unwrap();
         let emitter = Emitter::with_sink(None, Box::new(CollectingSink::new()));

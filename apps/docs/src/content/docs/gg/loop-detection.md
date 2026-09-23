@@ -169,7 +169,8 @@ retry loop.
    looping reply is never streamed as an assistant message, never enters the
    context window, and never appears in the
    [session record](/gg/analysis/session-records/), which journals the response
-   a turn was given. What survives it is a count and a size.
+   a turn was given. What survives it is a count, a size, and the generation id
+   its price is read back under.
 4. The turn logs one `warn` naming what was thrown away:
 
 ```text
@@ -196,9 +197,9 @@ model that loops once loses a turn rather than the run. An armed ceiling is what
 stops a model that keeps looping, under `limit_exceeded`. The turn is recorded
 with the base error kind `model_api` and the error type `model_response_loop`,
 together with how many replies were discarded and how much they generated.
-Their cost is in neither of the run's
-[cost figures](/gg/execution-limits/#maxcost), because an abandoned stream never
-delivers its usage.
+Their cost is billed like any other output and reaches the run's total cost
+through the lookup under [what the discarded output
+costs](#what-the-discarded-output-costs).
 
 The [session record](/gg/analysis/session-records/) keeps the failure as a
 recorded model error of kind `response_loop` carrying how many replies were
@@ -360,22 +361,31 @@ across every recorded run?"
 ## What the discarded output costs
 
 A reply that was generated is billed whether or not anybody reads it, so the
-tokens behind those characters are on the provider's invoice. They are absent
-from the run's recorded cost and token counts, by ruling: a looping reply is a
-model defect, and a run must not be made to look expensive for one.
+tokens behind those characters are on the provider's invoice. A stream gg drops
+mid-reply never delivers its usage, so the price is read back instead: the
+client keeps the generation id of every reply it abandons beside the size the
+detector counted, and at session end, before the `session_summary` is written,
+gg looks each one up on OpenRouter's generation endpoint
+(`GET /api/v1/generation?id=…`). The endpoint answers for a cancelled stream
+with its `total_cost`, its token counts and `cancelled: true`.
 
-gg publishes the size in words and characters, and publishes no token count and
-no price for it. Cost and tokens come from the provider's usage payload, which
-arrives at the end of a stream that was deliberately never read to its end, so
-there is no measurement to report and an estimate would sit where every
-neighbouring figure is measured. Words and characters are what the detector
-counted itself as the reply streamed.
+It settles a generation's ledger entry only after a delay, so a lookup that
+answers `404` is retried on a short schedule bounded by a few tens of seconds in
+total. An answered price lands in the abandoned reply's slot on `slotCosts` and
+in the run's `cost` — the total figure alone, never the work cost, since the
+reply produced no program and no tool call — and its tokens land beside it. A
+lookup that never answers leaves the reply unpriced, and the summary's
+`loopAbortUnpriced` counts how many stayed unpriced beside the two [cost
+figures](/gg/execution-limits/#maxcost): what the recorded total is missing
+against the key's billing is exactly the output `loopAbortChars` sizes. The pass
+logs what it recovered on the root's stream beside the closing summary.
 
-The run's [cost ceiling](/gg/execution-limits/) is measured against the recorded
-cost and therefore never sees this output either. A run whose every turn loops
-once and then succeeds spends roughly double at the provider while staying well
-inside a ceiling, which is why `loopAbortChars` is the figure that says it is
-happening.
+The lookup runs once at session end rather than on the turn, so a looping model
+does not add the delay to its own retry. The run's [cost
+ceiling](/gg/execution-limits/) reads the recorded cost at turn boundaries and so
+never sees this output either. A run whose every turn loops once and then
+succeeds spends roughly double at the provider while staying well inside a
+ceiling, which is why `loopAbortChars` is the figure that says it is happening.
 
 ## Boundaries
 

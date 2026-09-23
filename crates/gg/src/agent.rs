@@ -203,8 +203,8 @@ use crate::loopguard::LoopGuardConfig;
 use crate::memories::{MemoriesRuntime, MemoryRegistry, MemoryScope, MemoryStrategy};
 use crate::message_log::finish_reason_token;
 use crate::model::{
-    FinishReason, LoopAborts, Message, ModelClient, ModelError, ModelResponse, ReplySpend,
-    ToolCall, ToolDefinition,
+    AbandonedReply, FinishReason, LoopAborts, Message, ModelClient, ModelError, ModelResponse,
+    ReplySpend, ToolCall, ToolDefinition,
 };
 use crate::modules::{
     CapabilityModules, HistorySetup, InheritedModules, Module, ModuleIdMint, ModuleIds, ModuleKind,
@@ -770,13 +770,14 @@ fn resolve_agent_client(
     orch: &Orchestrator,
     profile: &str,
     origin: &GgSessionAgentOrigin,
-) -> Result<Box<dyn ModelClient>, UnresolvedProfile> {
+) -> Result<Arc<dyn ModelClient>, UnresolvedProfile> {
     let binding = profile_binding(&orch.caps, profile).map_err(|detail| UnresolvedProfile {
         status: STATUS_INTERNAL_ERROR,
         detail,
     })?;
     orch.factory
         .client_for_agent(&binding, &AgentIdentity::agent(origin.clone()))
+        .map(Into::into)
         .map_err(|err| UnresolvedProfile {
             status: if err.is_auth_failure() {
                 STATUS_AUTH_ERROR
@@ -1051,12 +1052,14 @@ pub(crate) async fn run_with_seams(
 
     // Launch check 4: the root's model client must resolve (a missing credential fails here). A
     // subagent's client is resolved at spawn time instead, where a failure is reported to its
-    // spawner rather than failing the whole process.
-    let client = match seams
+    // spawner rather than failing the whole process. Shared (`Arc`) because the session's own frame
+    // keeps a handle to it past the agent: the pricing pass at session end reads the run's
+    // abandoned replies and prices them through this client's gateway.
+    let client: Arc<dyn ModelClient> = match seams
         .factory
         .client_for_agent(&binding, &AgentIdentity::agent(GgSessionAgentOrigin::Root))
     {
-        Ok(client) => client,
+        Ok(client) => client.into(),
         Err(err) => {
             root_emitter.emit(log(
                 "error",
@@ -1219,7 +1222,7 @@ pub(crate) async fn run_with_seams(
         Arc::clone(&orch),
         root_agent,
         AgentRole::Root,
-        client,
+        Arc::clone(&client),
         root_inbox_rx,
         GgSessionAgentOrigin::Root,
     )
@@ -1279,6 +1282,15 @@ pub(crate) async fn run_with_seams(
     }
 
     join_spawned_agents(&orch).await;
+
+    // The output [loop detection](crate::loopguard) threw away is billed whether or not it was
+    // read, and a stream gg dropped never delivers its usage. Each abandoned reply's generation id
+    // was kept beside the size the detector counted; look every one up on the generation ledger now
+    // — once, at session end, so a looping model never pays the lookup's delay on its own retry —
+    // and book what the ledger answered to the slot that generated it. What the ledger never
+    // answered for stays unpriced, counted on the summary beside the two cost figures so the
+    // recorded total can still be compared against the key's billing.
+    price_abandoned_replies(client.as_ref(), &orch, &root_emitter).await;
 
     // The session's terminal status. It is the **root's** ending — the root is the session, and
     // every other agent was working for it — unless gg broke somewhere in the tree, which
@@ -2776,7 +2788,7 @@ impl Orchestrator {
                 );
                 return;
             }
-            run_agent(orch, agent, role, client, inbox_rx, origin).await;
+            run_agent(orch, agent, role, client.into(), inbox_rx, origin).await;
         });
         self.tasks.lock().expect("subagent tasks lock").push(task);
     }
@@ -3392,7 +3404,7 @@ async fn run_agent(
     orch: Arc<Orchestrator>,
     agent: Agent,
     mut role: AgentRole,
-    client: Box<dyn ModelClient>,
+    client: Arc<dyn ModelClient>,
     inbox_rx: mpsc::UnboundedReceiver<String>,
     origin: GgSessionAgentOrigin,
 ) -> LoopEnd {
@@ -3437,7 +3449,7 @@ async fn drive_agent(
     orch: Arc<Orchestrator>,
     mut agent: Agent,
     mut role: AgentRole,
-    client: Box<dyn ModelClient>,
+    client: Arc<dyn ModelClient>,
     inbox_rx: mpsc::UnboundedReceiver<String>,
     origin: GgSessionAgentOrigin,
     teardown: &mut AgentTeardown,
@@ -3537,7 +3549,7 @@ async fn drive_agent(
     // client on one agent's identity — and a dispatch onto an FSM shell resolved the entry state's
     // profile ([`GgCapabilitySet::dispatched_agent`]), which is the profile this agent is already
     // standing in by the time it gets here, so the client it was handed is the right one.
-    let mut next_client: Box<dyn ModelClient> = client;
+    let mut next_client: Arc<dyn ModelClient> = client;
     // What the previous incarnation handed over: its modules (already transferred), the opening note
     // gg wrote about the handoff, and the state it came from.
     //
@@ -4027,7 +4039,7 @@ async fn drive_agent(
                     // appears to come from nowhere.
                     compaction.handoff_client = Some(match &orch.replay {
                         Some(recorder) => Box::new(RecordingClient::for_compaction(
-                            client,
+                            client.into(),
                             Arc::clone(recorder),
                             agent.id.clone(),
                         )),
@@ -4178,8 +4190,8 @@ async fn drive_agent(
         // not mean "the operator did not ask for a record" — it means
         // [`start_session_capture`] could not open the journal and warned about it, which is the one
         // case a run proceeds unrecorded.
-        let client: Box<dyn ModelClient> = match &orch.replay {
-            Some(recorder) => Box::new(RecordingClient::new(
+        let client: Arc<dyn ModelClient> = match &orch.replay {
+            Some(recorder) => Arc::new(RecordingClient::new(
                 client,
                 Arc::clone(recorder),
                 agent.id.clone(),
@@ -5098,7 +5110,7 @@ fn dispatch_child(
     );
     let orch_for_task = Arc::clone(orch);
     let task = AgentTask::spawned(&child_id, &profile_id, async move {
-        run_agent(orch_for_task, child, role, client, inbox_rx, origin).await;
+        run_agent(orch_for_task, child, role, client.into(), inbox_rx, origin).await;
     });
     orch.tasks.lock().expect("subagent tasks lock").push(task);
     sub.ctx.children.push(ChildHandle {
@@ -6085,7 +6097,7 @@ fn run_detached_agent<'a>(
         let orch_for_task = Arc::clone(orch);
         let (task_id, task_slot) = (agent.id.clone(), agent.profile_id.clone());
         let task = AgentTask::spawned(&task_id, &task_slot, async move {
-            run_agent(orch_for_task, agent, role, client, inbox_rx, origin).await;
+            run_agent(orch_for_task, agent, role, client.into(), inbox_rx, origin).await;
         });
         orch.tasks.lock().expect("subagent tasks lock").push(task);
         // A dispatch that produced no result is a panicked agent — its teardown drops the sender
@@ -7345,7 +7357,7 @@ impl Agent {
                     // ceilings — not the first loop — are what bound a model that keeps doing it.
                     // The discarded replies' size rides the error turn the shared tail below
                     // records; their spend cannot, because a stream gg dropped never delivered
-                    // its usage payload.
+                    // its usage payload — it is read back on the generation ledger at session end.
                     Err(err @ ModelError::ResponseLoop { discarded, .. }) => {
                         emitter.emit(log("error", model_call_retried(turn, &err)));
                         (TurnErrorType::ModelResponseLoop, discarded, None)
@@ -7562,11 +7574,10 @@ impl Agent {
                 // Said out loud, and said as a `warn`: every one of those replies was generated,
                 // and generation is billed whether or not anybody reads it, yet none of them ever
                 // reached the model's context. The size is named in words and characters because
-                // those are the units gg measured; there is no token count and no price, because
-                // the provider reports usage at the end of a stream this one deliberately never
-                // read to its end. A run whose stream is full of these is a run whose model is
-                // looping, which is the fact this capability exists to make visible rather than
-                // merely to bound.
+                // those are the units gg measured on the stream; the price is read back at session
+                // end on the generation ledger and lands in the run's total cost. A run whose
+                // stream is full of these is a run whose model is looping, which is the fact this
+                // capability exists to make visible rather than merely to bound.
                 emitter.emit(log(
                     "warn",
                     format!(
@@ -12647,6 +12658,80 @@ fn usage_figure(
     } else {
         GgUsageFigure::Total
     }
+}
+
+/// Price the replies [loop detection](crate::loopguard) abandoned, once at session end.
+///
+/// A stream gg dropped never delivers its usage, so an abandoned reply's price exists only on the
+/// gateway's generation ledger and is read back here: each abandoned reply's generation id is
+/// looked up through the [client](ModelClient) that abandoned it (concurrently, each lookup
+/// [bounded](ModelClient::price_generation) at a few tens of seconds, so the whole pass is), and
+/// what the ledger answered is booked to the `(profile, model)` slot that generated it — into the
+/// [per-slot accounting](SlotAccounting) that feeds `slotCosts`, and out as a
+/// [`Usage`](GgTelemetryKind::Usage) delta marked [`total`](GgUsageFigure::Total). The price
+/// therefore lands in the run's
+/// [total cost](test_cabinet_core::gg::GgSessionSummary::cost) and never its
+/// [work cost](test_cabinet_core::gg::GgSessionSummary::work_cost), and summing every delta still
+/// reproduces the rollup.
+///
+/// A reply whose lookup never answered — and one whose stream named no generation id at all —
+/// stays unpriced, and their count is recorded on the summary beside the two cost figures (see
+/// [`Emitter::record_loop_abort_unpriced`]), so the recorded total can still be compared against
+/// the key's billing. The outcome is said out loud on the root's stream beside the closing
+/// summary.
+///
+/// Called only here, at session end, and never on the turn: a looping model must not add the
+/// lookup's delay to its own retry.
+async fn price_abandoned_replies(client: &dyn ModelClient, orch: &Orchestrator, emitter: &Emitter) {
+    let abandoned = client.abandoned_replies();
+    if abandoned.is_empty() {
+        return;
+    }
+    let lookups = abandoned.iter().map(|reply| async move {
+        match reply.generation_id.as_deref() {
+            Some(generation_id) => client.price_generation(generation_id).await,
+            None => None,
+        }
+    });
+    let answers = futures_util::future::join_all(lookups).await;
+    let mut priced: Vec<(&AbandonedReply, ReplySpend)> = Vec::new();
+    let mut unpriced = 0u64;
+    let mut unpriced_chars = 0u64;
+    for (reply, spend) in abandoned.iter().zip(answers) {
+        match spend {
+            Some(spend) => priced.push((reply, spend)),
+            None => {
+                unpriced += 1;
+                unpriced_chars += reply.chars;
+            }
+        }
+    }
+    let mut priced_cost = 0.0;
+    for (reply, spend) in &priced {
+        priced_cost += spend.cost.and_then(|cost| cost.comparable).unwrap_or(0.0);
+        orch.accounting
+            .lock()
+            .expect("slot accounting lock")
+            .record(&reply.profile_id, &reply.model_id, spend.tokens, spend.cost);
+        record_usage_delta(
+            spend.clone(),
+            &reply.profile_id,
+            &reply.model_id,
+            GgUsageFigure::Total,
+            emitter,
+        );
+    }
+    emitter.record_loop_abort_unpriced(unpriced);
+    emitter.emit(log(
+        if unpriced == 0 { "info" } else { "warn" },
+        format!(
+            "the generation ledger priced {} of the {} discarded by loop detection (${priced_cost:.4}); \
+             {unpriced} stayed unpriced ({} of generated output).",
+            priced.len(),
+            plural(abandoned.len(), "reply"),
+            plural(unpriced_chars as usize, "character"),
+        ),
+    ));
 }
 
 /// Emit a [`Usage`](GgTelemetryKind::Usage) delta for a model request when it reported any tokens

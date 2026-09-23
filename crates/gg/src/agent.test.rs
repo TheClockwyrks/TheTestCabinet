@@ -9889,6 +9889,16 @@ mod limits_tests;
 #[path = "agent.rejection.test.rs"]
 mod rejection_tests;
 
+/// The session-end **pricing of the replies [loop detection](crate::loopguard) abandoned**: the
+/// generation lookup that reads their prices back off the gateway's ledger into the run's total
+/// cost, and the count of replies it could not price.
+///
+/// Separate from `agent.limits.test.rs` (which pins that the *turn's* figures never see abandoned
+/// output) and from `agent.rejection.test.rs` (whose fakes keep no ledger) because the pass lives
+/// in the session frame — above `Agent::drive` — and only [`run_with_factory`] reaches it.
+#[path = "agent.pricing.test.rs"]
+mod pricing_tests;
+
 /// The loop under an **operator cancellation** — the host's kill, driven through the live loop for
 /// the same reason the ceilings are: what these guard is that a killed run really stops, keeps what
 /// it accumulated, and still emits the epilogue a frozen view is rebuilt from.

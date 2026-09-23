@@ -27,16 +27,21 @@
 //! [`code_executions`](GgSessionSummary::code_executions) is counted from, for the same reason and
 //! to the same effect.
 //!
-//! Four figures cannot be folded and are **recorded** instead, each by its own `record_*` method
-//! that the binary calls once. Three of them —
+//! Six figures cannot be folded and are **recorded** instead, each by its own `record_*` method
+//! that the binary calls once. Four of them —
 //! [`effective_tools`](SessionSummaryTracker::record_effective_tools),
-//! [`execution_mode`](SessionSummaryTracker::record_execution_mode) and
-//! [`limits`](SessionSummaryTracker::record_limits) — are configuration facts no event carries. The
-//! fourth, [`limit_hit`](SessionSummaryTracker::record_limit_hit), is recorded for a sharper reason:
-//! a [`LimitExceeded`](GgTelemetryKind::LimitExceeded) event *is* on the stream, but this one tracker
-//! is shared by every agent, and a subagent that stopped on its own error ceiling is not how the
-//! **run** ended. Folding that event would report a child's ceiling as the run's outcome, so the
-//! binary records the root loop's own breach and this module never looks at the event.
+//! [`execution_mode`](SessionSummaryTracker::record_execution_mode),
+//! [`program_language`](SessionSummaryTracker::record_program_language) and
+//! [`limits`](SessionSummaryTracker::record_limits) — are configuration facts no event carries.
+//! The fifth, [`limit_hit`](SessionSummaryTracker::record_limit_hit), is recorded for a sharper
+//! reason: a [`LimitExceeded`](GgTelemetryKind::LimitExceeded) event *is* on the stream, but this
+//! one tracker is shared by every agent, and a subagent that stopped on its own error ceiling is
+//! not how the **run** ended. Folding that event would report a child's ceiling as the run's
+//! outcome, so the binary records the root loop's own breach and this module never looks at the
+//! event. The sixth,
+//! [`loop_abort_unpriced`](SessionSummaryTracker::record_loop_abort_unpriced), is a property of the
+//! session's generation lookups as a whole: the pricing pass runs once, after every agent has
+//! finished, and counts its misses there rather than on any turn.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Mutex;
@@ -200,6 +205,12 @@ struct SummaryState {
     /// delegation channel while the run carried on. Folding the event would publish that child's
     /// ceiling as the run's outcome.
     limit_hit: Option<GgLimitBreach>,
+    /// How many replies [loop detection](crate::loopguard) abandoned stayed **unpriced** at session
+    /// end — the abandoned replies the run's generation lookups never answered for. Recorded once
+    /// via [`record_loop_abort_unpriced`](SessionSummaryTracker::record_loop_abort_unpriced), on
+    /// exactly the terms [`limit_hit`](Self::limit_hit) is: the pricing pass runs once, after every
+    /// agent has finished, so no turn's event carries the figure.
+    loop_abort_unpriced: u64,
 }
 
 /// The accumulator behind one `(provider, model)` slice of the
@@ -322,9 +333,10 @@ impl SummaryState {
     ///   gg could then use it;
     /// * [`loop_aborts`](GgErrorSummary::loop_aborts) is a plain sum, and is not an error count —
     ///   the discarded attempt was retried and this very turn is the retry's outcome. The two
-    ///   sizes beside it are plain sums for the same reason, and are deliberately not folded into
-    ///   the run's tokens or its cost: an abandoned stream reports no usage, so the only honest
-    ///   units for it are the ones gg counted itself.
+    ///   sizes beside it are plain sums for the same reason: an abandoned stream reports no usage,
+    ///   so the sizes are the units gg counted itself. Their price is read back at session end and
+    ///   folded into the cost through the [`Usage`](GgTelemetryKind::Usage) delta the pricing pass
+    ///   emits for each priced reply, never through a turn's figures.
     ///
     /// The error is keyed on the [kind](GgTurnErrorKind) rather than on the outcome, which keeps
     /// [`errors`](GgErrorSummary::errors) exactly the sum of the per-kind counters the contract
@@ -524,6 +536,21 @@ impl SessionSummaryTracker {
     pub fn record_limit_hit(&self, breach: Option<GgLimitBreach>) {
         let mut state = self.inner.lock().expect("summary tracker lock");
         state.limit_hit = breach;
+    }
+
+    /// Record how many replies [loop detection](crate::loopguard) abandoned stayed **unpriced** —
+    /// the abandoned replies the session's generation lookups never answered for, whose output is
+    /// therefore in neither of the run's cost figures.
+    ///
+    /// The caller is the session's pricing pass, which runs once at session end and reads the whole
+    /// run's [record of abandoned replies](crate::client::AbandonedReplies) — which is why this is
+    /// recorded like [`record_limit_hit`](Self::record_limit_hit) rather than folded: a property of
+    /// the session's lookups as a whole is no turn's figure. Recorded even when the answer is zero,
+    /// so "were every abandoned reply's prices read back?" is answered by the field's presence
+    /// rather than by its absence.
+    pub fn record_loop_abort_unpriced(&self, unpriced: u64) {
+        let mut state = self.inner.lock().expect("summary tracker lock");
+        state.loop_abort_unpriced = unpriced;
     }
 
     /// Fold one emitted telemetry event into the running summary.
@@ -793,6 +820,7 @@ impl SessionSummaryTracker {
             slot_costs,
             cost,
             work_cost,
+            loop_abort_unpriced: state.loop_abort_unpriced,
             // The map key carries the identity and the accumulator the counts; the map's own
             // order (providerless first, then lexicographic) is the deterministic order the
             // contract promises, so this is a walk rather than a sort.

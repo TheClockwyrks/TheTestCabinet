@@ -2559,17 +2559,17 @@ export type GgErrorSummary = {
    * the count beside them is only how often.
    *
    * The units are the ones gg measured itself, as the replies streamed. There is deliberately no
-   * token count and no price: gg's [cost](crate::metrics::Cost) and
+   * token count and no price here: gg's [cost](crate::metrics::Cost) and
    * [tokens](crate::metrics::TokenCounts) come from the provider's usage payload, which arrives
    * at the end of a stream an abandoned reply never reached, so any figure in those units would
    * be an estimate published where every neighbouring figure is a measurement.
    *
-   * This output is charged to the provider bill, and it reaches neither of the run's cost
-   * figures — the [work](GgSessionSummary::work_cost) nor the
-   * [total](GgSessionSummary::cost) — because gg has no price for it: a looping reply is
-   * dropped before the stream's usage trailer, so unlike every other spend in this summary it
-   * is a measurement gg never received rather than one it set aside. The figures here are what
-   * makes that omission visible rather than silent.
+   * This output is charged to the provider bill, and its price is read back at session end from
+   * OpenRouter's generation ledger — into the run's [total](GgSessionSummary::cost) and never
+   * its [work](GgSessionSummary::work_cost), since the reply produced no program and no tool
+   * call. A reply whose lookup never answered stays unpriced and is counted in
+   * [`GgSessionSummary::loop_abort_unpriced`], which is what makes the gap between the recorded
+   * total and the key's billing visible rather than silent.
    */
   loopAbortWords: number;
   /**
@@ -3074,6 +3074,20 @@ export type GgSessionSummary = {
    * work cost. `None` for a run whose priced turns were all non-work, and omitted then.
    */
   workCost?: CostMetrics;
+  /**
+   * How many replies [loop detection](GgLoopDetection) abandoned stayed **unpriced** — the
+   * session-end lookup that reads an abandoned reply's price back off OpenRouter's generation
+   * ledger never answered for these, so their output is in neither [cost figure](Self::cost)
+   * above. Read beside them: what the recorded total is missing against the key's billing is
+   * exactly the output [`GgErrorSummary::loop_abort_chars`] sizes over the replies this counts
+   * and the ones the lookup did price.
+   *
+   * Recorded once at session end, where the lookup runs — the figure is a property of the whole
+   * session's lookups rather than of any turn — and `0` for every run whose agents left loop
+   * detection disarmed and for one whose lookups all answered. `#[serde(default)]` so a summary
+   * recorded before this figure existed still reads back.
+   */
+  loopAbortUnpriced: number;
   /**
    * The per-`(provider, model)` health rollup for the run — which upstream providers served its
    * model calls and how the calls each one served went; see [`GgProviderStat`]. One slice per
