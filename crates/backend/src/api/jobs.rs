@@ -427,20 +427,18 @@ pub(super) async fn gg_model_facts(
     Ok(facts)
 }
 
-/// The list price a launch's model is scored at, or the refusal reason.
-/// Provider-native harnesses that report their own exact cost need no list
-/// price: their `actual` is the harness's figure and the comparable is `None`
-/// (unknown) — see `RunEngine::collect_metrics`.
+/// The list price a third-party-harness launch's model is scored at, or the reason the
+/// launch is refused: the model is not in the catalog, or its entry carries no list price.
+/// Every harness is priced this way, whatever cost it reports of its own, because the
+/// comparable cost is a published statistic.
+///
+/// `Ok(None)` for a gg launch, whose per-bound-model prices ride in `gg_model_prices`
+/// (see [`gg_model_facts`]).
 pub(super) async fn resolve_model_price(
     db: &crate::db::Db,
     body: &LaunchBody,
 ) -> Result<Option<test_cabinet_core::TokenPrices>, String> {
-    // A gg run's pricing rides per-bound-model in `gg_model_prices`; a uniform
-    // `model_prices` would double-handle it.
-    if body.harness == HarnessSlug::Gg || !body.harness.routes_through_openrouter() {
-        // A Claude Code/Codex/Antigravity run reports its own cost; its
-        // comparable is unknown rather than priced off an OpenRouter listing
-        // that may not even name the native id.
+    if body.harness == HarnessSlug::Gg {
         return Ok(None);
     }
     match db.list_price_for_run_model(&body.model, body.harness).await {

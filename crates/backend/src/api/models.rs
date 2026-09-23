@@ -407,11 +407,16 @@ async fn write_config(
                 )));
             }
         }
+        let Some(as_of) = as_of else {
+            return Err(ApiError::unprocessable(
+                "model list price is dated: set listPriceAsOf to the date the prices were taken",
+            ));
+        };
         (
             Some(input_per_mtok / 1_000_000.0),
             Some(cached_per_mtok / 1_000_000.0),
             Some(output_per_mtok / 1_000_000.0),
-            as_of,
+            Some(as_of),
             // The operator typed/confirmed the set (the form's Fill merely
             // seeds the same fields).
             Some("hand".to_string()),
@@ -668,6 +673,9 @@ async fn latest_launch_facts(
             provider_pin: row
                 .provider_pin
                 .filter(|provider| !provider.trim().is_empty()),
+            // The stored observation keeps the official endpoint's price, not every
+            // route's; a launch reads no route price.
+            route_prices: Vec::new(),
         }))
 }
 

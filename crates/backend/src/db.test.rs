@@ -2433,73 +2433,22 @@ async fn list_price_for_run_model_refuses_an_uncurated_id() {
     assert!(reason.contains("not in the model catalog"), "{reason}");
 }
 
-/// A queued job whose OpenRouter-routed model carries no list price is never
-/// claimed: it stays `queued` (not `pending` — that means harness-capacity) while
-/// a priced job behind it is claimed; pricing the model lets it run.
+/// The claim never gates a job on its model's list price: the price was checked and
+/// stamped onto the launch at enqueue, so un-pricing the model afterwards leaves the
+/// queued job claimable at the price it was enqueued with.
 #[tokio::test]
-async fn claim_skips_a_queued_job_whose_model_has_no_list_price() {
+async fn claim_does_not_gate_a_job_on_its_models_list_price() {
     let db = Db::connect_in_memory().await.unwrap();
-    // Priced: the alias a claimable job resolves through.
-    db.upsert_model_config(priced_model_write(
-        "deepseek-v4",
-        "DeepSeek V4",
-        &["deepseek/deepseek-v4"],
-    ))
-    .await
-    .unwrap();
-    // The unpriced job sits at the head of the queue.
-    let mut unpriced = new_job_h("j-unpriced", "2026-06-23T00:00:00Z", "kilo");
-    unpriced.model_id = "unlisted/unpriced".to_string();
-    db.enqueue_job(unpriced).await.unwrap();
-    let mut priced = new_job_h("j-priced", "2026-06-23T00:01:00Z", "kilo");
-    priced.model_id = "deepseek/deepseek-v4".to_string();
-    db.enqueue_job(priced).await.unwrap();
-
-    let outcome = db.claim_next("2026-06-23T00:02:00Z").await.unwrap();
-    assert_eq!(
-        outcome.claimed.expect("the priced job is claimable").id,
-        "j-priced"
-    );
-    // The unpriced job is left `queued`, never reconciled to `pending` and never
-    // failed.
-    let held = db
-        .get_job("j-unpriced")
-        .await
-        .unwrap()
-        .expect("the unpriced job is still on record");
-    assert_eq!(held.state, "queued");
-
-    // Pricing the model lets the held job claim.
-    db.upsert_model_config(priced_model_write(
-        "unpriced",
-        "Unpriced",
-        &["unlisted/unpriced"],
-    ))
-    .await
-    .unwrap();
-    let claimed = db
-        .claim_next_job("2026-06-23T00:03:00Z")
-        .await
-        .unwrap()
-        .expect("pricing the model releases the job");
-    assert_eq!(claimed.id, "j-unpriced");
-}
-
-/// A provider-native harness's job is claimable without any list price: its
-/// `actual` is the harness's own figure and the comparable is unknown.
-#[tokio::test]
-async fn claim_does_not_gate_a_provider_native_job_on_a_list_price() {
-    let db = Db::connect_in_memory().await.unwrap();
-    db.enqueue_job(new_job("j1", "2026-06-23T00:00:00Z"))
-        .await
-        .unwrap();
+    let mut job = new_job_h("j-unpriced", "2026-06-23T00:00:00Z", "kilo");
+    job.model_id = "unlisted/unpriced".to_string();
+    db.enqueue_job(job).await.unwrap();
 
     let claimed = db
         .claim_next_job("2026-06-23T00:00:05Z")
         .await
         .unwrap()
-        .expect("a provider-native job needs no list price");
-    assert_eq!(claimed.id, "j1");
+        .expect("a queued job is claimable whatever its model's list price");
+    assert_eq!(claimed.id, "j-unpriced");
 }
 
 /// A run record with an explicit model id + harness (and, optionally, token

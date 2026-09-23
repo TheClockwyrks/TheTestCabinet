@@ -5754,16 +5754,6 @@ impl Db {
     /// claimable again is released to `queued`. So an operator sees exactly which
     /// waiting runs are deliberately held versus merely next in line.
     ///
-    /// A run whose harness routes through OpenRouter and whose model carries **no
-    /// curated list price** is never claimed: it sits at the head of the queue
-    /// unclaimable until the model is priced or the job is canceled, skipped
-    /// exactly like a job held back by a parallelism cap but left at `queued`
-    /// (`pending` means harness-capacity). The enqueue refuses such a launch
-    /// first, so this state should be rare — a model un-priced after the job was
-    /// queued. The job is deliberately never failed: its record never existed,
-    /// and pricing the model later lets it run. (Gg runs are exempt: their
-    /// per-bound-model prices ride on the launch body.)
-    ///
     /// The select-then-updates run in one transaction; SQLite serializes writers
     /// (single-writer WAL), so two dispatchers cannot claim the same job.
     /// Both halves of the pass are reported, because both are state changes a
@@ -5818,33 +5808,6 @@ impl Db {
             .all(&txn)
             .await?;
 
-        // The list-price state of every curated alias, loaded in one read (aliases
-        // joined to their config's three price columns). A queued job whose model
-        // routes through OpenRouter but has no curated list price is not claimable:
-        // the enqueue already refused such a launch, so this state should be rare —
-        // a model un-priced after the job was queued. Like a job held back by a
-        // parallelism cap, it is skipped; unlike a cap it is **not** reconciled to
-        // `pending` (`pending` means harness-capacity), and it is never failed —
-        // pricing the model, or canceling the job, resolves it.
-        let aliases = model_alias::Entity::find().all(&txn).await?;
-        let configs: HashMap<String, model::Model> = model::Entity::find()
-            .all(&txn)
-            .await?
-            .into_iter()
-            .map(|config| (config.slug.clone(), config))
-            .collect();
-        let priced_aliases: HashMap<String, bool> = aliases
-            .into_iter()
-            .map(|alias| {
-                let priced = configs.get(&alias.model_slug).is_some_and(|config| {
-                    config.list_price_input.is_some()
-                        && config.list_price_cached_input.is_some()
-                        && config.list_price_output.is_some()
-                });
-                (alias.alias, priced)
-            })
-            .collect();
-
         let mut claimed: Option<job::Model> = None;
         let mut reconciled: Vec<job::Model> = Vec::new();
         for job in waiting {
@@ -5860,21 +5823,7 @@ impl Db {
                 job.test_type != TestType::GameJam.as_str() || !jams_in_flight.contains(&jam_key);
             let has_room = under_cap(&job.harness_slug, active) && jam_turn;
 
-            let harness = parse_harness_slug(&job.harness_slug);
-            // A run priced off OpenRouter whose model carries no curated list price
-            // sits at the head of the queue unclaimable: keep it out of the
-            // claimable set, leave its state `queued`, and never fail it.
-            let unpriced = harness.routes_through_openrouter()
-                && harness != HarnessSlug::Gg
-                && !priced_aliases
-                    .get(&test_cabinet_core::model_id::canonical_model_id(
-                        &job.model_id,
-                        harness,
-                    ))
-                    .copied()
-                    .unwrap_or(false);
-
-            if claimed.is_none() && has_room && !unpriced {
+            if claimed.is_none() && has_room {
                 // Claim this one: it now occupies a slot for its harness, so bump the
                 // count for the reconcile of any later same-harness jobs, and (for a
                 // jam) hold the jam+model pair against the entries behind it.
@@ -5895,14 +5844,7 @@ impl Db {
             // Only a job that actually moved is reported — the common case is a queue
             // whose display states are already correct, and re-announcing those every
             // claim pass would be pure noise on the console stream.
-            let target = if unpriced || has_room {
-                // An unpriced job stays `queued` — `pending` means
-                // harness-capacity, and this run is held for want of a list
-                // price, not a slot.
-                "queued"
-            } else {
-                "pending"
-            };
+            let target = if has_room { "queued" } else { "pending" };
             if job.state != target {
                 let mut active_model = job.into_active_model();
                 active_model.state = Set(target.to_string());

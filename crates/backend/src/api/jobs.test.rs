@@ -243,13 +243,33 @@ async fn resolve_model_price_refuses_an_unpriced_openrouter_routed_model() {
     assert!(reason.contains("not in the model catalog"), "{reason}");
 }
 
+/// A provider-native harness is priced from the list price like every other: a Claude
+/// Code run reports its own exact cost, but that is the billed figure, so its model is
+/// refused without a list price and stamped with one when it has it.
 #[tokio::test]
-async fn resolve_model_price_asks_nothing_of_a_provider_native_harness() {
+async fn resolve_model_price_prices_a_provider_native_harness_from_the_list_price() {
     let db = crate::db::Db::connect_in_memory().await.unwrap();
-    // No catalog rows at all: a Claude Code run reports its own exact cost, so its
-    // comparable is unknown rather than priced off the catalog.
     let body = launch_body_for(HarnessSlug::Claude, "claude-opus-4-8");
-    assert_eq!(resolve_model_price(&db, &body).await.unwrap(), None);
+    let reason = resolve_model_price(&db, &body)
+        .await
+        .expect_err("an uncurated native model refuses the launch");
+    assert!(reason.contains("`claude-opus-4-8`"), "{reason}");
+
+    db.upsert_model_config(crate::db::tests::priced_model_write(
+        "opus",
+        "Claude Opus 4.8",
+        &["claude-opus-4-8"],
+    ))
+    .await
+    .unwrap();
+    assert!(
+        resolve_model_price(&db, &body)
+            .await
+            .unwrap()
+            .expect("a priced native model is stamped")
+            .output
+            .is_some()
+    );
 }
 
 // --- The active-run list's display identity ---------------------------------

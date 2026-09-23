@@ -567,6 +567,22 @@ async fn write_config_refuses_a_negative_list_price() {
     );
 }
 
+/// A list price is dated: a full set with no date is a 422 naming the field.
+#[tokio::test]
+async fn write_config_refuses_an_undated_list_price() {
+    let (_dir, state) = test_state().await;
+    let mut undated = input("deepseek-v4");
+    undated.list_price_input_per_mtok = Some(2.0);
+    undated.list_price_cached_input_per_mtok = Some(0.2);
+    undated.list_price_output_per_mtok = Some(6.0);
+
+    let err = write_config(&state, "deepseek-v4".to_string(), undated)
+        .await
+        .expect_err("an undated list price refuses");
+    assert_eq!(err.status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(err.message.contains("listPriceAsOf"), "{}", err.message);
+}
+
 /// An update carrying no list-price fields at all preserves the stored set
 /// (source included); one carrying a new full set replaces it.
 #[tokio::test]
@@ -617,4 +633,43 @@ async fn write_config_preserves_the_stored_list_price_when_absent() {
         .unwrap();
     assert_eq!(stored.config.list_price_input, None);
     assert_eq!(stored.config.list_price_source, None);
+}
+
+/// A top-up refuses a harness member whose model carries no list price before the
+/// scheduler spends buffer on it, and names the reason; a priced member stays
+/// launchable.
+#[tokio::test]
+async fn a_harness_member_without_a_list_price_is_unlaunchable_before_the_top_up() {
+    let (_dir, state) = test_state().await;
+    state
+        .db
+        .upsert_model_config(crate::db::tests::priced_model_write(
+            "opus",
+            "Claude Opus 4.8",
+            &["claude-opus-4-8"],
+        ))
+        .await
+        .unwrap();
+    let combo = |model: &str| super::super::coverage::ReviewPlanCombo {
+        harness: HarnessSlug::Claude,
+        model: model.to_string(),
+        provider: None,
+        gg_config_id: None,
+        gg_slot_models: Default::default(),
+        gg_config_name: None,
+    };
+    let library = super::super::coverage::GgLibrary::default();
+    let mut members = vec![
+        super::super::coverage::resolve_member(&combo("claude-opus-4-8"), &library),
+        super::super::coverage::resolve_member(&combo("claude-unpriced-1"), &library),
+    ];
+
+    super::super::coverage::resolve_launch_facts(&state, &mut members).await;
+
+    assert_eq!(members[0].unlaunchable, None);
+    let reason = members[1]
+        .unlaunchable
+        .as_deref()
+        .expect("an unpriced member is unlaunchable");
+    assert!(reason.contains("`claude-unpriced-1`"), "{reason}");
 }
