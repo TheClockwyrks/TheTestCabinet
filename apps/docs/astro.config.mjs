@@ -4,6 +4,8 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
+import { promql } from "./src/grammars/promql.mjs";
+import { traceql } from "./src/grammars/traceql.mjs";
 
 // Repairs Expressive Code's external stylesheet, which is broken under this
 // project's stack (astro-expressive-code 0.43.1 + Astro 6.4.7 + the satteri
@@ -120,8 +122,13 @@ export default defineConfig({
         TableOfContents: "./src/components/TableOfContents.astro",
       },
       // Synthwave code blocks, in keeping with the palette. The theme ships with
-      // the Expressive Code integration Starlight already bundles.
-      expressiveCode: { themes: ["synthwave-84"] },
+      // the Expressive Code integration Starlight already bundles. Shiki bundles
+      // no grammar for the query languages the observability docs quote, so
+      // those two are registered from `src/grammars/`.
+      expressiveCode: {
+        themes: ["synthwave-84"],
+        shiki: { langs: [promql, traceql] },
+      },
       // The order mirrors the system overview on the home page.
       sidebar: [
         { label: "Overview", link: "/" },

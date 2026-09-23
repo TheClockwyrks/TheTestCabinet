@@ -1,8 +1,10 @@
 //! What gg answers for `java.lang.Math`, asserted without a JVM.
 //!
-//! The [substrate tests](crate::sandbox::language::kotlin) drive these through a real compiled
-//! program, which is what proves the *wiring*. What is proved here is the arithmetic itself, which
-//! that route would only ever exercise a few of.
+//! The math cases on the two JVM arms — `crates/gg/src/sandbox/language/java.math.test.rs` and
+//! `crates/gg/src/sandbox/language/kotlin.math.test.rs` — drive every one of these through a real
+//! compiled program, which is what proves the *wiring*: that the rewritten `teavmMath` import really
+//! resolves against gg's world, for each function, on each arm. What is proved here is the
+//! arithmetic itself, which that route asserts to three decimal places rather than exactly.
 
 use super::*;
 

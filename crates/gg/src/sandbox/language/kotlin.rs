@@ -587,6 +587,13 @@ mod tests;
 #[path = "kotlin.substrate.test.rs"]
 mod substrate;
 
+/// **The [`feedback`](crate::sandbox::membrane::capture) channel, driven from Kotlin programs** — what
+/// the capture keeps of what a program logs, what a program's end hands gg, and what a code module
+/// that fails tells the model.
+#[cfg(test)]
+#[path = "kotlin.feedback.test.rs"]
+mod feedback;
+
 /// **The Kotlin arm's model-facing surface**, driven the same way: the hand-written SDK, the
 /// catalogue reflected out of its own KDoc, and the libraries it says a program may reach.
 ///
@@ -597,3 +604,13 @@ mod substrate;
 #[cfg(test)]
 #[path = "kotlin.surface.test.rs"]
 mod surface;
+
+/// **`java.lang.Math` driven from real Kotlin programs**: every function of `test-cabinet:gg/math`,
+/// reached through the `kotlin.math` spelling a model writes.
+///
+/// Separate from [`substrate`] because it is one function per case rather than one function per
+/// behaviour — what is proved is that fourteen rewritten imports each resolve, so a failing row has
+/// to name which one stopped.
+#[cfg(test)]
+#[path = "kotlin.math.test.rs"]
+mod math;

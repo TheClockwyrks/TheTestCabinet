@@ -471,3 +471,10 @@ mod tests;
 #[cfg(test)]
 #[path = "python.substrate.test.rs"]
 mod substrate_tests;
+
+/// **The [`feedback`](crate::sandbox::membrane::capture) channel, driven from Python programs** — what
+/// the capture keeps of what a program logs, what a program's end hands gg, and what a code module
+/// that fails tells the model.
+#[cfg(test)]
+#[path = "python.feedback.test.rs"]
+mod feedback;

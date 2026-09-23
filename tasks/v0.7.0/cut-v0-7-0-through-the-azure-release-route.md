@@ -5,7 +5,7 @@ pipeline: gates, mirror, images, and deploys on Azure, with the tag mirrored to
 GitHub afterwards.
 
 This issue depends on every other release-blocking issue in this folder:
-[the port](port-the-gg-and-tooling-changes-from-the-spec-cabinet-branch-onto-feat-gg.md),
+[the port](done/port-the-gg-and-tooling-changes-from-the-spec-cabinet-branch-onto-feat-gg.md),
 [the baselines move](done/move-validation-baselines-into-the-cold-storage-submodule.md),
 [the history rewrite](rewrite-the-repository-history-without-baselines-and-wasm-blobs.md),
 [the submodule addressing](done/address-submodules-by-relative-url-and-mirror-them-to-github.md),

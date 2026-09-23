@@ -40,7 +40,8 @@ public final class Files {
      *
      * @param path The file to read, relative to the workspace or absolute.
      * @return the file's text, or the picture's description
-     * @throws ApiError {@link ApiErrorCode#NOT_FOUND} for a missing path.
+     * @throws ApiError {@link ApiErrorCode#NOT_FOUND} for a missing path, and
+     *     {@link ApiErrorCode#INVALID_ARGUMENT} for a path that is empty.
      * @ggop files.read_file
      */
     public static FileRead readFile(String path) {
@@ -58,7 +59,8 @@ public final class Files {
      * @param offset The 1-based first line to read from.
      * @param limit How many lines to read from {@code offset}.
      * @return the window of the file's text, or the picture's description
-     * @throws ApiError {@link ApiErrorCode#NOT_FOUND} for a missing path.
+     * @throws ApiError {@link ApiErrorCode#NOT_FOUND} for a missing path, and
+     *     {@link ApiErrorCode#INVALID_ARGUMENT} for a path that is empty.
      * @ggop files.read_file
      */
     public static FileRead readFile(String path, int offset, int limit) {

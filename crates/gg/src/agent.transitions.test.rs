@@ -25,8 +25,8 @@ use crate::client::{
 use crate::ending::Ending;
 use crate::telemetry::{CollectingSink, Emitter};
 use test_cabinet_core::gg::{
-    ALL_SUBAGENT_SCOPES, CAPABILITY_EXEC, CAPABILITY_FORK, CAPABILITY_MEMORIES,
-    CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, GgCapabilityConfig, GgContextSource,
+    ALL_SUBAGENT_SCOPES, CAPABILITY_EXEC, CAPABILITY_FORK, CAPABILITY_FSM, CAPABILITY_MEMORIES,
+    CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, FSM_PARAM_STATES, GgCapabilityConfig, GgContextSource,
     GgModuleDisposition, GgPromptRef, GgRosterEntry, GgSubagentRef, GgTelemetryEvent,
     GgTransitionModule, ROOT_AGENT, ROOT_PROFILE_ID,
 };
@@ -84,6 +84,207 @@ fn call(name: &str, arguments: serde_json::Value) -> ToolCall {
         name: name.to_string(),
         arguments,
     }
+}
+
+/// The entry position of a two-state machine whose entry state declares exactly one target:
+/// `build`, run by the `builder` agent, with one edge to `verify`, run by `verifier`.
+///
+/// Built the way a launch builds one — a profile declaring the machine, resolved into an
+/// [`FsmSpec`](crate::fsm::FsmSpec) and entered at its entry state — because a transition is judged
+/// against the *resolved* machine and a hand-assembled position would be judged against nothing.
+fn position() -> crate::fsm::FsmPosition {
+    let shell = GgAgentConfig {
+        slug: "pipeline".to_string(),
+        name: "Pipeline".to_string(),
+        capabilities: vec![GgCapabilityConfig {
+            params: json!({ FSM_PARAM_STATES: [
+                { "name": "build", "agentId": "builder", "transitions": [{ "to": "verify" }] },
+                { "name": "verify", "agentId": "verifier" },
+            ] }),
+            ..GgCapabilityConfig::enabled(CAPABILITY_FSM)
+        }],
+        ..GgAgentConfig::root()
+    };
+    Arc::new(
+        crate::fsm::FsmSpec::resolve(&shell)
+            .expect("the profile declares a machine")
+            .expect("the machine parses"),
+    )
+    .entry_position()
+}
+
+// ---------------------------------------------------------------------------
+// Judging a `transition_state` declaration
+// ---------------------------------------------------------------------------
+
+/// The declared target is captured as a handoff to the state's own agent: the successor runs the
+/// profile the *machine* names for `verify`, standing in `verify`, and the answer says so.
+#[test]
+fn a_transition_is_captured_as_a_handoff_to_the_named_state() {
+    let position = position();
+    let mut declared = None;
+
+    let outcome = handle_transition(
+        &position,
+        &None,
+        &mut declared,
+        &call(TRANSITION_STATE_TOOL, json!({ "state": "verify" })),
+    );
+
+    assert!(
+        outcome.ok,
+        "the state's own edge is taken: {}",
+        outcome.output
+    );
+    assert!(
+        outcome.output.contains("`verify`"),
+        "the answer names where the session is going: {}",
+        outcome.output
+    );
+    let handoff = declared.expect("the transition was captured");
+    assert_eq!(
+        handoff.profile, "verifier",
+        "the successor runs the agent the machine names for that state"
+    );
+    assert_eq!(
+        handoff.fsm.as_ref().map(crate::fsm::FsmPosition::state),
+        Some("verify"),
+        "and it stands in the state it was handed"
+    );
+}
+
+/// A `transition_state` with no `state` at all is refused with the states this one *may* move to:
+/// the missing fact is the target, so the refusal is the menu.
+#[test]
+fn a_transition_with_no_state_is_refused_with_the_legal_targets() {
+    let position = position();
+    let mut declared = None;
+
+    let outcome = handle_transition(
+        &position,
+        &None,
+        &mut declared,
+        &call(TRANSITION_STATE_TOOL, json!({})),
+    );
+
+    assert_eq!(outcome.failure, Some(ToolFailure::InvalidArgument));
+    assert!(
+        outcome.output.contains("`verify`"),
+        "the refusal lists the legal targets: {}",
+        outcome.output
+    );
+    assert!(declared.is_none(), "nothing was captured");
+}
+
+/// Whitespace is not a target. A blank `state` is the same missing fact as none at all, and is
+/// answered the same way rather than being trimmed into a lookup that fails differently.
+#[test]
+fn a_transition_with_a_blank_state_is_refused_with_the_legal_targets() {
+    let position = position();
+    let mut declared = None;
+
+    let outcome = handle_transition(
+        &position,
+        &None,
+        &mut declared,
+        &call(TRANSITION_STATE_TOOL, json!({ "state": "  " })),
+    );
+
+    assert_eq!(outcome.failure, Some(ToolFailure::InvalidArgument));
+    assert!(
+        outcome.output.contains("`verify`"),
+        "the refusal lists the legal targets: {}",
+        outcome.output
+    );
+    assert!(declared.is_none(), "nothing was captured");
+}
+
+/// A state the current one does not declare an edge to is refused with the edges it *does* declare,
+/// and nothing is captured — the machine stays exactly where it stands and the turn carries on.
+#[test]
+fn a_transition_naming_an_undeclared_target_is_refused_and_captures_nothing() {
+    let position = position();
+    let mut declared = None;
+
+    let outcome = handle_transition(
+        &position,
+        &None,
+        &mut declared,
+        &call(TRANSITION_STATE_TOOL, json!({ "state": "ship" })),
+    );
+
+    assert!(!outcome.ok, "an undeclared edge is not an edge");
+    assert_eq!(outcome.failure, Some(ToolFailure::InvalidArgument));
+    assert!(
+        outcome.output.contains("`verify`"),
+        "the refusal names the edge it does have: {}",
+        outcome.output
+    );
+    assert!(declared.is_none(), "nothing was captured");
+}
+
+/// **First wins**, on the transition path exactly as on `exec`'s: a turn makes one succession, and a
+/// second declaration is refused rather than replacing the first.
+#[test]
+fn a_second_succession_in_one_turn_refuses_a_later_transition() {
+    let position = position();
+    let mut declared = None;
+
+    let first = handle_transition(
+        &position,
+        &None,
+        &mut declared,
+        &call(TRANSITION_STATE_TOOL, json!({ "state": "verify" })),
+    );
+    assert!(first.ok);
+
+    let second = handle_transition(
+        &position,
+        &None,
+        &mut declared,
+        &call(TRANSITION_STATE_TOOL, json!({ "state": "verify" })),
+    );
+
+    assert!(!second.ok);
+    assert_eq!(second.failure, Some(ToolFailure::Refused));
+    assert!(
+        second.output.contains("`verify`"),
+        "the refusal names the succession that stands: {}",
+        second.output
+    );
+    assert_eq!(
+        declared
+            .as_ref()
+            .and_then(|handoff| handoff.fsm.as_ref())
+            .map(crate::fsm::FsmPosition::state),
+        Some("verify"),
+        "the first handoff is the one that stands"
+    );
+}
+
+/// An ending beats a transition declared in the same turn: the state said the work was done, so
+/// there is no next state to hand the machine to.
+#[test]
+fn an_ending_declared_this_turn_beats_a_later_transition() {
+    let position = position();
+    let ending =
+        Some(Ending::finished("all done".to_string(), crate::completion::FINISH_TOOL).unwrap());
+    let mut declared = None;
+
+    let outcome = handle_transition(
+        &position,
+        &ending,
+        &mut declared,
+        &call(TRANSITION_STATE_TOOL, json!({ "state": "verify" })),
+    );
+
+    assert_eq!(outcome.failure, Some(ToolFailure::Refused));
+    assert!(
+        outcome.output.contains("already ended this turn"),
+        "the refusal says which one won: {}",
+        outcome.output
+    );
+    assert!(declared.is_none(), "nothing was captured");
 }
 
 // ---------------------------------------------------------------------------
@@ -1101,5 +1302,121 @@ async fn a_fork_opens_holding_the_state_its_forker_built() {
                 if name == FORK_TOOL && !*ok && event.agent_id.as_deref() == Some(copy.as_str())
         )),
         "the copy's own fork was refused at the depth cap"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Refusing a `fork` at the call
+// ---------------------------------------------------------------------------
+
+/// A model turn that calls [`fork`](FORK_TOOL) with `arguments` — the synthesized call the two
+/// refusals below are judged from.
+fn fork_turn(arguments: serde_json::Value) -> ModelResponse {
+    ModelResponse {
+        text: Some("Splitting off.".to_string()),
+        tool_calls: vec![ToolCall {
+            id: "call_fork".to_string(),
+            name: FORK_TOOL.to_string(),
+            arguments,
+        }],
+        finish_reason: FinishReason::ToolCalls,
+        usage: TokenCounts::default(),
+        cost: None,
+        provider: None,
+        loop_aborts: LoopAborts::none(),
+        usage_wire: None,
+        usage_reconciled: false,
+    }
+}
+
+/// Run a session whose root issues one `fork` carrying `arguments` and then finishes, and report
+/// every `fork` result the stream carries together with how many agents the run spawned.
+///
+/// `handle_fork` takes the live [`SubagentContext`], so its refusals are reached the way the depth
+/// cap is — through a scripted session — rather than by a direct call.
+async fn refused_fork(
+    session_key: &str,
+    arguments: serde_json::Value,
+) -> (Vec<(bool, Option<String>)>, usize) {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some(session_key.to_string()), Box::new(sink.clone()));
+    let factory = ScriptedFactory::new().slot(ROOT_PROFILE_ID, {
+        let arguments = arguments.clone();
+        move |binding: &GgSlotBinding| {
+            Box::new(MockClient::new(
+                &binding.model_id,
+                vec![fork_turn(arguments.clone()), stop_response()],
+            )) as Box<dyn ModelClient>
+        }
+    });
+    let outcome = run_with_factory(
+        &invocation(dir.path(), fork_set()),
+        &emitter,
+        Arc::new(factory),
+    )
+    .await;
+    assert_eq!(outcome, SessionOutcome::Ran);
+
+    let events = sink.events();
+    let results = events
+        .iter()
+        .filter_map(|event| match &event.kind {
+            GgTelemetryKind::ToolResult {
+                name, ok, summary, ..
+            } if name == FORK_TOOL => Some((*ok, summary.clone())),
+            _ => None,
+        })
+        .collect();
+    let spawned = events
+        .iter()
+        .filter(|event| matches!(event.kind, GgTelemetryKind::AgentSpawned { .. }))
+        .count();
+    (results, spawned)
+}
+
+/// A `fork` with no `prompt` is refused at the call, and no copy is made.
+///
+/// The instructions are the *whole* of what a copy is for — it inherits everything else from its
+/// forker — so a fork without them is not a fork with a default, and the run must not be left
+/// holding an agent whose tool result claimed it was briefed.
+#[tokio::test]
+async fn a_fork_with_no_prompt_is_refused() {
+    let (results, spawned) = refused_fork("run-fork-no-prompt", json!({})).await;
+
+    assert_eq!(results.len(), 1, "the one fork call was answered once");
+    let (ok, summary) = &results[0];
+    assert!(!ok, "a fork with no instructions is refused");
+    assert!(
+        summary
+            .as_deref()
+            .is_some_and(|summary| summary.contains("prompt")),
+        "the refusal names the argument it wanted: {summary:?}"
+    );
+    assert_eq!(
+        spawned, 1,
+        "only the root was ever announced: no copy was made"
+    );
+}
+
+/// Whitespace is not a briefing. A blank `prompt` is the same missing fact as none at all, and is
+/// refused before the copy's id is minted rather than producing a copy told nothing.
+#[tokio::test]
+async fn a_fork_with_a_blank_prompt_is_refused() {
+    let (results, spawned) =
+        refused_fork("run-fork-blank-prompt", json!({ "prompt": "   " })).await;
+
+    assert_eq!(results.len(), 1, "the one fork call was answered once");
+    let (ok, summary) = &results[0];
+    assert!(!ok, "a blank briefing is no briefing");
+    assert!(
+        summary
+            .as_deref()
+            .is_some_and(|summary| summary.contains("prompt")),
+        "the refusal names the argument it wanted: {summary:?}"
+    );
+    assert_eq!(
+        spawned, 1,
+        "only the root was ever announced: no copy was made"
     );
 }

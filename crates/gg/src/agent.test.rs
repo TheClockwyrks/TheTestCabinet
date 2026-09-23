@@ -7032,6 +7032,520 @@ async fn send_message_refuses_unknown_and_finished_targets() {
 }
 
 // ---------------------------------------------------------------------------
+// Delegation argument diagnostics: what the three tools refuse, driven through
+// the real loop by the malformed calls a model actually makes
+// ---------------------------------------------------------------------------
+
+/// The `agent` id every delegation-diagnostic test below spawns on — one of the two ids
+/// [`delegation_set`]'s roster offers (the other being the root's own profile).
+const DELEGATION_SLOT: &str = "subagent";
+
+/// The permissive delegation set the diagnostics run under: room for several children, depth to
+/// spare, and exactly one extra agent profile — so a roster the refusals enumerate is short enough
+/// to assert in full, and an `agent` outside it is trivially nameable.
+fn delegation_set() -> GgCapabilitySet {
+    subagent_set(4, 3, &[DELEGATION_SLOT])
+}
+
+/// A factory whose root is scripted with `responses` and whose [`DELEGATION_SLOT`] runs the
+/// standard child script (write a file, return a summary) — the wiring every diagnostic below
+/// shares, since the cases differ only in what the root asks for.
+fn delegation_factory(responses: Vec<ModelResponse>) -> ScriptedFactory {
+    ScriptedFactory::new()
+        .slot(ROOT_PROFILE_ID, move |b| {
+            Box::new(MockClient::new(b.model_id.clone(), responses.clone()))
+        })
+        .slot(DELEGATION_SLOT, |b| {
+            Box::new(MockClient::with_subagent_child_script(&b.model_id))
+        })
+}
+
+/// Drive a root whose whole script is `responses` over [`delegation_set`], returning the telemetry
+/// the run emitted. Every case ends the session the one way a session ends, so the outcome is
+/// asserted here rather than in each test.
+async fn run_delegation_script(
+    dir: &Path,
+    run_id: &str,
+    responses: Vec<ModelResponse>,
+) -> Vec<GgTelemetryEvent> {
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some(run_id.to_string()), Box::new(sink.clone()));
+    let inv = invocation(dir, delegation_set());
+    assert_eq!(
+        run_with_factory(&inv, &emitter, Arc::new(delegation_factory(responses))).await,
+        SessionOutcome::Ran
+    );
+    sink.events()
+}
+
+/// A one-call root script for `name` with `args`, then a finish — the shape of every argument
+/// diagnostic: one synthesized call, one refusal, done.
+fn one_call_script(name: &str, args: serde_json::Value) -> Vec<ModelResponse> {
+    vec![tool_call_response("call_case", name, args), stop_response()]
+}
+
+/// Every **failed** `ToolResult` for `name` in `events`, as `(summary, failure)`.
+fn tool_refusals(
+    events: &[GgTelemetryEvent],
+    name: &str,
+) -> Vec<(String, Option<test_cabinet_core::gg::GgCallFailure>)> {
+    events
+        .iter()
+        .filter_map(|e| match &e.kind {
+            GgTelemetryKind::ToolResult {
+                name: tool,
+                ok: false,
+                summary,
+                failure,
+            } if tool == name => Some((summary.clone().unwrap_or_default(), *failure)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The one failed `ToolResult` for `name`, as `(summary, failure)` — the reading every diagnostic
+/// test below takes, since each scripts exactly one bad call.
+fn only_refusal(
+    events: &[GgTelemetryEvent],
+    name: &str,
+) -> (String, Option<test_cabinet_core::gg::GgCallFailure>) {
+    let refusals = tool_refusals(events, name);
+    assert_eq!(
+        refusals.len(),
+        1,
+        "exactly one `{name}` refusal, got {refusals:?}"
+    );
+    refusals.into_iter().next().unwrap()
+}
+
+/// How many agents the run spawned in total — the root included, since it is announced with an
+/// `AgentSpawned` of its own. A refused spawn leaves this at 1.
+fn spawned_agent_count(events: &[GgTelemetryEvent]) -> usize {
+    agent_spawns(events).len()
+}
+
+/// The recorded outcome of the one `name` call in the run's capture journal under `dir` — the only
+/// place a call's typed [`ApiData`](crate::tools::ApiData) sidecar is observable, since the
+/// telemetry stream carries a result's summary and not its data.
+fn recorded_outcome(
+    dir: &Path,
+    name: &str,
+) -> test_cabinet_core::gg_session_record::GgSessionToolOutcome {
+    let lines = read_session_journal(dir);
+    let entries = journal_entries(&lines);
+    let mut found: Vec<_> = entries
+        .iter()
+        .filter_map(|entry| match &entry.kind {
+            GgSessionEntryKind::ToolResult { call, outcome } if call.name == name => {
+                Some(outcome.clone())
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(found.len(), 1, "exactly one recorded `{name}` call");
+    found.pop().unwrap()
+}
+
+// --- spawn_subagent --------------------------------------------------------
+
+/// A spawn with no `prompt` is refused: the brief is what a subagent *is*, so there is nothing to
+/// dispatch, and no child appears.
+#[tokio::test]
+async fn a_spawn_with_no_prompt_is_refused() {
+    let dir = TempDir::new().unwrap();
+    let events = run_delegation_script(
+        dir.path(),
+        "run-spawn-no-prompt",
+        one_call_script("spawn_subagent", json!({ "agent": DELEGATION_SLOT })),
+    )
+    .await;
+
+    let (summary, failure) = only_refusal(&events, "spawn_subagent");
+    assert!(
+        summary.contains("missing required argument `prompt`"),
+        "the refusal names the missing brief (got: {summary:?})"
+    );
+    assert_eq!(
+        failure,
+        Some(test_cabinet_core::gg::GgCallFailure::InvalidArgument)
+    );
+    assert_eq!(spawned_agent_count(&events), 1, "only the root exists");
+}
+
+/// A `prompt` of nothing but whitespace is the same as none: a brief is refused on its content, not
+/// on its presence.
+#[tokio::test]
+async fn a_spawn_with_a_blank_prompt_is_refused() {
+    let dir = TempDir::new().unwrap();
+    let events = run_delegation_script(
+        dir.path(),
+        "run-spawn-blank-prompt",
+        one_call_script(
+            "spawn_subagent",
+            json!({ "agent": DELEGATION_SLOT, "prompt": "   " }),
+        ),
+    )
+    .await;
+
+    let (summary, failure) = only_refusal(&events, "spawn_subagent");
+    assert!(
+        summary.contains("missing required argument `prompt`"),
+        "a blank brief is refused as a missing one (got: {summary:?})"
+    );
+    assert_eq!(
+        failure,
+        Some(test_cabinet_core::gg::GgCallFailure::InvalidArgument)
+    );
+    assert_eq!(spawned_agent_count(&events), 1, "only the root exists");
+}
+
+/// A spawn that names no `agent` is refused with the roster: a model that guessed wrong is told
+/// exactly which ids it may name instead.
+#[tokio::test]
+async fn a_spawn_with_no_agent_is_refused_with_the_alternatives() {
+    let dir = TempDir::new().unwrap();
+    let events = run_delegation_script(
+        dir.path(),
+        "run-spawn-no-agent",
+        one_call_script("spawn_subagent", json!({ "prompt": "do the work" })),
+    )
+    .await;
+
+    let (summary, failure) = only_refusal(&events, "spawn_subagent");
+    assert!(
+        summary.contains("missing required argument `agent`"),
+        "the refusal names the missing argument (got: {summary:?})"
+    );
+    assert!(
+        summary.contains(&format!("`{DELEGATION_SLOT}`"))
+            && summary.contains(&format!("`{ROOT_PROFILE_ID}`")),
+        "and enumerates the roster it may spawn from (got: {summary:?})"
+    );
+    assert_eq!(
+        failure,
+        Some(test_cabinet_core::gg::GgCallFailure::InvalidArgument)
+    );
+    assert_eq!(spawned_agent_count(&events), 1, "only the root exists");
+}
+
+/// An `agent` outside the spawner's roster is refused with the roster, not silently resolved to
+/// something near it — and nothing is dispatched.
+#[tokio::test]
+async fn a_spawn_naming_an_agent_outside_the_roster_is_refused_with_the_alternatives() {
+    let dir = TempDir::new().unwrap();
+    let events = run_delegation_script(
+        dir.path(),
+        "run-spawn-off-roster",
+        one_call_script(
+            "spawn_subagent",
+            json!({ "prompt": "do the work", "agent": "elsewhere" }),
+        ),
+    )
+    .await;
+
+    let (summary, failure) = only_refusal(&events, "spawn_subagent");
+    assert!(
+        summary.contains("unknown agent `elsewhere`"),
+        "the refusal quotes the id that is not on the roster (got: {summary:?})"
+    );
+    assert!(
+        summary.contains("expected one of:") && summary.contains(&format!("`{DELEGATION_SLOT}`")),
+        "and enumerates the ids that are (got: {summary:?})"
+    );
+    assert_eq!(
+        failure,
+        Some(test_cabinet_core::gg::GgCallFailure::InvalidArgument)
+    );
+    assert_eq!(spawned_agent_count(&events), 1, "only the root exists");
+}
+
+// --- wait_for_subagents ----------------------------------------------------
+
+/// Waiting on an id this agent did not spawn is **not found**: a wait only ever collects one's own
+/// children, so someone else's agent is not something to block on.
+#[tokio::test]
+async fn a_wait_naming_an_agent_this_agent_did_not_spawn_is_not_found() {
+    let dir = TempDir::new().unwrap();
+    let events = run_delegation_script(
+        dir.path(),
+        "run-wait-stranger",
+        vec![
+            tool_call_response(
+                "spawn",
+                "spawn_subagent",
+                json!({ "prompt": "do the work", "agent": DELEGATION_SLOT }),
+            ),
+            tool_call_response("wait", "wait_for_subagents", json!({ "ids": ["agent-99"] })),
+            stop_response(),
+        ],
+    )
+    .await;
+
+    let (summary, failure) = only_refusal(&events, "wait_for_subagents");
+    assert!(
+        summary.contains("`agent-99` is not one of this agent's subagents"),
+        "the refusal quotes the id it will not wait on (got: {summary:?})"
+    );
+    assert_eq!(
+        failure,
+        Some(test_cabinet_core::gg::GgCallFailure::NotFound)
+    );
+    assert_eq!(
+        spawned_agent_count(&events),
+        2,
+        "the child it really did spawn is untouched by the bad wait"
+    );
+}
+
+/// An `ids` entry that is not a string is refused: an id is a string, and a list holding anything
+/// else is a malformed call rather than a wait over nothing.
+#[tokio::test]
+async fn a_wait_whose_ids_hold_a_non_string_is_refused() {
+    let dir = TempDir::new().unwrap();
+    let events = run_delegation_script(
+        dir.path(),
+        "run-wait-non-string",
+        one_call_script("wait_for_subagents", json!({ "ids": [7] })),
+    )
+    .await;
+
+    let (summary, failure) = only_refusal(&events, "wait_for_subagents");
+    assert!(
+        summary.contains("each entry in `ids` must be a subagent id string"),
+        "the refusal says what an entry must be (got: {summary:?})"
+    );
+    assert_eq!(
+        failure,
+        Some(test_cabinet_core::gg::GgCallFailure::InvalidArgument)
+    );
+}
+
+/// An `ids` that is not a list at all is refused, with the omit-it-to-wait-for-all alternative
+/// spelled out — a bare string is the near miss this diagnostic exists for.
+#[tokio::test]
+async fn a_wait_whose_ids_are_not_a_list_is_refused() {
+    let dir = TempDir::new().unwrap();
+    let events = run_delegation_script(
+        dir.path(),
+        "run-wait-non-list",
+        one_call_script("wait_for_subagents", json!({ "ids": "agent-1" })),
+    )
+    .await;
+
+    let (summary, failure) = only_refusal(&events, "wait_for_subagents");
+    assert!(
+        summary.contains("`ids` must be an array of subagent id strings"),
+        "the refusal says what `ids` must be (got: {summary:?})"
+    );
+    assert!(
+        summary.contains("omit it to wait for all"),
+        "and offers the alternative (got: {summary:?})"
+    );
+    assert_eq!(
+        failure,
+        Some(test_cabinet_core::gg::GgCallFailure::InvalidArgument)
+    );
+}
+
+/// A wait with nothing outstanding **succeeds**, carrying an empty results sidecar: a program that
+/// waited before spawning gets the honest "no children returned anything, because there were none"
+/// rather than a diagnostic it cannot branch on.
+#[tokio::test]
+async fn a_wait_with_no_outstanding_subagents_succeeds_with_an_empty_result_list() {
+    let dir = TempDir::new().unwrap();
+    let events = run_delegation_script(
+        dir.path(),
+        "run-wait-empty",
+        one_call_script("wait_for_subagents", json!({})),
+    )
+    .await;
+
+    assert!(
+        tool_refusals(&events, "wait_for_subagents").is_empty(),
+        "an empty wait is not a refusal"
+    );
+    let summary = events
+        .iter()
+        .find_map(|e| match &e.kind {
+            GgTelemetryKind::ToolResult {
+                name,
+                ok: true,
+                summary,
+                ..
+            } if name == "wait_for_subagents" => Some(summary.clone().unwrap_or_default()),
+            _ => None,
+        })
+        .expect("the empty wait succeeded");
+    assert!(
+        summary.contains("no subagents to wait for"),
+        "and says so (got: {summary:?})"
+    );
+
+    // The structured half: an empty `SubagentResults`, not an absent sidecar.
+    let outcome = recorded_outcome(dir.path(), "wait_for_subagents");
+    assert!(outcome.ok);
+    assert_eq!(
+        outcome.data,
+        Some(json!({ "kind": "subagentResults", "data": [] })),
+        "the empty wait carries an empty results sidecar"
+    );
+}
+
+/// A wait on one explicit id collects **that** child and leaves the other outstanding: the id list
+/// selects, rather than being a decoration on a wait-for-everything.
+#[tokio::test]
+async fn a_wait_on_an_explicit_id_collects_that_child() {
+    let dir = TempDir::new().unwrap();
+    let events = run_delegation_script(
+        dir.path(),
+        "run-wait-explicit",
+        vec![
+            tool_call_response(
+                "spawn-a",
+                "spawn_subagent",
+                json!({ "prompt": "first piece", "agent": DELEGATION_SLOT }),
+            ),
+            tool_call_response(
+                "spawn-b",
+                "spawn_subagent",
+                json!({ "prompt": "second piece", "agent": DELEGATION_SLOT }),
+            ),
+            tool_call_response("wait", "wait_for_subagents", json!({ "ids": ["agent-0"] })),
+            stop_response(),
+        ],
+    )
+    .await;
+
+    assert_eq!(
+        spawned_agent_count(&events),
+        3,
+        "the root and both of its children"
+    );
+    assert!(
+        tool_refusals(&events, "wait_for_subagents").is_empty(),
+        "waiting on a child it did spawn is not a refusal"
+    );
+
+    // The named child's return reached the root, and only that one: the sidecar is the collection.
+    let outcome = recorded_outcome(dir.path(), "wait_for_subagents");
+    assert!(outcome.ok);
+    assert_eq!(
+        outcome.data,
+        Some(json!({
+            "kind": "subagentResults",
+            "data": [{ "id": "agent-0", "status": "completed", "summary": MOCK_SUBAGENT_RETURN }],
+        })),
+        "the explicit wait collected agent-0 and nothing else"
+    );
+
+    // `agent-1` did return — it was simply never collected by this wait, which is what makes the
+    // selection a selection rather than an ordering.
+    assert!(
+        events
+            .iter()
+            .any(|e| e.agent_id.as_deref() == Some("agent-1")
+                && matches!(&e.kind, GgTelemetryKind::AgentReturned { .. })),
+        "the uncollected sibling still ran and returned"
+    );
+}
+
+// --- send_message ----------------------------------------------------------
+
+/// A message with no `agentId` is refused: there is no default recipient, not even a sole child.
+#[tokio::test]
+async fn a_message_with_no_agent_id_is_refused() {
+    let dir = TempDir::new().unwrap();
+    let events = run_delegation_script(
+        dir.path(),
+        "run-msg-no-id",
+        one_call_script("send_message", json!({ "message": "keep going" })),
+    )
+    .await;
+
+    let (summary, failure) = only_refusal(&events, "send_message");
+    assert!(
+        summary.contains("send_message needs a non-empty `agentId`"),
+        "the refusal names the missing recipient (got: {summary:?})"
+    );
+    assert_eq!(
+        failure,
+        Some(test_cabinet_core::gg::GgCallFailure::InvalidArgument)
+    );
+}
+
+/// A blank `agentId` is the same as none — an id is refused on its content, not its presence.
+#[tokio::test]
+async fn a_message_with_a_blank_agent_id_is_refused() {
+    let dir = TempDir::new().unwrap();
+    let events = run_delegation_script(
+        dir.path(),
+        "run-msg-blank-id",
+        one_call_script(
+            "send_message",
+            json!({ "agentId": "   ", "message": "keep going" }),
+        ),
+    )
+    .await;
+
+    let (summary, failure) = only_refusal(&events, "send_message");
+    assert!(
+        summary.contains("send_message needs a non-empty `agentId`"),
+        "a blank id is refused as a missing one (got: {summary:?})"
+    );
+    assert_eq!(
+        failure,
+        Some(test_cabinet_core::gg::GgCallFailure::InvalidArgument)
+    );
+}
+
+/// A message with no `message` is refused: an empty nudge is nothing for a child to act on.
+#[tokio::test]
+async fn a_message_with_no_message_is_refused() {
+    let dir = TempDir::new().unwrap();
+    let events = run_delegation_script(
+        dir.path(),
+        "run-msg-no-body",
+        one_call_script("send_message", json!({ "agentId": "agent-1" })),
+    )
+    .await;
+
+    let (summary, failure) = only_refusal(&events, "send_message");
+    assert!(
+        summary.contains("send_message needs a non-empty `message`"),
+        "the body is refused before the recipient is even looked up (got: {summary:?})"
+    );
+    assert_eq!(
+        failure,
+        Some(test_cabinet_core::gg::GgCallFailure::InvalidArgument)
+    );
+}
+
+/// A blank `message` is the same as none.
+#[tokio::test]
+async fn a_message_with_a_blank_message_is_refused() {
+    let dir = TempDir::new().unwrap();
+    let events = run_delegation_script(
+        dir.path(),
+        "run-msg-blank-body",
+        one_call_script(
+            "send_message",
+            json!({ "agentId": "agent-1", "message": "  " }),
+        ),
+    )
+    .await;
+
+    let (summary, failure) = only_refusal(&events, "send_message");
+    assert!(
+        summary.contains("send_message needs a non-empty `message`"),
+        "a blank body is refused as a missing one (got: {summary:?})"
+    );
+    assert_eq!(
+        failure,
+        Some(test_cabinet_core::gg::GgCallFailure::InvalidArgument)
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Phase 4d: declared workflows — fan-out + sequencing over the same scheduler
 // ---------------------------------------------------------------------------
 

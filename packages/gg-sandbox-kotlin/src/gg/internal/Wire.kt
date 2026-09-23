@@ -102,6 +102,18 @@ internal fun ggTexts(values: Iterable<String>): Value {
     return Value.list(*(items as Array<Value>))
 }
 
+/**
+ * A list of text on its way out, or the absent `option` that naming none is.
+ *
+ * For the one argument in this SDK whose WIT type is `option<list<string>>`: gg reads an absent list
+ * as "every one of them" and a present list as "exactly these", so an empty vararg lowered as an
+ * empty list would ask gg for exactly nothing.
+ */
+internal fun ggOptionalTexts(values: Iterable<String>): Value {
+    val lowered = values.toList()
+    return if (lowered.isEmpty()) Value.none() else ggTexts(lowered)
+}
+
 /** A list of whatever was passed, in order. */
 internal fun ggList(vararg items: Value): Value = Value.list(*items)
 

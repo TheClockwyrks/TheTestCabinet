@@ -991,7 +991,7 @@ pub(crate) mod fake;
 
 #[cfg(test)]
 #[path = "sandbox.test.rs"]
-mod tests;
+pub(crate) mod tests;
 
 #[cfg(test)]
 #[path = "sandbox.errors.test.rs"]

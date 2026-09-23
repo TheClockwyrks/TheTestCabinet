@@ -45,9 +45,11 @@ use crate::sandbox::{
     CodeModule, ProgramScope, SandboxLimits, bounded_store, capability_operations, engine, linker,
     reclaim,
 };
-use crate::tools::ToolOutcome;
+use crate::tools::{ApiData, ToolFailure, ToolOutcome};
 
 use super::super::g8::{self, Answered, Case, Located, Shape};
+use crate::docs::DocKind;
+use crate::ending::{Ending, EndingRole};
 use crate::limits::TurnErrorType;
 
 /// This arm, resolved from the registry — the same `&'static dyn ProgramLanguage` a run resolves.
@@ -79,7 +81,7 @@ fn component() -> &'static Component {
 /// language's own wire id, and the [membrane state](MembraneState) is built with **this language**,
 /// so a refusal that names a call back at the model spells it from this arm's catalogue —
 /// `views.open_file` rather than `view.openFile`.
-fn run_with(
+pub(super) fn run_with(
     program: &str,
     operations: &[crate::sandbox::operations::OperationId],
     modules: &[CodeModule],
@@ -136,9 +138,38 @@ fn run_as(
     limits: SandboxLimits,
     responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
+    run_granting(
+        program,
+        operations,
+        modules,
+        ending,
+        library,
+        limits,
+        |log| FakeOperationApi::with(log, responder),
+    )
+}
+
+/// [`run_as`] over a double the caller **built**, rather than over a responder.
+///
+/// Everything a responder cannot reach is on the double itself: a seeded program library, a
+/// bounded retention, the one documentation hit a search answers with, the entries a lookup knows.
+/// None of those calls dispatches a tool, so no responder can answer for them.
+///
+/// The double is built *here* rather than passed in because the [`CallLog`] it writes to is created
+/// here and the two have to be the same one — `build` takes that log and hands back the api, which
+/// is what lets a caller seed the double without a parameter per thing a caller might seed.
+fn run_granting(
+    program: &str,
+    operations: &[crate::sandbox::operations::OperationId],
+    modules: &[CodeModule],
+    ending: RunEnding,
+    library: bool,
+    limits: SandboxLimits,
+    build: impl FnOnce(&CallLog) -> FakeOperationApi,
+) -> (SandboxOutcome, CallLog) {
     let log = CallLog::default();
-    let api = FakeOperationApi::with(&log, responder);
-    // Both of these before the store exists, for the reason this function's documentation gives.
+    let api = build(&log);
+    // Both of these before the store exists, for the reason [`run_as`]'s documentation gives.
     let component = component();
     let linker = linker::<FakeOperationApi>().expect("the production linker builds");
     let operations = granted_operations(operations, library);
@@ -180,13 +211,13 @@ fn run_as(
 
 /// Run `program` with no gg tool offered at all and the default ceilings — the shape most of these
 /// cases want, because the substrate binds no SDK for a tool to be reached through.
-fn run(program: &str) -> SandboxOutcome {
+pub(super) fn run(program: &str) -> SandboxOutcome {
     run_with(program, &[], &[], SandboxLimits::AMPLE, canned_outcome).0
 }
 
 /// Run `program` with `modules` bound at `lib.<name>` — a code skill's or code memory's module, as
 /// the host hands it over.
-fn run_with_modules(program: &str, modules: &[(&str, &str)]) -> SandboxOutcome {
+pub(super) fn run_with_modules(program: &str, modules: &[(&str, &str)]) -> SandboxOutcome {
     let bound: Vec<CodeModule> = modules
         .iter()
         .map(|(name, source)| CodeModule {
@@ -198,7 +229,7 @@ fn run_with_modules(program: &str, modules: &[(&str, &str)]) -> SandboxOutcome {
 }
 
 /// What a program logged, insisting that the sandbox ran it and that it did not throw.
-fn logs(outcome: &SandboxOutcome) -> &[String] {
+pub(super) fn logs(outcome: &SandboxOutcome) -> &[String] {
     match &outcome.result {
         Ok(result) => {
             assert!(
@@ -213,7 +244,7 @@ fn logs(outcome: &SandboxOutcome) -> &[String] {
 }
 
 /// The throw a program did not catch, insisting that the sandbox itself did not fail.
-fn program_error(outcome: &SandboxOutcome) -> &ProgramError {
+pub(super) fn program_error(outcome: &SandboxOutcome) -> &ProgramError {
     match &outcome.result {
         Ok(result) => result
             .error
@@ -2350,5 +2381,2504 @@ gg.views.open_file("notes.md", offset=2, limit=1)
             json!({ "path": "notes.md", "offset": null, "limit": null, "maxLineChars": 40 }),
             json!({ "path": "notes.md", "offset": 2, "limit": 1 }),
         ]
+    );
+}
+
+// -------------------------------------------------------------------------------------------------
+// The SDK, driven from Python programs
+//
+// One `#[test]` per behaviour, for the reason this file's header gives. Each is one short program:
+// a successful call asserted on what the program PRINTED, an injected failure asserted on what the
+// program CAUGHT, and a refusal the SDK made itself asserted on the throw plus an empty call log.
+//
+// The workspace half comes first — shell, files, skills, memories, tasks and the board — and the
+// half that acts on the SESSION follows it: context, delegation, docs, views, the program library,
+// the endings and the feedback channel. The difference is only what a case can assert on. A
+// workspace call is read back through the exact JSON it composed; a session call leaves its mark in
+// the OUTCOME instead — the views it opened, the ending it declared, the program it handed over —
+// because nothing it did was a tool.
+// -------------------------------------------------------------------------------------------------
+
+/// One short program, every operation granted, the ample ceilings, and `responder` answering.
+fn sdk_with(
+    program: &str,
+    responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
+) -> (SandboxOutcome, CallLog) {
+    run_with(
+        program,
+        &all_operations(),
+        &[],
+        SandboxLimits::AMPLE,
+        responder,
+    )
+}
+
+/// [`sdk_with`], answered by the canned table — the shape every successful-call case wants.
+fn sdk(program: &str) -> (SandboxOutcome, CallLog) {
+    sdk_with(program, canned_outcome)
+}
+
+/// [`sdk`] with **one** injected failure: `tool` fails with `failure` and `message`, and every other
+/// call is still answered canned, so the program's setup is not collateral damage.
+fn sdk_failing(
+    program: &str,
+    tool: &'static str,
+    failure: ToolFailure,
+    message: &'static str,
+) -> (SandboxOutcome, CallLog) {
+    sdk_with(program, move |name, args| {
+        if name == tool {
+            ToolOutcome::failed(failure, message.to_string())
+        } else {
+            canned_outcome(name, args)
+        }
+    })
+}
+
+/// A program making `call` under `try`, printing the failure's identity and its rendering, and then
+/// reaching a line after the handler.
+///
+/// The trailing `print` is not decoration: a failure a program *caught* must leave the program
+/// running, and a raise that escaped the handler would take that line with it.
+fn caught(call: &str) -> String {
+    format!(
+        "import gg\n\
+         \n\
+         try:\n    \
+             {call}\n\
+         except gg.core.ApiError as failure:\n    \
+             print(failure.operation, failure.code.value)\n    \
+             print(str(failure))\n\
+         print(\"after\")\n"
+    )
+}
+
+/// What a [`caught`] program must have printed: the failure's `operation` and `code`, its whole
+/// rendering, and the line that proves the program carried on.
+fn assert_caught(outcome: &SandboxOutcome, operation: &str, code: &str, message: &str) {
+    let identity = format!("{operation} {code}");
+    let rendered = format!("{operation}: {code}: {message}");
+    assert_eq!(
+        logs(outcome),
+        [identity.as_str(), rendered.as_str(), "after"]
+    );
+}
+
+/// [`sdk`], granting `operations` **alone** — what a case about a call this run withholds needs, and
+/// what a case about a call nothing gates proves by granting nothing at all.
+fn sdk_granting(
+    program: &str,
+    operations: &[crate::sandbox::operations::OperationId],
+) -> (SandboxOutcome, CallLog) {
+    run_with(
+        program,
+        operations,
+        &[],
+        SandboxLimits::AMPLE,
+        canned_outcome,
+    )
+}
+
+/// [`sdk`] over a double the case **prepared**, with the program library bound when `library` is —
+/// see [`run_granting`] for why the seam is a builder rather than a parameter.
+fn sdk_over(
+    program: &str,
+    library: bool,
+    build: impl FnOnce(&CallLog) -> FakeOperationApi,
+) -> (SandboxOutcome, CallLog) {
+    run_granting(
+        program,
+        &all_operations(),
+        &[],
+        RunEnding::None,
+        library,
+        SandboxLimits::AMPLE,
+        build,
+    )
+}
+
+/// [`sdk`] in `role`'s [ending group](EndingRole) — what every `session` case runs through, since
+/// which of the three endings a program may declare is the role's decision and nothing else's.
+fn sdk_as(program: &str, role: EndingRole) -> (SandboxOutcome, CallLog) {
+    run_as(
+        program,
+        &all_operations(),
+        &[],
+        RunEnding::Role(role),
+        false,
+        SandboxLimits::AMPLE,
+        canned_outcome,
+    )
+}
+
+/// [`caught`] for a refusal whose **sentence** is asserted where the sentence is written: the
+/// program prints the failure's identity alone, and then a line proving it carried on.
+fn caught_code(call: &str) -> String {
+    format!(
+        "import gg\n\
+         \n\
+         try:\n    \
+             {call}\n\
+         except gg.core.ApiError as failure:\n    \
+             print(failure.operation, failure.code.value)\n\
+         print(\"after\")\n"
+    )
+}
+
+/// What a [`caught_code`] program must have printed: the failure's `operation` and `code`, and the
+/// line that proves the program carried on.
+fn assert_caught_code(outcome: &SandboxOutcome, operation: &str, code: &str) {
+    let identity = format!("{operation} {code}");
+    assert_eq!(logs(outcome), [identity.as_str(), "after"]);
+}
+
+/// The selectors a program's views were opened under, in call order — the state an opening call
+/// left, read the way the turn's feedback reads it.
+fn opened(outcome: &SandboxOutcome) -> Vec<&str> {
+    outcome
+        .views_opened
+        .iter()
+        .map(|view| view.selector.as_str())
+        .collect()
+}
+
+/// A refusal the SDK made on the **guest** side: the throw names the call and the argument, and the
+/// empty call log is what tells this apart from the same class raised by the host.
+fn assert_refused_before_the_host(
+    outcome: &SandboxOutcome,
+    log: &CallLog,
+    operation: &str,
+    argument: &str,
+) {
+    let error = program_error(outcome);
+    assert_eq!(error.kind, ProgramErrorKind::ToolFailure, "{error:?}");
+    let prefix = format!("{operation}: invalid-argument: `{argument}`");
+    assert!(
+        error.message.starts_with(&prefix),
+        "expected a refusal opening `{prefix}`, got: {}",
+        error.message
+    );
+    assert!(log.calls().is_empty(), "nothing reached the host");
+}
+
+// -------------------------------------------------------------------------------------------------
+// shell
+// -------------------------------------------------------------------------------------------------
+
+/// A command that exited non-zero is a **result**, so the program reads `exit_code` and keeps going.
+#[test]
+fn a_non_zero_exit_is_a_value_not_a_raise() {
+    let (outcome, _log) = sdk(r#"
+import gg
+
+ran = gg.shell.shell("make fail")
+print(ran.exit_code, ran.truncated)
+print("after")
+"#);
+    assert_eq!(logs(&outcome), ["1 False", "after"]);
+}
+
+#[test]
+fn a_shell_timeout_is_a_limit_exceeded_error() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.shell.shell("sleep 600", timeout_secs=1)"#),
+        "shell",
+        ToolFailure::LimitExceeded,
+        "the command was killed after 1s",
+    );
+    assert_caught(
+        &outcome,
+        "shell",
+        "limit-exceeded",
+        "the command was killed after 1s",
+    );
+}
+
+#[test]
+fn a_shell_that_cannot_be_launched_is_an_io_error() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.shell.shell("./build.sh")"#),
+        "shell",
+        ToolFailure::IoError,
+        "could not spawn `sh`: permission denied",
+    );
+    assert_caught(
+        &outcome,
+        "shell",
+        "io-error",
+        "could not spawn `sh`: permission denied",
+    );
+}
+
+#[test]
+fn a_negative_shell_timeout_is_refused_before_the_host() {
+    let (outcome, log) = sdk("import gg\ngg.shell.shell(\"make\", timeout_secs=-1)");
+    assert_refused_before_the_host(&outcome, &log, "shell", "timeout_secs");
+}
+
+#[test]
+fn a_shell_timeout_that_is_not_a_number_is_refused_before_the_host() {
+    let (outcome, log) = sdk("import gg\ngg.shell.shell(\"make\", timeout_secs=float(\"nan\"))");
+    assert_refused_before_the_host(&outcome, &log, "shell", "timeout_secs");
+}
+
+// -------------------------------------------------------------------------------------------------
+// files
+// -------------------------------------------------------------------------------------------------
+
+#[test]
+fn a_read_limit_that_is_not_a_whole_number_is_refused_before_the_host() {
+    // `True` IS an `int` in Python, and `limit=True` is a typo rather than a request for one line.
+    let (outcome, log) = sdk("import gg\ngg.files.read_file(\"a.py\", limit=True)");
+    assert_refused_before_the_host(&outcome, &log, "read_file", "limit");
+}
+
+#[test]
+fn an_empty_read_path_is_an_argument_error() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.files.read_file("")"#),
+        "read_file",
+        ToolFailure::InvalidArgument,
+        "`path` may not be empty",
+    );
+    assert_caught(
+        &outcome,
+        "read_file",
+        "invalid-argument",
+        "`path` may not be empty",
+    );
+}
+
+#[test]
+fn a_write_hands_back_the_bytes_it_wrote() {
+    let (outcome, _log) = sdk("import gg\nprint(gg.files.write_file(\"out.txt\", \"hello\"))");
+    assert_eq!(logs(&outcome), ["5"]);
+}
+
+#[test]
+fn an_empty_write_path_is_an_argument_error() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.files.write_file("", "hello")"#),
+        "write_file",
+        ToolFailure::InvalidArgument,
+        "`path` may not be empty",
+    );
+    assert_caught(
+        &outcome,
+        "write_file",
+        "invalid-argument",
+        "`path` may not be empty",
+    );
+}
+
+#[test]
+fn a_write_that_cannot_reach_the_disk_is_an_io_error() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.files.write_file("out/report.txt", "hello")"#),
+        "write_file",
+        ToolFailure::IoError,
+        "could not create `out`: read-only file system",
+    );
+    assert_caught(
+        &outcome,
+        "write_file",
+        "io-error",
+        "could not create `out`: read-only file system",
+    );
+}
+
+#[test]
+fn an_edit_whose_old_text_is_absent_is_not_found() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.files.edit_file("src/a.py", "alpha", "beta")"#),
+        "edit_file",
+        ToolFailure::NotFound,
+        "`alpha` does not appear in `src/a.py`",
+    );
+    assert_caught(
+        &outcome,
+        "edit_file",
+        "not-found",
+        "`alpha` does not appear in `src/a.py`",
+    );
+}
+
+/// An empty directory is an **empty list**, not a failure — so the program counts it and carries on.
+#[test]
+fn an_empty_directory_is_an_empty_list() {
+    let (outcome, _log) = sdk_with(
+        r#"
+import gg
+
+entries = gg.files.list_dir("empty")
+print(len(entries), entries == [])
+print("after")
+"#,
+        |name, args| {
+            if name == "list_dir" {
+                ToolOutcome::ok("(empty directory)", "0 entries")
+                    .with_data(ApiData::DirEntries(Vec::new()))
+            } else {
+                canned_outcome(name, args)
+            }
+        },
+    );
+    assert_eq!(logs(&outcome), ["0 True", "after"]);
+}
+
+/// The default argument is what lists the workspace root, so it has to reach the host as an absent
+/// path rather than as an empty one — which is a *different* call, and a refusal.
+#[test]
+fn an_omitted_listing_path_lowers_as_null() {
+    let (outcome, log) = sdk("import gg\nprint(len(gg.files.list_dir()))");
+    assert_eq!(logs(&outcome), ["3"]);
+    assert_eq!(log.args("list_dir"), Some(json!({ "path": null })));
+}
+
+#[test]
+fn a_listing_of_a_missing_directory_is_not_found() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.files.list_dir("nope")"#),
+        "list_dir",
+        ToolFailure::NotFound,
+        "no such directory `nope`",
+    );
+    assert_caught(
+        &outcome,
+        "list_dir",
+        "not-found",
+        "no such directory `nope`",
+    );
+}
+
+#[test]
+fn an_empty_listing_path_is_an_argument_error() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.files.list_dir("")"#),
+        "list_dir",
+        ToolFailure::InvalidArgument,
+        "`path` was given but empty; leave it out to list the workspace root",
+    );
+    assert_caught(
+        &outcome,
+        "list_dir",
+        "invalid-argument",
+        "`path` was given but empty; leave it out to list the workspace root",
+    );
+}
+
+#[test]
+fn a_tree_hands_back_the_text_gg_rendered() {
+    // `repr` rather than the text itself: a rendering is several lines, and one printed line per
+    // assertion is what keeps the expectation unambiguous.
+    let (outcome, _log) = sdk("import gg\nprint(repr(gg.files.tree(path=\"src\", depth=3)))");
+    assert_eq!(logs(&outcome), ["'a.ts\\nb.test.ts\\nsub/\\n  c.ts'"]);
+}
+
+#[test]
+fn a_tree_depth_of_zero_is_refused_before_the_host() {
+    let (outcome, log) = sdk("import gg\ngg.files.tree(depth=0)");
+    assert_refused_before_the_host(&outcome, &log, "tree", "depth");
+}
+
+#[test]
+fn a_tree_depth_that_is_not_a_whole_number_is_refused_before_the_host() {
+    let (outcome, log) = sdk("import gg\ngg.files.tree(depth=-1)");
+    assert_refused_before_the_host(&outcome, &log, "tree", "depth");
+}
+
+#[test]
+fn a_tree_of_a_missing_path_is_not_found() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.files.tree(path="nope")"#),
+        "tree",
+        ToolFailure::NotFound,
+        "no such directory `nope`",
+    );
+    assert_caught(&outcome, "tree", "not-found", "no such directory `nope`");
+}
+
+#[test]
+fn a_tree_of_a_file_is_an_argument_error() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.files.tree(path="src/a.ts")"#),
+        "tree",
+        ToolFailure::InvalidArgument,
+        "`src/a.ts` is a file, not a directory",
+    );
+    assert_caught(
+        &outcome,
+        "tree",
+        "invalid-argument",
+        "`src/a.ts` is a file, not a directory",
+    );
+}
+
+#[test]
+fn a_search_limit_that_is_not_a_whole_number_is_refused_before_the_host() {
+    let (outcome, log) = sdk("import gg\ngg.files.search(\"answer\", limit=True)");
+    assert_refused_before_the_host(&outcome, &log, "search", "limit");
+}
+
+#[test]
+fn a_blank_search_query_is_an_argument_error() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.files.search("   ")"#),
+        "search",
+        ToolFailure::InvalidArgument,
+        "`query` may not be blank",
+    );
+    assert_caught(
+        &outcome,
+        "search",
+        "invalid-argument",
+        "`query` may not be blank",
+    );
+}
+
+#[test]
+fn a_search_pattern_that_does_not_parse_is_an_argument_error() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.files.search("fn(")"#),
+        "search",
+        ToolFailure::InvalidArgument,
+        "regex parse error: unclosed group",
+    );
+    assert_caught(
+        &outcome,
+        "search",
+        "invalid-argument",
+        "regex parse error: unclosed group",
+    );
+}
+
+#[test]
+fn a_search_of_a_missing_path_is_not_found() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.files.search("answer", path="nope")"#),
+        "search",
+        ToolFailure::NotFound,
+        "no such path `nope`",
+    );
+    assert_caught(&outcome, "search", "not-found", "no such path `nope`");
+}
+
+// -------------------------------------------------------------------------------------------------
+// skills
+// -------------------------------------------------------------------------------------------------
+
+#[test]
+fn a_skill_read_hands_back_its_body() {
+    let (outcome, _log) = sdk("import gg\nprint(gg.skills.read_skill(\"testing\"))");
+    assert_eq!(logs(&outcome), ["the skill body"]);
+}
+
+/// The catalogue gg puts in the refusal is the whole value of it: the next call can name a skill
+/// that exists. So the assertion is that the list **survived the crossing**, not merely the class.
+#[test]
+fn an_unknown_skill_is_not_found_and_names_the_skills_that_exist() {
+    let message = "read_skill: no skill named `nope`; available skills: testing";
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.skills.read_skill("nope")"#),
+        "read_skill",
+        ToolFailure::NotFound,
+        message,
+    );
+    assert_caught(&outcome, "read_skill", "not-found", message);
+    assert!(
+        logs(&outcome)[1].contains("available skills"),
+        "the catalogue reached the program: {:?}",
+        logs(&outcome)
+    );
+}
+
+// -------------------------------------------------------------------------------------------------
+// memories
+// -------------------------------------------------------------------------------------------------
+
+#[test]
+fn a_duplicate_memory_name_is_a_conflict() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.memories.write_memory("layout", "d", "b")"#),
+        "write_memory",
+        ToolFailure::Conflict,
+        "a memory named `layout` already exists",
+    );
+    assert_caught(
+        &outcome,
+        "write_memory",
+        "conflict",
+        "a memory named `layout` already exists",
+    );
+}
+
+#[test]
+fn a_memory_body_over_the_cap_is_limit_exceeded() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.memories.write_memory("layout", "d", "b" * 10)"#),
+        "write_memory",
+        ToolFailure::LimitExceeded,
+        "the memories would hold 4200 characters, over the 4000 this run allows",
+    );
+    assert_caught(
+        &outcome,
+        "write_memory",
+        "limit-exceeded",
+        "the memories would hold 4200 characters, over the 4000 this run allows",
+    );
+}
+
+#[test]
+fn an_update_hands_back_the_memory_budget() {
+    let (outcome, _log) = sdk(r#"
+import gg
+
+budget = gg.memories.update_memory("layout", "d2", "b2")
+print(budget.count, budget.max_count, budget.total_chars)
+"#);
+    assert_eq!(logs(&outcome), ["1 8 12"]);
+}
+
+#[test]
+fn an_update_of_an_unknown_memory_is_not_found() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.memories.update_memory("nope", "d", "b")"#),
+        "update_memory",
+        ToolFailure::NotFound,
+        "no memory named `nope`",
+    );
+    assert_caught(
+        &outcome,
+        "update_memory",
+        "not-found",
+        "no memory named `nope`",
+    );
+}
+
+#[test]
+fn an_updated_memory_over_the_cap_is_limit_exceeded() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.memories.update_memory("layout", "d", "b" * 10)"#),
+        "update_memory",
+        ToolFailure::LimitExceeded,
+        "the replacement is 4200 characters, over the 4000 this run allows",
+    );
+    assert_caught(
+        &outcome,
+        "update_memory",
+        "limit-exceeded",
+        "the replacement is 4200 characters, over the 4000 this run allows",
+    );
+}
+
+#[test]
+fn a_created_memory_hands_back_the_memory_budget() {
+    let (outcome, _log) = sdk(r#"
+import gg
+
+budget = gg.memories.create_memory("layout", "d", "b")
+print(budget.count, budget.max_count, budget.total_chars)
+"#);
+    assert_eq!(logs(&outcome), ["1 8 12"]);
+}
+
+#[test]
+fn a_duplicate_memory_slug_is_a_conflict() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.memories.create_memory("layout", "d", "b")"#),
+        "create_memory",
+        ToolFailure::Conflict,
+        "a memory with the slug `layout` already exists",
+    );
+    assert_caught(
+        &outcome,
+        "create_memory",
+        "conflict",
+        "a memory with the slug `layout` already exists",
+    );
+}
+
+#[test]
+fn a_created_memory_over_the_cap_is_limit_exceeded() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.memories.create_memory("layout", "d", "b" * 10)"#),
+        "create_memory",
+        ToolFailure::LimitExceeded,
+        "the memory index would hold 900 characters, over the 800 this run allows",
+    );
+    assert_caught(
+        &outcome,
+        "create_memory",
+        "limit-exceeded",
+        "the memory index would hold 900 characters, over the 800 this run allows",
+    );
+}
+
+#[test]
+fn a_blank_memory_field_is_an_argument_error() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.memories.create_memory("layout", "", "b")"#),
+        "create_memory",
+        ToolFailure::InvalidArgument,
+        "`description` may not be blank under a run that keeps a memory index",
+    );
+    assert_caught(
+        &outcome,
+        "create_memory",
+        "invalid-argument",
+        "`description` may not be blank under a run that keeps a memory index",
+    );
+}
+
+#[test]
+fn a_memory_slug_with_characters_a_name_may_not_hold_is_an_argument_error() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.memories.create_memory("the layout/v2", "d", "b")"#),
+        "create_memory",
+        ToolFailure::InvalidArgument,
+        "`name` may hold only letters, digits, `-`, `_` and `.`",
+    );
+    assert_caught(
+        &outcome,
+        "create_memory",
+        "invalid-argument",
+        "`name` may hold only letters, digits, `-`, `_` and `.`",
+    );
+}
+
+#[test]
+fn a_read_of_an_unknown_memory_is_not_found() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.memories.read_memory("nope")"#),
+        "read_memory",
+        ToolFailure::NotFound,
+        "no memory named `nope`",
+    );
+    assert_caught(
+        &outcome,
+        "read_memory",
+        "not-found",
+        "no memory named `nope`",
+    );
+}
+
+#[test]
+fn an_edit_hands_back_the_memory_budget() {
+    let (outcome, _log) = sdk(r#"
+import gg
+
+budget = gg.memories.edit_memory("layout", "old", "new")
+print(budget.count, budget.max_count, budget.total_chars)
+"#);
+    assert_eq!(logs(&outcome), ["1 8 12"]);
+}
+
+#[test]
+fn an_edit_whose_text_is_absent_is_not_found() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.memories.edit_memory("layout", "old", "new")"#),
+        "edit_memory",
+        ToolFailure::NotFound,
+        "`old` does not appear in `layout`",
+    );
+    assert_caught(
+        &outcome,
+        "edit_memory",
+        "not-found",
+        "`old` does not appear in `layout`",
+    );
+}
+
+#[test]
+fn an_edit_whose_text_appears_twice_is_a_conflict() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.memories.edit_memory("layout", "old", "new")"#),
+        "edit_memory",
+        ToolFailure::Conflict,
+        "`old` appears 2 times in `layout`",
+    );
+    assert_caught(
+        &outcome,
+        "edit_memory",
+        "conflict",
+        "`old` appears 2 times in `layout`",
+    );
+}
+
+#[test]
+fn an_edited_memory_over_the_cap_is_limit_exceeded() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.memories.edit_memory("layout", "old", "new" * 10)"#),
+        "edit_memory",
+        ToolFailure::LimitExceeded,
+        "the revision is 4200 characters, over the 4000 this run allows",
+    );
+    assert_caught(
+        &outcome,
+        "edit_memory",
+        "limit-exceeded",
+        "the revision is 4200 characters, over the 4000 this run allows",
+    );
+}
+
+#[test]
+fn an_edit_that_would_empty_a_memory_is_an_argument_error() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.memories.edit_memory("layout", "the whole body", "")"#),
+        "edit_memory",
+        ToolFailure::InvalidArgument,
+        "the edit would leave `layout` empty; delete it instead",
+    );
+    assert_caught(
+        &outcome,
+        "edit_memory",
+        "invalid-argument",
+        "the edit would leave `layout` empty; delete it instead",
+    );
+}
+
+#[test]
+fn a_memory_hit_carries_its_counts_and_its_excerpt() {
+    let (outcome, _log) = sdk(r#"
+import gg
+
+hit = gg.memories.search_memories(["build"])[0]
+print(hit.name, hit.description, hit.matched, hit.occurrences)
+print(hit.excerpt)
+"#);
+    assert_eq!(
+        logs(&outcome),
+        [
+            "build-commands How to build 2 3",
+            "…cargo nextest run --workspace…",
+        ]
+    );
+}
+
+#[test]
+fn a_memory_search_that_matches_nothing_is_an_empty_list() {
+    let (outcome, _log) = sdk_with(
+        r#"
+import gg
+
+hits = gg.memories.search_memories(["nothing"])
+print(len(hits), hits == [])
+print("after")
+"#,
+        |name, args| {
+            if name == "search_memories" {
+                ToolOutcome::ok("0 of 3 memories match", "searched memories")
+                    .with_data(ApiData::MemoryHits(Vec::new()))
+            } else {
+                canned_outcome(name, args)
+            }
+        },
+    );
+    assert_eq!(logs(&outcome), ["0 True", "after"]);
+}
+
+#[test]
+fn a_memory_search_whose_keywords_are_all_empty_is_an_argument_error() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.memories.search_memories(["", "  "])"#),
+        "search_memories",
+        ToolFailure::InvalidArgument,
+        "`keywords` held nothing to search for",
+    );
+    assert_caught(
+        &outcome,
+        "search_memories",
+        "invalid-argument",
+        "`keywords` held nothing to search for",
+    );
+}
+
+#[test]
+fn a_delete_hands_back_the_memory_budget() {
+    let (outcome, _log) = sdk(r#"
+import gg
+
+budget = gg.memories.delete_memory("layout")
+print(budget.count, budget.max_count, budget.total_chars)
+"#);
+    assert_eq!(logs(&outcome), ["1 8 12"]);
+}
+
+#[test]
+fn a_delete_of_an_unknown_memory_is_not_found() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.memories.delete_memory("nope")"#),
+        "delete_memory",
+        ToolFailure::NotFound,
+        "no memory named `nope`",
+    );
+    assert_caught(
+        &outcome,
+        "delete_memory",
+        "not-found",
+        "no memory named `nope`",
+    );
+}
+
+// -------------------------------------------------------------------------------------------------
+// tasks
+// -------------------------------------------------------------------------------------------------
+
+#[test]
+fn an_added_task_hands_back_the_task_budget() {
+    let (outcome, _log) = sdk(r#"
+import gg
+
+budget = gg.tasks.add_task("t1", "T")
+print(budget.count, budget.max_tasks)
+"#);
+    assert_eq!(logs(&outcome), ["2 20"]);
+}
+
+#[test]
+fn a_duplicate_task_id_is_a_conflict() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.tasks.add_task("t1", "T")"#),
+        "add_task",
+        ToolFailure::Conflict,
+        "a task `t1` already exists",
+    );
+    assert_caught(
+        &outcome,
+        "add_task",
+        "conflict",
+        "a task `t1` already exists",
+    );
+}
+
+#[test]
+fn a_task_added_with_an_edge_that_closes_a_cycle_is_a_conflict() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.tasks.add_task("t1", "T", blocked_by=["t2"])"#),
+        "add_task",
+        ToolFailure::Conflict,
+        "`t1` blocked by `t2` would close a cycle: t1 → t2 → t1",
+    );
+    assert_caught(
+        &outcome,
+        "add_task",
+        "conflict",
+        "`t1` blocked by `t2` would close a cycle: t1 → t2 → t1",
+    );
+}
+
+#[test]
+fn a_blank_task_id_is_an_argument_error() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.tasks.add_task("  ", "T")"#),
+        "add_task",
+        ToolFailure::InvalidArgument,
+        "`id` may not be blank",
+    );
+    assert_caught(
+        &outcome,
+        "add_task",
+        "invalid-argument",
+        "`id` may not be blank",
+    );
+}
+
+#[test]
+fn an_update_of_an_unknown_task_is_not_found() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.tasks.update_task("nope", title="T2")"#),
+        "update_task",
+        ToolFailure::NotFound,
+        "no task `nope`",
+    );
+    assert_caught(&outcome, "update_task", "not-found", "no task `nope`");
+}
+
+#[test]
+fn a_task_update_with_no_field_is_an_argument_error() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.tasks.update_task("t1")"#),
+        "update_task",
+        ToolFailure::InvalidArgument,
+        "a task update needs at least one of `title`, `description` or `status`",
+    );
+    assert_caught(
+        &outcome,
+        "update_task",
+        "invalid-argument",
+        "a task update needs at least one of `title`, `description` or `status`",
+    );
+}
+
+#[test]
+fn blocking_an_unknown_task_is_not_found() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.tasks.set_blocked_by("nope", ["t0"])"#),
+        "set_blocked_by",
+        ToolFailure::NotFound,
+        "no task `nope`",
+    );
+    assert_caught(&outcome, "set_blocked_by", "not-found", "no task `nope`");
+}
+
+#[test]
+fn a_blocked_by_edge_that_closes_a_cycle_is_a_conflict() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.tasks.set_blocked_by("t1", ["t2"])"#),
+        "set_blocked_by",
+        ToolFailure::Conflict,
+        "`t1` blocked by `t2` would close a cycle: t1 → t2 → t1",
+    );
+    assert_caught(
+        &outcome,
+        "set_blocked_by",
+        "conflict",
+        "`t1` blocked by `t2` would close a cycle: t1 → t2 → t1",
+    );
+}
+
+#[test]
+fn a_blank_blocker_id_is_an_argument_error() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.tasks.set_blocked_by("t1", ["  "])"#),
+        "set_blocked_by",
+        ToolFailure::InvalidArgument,
+        "a blocker id may not be blank",
+    );
+    assert_caught(
+        &outcome,
+        "set_blocked_by",
+        "invalid-argument",
+        "a blocker id may not be blank",
+    );
+}
+
+#[test]
+fn completing_an_unknown_task_is_not_found() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.tasks.complete_task("nope")"#),
+        "complete_task",
+        ToolFailure::NotFound,
+        "no task `nope`",
+    );
+    assert_caught(&outcome, "complete_task", "not-found", "no task `nope`");
+}
+
+#[test]
+fn a_removed_task_hands_back_the_task_budget() {
+    let (outcome, _log) = sdk(r#"
+import gg
+
+budget = gg.tasks.remove_task("t1")
+print(budget.count, budget.max_tasks)
+"#);
+    assert_eq!(logs(&outcome), ["2 20"]);
+}
+
+#[test]
+fn removing_an_unknown_task_is_not_found() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.tasks.remove_task("nope")"#),
+        "remove_task",
+        ToolFailure::NotFound,
+        "no task `nope`",
+    );
+    assert_caught(&outcome, "remove_task", "not-found", "no task `nope`");
+}
+
+// -------------------------------------------------------------------------------------------------
+// board
+// -------------------------------------------------------------------------------------------------
+
+#[test]
+fn a_created_epic_hands_back_its_id_and_the_board_budget() {
+    let (outcome, _log) = sdk(r#"
+import gg
+
+epic = gg.board.create_epic("epc", "E", "D")
+print(epic.id, epic.board.epics, epic.board.max_epics)
+"#);
+    assert_eq!(logs(&outcome), ["EPIC 1 4"]);
+}
+
+#[test]
+fn an_epic_prefix_under_three_letters_is_an_argument_error() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.board.create_epic("ab", "E", "D")"#),
+        "create_epic",
+        ToolFailure::InvalidArgument,
+        "`prefix` must be 3-6 letters, got `ab`",
+    );
+    assert_caught(
+        &outcome,
+        "create_epic",
+        "invalid-argument",
+        "`prefix` must be 3-6 letters, got `ab`",
+    );
+}
+
+#[test]
+fn an_epic_prefix_over_six_letters_is_an_argument_error() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.board.create_epic("authentication", "E", "D")"#),
+        "create_epic",
+        ToolFailure::InvalidArgument,
+        "`prefix` must be 3-6 letters, got `authentication`",
+    );
+    assert_caught(
+        &outcome,
+        "create_epic",
+        "invalid-argument",
+        "`prefix` must be 3-6 letters, got `authentication`",
+    );
+}
+
+#[test]
+fn an_epic_prefix_that_is_not_letters_is_an_argument_error() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.board.create_epic("au7h", "E", "D")"#),
+        "create_epic",
+        ToolFailure::InvalidArgument,
+        "`prefix` must be letters only, got `au7h`",
+    );
+    assert_caught(
+        &outcome,
+        "create_epic",
+        "invalid-argument",
+        "`prefix` must be letters only, got `au7h`",
+    );
+}
+
+#[test]
+fn a_duplicate_epic_prefix_is_a_conflict() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.board.create_epic("auth", "E", "D")"#),
+        "create_epic",
+        ToolFailure::Conflict,
+        "an epic `AUTH` already exists",
+    );
+    assert_caught(
+        &outcome,
+        "create_epic",
+        "conflict",
+        "an epic `AUTH` already exists",
+    );
+}
+
+#[test]
+fn an_issue_assigned_to_an_unassignable_agent_is_an_argument_error() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.board.create_issue("I", "s", "o", "c", "nobody")"#),
+        "create_issue",
+        ToolFailure::InvalidArgument,
+        "`nobody` is not an agent this session may assign",
+    );
+    assert_caught(
+        &outcome,
+        "create_issue",
+        "invalid-argument",
+        "`nobody` is not an agent this session may assign",
+    );
+}
+
+#[test]
+fn an_issue_reviewed_by_an_unassignable_agent_is_an_argument_error() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.board.create_issue("I", "s", "o", "c", "worker", reviewers=["nobody"])"#),
+        "create_issue",
+        ToolFailure::InvalidArgument,
+        "`nobody` is not an agent this session may assign as a reviewer",
+    );
+    assert_caught(
+        &outcome,
+        "create_issue",
+        "invalid-argument",
+        "`nobody` is not an agent this session may assign as a reviewer",
+    );
+}
+
+#[test]
+fn an_issue_blocker_that_closes_a_cycle_is_a_conflict() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.board.create_issue("I", "s", "o", "c", "worker", blocked_by=["AUTH-1"])"#),
+        "create_issue",
+        ToolFailure::Conflict,
+        "blocking on `AUTH-1` would close a cycle: AUTH-2 → AUTH-1 → AUTH-2",
+    );
+    assert_caught(
+        &outcome,
+        "create_issue",
+        "conflict",
+        "blocking on `AUTH-1` would close a cycle: AUTH-2 → AUTH-1 → AUTH-2",
+    );
+}
+
+#[test]
+fn a_blank_issue_field_is_an_argument_error() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.board.create_issue("I", "", "o", "c", "worker")"#),
+        "create_issue",
+        ToolFailure::InvalidArgument,
+        "`in_scope` may not be blank",
+    );
+    assert_caught(
+        &outcome,
+        "create_issue",
+        "invalid-argument",
+        "`in_scope` may not be blank",
+    );
+}
+
+#[test]
+fn an_update_of_an_unknown_issue_is_not_found() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.board.update_issue("NOPE-1", title="T2")"#),
+        "update_issue",
+        ToolFailure::NotFound,
+        "no issue `NOPE-1`",
+    );
+    assert_caught(&outcome, "update_issue", "not-found", "no issue `NOPE-1`");
+}
+
+#[test]
+fn an_issue_update_with_no_field_is_an_argument_error() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.board.update_issue("AUTH-1")"#),
+        "update_issue",
+        ToolFailure::InvalidArgument,
+        "an issue update needs at least one field",
+    );
+    assert_caught(
+        &outcome,
+        "update_issue",
+        "invalid-argument",
+        "an issue update needs at least one field",
+    );
+}
+
+#[test]
+fn blocking_an_unknown_issue_is_not_found() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.board.set_issue_blocked_by("NOPE-1", ["AUTH-1"])"#),
+        "set_issue_blocked_by",
+        ToolFailure::NotFound,
+        "no issue `NOPE-1`",
+    );
+    assert_caught(
+        &outcome,
+        "set_issue_blocked_by",
+        "not-found",
+        "no issue `NOPE-1`",
+    );
+}
+
+#[test]
+fn an_issue_edge_that_closes_a_cycle_is_a_conflict() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.board.set_issue_blocked_by("AUTH-2", ["AUTH-1"])"#),
+        "set_issue_blocked_by",
+        ToolFailure::Conflict,
+        "`AUTH-2` blocked by `AUTH-1` would close a cycle: AUTH-2 → AUTH-1 → AUTH-2",
+    );
+    assert_caught(
+        &outcome,
+        "set_issue_blocked_by",
+        "conflict",
+        "`AUTH-2` blocked by `AUTH-1` would close a cycle: AUTH-2 → AUTH-1 → AUTH-2",
+    );
+}
+
+#[test]
+fn a_removed_epic_hands_back_the_board_budget() {
+    let (outcome, _log) = sdk(r#"
+import gg
+
+board = gg.board.remove_epic("e1")
+print(board.epics, board.max_epics, board.issues, board.max_issues)
+"#);
+    assert_eq!(logs(&outcome), ["1 4 3 20"]);
+}
+
+#[test]
+fn removing_an_unknown_epic_is_not_found() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.board.remove_epic("NOPE")"#),
+        "remove_epic",
+        ToolFailure::NotFound,
+        "no epic `NOPE`",
+    );
+    assert_caught(&outcome, "remove_epic", "not-found", "no epic `NOPE`");
+}
+
+#[test]
+fn a_removed_issue_hands_back_the_board_budget() {
+    let (outcome, _log) = sdk(r#"
+import gg
+
+board = gg.board.remove_issue("i1")
+print(board.epics, board.max_epics, board.issues, board.max_issues)
+"#);
+    assert_eq!(logs(&outcome), ["1 4 3 20"]);
+}
+
+#[test]
+fn removing_an_unknown_issue_is_not_found() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.board.remove_issue("NOPE-1")"#),
+        "remove_issue",
+        ToolFailure::NotFound,
+        "no issue `NOPE-1`",
+    );
+    assert_caught(&outcome, "remove_issue", "not-found", "no issue `NOPE-1`");
+}
+
+#[test]
+fn waiting_on_an_unknown_issue_is_not_found() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.board.wait_for_issue("NOPE-1")"#),
+        "wait_for_issue",
+        ToolFailure::NotFound,
+        "no issue `NOPE-1`",
+    );
+    assert_caught(&outcome, "wait_for_issue", "not-found", "no issue `NOPE-1`");
+}
+
+#[test]
+fn waiting_on_this_sessions_own_issue_is_an_argument_error() {
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.board.wait_for_issue("AUTH-1")"#),
+        "wait_for_issue",
+        ToolFailure::InvalidArgument,
+        "`AUTH-1` is this session's own issue, which it may not wait on",
+    );
+    assert_caught(
+        &outcome,
+        "wait_for_issue",
+        "invalid-argument",
+        "`AUTH-1` is this session's own issue, which it may not wait on",
+    );
+}
+
+/// Nothing blocks *inside* the program: the wait is registered, the call returns gg's
+/// acknowledgement, and the lines after it still run.
+#[test]
+fn a_registered_wait_lets_the_rest_of_the_program_run() {
+    let (outcome, _log) = sdk(r#"
+import gg
+
+print(gg.board.wait_for_issue("i1"))
+print("after")
+"#);
+    assert_eq!(logs(&outcome), ["wait registered", "after"]);
+}
+
+// -------------------------------------------------------------------------------------------------
+// context
+//
+// The three reclaim calls and the compaction, each driven for what it hands a program back and for
+// every distinct way it is refused. The successful *crossings* are the table above's; what is here
+// is the state each call left and what a program reads when one fails.
+// -------------------------------------------------------------------------------------------------
+
+/// An eviction's whole report reaches the program: what went, what that freed, whose views, and the
+/// sentence gg wrote about it.
+#[test]
+fn an_eviction_hands_back_what_it_reclaimed() {
+    let (outcome, _log) = sdk(r#"
+import gg
+
+report = gg.context.evict_file_view("src/a.py")
+print(report.items, report.reclaimed_tokens, report.paths, report.detail)
+"#);
+    assert_eq!(logs(&outcome), ["2 300 ['src/a.ts'] dropped 2 items"]);
+}
+
+/// The default drops **every** file view, which has to reach the host as an absent path rather than
+/// as an empty one — the empty one is a different call, and a refusal.
+#[test]
+fn an_eviction_with_no_path_sends_no_path() {
+    let (outcome, log) = sdk("import gg\nprint(gg.context.evict_file_view().items)");
+    assert_eq!(logs(&outcome), ["2"]);
+    assert_eq!(log.args("evict_file_view"), Some(json!({ "path": null })));
+}
+
+#[test]
+fn an_eviction_of_an_empty_path_is_an_argument_error() {
+    let message = "`path` was given but empty; leave it out to drop every file view";
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.context.evict_file_view("")"#),
+        "evict_file_view",
+        ToolFailure::InvalidArgument,
+        message,
+    );
+    assert_caught(&outcome, "evict_file_view", "invalid-argument", message);
+}
+
+/// An archive moves **turns**, not files, so its report names no paths — the one field that tells
+/// the two reclaims apart from inside a program.
+#[test]
+fn an_archive_reports_an_empty_paths_list() {
+    let (outcome, _log) = sdk_with(
+        r#"
+import gg
+
+report = gg.context.archive_thread([gg.context.TurnRange(4, 19)])
+print(report.items, report.reclaimed_tokens, report.paths, report.detail)
+"#,
+        |name, args| {
+            if name == "archive_thread" {
+                ToolOutcome::ok("archived", "archived").with_data(ApiData::Reclaim(
+                    crate::tools::ReclaimData {
+                        items: 16,
+                        reclaimed_tokens: 4_200,
+                        paths: Vec::new(),
+                        detail: "archived turns 4-19".to_string(),
+                    },
+                ))
+            } else {
+                canned_outcome(name, args)
+            }
+        },
+    );
+    assert_eq!(logs(&outcome), ["16 4200 [] archived turns 4-19"]);
+}
+
+#[test]
+fn an_archive_of_an_empty_list_is_an_argument_error() {
+    let message = "`archive_thread`: name between 1 and 32 inclusive turn ranges to archive";
+    let (outcome, _log) = sdk_failing(
+        &caught("gg.context.archive_thread([])"),
+        "archive_thread",
+        ToolFailure::InvalidArgument,
+        message,
+    );
+    assert_caught(&outcome, "archive_thread", "invalid-argument", message);
+}
+
+#[test]
+fn an_archive_of_more_than_thirty_two_spans_is_an_argument_error() {
+    let message = "`archive_thread`: name between 1 and 32 inclusive turn ranges to archive";
+    let (outcome, _log) = sdk_failing(
+        &caught("gg.context.archive_thread([gg.context.TurnRange(n, n) for n in range(33)])"),
+        "archive_thread",
+        ToolFailure::InvalidArgument,
+        message,
+    );
+    assert_caught(&outcome, "archive_thread", "invalid-argument", message);
+}
+
+#[test]
+fn an_archive_of_a_span_that_ends_before_it_starts_is_an_argument_error() {
+    let message = "`archive_thread`: the range [19, 4] ends before it starts";
+    let (outcome, _log) = sdk_failing(
+        &caught("gg.context.archive_thread([gg.context.TurnRange(19, 4)])"),
+        "archive_thread",
+        ToolFailure::InvalidArgument,
+        message,
+    );
+    assert_caught(&outcome, "archive_thread", "invalid-argument", message);
+}
+
+/// A `TurnRange` is a plain dataclass, so a tuple that looks like one is the mistake that actually
+/// happens — and it is refused by name, on the guest side, before anything is lowered.
+#[test]
+fn an_archive_of_something_that_is_not_a_turn_range_is_refused_before_the_host() {
+    let (outcome, log) = sdk("import gg\ngg.context.archive_thread([(4, 19)])");
+    let error = program_error(&outcome);
+    assert!(
+        error.message.starts_with(
+            "archive_thread: invalid-argument: every entry of `ranges` must be a TurnRange"
+        ),
+        "the entry is named: {}",
+        error.message
+    );
+    assert!(log.calls().is_empty(), "nothing reached the host");
+}
+
+/// A negative end would **wrap** into a `u32` and archive a span nobody asked for, so the range
+/// check happens on this side of the membrane.
+#[test]
+fn an_archive_of_a_negative_span_end_is_refused_before_the_host() {
+    let (outcome, log) = sdk("import gg\ngg.context.archive_thread([gg.context.TurnRange(4, -1)])");
+    assert_refused_before_the_host(&outcome, &log, "archive_thread", "ranges[].end");
+}
+
+/// Nothing archived yet is a **different answer** from a search that ran and matched nothing, and
+/// the flag is what carries the difference.
+#[test]
+fn an_archive_search_over_an_empty_archive_says_so() {
+    let (outcome, _log) = sdk_with(
+        r#"
+import gg
+
+found = gg.context.search_archive("the parser")
+print(found.archive_empty, found.hits)
+"#,
+        |name, args| {
+            if name == "search_archive" {
+                ToolOutcome::ok("nothing archived", "searched").with_data(ApiData::ArchiveSearch(
+                    crate::tools::ArchiveSearchData {
+                        archive_empty: true,
+                        hits: Vec::new(),
+                    },
+                ))
+            } else {
+                canned_outcome(name, args)
+            }
+        },
+    );
+    assert_eq!(logs(&outcome), ["True []"]);
+}
+
+#[test]
+fn an_archive_search_that_matched_nothing_reports_a_non_empty_archive() {
+    let (outcome, _log) = sdk_with(
+        r#"
+import gg
+
+found = gg.context.search_archive("the parser")
+print(found.archive_empty, found.hits)
+"#,
+        |name, args| {
+            if name == "search_archive" {
+                ToolOutcome::ok("0 hits", "searched").with_data(ApiData::ArchiveSearch(
+                    crate::tools::ArchiveSearchData {
+                        archive_empty: false,
+                        hits: Vec::new(),
+                    },
+                ))
+            } else {
+                canned_outcome(name, args)
+            }
+        },
+    );
+    assert_eq!(logs(&outcome), ["False []"]);
+}
+
+#[test]
+fn an_archive_search_of_an_empty_query_is_an_argument_error() {
+    let message = "`search_archive`: `query` must not be empty";
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.context.search_archive("")"#),
+        "search_archive",
+        ToolFailure::InvalidArgument,
+        message,
+    );
+    assert_caught(&outcome, "search_archive", "invalid-argument", message);
+}
+
+/// A compaction is **registered**, not performed: the call returns and the program runs on to its
+/// end, which is the whole difference between it and a window rewritten underneath a running turn.
+#[test]
+fn a_compaction_is_registered_and_the_program_carries_on() {
+    let (outcome, _log) = sdk(r#"
+import gg
+
+gg.context.compact("scaffolded the page")
+print("after")
+"#);
+    assert_eq!(logs(&outcome), ["after"]);
+}
+
+#[test]
+fn a_compaction_of_a_blank_summary_is_an_argument_error() {
+    let message = "`compact`: `summary` must be a non-empty string";
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.context.compact("   ")"#),
+        "compact",
+        ToolFailure::InvalidArgument,
+        message,
+    );
+    assert_caught(&outcome, "compact", "invalid-argument", message);
+}
+
+/// The default reads nothing back into the restarted window, which reaches the host as an **empty
+/// list** rather than as an absent argument: the tool's `files` is not optional.
+#[test]
+fn a_compaction_with_no_files_sends_an_empty_list() {
+    let (outcome, log) = sdk("import gg\ngg.context.compact(\"scaffolded the page\")");
+    assert!(logs(&outcome).is_empty());
+    assert_eq!(
+        log.args("compact"),
+        Some(json!({ "summary": "scaffolded the page", "files": [] }))
+    );
+}
+
+/// A bare string **is** iterable, so `files="src/a.py"` would otherwise lower to nine one-character
+/// paths and fail somewhere else entirely.
+#[test]
+fn a_compaction_handed_a_bare_string_for_its_files_is_refused_before_the_host() {
+    let (outcome, log) = sdk(r#"import gg
+gg.context.compact("scaffolded the page", "src/a.py")"#);
+    assert_refused_before_the_host(&outcome, &log, "compact", "files");
+}
+
+// -------------------------------------------------------------------------------------------------
+// delegation
+//
+// The six calls that hand work to another agent — three about children, two about this session's
+// own succession, and the fork that is both.
+// -------------------------------------------------------------------------------------------------
+
+/// The other half of the brief: an issue id crosses as `issueId` with no prompt beside it, which is
+/// the choice the SDK refuses to let a program make twice.
+#[test]
+fn a_subagent_briefed_from_an_issue_crosses_carrying_the_issue() {
+    let (outcome, log) =
+        sdk("import gg\nprint(gg.delegation.spawn_subagent(\"worker\", issue_id=\"AUTH-1\").id)");
+    assert_eq!(logs(&outcome), ["agent-1"]);
+    assert_eq!(
+        log.args("spawn_subagent"),
+        Some(json!({ "agent": "worker", "prompt": null, "issueId": "AUTH-1" }))
+    );
+}
+
+#[test]
+fn a_spawned_child_hands_back_the_handle_its_parent_names_it_by() {
+    let (outcome, _log) = sdk(r#"
+import gg
+
+child = gg.delegation.spawn_subagent("worker", prompt="write the lexer")
+print(child.id, child.slot, child.model_id)
+"#);
+    assert_eq!(logs(&outcome), ["agent-1 primary test/model"]);
+}
+
+#[test]
+fn a_spawn_at_the_delegation_depth_cap_is_limit_exceeded() {
+    let message = "the delegation depth cap is 2, and this session is already at it";
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.delegation.spawn_subagent("worker", prompt="write the lexer")"#),
+        "spawn_subagent",
+        ToolFailure::LimitExceeded,
+        message,
+    );
+    assert_caught(&outcome, "spawn_subagent", "limit-exceeded", message);
+}
+
+#[test]
+fn a_spawn_of_an_agent_this_session_may_not_spawn_is_an_argument_error() {
+    let message = "`archivist` is not an agent this session may spawn";
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.delegation.spawn_subagent("archivist", prompt="tidy up")"#),
+        "spawn_subagent",
+        ToolFailure::InvalidArgument,
+        message,
+    );
+    assert_caught(&outcome, "spawn_subagent", "invalid-argument", message);
+}
+
+#[test]
+fn a_wait_on_an_unknown_id_is_not_found() {
+    let message = "no child agent `agent-9` was spawned by this session";
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.delegation.wait_for_subagents(["agent-9"])"#),
+        "wait_for_subagents",
+        ToolFailure::NotFound,
+        message,
+    );
+    assert_caught(&outcome, "wait_for_subagents", "not-found", message);
+}
+
+/// A child that produced no return value at all has **no status**, which is `None` rather than a
+/// member a program would have to invent a meaning for.
+#[test]
+fn a_child_that_has_not_ended_reads_back_without_a_status() {
+    let (outcome, _log) = sdk_with(
+        r#"
+import gg
+
+collected = gg.delegation.wait_for_subagents()
+print(collected[0].id, collected[0].status is None, collected[0].summary)
+"#,
+        |name, args| {
+            if name == "wait_for_subagents" {
+                ToolOutcome::ok("collected", "collected").with_data(ApiData::SubagentResults(vec![
+                    crate::tools::SubagentResultData {
+                        id: "agent-1".to_string(),
+                        status: None,
+                        summary: "still working".to_string(),
+                    },
+                ]))
+            } else {
+                canned_outcome(name, args)
+            }
+        },
+    );
+    assert_eq!(logs(&outcome), ["agent-1 True still working"]);
+}
+
+/// Every way a child's loop can end reaches the program as **its own** member: a status collapsed
+/// onto its neighbour would send a spawner looking for a failure that did not happen.
+#[test]
+fn every_agent_ending_reaches_the_program_as_its_own_member() {
+    let (outcome, _log) = sdk_with(
+        r#"
+import gg
+
+print([result.status.name for result in gg.delegation.wait_for_subagents()])
+"#,
+        |name, args| {
+            if name == "wait_for_subagents" {
+                let statuses = [
+                    crate::tools::AgentStatusData::Completed,
+                    crate::tools::AgentStatusData::Exhausted,
+                    crate::tools::AgentStatusData::TimedOut,
+                    crate::tools::AgentStatusData::ModelError,
+                    crate::tools::AgentStatusData::AuthError,
+                    crate::tools::AgentStatusData::LimitExceeded,
+                ];
+                ToolOutcome::ok("collected", "collected").with_data(ApiData::SubagentResults(
+                    statuses
+                        .into_iter()
+                        .enumerate()
+                        .map(|(index, status)| crate::tools::SubagentResultData {
+                            id: format!("agent-{index}"),
+                            status: Some(status),
+                            summary: "done".to_string(),
+                        })
+                        .collect(),
+                ))
+            } else {
+                canned_outcome(name, args)
+            }
+        },
+    );
+    assert_eq!(
+        logs(&outcome),
+        ["['COMPLETED', 'EXHAUSTED', 'TIMED_OUT', 'MODEL_ERROR', 'AUTH_ERROR', 'LIMIT_EXCEEDED']"]
+    );
+}
+
+#[test]
+fn a_message_to_an_unknown_agent_is_not_found() {
+    let message = "no agent `agent-9` in this session";
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.delegation.send_message("agent-9", "prefer the simpler parser")"#),
+        "send_message",
+        ToolFailure::NotFound,
+        message,
+    );
+    assert_caught(&outcome, "send_message", "not-found", message);
+}
+
+#[test]
+fn a_message_to_a_child_that_already_returned_is_a_conflict() {
+    let message = "`agent-1` has already returned; there is no turn left to read an inbox";
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.delegation.send_message("agent-1", "prefer the simpler parser")"#),
+        "send_message",
+        ToolFailure::Conflict,
+        message,
+    );
+    assert_caught(&outcome, "send_message", "conflict", message);
+}
+
+#[test]
+fn a_transition_to_a_state_this_session_may_not_move_to_is_an_argument_error() {
+    let message = "`archive` is not a state this session may move on to";
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.delegation.transition_state("archive")"#),
+        "transition_state",
+        ToolFailure::InvalidArgument,
+        message,
+    );
+    assert_caught(&outcome, "transition_state", "invalid-argument", message);
+}
+
+/// The first declaration in a turn is the one that stands, and the second is **refused** rather
+/// than silently dropped — so the program is told, and carries on to its end.
+#[test]
+fn a_second_succession_in_one_turn_is_refused() {
+    let mut declared = 0;
+    let (outcome, _log) = sdk_with(
+        r#"
+import gg
+
+gg.delegation.transition_state("verify")
+try:
+    gg.delegation.transition_state("review")
+except gg.core.ApiError as failure:
+    print(failure.operation, failure.code.value)
+print("after")
+"#,
+        move |name, args| {
+            if name == "transition_state" {
+                declared += 1;
+                if declared > 1 {
+                    return ToolOutcome::failed(
+                        ToolFailure::Refused,
+                        "this turn already declared a succession".to_string(),
+                    );
+                }
+            }
+            canned_outcome(name, args)
+        },
+    );
+    assert_eq!(logs(&outcome), ["transition_state refused", "after"]);
+}
+
+/// The one operation no capability can switch on: an agent standing in no machine state does not
+/// hold it, so the allowlist that omits the [`Binding::Machine`](crate::sandbox::Binding) row is
+/// exactly the configuration a run really has.
+#[test]
+fn a_transition_from_outside_a_state_machine_is_unavailable() {
+    let (outcome, _log) = sdk_granting(
+        &caught_code(r#"gg.delegation.transition_state("verify")"#),
+        &capability_operations(crate::sandbox::operations::gating_capabilities()),
+    );
+    assert_caught_code(&outcome, "transition_state", "unavailable");
+}
+
+#[test]
+fn an_exec_of_an_agent_this_session_may_not_become_is_an_argument_error() {
+    let message = "`Archivist` is not an agent this session may become";
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.delegation.exec("Archivist")"#),
+        "exec",
+        ToolFailure::InvalidArgument,
+        message,
+    );
+    assert_caught(&outcome, "exec", "invalid-argument", message);
+}
+
+/// Registered rather than performed, exactly as a transition is: the call validates the target and
+/// **returns**, and the rest of the program runs.
+#[test]
+fn an_exec_returns_and_the_program_runs_to_its_end() {
+    let (outcome, _log) = sdk(r#"
+import gg
+
+gg.delegation.exec("Builder", "pick it up from here")
+print("after")
+"#);
+    assert_eq!(logs(&outcome), ["after"]);
+}
+
+/// The two successions share **one** slot, so an `exec` after a transition is the second
+/// declaration in the turn whichever call made the first.
+#[test]
+fn an_exec_after_a_transition_in_one_program_is_refused() {
+    let (outcome, _log) = sdk_with(
+        r#"
+import gg
+
+gg.delegation.transition_state("verify")
+try:
+    gg.delegation.exec("Builder")
+except gg.core.ApiError as failure:
+    print(failure.operation, failure.code.value)
+print("after")
+"#,
+        |name, args| {
+            if name == "exec" {
+                ToolOutcome::failed(
+                    ToolFailure::Refused,
+                    "this turn already declared a succession".to_string(),
+                )
+            } else {
+                canned_outcome(name, args)
+            }
+        },
+    );
+    assert_eq!(logs(&outcome), ["exec refused", "after"]);
+}
+
+/// A fork's dispatch waits for the end of the turn, but its **handle** does not: the id is minted
+/// at the call, which is what lets a later turn collect the copy by name.
+#[test]
+fn a_fork_hands_back_a_handle_the_program_can_name() {
+    let (outcome, _log) = sdk(r#"
+import gg
+
+copy = gg.delegation.fork("try the other fix")
+print(copy.id, copy.slot, copy.model_id)
+"#);
+    assert_eq!(logs(&outcome), ["agent-2 primary test/model"]);
+}
+
+#[test]
+fn a_fork_at_the_delegation_depth_cap_is_limit_exceeded() {
+    let message = "the delegation depth cap is 2, and this session is already at it";
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.delegation.fork("try the other fix")"#),
+        "fork",
+        ToolFailure::LimitExceeded,
+        message,
+    );
+    assert_caught(&outcome, "fork", "limit-exceeded", message);
+}
+
+// -------------------------------------------------------------------------------------------------
+// docs
+//
+// The only way a program finds anything: searching is bound to every program whatever a run
+// enables, and taking a documentation view back out of the window is bought by a capability.
+// -------------------------------------------------------------------------------------------------
+
+/// A hit's five fields each reach the program carrying their own value, with the kind lifted back
+/// into the enum a program compares against rather than left as the word the wire carried.
+#[test]
+fn a_documentation_hit_reads_back_field_by_field() {
+    let (outcome, _log) = sdk_over(
+        r#"
+import gg
+
+hit = gg.docs.search(query="read").hits[0]
+print(hit.key, hit.kind is gg.docs.DocKind.FUNCTION, hit.module, hit.name, hit.summary)
+"#,
+        false,
+        |log| {
+            FakeOperationApi::with(log, canned_outcome).finding(
+                "gg.files.read_file",
+                DocKind::Function,
+                "gg.files",
+                "read_file",
+                "Read a file from the workspace.",
+            )
+        },
+    );
+    assert_eq!(
+        logs(&outcome),
+        ["gg.files.read_file True gg.files read_file Read a file from the workspace."]
+    );
+}
+
+/// Searching is [`Binding::Always`](crate::sandbox::Binding), which means it answers a program that
+/// was granted **nothing at all** — the one route to the surface a run that enables no tool has.
+#[test]
+fn a_search_answers_a_program_granted_nothing_at_all() {
+    let (outcome, _log) = sdk_granting(
+        "import gg\nprint(gg.docs.search(query=\"read\").total)",
+        &[],
+    );
+    assert_eq!(logs(&outcome), ["0"]);
+}
+
+/// *You gave me nothing to look for* and *nothing here matches* are different answers, and a model
+/// that could not tell them apart would rewrite a query that was never the problem.
+#[test]
+fn a_search_with_neither_a_query_nor_a_filter_is_an_argument_error() {
+    let (outcome, _log) = sdk(&caught_code("gg.docs.search()"));
+    assert_caught_code(&outcome, "search", "invalid-argument");
+}
+
+/// The enum is what keeps a model from typing an unrecognised kind, so this case reaches **past**
+/// it to prove the rule is the host's: ignoring the word would answer something wider than what was
+/// asked for, with nothing in the page to say so.
+#[test]
+fn a_search_with_an_unrecognised_kind_is_an_argument_error() {
+    let (outcome, _log) = sdk(r#"
+import gg
+
+
+class Kind:
+    value = "functions"
+
+
+try:
+    gg.docs.search(query="read", kind=Kind())
+except gg.core.ApiError as failure:
+    print(failure.operation, failure.code.value)
+print("after")
+"#);
+    assert_eq!(logs(&outcome), ["search invalid-argument", "after"]);
+}
+
+/// A page of zero hits is a call that can never return anything, and reading it as *the default*
+/// would be gg deciding what the model meant.
+#[test]
+fn a_search_with_a_limit_of_zero_is_an_argument_error() {
+    let (outcome, _log) = sdk(&caught_code(r#"gg.docs.search(query="read", limit=0)"#));
+    assert_caught_code(&outcome, "search", "invalid-argument");
+}
+
+/// The single-key close is bought by the same capability the blanket one is, and a run that did not
+/// enable it is told so rather than told the call does not exist.
+#[test]
+fn closing_one_documentation_view_is_unavailable_without_the_capability() {
+    let (outcome, _log) = sdk_granting(
+        &caught_code(r#"gg.docs.close("gg.files.read_file")"#),
+        &all_operations_without(CAPABILITY_DOCVIEW_CLOSE),
+    );
+    assert_caught_code(&outcome, "close", "unavailable");
+}
+
+/// `docs.close` and `views.close` are two operations sharing one word: a key aimed at a text view's
+/// label closes **nothing**, and the turn's report of what was closed stays empty.
+#[test]
+fn a_documentation_close_aimed_at_a_text_views_label_closes_nothing() {
+    let (outcome, _log) = sdk(r#"
+import gg
+
+gg.views.open_text("summary", "eight files, two failing")
+print(gg.docs.close("summary"))
+"#);
+    assert_eq!(logs(&outcome), ["0"]);
+    assert!(
+        outcome.views_closed.is_empty(),
+        "nothing was closed: {:?}",
+        outcome.views_closed
+    );
+}
+
+// -------------------------------------------------------------------------------------------------
+// views
+//
+// The only channel material has into the context window, which is what makes a silently refused one
+// the most expensive failure on this surface: the model would read the silence as a program that
+// never ran.
+// -------------------------------------------------------------------------------------------------
+
+/// The read is what fails, and nothing is opened when it does — there is no half-open state to
+/// report.
+#[test]
+fn an_open_of_a_missing_path_is_not_found_and_opens_no_view() {
+    let message = "no such file `missing.md`";
+    let (outcome, _log) = sdk_failing(
+        &caught(r#"gg.views.open_file("missing.md")"#),
+        "read_file",
+        ToolFailure::NotFound,
+        message,
+    );
+    assert_caught(&outcome, "open_file", "not-found", message);
+    assert!(opened(&outcome).is_empty(), "nothing was opened");
+}
+
+/// Zero would cut every line to its annotation alone, so it is an argument error rather than a
+/// setting — stated with the range, so the program can pick a number that means something.
+#[test]
+fn an_open_with_a_line_cut_of_zero_is_an_argument_error() {
+    let message = "`maxLineChars` must be between 1 and 65536 (0 given); omit it to leave lines \
+                   whole";
+    let (outcome, _log) = sdk(&caught(
+        r#"gg.views.open_file("notes.md", max_line_chars=0)"#,
+    ));
+    assert_caught(&outcome, "open_file", "invalid-argument", message);
+}
+
+#[test]
+fn an_open_with_a_line_cut_over_the_bound_is_an_argument_error() {
+    let message = "`maxLineChars` must be between 1 and 65536 (65537 given); omit it to leave \
+                   lines whole";
+    let (outcome, _log) = sdk(&caught(
+        r#"gg.views.open_file("notes.md", max_line_chars=65537)"#,
+    ));
+    assert_caught(&outcome, "open_file", "invalid-argument", message);
+}
+
+/// A window over the byte cap is refused **naming the size and the bound**, and never truncated
+/// behind the model's back — with the two ways out of it in the same sentence.
+#[test]
+fn an_open_whose_window_is_over_the_byte_cap_is_limit_exceeded() {
+    let message = "view body exceeds max size (70000 bytes; max 65536); open fewer lines with \
+                   `offset`/`limit`, or cut long lines with `maxLineChars`";
+    let (outcome, _log) = sdk_with(&caught(r#"gg.views.open_file("huge.md")"#), |name, args| {
+        if name == "read_file" {
+            let body = "x".repeat(70_000);
+            ToolOutcome::ok(body.clone(), "read 1 line").with_data(ApiData::FileText(
+                crate::tools::FileTextData {
+                    contents: body,
+                    first_line: 1,
+                    last_line: 1,
+                    total_lines: 1,
+                    byte_truncated: false,
+                },
+            ))
+        } else {
+            canned_outcome(name, args)
+        }
+    });
+    assert_caught(&outcome, "open_file", "limit-exceeded", message);
+}
+
+#[test]
+fn an_open_with_a_negative_offset_is_refused_before_the_host() {
+    let (outcome, log) = sdk("import gg\ngg.views.open_file(\"notes.md\", offset=-1)");
+    assert_refused_before_the_host(&outcome, &log, "open_file", "offset");
+}
+
+/// The view's read is bought by the same capability a bare read is, so a run that withholds it
+/// withholds both.
+#[test]
+fn an_open_is_unavailable_when_the_run_withholds_reading_files() {
+    let (outcome, _log) = sdk_granting(
+        &caught_code(r#"gg.views.open_file("notes.md")"#),
+        &all_operations_without(test_cabinet_core::gg::CAPABILITY_READ_FILE),
+    );
+    assert_caught_code(&outcome, "open_file", "unavailable");
+}
+
+#[test]
+fn a_text_view_with_a_blank_label_is_an_argument_error_and_opens_nothing() {
+    let message = "a view needs a non-empty label";
+    let (outcome, _log) = sdk(&caught(r#"gg.views.open_text("   ", "eight files")"#));
+    assert_caught(&outcome, "open_text", "invalid-argument", message);
+    assert!(opened(&outcome).is_empty(), "nothing was opened");
+}
+
+#[test]
+fn a_text_view_with_a_body_over_the_ceiling_is_limit_exceeded() {
+    let message = "view body exceeds max size (70000 bytes; max 65536)";
+    let (outcome, _log) = sdk(&caught(r#"gg.views.open_text("summary", "x" * 70000)"#));
+    assert_caught(&outcome, "open_text", "limit-exceeded", message);
+}
+
+#[test]
+fn a_text_view_with_a_label_over_the_ceiling_is_limit_exceeded() {
+    let message = "label exceeds max length (201 bytes; max 200)";
+    let (outcome, _log) = sdk(&caught(r#"gg.views.open_text("L" * 201, "eight files")"#));
+    assert_caught(&outcome, "open_text", "limit-exceeded", message);
+}
+
+/// Opening a text view is bound to every program for the same reason searching is: it is the one
+/// channel a run that granted nothing at all still has into its own window.
+#[test]
+fn a_text_view_opens_for_a_program_granted_nothing_at_all() {
+    let (outcome, _log) = sdk_granting(
+        "import gg\ngg.views.open_text(\"summary\", \"eight files, two failing\")",
+        &[],
+    );
+    assert_eq!(opened(&outcome), ["summary"]);
+}
+
+/// One label is one view: re-opening it **supersedes** what it showed rather than adding a second,
+/// which is the accounting a program that redraws in a loop has to be able to read correctly.
+#[test]
+fn re_opening_one_label_supersedes_the_view() {
+    let (outcome, _log) = sdk(r#"
+import gg
+
+gg.views.open_text("summary", "eight files")
+gg.views.open_text("summary", "eight files, two failing")
+"#);
+    let opened: Vec<(&str, bool)> = outcome
+        .views_opened
+        .iter()
+        .map(|view| (view.selector.as_str(), view.superseded))
+        .collect();
+    assert_eq!(opened, [("summary", false), ("summary", true)]);
+}
+
+#[test]
+fn a_documentation_lookup_of_an_unknown_name_is_not_found() {
+    let (outcome, _log) = sdk_over(
+        &caught(r#"gg.views.open_docs_view("read_fille")"#),
+        false,
+        |log| FakeOperationApi::with(log, canned_outcome).cataloguing(&[("read_file", true)]),
+    );
+    assert_caught(
+        &outcome,
+        "open_docs_view",
+        "not-found",
+        "no documentation for `read_fille`",
+    );
+}
+
+/// A name the catalogue holds and this agent does not bind is `not-found` too, and says so: telling
+/// a model that a call exists which it may not make is worse than telling it nothing.
+#[test]
+fn a_documentation_lookup_of_a_name_this_agent_does_not_bind_is_not_found() {
+    let (outcome, _log) = sdk_over(
+        &caught(r#"gg.views.open_docs_view("fork")"#),
+        false,
+        |log| {
+            FakeOperationApi::with(log, canned_outcome)
+                .cataloguing(&[("read_file", true), ("fork", false)])
+        },
+    );
+    assert_caught(
+        &outcome,
+        "open_docs_view",
+        "not-found",
+        "no documentation for `fork`: this session does not bind it",
+    );
+}
+
+/// `None` is how a program says *all of them* to a documentation close; an empty selector here is a
+/// typo rather than a way of saying it.
+#[test]
+fn a_close_of_an_empty_selector_is_an_argument_error() {
+    let (outcome, _log) = sdk(&caught(r#"gg.views.close("")"#));
+    assert_caught(
+        &outcome,
+        "close",
+        "invalid-argument",
+        "`view.close` needs a non-empty selector",
+    );
+}
+
+#[test]
+fn a_close_is_unavailable_when_the_run_withholds_managing_the_window() {
+    let (outcome, _log) = sdk_granting(
+        &caught_code(r#"gg.views.close("summary")"#),
+        &all_operations_without(test_cabinet_core::gg::CAPABILITY_AGENT_MANAGED_CONTEXT),
+    );
+    assert_caught_code(&outcome, "close", "unavailable");
+}
+
+// -------------------------------------------------------------------------------------------------
+// programs
+//
+// The library a run buys separately: the history of what this session already ran, the source of
+// one of them, and the hand-over that runs a patched copy in this program's place.
+// -------------------------------------------------------------------------------------------------
+
+/// A library with nothing in it is an **empty list**, which is the honest answer on the first turn
+/// of every session — and a different fact from having no library at all.
+#[test]
+fn a_history_before_the_first_program_is_an_empty_list() {
+    let (outcome, _log) = sdk_over(
+        "import gg\nprint(gg.programs.history() == [])",
+        true,
+        |log| FakeOperationApi::with(log, canned_outcome),
+    );
+    assert_eq!(logs(&outcome), ["True"]);
+}
+
+/// The whole object is still on the module for a run that keeps no library — what it gets is a
+/// refusal from the host naming what it does not have, on all three calls.
+#[test]
+fn the_library_is_unavailable_to_a_run_that_keeps_none() {
+    let (outcome, _log) = sdk_granting(
+        r#"
+import gg
+
+for call in (gg.programs.history, lambda: gg.programs.get("p3"), lambda: gg.programs.rerun("print(1)")):
+    try:
+        call()
+    except gg.core.ApiError as failure:
+        print(failure.operation, failure.code.value)
+"#,
+        &all_operations_without(CAPABILITY_PROGRAM_LIBRARY),
+    );
+    assert_eq!(
+        logs(&outcome),
+        [
+            "history unavailable",
+            "get unavailable",
+            "rerun unavailable"
+        ]
+    );
+}
+
+/// An id the library really issued and has since let go is `not-found`, exactly as one it never
+/// issued is: the retention is what the two have in common, and a program cannot tell them apart.
+#[test]
+fn a_get_of_an_id_the_library_has_dropped_is_not_found() {
+    let (outcome, _log) = sdk_over(&caught_code(r#"gg.programs.get("p1")"#), true, |log| {
+        FakeOperationApi::with(log, canned_outcome)
+            .keeping(1)
+            .with_program("p1", 1, "print('the first program')")
+            .with_program("p2", 2, "print('the second program')")
+    });
+    assert_caught_code(&outcome, "get", "not-found");
+}
+
+#[test]
+fn a_rerun_of_a_blank_source_is_an_argument_error() {
+    let (outcome, _log) = sdk_over(&caught(r#"gg.programs.rerun("   ")"#), true, |log| {
+        FakeOperationApi::with(log, canned_outcome)
+    });
+    assert_caught(
+        &outcome,
+        "rerun",
+        "invalid-argument",
+        "`source` must not be blank",
+    );
+}
+
+/// The **first** hand-over is the one that stands: a silently replaced program is a change the
+/// model cannot see, so the second is refused and the first is what gg is handed.
+#[test]
+fn a_second_rerun_is_refused_and_the_first_hand_over_stands() {
+    let (outcome, _log) = sdk_over(
+        r#"
+import gg
+
+gg.programs.rerun("print('the first')")
+try:
+    gg.programs.rerun("print('the second')")
+except gg.core.ApiError as failure:
+    print(failure.operation, failure.code.value)
+"#,
+        true,
+        |log| FakeOperationApi::with(log, canned_outcome),
+    );
+    assert_eq!(logs(&outcome), ["rerun refused"]);
+    assert_eq!(outcome.rerun.as_deref(), Some("print('the first')"));
+}
+
+/// A refusal over the call's own **argument** is not a call this run withheld, so it leaves the
+/// refusal roster empty — the roster answers "what did the model reach for that it does not have",
+/// which is a different question and the one a comparison of two configurations counts.
+#[test]
+fn a_rerun_refused_over_its_argument_leaves_the_refusal_roster_empty() {
+    let (outcome, _log) = sdk_over(&caught_code(r#"gg.programs.rerun("")"#), true, |log| {
+        FakeOperationApi::with(log, canned_outcome)
+    });
+    assert_caught_code(&outcome, "rerun", "invalid-argument");
+    assert!(
+        outcome.refusals.is_empty(),
+        "nothing was withheld: {:?}",
+        outcome.refusals
+    );
+}
+
+/// A hand-over rests on checks the program never finished running, so a program that then raises
+/// loses it — and the turn's feedback says the replacement was not run rather than leaving the
+/// model waiting for a program that never ran.
+#[test]
+fn a_program_that_reruns_and_then_raises_has_its_hand_over_revoked() {
+    let (outcome, _log) = sdk_over(
+        r#"
+import gg
+
+gg.programs.rerun("print('the replacement')")
+raise RuntimeError("boom")
+"#,
+        true,
+        |log| FakeOperationApi::with(log, canned_outcome),
+    );
+    assert_eq!(program_error(&outcome).kind, ProgramErrorKind::Other);
+    assert!(
+        outcome.rerun.is_none() && outcome.revoked_rerun,
+        "the hand-over was revoked: {:?}",
+        outcome.rerun
+    );
+}
+
+// -------------------------------------------------------------------------------------------------
+// session
+//
+// The one declaration nothing downstream re-examines, which is why the role gate is checked here as
+// well as bound into the guest's scope: a guest that links its SDK as a library has no scope to
+// withhold a name from.
+// -------------------------------------------------------------------------------------------------
+
+#[test]
+fn a_finish_records_a_completion_carrying_the_summary() {
+    let (outcome, _log) = sdk_as(
+        "import gg\ngg.session.finish(\"scaffolded the page\")",
+        EndingRole::Standard,
+    );
+    assert_eq!(
+        outcome.completion.map(|completion| completion.ending),
+        Some(Ending::Finished {
+            summary: "scaffolded the page".to_string()
+        })
+    );
+}
+
+/// No unwind, so calling it twice is an ordinary thing for a program to do — the later declaration
+/// is the one made with more of the program's work behind it, and the replacement is counted.
+#[test]
+fn a_second_finish_replaces_the_summary_and_is_counted() {
+    let (outcome, _log) = sdk_as(
+        r#"
+import gg
+
+gg.session.finish("scaffolded the page")
+gg.session.finish("scaffolded the page and wired the router")
+"#,
+        EndingRole::Standard,
+    );
+    let completion = outcome.completion.expect("the program declared an ending");
+    assert_eq!(
+        (completion.ending, completion.superseded),
+        (
+            Ending::Finished {
+                summary: "scaffolded the page and wired the router".to_string()
+            },
+            1
+        )
+    );
+}
+
+/// "I am done and have nothing to say about it" is not an ending gg accepts on the model's behalf,
+/// and refusing it leaves the session **live**.
+#[test]
+fn a_finish_of_a_blank_summary_is_an_argument_error_and_the_run_stays_live() {
+    let (outcome, _log) = sdk_as(
+        &caught_code(r#"gg.session.finish("   ")"#),
+        EndingRole::Standard,
+    );
+    assert_caught_code(&outcome, "finish", "invalid-argument");
+    assert!(outcome.completion.is_none(), "the session is still live");
+}
+
+/// The declaration rests on checks the program never finished running, so a program that then
+/// raises loses the ending — and the turn's feedback can say it was cancelled rather than leaving
+/// the session over for a reason nobody can see.
+#[test]
+fn a_program_that_finishes_and_then_raises_has_its_completion_revoked() {
+    let (outcome, _log) = sdk_as(
+        r#"
+import gg
+
+gg.session.finish("scaffolded the page")
+raise RuntimeError("boom")
+"#,
+        EndingRole::Standard,
+    );
+    assert!(outcome.completion.is_none(), "the ending was revoked");
+    assert_eq!(
+        outcome.revoked_completion,
+        Some(Ending::Finished {
+            summary: "scaffolded the page".to_string()
+        })
+    );
+}
+
+/// "The work is complete" is not a verdict a reviewer is asked for, so the call it would be made
+/// with is refused rather than accepted and read as one.
+#[test]
+fn a_finish_from_a_review_session_is_unavailable() {
+    let (outcome, _log) = sdk_as(
+        &caught_code(r#"gg.session.finish("looks good")"#),
+        EndingRole::Review,
+    );
+    assert_caught_code(&outcome, "finish", "unavailable");
+}
+
+#[test]
+fn an_approve_records_the_review_ending() {
+    let (outcome, _log) = sdk_as("import gg\ngg.session.approve()", EndingRole::Review);
+    assert_eq!(
+        outcome.completion.map(|completion| completion.ending),
+        Some(Ending::Approved)
+    );
+}
+
+#[test]
+fn an_approve_from_a_standard_session_is_unavailable() {
+    let (outcome, _log) = sdk_as(&caught_code("gg.session.approve()"), EndingRole::Standard);
+    assert_caught_code(&outcome, "approve", "unavailable");
+}
+
+#[test]
+fn a_request_for_changes_records_its_items() {
+    let (outcome, _log) = sdk_as(
+        r#"
+import gg
+
+gg.session.request_changes(["tighten the parser", "name the error"])
+"#,
+        EndingRole::Review,
+    );
+    assert_eq!(
+        outcome.completion.map(|completion| completion.ending),
+        Some(Ending::ChangesRequested {
+            items: vec![
+                "tighten the parser".to_string(),
+                "name the error".to_string()
+            ]
+        })
+    );
+}
+
+/// An empty list would give the agent that has to fix the work nothing to do, and it is dispatched
+/// verbatim — so it is refused here rather than papered over downstream.
+#[test]
+fn a_request_for_changes_with_an_empty_list_is_an_argument_error() {
+    let (outcome, _log) = sdk_as(
+        &caught_code("gg.session.request_changes([])"),
+        EndingRole::Review,
+    );
+    assert_caught_code(&outcome, "request_changes", "invalid-argument");
+}
+
+/// A list of blanks is an empty list said at greater length: the entries are trimmed and dropped,
+/// and what is left is nothing actionable.
+#[test]
+fn a_request_for_changes_whose_entries_are_all_blank_is_an_argument_error() {
+    let (outcome, _log) = sdk_as(
+        &caught_code(r#"gg.session.request_changes(["", "   "])"#),
+        EndingRole::Review,
+    );
+    assert_caught_code(&outcome, "request_changes", "invalid-argument");
+}
+
+#[test]
+fn a_request_for_changes_mixing_blank_and_real_entries_records_the_real_ones() {
+    let (outcome, _log) = sdk_as(
+        r#"
+import gg
+
+gg.session.request_changes(["  ", "  tighten the parser  ", ""])
+"#,
+        EndingRole::Review,
+    );
+    assert_eq!(
+        outcome.completion.map(|completion| completion.ending),
+        Some(Ending::ChangesRequested {
+            items: vec!["tighten the parser".to_string()]
+        })
+    );
+}
+
+#[test]
+fn a_request_for_changes_from_a_standard_session_is_unavailable() {
+    let (outcome, _log) = sdk_as(
+        &caught_code(r#"gg.session.request_changes(["tighten the parser"])"#),
+        EndingRole::Standard,
+    );
+    assert_caught_code(&outcome, "request_changes", "unavailable");
+}
+
+// -------------------------------------------------------------------------------------------------
+// the feedback channel
+//
+// Two contracts this guest keeps by having nothing to report, pinned rather than left as a gap: the
+// note about a discarded return value, and the note about work that ran after the program ended.
+// -------------------------------------------------------------------------------------------------
+
+/// A Python module has **no return value** to discard, so a program whose last statement evaluates
+/// to something notes nothing — the arms whose programs are functions are where that note is earned.
+#[test]
+fn a_programs_last_expression_is_not_a_returned_value() {
+    let (outcome, _log) = sdk("import gg\nprint(\"working\")\n1 + 1\n");
+    assert_eq!(logs(&outcome), ["working"]);
+    assert!(
+        !outcome.returned_value,
+        "a module has no return value to discard"
+    );
+}
+
+/// **There is no scheduler on this arm to hand work to.** `asyncio` is deliberately not in the
+/// guest at all — the [library case](the_embedded_guest_carries_every_library_its_catalogue_declares)
+/// pins its absence — so the nearest thing a program can write is a coroutine it drives itself, and
+/// that runs *inside* the program: the call it makes is the program's own, and there is no
+/// continuation left over for the shim to note.
+///
+/// The note is a real channel on the arms whose programs are functions with a microtask queue
+/// behind them, and a model there is told when its `await` outlived its program. Here there is
+/// nothing to tell, and pinning that is what keeps an empty field from reading as a gap.
+#[test]
+fn work_driven_through_a_coroutine_leaves_no_deferred_note() {
+    let (outcome, log) = sdk(r#"
+import gg
+
+try:
+    import asyncio
+except ModuleNotFoundError:
+    print("no asyncio")
+
+
+async def work():
+    return gg.files.read_file("notes.md").total_lines
+
+
+try:
+    work().send(None)
+except StopIteration as done:
+    print(done.value)
+"#);
+    assert_eq!(logs(&outcome), ["no asyncio", "2"]);
+    assert_eq!(log.names(), ["read_file"]);
+    assert!(
+        outcome.deferred_note.is_none(),
+        "no continuation ran after the program: {:?}",
+        outcome.deferred_note
     );
 }

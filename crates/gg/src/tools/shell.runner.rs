@@ -313,6 +313,42 @@ impl StubShellRunner {
         }
     }
 
+    /// A stub answering every command with `status` and empty streams.
+    fn answering(status: ShellStatus) -> Self {
+        Self {
+            requests: Arc::new(std::sync::Mutex::new(Vec::new())),
+            answer: ShellExecution {
+                status,
+                stdout: String::new(),
+                stderr: String::new(),
+            },
+        }
+    }
+
+    /// A stub answering every command with a launch failure classified `failure` and reported as
+    /// `message` — the process never started, so both streams are empty.
+    pub(crate) fn launch_failing(failure: crate::tools::ToolFailure, message: &str) -> Self {
+        Self::answering(ShellStatus::LaunchFailed {
+            failure,
+            message: message.to_string(),
+        })
+    }
+
+    /// A stub answering every command with a wait failure classified `failure` and reported as
+    /// `message`: the process started but gg never learned what it did.
+    pub(crate) fn wait_failing(failure: crate::tools::ToolFailure, message: &str) -> Self {
+        Self::answering(ShellStatus::WaitFailed {
+            failure,
+            message: message.to_string(),
+        })
+    }
+
+    /// A stub answering every command with a process that exited without a code — the shape a
+    /// signal-terminated command has.
+    pub(crate) fn signalled() -> Self {
+        Self::answering(ShellStatus::Exited { code: None })
+    }
+
     /// Every request it has been handed, in order.
     pub(crate) fn requests(&self) -> Vec<ShellRequest> {
         self.requests.lock().expect("stub shell lock").clone()

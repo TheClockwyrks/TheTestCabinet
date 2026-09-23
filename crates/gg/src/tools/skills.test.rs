@@ -100,3 +100,17 @@ fn definition_advertises_the_available_skill_names() {
         .expect("an enum of skill names");
     assert_eq!(names, &vec![json!("combat"), json!("intro")]);
 }
+
+/// A `name` that is not a string is an **argument** diagnostic, not a missing skill: the call is
+/// malformed before the catalogue is consulted, so the model is told what to fix rather than which
+/// skills exist.
+#[tokio::test]
+async fn a_read_skill_name_that_is_not_a_string_is_an_argument_error() {
+    let dir = TempDir::new().unwrap();
+    let ctx = ToolContext::new(dir.path());
+    let outcome = tool().invoke(json!({ "name": 7 }), &ctx).await;
+
+    assert!(!outcome.ok);
+    assert_eq!(outcome.failure, Some(ToolFailure::InvalidArgument));
+    assert!(outcome.output.contains("name"), "{}", outcome.output);
+}

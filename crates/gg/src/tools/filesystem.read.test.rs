@@ -790,3 +790,37 @@ async fn the_byte_ceiling_respects_character_boundaries() {
     assert!(read.ok, "{}", read.output);
     assert!(read.output.contains("[truncated: showing"));
 }
+
+/// Only bytes [`sniff_image`](super::sniff_image) recognises are answered as a picture. Anything
+/// else — an ELF binary here — falls through to the ordinary text path: the read succeeds, the
+/// sidecar is a [`FileTextData`] rather than a `FileImageData`, nothing is attached, and the bytes
+/// that are not valid UTF-8 come back as the replacement character rather than raw.
+#[tokio::test]
+async fn an_unrecognised_binary_is_decoded_rather_than_attached() {
+    let dir = TempDir::new().unwrap();
+    let bytes = b"\x7FELF\x02\x01\x01\x00\xFF\xFE\x00ok\n";
+    std::fs::write(dir.path().join("a.out"), bytes).unwrap();
+    let ctx = ToolContext::new(dir.path());
+
+    let read = tool(ReadPolicy::Unlimited)
+        .invoke(json!({ "path": "a.out" }), &ctx)
+        .await;
+
+    assert!(read.ok, "{}", read.output);
+    assert!(read.images.is_empty(), "no image is attached");
+    let data = text_data(&read);
+    assert_eq!(
+        data.contents, read.output,
+        "the decoded bytes are the whole answer"
+    );
+    assert!(
+        read.output.contains('\u{FFFD}'),
+        "the undecodable bytes are replaced: {:?}",
+        read.output
+    );
+    assert!(
+        !read.output.as_bytes().contains(&0xFF),
+        "no raw byte survives the decode"
+    );
+    assert!(read.output.contains("ELF") && read.output.contains("ok"));
+}

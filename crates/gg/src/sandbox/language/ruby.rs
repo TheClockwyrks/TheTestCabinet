@@ -492,3 +492,10 @@ mod tests;
 #[cfg(test)]
 #[path = "ruby.substrate.test.rs"]
 mod substrate;
+
+/// **The [`feedback`](crate::sandbox::membrane::capture) channel, driven from Ruby programs** — what
+/// the capture keeps of what a program logs, what a program's end hands gg, and what a code module
+/// that fails tells the model.
+#[cfg(test)]
+#[path = "ruby.feedback.test.rs"]
+mod feedback;

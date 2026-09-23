@@ -8,6 +8,7 @@ ARG DOCKER_GID
 
 ARG LAZYGIT_VERSION
 ARG NODE_VERSION
+ARG PLAYWRIGHT_VERSION
 ARG NEXTEST_VERSION
 ARG RUST_VERSION
 ARG TZ
@@ -97,6 +98,28 @@ RUN mkdir -p "$HOME/.local/bin" "/tmp/$USERNAME" && \
 	rm -rf /tmp/scripts && \
 	# Markdown linting for the docs.
 	npm install -g markdownlint-cli2
+
+# Chromium, which the front-end commit gate (packages/case-harness's suite), the
+# validator's browser driver and the Rust suite's served validator-project tests all
+# launch through Playwright. `npm ci` installs Playwright but downloads no browser,
+# so without these two layers a freshly built container fails the commit gate.
+#
+# The system libraries are apt's, so they need root, and Playwright resolves which
+# ones they are by running `npx`, so this sits after the Node install above rather
+# than beside the rest of the apt work at the top of this file. The build takes root
+# back for the one step; see the header of system/browser-deps.sh. The browser
+# itself lands in the container user's own cache and is downloaded as that user.
+# Each layer drops the package caches it left behind.
+COPY --chown=${USER_UID}:${USER_GID} \
+	./.devcontainer/system/browser-deps.sh \
+	./.devcontainer/tools/browsers.sh \
+	/tmp/scripts/
+USER root
+RUN bash /tmp/scripts/browser-deps.sh && \
+	rm -rf /var/lib/apt/lists/* /root/.npm
+USER $USERNAME
+RUN bash /tmp/scripts/browsers.sh && \
+	rm -rf "$HOME/.npm" /tmp/scripts
 
 # gg's eleven program-language toolchains — ~1.9 GB, and by far the largest thing in
 # this image. They are here rather than in `postCreateCommand` because they are not

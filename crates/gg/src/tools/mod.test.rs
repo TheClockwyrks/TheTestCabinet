@@ -394,6 +394,100 @@ async fn dispatch_routes_to_the_named_tool() {
     );
 }
 
+/// Dispatches a well-formed call for `name` through the one [maximal registry](maximal_registries)
+/// that offers it, and asserts the outcome is the gg-defect refusal the tool's declaration
+/// promises.
+///
+/// The tools this is used on are declared so a model can call them, but are handled by the
+/// [loop](crate::agent) rather than by [dispatch](ToolRegistry::dispatch). Their `invoke` bodies
+/// exist only for the case where that routing breaks, and the refusal is what makes such a break
+/// visible: an ok outcome would tell a model its subagent had been spawned while nothing ran.
+///
+/// The arguments passed are ones the real loop handler would accept, so what fails here is the
+/// interception and never an argument diagnostic.
+async fn assert_refuses_ordinary_dispatch(name: &str, arguments: Value) {
+    let (dir, registries) = maximal_registries();
+    let registry = registries
+        .iter()
+        .find(|registry| registry.offers(name))
+        .unwrap_or_else(|| panic!("a maximal registry should offer `{name}`"));
+    let ctx = ToolContext::new(dir.path());
+
+    let call = ToolCall {
+        id: "call_1".to_string(),
+        name: name.to_string(),
+        arguments,
+    };
+    let outcome = registry.dispatch(&call, &ctx).await;
+
+    assert!(
+        !outcome.ok,
+        "`{name}` reported success for a call the loop never performed: {}",
+        outcome.output
+    );
+    assert!(
+        outcome.output.contains(name),
+        "`{name}`'s refusal should name the tool: {}",
+        outcome.output
+    );
+    assert!(
+        outcome.output.contains("cannot be dispatched here"),
+        "`{name}`'s refusal should say the call cannot be dispatched here: {}",
+        outcome.output
+    );
+}
+
+/// `spawn_subagent` is intercepted by the loop; dispatched ordinarily it refuses.
+#[tokio::test]
+async fn spawn_subagent_refuses_ordinary_dispatch() {
+    assert_refuses_ordinary_dispatch(
+        SPAWN_SUBAGENT_TOOL,
+        json!({ "prompt": "do the work", "agent": ROOT_PROFILE_ID }),
+    )
+    .await;
+}
+
+/// `wait_for_subagents` is intercepted by the loop; dispatched ordinarily it refuses.
+#[tokio::test]
+async fn wait_for_subagents_refuses_ordinary_dispatch() {
+    assert_refuses_ordinary_dispatch(WAIT_FOR_SUBAGENTS_TOOL, json!({})).await;
+}
+
+/// `send_message` is intercepted by the loop; dispatched ordinarily it refuses.
+#[tokio::test]
+async fn send_message_refuses_ordinary_dispatch() {
+    assert_refuses_ordinary_dispatch(
+        SEND_MESSAGE_TOOL,
+        json!({ "agentId": "agent-1", "message": "keep going" }),
+    )
+    .await;
+}
+
+/// `wait_for_issue` is intercepted by the loop; dispatched ordinarily it refuses.
+#[tokio::test]
+async fn wait_for_issue_refuses_ordinary_dispatch() {
+    assert_refuses_ordinary_dispatch(WAIT_FOR_ISSUE_TOOL, json!({ "issueId": "ISSUE-1" })).await;
+}
+
+/// `transition_state` is intercepted by the loop; dispatched ordinarily it refuses. The target is
+/// the one the fixture's machine declares, so the call is one the loop handler would have honoured.
+#[tokio::test]
+async fn transition_state_refuses_ordinary_dispatch() {
+    assert_refuses_ordinary_dispatch(TRANSITION_STATE_TOOL, json!({ "state": "verify" })).await;
+}
+
+/// `exec` is intercepted by the loop; dispatched ordinarily it refuses.
+#[tokio::test]
+async fn exec_refuses_ordinary_dispatch() {
+    assert_refuses_ordinary_dispatch(EXEC_TOOL, json!({ "agent": ROOT_PROFILE_ID })).await;
+}
+
+/// `fork` is intercepted by the loop; dispatched ordinarily it refuses.
+#[tokio::test]
+async fn fork_refuses_ordinary_dispatch() {
+    assert_refuses_ordinary_dispatch(FORK_TOOL, json!({ "prompt": "try the other fix" })).await;
+}
+
 /// The `read_skill` tool is offered only when the skills capability is enabled **and**
 /// the bound library actually holds skills — capability off, or an empty library, offers
 /// nothing.
@@ -1014,11 +1108,6 @@ fn the_agent_transition_tools_are_offered_on_their_own_terms() {
 fn maximal_registries() -> (TempDir, Vec<ToolRegistry>) {
     use crate::board::BoardCaps;
     use crate::memories::{MemoryCaps, MemoryStrategy};
-    use test_cabinet_core::gg::{
-        CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_COMPACTION, CAPABILITY_MEMORIES,
-        CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_SUBAGENTS, CAPABILITY_TASKS,
-        COMPACTION_STRATEGY_SELF_COMPACTION,
-    };
 
     let dir = TempDir::new().unwrap();
     std::fs::write(
@@ -1028,27 +1117,7 @@ fn maximal_registries() -> (TempDir, Vec<ToolRegistry>) {
     .unwrap();
     let library = Arc::new(SkillLibrary::loaded(dir.path()));
 
-    let mut capabilities = vec![GgCapabilityConfig::enabled(CAPABILITY_SHELL)];
-    capabilities.extend(filesystem_enabled());
-    capabilities.extend([
-        GgCapabilityConfig::enabled(CAPABILITY_SKILLS),
-        GgCapabilityConfig::enabled(CAPABILITY_MEMORIES),
-        GgCapabilityConfig::enabled(CAPABILITY_TASKS),
-        GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT),
-        GgCapabilityConfig::enabled(CAPABILITY_AGENT_MANAGED_CONTEXT),
-        GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS),
-        GgCapabilityConfig::enabled(CAPABILITY_EXEC),
-        GgCapabilityConfig::enabled(CAPABILITY_FORK),
-    ]);
-    // `compact` is the one tool a *strategy* rather than a capability alone contributes: compaction
-    // offers it only when the working model is the one that performs the compaction.
-    capabilities.push(GgCapabilityConfig {
-        id: CAPABILITY_COMPACTION.to_string(),
-        enabled: true,
-        implementation: Some(COMPACTION_STRATEGY_SELF_COMPACTION.to_string()),
-        params: serde_json::json!({}),
-    });
-    let set = set_with(capabilities);
+    let set = maximal_set();
     // A maximal registry offers the delegation tools too, which requires at least one agent this
     // profile may spawn — and `create_issue` names the profiles it may put to work by id, so the
     // implementer and reviewer halves of the roster are resolved here as well.
@@ -1108,6 +1177,675 @@ fn all_tool_names_matches_a_maximal_registry() {
         offered, canonical,
         "ALL_TOOL_NAMES must list exactly the tools a maximal registry offers"
     );
+}
+
+/// **Every capability a maximal run enables, granted in full** — the profile behind both
+/// [`maximal_registries`] and [`dispatchable_registry`], so the two can never describe different
+/// runs.
+fn maximal_set() -> GgAgentConfig {
+    use test_cabinet_core::gg::{
+        CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_COMPACTION, CAPABILITY_MEMORIES,
+        CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_SUBAGENTS, CAPABILITY_TASKS,
+        COMPACTION_STRATEGY_SELF_COMPACTION,
+    };
+
+    let mut capabilities = vec![GgCapabilityConfig::enabled(CAPABILITY_SHELL)];
+    capabilities.extend(filesystem_enabled());
+    capabilities.extend([
+        GgCapabilityConfig::enabled(CAPABILITY_SKILLS),
+        GgCapabilityConfig::enabled(CAPABILITY_MEMORIES),
+        GgCapabilityConfig::enabled(CAPABILITY_TASKS),
+        GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT),
+        GgCapabilityConfig::enabled(CAPABILITY_AGENT_MANAGED_CONTEXT),
+        GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS),
+        GgCapabilityConfig::enabled(CAPABILITY_EXEC),
+        GgCapabilityConfig::enabled(CAPABILITY_FORK),
+    ]);
+    // `compact` is the one tool a *strategy* rather than a capability alone contributes: compaction
+    // offers it only when the working model is the one that performs the compaction.
+    capabilities.push(GgCapabilityConfig {
+        id: CAPABILITY_COMPACTION.to_string(),
+        enabled: true,
+        implementation: Some(COMPACTION_STRATEGY_SELF_COMPACTION.to_string()),
+        params: serde_json::json!({}),
+    });
+    set_with(capabilities)
+}
+
+/// **One real registry, the workspace it is rooted at, and every store behind it** — the fixture a
+/// synthesized [`ToolCall`] is driven through by
+/// [`every_self_contained_tool_answers_its_own_name`].
+///
+/// The stores are the point. A call dispatched by name is only proven to have reached the tool the
+/// registry binds that name to if what it *did* can be read back, and each of the three module
+/// runtimes shares its store with the tools built from it — so the handles taken here are the same
+/// state `add_task` and `create_issue` mutate.
+struct Dispatchable {
+    /// The workspace root. Held rather than read: the registry's skill library and every
+    /// filesystem tool below work inside it, so dropping it would pull the ground out.
+    _dir: TempDir,
+    /// The context every call runs against, rooted at the workspace.
+    ctx: ToolContext,
+    /// The registry under test — the one thing a name is resolved by.
+    registry: ToolRegistry,
+    /// The skills this run holds, so `read_skill` can be given a name that is really there.
+    library: Arc<SkillLibrary>,
+    /// The memory store the memory tools were built over.
+    memories: Arc<std::sync::Mutex<crate::memories::MemoryStore>>,
+    /// The task list the task tools were built over.
+    tasks: Arc<std::sync::Mutex<crate::tasks::TaskStore>>,
+    /// The board the board tools were built over.
+    board: Arc<std::sync::Mutex<crate::board::BoardStore>>,
+    /// The thread archive `search_archive` reads.
+    archive: Arc<std::sync::Mutex<crate::archive::ArchiveStore>>,
+}
+
+impl Dispatchable {
+    /// The one skill the seeded library holds — the `name` a `read_skill` call has to utter.
+    fn skill(&self) -> String {
+        self.library
+            .skills()
+            .first()
+            .expect("the seeded library holds a skill")
+            .name()
+            .to_string()
+    }
+}
+
+/// A [`Dispatchable`] whose memories are organized by `strategy`.
+///
+/// The strategy is a parameter for the same reason [`maximal_registries`] is plural: each offers a
+/// different family of memory calls and a run picks one, so no single registry can be handed every
+/// memory name in [`ALL_TOOL_NAMES`]. Everything else — the capability set, the roster, the machine
+/// position — is fixed, so the three fixtures differ in exactly one thing.
+fn dispatchable_registry(strategy: crate::memories::MemoryStrategy) -> Dispatchable {
+    use crate::board::BoardCaps;
+    use crate::memories::MemoryCaps;
+
+    let dir = TempDir::new().unwrap();
+    // The skills live in their own subdirectory so the workspace the filesystem tools walk is the
+    // one this test writes, rather than one already holding a file nothing here put there.
+    let skills_dir = dir.path().join("skills");
+    std::fs::create_dir(&skills_dir).unwrap();
+    std::fs::write(
+        skills_dir.join("s.md"),
+        "---\nname: s\ndescription: d.\n---\nthe skill body",
+    )
+    .unwrap();
+    let library = Arc::new(SkillLibrary::loaded(&skills_dir));
+
+    let set = maximal_set();
+    let roster = roster(&[ROOT_PROFILE_ID]);
+    let position = fsm_position();
+
+    // The runtimes are built here, and their stores taken, *before* they are moved into the
+    // modules: a handle taken afterwards would be a handle onto a different store.
+    let memories_runtime = MemoriesRuntime::new(strategy, MemoryCaps::UNBOUNDED);
+    let tasks_runtime = TasksRuntime::new(100);
+    let board_runtime = BoardRuntime::new(BoardCaps::detached());
+    let archive_runtime = ArchiveRuntime::new();
+    let memories = memories_runtime.store();
+    let tasks = tasks_runtime.store();
+    let board = board_runtime.store();
+    let archive = archive_runtime.store();
+
+    let registry = ToolRegistry::from_run(
+        &set,
+        &skills_modules(&library)
+            .with(ModuleHandle::Memories(memories_runtime))
+            .with(ModuleHandle::Tasks(tasks_runtime))
+            .with(ModuleHandle::Board(board_runtime))
+            .with(ModuleHandle::Archive(archive_runtime)),
+        &AgentFacts {
+            fsm: Some(&position),
+            spawnable: &roster,
+            implementers: &roster,
+            reviewers: &roster,
+        },
+    );
+
+    Dispatchable {
+        ctx: ToolContext::new(dir.path()),
+        registry,
+        library,
+        memories,
+        tasks,
+        board,
+        archive,
+        _dir: dir,
+    }
+}
+
+/// The [`ALL_TOOL_NAMES`] names that never reach a tool through
+/// [`dispatch`](ToolRegistry::dispatch), because the [loop](crate::agent) intercepts the call
+/// before the registry is consulted. The `Tool` behind each of them exists to *declare* the call;
+/// its [`invoke`](Tool::invoke) is a defect report, so driving one here would assert the opposite
+/// of what gg does.
+///
+/// They are the exact complement of the dispatch table below: every other name has to be given a
+/// call there.
+const INTERCEPTED_BY_THE_LOOP: &[&str] = &[
+    SPAWN_SUBAGENT_TOOL,
+    WAIT_FOR_SUBAGENTS_TOOL,
+    SEND_MESSAGE_TOOL,
+    WAIT_FOR_ISSUE_TOOL,
+    TRANSITION_STATE_TOOL,
+    EXEC_TOOL,
+    FORK_TOOL,
+];
+
+/// One row of the dispatch table: the fixture the call is made against, the name the model utters,
+/// the arguments it utters them with, and what must be true once the call has run.
+type Dispatched<'a> = (
+    &'a Dispatchable,
+    &'static str,
+    serde_json::Value,
+    Box<dyn Fn(&ToolOutcome) + 'a>,
+);
+
+/// Build one [`Dispatched`] row.
+fn dispatched<'a>(
+    fixture: &'a Dispatchable,
+    name: &'static str,
+    arguments: serde_json::Value,
+    check: impl Fn(&ToolOutcome) + 'a,
+) -> Dispatched<'a> {
+    (fixture, name, arguments, Box::new(check))
+}
+
+/// **Every self-contained tool answers to the name the registry binds it under.**
+///
+/// [`dispatch`](ToolRegistry::dispatch) is the one place a name the model uttered becomes an
+/// [`invoke`](Tool::invoke), and until now exactly one name had ever been driven through it. Every
+/// other tool test builds the tool by hand and calls `invoke`, which proves what the tool does and
+/// nothing at all about *which name reaches it* — a tool registered under a name no model is told
+/// to say, or two tools registered under one name, would pass every one of them.
+///
+/// So each row here is a synthesized [`ToolCall`] against a real registry, made in an order that
+/// leaves the stores in the state the next row needs: the file `read_file` reads is the one
+/// `write_file` wrote, the issue `remove_issue` removes is the one `create_issue` filed. The
+/// outcome must be ok — a name that routed nowhere is
+/// [`Unavailable`](ToolFailure::Unavailable) and fails right here — and each store-backed row reads
+/// the store afterwards, because "the call did not fail" is not the same claim as "the call did the
+/// thing".
+///
+/// The table is held against [`ALL_TOOL_NAMES`] at the end, so a newly added tool cannot join the
+/// vocabulary without being given a call.
+#[tokio::test]
+async fn every_self_contained_tool_answers_its_own_name() {
+    use std::collections::BTreeSet;
+
+    use crate::board::{IssueStatus, NewIssue};
+    use crate::memories::{MemoryCode, MemoryStrategy};
+    use crate::model::Message;
+    use crate::tasks::{StructuredFields, TaskStatus};
+    use test_cabinet_core::gg::GgContextSource;
+
+    let markdown = dispatchable_registry(MemoryStrategy::Markdown);
+    let scratchpad = dispatchable_registry(MemoryStrategy::Scratchpad);
+    let keyword = dispatchable_registry(MemoryStrategy::KeywordSearch);
+    let skill = markdown.skill();
+
+    // Three pieces of state a dispatched call *refers to* rather than creates: a second task and a
+    // second issue for the blocker calls to point at, a memory for the keyword search to find, and
+    // an archived turn for `search_archive` to hit. Seeded through the same handles the
+    // assertions read, so nothing here depends on a tool that has not run yet.
+    keyword
+        .memories
+        .lock()
+        .unwrap()
+        .create(
+            "seeder",
+            "seeded",
+            "a seeded memory",
+            "the seeded contents mention physics",
+            MemoryCode::default(),
+        )
+        .expect("the seed is well formed");
+    markdown
+        .tasks
+        .lock()
+        .unwrap()
+        .add("t0", "Groundwork", None, StructuredFields::default(), &[])
+        .expect("the seed is well formed");
+    markdown
+        .board
+        .lock()
+        .unwrap()
+        .create_issue(NewIssue {
+            title: "Groundwork",
+            description: None,
+            in_scope: "the groundwork",
+            out_of_scope: "everything else",
+            completion_criteria: "the groundwork is laid",
+            blocked_by: &[],
+            epic_id: None,
+            agent: ROOT_PROFILE_ID,
+            reviewers: &[],
+        })
+        .expect("the seed is well formed");
+    let archived = Message::assistant(
+        Some("Investigating the physics engine".to_string()),
+        Vec::new(),
+    );
+    markdown
+        .archive
+        .lock()
+        .unwrap()
+        .archive([(GgContextSource::Assistant, &archived)]);
+
+    let workspace = markdown.ctx.workspace_dir.clone();
+    let notes = workspace.join("notes.txt");
+
+    let table: Vec<Dispatched<'_>> = vec![
+        // The workspace, built up and then read back by the five calls that follow.
+        dispatched(
+            &markdown,
+            "write_file",
+            json!({ "path": "notes.txt", "contents": "alpha\nbeta\n" }),
+            {
+                let notes = notes.clone();
+                move |_| {
+                    assert_eq!(
+                        std::fs::read_to_string(&notes).unwrap(),
+                        "alpha\nbeta\n",
+                        "`write_file` must have written the workspace file"
+                    );
+                }
+            },
+        ),
+        dispatched(
+            &markdown,
+            READ_FILE_TOOL,
+            json!({ "path": "notes.txt" }),
+            |outcome| {
+                assert!(
+                    outcome.output.contains("alpha"),
+                    "`read_file` must return what is on disk: {}",
+                    outcome.output
+                );
+            },
+        ),
+        dispatched(
+            &markdown,
+            "edit_file",
+            json!({ "path": "notes.txt", "old_string": "alpha", "new_string": "gamma" }),
+            {
+                let notes = notes.clone();
+                move |_| {
+                    assert_eq!(
+                        std::fs::read_to_string(&notes).unwrap(),
+                        "gamma\nbeta\n",
+                        "`edit_file` must have rewritten the workspace file"
+                    );
+                }
+            },
+        ),
+        dispatched(&markdown, "list_dir", json!({}), |outcome| {
+            assert!(
+                outcome.output.contains("notes.txt"),
+                "`list_dir` must list the file the calls above left behind: {}",
+                outcome.output
+            );
+        }),
+        dispatched(&markdown, TREE_TOOL, json!({}), |outcome| {
+            assert!(
+                outcome.output.contains("notes.txt"),
+                "`tree` must show the file the calls above left behind: {}",
+                outcome.output
+            );
+        }),
+        dispatched(
+            &markdown,
+            SEARCH_TOOL,
+            json!({ "query": "gamma" }),
+            |outcome| {
+                assert!(
+                    outcome.output.contains("notes.txt"),
+                    "`search` must find the edited line: {}",
+                    outcome.output
+                );
+            },
+        ),
+        dispatched(
+            &markdown,
+            SHELL_TOOL,
+            json!({ "command": "printf ok" }),
+            |outcome| {
+                assert!(
+                    outcome.output.contains("ok"),
+                    "`shell` must return the command's output: {}",
+                    outcome.output
+                );
+            },
+        ),
+        dispatched(
+            &markdown,
+            READ_SKILL_TOOL,
+            json!({ "name": skill }),
+            |outcome| {
+                assert_eq!(
+                    outcome.output, "the skill body",
+                    "`read_skill` must return the seeded skill's body"
+                );
+            },
+        ),
+        // The memories, each on the fixture whose strategy offers the call.
+        dispatched(
+            &scratchpad,
+            WRITE_MEMORY_TOOL,
+            json!({ "name": "plan", "description": "the plan", "body": "build it" }),
+            |_| {
+                let store = scratchpad.memories.lock().unwrap();
+                let memory = store.read("plan").expect("`write_memory` wrote it");
+                assert_eq!(memory.body(), "build it");
+            },
+        ),
+        dispatched(
+            &scratchpad,
+            UPDATE_MEMORY_TOOL,
+            json!({ "name": "plan", "description": "the plan", "body": "ship it" }),
+            |_| {
+                let store = scratchpad.memories.lock().unwrap();
+                let memory = store.read("plan").expect("it is still there");
+                assert_eq!(
+                    memory.body(),
+                    "ship it",
+                    "`update_memory` must have revised it"
+                );
+            },
+        ),
+        dispatched(
+            &markdown,
+            CREATE_MEMORY_TOOL,
+            json!({
+                "name": "notes",
+                "description": "what I learned",
+                "contents": "the memory contents",
+            }),
+            |_| {
+                let store = markdown.memories.lock().unwrap();
+                assert_eq!(store.count(), 1);
+                assert!(store.read("notes").is_ok(), "`create_memory` created it");
+            },
+        ),
+        dispatched(
+            &markdown,
+            READ_MEMORY_TOOL,
+            json!({ "name": "notes" }),
+            |outcome| {
+                assert!(
+                    outcome.output.contains("the memory contents"),
+                    "`read_memory` must return the stored contents: {}",
+                    outcome.output
+                );
+            },
+        ),
+        dispatched(
+            &markdown,
+            EDIT_MEMORY_TOOL,
+            json!({
+                "name": "notes",
+                "old_string": "the memory contents",
+                "new_string": "the revised contents",
+            }),
+            |_| {
+                let store = markdown.memories.lock().unwrap();
+                assert_eq!(
+                    store.read("notes").expect("still there").body(),
+                    "the revised contents",
+                    "`edit_memory` must have rewritten the body"
+                );
+            },
+        ),
+        dispatched(
+            &keyword,
+            SEARCH_MEMORIES_TOOL,
+            json!({ "keywords": ["physics"] }),
+            |outcome| {
+                assert!(
+                    outcome.output.contains("seeded"),
+                    "`search_memories` must find the seeded memory: {}",
+                    outcome.output
+                );
+                assert_eq!(keyword.memories.lock().unwrap().count(), 1);
+            },
+        ),
+        dispatched(
+            &markdown,
+            DELETE_MEMORY_TOOL,
+            json!({ "name": "notes" }),
+            |_| {
+                assert_eq!(
+                    markdown.memories.lock().unwrap().count(),
+                    0,
+                    "`delete_memory` must have removed it"
+                );
+            },
+        ),
+        // The task list.
+        dispatched(
+            &markdown,
+            "add_task",
+            json!({ "id": "t1", "title": "Build it" }),
+            |_| {
+                let store = markdown.tasks.lock().unwrap();
+                assert_eq!(store.count(), 2, "the seed plus the added task");
+                assert!(store.tasks().iter().any(|task| task.id() == "t1"));
+            },
+        ),
+        dispatched(
+            &markdown,
+            "update_task",
+            json!({ "id": "t1", "status": "in_progress" }),
+            |_| {
+                let store = markdown.tasks.lock().unwrap();
+                let task = store
+                    .tasks()
+                    .iter()
+                    .find(|task| task.id() == "t1")
+                    .expect("still there");
+                assert_eq!(task.status(), TaskStatus::InProgress);
+            },
+        ),
+        dispatched(
+            &markdown,
+            "set_blocked_by",
+            json!({ "id": "t1", "blockedBy": ["t0"] }),
+            |_| {
+                let store = markdown.tasks.lock().unwrap();
+                let task = store
+                    .tasks()
+                    .iter()
+                    .find(|task| task.id() == "t1")
+                    .expect("still there");
+                assert_eq!(task.blocked_by(), ["t0".to_string()]);
+            },
+        ),
+        dispatched(&markdown, "complete_task", json!({ "id": "t1" }), |_| {
+            let store = markdown.tasks.lock().unwrap();
+            let task = store
+                .tasks()
+                .iter()
+                .find(|task| task.id() == "t1")
+                .expect("still there");
+            assert_eq!(task.status(), TaskStatus::Done);
+        }),
+        dispatched(&markdown, "remove_task", json!({ "id": "t1" }), |_| {
+            let store = markdown.tasks.lock().unwrap();
+            assert_eq!(store.count(), 1, "only the seed is left");
+            assert!(store.tasks().iter().all(|task| task.id() != "t1"));
+        }),
+        // The board: an epic, an issue under it, and then the calls that revise and retire them.
+        dispatched(
+            &markdown,
+            "create_epic",
+            json!({ "prefix": "core", "title": "The core", "description": "the loop" }),
+            |_| {
+                let store = markdown.board.lock().unwrap();
+                assert_eq!(store.epic_count(), 1);
+                assert_eq!(
+                    store.epics()[0].id(),
+                    "CORE",
+                    "`create_epic` assigns the normalized prefix as the id"
+                );
+            },
+        ),
+        dispatched(
+            &markdown,
+            "create_issue",
+            json!({
+                "title": "Wire the loop",
+                "inScope": "the wiring",
+                "outOfScope": "everything else",
+                "completionCriteria": "the loop is wired",
+                "agent": ROOT_PROFILE_ID,
+                "epicId": "CORE",
+            }),
+            |_| {
+                let store = markdown.board.lock().unwrap();
+                assert_eq!(store.issue_count(), 2, "the seed plus the filed issue");
+                assert!(
+                    store.issues().iter().any(|issue| issue.id() == "CORE-1"),
+                    "`create_issue` numbers it under its epic"
+                );
+            },
+        ),
+        dispatched(
+            &markdown,
+            "update_issue",
+            json!({ "id": "CORE-1", "status": "in_progress" }),
+            |_| {
+                let store = markdown.board.lock().unwrap();
+                assert_eq!(
+                    store.issue_status("CORE-1"),
+                    Some(IssueStatus::InProgress),
+                    "`update_issue` must have moved it"
+                );
+            },
+        ),
+        dispatched(
+            &markdown,
+            "set_issue_blocked_by",
+            json!({ "id": "ISSUE-1", "blockedBy": ["CORE-1"] }),
+            |_| {
+                let store = markdown.board.lock().unwrap();
+                let issue = store
+                    .issues()
+                    .iter()
+                    .find(|issue| issue.id() == "ISSUE-1")
+                    .expect("the seeded issue");
+                assert_eq!(issue.blocked_by(), ["CORE-1".to_string()]);
+            },
+        ),
+        dispatched(&markdown, "remove_issue", json!({ "id": "CORE-1" }), |_| {
+            let store = markdown.board.lock().unwrap();
+            assert_eq!(store.issue_count(), 1, "only the seeded issue is left");
+            let issue = store
+                .issues()
+                .iter()
+                .find(|issue| issue.id() == "ISSUE-1")
+                .expect("the seeded issue");
+            assert!(
+                issue.blocked_by().is_empty(),
+                "removing an issue strips the edges pointing at it"
+            );
+        }),
+        dispatched(&markdown, "remove_epic", json!({ "id": "CORE" }), |_| {
+            assert_eq!(
+                markdown.board.lock().unwrap().epic_count(),
+                0,
+                "`remove_epic` must have removed it"
+            );
+        }),
+        // The context calls. The first three validate only — the loop performs the reclaim against
+        // the live window a tool cannot hold — so what is proven here is that the name routes to
+        // the validator and the validator accepts a well-formed call.
+        dispatched(&markdown, EVICT_FILE_VIEW_TOOL, json!({}), |outcome| {
+            assert_eq!(outcome.data, None, "the reclaim has not happened yet");
+        }),
+        dispatched(
+            &markdown,
+            ARCHIVE_THREAD_TOOL,
+            json!({ "ranges": [[1, 2]] }),
+            |outcome| {
+                assert_eq!(outcome.data, None, "the reclaim has not happened yet");
+            },
+        ),
+        dispatched(
+            &markdown,
+            COMPACT_TOOL,
+            json!({ "summary": "what has happened so far" }),
+            |outcome| {
+                assert_eq!(outcome.data, None, "the rewrite has not happened yet");
+            },
+        ),
+        dispatched(
+            &markdown,
+            SEARCH_ARCHIVE_TOOL,
+            json!({ "query": "physics" }),
+            |outcome| {
+                assert!(
+                    outcome.output.contains("physics engine"),
+                    "`search_archive` must read the bound archive: {}",
+                    outcome.output
+                );
+                assert_eq!(markdown.archive.lock().unwrap().len(), 1);
+            },
+        ),
+    ];
+
+    for (fixture, name, arguments, check) in &table {
+        let call = ToolCall {
+            id: format!("call_{name}"),
+            name: (*name).to_string(),
+            arguments: arguments.clone(),
+        };
+        let outcome = fixture.registry.dispatch(&call, &fixture.ctx).await;
+        assert!(
+            outcome.ok,
+            "dispatching `{name}` must reach a tool that answers it, got: {} ({:?})",
+            outcome.output, outcome.failure
+        );
+        check(&outcome);
+    }
+
+    // A tool added to the vocabulary has to be given a call here. The complement is the set the
+    // loop intercepts, which is the only reason a name may be absent.
+    let covered: BTreeSet<&str> = table.iter().map(|(_, name, _, _)| *name).collect();
+    let expected: BTreeSet<&str> = ALL_TOOL_NAMES
+        .iter()
+        .copied()
+        .filter(|name| !INTERCEPTED_BY_THE_LOOP.contains(name))
+        .collect();
+    assert_eq!(
+        covered, expected,
+        "every dispatchable tool name needs a synthesized call in this table"
+    );
+}
+
+/// A call the model got wrong reaches the caller **through** `dispatch` as an argument
+/// diagnostic, rather than as a panic inside the tool it routed to.
+///
+/// The routing and the classification are separate facts and this is where they meet: a `path` that
+/// is a number is a well-formed call to a tool that exists, so the failure must be
+/// [`InvalidArgument`](ToolFailure::InvalidArgument) and never
+/// [`Unavailable`](ToolFailure::Unavailable) — the recovery is a different argument, not a
+/// different tool.
+#[tokio::test]
+async fn a_dispatched_call_with_a_bad_argument_is_an_argument_error() {
+    let fixture = dispatchable_registry(crate::memories::MemoryStrategy::Markdown);
+
+    let call = ToolCall {
+        id: "call_1".to_string(),
+        name: READ_FILE_TOOL.to_string(),
+        arguments: json!({ "path": 7 }),
+    };
+    let outcome = fixture.registry.dispatch(&call, &fixture.ctx).await;
+
+    assert!(!outcome.ok);
+    assert_eq!(outcome.failure, Some(ToolFailure::InvalidArgument));
+    assert!(outcome.output.contains("path"), "{}", outcome.output);
 }
 
 /// **Every tool a run offers declares itself well enough to be called**, in the one document a

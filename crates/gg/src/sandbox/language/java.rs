@@ -637,6 +637,13 @@ mod tests;
 #[path = "java.substrate.test.rs"]
 mod substrate;
 
+/// **The [`feedback`](crate::sandbox::membrane::capture) channel, driven from Java programs** — what
+/// the capture keeps of what a program logs, what a program's end hands gg, and what a code module
+/// that fails tells the model.
+#[cfg(test)]
+#[path = "java.feedback.test.rs"]
+mod feedback;
+
 /// **The Java arm's model-facing surface**, driven the same way: the hand-written SDK, the
 /// catalogue reflected out of its own Javadoc, and the libraries it says a program may reach.
 ///
@@ -647,3 +654,13 @@ mod substrate;
 #[cfg(test)]
 #[path = "java.surface.test.rs"]
 mod surface;
+
+/// **`java.lang.Math` driven from real Java programs**: every function of `test-cabinet:gg/math`,
+/// reached the way a model reaches it.
+///
+/// Separate from [`substrate`] because it is one function per case rather than one function per
+/// behaviour — what is proved is that fourteen rewritten imports each resolve, so a failing row has
+/// to name which one stopped.
+#[cfg(test)]
+#[path = "java.math.test.rs"]
+mod math;

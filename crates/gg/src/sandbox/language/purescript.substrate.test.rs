@@ -51,20 +51,20 @@ use crate::sandbox::{
     CodeModule, PrepareContext, PrepareError, PrepareFailure, PreparedProgram, ProgramScope,
     SandboxLimits, capability_operations, run_prepared_program,
 };
-use crate::tools::ToolOutcome;
+use crate::tools::{ToolFailure, ToolOutcome};
 
 /// This arm, resolved through the registry it is now in.
-fn purescript() -> &'static dyn crate::sandbox::ProgramLanguage {
+pub(super) fn purescript() -> &'static dyn crate::sandbox::ProgramLanguage {
     crate::sandbox::language(GgProgramLanguage::PureScript)
 }
 
 /// Compile `source` with the production prepare step, or panic with what the toolchain said.
-fn prepare(source: &str) -> String {
+pub(super) fn prepare(source: &str) -> String {
     prepare_with(source, &[])
 }
 
 /// The same, for a turn carrying code modules — which the entry module gg generates imports.
-fn prepare_with(source: &str, modules: &[CodeModule]) -> String {
+pub(super) fn prepare_with(source: &str, modules: &[CodeModule]) -> String {
     match compile_program(source, modules, &PrepareContext::detached()) {
         Ok(prepared) => prepared.source,
         Err(failure) => panic!("purs did not compile this PureScript: {failure}"),
@@ -108,7 +108,7 @@ fn evaluate(
 
 /// Evaluate already-compiled JavaScript with nothing else configured — a program the compiler has
 /// already been through, or a line of JavaScript standing in for one.
-fn evaluate_js(
+pub(super) fn evaluate_js(
     program: &str,
     operations: &[crate::sandbox::operations::OperationId],
     modules: &[CodeModule],
@@ -125,7 +125,7 @@ fn evaluate_js(
 }
 
 /// Compile and run one PureScript program, with everything about the run said explicitly.
-fn run_as(
+pub(super) fn run_as(
     source: &str,
     operations: &[crate::sandbox::operations::OperationId],
     modules: &[CodeModule],
@@ -144,7 +144,7 @@ fn run_as(
 }
 
 /// Compile and run one PureScript program with `enabled`'s operations offered and no ending group.
-fn run_with(
+pub(super) fn run_with(
     source: &str,
     operations: &[crate::sandbox::operations::OperationId],
     modules: &[CodeModule],
@@ -161,12 +161,12 @@ fn run_with(
 }
 
 /// Compile and run one PureScript program with no gg tool offered — the shape most cases here want.
-fn run(source: &str) -> SandboxOutcome {
+pub(super) fn run(source: &str) -> SandboxOutcome {
     run_with(source, &[], &[], canned_outcome).0
 }
 
 /// What a program logged, insisting that the sandbox ran it and that it did not fail.
-fn logs(outcome: &SandboxOutcome) -> &[String] {
+pub(super) fn logs(outcome: &SandboxOutcome) -> &[String] {
     match &outcome.result {
         Ok(result) => {
             assert!(
@@ -186,7 +186,7 @@ fn logs(outcome: &SandboxOutcome) -> &[String] {
 /// Nothing catches a throw on this arm — capture rather than interception — but the guest observes
 /// the uncaught value at its own entry point and reports it, so the failure is a `ProgramError`
 /// carrying the language's words rather than a store-killing trap.
-fn trapped(outcome: &SandboxOutcome) -> String {
+pub(super) fn trapped(outcome: &SandboxOutcome) -> String {
     match &outcome.result {
         Err(error) => panic!("the store died instead of the guest reporting: {error:?}"),
         Ok(result) => match &result.error {
@@ -1106,7 +1106,7 @@ fn crossings() -> Vec<Crossing> {
 /// own `import` field states and the only import under which `Gg.Files.readFile` resolves. Importing
 /// all twelve rather than the ones a given program uses costs an unused-import warning and keeps the
 /// statement tables below readable as the one thing they are about.
-fn program_of(statements: &[&str]) -> String {
+pub(super) fn program_of(statements: &[&str]) -> String {
     let imports: String = crate::sandbox::catalogue_modules(purescript())
         .iter()
         .map(|module| format!("import {0} as {0}\n", module.path))
@@ -1124,6 +1124,52 @@ fn program_of(statements: &[&str]) -> String {
          main = do\n  {}\n  pure unit\n",
         statements.join("\n  ")
     )
+}
+
+/// [`program_of`], with the two imports a program that catches and prints needs already in it:
+/// `Data.Either`, whose constructors a caught result is matched on, and `Effect.Class.Console`.
+pub(super) fn logging_program_of(statements: &[&str]) -> String {
+    program_of(statements).replace(
+        "import Effect (Effect)\n",
+        "import Effect (Effect)\nimport Data.Either (Either(..))\n\
+         import Effect.Class.Console as Console\n",
+    )
+}
+
+/// The statements that run `call` under `Gg.Core.attempt` and log what came back: the caught
+/// `ApiError` as its code, its operation and its message, or `returned` on success.
+pub(super) fn caught(call: &str) -> String {
+    format!(
+        "outcome <- Gg.Core.attempt ({call})\n  \
+         case outcome of\n    \
+         Left failure -> Console.log (show failure.code <> \" \" <> failure.operation <> \" \" <> failure.message)\n    \
+         Right _ -> Console.log \"returned\""
+    )
+}
+
+/// Compile and run `call` under [`caught`] with every operation offered, answered by `failure` and
+/// `message` whatever was called, and hand back what the program logged.
+fn caught_failure(call: &str, failure: ToolFailure, message: &str) -> Vec<String> {
+    let message = message.to_string();
+    let (outcome, _log) = run_with(
+        &logging_program_of(&[&caught(call)]),
+        &all_operations(),
+        &[],
+        move |_name: &str, _args: &Value| ToolOutcome::failed(failure, message.clone()),
+    );
+    logs(&outcome).to_vec()
+}
+
+/// Compile and run `statements` against [`canned_outcome`] with every operation offered, and hand
+/// back what the program logged.
+fn canned_logs(statements: &[&str]) -> Vec<String> {
+    let (outcome, _log) = run_with(
+        &logging_program_of(statements),
+        &all_operations(),
+        &[],
+        canned_outcome,
+    );
+    logs(&outcome).to_vec()
 }
 
 #[test]
@@ -1350,19 +1396,14 @@ fn the_views_docs_program_library_helper_and_endings_modules_are_reached_in_pure
     // The program library is bound from the capability rather than from a tool name, and a reviewer
     // gets the other ending group and no `Gg.Session.finish` at all.
     let (outcome, _log) = run_as(
-        &program_of(&[
+        &logging_program_of(&[
             "history <- Gg.Programs.history",
             "outcome <- Gg.Core.attempt (Gg.Programs.get \"k3p9\")",
             "Gg.Programs.rerun \"module Main where\\nimport Prelude\\nmain = pure unit\"",
             "Gg.Session.requestChanges [ \"widen the test\", \"name the file\" ]",
             "Console.log (show (map _.id history))",
             "case outcome of\n                 Left failure -> Console.log (show failure.code)\n                 Right source -> Console.log source",
-        ])
-        .replace(
-            "import Effect (Effect)\n",
-            "import Effect (Effect)\nimport Data.Either (Either(..))\n\
-             import Effect.Class.Console as Console\n",
-        ),
+        ]),
         &[],
         &[],
         RunEnding::Role(EndingRole::Review),
@@ -1470,17 +1511,12 @@ fn the_views_docs_program_library_helper_and_endings_modules_are_reached_in_pure
     // And without the capability, closing is refused by the host rather than missing from the
     // module — the same shape every other bought call refuses in, and a value `attempt` narrows.
     let (outcome, _log) = run_with(
-        &program_of(&[
+        &logging_program_of(&[
             "outcome <- Gg.Core.attempt Gg.Docs.closeAll",
             "case outcome of\n                 \
              Left failure -> Console.log (failure.operation <> \" \" <> show failure.code)\n                 \
              Right count -> Console.log (show count)",
-        ])
-        .replace(
-            "import Effect (Effect)\n",
-            "import Effect (Effect)\nimport Data.Either (Either(..))\n\
-             import Effect.Class.Console as Console\n",
-        ),
+        ]),
         &all_operations_without(CAPABILITY_DOCVIEW_CLOSE),
         &[],
         canned_outcome,
@@ -1515,17 +1551,12 @@ fn a_capability_this_run_withheld_is_refused_as_unavailable() {
     // A failure the model can expect is caught in PureScript's own idiom and branched on by its
     // code, which is what `attempt` is for.
     let (outcome, _log) = run_with(
-        &program_of(&[
+        &logging_program_of(&[
             "outcome <- Gg.Core.attempt (Gg.Files.readFile \"gone.purs\" {})",
             "case outcome of",
             "  Left failure -> Console.log (show failure.code <> \" on \" <> failure.operation)",
             "  Right _ -> Console.log \"read it\"",
-        ])
-        .replace(
-            "import Effect (Effect)\n",
-            "import Effect (Effect)\nimport Data.Either (Either(..))\n\
-             import Effect.Class.Console as Console\n",
-        ),
+        ]),
         &all_operations(),
         &[],
         |_name: &str, _args: &Value| {
@@ -1793,5 +1824,1091 @@ main = do
                 recorded: Some(TurnErrorType::ProgramThrow),
             },
         ],
+    );
+}
+
+// ---------------------------------------------------------------------------------------------------
+// What the workspace modules hand a program back.
+//
+// Each case below is one small program asserting one thing: a success case reads back the value the
+// SDK built out of `canned_outcome`'s answer for that tool, and a failure case catches the `ApiError`
+// the SDK lowered with `Gg.Core.attempt` and logs its code, the operation key and the message.
+// ---------------------------------------------------------------------------------------------------
+
+/// Logs a `Gg.Memories.MemoryUsage` bound as `usage`, the `Maybe` fields included.
+const LOG_MEMORY_USAGE: &str = "Console.log (show usage.count <> \" \" <> show usage.maxCount <> \" \" \
+     <> show usage.totalChars <> \" \" <> show usage.maxTotalChars <> \" \" <> show usage.indexChars)";
+
+/// Logs a `Gg.Board.BoardUsage` bound as `board`.
+const LOG_BOARD_USAGE: &str = "Console.log (show board.epics <> \" \" <> show board.maxEpics <> \" \" \
+     <> show board.issues <> \" \" <> show board.maxIssues)";
+
+/// A responder answering every call with `outcome`, for a success the canned double does not give.
+fn answering(outcome: ToolOutcome) -> impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static {
+    move |_name: &str, _args: &Value| outcome.clone()
+}
+
+// shell ---------------------------------------------------------------------------------------------
+
+#[test]
+fn a_shell_command_hands_the_program_its_exit_code_and_output() {
+    assert_eq!(
+        canned_logs(&[
+            "result <- Gg.Shell.shell \"npm test\" {}",
+            "Console.log (show result.exitCode <> \" \" <> result.output <> \" \" <> show result.truncated)",
+        ]),
+        ["(Just 0) ran `npm test` false"]
+    );
+}
+
+#[test]
+fn a_non_zero_exit_is_a_value_the_program_reads_rather_than_a_throw() {
+    assert_eq!(
+        canned_logs(&[
+            "result <- Gg.Shell.shell \"npm run fail\" {}",
+            "Console.log (show result.exitCode)",
+            "Console.log \"carried on\"",
+        ]),
+        ["(Just 1)", "carried on"]
+    );
+}
+
+#[test]
+fn a_shell_timeout_reaches_a_purescript_program_as_limit_exceeded() {
+    assert_eq!(
+        caught_failure(
+            "Gg.Shell.shell \"sleep 600\" { timeoutSecs: 1 }",
+            ToolFailure::LimitExceeded,
+            "command timed out after 1.000s and was killed.",
+        ),
+        ["LimitExceeded shell command timed out after 1.000s and was killed."]
+    );
+}
+
+#[test]
+fn a_shell_that_could_not_be_launched_reaches_a_program_as_an_io_error() {
+    assert_eq!(
+        caught_failure(
+            "Gg.Shell.shell \"npm test\" {}",
+            ToolFailure::IoError,
+            "could not launch the shell: No such file or directory (os error 2)",
+        ),
+        ["IoError shell could not launch the shell: No such file or directory (os error 2)"]
+    );
+}
+
+#[test]
+fn a_negative_shell_timeout_reaches_a_program_as_an_argument_error() {
+    // Refused before dispatch — by the guest's shared SDK instance first, with `clamp_timeout`
+    // behind it as the host's backstop — so the double is never asked, and the message is the
+    // refusal's own, naming the timeout the program wrote.
+    assert_eq!(
+        canned_logs(&[&caught("Gg.Shell.shell \"npm test\" { timeoutSecs: -1 }")]),
+        ["InvalidArgument shell `timeoutSecs` must be a positive number, got -1"]
+    );
+}
+
+// files ---------------------------------------------------------------------------------------------
+
+#[test]
+fn a_text_read_hands_a_purescript_program_the_text_file_arm() {
+    assert_eq!(
+        canned_logs(&[
+            "read <- Gg.Files.readFile \"notes.md\" {}",
+            "case read of\n    \
+             Gg.Files.TextFile file -> Console.log (show file.contents <> \" \" <> show file.firstLine \
+             <> \" \" <> show file.lastLine <> \" \" <> show file.totalLines <> \" \" <> show file.byteTruncated)\n    \
+             Gg.Files.ImageFile _ -> Console.log \"an image\"",
+        ]),
+        ["\"contents of notes.md\\nline two\\n\" 1 2 2 false"]
+    );
+}
+
+#[test]
+fn an_image_read_hands_a_purescript_program_the_image_file_arm() {
+    assert_eq!(
+        canned_logs(&[
+            "read <- Gg.Files.readFile \"shot.png\" {}",
+            "case read of\n    \
+             Gg.Files.TextFile _ -> Console.log \"text\"\n    \
+             Gg.Files.ImageFile picture -> Console.log (picture.mediaType <> \" \" <> picture.label \
+             <> \" \" <> show picture.bytes <> \" \" <> show picture.shown <> \" \" <> show picture.notShownReason)",
+        ]),
+        // A bare read describes the picture and does not show it; the reason names the call that
+        // would.
+        [
+            "image/png PNG 1234 false (Just \"`Gg.Files.readFile` does not show images; open one with \
+             `Gg.Views.openFile(path)`\")"
+        ]
+    );
+}
+
+#[test]
+fn an_empty_read_path_reaches_a_program_as_an_argument_error() {
+    assert_eq!(
+        caught_failure(
+            "Gg.Files.readFile \"\" {}",
+            ToolFailure::InvalidArgument,
+            "path must not be empty",
+        ),
+        ["InvalidArgument read_file path must not be empty"]
+    );
+}
+
+#[test]
+fn a_write_hands_the_program_the_byte_count_it_wrote() {
+    assert_eq!(
+        canned_logs(&[
+            "written <- Gg.Files.writeFile \"out.txt\" \"hello\"",
+            "Console.log (show written)",
+        ]),
+        ["5"]
+    );
+}
+
+#[test]
+fn an_empty_write_path_reaches_a_program_as_an_argument_error() {
+    assert_eq!(
+        caught_failure(
+            "Gg.Files.writeFile \"\" \"hello\"",
+            ToolFailure::InvalidArgument,
+            "path must not be empty",
+        ),
+        ["InvalidArgument write_file path must not be empty"]
+    );
+}
+
+#[test]
+fn a_write_that_failed_reaches_a_program_as_an_io_error() {
+    assert_eq!(
+        caught_failure(
+            "Gg.Files.writeFile \"locked/out.txt\" \"hello\"",
+            ToolFailure::IoError,
+            "`locked/out.txt`: Permission denied (os error 13)",
+        ),
+        ["IoError write_file `locked/out.txt`: Permission denied (os error 13)"]
+    );
+}
+
+#[test]
+fn an_edit_that_matched_lets_the_program_carry_on() {
+    assert_eq!(
+        canned_logs(&[
+            "Gg.Files.editFile \"src/a.purs\" \"alpha\" \"beta\"",
+            "Console.log \"carried on\"",
+        ]),
+        ["carried on"]
+    );
+}
+
+#[test]
+fn an_ambiguous_edit_reaches_a_program_as_a_conflict_carrying_the_count() {
+    assert_eq!(
+        caught_failure(
+            "Gg.Files.editFile \"src/a.purs\" \"alpha\" \"beta\"",
+            ToolFailure::Conflict,
+            "`old_string` is not unique (3 occurrences)",
+        ),
+        ["Conflict edit_file `old_string` is not unique (3 occurrences)"]
+    );
+}
+
+#[test]
+fn a_listing_hands_the_program_its_entries_with_their_kinds() {
+    assert_eq!(
+        canned_logs(&[
+            "entries <- Gg.Files.listDir { path: \"src\" }",
+            "Console.log (show (map (\\entry -> entry.name <> \" \" <> show entry.kind) entries))",
+        ]),
+        ["[\"a.ts FileEntry\",\"b.test.ts FileEntry\",\"sub DirectoryEntry\"]"]
+    );
+}
+
+#[test]
+fn an_omitted_listing_path_lists_the_workspace_root() {
+    let (outcome, log) = run_with(
+        &logging_program_of(&[
+            "entries <- Gg.Files.listDir {}",
+            "Console.log (show (map _.name entries))",
+        ]),
+        &all_operations(),
+        &[],
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["[\"a.ts\",\"b.test.ts\",\"sub\"]"]);
+    assert_eq!(log.args("list_dir"), Some(json!({ "path": null })));
+}
+
+#[test]
+fn an_empty_listing_is_an_empty_array_rather_than_a_failure() {
+    let (outcome, _log) = run_with(
+        &logging_program_of(&[
+            "entries <- Gg.Files.listDir { path: \"empty\" }",
+            "Console.log (show (map _.name entries))",
+        ]),
+        &all_operations(),
+        &[],
+        answering(
+            ToolOutcome::ok("(empty)", "0 entries")
+                .with_data(crate::tools::ApiData::DirEntries(Vec::new())),
+        ),
+    );
+    assert_eq!(logs(&outcome), ["[]"]);
+}
+
+#[test]
+fn an_empty_listing_path_reaches_a_program_as_an_argument_error() {
+    assert_eq!(
+        caught_failure(
+            "Gg.Files.listDir { path: \"\" }",
+            ToolFailure::InvalidArgument,
+            "path must not be empty",
+        ),
+        ["InvalidArgument list_dir path must not be empty"]
+    );
+}
+
+#[test]
+fn a_listing_of_a_missing_directory_reaches_a_program_as_not_found() {
+    assert_eq!(
+        caught_failure(
+            "Gg.Files.listDir { path: \"gone\" }",
+            ToolFailure::NotFound,
+            "list_dir: No such file or directory (os error 2)",
+        ),
+        ["NotFound list_dir list_dir: No such file or directory (os error 2)"]
+    );
+}
+
+#[test]
+fn a_tree_hands_the_program_its_rendering() {
+    assert_eq!(
+        canned_logs(&[
+            "rendering <- Gg.Files.tree { path: \"src\" }",
+            "Console.log (show rendering)",
+        ]),
+        ["\"a.ts\\nb.test.ts\\nsub/\\n  c.ts\""]
+    );
+}
+
+#[test]
+fn a_tree_of_a_missing_path_reaches_a_program_as_not_found() {
+    assert_eq!(
+        caught_failure(
+            "Gg.Files.tree { path: \"gone\" }",
+            ToolFailure::NotFound,
+            "tree: `gone` does not exist",
+        ),
+        ["NotFound tree tree: `gone` does not exist"]
+    );
+}
+
+#[test]
+fn a_tree_rooted_at_a_file_reaches_a_program_as_an_argument_error() {
+    assert_eq!(
+        caught_failure(
+            "Gg.Files.tree { path: \"README.md\" }",
+            ToolFailure::InvalidArgument,
+            "tree: `README.md` is not a directory",
+        ),
+        ["InvalidArgument tree tree: `README.md` is not a directory"]
+    );
+}
+
+#[test]
+fn a_tree_depth_of_zero_reaches_a_program_as_an_argument_error() {
+    // Refused before dispatch, so the double is never asked and the message is the refusal's own.
+    assert_eq!(
+        canned_logs(&[&caught("Gg.Files.tree { depth: 0 }")]),
+        ["InvalidArgument tree `depth` must be at least 1, got 0"]
+    );
+}
+
+#[test]
+fn a_search_hands_the_program_its_matches() {
+    assert_eq!(
+        canned_logs(&[
+            "matches <- Gg.Files.search \"answer\" {}",
+            "Console.log (show (map (\\match -> match.path <> \" \" <> show match.line <> \" \" <> match.text) matches))",
+        ]),
+        ["[\"src/a.ts 3 const answer = 42;\"]"]
+    );
+}
+
+#[test]
+fn a_blank_search_query_reaches_a_program_as_an_argument_error() {
+    assert_eq!(
+        caught_failure(
+            "Gg.Files.search \"   \" {}",
+            ToolFailure::InvalidArgument,
+            "`query` must not be blank",
+        ),
+        ["InvalidArgument search `query` must not be blank"]
+    );
+}
+
+#[test]
+fn a_search_pattern_that_does_not_parse_reaches_a_program_as_an_argument_error() {
+    assert_eq!(
+        caught_failure(
+            "Gg.Files.search \"(unclosed\" {}",
+            ToolFailure::InvalidArgument,
+            "`query` is not a valid regular expression: unclosed group",
+        ),
+        ["InvalidArgument search `query` is not a valid regular expression: unclosed group"]
+    );
+}
+
+#[test]
+fn a_search_limit_of_zero_reaches_a_program_as_an_argument_error() {
+    // Refused before dispatch, so the double is never asked and the message is the refusal's own.
+    assert_eq!(
+        canned_logs(&[&caught("Gg.Files.search \"answer\" { limit: 0 }")]),
+        ["InvalidArgument search `limit` must be at least 1, got 0"]
+    );
+}
+
+#[test]
+fn a_search_under_a_missing_path_reaches_a_program_as_not_found() {
+    assert_eq!(
+        caught_failure(
+            "Gg.Files.search \"answer\" { path: \"gone\" }",
+            ToolFailure::NotFound,
+            "search: `gone` does not exist",
+        ),
+        ["NotFound search search: `gone` does not exist"]
+    );
+}
+
+// skills --------------------------------------------------------------------------------------------
+
+#[test]
+fn a_skill_read_hands_the_program_the_skill_body() {
+    assert_eq!(
+        canned_logs(&[
+            "body <- Gg.Skills.readSkill \"testing\"",
+            "Console.log body",
+        ]),
+        ["the skill body"]
+    );
+}
+
+#[test]
+fn an_unknown_skill_reaches_a_program_as_not_found_listing_the_skills_that_exist() {
+    assert_eq!(
+        caught_failure(
+            "Gg.Skills.readSkill \"deploy\"",
+            ToolFailure::NotFound,
+            "no skill named `deploy`; available skills: testing, review",
+        ),
+        ["NotFound read_skill no skill named `deploy`; available skills: testing, review"]
+    );
+}
+
+// memories ------------------------------------------------------------------------------------------
+
+#[test]
+fn a_memory_write_hands_the_program_the_budget_it_left() {
+    assert_eq!(
+        canned_logs(&[
+            "usage <- Gg.Memories.writeMemory { name: \"layout\", description: \"d\", body: \"b\" }",
+            LOG_MEMORY_USAGE,
+        ]),
+        ["1 (Just 8) 12 (Just 4000) Nothing"]
+    );
+}
+
+#[test]
+fn a_duplicate_memory_name_reaches_a_program_as_a_conflict() {
+    assert_eq!(
+        caught_failure(
+            "Gg.Memories.writeMemory { name: \"layout\", description: \"d\", body: \"b\" }",
+            ToolFailure::Conflict,
+            "memory `layout` already exists; revise it with `Gg.Memories.updateMemory`",
+        ),
+        [
+            "Conflict write_memory memory `layout` already exists; revise it with \
+             `Gg.Memories.updateMemory`"
+        ]
+    );
+}
+
+#[test]
+fn a_memory_body_over_the_cap_reaches_a_program_as_limit_exceeded() {
+    assert_eq!(
+        caught_failure(
+            "Gg.Memories.writeMemory { name: \"layout\", description: \"d\", body: \"b\" }",
+            ToolFailure::LimitExceeded,
+            "memory `layout` is 5000 characters (max 4000)",
+        ),
+        ["LimitExceeded write_memory memory `layout` is 5000 characters (max 4000)"]
+    );
+}
+
+#[test]
+fn a_memory_update_hands_the_program_the_budget_it_left() {
+    assert_eq!(
+        canned_logs(&[
+            "usage <- Gg.Memories.updateMemory { name: \"layout\", description: \"d2\", body: \"b2\" }",
+            LOG_MEMORY_USAGE,
+        ]),
+        ["1 (Just 8) 12 (Just 4000) Nothing"]
+    );
+}
+
+#[test]
+fn an_update_of_an_unknown_memory_reaches_a_program_as_not_found() {
+    assert_eq!(
+        caught_failure(
+            "Gg.Memories.updateMemory { name: \"layout\", description: \"d2\", body: \"b2\" }",
+            ToolFailure::NotFound,
+            "no memory named `layout`; create it with `Gg.Memories.writeMemory`",
+        ),
+        [
+            "NotFound update_memory no memory named `layout`; create it with \
+             `Gg.Memories.writeMemory`"
+        ]
+    );
+}
+
+#[test]
+fn a_replacement_body_over_the_cap_reaches_a_program_as_limit_exceeded() {
+    assert_eq!(
+        caught_failure(
+            "Gg.Memories.updateMemory { name: \"layout\", description: \"d2\", body: \"b2\" }",
+            ToolFailure::LimitExceeded,
+            "memory `layout` is 5000 characters (max 4000)",
+        ),
+        ["LimitExceeded update_memory memory `layout` is 5000 characters (max 4000)"]
+    );
+}
+
+#[test]
+fn a_memory_creation_hands_the_program_the_budget_it_left() {
+    assert_eq!(
+        canned_logs(&[
+            "usage <- Gg.Memories.createMemory { name: \"layout\", description: \"d\", body: \"b\" }",
+            LOG_MEMORY_USAGE,
+        ]),
+        ["1 (Just 8) 12 (Just 4000) Nothing"]
+    );
+}
+
+#[test]
+fn a_duplicate_memory_slug_reaches_a_program_as_a_conflict() {
+    assert_eq!(
+        caught_failure(
+            "Gg.Memories.createMemory { name: \"layout\", description: \"d\", body: \"b\" }",
+            ToolFailure::Conflict,
+            "memory `layout` already exists; revise it with `Gg.Memories.editMemory`",
+        ),
+        [
+            "Conflict create_memory memory `layout` already exists; revise it with \
+             `Gg.Memories.editMemory`"
+        ]
+    );
+}
+
+#[test]
+fn memory_contents_over_the_cap_reach_a_program_as_limit_exceeded() {
+    assert_eq!(
+        caught_failure(
+            "Gg.Memories.createMemory { name: \"layout\", description: \"d\", body: \"b\" }",
+            ToolFailure::LimitExceeded,
+            "memory `layout` is 5000 characters (max 4000)",
+        ),
+        ["LimitExceeded create_memory memory `layout` is 5000 characters (max 4000)"]
+    );
+}
+
+#[test]
+fn a_memory_index_entry_over_the_cap_reaches_a_program_as_limit_exceeded() {
+    assert_eq!(
+        caught_failure(
+            "Gg.Memories.createMemory { name: \"layout\", description: \"d\", body: \"b\" }",
+            ToolFailure::LimitExceeded,
+            "the memory index would be 2100 characters (max 2000)",
+        ),
+        ["LimitExceeded create_memory the memory index would be 2100 characters (max 2000)"]
+    );
+}
+
+#[test]
+fn a_memory_read_hands_the_program_its_body() {
+    assert_eq!(
+        canned_logs(&[
+            "body <- Gg.Memories.readMemory \"layout\"",
+            "Console.log body",
+        ]),
+        ["the memory contents"]
+    );
+}
+
+#[test]
+fn a_read_of_an_unknown_memory_reaches_a_program_as_not_found() {
+    assert_eq!(
+        caught_failure(
+            "Gg.Memories.readMemory \"layout\"",
+            ToolFailure::NotFound,
+            "no memory named `layout`; create it with `Gg.Memories.createMemory`",
+        ),
+        [
+            "NotFound read_memory no memory named `layout`; create it with \
+             `Gg.Memories.createMemory`"
+        ]
+    );
+}
+
+#[test]
+fn a_memory_edit_hands_the_program_the_budget_it_left() {
+    assert_eq!(
+        canned_logs(&[
+            "usage <- Gg.Memories.editMemory { name: \"layout\", search: \"old\", replace: \"new\" }",
+            LOG_MEMORY_USAGE,
+        ]),
+        ["1 (Just 8) 12 (Just 4000) Nothing"]
+    );
+}
+
+#[test]
+fn a_memory_edit_that_matched_nothing_reaches_a_program_as_not_found() {
+    assert_eq!(
+        caught_failure(
+            "Gg.Memories.editMemory { name: \"layout\", search: \"old\", replace: \"new\" }",
+            ToolFailure::NotFound,
+            "the search text does not appear in memory `layout`",
+        ),
+        ["NotFound edit_memory the search text does not appear in memory `layout`"]
+    );
+}
+
+#[test]
+fn an_ambiguous_memory_edit_reaches_a_program_as_a_conflict() {
+    assert_eq!(
+        caught_failure(
+            "Gg.Memories.editMemory { name: \"layout\", search: \"old\", replace: \"new\" }",
+            ToolFailure::Conflict,
+            "the search text appears 2 times in memory `layout`",
+        ),
+        ["Conflict edit_memory the search text appears 2 times in memory `layout`"]
+    );
+}
+
+#[test]
+fn a_memory_edit_over_the_cap_reaches_a_program_as_limit_exceeded() {
+    assert_eq!(
+        caught_failure(
+            "Gg.Memories.editMemory { name: \"layout\", search: \"old\", replace: \"new\" }",
+            ToolFailure::LimitExceeded,
+            "memory `layout` is 5000 characters (max 4000)",
+        ),
+        ["LimitExceeded edit_memory memory `layout` is 5000 characters (max 4000)"]
+    );
+}
+
+#[test]
+fn an_edit_that_would_empty_a_memory_reaches_a_program_as_an_argument_error() {
+    assert_eq!(
+        caught_failure(
+            "Gg.Memories.editMemory { name: \"layout\", search: \"everything\", replace: \"\" }",
+            ToolFailure::InvalidArgument,
+            "the edit would leave memory `layout` empty; delete it instead",
+        ),
+        [
+            "InvalidArgument edit_memory the edit would leave memory `layout` empty; delete it \
+             instead"
+        ]
+    );
+}
+
+#[test]
+fn a_memory_hit_carries_its_counts_and_excerpt_into_the_program() {
+    assert_eq!(
+        canned_logs(&[
+            "hits <- Gg.Memories.searchMemories [ \"cargo\" ]",
+            "Console.log (show (map (\\hit -> hit.description <> \" \" <> show hit.matched <> \" \" \
+             <> show hit.occurrences <> \" \" <> hit.excerpt) hits))",
+        ]),
+        ["[\"How to build 2 3 …cargo nextest run --workspace…\"]"]
+    );
+}
+
+#[test]
+fn a_memory_search_that_matched_nothing_is_an_empty_array() {
+    let (outcome, _log) = run_with(
+        &logging_program_of(&[
+            "hits <- Gg.Memories.searchMemories [ \"nothing\" ]",
+            "Console.log (show (map _.name hits))",
+        ]),
+        &all_operations(),
+        &[],
+        answering(
+            ToolOutcome::ok("0 memories match", "searched memories")
+                .with_data(crate::tools::ApiData::MemoryHits(Vec::new())),
+        ),
+    );
+    assert_eq!(logs(&outcome), ["[]"]);
+}
+
+#[test]
+fn a_memory_search_of_empty_keywords_reaches_a_program_as_an_argument_error() {
+    assert_eq!(
+        caught_failure(
+            "Gg.Memories.searchMemories [ \"\" ]",
+            ToolFailure::InvalidArgument,
+            "`keywords` needs at least one non-empty keyword",
+        ),
+        ["InvalidArgument search_memories `keywords` needs at least one non-empty keyword"]
+    );
+}
+
+#[test]
+fn a_memory_deletion_hands_the_program_the_budget_it_left() {
+    assert_eq!(
+        canned_logs(&[
+            "usage <- Gg.Memories.deleteMemory \"layout\"",
+            LOG_MEMORY_USAGE,
+        ]),
+        ["1 (Just 8) 12 (Just 4000) Nothing"]
+    );
+}
+
+#[test]
+fn a_deletion_of_an_unknown_memory_reaches_a_program_as_not_found() {
+    assert_eq!(
+        caught_failure(
+            "Gg.Memories.deleteMemory \"layout\"",
+            ToolFailure::NotFound,
+            "no memory named `layout`; create it with `Gg.Memories.createMemory`",
+        ),
+        [
+            "NotFound delete_memory no memory named `layout`; create it with \
+             `Gg.Memories.createMemory`"
+        ]
+    );
+}
+
+// tasks ---------------------------------------------------------------------------------------------
+
+#[test]
+fn a_task_addition_hands_the_program_the_task_budget() {
+    assert_eq!(
+        canned_logs(&[
+            "usage <- Gg.Tasks.addTask { id: \"t1\", title: \"T\" }",
+            "Console.log (show usage.count <> \" \" <> show usage.maxTasks)",
+        ]),
+        ["2 20"]
+    );
+}
+
+#[test]
+fn a_duplicate_task_id_reaches_a_program_as_a_conflict() {
+    assert_eq!(
+        caught_failure(
+            "Gg.Tasks.addTask { id: \"t1\", title: \"T\" }",
+            ToolFailure::Conflict,
+            "a task with id `t1` already exists",
+        ),
+        ["Conflict add_task a task with id `t1` already exists"]
+    );
+}
+
+#[test]
+fn an_added_task_blocked_into_a_cycle_reaches_a_program_as_a_conflict() {
+    assert_eq!(
+        caught_failure(
+            "Gg.Tasks.addTask { id: \"t1\", title: \"T\", blockedBy: [ \"t1\" ] }",
+            ToolFailure::Conflict,
+            "task `t1` cannot be blocked by itself",
+        ),
+        ["Conflict add_task task `t1` cannot be blocked by itself"]
+    );
+}
+
+#[test]
+fn a_task_update_lets_the_program_carry_on() {
+    assert_eq!(
+        canned_logs(&[
+            "Gg.Tasks.updateTask \"t1\" { status: Gg.Tasks.TaskInProgress }",
+            "Console.log \"carried on\"",
+        ]),
+        ["carried on"]
+    );
+}
+
+#[test]
+fn an_update_of_an_unknown_task_reaches_a_program_as_not_found() {
+    assert_eq!(
+        caught_failure(
+            "Gg.Tasks.updateTask \"t9\" { status: Gg.Tasks.TaskDone }",
+            ToolFailure::NotFound,
+            "no task with id `t9`",
+        ),
+        ["NotFound update_task no task with id `t9`"]
+    );
+}
+
+#[test]
+fn setting_a_tasks_blockers_lets_the_program_carry_on() {
+    assert_eq!(
+        canned_logs(&[
+            "Gg.Tasks.setBlockedBy \"t1\" [ \"t0\" ]",
+            "Console.log \"carried on\"",
+        ]),
+        ["carried on"]
+    );
+}
+
+#[test]
+fn setting_blockers_on_an_unknown_task_reaches_a_program_as_not_found() {
+    assert_eq!(
+        caught_failure(
+            "Gg.Tasks.setBlockedBy \"t9\" [ \"t0\" ]",
+            ToolFailure::NotFound,
+            "no task with id `t9`",
+        ),
+        ["NotFound set_blocked_by no task with id `t9`"]
+    );
+}
+
+#[test]
+fn setting_task_blockers_into_a_cycle_reaches_a_program_as_a_conflict() {
+    assert_eq!(
+        caught_failure(
+            "Gg.Tasks.setBlockedBy \"t1\" [ \"t2\" ]",
+            ToolFailure::Conflict,
+            "blocking `t1` on `t2` would create a cycle: `t2` already depends on `t1`",
+        ),
+        [
+            "Conflict set_blocked_by blocking `t1` on `t2` would create a cycle: `t2` already \
+             depends on `t1`"
+        ]
+    );
+}
+
+#[test]
+fn completing_a_task_lets_the_program_carry_on() {
+    assert_eq!(
+        canned_logs(&["Gg.Tasks.completeTask \"t1\"", "Console.log \"carried on\"",]),
+        ["carried on"]
+    );
+}
+
+#[test]
+fn completing_an_unknown_task_reaches_a_program_as_not_found() {
+    assert_eq!(
+        caught_failure(
+            "Gg.Tasks.completeTask \"t9\"",
+            ToolFailure::NotFound,
+            "no task with id `t9`",
+        ),
+        ["NotFound complete_task no task with id `t9`"]
+    );
+}
+
+#[test]
+fn a_task_removal_hands_the_program_the_task_budget() {
+    assert_eq!(
+        canned_logs(&[
+            "usage <- Gg.Tasks.removeTask \"t1\"",
+            "Console.log (show usage.count <> \" \" <> show usage.maxTasks)",
+        ]),
+        ["2 20"]
+    );
+}
+
+#[test]
+fn removing_an_unknown_task_reaches_a_program_as_not_found() {
+    assert_eq!(
+        caught_failure(
+            "Gg.Tasks.removeTask \"t9\"",
+            ToolFailure::NotFound,
+            "no task with id `t9`",
+        ),
+        ["NotFound remove_task no task with id `t9`"]
+    );
+}
+
+// board ---------------------------------------------------------------------------------------------
+
+#[test]
+fn an_epic_creation_hands_the_program_its_id_and_the_board_budget() {
+    assert_eq!(
+        canned_logs(&[
+            "epic <- Gg.Board.createEpic { prefix: \"epc\", title: \"E\", description: \"D\" }",
+            "let board = epic.board",
+            "Console.log epic.id",
+            LOG_BOARD_USAGE,
+        ]),
+        ["EPIC", "1 4 3 20"]
+    );
+}
+
+#[test]
+fn an_epic_prefix_under_three_letters_reaches_a_program_as_an_argument_error() {
+    assert_eq!(
+        caught_failure(
+            "Gg.Board.createEpic { prefix: \"ab\", title: \"E\", description: \"D\" }",
+            ToolFailure::InvalidArgument,
+            "`prefix`: `ab` is not 3 to 6 letters (a-z)",
+        ),
+        ["InvalidArgument create_epic `prefix`: `ab` is not 3 to 6 letters (a-z)"]
+    );
+}
+
+#[test]
+fn an_epic_prefix_over_six_letters_reaches_a_program_as_an_argument_error() {
+    assert_eq!(
+        caught_failure(
+            "Gg.Board.createEpic { prefix: \"toolong\", title: \"E\", description: \"D\" }",
+            ToolFailure::InvalidArgument,
+            "`prefix`: `toolong` is not 3 to 6 letters (a-z)",
+        ),
+        ["InvalidArgument create_epic `prefix`: `toolong` is not 3 to 6 letters (a-z)"]
+    );
+}
+
+#[test]
+fn an_epic_prefix_that_is_not_letters_reaches_a_program_as_an_argument_error() {
+    assert_eq!(
+        caught_failure(
+            "Gg.Board.createEpic { prefix: \"ep1\", title: \"E\", description: \"D\" }",
+            ToolFailure::InvalidArgument,
+            "`prefix`: `ep1` is not 3 to 6 letters (a-z)",
+        ),
+        ["InvalidArgument create_epic `prefix`: `ep1` is not 3 to 6 letters (a-z)"]
+    );
+}
+
+#[test]
+fn a_prefix_another_epic_holds_reaches_a_program_as_a_conflict() {
+    assert_eq!(
+        caught_failure(
+            "Gg.Board.createEpic { prefix: \"epc\", title: \"E\", description: \"D\" }",
+            ToolFailure::Conflict,
+            "an epic with the prefix `EPC` already exists",
+        ),
+        ["Conflict create_epic an epic with the prefix `EPC` already exists"]
+    );
+}
+
+/// The smallest issue a program can file, as a `Gg.Board.createIssue` call.
+const CREATE_ISSUE: &str = "Gg.Board.createIssue { title: \"I\", inScope: \"s\", outOfScope: \"o\", \
+     completionCriteria: \"c\", agent: \"worker\" }";
+
+#[test]
+fn an_issue_creation_hands_the_program_its_id_and_the_board_budget() {
+    assert_eq!(
+        canned_logs(&[
+            &format!("issue <- {CREATE_ISSUE}"),
+            "let board = issue.board",
+            "Console.log issue.id",
+            LOG_BOARD_USAGE,
+        ]),
+        ["EPIC-1", "1 4 3 20"]
+    );
+}
+
+#[test]
+fn an_agent_this_session_may_not_assign_reaches_a_program_as_an_argument_error() {
+    assert_eq!(
+        caught_failure(
+            CREATE_ISSUE,
+            ToolFailure::InvalidArgument,
+            "`agent`: unknown agent `worker`; expected one of: builder",
+        ),
+        ["InvalidArgument create_issue `agent`: unknown agent `worker`; expected one of: builder"]
+    );
+}
+
+#[test]
+fn a_reviewer_this_session_may_not_assign_reaches_a_program_as_an_argument_error() {
+    assert_eq!(
+        caught_failure(
+            "Gg.Board.createIssue { title: \"I\", inScope: \"s\", outOfScope: \"o\", \
+             completionCriteria: \"c\", agent: \"worker\", reviewers: [ \"stranger\" ] }",
+            ToolFailure::InvalidArgument,
+            "`reviewers`: unknown agent `stranger`; expected one of: critic",
+        ),
+        [
+            "InvalidArgument create_issue `reviewers`: unknown agent `stranger`; expected one of: \
+             critic"
+        ]
+    );
+}
+
+#[test]
+fn an_issue_blocked_into_a_cycle_reaches_a_program_as_a_conflict() {
+    assert_eq!(
+        caught_failure(
+            "Gg.Board.createIssue { title: \"I\", inScope: \"s\", outOfScope: \"o\", \
+             completionCriteria: \"c\", agent: \"worker\", blockedBy: [ \"EPIC-2\" ] }",
+            ToolFailure::Conflict,
+            "blocking `EPIC-3` on `EPIC-2` would create a cycle: `EPIC-2` already depends on `EPIC-3`",
+        ),
+        [
+            "Conflict create_issue blocking `EPIC-3` on `EPIC-2` would create a cycle: `EPIC-2` \
+             already depends on `EPIC-3`"
+        ]
+    );
+}
+
+#[test]
+fn an_issue_update_lets_the_program_carry_on() {
+    assert_eq!(
+        canned_logs(&[
+            "Gg.Board.updateIssue \"EPIC-1\" { status: Gg.Board.IssueInProgress }",
+            "Console.log \"carried on\"",
+        ]),
+        ["carried on"]
+    );
+}
+
+#[test]
+fn an_update_of_an_unknown_issue_reaches_a_program_as_not_found() {
+    assert_eq!(
+        caught_failure(
+            "Gg.Board.updateIssue \"EPIC-9\" { status: Gg.Board.IssueDone }",
+            ToolFailure::NotFound,
+            "no issue with id `EPIC-9`",
+        ),
+        ["NotFound update_issue no issue with id `EPIC-9`"]
+    );
+}
+
+#[test]
+fn setting_an_issues_blockers_lets_the_program_carry_on() {
+    assert_eq!(
+        canned_logs(&[
+            "Gg.Board.setIssueBlockedBy \"EPIC-2\" [ \"EPIC-1\" ]",
+            "Console.log \"carried on\"",
+        ]),
+        ["carried on"]
+    );
+}
+
+#[test]
+fn setting_blockers_on_an_unknown_issue_reaches_a_program_as_not_found() {
+    assert_eq!(
+        caught_failure(
+            "Gg.Board.setIssueBlockedBy \"EPIC-9\" [ \"EPIC-1\" ]",
+            ToolFailure::NotFound,
+            "no issue with id `EPIC-9`",
+        ),
+        ["NotFound set_issue_blocked_by no issue with id `EPIC-9`"]
+    );
+}
+
+#[test]
+fn setting_issue_blockers_into_a_cycle_reaches_a_program_as_a_conflict() {
+    assert_eq!(
+        caught_failure(
+            "Gg.Board.setIssueBlockedBy \"EPIC-1\" [ \"EPIC-2\" ]",
+            ToolFailure::Conflict,
+            "blocking `EPIC-1` on `EPIC-2` would create a cycle: `EPIC-2` already depends on `EPIC-1`",
+        ),
+        [
+            "Conflict set_issue_blocked_by blocking `EPIC-1` on `EPIC-2` would create a cycle: \
+             `EPIC-2` already depends on `EPIC-1`"
+        ]
+    );
+}
+
+#[test]
+fn an_epic_removal_hands_the_program_the_board_budget() {
+    assert_eq!(
+        canned_logs(&["board <- Gg.Board.removeEpic \"EPIC\"", LOG_BOARD_USAGE]),
+        ["1 4 3 20"]
+    );
+}
+
+#[test]
+fn removing_an_epic_that_still_holds_issues_hands_back_the_ungrouped_board() {
+    // The epic goes and its three issues stay, ungrouped: the budget the removal hands back is the
+    // whole of what says so.
+    let (outcome, _log) = run_with(
+        &logging_program_of(&["board <- Gg.Board.removeEpic \"EPIC\"", LOG_BOARD_USAGE]),
+        &all_operations(),
+        &[],
+        answering(ToolOutcome::ok("removed epic `EPIC`", "board").with_data(
+            crate::tools::ApiData::BoardUsage(crate::tools::BoardUsageData {
+                epics: 0,
+                max_epics: 4,
+                issues: 3,
+                max_issues: 20,
+            }),
+        )),
+    );
+    assert_eq!(logs(&outcome), ["0 4 3 20"]);
+}
+
+#[test]
+fn removing_an_unknown_epic_reaches_a_program_as_not_found() {
+    assert_eq!(
+        caught_failure(
+            "Gg.Board.removeEpic \"NOPE\"",
+            ToolFailure::NotFound,
+            "no epic with id `NOPE`",
+        ),
+        ["NotFound remove_epic no epic with id `NOPE`"]
+    );
+}
+
+#[test]
+fn an_issue_removal_hands_the_program_the_board_budget() {
+    assert_eq!(
+        canned_logs(&["board <- Gg.Board.removeIssue \"EPIC-1\"", LOG_BOARD_USAGE]),
+        ["1 4 3 20"]
+    );
+}
+
+#[test]
+fn removing_an_unknown_issue_reaches_a_program_as_not_found() {
+    assert_eq!(
+        caught_failure(
+            "Gg.Board.removeIssue \"EPIC-9\"",
+            ToolFailure::NotFound,
+            "no issue with id `EPIC-9`",
+        ),
+        ["NotFound remove_issue no issue with id `EPIC-9`"]
+    );
+}
+
+#[test]
+fn a_registered_wait_hands_the_program_its_acknowledgement_and_runs_on() {
+    assert_eq!(
+        canned_logs(&[
+            "ack <- Gg.Board.waitForIssue \"EPIC-1\"",
+            "Console.log ack",
+            "Console.log \"ran on\"",
+        ]),
+        ["wait registered", "ran on"]
+    );
+}
+
+#[test]
+fn waiting_on_an_unknown_issue_reaches_a_program_as_not_found() {
+    assert_eq!(
+        caught_failure(
+            "Gg.Board.waitForIssue \"EPIC-9\"",
+            ToolFailure::NotFound,
+            "no issue with id `EPIC-9`",
+        ),
+        ["NotFound wait_for_issue no issue with id `EPIC-9`"]
+    );
+}
+
+#[test]
+fn waiting_on_this_sessions_own_issue_reaches_a_program_as_an_argument_error() {
+    assert_eq!(
+        caught_failure(
+            "Gg.Board.waitForIssue \"EPIC-1\"",
+            ToolFailure::InvalidArgument,
+            "cannot wait on issue `EPIC-1`: it is this agent's own assigned issue",
+        ),
+        [
+            "InvalidArgument wait_for_issue cannot wait on issue `EPIC-1`: it is this agent's own \
+             assigned issue"
+        ]
     );
 }

@@ -392,8 +392,8 @@ const PROVIDER_FAULT_ERRORS: [GgTurnErrorType; 3] = [
 /// when it names no model and the run's sole model is one of them — the attribution
 /// [`fold_provider_stats`] makes.
 ///
-/// A fault is a stall, an unexpected cache miss, or a turn that ended on a
-/// [provider fault error](PROVIDER_FAULT_ERRORS); the rate is the faults over the calls. A
+/// A fault is a stall, an unexpected cache miss, or a turn that ended on a spent retry schedule, a
+/// timed-out call or an unparseable reply; the rate is the faults over the calls. A
 /// provider no counted slice gave a call is absent, which the candidate order reads as zero.
 pub fn provider_fault_rates(
     facts: &[Arc<GgRunFacts>],

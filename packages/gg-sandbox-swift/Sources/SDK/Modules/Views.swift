@@ -34,7 +34,17 @@ public enum views {
     public static func openFile(
         _ path: String, offset: Int? = nil, limit: Int? = nil, maxLineChars: Int? = nil
     ) throws -> files.FileRead {
-        try withScratch { scratch in
+        // Signed here and `u32` on the wire, so a negative cut would lower to an enormous one and be
+        // answered rather than refused. Refused here instead, under gg's own name for the call,
+        // before anything reaches dispatch — the same guard `files.tree`'s `depth` has.
+        if let maxLineChars, !(1...65536).contains(maxLineChars) {
+            throw core.ApiError(
+                code: .invalidArgument, operation: "open_file",
+                message:
+                    "`maxLineChars` must be between 1 and 65536 (\(maxLineChars) given); omit it "
+                    + "to leave lines whole")
+        }
+        return try withScratch { scratch in
             var path = scratch.string(path)
             var ret = test_cabinet_gg_files_file_read_t()
             var err = test_cabinet_gg_types_api_error_t()

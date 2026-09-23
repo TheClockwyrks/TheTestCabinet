@@ -737,6 +737,55 @@ for ignore_file in "${ignore_files[@]}"; do
 	done
 done
 
+# --- what a COPY cannot tell you, part four: the paths the toolchain installers read ---
+
+# `scripts/ci/install-gg-toolchains.sh` and the per-arm installers it runs are copied into
+# two images, the devcontainer and the driver image's gg stage, along with a slice of
+# `packages/`, and they read pins, lockfiles and manifests out of that slice
+# by `$REPO_ROOT/<path>`. No COPY names those files, so nothing above sees them; a missing
+# one fails the image build minutes in with cargo's "manifest path ... does not exist".
+#
+# So every tracked `$REPO_ROOT/<path>` literal in those installers must survive EVERY
+# allowlist, since each of those images reads one or the other. Untracked paths
+# (`node_modules/.bin/tsc`, which an installer probes and does without) are skipped. A
+# `cargo fetch --manifest-path` needs two more things than the manifest: the lockfile beside
+# it, which `--locked` reads, and — because the slice deliberately carries no `src/` — a
+# manifest that names its `[lib] path` rather than having cargo discover it.
+installer_checked=0
+# shellcheck disable=SC2016 # the `$REPO_ROOT` in both patterns is the literal text being matched.
+mapfile -t installer_paths < <(
+	git -C "$REPO_ROOT" ls-files -z -- 'scripts/ci/install-*.sh' |
+		xargs -0 -I{} grep -ohE '\$(\{REPO_ROOT\}|REPO_ROOT)/[A-Za-z0-9_./-]+' "$REPO_ROOT/{}" |
+		sed -E 's#^\$(\{REPO_ROOT\}|REPO_ROOT)/##' | sort -u
+)
+((${#installer_paths[@]} > 0)) || {
+	echo "error: no \$REPO_ROOT paths found in scripts/ci/install-*.sh; this check would pass vacuously." >&2
+	exit 1
+}
+installer_inputs=()
+for path in "${installer_paths[@]}"; do
+	git -C "$REPO_ROOT" ls-files --error-unmatch -- "$path" >/dev/null 2>&1 || continue
+	installer_inputs+=("$path")
+	[[ "$path" == */Cargo.toml ]] || continue
+	installer_inputs+=("${path%Cargo.toml}Cargo.lock")
+	grep -qE '^path *= *"src/lib\.rs"' "$REPO_ROOT/$path" && continue
+	echo "error: $path is fetched by a toolchain installer from a slice with no src/, and does not name its [lib] path." >&2
+	echo "       cargo then looks for src/lib.rs and fails before it fetches anything." >&2
+	echo "       Fix: add 'path = \"src/lib.rs\"' under its [lib] table." >&2
+	problems=$((problems + 1))
+done
+for ignore_file in "${ignore_files[@]}"; do
+	load_dockerignore "$REPO_ROOT/$ignore_file"
+	for path in "${installer_inputs[@]}"; do
+		installer_checked=$((installer_checked + 1))
+		context_includes "$path" && continue
+		echo "error: $ignore_file keeps '$path' OUT of the build context, and a toolchain installer reads it." >&2
+		echo "       scripts/ci/install-gg-toolchains.sh runs in images built against this allowlist, so the" >&2
+		echo "       image build fails partway through the install. Fix: add '!/$path' to $ignore_file, with a comment." >&2
+		problems=$((problems + 1))
+	done
+done
+
 # --- what an allowlist's SHAPE costs, before a byte is transferred ------------
 
 # Every check above is about WHICH paths an allowlist admits. This one is about how the
@@ -811,12 +860,13 @@ fi
 
 ((problems == 0)) || {
 	echo >&2
-	echo "$problems build-context problem(s) found across ${#dockerfiles[@]} Dockerfiles, ${#guest_packages[@]} gg guest packages, $baked_checked baked-in includes, $staged_checked staged packages, ${#ignored_paths[@]} git-ignored paths, $shape_checked re-inclusions and $family_checked enumerated-family files." >&2
+	echo "$problems build-context problem(s) found across ${#dockerfiles[@]} Dockerfiles, ${#guest_packages[@]} gg guest packages, $baked_checked baked-in includes, $staged_checked staged packages, $installer_checked installer inputs, ${#ignored_paths[@]} git-ignored paths, $shape_checked re-inclusions and $family_checked enumerated-family files." >&2
 	exit 1
 }
 
 # A count of CHECKS rather than of distinct paths: a Dockerfile with a sibling
 # allowlist has its sources checked against both, which is the point.
 echo "$checked context-source check(s) — every COPY across ${#dockerfiles[@]} Dockerfiles, against each allowlist that can apply to it, plus the ${#guest_packages[@]} packages/gg-sandbox* trees the driver image's gg stage compiles, the $baked_checked path(s) the workspace bakes in with include_str! and the $staged_checked package(s) $STAGING_SCRIPT bakes into the host package store — all survive."
+echo "$installer_checked installer-input check(s) — ${#installer_inputs[@]} tracked path(s) scripts/ci/install-*.sh read, against each allowlist — all survive."
 echo "$ignored_checked exclusion check(s) — ${#ignored_paths[@]} git-ignored path(s) against each allowlist — none reach the build context."
 echo "$shape_checked re-inclusion(s) across ${#ignore_files[@]} allowlist(s) name a path rather than a wildcard family, and $family_checked file(s) of the families those allowlists enumerate all survive."
