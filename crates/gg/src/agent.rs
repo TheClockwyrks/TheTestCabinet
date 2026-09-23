@@ -158,7 +158,7 @@ use test_cabinet_core::gg::{
     GgAgentApiFunction, GgAgentConfig, GgAgentStatus, GgAgentTransitionKind, GgCallFailure,
     GgCapabilitySet, GgContextAction, GgContextSource, GgHookAgentKind, GgHookEvent,
     GgIssueReviewPhase, GgLimitBreach, GgLimitKind, GgProgramLanguage, GgReasoning, GgReviewer,
-    GgRosterEntry, GgRunLimits, GgSlotBinding, GgSubagentScope, GgTelemetryKind,
+    GgProviderCandidate, GgRosterEntry, GgRunLimits, GgSlotBinding, GgSubagentScope, GgTelemetryKind,
     GgUndocumentedCalls, MAX_OPENING_TREE_DEPTH, PARAM_SIGNAL_THRESHOLD_PERCENT, PARAM_SKILLS_DIR,
     PARAM_TOP_FILE_VIEWS, PARAM_WINDOW_LIMIT, PROJECT_MANAGEMENT_PARAM_MERGE_AGENT,
 };
@@ -908,7 +908,7 @@ impl SessionSeams {
         model_call_timeout: Duration,
         model_stream_idle: Duration,
         retry_policy: crate::client::RetryPolicy,
-        model_providers: BTreeMap<String, Vec<test_cabinet_core::gg::GgProviderCandidate>>,
+        model_providers: BTreeMap<String, Vec<GgProviderCandidate>>,
         cache_miss_limit: u64,
     ) -> Self {
         let routing_key = RoutingKey::mint();
@@ -10880,34 +10880,32 @@ fn validate_model_windows(
     ))
 }
 
-/// Check that every model `set` binds carries an ordered candidate list, reporting every missing
-/// list together.
+/// Check that every model `set` binds carries a [usable](GgProviderCandidate::usable_list)
+/// candidate list, reporting every model without one together.
 ///
 /// A model the [mock client](crate::client::ProviderKind::Mock) answers is exempt: it sends no
-/// request, so there is no provider to name. An empty list is a missing one: it would send no
-/// `provider.only`.
+/// request, so there is no provider to name.
 fn validate_model_providers(
     set: &GgCapabilitySet,
-    providers: &BTreeMap<String, Vec<test_cabinet_core::gg::GgProviderCandidate>>,
+    providers: &BTreeMap<String, Vec<GgProviderCandidate>>,
 ) -> Result<(), String> {
     let missing: Vec<&str> = set
         .bound_model_ids()
         .into_iter()
         .filter(|id| provider_for(&GgSlotBinding::new("", *id)) != ProviderKind::Mock)
         .filter(|id| {
-            providers.get(*id).is_none_or(|candidates| {
-                candidates
-                    .iter()
-                    .all(|candidate| candidate.provider.trim().is_empty())
-            })
+            !providers
+                .get(*id)
+                .is_some_and(|candidates| GgProviderCandidate::usable_list(candidates))
         })
         .collect();
     if missing.is_empty() {
         return Ok(());
     }
     Err(format!(
-        "the invocation carries no provider candidate for the model(s) {}: every bound model \
-         needs a `modelProviders` entry naming the providers its requests may be served by",
+        "the invocation carries no usable provider candidate list for the model(s) {}: every \
+         bound model needs a `modelProviders` entry listing at least one candidate, each naming \
+         a provider and a quantization",
         missing
             .iter()
             .map(|id| format!("`{id}`"))
