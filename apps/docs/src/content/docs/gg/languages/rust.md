@@ -234,5 +234,4 @@ own.
 The arm names `rustc` as its [checker](/gg/languages/compilation/), so the
 shared body states that a program is compiled before it runs, that one `rustc`
 refuses is not executed, and that a call the run withheld compiles and fails
-when it runs. The library set is reached through a compile failure rather than
-through the prompt.
+when it runs.

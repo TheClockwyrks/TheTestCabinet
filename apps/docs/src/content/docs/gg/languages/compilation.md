@@ -399,6 +399,10 @@ loop nor any sibling agent. The hazard this guards is shared mutable state.
 
 ## Diagnostic bounds
 
+Everything after the `Compiler error` heading is the compiler's output. gg's
+processing of that output removes, as the bounds on this page do, and adds
+nothing, so the message body is the arm's rendered diagnostic on every arm.
+
 A bound shortens a diagnostic by deleting from it, so what a model reads is a
 subsequence of what the compiler wrote and each bound closes by counting what it
 dropped. Rewording a compiler's own account of a program is the one edit no
@@ -411,39 +415,6 @@ after while the turn stays in the transcript. The size of a compiler's opinion
 is therefore decided in exactly one place, the arm that renders it, and the
 shared bound in `sandbox/language/diagnostics.rs` is what the arms decide it
 with.
-
-A compile failure carries supporting material beside the diagnostic, after a
-blank line, so the compiler's own first line stays the message's first line.
-Every arm holds that material to one bound, `diagnostics::SUPPORTING`, of 1024
-bytes of UTF-8, so what a rejection costs the next turn is comparable across
-arms. An arm whose catalogue declares no library set is answered with the
-diagnostic alone.
-
-The material is drawn from the arm's library set, which is what the compiler
-measured the program against and the reason no [prompt](/gg/prompts/) carries a
-package inventory. Where the diagnostic names imports the compiler could not
-resolve, the material is the modules of that set which match those names. Where
-it names none, or none of them match, the material is the whole set, because a
-program that named nothing recognisable is the one with most to learn from the
-inventory.
-
-Each arm reads the unresolved names out of its own compiler's wording, through
-`ProgramLanguage::unresolved_imports`, and one shared rule decides what a name
-matches: a module equal to it, a module it extends or that extends it at a path
-separator, or a module whose last path segment is within two edits of its own.
-An arm whose compiler names an unresolved import in no wording of its own
-answers with an empty list, and is answered with the whole set.
-
-The bound drops whole module names off the end and closes with the count line
-the diagnostic bounds close with, so a set it cut is counted rather than quietly
-shortened.
-
-Two gates hold the arms to this. One walks the registry and holds every arm that
-declares a library set to the bound, in the largest case its own catalogue can
-produce. The other drives a program naming an unresolved import through each
-arm's real compiler and asserts the arm recovered the name the program wrote,
-so a compiler that rewords its diagnostic fails here rather than silently
-answering every rejection with a whole inventory.
 
 Two helpers cover the two shapes an arm holds its diagnostics in.
 

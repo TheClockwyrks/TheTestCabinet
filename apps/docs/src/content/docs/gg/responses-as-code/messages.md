@@ -15,11 +15,11 @@ Everything else gg sends back is plain `user` text. There the heading is the
 only thing telling the model what it is looking at, so the vocabulary is
 exactly three messages.
 
-| Heading          | When                                                      | Body                                                                                                                                |
-| ---------------- | --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `Compiler error` | the program did not compile, so none of it ran            | the language's diagnostic, verbatim, and a bounded amount of supporting material drawn from the library set it was measured against |
-| `Runtime error`  | it compiled and then threw, or a sandbox limit stopped it | the error                                                                                                                           |
-| `Notice`         | a fact about the session rather than about the program    | the fact                                                                                                                            |
+| Heading          | When                                                      | Body                                |
+| ---------------- | --------------------------------------------------------- | ----------------------------------- |
+| `Compiler error` | the program did not compile, so none of it ran            | the language's diagnostic, verbatim |
+| `Runtime error`  | it compiled and then threw, or a sandbox limit stopped it | the error                           |
+| `Notice`         | a fact about the session rather than about the program    | the fact                            |
 
 A turn that produces both a notice and an error pushes the notices first and the
 error last, so the error is the last thing the model reads before it writes its
@@ -56,11 +56,10 @@ that fault implies, because at that point the fact is part of the diagnostic. A
 `ReferenceError` is answered in the guest, at the call site, with the names of
 gg's modules, plus `lib` when the agent has loaded code. A documentation lookup
 that resolves nothing is answered by the host with at most three of the nearest
-names this agent binds, indented under the message. A compile failure on an arm
-whose catalogue declares a library set is answered from that set, since it is
-what the compiler resolved against, with the modules matching an import the
-diagnostic could not resolve or with the whole set where it names none. Each is
-a fact the fault implies, never advice about what to do with it.
+names this agent binds, indented under the message. Each is a fact the fault
+implies, never advice about what to do with it. The carve-out stops at the
+compiler: everything after the `Compiler error` heading is the compiler's
+output.
 
 ### Runtime errors
 

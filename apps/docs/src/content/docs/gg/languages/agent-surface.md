@@ -228,8 +228,7 @@ out.
 A sixth reads the language segments against each other. Every arm's render
 carries that arm's segment, no arm's render carries another's, and every segment
 stays within two paragraphs and a character bound. What an arm might have said
-beyond them is said by the error that reports it, which is where the library set
-an arm declares reaches its model.
+beyond them is said by the error that reports it.
 
 Wording is not asserted. The gate reads names, numbers, identifiers and the one
 term each rule cannot be stated without, so rewrapping a paragraph or rewriting
