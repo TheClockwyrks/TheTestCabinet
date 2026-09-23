@@ -56,7 +56,14 @@ function withAtLeastOneRow(aliases: ModelAlias[]): ModelAlias[] {
 // a developer pricing page publishes; the backend divides back down.
 function priceField(perToken: number | null): string {
   const perMtok = perMillion(perToken);
-  return perMtok === null ? "" : String(perMtok);
+  return perMtok === null ? "" : mtokText(perMtok);
+}
+
+// A per-Mtok figure as field text. Scaling between per-token and per-Mtok leaves
+// binary floating-point noise (0.121 comes back as 0.12099999999999998), which
+// twelve significant digits drop without touching any published price.
+function mtokText(perMtok: number): string {
+  return String(Number(perMtok.toPrecision(12)));
 }
 
 // Today's date as a `YYYY-MM-DD` string in UTC, for seeding the list price's
@@ -163,7 +170,7 @@ export function ModelConfigPage() {
     setDescription(existing.description ?? "");
     setOpenrouterSlug(openrouterSlugFromUrl(existing.openrouterUrl));
     // The stored figures are per-token; the fields edit them per Mtok. The date
-    // is stored as an RFC 3339 timestamp and edited as a calendar date.
+    // is edited as a calendar date, whatever precision it was stored with.
     setListPriceInput(priceField(existing.listPrice?.uncachedInput ?? null));
     setListPriceCachedInput(
       priceField(existing.listPrice?.cachedInput ?? null),
@@ -293,11 +300,11 @@ export function ModelConfigPage() {
       // *those* figures were taken, and re-dating them to today would assert
       // something the press does not know.
       if (listing.inputPerMtok !== null)
-        setListPriceInput(String(listing.inputPerMtok));
+        setListPriceInput(mtokText(listing.inputPerMtok));
       if (listing.cachedInputPerMtok !== null)
-        setListPriceCachedInput(String(listing.cachedInputPerMtok));
+        setListPriceCachedInput(mtokText(listing.cachedInputPerMtok));
       if (listing.outputPerMtok !== null)
-        setListPriceOutput(String(listing.outputPerMtok));
+        setListPriceOutput(mtokText(listing.outputPerMtok));
       if (
         (listing.inputPerMtok !== null ||
           listing.cachedInputPerMtok !== null ||
@@ -351,6 +358,10 @@ export function ModelConfigPage() {
       setError(
         "Set all three list prices, or none — the comparable cost needs every class.",
       );
+      return;
+    }
+    if (entered.length === 3 && !listPriceAsOf) {
+      setError("Enter the date the list prices were taken.");
       return;
     }
     const cleanAliases = aliases

@@ -98,7 +98,7 @@ export interface Model {
    * comparable cost is computed from, or null while the model has none —
    * a launch naming such a model is refused at enqueue. */
   listPrice: ModelPrices | null;
-  /** The RFC 3339 date the operator took the list-price figures, or null. */
+  /** The date (`YYYY-MM-DD`) the operator took the list-price figures, or null. */
   listPriceAsOf: string | null;
   /** The observed price history, ascending, consecutive-equal deduped. */
   priceHistory: PriceObservation[];
@@ -138,7 +138,7 @@ export interface ModelInput {
   listPriceCachedInputPerMtok: number | null;
   /** The developer's published output price per Mtok, or null. */
   listPriceOutputPerMtok: number | null;
-  /** The RFC 3339 date the operator took the list-price figures, or null. */
+  /** The date (`YYYY-MM-DD`) the operator took the list-price figures, or null. */
   listPriceAsOf: string | null;
   description: string | null;
   logoSvg: string | null;

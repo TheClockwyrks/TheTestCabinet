@@ -222,6 +222,24 @@ describe("ModelConfigPage's OpenRouter fill-in", () => {
     expect(asOfInput()).toHaveValue(new Date().toISOString().slice(0, 10));
   });
 
+  it("seeds the list-price fields without floating-point noise", async () => {
+    // Per-token rates scaled to per Mtok come back as 0.12099999999999998.
+    renderPage(
+      vi.fn().mockResolvedValue({
+        ...LISTING,
+        inputPerMtok: 0.12099999999999998,
+        cachedInputPerMtok: 0.061000000000000006,
+        outputPerMtok: 0.24199999999999997,
+      }),
+    );
+    typeSlug("anthropic/claude-sonnet-4.5");
+    fireEvent.click(fillButton());
+
+    await waitFor(() => expect(inputPriceInput()).toHaveValue("0.121"));
+    expect(cachedPriceInput()).toHaveValue("0.061");
+    expect(outputPriceInput()).toHaveValue("0.242");
+  });
+
   it("keeps the entered taken-on date when the fill seeds the prices", async () => {
     renderPage();
     fireEvent.change(asOfInput(), { target: { value: "2026-07-01" } });
@@ -287,6 +305,21 @@ describe("ModelConfigPage's list-price validation", () => {
     expect(create).not.toHaveBeenCalled();
     // The button is not busy-locked: fix the fields and save again.
     expect(saveButton()).not.toBeDisabled();
+  });
+
+  it("blocks an undated price set before any request", async () => {
+    const create = vi.fn();
+    renderPage(vi.fn(), create);
+    enterName();
+    fireEvent.change(inputPriceInput(), { target: { value: "3" } });
+    fireEvent.change(cachedPriceInput(), { target: { value: "0.3" } });
+    fireEvent.change(outputPriceInput(), { target: { value: "15" } });
+    fireEvent.click(saveButton());
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      /date the list prices were taken/i,
+    );
+    expect(create).not.toHaveBeenCalled();
   });
 
   it("blocks a negative figure with the field named", async () => {
