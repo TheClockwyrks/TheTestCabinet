@@ -5,6 +5,13 @@
         "base": {
           "none": "https://bff78ad6.test-cabinet-references.pages.dev"
         }
+      },
+      "v2.0.0": {
+        "base": {
+          "none": "https://b73f1043.test-cabinet-references.pages.dev",
+          "simple-2d": "https://aa5d2da6.test-cabinet-references.pages.dev",
+          "structured-2d": "https://04dda31b.test-cabinet-references.pages.dev"
+        }
       }
     },
     "cascade": {
@@ -23,6 +30,18 @@
         "draw-three": {
           "none": "https://4c91fe1b.test-cabinet-references.pages.dev"
         }
+      },
+      "v3.0.0": {
+        "draw-one": {
+          "none": "https://edd7edde.test-cabinet-references.pages.dev",
+          "simple-2d": "https://1e63913c.test-cabinet-references.pages.dev",
+          "structured-2d": "https://5049bea5.test-cabinet-references.pages.dev"
+        },
+        "draw-three": {
+          "none": "https://3ae01405.test-cabinet-references.pages.dev",
+          "simple-2d": "https://fa951ac7.test-cabinet-references.pages.dev",
+          "structured-2d": "https://da9c582c.test-cabinet-references.pages.dev"
+        }
       }
     },
     "coil": {
@@ -33,12 +52,40 @@
         "maze": {
           "none": "https://d9e76912.test-cabinet-references.pages.dev"
         }
+      },
+      "v2.0.0": {
+        "base": {
+          "none": "https://c18b4855.test-cabinet-references.pages.dev",
+          "simple-2d": "https://6917e01f.test-cabinet-references.pages.dev",
+          "structured-2d": "https://f6bdd82b.test-cabinet-references.pages.dev"
+        },
+        "maze": {
+          "none": "https://cad4d7b9.test-cabinet-references.pages.dev",
+          "simple-2d": "https://a3635dc1.test-cabinet-references.pages.dev",
+          "structured-2d": "https://9e41e740.test-cabinet-references.pages.dev"
+        }
       }
     },
     "deepcore": {
       "v1.0.0": {
         "base": {
           "none": "https://2d074cd3.test-cabinet-references.pages.dev"
+        }
+      },
+      "v2.0.0": {
+        "base": {
+          "none": "https://679b8bea.test-cabinet-references.pages.dev",
+          "simple-2d": "https://88ce3bed.test-cabinet-references.pages.dev",
+          "structured-2d": "https://7d36b82a.test-cabinet-references.pages.dev"
+        }
+      }
+    },
+    "facet": {
+      "v1.0.0": {
+        "base": {
+          "none": "https://3016eb1f.test-cabinet-references.pages.dev",
+          "simple-2d": "https://753f99a6.test-cabinet-references.pages.dev",
+          "structured-2d": "https://b77d8765.test-cabinet-references.pages.dev"
         }
       }
     },
@@ -58,6 +105,18 @@
         "kindle": {
           "none": "https://8aaffce5.test-cabinet-references.pages.dev"
         }
+      },
+      "v3.0.0": {
+        "base": {
+          "none": "https://1d8ce138.test-cabinet-references.pages.dev",
+          "simple-2d": "https://ebae1d64.test-cabinet-references.pages.dev",
+          "structured-2d": "https://de281cca.test-cabinet-references.pages.dev"
+        },
+        "kindle": {
+          "none": "https://dcdecba7.test-cabinet-references.pages.dev",
+          "simple-2d": "https://bdcb1489.test-cabinet-references.pages.dev",
+          "structured-2d": "https://f72892a1.test-cabinet-references.pages.dev"
+        }
       }
     },
     "floe": {
@@ -70,12 +129,53 @@
         "base": {
           "none": "https://718a5af2.test-cabinet-references.pages.dev"
         }
+      },
+      "v3.0.0": {
+        "base": {
+          "none": "https://24ac9bdf.test-cabinet-references.pages.dev",
+          "simple-2d": "https://6cb14071.test-cabinet-references.pages.dev",
+          "structured-2d": "https://b4f144f3.test-cabinet-references.pages.dev"
+        }
+      }
+    },
+    "gantry": {
+      "v1.0.0": {
+        "base": {
+          "none": "https://66dd97dd.test-cabinet-references.pages.dev",
+          "simple-3d": "https://bb7ec566.test-cabinet-references.pages.dev",
+          "structured-3d": "https://469b634d.test-cabinet-references.pages.dev"
+        }
+      }
+    },
+    "kessler": {
+      "v1.0.0": {
+        "base": {
+          "none": "https://8af423f5.test-cabinet-references.pages.dev",
+          "simple-2d": "https://c23b9990.test-cabinet-references.pages.dev",
+          "structured-2d": "https://90073e1a.test-cabinet-references.pages.dev"
+        }
       }
     },
     "meltdown": {
       "v1.0.0": {
         "base": {
           "none": "https://f926e436.test-cabinet-references.pages.dev"
+        }
+      },
+      "v2.0.0": {
+        "base": {
+          "none": "https://5dc23cca.test-cabinet-references.pages.dev",
+          "simple-2d": "https://ea76fd02.test-cabinet-references.pages.dev",
+          "structured-2d": "https://c6e181a8.test-cabinet-references.pages.dev"
+        }
+      }
+    },
+    "orrery": {
+      "v1.0.0": {
+        "base": {
+          "none": "https://65546e52.test-cabinet-references.pages.dev",
+          "simple-2d": "https://e1751a9c.test-cabinet-references.pages.dev",
+          "structured-2d": "https://0dc5f3a3.test-cabinet-references.pages.dev"
         }
       }
     },
@@ -139,6 +239,43 @@
         "multi": {
           "none": "https://783fd9d5.test-cabinet-references.pages.dev"
         }
+      },
+      "v2.2.0": {
+        "base": {
+          "none": "https://bb8ecaef.test-cabinet-references.pages.dev"
+        },
+        "gyre": {
+          "none": "https://7bf25b9c.test-cabinet-references.pages.dev"
+        },
+        "multi": {
+          "none": "https://f1c4d634.test-cabinet-references.pages.dev"
+        }
+      },
+      "v3.0.0": {
+        "base": {
+          "none": "https://8839f8f4.test-cabinet-references.pages.dev",
+          "simple-2d": "https://05a1aec1.test-cabinet-references.pages.dev",
+          "structured-2d": "https://2e19fbb7.test-cabinet-references.pages.dev"
+        },
+        "gyre": {
+          "none": "https://46ea5088.test-cabinet-references.pages.dev",
+          "simple-2d": "https://2fa65c24.test-cabinet-references.pages.dev",
+          "structured-2d": "https://0418301a.test-cabinet-references.pages.dev"
+        },
+        "multi": {
+          "none": "https://61a2b8dc.test-cabinet-references.pages.dev",
+          "simple-2d": "https://63c53590.test-cabinet-references.pages.dev",
+          "structured-2d": "https://d91232e8.test-cabinet-references.pages.dev"
+        }
+      }
+    },
+    "refract": {
+      "v1.0.0": {
+        "base": {
+          "none": "https://91bb3973.test-cabinet-references.pages.dev",
+          "simple-2d": "https://35ae2ed6.test-cabinet-references.pages.dev",
+          "structured-2d": "https://d7cf9388.test-cabinet-references.pages.dev"
+        }
       }
     },
     "shatter": {
@@ -173,6 +310,18 @@
         "warhead": {
           "none": "https://d3ecbc27.test-cabinet-references.pages.dev"
         }
+      },
+      "v3.0.0": {
+        "base": {
+          "none": "https://9f800897.test-cabinet-references.pages.dev",
+          "simple-2d": "https://e22b0f34.test-cabinet-references.pages.dev",
+          "structured-2d": "https://ea5a027b.test-cabinet-references.pages.dev"
+        },
+        "warhead": {
+          "none": "https://489c358c.test-cabinet-references.pages.dev",
+          "simple-2d": "https://b8271eef.test-cabinet-references.pages.dev",
+          "structured-2d": "https://e3f07806.test-cabinet-references.pages.dev"
+        }
       }
     },
     "spectra": {
@@ -182,6 +331,18 @@
         },
         "overload": {
           "none": "https://942965ed.test-cabinet-references.pages.dev"
+        }
+      },
+      "v2.0.0": {
+        "base": {
+          "none": "https://e712215c.test-cabinet-references.pages.dev",
+          "simple-2d": "https://280b4f8a.test-cabinet-references.pages.dev",
+          "structured-2d": "https://c906b114.test-cabinet-references.pages.dev"
+        },
+        "overload": {
+          "none": "https://a11fbc9c.test-cabinet-references.pages.dev",
+          "simple-2d": "https://b3a11a93.test-cabinet-references.pages.dev",
+          "structured-2d": "https://1b66230c.test-cabinet-references.pages.dev"
         }
       }
     },
@@ -197,10 +358,35 @@
         }
       }
     },
+    "volute": {
+      "v1.0.0": {
+        "base": {
+          "none": "https://b749cbff.test-cabinet-references.pages.dev",
+          "simple-2d": "https://eb2054ed.test-cabinet-references.pages.dev",
+          "structured-2d": "https://786f22f4.test-cabinet-references.pages.dev"
+        }
+      }
+    },
+    "wick": {
+      "v1.0.0": {
+        "base": {
+          "none": "https://2c5253cd.test-cabinet-references.pages.dev",
+          "simple-2d": "https://3464b4ea.test-cabinet-references.pages.dev",
+          "structured-2d": "https://d1e33967.test-cabinet-references.pages.dev"
+        }
+      }
+    },
     "wireworm": {
       "v1.0.0": {
         "base": {
           "none": "https://4a23dbc9.test-cabinet-references.pages.dev"
+        }
+      },
+      "v2.0.0": {
+        "base": {
+          "none": "https://e820cb61.test-cabinet-references.pages.dev",
+          "simple-2d": "https://644d8fa9.test-cabinet-references.pages.dev",
+          "structured-2d": "https://68dc6a7d.test-cabinet-references.pages.dev"
         }
       }
     }
