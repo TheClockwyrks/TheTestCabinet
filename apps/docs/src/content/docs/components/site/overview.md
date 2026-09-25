@@ -8,32 +8,44 @@ implementations above all by playing them. Each run carries a numeric score and
 [rating](/components/core/results/#reviews), and each test case has a
 [leaderboard](#leaderboard). Only published runs appear.
 
-## How it is served
+## A static site
 
-The gallery is served by an origin that resolves routes and reads the published
-set at request time, so a run appears as soon as it is published. See
-[Serving](/components/site/serving/).
+The site is fully static, with no backend, no accounts, and no database of its
+own. Interactivity such as filtering and sorting is handled client-side. The
+built bundle is deployed to Cloudflare Pages at the project's custom domain, and
+Cloudflare builds it directly from the repository.
 
 The gallery is the same routed application the [web
 console](/components/web/overview/) renders, shared through the [UI
-library](/components/ui/overview/), mounted with execution disabled so it shows
-the published gallery alone. Signing in and launching runs stay with the
-console.
+library](/components/ui/overview/). The site mounts it with the build-time
+snapshot as its data source and `canExecute` false, so it shows the published
+gallery without the console's run, monitor, review, or connection screens.
+Signing in and launching runs stay with the console.
 
-The dataset is split by shape. Run listings, search, and leaderboards read the
-[public projection](/components/backend/projection/) the backend writes as it
-publishes. A run's full record, its events, and all media are objects in the
-public bucket, fetched when that run's page opens, so what a page carries stays
-the same as the corpus grows.
+The dataset is the public snapshot the
+[backend](/components/backend/overview/#public-snapshot) exports to a Cloudflare
+R2 bucket. A build-time Vite plugin fetches that snapshot once from
+`TCAB_SNAPSHOT_URL` and inlines it, so the shipped output never queries the
+backend or R2 at runtime. A backend deploy hook triggers a rebuild whenever the
+snapshot changes. An unset URL, or a bucket whose `index.json` is absent because
+nothing has been published yet, resolves to an empty dataset and still builds; a
+reachable but broken snapshot fails the build.
+
+The build inlines the snapshot's [summary
+index](/components/backend/snapshot/#runsjson--the-run-index), one `RunSummary`
+card per published run, as the in-memory dataset every list, card, leaderboard,
+and metric reads. Each run's full record is emitted as a per-run `runs/<id>.json`
+static asset, fetched when that run's detail page opens, so the bundle does not
+grow with each record.
 
 ## Gallery
 
 The site presents published runs as a browsable gallery. Each run is attributed
 to the [variant](/testing/end-to-end/overview/#variants) of the case it built,
 taken from its [run record](/components/core/run-records/#subject). Listings are
-paged rather than loaded whole, and their search and sorting are answered by the
-backend. The authoritative ranking of models for a given case and variant lives
-in that case's [leaderboard](#leaderboard).
+paged rather than loaded whole, and their search and sorting run client-side
+over the inlined run index. The authoritative ranking of models for a given case
+and variant lives in that case's [leaderboard](#leaderboard).
 
 A validator-rated run carries a read-only browser of its automated
 [validation](/components/core/validation/) items, in which a visitor replays the
@@ -71,11 +83,11 @@ comparable cost, mean token total, and mean session duration, each taken over
 the runs that recorded the figure. A game jam carries a whole-game overall
 grade in place of a domain rating.
 
-A run's score is carried on its projection row. A validator-rated run's score
-is its validators' earned share of the declared checklist weight while the run
-has no reviews, and the average of its reviews' effective scores once it has
-any. A legacy run's reviews each contribute their earned share, averaged across
-the run's reviews.
+A run's score is carried on its summary card in the snapshot's run index. A
+validator-rated run's score is its validators' earned share of the declared
+checklist weight while the run has no reviews, and the average of its reviews'
+effective scores once it has any. A legacy run's reviews each contribute their
+earned share, averaged across the run's reviews.
 
 A [performance](/testing/performance/overview/) case carries no reviewer score,
 because it is graded by the harness on correctness and then on the fuel a
@@ -102,8 +114,8 @@ Publishing a legacy run requires a review, so a published legacy run carries at
 least one. A published validator-rated run may carry none, standing on its
 functional rating and score alone until someone rates its aesthetics. A run may
 carry several reviews from different reviewers, and its overall rating on the
-reviewer-given channel is the worst across them. Reviews travel to the gallery
-in the run's published document alongside the record.
+reviewer-given channel is the worst across them. Reviews travel to the site in
+the exported snapshot alongside the run record.
 
 ## Hosting
 

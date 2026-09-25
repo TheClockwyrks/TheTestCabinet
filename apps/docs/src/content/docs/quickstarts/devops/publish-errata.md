@@ -71,8 +71,8 @@ scripts/reingest.sh                             # a local stack instead
   tab appears once a version records at least one erratum.
 - A run of that version shows a known-errata callout on its detail view, scoped
   to the run's variant, so a reviewer sees the issue before scoring.
-- The live console reflects the entry as soon as the re-ingest completes, and
-  the re-ingest republishes the case so the gallery shows it too.
+- The live console reflects the entry as soon as the re-ingest completes; the
+  static gallery picks it up on the snapshot refresh the re-ingest queues.
 
 ## When it is resolved
 

@@ -117,11 +117,14 @@ Publish releases the run: its generated source to its own public repository and
 its build to Cloudflare Pages. The endpoint gates the run, refusing a legacy run
 with no review, and enqueues a per-publish `tcab-publisher` Job that the
 [dispatcher](/components/dispatcher/overview/) claims. When that Job reports a
-terminal success the backend marks the run published, uploads the run's
-documents and media to the public bucket, and writes its row to the public
-projection.
+terminal success the backend marks the run published, regenerates the public
+snapshot from the full set of published runs, uploads it, and triggers a site
+rebuild.
 
-The backend serializes publishes so two operators cannot race on shared state.
+The backend serializes publishes so two operators cannot race on shared state,
+and it coalesces a burst of publishes into one snapshot generation, one upload,
+and one site rebuild. Regenerating the whole published set on each refresh keeps
+the operation idempotent.
 
 ## Artifact reclamation
 
@@ -151,8 +154,8 @@ failing tree listing abandons the pass the same way.
 
 The backend holds each account's reviewer scheduling state: what runs that
 account wants to exist, and how fast it wants them arriving. The data is private
-to the account, stays inside the backend and the web console, and reaches neither
-the public snapshot nor the projection.
+to the account, stays inside the backend and the web console, and stays out of
+the public snapshot.
 
 - A [coverage plan](/components/backend/coverage/) declares cases pinned to a
   version, variant and engine, crossed with combinations and a target run count
@@ -175,27 +178,33 @@ which case a top-up enqueues the whole matrix.
 
 ## Public snapshot
 
-The [gallery](/components/site/serving/) shows published runs to anonymous
-visitors while the backend stays private. The backend publishes to two public
-stores that the gallery reads.
+The public site shows published runs to anonymous visitors without reaching the
+private backend. The backend exports a snapshot of its published dataset to a
+[Cloudflare R2](https://developers.cloudflare.com/r2/) bucket, and the site
+build fetches that export.
 
-- Documents and media go to a [Cloudflare R2](https://developers.cloudflare.com/r2/)
-  bucket, whose layout is specified in [Public Snapshot](/components/backend/snapshot/).
-- Index rows go to the [public projection](/components/backend/projection/),
-  which the gallery queries for listings, search, leaderboards, and short codes.
+- Only published runs are exported, apart from the redacted [gg document
+  corpus](/components/backend/snapshot/#gg-runsjson--the-gg-document-corpus),
+  which is not gated on publication.
+- Writing the bucket takes the `TCAB_R2_*` credentials, which the backend holds
+  and `tcab publish-reference` is given to upload a case's reference frames. The
+  bucket is read-only to everyone else.
+- The upload is atomic: a new generation is written first and a small pointer
+  object is swapped in last, so a site build never reads a half-written dataset.
+- After uploading, the backend fires the site's deploy hook. The site build
+  fetches the snapshot and produces static output without connecting to the
+  backend.
 
-Only published runs are exported, apart from the redacted [gg document
-corpus](/components/backend/snapshot/#the-gg-document-corpus), which is not
-gated on publication. Writing the bucket takes the `TCAB_R2_*` credentials,
-which the backend holds and `tcab publish-reference` is given to upload a case's
-reference frames. Both stores are read-only to everyone else.
+Every connection flows outward from the backend, and what crosses into public
+reach is a read-only export of already-published runs. The snapshot's file
+layout is specified in [Public Snapshot](/components/backend/snapshot/).
 
 ## Configuration
 
 The backend is configured entirely through environment variables.
-`TCAB_BACKEND_CHECKOUT` is the only required one. With the R2 and projection
-variables omitted the backend still ingests, records reviews and publishes,
-skipping the public write.
+`TCAB_BACKEND_CHECKOUT` is the only required one. With the R2 and deploy-hook
+variables omitted the backend still ingests, records reviews and publishes, and
+regenerates the snapshot, skipping the upload and the rebuild.
 
 | Variable                             | Purpose                                                                                                                                                                                                            | Default                                   |
 | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------- |
@@ -208,8 +217,10 @@ skipping the public write.
 | `TCAB_BACKEND_SERVICE_TOKEN`         | Shared token the dispatcher claims jobs with. Unset disables the claim endpoints.                                                                                                                                  | —                                         |
 | `TCAB_BACKEND_ALLOW_EXPERIMENTAL`    | Offer experimental case versions to the UI.                                                                                                                                                                        | `false`                                   |
 | `TCAB_ENV`                           | Deployment environment name, selecting this backend's entries in the reference-builds lockfile.                                                                                                                    | `local`                                   |
-| `TCAB_R2_*`                          | Credentials and bucket the public documents and media are uploaded to.                                                                                                                                             | —                                         |
-| `TCAB_PROJECTION_DATABASE_URL`       | Connection string of the [public projection](/components/backend/projection/) the backend writes on publish.                                                                                                       | —                                         |
+| `TCAB_SNAPSHOT_COALESCE_MS`          | Sliding debounce a burst of publishes is coalesced over.                                                                                                                                                           | `60000`                                   |
+| `TCAB_SNAPSHOT_RETENTION_HOURS`      | How long a superseded snapshot generation is kept before it is [pruned](/components/backend/snapshot/#pruning-superseded-generations).                                                                             | `24`                                      |
+| `TCAB_R2_*`                          | Credentials and bucket the snapshot is uploaded to.                                                                                                                                                                | —                                         |
+| `TCAB_SITE_DEPLOY_HOOK_URL`          | The site deploy hook fired after each upload.                                                                                                                                                                      | —                                         |
 | `TCAB_OPENROUTER_API_KEY`            | OpenRouter key the backend's own [model probes](/components/backend/api/#model-probes) are billed to. Distinct from the runners' `OPENROUTER_API_KEY`. Unset, a probe trigger fails with `openrouter_key_missing`. | —                                         |
 | `TCAB_REFERENCE_BROWSER`             | Headless browser used to render references at ingest.                                                                                                                                                              | image Chromium                            |
 | `TCAB_GG_REFERENCE`                  | Directory holding gg's projected reference documents.                                                                                                                                                              | `<checkout>/target/gg-reference`          |
@@ -219,7 +230,7 @@ skipping the public write.
 | `TCAB_ARTIFACT_SWEEP_GRACE_HOURS`    | How old a run-less tree must be before a sweep deletes it.                                                                                                                                                         | `24`                                      |
 | `TCAB_ARENA_PUBLIC_URL`              | Arena service base URL, advertised to the web console.                                                                                                                                                             | —                                         |
 | `TCAB_GRAFANA_PUBLIC_URL`            | Grafana base URL, advertised to the web console.                                                                                                                                                                   | —                                         |
-| `TCAB_SNAPSHOT_PUBLIC_URL`           | Public read base URL of the document bucket, advertised to the web console.                                                                                                                                        | —                                         |
+| `TCAB_SNAPSHOT_PUBLIC_URL`           | Public read base URL of the snapshot bucket, advertised to the web console.                                                                                                                                        | —                                         |
 
 The backend binds `8787`, the [auth service](/components/auth/overview/) `8789`,
 the [artifact service](/components/artifacts/overview/) `8790`, and the

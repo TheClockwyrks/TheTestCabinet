@@ -617,7 +617,9 @@ launched, leaves no record, so it is listed by no selector.
   `validatorRated`, the `score` and `reviewCount`, the denormalized case name, a
   performance run's fuel result, the ranking slice of a run's code analysis, and
   links. This is the same summary shape the [public
-  projection](/components/backend/projection/) holds as its run row.
+  snapshot](/components/backend/snapshot/#runsjson--the-run-index) ships as its
+  run index, whose schema is
+  [`snapshot/runs.schema.json`](https://docs.testcabinet.ai/schema/snapshot/runs.schema.json).
 
 #### Two pagination modes
 

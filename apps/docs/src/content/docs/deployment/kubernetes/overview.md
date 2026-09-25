@@ -357,10 +357,9 @@ these differ:
 | Secrets       | staging keys and tokens           | prod keys and tokens           |
 | Hostnames     | `*.staging.tcab.testcabinet.ai`   | `*.tcab.testcabinet.ai`        |
 
-Give each environment its own [public plane](/deployment/public-gallery/) so
-staging publishes stay out of the prod gallery dataset; point each backend's
-`TCAB_R2_*` and `TCAB_PROJECTION_DATABASE_URL` at the right bucket and
-projection.
+Use separate Cloudflare R2 buckets and deploy hooks per environment to keep
+staging publishes out of the prod gallery dataset; point each backend's
+`TCAB_R2_*` and `TCAB_SITE_DEPLOY_HOOK_URL` at the right one.
 
 ## Next steps
 

@@ -77,8 +77,9 @@ Every other surface reads bounded, scoped summary sets. The home page also reads
 tier, and scopes a group leaderboard to the member cases of its [test-case
 group](/components/core/test-case-groups/). Only a run's detail page loads that
 run's full [record](/components/core/run-records/) and its reviews, [one run at
-a time](/components/backend/api/#get-runsid). Summary records back every
-listing, leaderboard, and metric.
+a time](/components/backend/api/#get-runsid). Lightweight
+[`RunSummary`](/components/backend/snapshot/#runsjson--the-run-index) records
+back every listing, leaderboard, and metric.
 
 ## The test cases section
 

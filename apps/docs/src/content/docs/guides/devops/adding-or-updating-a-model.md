@@ -15,10 +15,10 @@ the same task reduced to its steps.
 
 The catalog is owned by the backend. Model records, their aliases, and their
 billed-rate history live in the backend store as the `model`, `model_alias`, and
-`model_price` tables. The backend serves the catalog at `GET /models` and writes
-the models a published run references into the [public
-projection](/components/backend/projection/), so the gallery renders model
-metadata and rates without reaching the backend.
+`model_price` tables. The backend serves the catalog at `GET /models` and bakes
+it into the public R2 snapshot as `models.json`, pointed to by the snapshot
+`index.json`'s `modelsKey`, so the static gallery renders model metadata and
+rates without a backend round-trip.
 
 Curating a model is an in-app edit that takes effect immediately, with no
 recompile and no release.

@@ -2,41 +2,75 @@
 title: Public Snapshot
 ---
 
-The public snapshot is the document half of the public dataset. The backend
-uploads a published run's record, its events, and all media to a public
-Cloudflare R2 bucket, and the [gallery](/components/site/serving/) fetches those
-objects by key. The index half is the [public
-projection](/components/backend/projection/), whose rows name these objects.
-This page is the authoritative contract for the bucket's layout.
+The public snapshot is the dataset the [site](/components/site/overview/) is
+built from. The backend exports its published runs to a public [Cloudflare
+R2](https://developers.cloudflare.com/r2/) bucket, and the site build fetches
+that export. This page is the authoritative contract for the snapshot's layout,
+the surface between the backend that writes it and the site that reads it.
 
-A run's projection row carries every headline figure a listing needs, so ranking
-and paging the published set costs no document fetch: outcome, functional
-rating, aesthetic rating, whether the run is validator-rated, and score.
-
-The bucket holds documents for published runs. A produced run that has not been
-published is private, and a run that can never be published, such as an
+The snapshot's run documents hold only published runs. A produced run that has
+not been published is private, and a run that can never be published, such as an
 infrastructure failure or a [`canceled`](/components/core/run-records/#status)
-run, has no document here. The [gg document corpus](#the-gg-document-corpus) is
-the one exception, and it is redacted rather than gated on publication.
+run, never reaches them. The [gg document
+corpus](#gg-runsjson--the-gg-document-corpus) is the one exception, and it is
+redacted rather than gated on publication.
 
-## Content addressing
+The backend regenerates the whole snapshot from its full published set on each
+coalesced publish, uploads it, and swaps it into place. Regenerating everything
+rather than applying deltas keeps the operation idempotent.
 
-Every object's key carries a digest of its content, so a key changes only when
-the bytes do. A publish computes each key and uploads only the objects the
-bucket does not already hold, issuing those uploads concurrently.
+Regenerating is distinct from re-uploading. The per-generation index files are
+small and are rewritten every publish. Everything else is content-addressed
+under a prefix shared by every generation, and a refresh uploads only the objects
+the bucket does not already hold:
 
-An object at a given key is immutable, so the gallery and the browser cache it
-indefinitely, and a projection row naming a key always names complete content.
-Writing media once also lets a publish keep a run's media after the volumes the
-bytes were read from are gone.
+- A run's document under [`documents/runs/<run-id>/`](#run-documents), keyed by
+  a digest of its own bytes.
+- A run's media under [`media/runs/<run-id>/`](#run-media), keyed by run id and
+  immutable once the run is published.
+- A case version's media under [`media/cases/<slug>/<version>/`](#case-media)
+  and its starter-workspace files under
+  [`files/cases/<slug>/<version>/`](#case-files). A version with a published run
+  is [frozen](/development/frozen-versions/), so these are effectively immutable
+  too.
+
+Writing each object once keeps a publish cheap as runs and cases accumulate, and
+it lets a publish keep a run's media after the volumes the bytes were read from
+are gone.
+
+## Atomic swap
+
+A site build must never read a half-written dataset. The backend writes every
+file of a new snapshot under a generation prefix `snapshots/<snapshotId>/`
+first, uploading the objects concurrently, and writes the small top-level
+`index.json` pointer last. `index.json` is a single small object, so
+overwriting it is the atomic cut-over: until that write lands the site keeps
+reading the previous snapshot, and a new snapshot never clobbers the previous
+one's files. A failed upload leaves `index.json` unwritten and the previous
+generation live. Superseded prefixes are
+[pruned](#pruning-superseded-generations) after a grace period.
+
+`<snapshotId>` is a timestamp plus a hash, for example `2026-06-17T2148Z-1a7b9c3d`.
 
 ## Keys
 
+The documents, rewritten every publish:
+
+```text
+index.json
+snapshots/<snapshotId>/runs.json
+snapshots/<snapshotId>/cases/<slug>/<version>.json
+snapshots/<snapshotId>/models.json
+snapshots/<snapshotId>/comparisons.json
+snapshots/<snapshotId>/comparisons/<id>.json
+snapshots/<snapshotId>/test-case-groups.json
+snapshots/<snapshotId>/gg-runs.json
+```
+
+The content-addressed objects, shared across every generation:
+
 ```text
 documents/runs/<run-id>/<digest>.json
-documents/cases/<slug>/<version>/<digest>.json
-documents/comparisons/<id>/<digest>.json
-documents/gg-runs/<digest>.json
 media/runs/<run-id>/proof/<file>
 media/runs/<run-id>/asset/<file>
 media/runs/<run-id>/validation/<file>
@@ -49,20 +83,84 @@ files/cases/<slug>/<version>/workspace/<digest>-<basename>
 pfp/<account-id>
 ```
 
+`index.json` is the pointer, overwritten last. A run's summary card names its
+document by key, and a per-run or per-case document references its media by
+these snapshot-relative keys, so the atomic `index.json` swap still points a site
+build at a complete, self-consistent dataset.
+
 `<scope>` is `_common` for a reference shown on every variant, or a variant slug
 for one scoped to that variant.
 
-A key carries a digest of the document's own bytes and cannot be composed from
-the run id, so the projection row naming a key is the only supported way to
-reach a document. Every document carries a `schemaVersion`, currently `2`.
+The site reads `index.json`, then follows its keys and prefixes to the rest.
+Every JSON file carries a `schemaVersion`, currently `2`.
+
+## `index.json` — the pointer
+
+The top-level pointer and summary: the snapshot id, when it was generated, the
+run count, and the keys and prefixes the rest of the snapshot lives under.
+
+```jsonc
+{
+  "schemaVersion": 2,
+  "snapshotId": "2026-06-17T2148Z-1a7b9c3d",
+  "generatedAt": "2026-06-17T21:48:00Z",
+  "runCount": 128,
+  "runsKey": "snapshots/2026-06-17T2148Z-1a7b9c3d/runs.json",
+  "runDocumentsPrefix": "documents/runs/",
+  "casesPrefix": "snapshots/2026-06-17T2148Z-1a7b9c3d/cases/",
+  "modelsKey": "snapshots/2026-06-17T2148Z-1a7b9c3d/models.json",
+  "comparisonsKey": "snapshots/2026-06-17T2148Z-1a7b9c3d/comparisons.json",
+  "comparisonsPrefix": "snapshots/2026-06-17T2148Z-1a7b9c3d/comparisons/",
+  "ggRunsKey": "snapshots/2026-06-17T2148Z-1a7b9c3d/gg-runs.json",
+  "testCaseGroupsKey": "snapshots/2026-06-17T2148Z-1a7b9c3d/test-case-groups.json",
+}
+```
+
+`runDocumentsPrefix` is informational: a run document's key carries a content
+digest, so a reader reaches it through the `documentKey` on the run's summary
+card rather than by composing a path. `testCaseGroupsKey` is optional, and a
+reader treats its absence as an empty group set.
+
+Schema:
+[`snapshot/index.schema.json`](https://docs.testcabinet.ai/schema/snapshot/index.schema.json).
+
+## `runs.json` — the run index
+
+A `runs` array of summary cards, newest first, one per published run. It is
+enough for the gallery's cards and its client-side filter, sort and paging
+without fetching every per-run file.
+
+Each summary carries the run's id and timestamps, its
+[subject](/components/core/run-records/#subject) including the [test
+type](/testing/overview/), its [metrics](/components/core/metrics/), the
+denormalized case name, the `validationLoaded` signal, the run state, the links,
+and every headline figure a listing needs: the functional `rating`, the
+`aesthetic` rating, whether the run is `validatorRated`, the `score`, and the
+`reviewCount`. A performance run's fuel result and the ranking slice of a run's
+[code analysis](#code-analysis) ride along too. Each card names the run's full
+document by `documentKey`.
+
+The site fetches full records lazily, one per run page. This summary index is
+the whole dataset the list, home, leaderboard, and metrics views read.
+
+Schema:
+[`snapshot/runs.schema.json`](https://docs.testcabinet.ai/schema/snapshot/runs.schema.json).
 
 ## Run documents
 
-The full [run record](/components/core/run-records/) blob, verbatim, with its
-links populated, plus the array of [reviews](/components/core/results/#reviews)
-and the run's links. Every run here is published, so the document carries no
-publication flag. Each review entry includes the reviewer's id and display name,
-and the key of their [profile picture](#reviewer-pictures) when they have one.
+A run's full document lives at `documents/runs/<run-id>/<digest>.json`, where
+`<digest>` is over the document's own bytes. A run whose public content is
+unchanged since the last refresh keeps the key it already occupies and is
+skipped; a new review, a newly uploaded proof, or an edited record mints a new
+key and is uploaded. The key cannot be composed from the run id, so the
+`documentKey` on the run's summary card is the only supported way to reach it.
+
+The document is the full [run record](/components/core/run-records/) blob,
+verbatim, with its links populated, plus the array of
+[reviews](/components/core/results/#reviews) and the run's links. Every run here
+is published, so the document carries no publication flag. Each review entry
+includes the reviewer's id and display name, and the key of their [profile
+picture](#reviewer-pictures) when they have one.
 
 A legacy run's score and functional rating are computed from this array, and any
 run's aesthetic rating is the worst run-wide tier across its reviews. A
@@ -150,10 +248,11 @@ naming it, and the static gallery composes its URL by appending that name to a
 single per-run prefix.
 
 A published run's media never changes, so it is keyed by the run id and written
-once. A publish references any object already under `media/` without reading the
-source bytes or re-uploading, and reads and uploads only what is missing, from
-the backend store or the [artifact service](/components/artifacts/overview/). A
-run's media is therefore exported exactly once across all snapshots.
+once. On each publish the builder lists what is already under `media/` and
+references any object already there without reading the source bytes or
+re-uploading. Only media not yet in the bucket is read, from the backend store
+or the [artifact service](/components/artifacts/overview/), and uploaded, so a
+run's media is exported exactly once across all snapshots.
 
 A `video` is transcoded from webm to mp4, for iOS playback, exactly once. A
 transcoded video's recorded file name keeps its `.webm` spelling while its
@@ -161,8 +260,12 @@ published key ends `.mp4`, so a reader follows the key rather than composing one
 from the name. A `replay` recorded as `.webm` is published as recorded, because
 the player decodes its frames and timestamps as the engine wrote them.
 
-To re-seed the bucket from a prior snapshot after the source volumes are lost,
-use `scripts/recover-run-media-from-snapshot.sh`.
+Two consequences follow. A publish stays cheap as asset-generation runs
+accumulate, because it uploads only new media. Media already in the bucket is
+referenced without needing its source bytes, so a publish keeps a run's media
+even when the volumes it was originally read from have been lost, such as after
+a cluster is recreated. To re-seed the bucket from a prior snapshot in that
+recovery case, use `scripts/recover-run-media-from-snapshot.sh`.
 
 An upload stores both labels the object is served under: what the resource is
 and how its bytes are framed. A 2D engine's validation recording is stored as
@@ -175,7 +278,9 @@ A case-metadata file names its media the same way: `references[]` for the
 rendered reference baselines, `validationBaselines[]` for the committed
 validation baselines, and each variant's `showcase` for its authored [case
 showcase](/components/core/showcase/#the-case-showcase) media, under
-`media/cases/<slug>/<version>/`.
+`media/cases/<slug>/<version>/`. A version with a published run is
+[frozen](/development/frozen-versions/), so re-uploading its baselines on every
+publish would be waste.
 
 `validationBaselines[]` covers every committed file of each engine and variant's
 baseline directory, including the [shared image
@@ -195,9 +300,11 @@ content-addressed: its key carries a short digest of the source bytes.
 media/cases/pong/v1.0.0/references/_common/3f2a9c1b8e04d75a-gameplay.png
 ```
 
-Identical bytes reuse the identical key and are skipped. Changed bytes mint a
-new key and are uploaded. A video baseline already in the bucket costs neither
-an upload nor a transcode.
+Identical bytes reuse the identical key and are skipped; changed bytes mint a
+new key and are uploaded. The key is derived from the source bytes, so the
+decision is made before any work happens: a video baseline already in the bucket
+costs neither an upload nor a transcode. Computing the digest needs only a local
+store read.
 
 Showcase media follows the same content-addressed rule, and its videos the same
 transcode rule as run media: a `.webm` entry is published as `.mp4`, with the
@@ -228,11 +335,11 @@ tiers it is computed in, which is what keeps a run's page load bounded.
 
 The bounded summary rides on the record inside the per-run document, and its
 ranking-relevant slice (code lines, the size Gini, mean cognitive complexity) is
-lifted onto the run's projection row as `code`, alongside the analyzer
-generation, the authored-or-tree basis, and the truncation flag. A listing
-therefore ranks every run's code without a fetch per run. The provenance travels
-with the figures, because two analysed runs are comparable only under the same
-generation and basis.
+lifted onto the run's summary card in `runs.json` as `code`, alongside the
+analyzer generation, the authored-or-tree basis, and the truncation flag. One
+file therefore ranks every run's code without a fetch per run. The provenance
+travels with the figures, because two analysed runs are comparable only under
+the same generation and basis.
 
 The unbounded document, holding every authored file, scored function, import
 edge, cycle and clone group, is published as its own object with the analyzer
@@ -242,30 +349,56 @@ generation in its key:
 media/runs/<run-id>/code-analysis/v2.json
 ```
 
-A re-analysis under a newer generation is a different document, and the
-generation in the key is what makes it mint a new object rather than overwrite
-figures a published snapshot still points at. The per-run document names it as
-`codeAnalysisKey`, and the site fetches it on demand.
+Like run media it sits under `media/`, so a refresh after the first skips it and
+two refreshes upload it exactly once. A re-analysis under a newer generation is
+a different document, and the generation in the key is what makes it mint a new
+object rather than overwrite figures a published snapshot still points at. The
+per-run document names it as `codeAnalysisKey`, and the site fetches it on
+demand.
 
 The object is a static read of model-written source, so it is parsed and passed
 through the same secret scrubber before it becomes an object. An absent `code`
 means the run was never measured rather than measured at zero.
 
-## Comparison documents
+## `models.json` — the model catalog
 
-One document per published [harness comparison](/comparisons/experiments/), a
-full read model of arms, distributions and diagnostics. Each is scrubbed like
-every other published document, and the projection holds the row a comparison is
-listed and reached by.
+The composed model catalog: the curated model configuration unioned with the
+models derived from recorded runs, each with its rate history. The public site
+renders its Models section from this file rather than a bundled dataset.
 
-## Superseded objects
+## `comparisons.json` — published comparisons
 
-A run whose content changes mints a new key, and the object at its old key is
-retained. Superseded objects and the media of a deleted run stay in the bucket.
-The accumulation is proportional to content changes rather than to publishes, so
-it settles at a small multiple of the live set.
+The index of published [harness comparisons](/comparisons/experiments/), each a
+full read model of arms, distributions and diagnostics, with a per-comparison
+`comparisons/<id>.json` for a direct fetch. Each document is scrubbed like every
+other published document. An empty list is a valid index.
 
-## Case documents
+## Pruning superseded generations
+
+Every refresh writes a whole new `snapshots/<snapshotId>/` generation and cuts
+over by overwriting `index.json`. Nothing can reach an earlier generation
+afterwards, so after the cut-over the refresh prunes the ones that are done
+with. A generation is deleted only when both hold:
+
+1. It is not the one `index.json` points at. The live generation is kept however
+   old it is, so a bucket whose live snapshot predates the retention window
+   keeps serving the site.
+2. It is older than `TCAB_SNAPSHOT_RETENTION_HOURS`, default `24`. A site build
+   that already read `index.json` is still fetching that generation's files, so
+   a just-superseded generation has to outlive the build it is serving.
+
+A generation id that does not parse as a timestamp is kept. The prune is
+best-effort: it runs after the snapshot is already live, so a failure logs and
+leaves the work to the next refresh rather than failing the publish. Without it
+the bucket grows by a full generation per publish and never shrinks.
+
+The content-addressed objects under `documents/`, `media/`, and `files/` are
+never generation-scoped and are untouched by the prune. A run document
+superseded by a content change, and the media of a deleted run, stay in the
+bucket; that accumulation is proportional to content changes rather than to
+publishes, and collecting it is a future cleanup.
+
+## `cases/<slug>/<version>.json` — case metadata
 
 The site-facing slice of a [test case version](/testing/end-to-end/overview/):
 what the gallery shows to frame a run. It carries the name, test type,
@@ -298,13 +431,19 @@ carries the set for its engine, matching the prompt-and-specs split. Only the
 addressing is inlined, so the site fetches a starter file on demand.
 
 Only a version that at least one published run built is emitted. The site keys
-lookups by `(slug, version)` from each run's subject.
+lookups by `(slug, version)` from each run's subject, so it fetches exactly the
+case files that are present.
 
 This metadata is read from the backend's ingested definition store rather than
 from the run record, which carries only the run's `(slug, version, variant)`
-subject. To keep the dataset self-consistent, an ingest that (re)ingests a
-version republishes the case documents and rows it touched. A no-op ingest
-leaves them as they are.
+subject. The store is regenerable, and on a deployment where it lives on
+ephemeral local disk a pod reschedule empties it until the ingest repopulates
+it. A snapshot regenerated while the store is momentarily empty would emit each
+published run with no case file for it, and the gallery would show a run with no
+case to browse. To keep the snapshot self-consistent, an ingest that actually
+(re)ingests a version queues a snapshot refresh, the same coalesced regeneration
+a publish triggers. A no-op ingest does not, so the periodic refresh does not
+rebuild the gallery on every cycle.
 
 Schema:
 [`snapshot/case.schema.json`](https://docs.testcabinet.ai/schema/snapshot/case.schema.json).
@@ -317,15 +456,16 @@ prefix, and the snapshot's top-level `index.json` names it under an optional
 `testCaseGroupsKey`. The file carries a `schemaVersion` and the groups in the
 order [`GET /test-case-groups`](/components/backend/api/#get-test-case-groups)
 serves them, each with its slug, name, optional summary, and member case slugs.
-A reader treats an absent key as an empty group set.
+A reader treats an absent key as an empty group set. An ingest that changes the
+group set queues a snapshot refresh even when no version was re-ingested.
 
-## The gg document corpus
+## `gg-runs.json` — the gg document corpus
 
 Every recorded [gg](/gg/overview/) run as one flat
 [document](/gg/analysis/query-language/) of dotted, typed fields, plus the
 instant the export was taken. This is the whole of the public analysis surface:
-the gallery runs the mirrored browser evaluator over these documents, so
-querying it makes no backend request.
+the site's Discover page runs the mirrored browser evaluator over these
+documents, so querying on the public gallery makes no backend request.
 
 Three rules govern the corpus's contents:
 
