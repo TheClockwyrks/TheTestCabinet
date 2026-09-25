@@ -16,6 +16,12 @@
 # `build:site` builds before the gallery, kept in one place so it cannot go stale
 # in two.
 #
+# WHY A BROWSER IS INSTALLED. `packages/case-harness`'s suite drives a real
+# Chromium through Playwright, and `npm ci` installs Playwright but downloads no
+# browser. The install is the workspace's own pinned Playwright's, so the browser
+# matches it; the job caches the download under `~/.cache/ms-playwright`, and
+# `--with-deps` puts the system libraries in place on an agent that lacks them.
+#
 # Type-checking is not this script's job: every front end is type-checked by its
 # own build (each `build` script runs `tsc -b` first), which `web-build.sh` runs.
 set -euo pipefail
@@ -24,6 +30,9 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
 log "npm ci"
 npm ci
+
+log "install Playwright's Chromium for the case-harness suite"
+npx playwright install --with-deps chromium
 
 log "build the workspace runtime packages the tests import"
 npm run build:packages

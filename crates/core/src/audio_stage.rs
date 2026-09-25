@@ -57,7 +57,8 @@ use crate::test_case::{AssetKind, is_pack_ref_half};
 
 /// The mode every staged file is given: readable by the run user, writable by nobody
 /// else. The tree carries no secret — it is published audio — so it needs none of the
-/// tightening a credential file does.
+/// tightening a credential file does. Only Unix has a mode to set.
+#[cfg(unix)]
 const STAGED_MODE: u32 = 0o644;
 
 /// The store's copy of the published-object lock, naming every object that exists and

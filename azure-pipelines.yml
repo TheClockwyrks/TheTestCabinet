@@ -311,6 +311,13 @@ stages:
               restoreKeys: |
                 npm | "$(Agent.OS)"
               path: $(HOME)/.npm
+          # The Chromium web-test.sh installs for the case-harness suite; keyed on the
+          # lockfile because the browser build follows the pinned Playwright.
+          - task: Cache@2
+            displayName: Cache Playwright browsers
+            inputs:
+              key: 'playwright | "$(Agent.OS)" | package-lock.json'
+              path: $(HOME)/.cache/ms-playwright
           - script: ./scripts/ci/web-test.sh
             displayName: Test front ends
 
