@@ -24,9 +24,17 @@ The cut-a-release quickstart, the cutting-a-release guide and
 `tcab-linux` and `tcab-windows` artifacts, uploads gg, and mirrors the tag. No
 release has been cut through that route yet.
 
-The existing `rel/v0.7.0` branch is a merge from 2026-08-25 and sits 3817
-commits behind `feat/gg`. `crates/gg` and `crates/core` already carry version
-`0.7.0`.
+`rel/v0.7.0` is recreated from `feat/gg` and holds the v0.7.0 changelog page,
+registered in the sidebar. `crates/gg` and `crates/core` carry version `0.7.0`.
+The reference implementations of every non-experimental case version are
+published to prod and recorded in the lockfile, with their baselines recaptured
+into cold-storage.
+
+The history rewrite has not run: every branch still reaches the baseline
+blobs, and the GitHub mirror holds the `v0.3.2` to `v0.6.3` tags that Azure
+lacks, so the rewrite fetches and rewrites those too. It has to land before the
+pipeline's mirror job pushes `nightly` or `staging`, or the unrewritten pack
+goes to GitHub.
 
 ## Design
 
@@ -64,9 +72,9 @@ they describe.
 
 ## Done when
 
-- [ ] `rel/v0.7.0` is recreated from `feat/gg` and holds the changelog page,
+- [x] `rel/v0.7.0` is recreated from `feat/gg` and holds the changelog page,
       registered in the sidebar.
-- [ ] The reference-implementation gate passes on the release branch.
+- [x] The reference-implementation gate passes on the release branch.
 - [ ] `staging` deployed automatically, was rehearsed with real runs, and
       `master` deployed automatically to prod.
 - [ ] The `v0.7.0` tag exists on Azure and on the GitHub mirror at the same
