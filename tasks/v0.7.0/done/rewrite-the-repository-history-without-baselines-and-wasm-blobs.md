@@ -78,10 +78,10 @@ Every existing clone is discarded and re-cloned, including the devcontainer's.
 
 ## Done when
 
-- [ ] The listed branches are deleted on Azure.
-- [ ] A fresh clone of `master` holds no `validation-baseline/` blob and no
+- [x] The listed branches are deleted on Azure.
+- [x] A fresh clone of `master` holds no `validation-baseline/` blob and no
       sandbox wasm or gz blob in any reachable commit.
-- [ ] Every surviving branch and tag on Azure and on GitHub points at a
+- [x] Every surviving branch and tag on Azure and on GitHub points at a
       rewritten commit, and each GitHub Release still resolves at its tag.
 - [ ] The frozen check passes at the tip of every surviving branch.
 - [ ] The devcontainer clones fresh and builds.

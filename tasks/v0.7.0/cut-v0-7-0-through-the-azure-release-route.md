@@ -7,10 +7,10 @@ GitHub afterwards.
 This issue depends on every other release-blocking issue in this folder:
 [the port](done/port-the-gg-and-tooling-changes-from-the-spec-cabinet-branch-onto-feat-gg.md),
 [the baselines move](done/move-validation-baselines-into-the-cold-storage-submodule.md),
-[the history rewrite](rewrite-the-repository-history-without-baselines-and-wasm-blobs.md),
+[the history rewrite](done/rewrite-the-repository-history-without-baselines-and-wasm-blobs.md),
 [the submodule addressing](done/address-submodules-by-relative-url-and-mirror-them-to-github.md),
 [the desktop drop](done/drop-the-desktop-app.md),
-[the gallery design pages](move-the-gallery-origin-design-pages-onto-the-share-links-branch.md),
+[the gallery design pages](done/move-the-gallery-origin-design-pages-onto-the-share-links-branch.md),
 [the Azure CI/CD](done/build-ci-cd-on-azure-pipelines-with-deploys-to-staging-and-prod.md),
 [the gg binaries](done/publish-gg-release-binaries-to-azure-blob-storage.md), and
 [the GitHub retirement](done/retire-the-github-workflows-and-ghcr.md).
@@ -27,14 +27,19 @@ release has been cut through that route yet.
 `rel/v0.7.0` is recreated from `feat/gg` and holds the v0.7.0 changelog page,
 registered in the sidebar. `crates/gg` and `crates/core` carry version `0.7.0`.
 The reference implementations of every non-experimental case version are
-published to prod and recorded in the lockfile, with their baselines recaptured
-into cold-storage.
+published to staging and to prod and recorded under both lockfile keys, with
+their baselines recaptured into cold-storage. `nightly` points at the
+`rel/v0.7.0` tip, and PR 208 merges `rel/v0.7.0` into `staging` as `v0.7.0-rc1`.
 
-The history rewrite has not run: every branch still reaches the baseline
-blobs, and the GitHub mirror holds the `v0.3.2` to `v0.6.3` tags that Azure
-lacks, so the rewrite fetches and rewrites those too. It has to land before the
-pipeline's mirror job pushes `nightly` or `staging`, or the unrewritten pack
-goes to GitHub.
+The history is rewritten on Azure and on the GitHub mirror: a clone is under
+300 MiB, every tag from `v0.1.0-rc1` to `v0.6.3` exists on both hosts, and the
+pre-rewrite refs are kept in `~/ttc-pre-rewrite-2026-09-25.bundle` on the
+development machine. The rewrite also removed the baseline media from the
+`v0.6.3` tree that `master` and `staging` still point at, so their frozen
+markers no longer match and a prod ingest of `master` before the promotion
+would drop the reference media; `ttc/caldera`, `ttc/siege` and
+`feat/the-spec-cabinet` need a rebase onto `nightly` before their frozen check
+passes.
 
 ## Design
 
